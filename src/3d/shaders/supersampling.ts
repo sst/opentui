@@ -1,26 +1,45 @@
-struct CellResult {
-    bg: vec4<f32>,      // Background RGBA (16 bytes)
-    fg: vec4<f32>,      // Foreground RGBA (16 bytes)
-    char: u32,          // Unicode character code (4 bytes)
-    _padding1: u32,     // Padding (4 bytes)
-    _padding2: u32,     // Extra padding (4 bytes) 
-    _padding3: u32,     // Extra padding (4 bytes) - total now 48 bytes (16-byte aligned)
-};
+import tgpu from "typegpu"
+import { arrayOf, size, struct, u32, vec4f } from "typegpu/data"
 
-struct CellBuffer {
-    cells: array<CellResult>
-};
+export const SuperSamplingParams = struct({
+  /** Canvas width in pixels */
+  width: u32,
+  /** Canvas height in pixels */
+  height: u32,
+  /** 0 = standard 2x2, 1 = pre-squeezed horizontal blend */
+  sampleAlgo: size(8, u32),
+  //               ^ Padding for 16-byte alignment
+})
 
-struct SuperSamplingParams {
-    width: u32,              // Canvas width in pixels
-    height: u32,             // Canvas height in pixels  
-    sampleAlgo: u32,         // 0 = standard 2x2, 1 = pre-squeezed horizontal blend
-    _padding: u32,           // Padding for 16-byte alignment
-};
+const CellResult = struct({
+  /** Background RGBA (16 bytes) */
+  bg: vec4f,
+  /** Foreground RGBA (16 bytes) */
+  fg: vec4f,
+  /** Unicode character code (4 bytes) */
+  char: size(16, u32),
+  //         ^ Padding so that the total size is 48
+});
 
-@group(0) @binding(0) var inputTexture: texture_2d<f32>;
-@group(0) @binding(1) var<storage, read_write> output: CellBuffer;
-@group(0) @binding(2) var<uniform> params: SuperSamplingParams;
+const CellBuffer = (n: number) =>
+  struct({
+    cells: arrayOf(CellResult, n),
+  })
+
+export const layout = tgpu.bindGroupLayout({
+  inputTexture: { texture: 'float', viewDimension: '2d' },
+  output: { storage: CellBuffer, access: 'mutable' },
+  params: { uniform: SuperSamplingParams },
+}).$idx(0)
+
+export const createSuperSamplingComputeShader = (WORKGROUP_SIZE: number) => {
+  return tgpu.resolve({
+    externals: {
+      WORKGROUP_SIZE,
+      CellResult,
+      layout,
+    },
+    template: /* wgsl */ `
 
 // Quadrant character lookup table (same as Zig implementation)
 const quadrantChars = array<u32, 16>(
@@ -45,12 +64,12 @@ const quadrantChars = array<u32, 16>(
 const inv_255: f32 = 1.0 / 255.0;
 
 fn getPixelColor(pixelX: u32, pixelY: u32) -> vec4<f32> {
-    if (pixelX >= params.width || pixelY >= params.height) {
+    if (pixelX >= layout.$.params.width || pixelY >= layout.$.params.height) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0); // Black for out-of-bounds
     }
     
     // textureLoad automatically handles format conversion to RGBA
-    return textureLoad(inputTexture, vec2<i32>(i32(pixelX), i32(pixelY)), 0);
+    return textureLoad(layout.$.inputTexture, vec2<i32>(i32(pixelX), i32(pixelY)), 0);
 }
 
 fn colorDistance(a: vec4<f32>, b: vec4<f32>) -> f32 {
@@ -150,19 +169,16 @@ fn renderQuadrantBlock(pixels: array<vec4<f32>, 4>) -> CellResult {
         result.fg = chosenDarkColor;
         result.bg = chosenLightColor;
     }
-    result._padding1 = 0u;
-    result._padding2 = 0u;
-    result._padding3 = 0u;
     
     return result;
 }
 
-@compute @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE}, 1)
+@compute @workgroup_size(WORKGROUP_SIZE, WORKGROUP_SIZE, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let cellX = id.x;
     let cellY = id.y;
-    let bufferWidthCells = (params.width + 1u) / 2u;
-    let bufferHeightCells = (params.height + 1u) / 2u;
+    let bufferWidthCells = (layout.$.params.width + 1u) / 2u;
+    let bufferHeightCells = (layout.$.params.height + 1u) / 2u;
     
     if (cellX >= bufferWidthCells || cellY >= bufferHeightCells) {
         return;
@@ -173,7 +189,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     
     var pixelsRgba: array<vec4<f32>, 4>;
     
-    if (params.sampleAlgo == 1u) {
+    if (layout.$.params.sampleAlgo == 1u) {
         let topColor = getPixelColor(renderX, renderY);
         let topColor2 = getPixelColor(renderX + 1u, renderY);
         
@@ -197,5 +213,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let cellResult = renderQuadrantBlock(pixelsRgba);
     
     let outputIndex = cellY * bufferWidthCells + cellX;
-    output.cells[outputIndex] = cellResult;
+    layout.$.output.cells[outputIndex] = cellResult;
+}
+    `,
+  })
 }

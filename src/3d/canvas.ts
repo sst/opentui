@@ -1,19 +1,13 @@
 import { GPUCanvasContextMock } from "bun-webgpu"
-import { fixPaths, loadTemplate, RGBA, SuperSampleType } from ".."
+import { tgpu, type TgpuBuffer, type TgpuRoot, type UniformFlag } from "typegpu"
+import { RGBA, SuperSampleType } from ".."
 import type { OptimizedBuffer } from "../buffer"
+import { createSuperSamplingComputeShader, layout as superSamplingLayout, SuperSamplingParams } from './shaders/supersampling'
 import { toArrayBuffer } from "bun:ffi"
 import { Jimp } from "jimp"
 
-// @ts-ignore
-import shaderPath from "./shaders/supersampling.wgsl" with { type: "file" }
-
-const filePaths = fixPaths({
-  shaderPath,
-})
 const WORKGROUP_SIZE = 4
-const SUPERSAMPLING_COMPUTE_SHADER = await loadTemplate(filePaths.shaderPath, {
-  WORKGROUP_SIZE: WORKGROUP_SIZE.toString(),
-})
+const SUPERSAMPLING_COMPUTE_SHADER = await createSuperSamplingComputeShader(WORKGROUP_SIZE);
 
 export enum SuperSampleAlgorithm {
   STANDARD = 0,
@@ -22,6 +16,7 @@ export enum SuperSampleAlgorithm {
 
 export class CLICanvas {
   private device: GPUDevice
+  private root: TgpuRoot
   private readbackBuffer: GPUBuffer | null = null
   private width: number
   private height: number
@@ -33,9 +28,8 @@ export class CLICanvas {
 
   // Compute shader super sampling
   private computePipeline: GPUComputePipeline | null = null
-  private computeBindGroupLayout: GPUBindGroupLayout | null = null
   private computeOutputBuffer: GPUBuffer | null = null
-  private computeParamsBuffer: GPUBuffer | null = null
+  private computeParamsBuffer: TgpuBuffer<typeof SuperSamplingParams> & UniformFlag | null = null
   private computeReadbackBuffer: GPUBuffer | null = null
   private updateScheduled: boolean = false
   private screenshotGPUBuffer: GPUBuffer | null = null
@@ -49,6 +43,7 @@ export class CLICanvas {
     sampleAlgo: SuperSampleAlgorithm = SuperSampleAlgorithm.STANDARD,
   ) {
     this.device = device
+    this.root = tgpu.initFromDevice({ device });
     this.width = width
     this.height = height
     this.superSample = superSample
@@ -172,30 +167,9 @@ export class CLICanvas {
       code: SUPERSAMPLING_COMPUTE_SHADER,
     })
 
-    this.computeBindGroupLayout = this.device.createBindGroupLayout({
-      label: "SuperSampling Bind Group Layout",
-      entries: [
-        {
-          binding: 0,
-          visibility: GPUShaderStage.COMPUTE,
-          texture: { sampleType: "float", viewDimension: "2d" },
-        },
-        {
-          binding: 1,
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: "storage" },
-        },
-        {
-          binding: 2,
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: "uniform" },
-        },
-      ],
-    })
-
     const pipelineLayout = this.device.createPipelineLayout({
       label: "SuperSampling Pipeline Layout",
-      bindGroupLayouts: [this.computeBindGroupLayout],
+      bindGroupLayouts: [this.root.unwrap(superSamplingLayout)],
     })
 
     this.computePipeline = this.device.createComputePipeline({
@@ -207,12 +181,10 @@ export class CLICanvas {
       },
     })
 
-    // Create uniform buffer for parameters (8 bytes - 2 u32s: width, height)
-    this.computeParamsBuffer = this.device.createBuffer({
-      label: "SuperSampling Params Buffer",
-      size: 16,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    })
+    // Create uniform buffer for parameters
+    this.computeParamsBuffer = this.root.createBuffer(SuperSamplingParams)
+      .$usage('uniform')
+      .$name("SuperSampling Params Buffer")
 
     this.updateComputeParams()
   }
@@ -222,14 +194,11 @@ export class CLICanvas {
 
     // Update uniform buffer with parameters
     // Note: this.width/height are render dimensions (2x terminal size for super sampling)
-    const paramsData = new ArrayBuffer(16)
-    const uint32View = new Uint32Array(paramsData)
-
-    uint32View[0] = this.width
-    uint32View[1] = this.height
-    uint32View[2] = this.superSampleAlgorithm
-
-    this.device.queue.writeBuffer(this.computeParamsBuffer, 0, paramsData)
+    this.computeParamsBuffer.write({
+      width: this.width,
+      height: this.height,
+      sampleAlgo: this.superSampleAlgorithm,
+    })
   }
 
   private scheduleUpdateComputeBuffers(): void {
@@ -282,7 +251,6 @@ export class CLICanvas {
 
     if (
       !this.computePipeline ||
-      !this.computeBindGroupLayout ||
       !this.computeOutputBuffer ||
       !this.computeParamsBuffer
     ) {
@@ -294,20 +262,16 @@ export class CLICanvas {
       label: "SuperSampling Input Texture View",
     })
 
-    const bindGroup = this.device.createBindGroup({
-      label: "SuperSampling Bind Group",
-      layout: this.computeBindGroupLayout,
-      entries: [
-        { binding: 0, resource: textureView },
-        { binding: 1, resource: { buffer: this.computeOutputBuffer } },
-        { binding: 2, resource: { buffer: this.computeParamsBuffer } },
-      ],
+    const bindGroup = this.root.createBindGroup(superSamplingLayout, {
+      inputTexture: textureView,
+      output: this.computeOutputBuffer,
+      params: this.computeParamsBuffer,
     })
 
     const commandEncoder = this.device.createCommandEncoder({ label: "SuperSampling Command Encoder" })
     const computePass = commandEncoder.beginComputePass({ label: "SuperSampling Compute Pass" })
     computePass.setPipeline(this.computePipeline)
-    computePass.setBindGroup(0, bindGroup)
+    computePass.setBindGroup(0, this.root.unwrap(bindGroup))
 
     // Must match WGSL calculation exactly: (params.width + 1u) / 2u
     const terminalWidthCells = Math.floor((this.width + 1) / 2)
