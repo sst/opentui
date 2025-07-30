@@ -177,7 +177,6 @@ export class CLICanvas {
       layout: pipelineLayout,
       compute: {
         module: shaderModule,
-        entryPoint: "main",
       },
     })
 
