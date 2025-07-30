@@ -82,7 +82,15 @@ export enum DebugOverlayCorner {
 }
 
 export interface RenderContext {
-  addToHitGrid(x: number, y: number, width: number, height: number, id: number): void
-  width(): number
-  height(): number
+  addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
+  width: () => number
+  height: () => number
 }
+
+export interface SelectionState {
+  anchor: { x: number; y: number }
+  focus: { x: number; y: number }
+  isActive: boolean
+  isSelecting: boolean
+}
+

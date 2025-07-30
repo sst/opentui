@@ -35,6 +35,7 @@ import * as layoutExample from "./simple-layout-example"
 import * as inputSelectLayoutExample from "./input-select-layout-demo"
 import * as styledTextExample from "./styled-text-demo"
 import * as mouseInteractionExample from "./mouse-interaction-demo"
+import * as textSelectionExample from "./text-selection-demo"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
 interface Example {
@@ -50,6 +51,12 @@ const examples: Example[] = [
     description: "Interactive mouse trails and clickable cells demonstration",
     run: mouseInteractionExample.run,
     destroy: mouseInteractionExample.destroy,
+  },
+  {
+    name: "Text Selection Demo",
+    description: "Text selection across multiple renderables with mouse drag",
+    run: textSelectionExample.run,
+    destroy: textSelectionExample.destroy,
   },
   {
     name: "Styled Text Demo",

@@ -21,6 +21,8 @@ export interface StyledChar {
 
 export type StyledText = StyledChar[]
 
+// TODO: The chars could be stored as a packed buffer of char+fg+bg+attributes
+// and use the buffer.drawPackedBuffer method to draw more efficiently.
 export class Fragment {
   constructor(public chars: StyledText) {}
 

@@ -1,4 +1,4 @@
-import { OptimizedBuffer, type RenderContext, type MouseEvent } from "."
+import { OptimizedBuffer, type RenderContext, type MouseEvent, type SelectionState } from "."
 import { EventEmitter } from "events"
 
 export interface RenderableOptions {
@@ -14,8 +14,9 @@ let renderableNumber = 1
 
 export abstract class Renderable extends EventEmitter {
   static renderablesByNumber: Map<number, Renderable> = new Map()
-  public id: string
-  public num: number
+
+  public readonly id: string
+  public readonly num: number
   protected ctx: RenderContext | null = null
   private _x: number
   private _y: number
@@ -23,6 +24,7 @@ export abstract class Renderable extends EventEmitter {
   private _height: number
   private _zIndex: number
   public visible: boolean
+  public selectable: boolean = false
   
   private renderableMap: Map<string, Renderable> = new Map()
   private renderableArray: Renderable[] = []
@@ -40,6 +42,24 @@ export abstract class Renderable extends EventEmitter {
     this._zIndex = options.zIndex
     this.visible = options.visible !== false
     Renderable.renderablesByNumber.set(this.num, this)
+  }
+
+  public hasSelection(): boolean {
+    return false
+  }
+
+  public onSelectionChanged(selection: SelectionState | null): boolean {
+    // Default implementation: do nothing
+    // Override this method to provide custom selection handling
+    return false
+  }
+
+  public getSelectedText(): string {
+    return ""
+  }
+
+  public shouldStartSelection(x: number, y: number): boolean {
+    return false
   }
 
   public set needsUpdate(value: boolean) {

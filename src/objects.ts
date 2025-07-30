@@ -10,10 +10,12 @@ import {
   type BorderSidesConfig,
   type RenderableOptions,
   Fragment,
+  type SelectionState,
 } from "."
 import type { OptimizedBuffer } from "./buffer"
 import { RGBA } from "./types"
 import { parseColor } from "./utils"
+import { TextSelectionHelper } from "./selection"
 
 export interface TextOptions {
   content: string
@@ -32,16 +34,24 @@ export function sanitizeText(text: string, tabStopWidth: number): string {
 }
 
 export class TextRenderable extends Renderable {
+  public selectable: boolean = true
   private _content: string = ""
   private _fg: RGBA
   private _bg: RGBA
   public attributes: number = 0
   public tabStopWidth: number = 2
+  private selectionHelper: TextSelectionHelper
 
   constructor(id: string, options: TextOptions) {
     super(id, { ...options, width: 0, height: 0 })
 
     const fgRgb = parseColor(options.fg || RGBA.fromInts(255, 255, 255, 255))
+
+    this.selectionHelper = new TextSelectionHelper(
+      () => this.x,
+      () => this.y,
+      () => this._content.length
+    )
 
     this.tabStopWidth = options.tabStopWidth || 2
     this.setContent(options.content)
@@ -54,6 +64,10 @@ export class TextRenderable extends Renderable {
     this._content = sanitizeText(value, this.tabStopWidth)
     this.width = this._content.length
     this.height = 1
+    const changed = this.selectionHelper.reevaluateSelection(this.width)
+    if (changed) {
+      this.needsUpdate = true
+    }
   }
 
   get fg(): RGBA {
@@ -87,8 +101,31 @@ export class TextRenderable extends Renderable {
     return this._content
   }
 
+  shouldStartSelection(x: number, y: number): boolean {
+    return this.selectionHelper.shouldStartSelection(x, y, this.width, this.height)
+  }
+
+  onSelectionChanged(selection: SelectionState | null): boolean {
+    const changed = this.selectionHelper.onSelectionChanged(selection, this.width)
+    if (changed) {
+      this.needsUpdate = true
+    }
+    return this.selectionHelper.hasSelection()
+  }
+
+  getSelectedText(): string {
+    const selection = this.selectionHelper.getSelection()
+    if (!selection) return ""
+    return this._content.slice(selection.start, selection.end)
+  }
+
+  hasSelection(): boolean {
+    return this.selectionHelper.hasSelection()
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
-    buffer.drawText(this._content, this.x, this.y, this._fg, this._bg, this.attributes)
+    const selection = this.selectionHelper.getSelection()
+    buffer.drawText(this._content, this.x, this.y, this._fg, this._bg, this.attributes, selection)
   }
 }
 
@@ -250,23 +287,43 @@ export interface StyledTextOptions {
   zIndex: number
   defaultFg?: string | RGBA
   defaultBg?: string | RGBA
+  selectionBg?: string | RGBA
+  selectionFg?: string | RGBA
   visible?: boolean
 }
 
 export class StyledTextRenderable extends Renderable {
+  public selectable: boolean = true
   public frameBuffer: OptimizedBuffer
   private _fragment: Fragment
   private _defaultFg: RGBA
   private _defaultBg: RGBA
+  private _selectionBg: RGBA | undefined
+  private _selectionFg: RGBA | undefined
+
+  private selectionHelper: TextSelectionHelper
+  
+  private _plainText: string = ""
+  private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
   constructor(id: string, buffer: OptimizedBuffer, options: StyledTextOptions) {
     super(id, options)
+
+    this.selectionHelper = new TextSelectionHelper(
+      () => this.x,
+      () => this.y,
+      () => this._plainText.length,
+      () => this._lineInfo
+    )
 
     this.frameBuffer = buffer
     this._fragment = options.fragment
     this._defaultFg = options.defaultFg ? parseColor(options.defaultFg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.defaultBg ? parseColor(options.defaultBg) : RGBA.fromValues(0, 0, 0, 0)
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
 
+    this.updateTextInfo()
     this.renderFragmentToBuffer()
   }
 
@@ -276,6 +333,7 @@ export class StyledTextRenderable extends Renderable {
 
   set fragment(value: Fragment) {
     this._fragment = value
+    this.updateTextInfo()
     this.renderFragmentToBuffer()
     this.needsUpdate = true
   }
@@ -304,9 +362,66 @@ export class StyledTextRenderable extends Renderable {
     }
   }
 
+  private updateTextInfo(): void {
+    this._plainText = this._fragment.toString()
+    
+    this._lineInfo.lineStarts = [0]
+    this._lineInfo.lineWidths = []
+    
+    let currentLineWidth = 0
+    for (let i = 0; i < this._plainText.length; i++) {
+      if (this._plainText[i] === '\n') {
+        this._lineInfo.lineWidths.push(currentLineWidth)
+        this._lineInfo.lineStarts.push(i + 1)
+        currentLineWidth = 0
+      } else {
+        currentLineWidth++
+      }
+    }
+    this._lineInfo.lineWidths.push(currentLineWidth)
+    
+    const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
+    if (changed) {
+      this.renderFragmentToBuffer()
+      this.needsUpdate = true
+    }
+  }
+
+  shouldStartSelection(x: number, y: number): boolean {
+    return this.selectionHelper.shouldStartSelection(x, y, this.width, this.height)
+  }
+
+  onSelectionChanged(selection: SelectionState | null): boolean {
+    const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
+    if (changed) {
+      this.renderFragmentToBuffer()
+      this.needsUpdate = true
+    }
+    return this.selectionHelper.hasSelection()
+  }
+
+  getSelectedText(): string {
+    const selection = this.selectionHelper.getSelection()
+    if (!selection) return ""
+    return this._plainText.slice(selection.start, selection.end)
+  }
+
+  hasSelection(): boolean {
+    return this.selectionHelper.hasSelection()
+  }
+
   private renderFragmentToBuffer(): void {
     this.frameBuffer.clear(this._defaultBg)
-    this.frameBuffer.drawStyledTextFragment(this._fragment, 0, 0, this._defaultFg, this._defaultBg)
+    
+    const selection = this.selectionHelper.getSelection()
+    this.frameBuffer.drawStyledTextFragment(
+      this._fragment, 
+      0, 
+      0, 
+      this._defaultFg, 
+      this._defaultBg,
+      selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined
+    )
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
