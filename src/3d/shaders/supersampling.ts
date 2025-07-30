@@ -19,7 +19,7 @@ const CellResult = struct({
   /** Unicode character code (4 bytes) */
   char: size(16, u32),
   //         ^ Padding so that the total size is 48
-});
+})
 
 const CellBuffer = (n: number) =>
   struct({
@@ -44,7 +44,7 @@ const luminance = tgpu.fn([vec4f], f32)`(color) {
 const closestColorIndex = tgpu.fn([vec4f, vec4f, vec4f], u32)`(pixel, candA, candB) {
   return select(1u, 0u, colorDistance(pixel, candA) <= colorDistance(pixel, candB));
 }
-`.$uses({ colorDistance });
+`.$uses({ colorDistance })
 
 // NOTE: This is unused, should it be removed?
 const averageColor = tgpu.fn([arrayOf(vec4f, 4)], vec4f)`(pixels) {
@@ -59,7 +59,7 @@ const getPixelColor = tgpu.fn([u32, u32], vec4f)`(pixelX, pixelY) {
   // textureLoad automatically handles format conversion to RGBA
   return textureLoad(layout.$.inputTexture, vec2<i32>(i32(pixelX), i32(pixelY)), 0);
 }
-`.$uses({ layout });
+`.$uses({ layout })
 
 const blendColors = tgpu.fn([vec4f, vec4f], vec4f)`(color1, color2) {
   let a1 = color1.a;
@@ -77,7 +77,7 @@ const blendColors = tgpu.fn([vec4f, vec4f], vec4f)`(color1, color2) {
   let rgb = (color1.rgb * a1 + color2.rgb * a2 * (1.0 - a1)) / outAlpha;
   
   return vec4<f32>(rgb, outAlpha);
-}`;
+}`
 
 const averageColorsWithAlpha = tgpu.fn([arrayOf(vec4f, 4)], vec4f)`(pixels) {
   let blend1 = blendColors(pixels[0], pixels[1]);
@@ -85,7 +85,7 @@ const averageColorsWithAlpha = tgpu.fn([arrayOf(vec4f, 4)], vec4f)`(pixels) {
 
   return blendColors(blend1, blend2);
 }
-`.$uses({ blendColors });
+`.$uses({ blendColors })
 
 // Quadrant character lookup table (same as Zig implementation)
 const quadrantChars = tgpu["~unstable"].const(arrayOf(u32, 16), [
@@ -169,7 +169,7 @@ const renderQuadrantBlock = tgpu.fn([arrayOf(vec4f, 4)], CellResult)`(pixels) {
 
 export const createSuperSamplingComputeShader = (WORKGROUP_SIZE: number) => {
   const main = tgpu["~unstable"].computeFn({
-    workgroupSize: [WORKGROUP_SIZE, WORKGROUP_SIZE, 1],
+    workgroupSize: [WORKGROUP_SIZE, WORKGROUP_SIZE],
     in: { id: builtin.globalInvocationId },
   })`{
     let cellX = in.id.x;
@@ -212,9 +212,7 @@ export const createSuperSamplingComputeShader = (WORKGROUP_SIZE: number) => {
     let outputIndex = cellY * bufferWidthCells + cellX;
     layout.$.output.cells[outputIndex] = cellResult;
   }
-  `.$uses({ layout, renderQuadrantBlock, getPixelColor, blendColors });
+  `.$uses({ layout, renderQuadrantBlock, getPixelColor, blendColors })
 
-  // Linking just the main function, and all transient dependencies get
-  // linked automatically.
-  return tgpu.resolve({ externals: { main } });
+  return main
 }
