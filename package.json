@@ -1,13 +1,14 @@
 {
   "name": "@opentui/core",
   "module": "src/index.ts",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "cd src/zig && zig build",
-    "build:dev": "cd src/zig && zig build -Doptimize=Debug",
-    "build:prod": "cd src/zig && zig build -Doptimize=ReleaseFast",
+    "build": "bun run build:lib && bun run build:native",
+    "build:lib": "node scripts/build.mjs --lib",
+    "build:native": "node scripts/build.mjs --native",
+    "publish": "node scripts/publish.mjs",
     "test": "bun test"
   },
   "license": "UNLICENSED",
