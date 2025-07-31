@@ -7,7 +7,7 @@
   "scripts": {
     "build:dev": "cd src/zig && zig build -Doptimize=Debug",
     "build:prod": "cd src/zig && zig build -Doptimize=ReleaseFast",
-    "build": "bun run build:lib && bun run build:native",
+    "build": "bun run build:native && bun run build:lib",
     "build:lib": "node scripts/build.mjs --lib",
     "build:native": "node scripts/build.mjs --native",
     "publish": "node scripts/publish.mjs",
