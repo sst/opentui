@@ -45,6 +45,7 @@ export interface CliRendererConfig {
   resolution?: PixelResolution | null
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
+  useMouse?: boolean
 }
 
 export type PixelResolution = {
@@ -232,6 +233,7 @@ export class CliRenderer extends Renderable {
   }
 
   private enableMouseMovement: boolean = false
+  private _useMouse: boolean = true
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
@@ -267,6 +269,7 @@ export class CliRenderer extends Renderable {
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement || true
+    this._useMouse = config.useMouse ?? true
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
 
@@ -364,6 +367,41 @@ export class CliRenderer extends Renderable {
     return this._useThread
   }
 
+  public get useMouse(): boolean {
+    return this._useMouse
+  }
+
+  public set useMouse(useMouse: boolean) {
+    if (this._useMouse === useMouse) return // No change needed
+    
+    this._useMouse = useMouse
+    
+    if (useMouse) {
+      this.enableMouse()
+    } else {
+      this.disableMouse()
+    }
+  }
+
+  private enableMouse(): void {
+    this.stdout.write(ANSI.enableSGRMouseMode)
+    this.stdout.write(ANSI.enableMouseTracking)
+    this.stdout.write(ANSI.enableButtonEventTracking)
+    
+    if (this.enableMouseMovement) {
+      this.stdout.write(ANSI.enableAnyEventTracking)
+    }
+  }
+
+  private disableMouse(): void {
+    if (this.enableMouseMovement) {
+      this.stdout.write(ANSI.disableAnyEventTracking)
+    }
+    this.stdout.write(ANSI.disableButtonEventTracking)
+    this.stdout.write(ANSI.disableMouseTracking)
+    this.stdout.write(ANSI.disableSGRMouseMode)
+  }
+
   public set useThread(useThread: boolean) {
     this._useThread = useThread
     this.lib.setUseThread(this.rendererPtr, useThread)
@@ -379,12 +417,8 @@ export class CliRenderer extends Renderable {
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
 
-    this.stdout.write(ANSI.enableSGRMouseMode)
-    this.stdout.write(ANSI.enableMouseTracking)
-    this.stdout.write(ANSI.enableButtonEventTracking)
-    
-    if (this.enableMouseMovement) {
-      this.stdout.write(ANSI.enableAnyEventTracking)
+    if (this._useMouse) {
+      this.enableMouse()
     }
 
     this.stdin.on("data", (data: Buffer) => {
@@ -396,76 +430,7 @@ export class CliRenderer extends Renderable {
         return
       }
 
-      const mouseEvent = parseMouseEvent(data)
-
-      if (mouseEvent) {
-        const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
-        const sameElement = maybeRenderableId === this.lastOverRenderableNum
-        this.lastOverRenderableNum = maybeRenderableId
-        const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-
-        if (mouseEvent.type === 'down' && mouseEvent.button === MouseButton.LEFT) {
-          if (maybeRenderable && maybeRenderable.selectable && 
-              maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)) {
-            this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-            return
-          }
-        }
-
-        if (mouseEvent.type === 'drag' && this.selectionState?.isSelecting) {
-          this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          return
-        }
-
-        if (mouseEvent.type === 'up' && this.selectionState?.isSelecting) {
-          this.finishSelection()
-          return
-        }
-
-        if (mouseEvent.type === 'down' && mouseEvent.button === MouseButton.LEFT && this.selectionState) {
-          this.clearSelection()
-        }
-
-        if (!sameElement && (mouseEvent.type === 'drag' || mouseEvent.type === 'move')) {
-          if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
-            const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: 'out' })
-            this.lastOverRenderable.processMouseEvent(event)
-          }
-          this.lastOverRenderable = maybeRenderable
-          if (maybeRenderable) {
-            const event = new MouseEvent(maybeRenderable, { ...mouseEvent, type: 'over', source: this.capturedRenderable })
-            maybeRenderable.processMouseEvent(event)
-          }
-        }
-
-        if (this.capturedRenderable && mouseEvent.type !== 'up') {
-          const event = new MouseEvent(this.capturedRenderable, mouseEvent)
-          this.capturedRenderable.processMouseEvent(event)
-          return
-        }
-
-        if (this.capturedRenderable && mouseEvent.type === 'up') {
-          const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: 'drag-end' })
-          this.capturedRenderable.processMouseEvent(event)
-          if (maybeRenderable) {
-            const event = new MouseEvent(maybeRenderable, { ...mouseEvent, type: 'drop', source: this.capturedRenderable })
-            maybeRenderable.processMouseEvent(event)
-          }
-          this.lastOverRenderable = this.capturedRenderable
-          this.lastOverRenderableNum = this.capturedRenderable.num
-          this.capturedRenderable = undefined
-        }
-
-        if (maybeRenderable) {
-          if (mouseEvent.type === 'drag') {
-            this.capturedRenderable = maybeRenderable
-          }
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
-          return
-        }
-
-        this.lastOverRenderable = undefined
+      if (this._useMouse && this.handleMouseData(data)) {
         return
       }
 
@@ -474,6 +439,83 @@ export class CliRenderer extends Renderable {
   
     this.stdout.write(ANSI.switchToAlternateScreen)
     this.setCursorPosition(0, 0, false)
+  }
+
+  private handleMouseData(data: Buffer): boolean {
+    const mouseEvent = parseMouseEvent(data)
+
+    if (mouseEvent) {
+      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
+      const sameElement = maybeRenderableId === this.lastOverRenderableNum
+      this.lastOverRenderableNum = maybeRenderableId
+      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+      if (mouseEvent.type === 'down' && mouseEvent.button === MouseButton.LEFT) {
+        if (maybeRenderable && maybeRenderable.selectable && 
+            maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)) {
+          this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+          return true
+        }
+      }
+
+      if (mouseEvent.type === 'drag' && this.selectionState?.isSelecting) {
+        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        return true
+      }
+
+      if (mouseEvent.type === 'up' && this.selectionState?.isSelecting) {
+        this.finishSelection()
+        return true
+      }
+
+      if (mouseEvent.type === 'down' && mouseEvent.button === MouseButton.LEFT && this.selectionState) {
+        this.clearSelection()
+      }
+
+      if (!sameElement && (mouseEvent.type === 'drag' || mouseEvent.type === 'move')) {
+        if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
+          const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: 'out' })
+          this.lastOverRenderable.processMouseEvent(event)
+        }
+        this.lastOverRenderable = maybeRenderable
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, type: 'over', source: this.capturedRenderable })
+          maybeRenderable.processMouseEvent(event)
+        }
+      }
+
+      if (this.capturedRenderable && mouseEvent.type !== 'up') {
+        const event = new MouseEvent(this.capturedRenderable, mouseEvent)
+        this.capturedRenderable.processMouseEvent(event)
+        return true
+      }
+
+      if (this.capturedRenderable && mouseEvent.type === 'up') {
+        const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: 'drag-end' })
+        this.capturedRenderable.processMouseEvent(event)
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, type: 'drop', source: this.capturedRenderable })
+          maybeRenderable.processMouseEvent(event)
+        }
+        this.lastOverRenderable = this.capturedRenderable
+        this.lastOverRenderableNum = this.capturedRenderable.num
+        this.capturedRenderable = undefined
+      }
+
+      if (maybeRenderable) {
+        if (mouseEvent.type === 'drag') {
+          this.capturedRenderable = maybeRenderable
+        }
+        const event = new MouseEvent(maybeRenderable, mouseEvent)
+        maybeRenderable.processMouseEvent(event)
+        return true
+      }
+
+      this.lastOverRenderable = undefined
+      return true
+    }
+
+    return true
   }
 
   private takeMemorySnapshot(): void {
@@ -689,12 +731,9 @@ export class CliRenderer extends Renderable {
       this.memorySnapshotTimer = null
     }
 
-    if (this.enableMouseMovement) {
-      this.stdout.write(ANSI.disableAnyEventTracking)
+    if (this._useMouse) {
+      this.disableMouse()
     }
-    this.stdout.write(ANSI.disableButtonEventTracking)
-    this.stdout.write(ANSI.disableMouseTracking)
-    this.stdout.write(ANSI.disableSGRMouseMode)
     this.stdout.write(ANSI.resetCursorColor)
     this.stdout.write(ANSI.showCursor)
 
