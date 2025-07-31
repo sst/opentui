@@ -1,3 +1,5 @@
+import { hexToRgb } from "./utils"
+
 export class RGBA {
   buffer: Float32Array
 
@@ -15,6 +17,10 @@ export class RGBA {
 
   static fromInts(r: number, g: number, b: number, a: number = 255) {
     return new RGBA(new Float32Array([r / 255, g / 255, b / 255, a / 255]))
+  }
+
+  static fromHex(hex: string): RGBA {
+    return hexToRgb(hex)
   }
 
   get r(): number {
