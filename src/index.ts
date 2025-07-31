@@ -702,7 +702,7 @@ export class CliRenderer extends Renderable {
   }
 
   public async renderOnce(): Promise<void> {
-    this.loop()
+    this._renderFrame(0)
   }
 
   private startRenderLoop(): void {
@@ -717,27 +717,7 @@ export class CliRenderer extends Renderable {
     this.loop()
   }
 
-  private async loop(): Promise<void> {
-    if (this.rendering) return
-    this.rendering = true
-    if (this.renderTimeout) {
-      clearTimeout(this.renderTimeout)
-      this.renderTimeout = null
-    }
-
-    const now = Date.now()
-    const elapsed = now - this.lastTime
-
-    const deltaTime = elapsed
-    this.lastTime = now
-
-    this.frameCount++
-    if (now - this.lastFpsTime >= 1000) {
-      this.currentFps = this.frameCount
-      this.frameCount = 0
-      this.lastFpsTime = now
-    }
-
+  private async _renderFrame(deltaTime: number): Promise<void> {
     this.renderStats.frameCount++
     this.renderStats.fps = this.currentFps
     const overallStart = performance.now()
@@ -781,9 +761,33 @@ export class CliRenderer extends Renderable {
     if (this.gatherStats) {
       this.collectStatSample(overallFrameTime)
     }
+  }
+
+  private async loop(): Promise<void> {
+    if (this.rendering) return
+    this.rendering = true
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+
+    const now = Date.now()
+    const elapsed = now - this.lastTime
+
+    const deltaTime = elapsed
+    this.lastTime = now
+
+    this.frameCount++
+    if (now - this.lastFpsTime >= 1000) {
+      this.currentFps = this.frameCount
+      this.frameCount = 0
+      this.lastFpsTime = now
+    }
+
+    await this._renderFrame(deltaTime)
 
     if (this._isRunning) {
-      const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
+      const delay = Math.max(1, this.targetFrameTime - Math.floor(performance.now() - now))
       this.renderTimeout = setTimeout(() => this.loop(), delay)
     }
     this.rendering = false
