@@ -78,7 +78,7 @@ const packageJsons = {
   )
 };
 
-for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies)) {
+for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies).filter((x) => x.startsWith(packageJson.name))) {
   const nativeDir = join(rootDir, "node_modules", pkgName);
   packageJsons[nativeDir] = JSON.parse(
     readFileSync(join(nativeDir, "package.json"), "utf8"),
