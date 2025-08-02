@@ -1,9 +1,75 @@
-import { TextAttributes, createCliRenderer, RGBA, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
+import { TextAttributes, createCliRenderer, RGBA, GroupRenderable, TextRenderable, BoxRenderable, OptimizedBuffer, type MouseEvent, t, bold, underline, fg } from "../index"
 import type { CliRenderer } from "../index"
 import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
 
+let nextZIndex = 101
+let draggableBoxes: DraggableTransparentBox[] = []
+
+class DraggableTransparentBox extends BoxRenderable {
+  private isDragging = false
+  private dragOffsetX = 0
+  private dragOffsetY = 0
+  private alphaPercentage: number
+
+  constructor(id: string, x: number, y: number, width: number, height: number, bg: RGBA, zIndex: number) {
+    super(id, {
+      x,
+      y,
+      width,
+      height,
+      zIndex,
+      bg,
+      border: false,
+      titleAlignment: "center",
+    })
+    this.alphaPercentage = Math.round(bg.a * 100)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    super.renderSelf(buffer)
+
+    const alphaText = `${this.alphaPercentage}%`
+    const centerX = this.x + Math.floor(this.width / 2 - alphaText.length / 2)
+    const centerY = this.y + Math.floor(this.height / 2)
+    
+    buffer.drawText(alphaText, centerX, centerY, RGBA.fromInts(255, 255, 255, 220))
+  }
+
+  protected onMouseEvent(event: MouseEvent): void {
+    switch (event.type) {
+      case "down":
+        this.isDragging = true
+        this.dragOffsetX = event.x - this.x
+        this.dragOffsetY = event.y - this.y
+        this.zIndex = nextZIndex++
+        event.preventDefault()
+        break
+
+      case "drag-end":
+        if (this.isDragging) {
+          this.isDragging = false
+          event.preventDefault()
+        }
+        break
+
+      case "drag":
+        if (this.isDragging) {
+          this.x = event.x - this.dragOffsetX
+          this.y = event.y - this.dragOffsetY
+
+          this.x = Math.max(0, Math.min(this.x, (this.ctx?.width() || 80) - this.width))
+          this.y = Math.max(4, Math.min(this.y, (this.ctx?.height() || 24) - this.height))
+
+          event.preventDefault()
+        }
+        break
+    }
+  }
+}
+
 export function run(renderer: CliRenderer): void {
-  renderer.setBackgroundColor("#001122")
+  renderer.start()
+  renderer.setBackgroundColor("#0A0E14")
 
   const parentContainer = new GroupRenderable("parent-container", {
     x: 0,
@@ -13,201 +79,106 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.add(parentContainer)
 
-  const title = new TextRenderable("main-title", {
-    content: "Alpha Transparency & Blending Demo",
+  const headerText = t`${bold(underline(fg("#00D4AA")("Interactive Alpha Transparency & Blending Demo - Drag the boxes!")))}
+${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch how transparency layers blend")}`
+
+  const headerDisplay = renderer.createStyledText("header-text", {
+    fragment: headerText,
+    width: 85,
+    height: 3,
     x: 10,
     y: 2,
-    fg: "#FFFF00",
-    attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE,
-    zIndex: 1000,
+    zIndex: 1,
+    selectable: false,
   })
-  parentContainer.add(title)
+  parentContainer.add(headerDisplay)
 
   const textUnderAlpha = new TextRenderable("text-under-alpha", {
-    content: "This text should be visible through transparent boxes",
+    content: "This text should not be selectable",
     x: 10,
     y: 6,
-    fg: "#FFFF00",
+    fg: "#FFB84D",
     attributes: TextAttributes.BOLD,
     zIndex: 4,
+    selectable: false,
   })
   parentContainer.add(textUnderAlpha)
 
   const moreTextUnder = new TextRenderable("more-text-under", {
-    content: "More text to show character preservation",
+    content: "Selectable text to show character preservation",
     x: 15,
     y: 10,
-    fg: "#00FFFF",
+    fg: "#7B68EE",
     attributes: TextAttributes.BOLD,
-    zIndex: 4,
+    zIndex: 1,
   })
   parentContainer.add(moreTextUnder)
 
-  // First set of overlapping alpha boxes
-  const alphaBox50 = new BoxRenderable("alpha-box-50", {
-    x: 15,
-    y: 5,
-    width: 25,
-    height: 8,
-    bg: RGBA.fromValues(100 / 255, 100 / 255, 255 / 255, 128 / 255),
-    zIndex: 50,
-    borderStyle: "single",
-    borderColor: "#FFFFFF",
-  })
+  const alphaBox50 = new DraggableTransparentBox(
+    "alpha-box-50", 
+    15, 5, 25, 8, 
+    RGBA.fromValues(64 / 255, 176 / 255, 255 / 255, 128 / 255), 
+    50
+  )
   parentContainer.add(alphaBox50)
+  draggableBoxes.push(alphaBox50)
 
-  const alphaBox50Title = new TextRenderable("alpha-box-50-title", {
-    content: "Alpha 50%",
-    x: 20,
-    y: 8,
-    fg: "#FFFFFF",
-    attributes: TextAttributes.BOLD,
-    zIndex: 60,
-  })
-  parentContainer.add(alphaBox50Title)
-
-  const alphaBox75 = new BoxRenderable("alpha-box-75", {
-    x: 30,
-    y: 7,
-    width: 25,
-    height: 8,
-    bg: RGBA.fromValues(255 / 255, 100 / 255, 100 / 255, 192 / 255),
-    zIndex: 30,
-    borderStyle: "double",
-    borderColor: "#FFFFFF",
-  })
+  const alphaBox75 = new DraggableTransparentBox(
+    "alpha-box-75", 
+    30, 7, 25, 8, 
+    RGBA.fromValues(255 / 255, 107 / 255, 129 / 255, 192 / 255), 
+    30
+  )
   parentContainer.add(alphaBox75)
+  draggableBoxes.push(alphaBox75)
 
-  const alphaBox75Title = new TextRenderable("alpha-box-75-title", {
-    content: "Alpha 75%",
-    x: 35,
-    y: 10,
-    fg: "#FFFFFF",
-    attributes: TextAttributes.BOLD,
-    zIndex: 40,
-  })
-  parentContainer.add(alphaBox75Title)
-
-  const alphaBox25 = new BoxRenderable("alpha-box-25", {
-    x: 45,
-    y: 9,
-    width: 25,
-    height: 8,
-    bg: RGBA.fromValues(0, 0, 0, 64 / 255),
-    zIndex: 10,
-    borderStyle: "rounded",
-    borderColor: "#FFFFFF",
-  })
+  const alphaBox25 = new DraggableTransparentBox(
+    "alpha-box-25", 
+    45, 9, 25, 8, 
+    RGBA.fromValues(139 / 255, 69 / 255, 193 / 255, 64 / 255), 
+    10
+  )
   parentContainer.add(alphaBox25)
+  draggableBoxes.push(alphaBox25)
 
-  const alphaBox25Title = new TextRenderable("alpha-box-25-title", {
-    content: "Alpha 25%",
-    x: 50,
-    y: 12,
-    fg: "#FFFFFF",
-    attributes: TextAttributes.BOLD,
-    zIndex: 20,
-  })
-  parentContainer.add(alphaBox25Title)
-
-  // Additional overlapping boxes to show more complex blending
-  const alphaGreen = new BoxRenderable("alpha-green", {
-    x: 20,
-    y: 11,
-    width: 30,
-    height: 5,
-    bg: RGBA.fromValues(0, 255 / 255, 0, 96 / 255),
-    zIndex: 20,
-    borderStyle: "single",
-    borderColor: "#00FF00",
-  })
+  const alphaGreen = new DraggableTransparentBox(
+    "alpha-green", 
+    20, 11, 30, 5, 
+    RGBA.fromValues(88 / 255, 214 / 255, 141 / 255, 96 / 255), 
+    20
+  )
   parentContainer.add(alphaGreen)
+  draggableBoxes.push(alphaGreen)
 
-  const alphaYellow = new BoxRenderable("alpha-yellow", {
-    x: 25,
-    y: 13,
-    width: 20,
-    height: 6,
-    bg: RGBA.fromValues(255 / 255, 255 / 255, 0, 128 / 255),
-    zIndex: 40,
-    borderStyle: "single",
-    borderColor: "#FFFF00",
-  })
+  const alphaYellow = new DraggableTransparentBox(
+    "alpha-yellow", 
+    25, 13, 20, 6, 
+    RGBA.fromValues(255 / 255, 183 / 255, 77 / 255, 128 / 255), 
+    40
+  )
   parentContainer.add(alphaYellow)
+  draggableBoxes.push(alphaYellow)
 
-  // Very transparent overlay box
-  const alphaOverlay = new BoxRenderable("alpha-overlay", {
-    x: 10,
-    y: 17,
-    width: 65,
-    height: 4,
-    bg: RGBA.fromValues(255 / 255, 255 / 255, 255 / 255, 32 / 255),
-    zIndex: 60,
-    borderStyle: "single",
-    borderColor: "#FFFFFF",
-  })
+  const alphaOverlay = new DraggableTransparentBox(
+    "alpha-overlay", 
+    10, 17, 65, 4, 
+    RGBA.fromValues(200 / 255, 162 / 255, 255 / 255, 32 / 255), 
+    60
+  )
   parentContainer.add(alphaOverlay)
+  draggableBoxes.push(alphaOverlay)
 
-  const alphaOverlayTitle = new TextRenderable("alpha-overlay-title", {
-    content: "Very Transparent Overlay (Alpha 12%)",
-    x: 15,
-    y: 18,
-    fg: "#000000",
-    attributes: TextAttributes.BOLD,
-    zIndex: 70,
-  })
-  parentContainer.add(alphaOverlayTitle)
 
-  // Explanation and key concepts
-  const explanation1 = new TextRenderable("explanation1", {
-    content: "Key Concepts:",
-    x: 10,
-    y: 22,
-    fg: "#FFFFFF",
-    attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE,
-    zIndex: 1000,
-  })
-  parentContainer.add(explanation1)
-
-  const explanation2 = new TextRenderable("explanation2", {
-    content: "• Alpha values range from 0 (fully transparent) to 1 (fully opaque)",
-    x: 10,
-    y: 23,
-    fg: "#CCCCCC",
-    zIndex: 1000,
-  })
-  parentContainer.add(explanation2)
-
-  const explanation3 = new TextRenderable("explanation3", {
-    content: "• Lower z-index elements show through higher z-index transparent elements",
-    x: 10,
-    y: 24,
-    fg: "#CCCCCC",
-    zIndex: 1000,
-  })
-  parentContainer.add(explanation3)
-
-  const explanation4 = new TextRenderable("explanation4", {
-    content: "• Colors blend additively when multiple transparent layers overlap",
-    x: 10,
-    y: 25,
-    fg: "#CCCCCC",
-    zIndex: 1000,
-  })
-  parentContainer.add(explanation4)
-
-  const explanation5 = new TextRenderable("explanation5", {
-    content: "• Text underneath transparent boxes remains readable",
-    x: 10,
-    y: 26,
-    fg: "#CCCCCC",
-    zIndex: 1000,
-  })
-  parentContainer.add(explanation5)
 }
 
 export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
+  
+  for (const box of draggableBoxes) {
+    renderer.remove(box.id)
+  }
+  draggableBoxes = []
+  
   renderer.remove("parent-container")
   renderer.setCursorPosition(0, 0, false)
 }
