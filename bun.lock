@@ -7,6 +7,7 @@
         "bun-webgpu": "0.1.0",
         "jimp": "1.6.0",
         "three": "0.177.0",
+        "typegpu": "^0.6.0",
         "yoga-layout": "3.2.1",
       },
       "devDependencies": {
@@ -187,7 +188,13 @@
 
     "tinycolor2": ["tinycolor2@1.6.0", "", {}, "sha512-XPaBkWQJdsf3pLKJV9p4qN/S+fm2Oj8AIPo1BTUhg5oxkvm9+SVEGFdhyOz7tTdUTfvxMiAs4sp6/eZO2Ew+pw=="],
 
+    "tinyest": ["tinyest@0.1.1", "", {}, "sha512-YNHlB8BOXgW6RPzrfqqAkgyY9xj33sjXJcJlOl3MwY0BXXx26m3JUqf5yV8iBdwJPNe51DmxypR9Zbbd266biQ=="],
+
     "token-types": ["token-types@4.2.1", "", { "dependencies": { "@tokenizer/token": "^0.3.0", "ieee754": "^1.2.1" } }, "sha512-6udB24Q737UD/SDsKAHI9FCRP7Bqc9D/MQUV02ORQg5iskjtLJlZJNdN4kKtcdtwCeWIwIHDGaUsTsCCAa8sFQ=="],
+
+    "typed-binary": ["typed-binary@4.3.2", "", {}, "sha512-HT3pIBM2njCZUmeczDaQUUErGiM6GXFCqMsHegE12HCoBtvHCkfR10JJni0TeGOTnLilTd6YFyj+YhflqQDrDQ=="],
+
+    "typegpu": ["typegpu@0.6.0", "", { "dependencies": { "tinyest": "~0.1.1", "typed-binary": "^4.3.1" } }, "sha512-ESfD+u5z7yDuQq6C4JeKszKmh+8IU6pgAXXPMp+rWnDNjz+UlGiLzMuFHtvSfUoTIedsg5bH18merMmzyLWeZg=="],
 
     "typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
