@@ -14,6 +14,8 @@ This creates platform-specific libraries in `src/zig/lib/` that are automaticall
 
 ## Examples
 
+Requires running a build script first. (`build`, `build:dev`, `build:prod`)
+
 ```bash
 bun run src/examples/index.ts
 ```
