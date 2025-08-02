@@ -41,6 +41,7 @@ export abstract class Renderable extends EventEmitter {
     this._height = options.height
     this._zIndex = options.zIndex
     this.visible = options.visible !== false
+
     Renderable.renderablesByNumber.set(this.num, this)
   }
 

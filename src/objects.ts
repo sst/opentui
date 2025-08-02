@@ -27,6 +27,7 @@ export interface TextOptions {
   attributes?: number
   visible?: boolean
   tabStopWidth?: number
+  selectable?: boolean
 }
 
 export function sanitizeText(text: string, tabStopWidth: number): string {
@@ -58,6 +59,7 @@ export class TextRenderable extends Renderable {
     this._fg = fgRgb
     this._bg = options.bg !== undefined ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
     this.attributes = options.attributes || 0
+    this.selectable = options.selectable ?? true
   }
 
   private setContent(value: string) {
@@ -290,6 +292,7 @@ export interface StyledTextOptions {
   selectionBg?: string | RGBA
   selectionFg?: string | RGBA
   visible?: boolean
+  selectable?: boolean
 }
 
 export class StyledTextRenderable extends Renderable {
@@ -322,6 +325,7 @@ export class StyledTextRenderable extends Renderable {
     this._defaultBg = options.defaultBg ? parseColor(options.defaultBg) : RGBA.fromValues(0, 0, 0, 0)
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
+    this.selectable = options.selectable ?? true
 
     this.updateTextInfo()
     this.renderFragmentToBuffer()
