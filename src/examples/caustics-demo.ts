@@ -59,8 +59,8 @@ const caustics = tgpu.fn(
 )((uv, time, profile) => {
   const distortion = perlin3d.sample(d.vec3f(uv.mul(0.5), time * 0.2))
   // Distorting UV coordinates
-  const uv2 = std.add(uv, distortion)
-  const noise = std.abs(perlin3d.sample(d.vec3f(std.mul(uv2, 5), time)))
+  const uv2 = uv.add(distortion)
+  const noise = std.abs(perlin3d.sample(d.vec3f(uv2.mul(5), time)))
   return std.pow(d.vec3f(1 - noise), profile)
 })
 
@@ -111,7 +111,7 @@ const mainFragment = tgpu["~unstable"].fragmentFn({
 
   const blendCoord = d.vec3f(uv.mul(d.vec2f(5, 10)), layout.$.time * 0.2 + 5)
   // A smooth blending factor, so that caustics only appear at certain spots
-  const blend = clamp01(perlin3d.sample(blendCoord) + 0.3)
+  const blend = std.clamp(perlin3d.sample(blendCoord) + 0.3, 0, 1)
 
   // -- FOG --
 
