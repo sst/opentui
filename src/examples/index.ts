@@ -12,6 +12,7 @@ import {
   type ParsedKey,
 } from "../index"
 import { renderFontToFrameBuffer, measureText } from "../ui/ascii.font"
+import * as causticsDemo from "./caustics-demo"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
 import * as framebufferExample from "./framebuffer-demo"
@@ -46,6 +47,13 @@ interface Example {
 }
 
 const examples: Example[] = [
+  // TODO: Move to be after the Fractal shader
+  {
+    name: "Caustics Shader",
+    description: "Caustics in a fragment shader",
+    run: causticsDemo.run,
+    destroy: causticsDemo.destroy,
+  },
   {
     name: "Mouse Interaction Demo",
     description: "Interactive mouse trails and clickable cells demonstration",
