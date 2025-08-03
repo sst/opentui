@@ -7,12 +7,17 @@ import * as d from "typegpu/data"
 import * as std from "typegpu/std"
 import { CLICanvas, type CliRenderer, GroupRenderable, SuperSampleType } from "../index"
 
+/**
+ * With supersampling, the scene is rendered at 2x the resolution
+ */
+const pixelRatio = 2
 /** Controls the angle of rotation for the pool tile texture */
 const angle = 0.2
 /** The scene fades into this color at a distance */
 const fogColor = d.vec3f(0.05, 0.2, 0.7)
 /** The ambient light color */
 const ambientColor = d.vec3f(0.2, 0.5, 1)
+const tileDensity = 2
 
 const layout = tgpu.bindGroupLayout({
   aspect: { uniform: d.f32 },
@@ -43,16 +48,16 @@ const tilePattern = tgpu.fn(
   d.f32,
 )((uv) => {
   const tiledUv = std.fract(uv)
-  const proximity = std.abs(std.sub(std.mul(tiledUv, 2), 1))
+  const proximity = std.abs(tiledUv.mul(2).sub(1))
   const maxProximity = std.max(proximity.x, proximity.y)
-  return std.clamp(std.pow(1 - maxProximity, 0.6) * 5, 0, 1)
+  return std.clamp(std.pow(1 - maxProximity, 0.8) * 5, 0, 1)
 })
 
 const caustics = tgpu.fn(
   [d.vec2f, d.f32, d.vec3f],
   d.vec3f,
 )((uv, time, profile) => {
-  const distortion = perlin3d.sample(d.vec3f(std.mul(uv, 0.5), time * 0.2))
+  const distortion = perlin3d.sample(d.vec3f(uv.mul(0.5), time * 0.2))
   // Distorting UV coordinates
   const uv2 = std.add(uv, distortion)
   const noise = std.abs(perlin3d.sample(d.vec3f(std.mul(uv2, 5), time)))
@@ -79,70 +84,61 @@ const mainFragment = tgpu["~unstable"].fragmentFn({
   in: { uv: d.vec2f },
   out: d.vec4f,
 })(({ uv }) => {
+  const time = layout.$.time
   /**
    * A transformation matrix that skews the perspective a bit
    * when applied to UV coordinates
    */
   const skewMat = d.mat2x2f(
     d.vec2f(std.cos(angle), std.sin(angle)),
-    d.vec2f(-std.sin(angle) * 10 + uv.x * 3, std.cos(angle) * 5),
+    d.vec2f(-std.sin(angle) * 5 + uv.x * 2, std.cos(angle) * 5),
   )
-  const skewedUv = std.mul(skewMat, uv)
-  const tile = tilePattern(std.mul(skewedUv, 10))
+  const skewedUv = skewMat.mul(uv)
+  const tile = tilePattern(skewedUv.mul(tileDensity))
   const albedo = std.mix(d.vec3f(0.1), d.vec3f(1), tile)
 
   // Transforming coordinates to simulate perspective squash
   const cuv = d.vec2f(uv.x * (std.pow(uv.y * 1.5, 3) + 0.1) * 5, std.pow((uv.y * 1.5 + 0.1) * 1.5, 3) * 1)
   // Generating two layers of caustics (large scale, and small scale)
-  const c1 = std.mul(
-    caustics(cuv, layout.$.time * 0.2, /* profile */ d.vec3f(4, 4, 1)),
+  const c1 = caustics(cuv, time * 0.2, d.vec3f(4, 4, 1))
     // Tinting
-    d.vec3f(0.4, 0.65, 1),
-  )
-  const c2 = std.mul(
-    caustics(std.mul(cuv, 2), layout.$.time * 0.4, /* profile */ d.vec3f(16, 1, 4)),
+    .mul(d.vec3f(0.4, 0.65, 1))
+  const c2 = caustics(cuv.mul(2), time * 0.4, d.vec3f(16, 1, 4))
     // Tinting
-    d.vec3f(0.18, 0.3, 0.5),
-  )
+    .mul(d.vec3f(0.18, 0.3, 0.5))
 
   // -- BLEND --
 
-  const blendCoord = d.vec3f(std.mul(uv, d.vec2f(5, 10)), layout.$.time * 0.2 + 5)
+  const blendCoord = d.vec3f(uv.mul(d.vec2f(5, 10)), layout.$.time * 0.2 + 5)
   // A smooth blending factor, so that caustics only appear at certain spots
   const blend = clamp01(perlin3d.sample(blendCoord) + 0.3)
 
   // -- FOG --
 
-  const noFogColor = std.mul(albedo, std.mix(ambientColor, std.add(c1, c2), blend))
+  const noFogColor = albedo.mul(std.mix(ambientColor, c1.add(c2), blend))
   // Fog blending factor, based on the height of the pixels
   const fog = std.min(std.pow(uv.y, 0.5) * 1.2, 1)
 
   // -- GOD RAYS --
 
-  const godRayUv = std.mul(std.mul(rotateXY(-0.3), uv), d.vec2f(15, 3))
-  const godRayFactor = std.pow(uv.y, 1)
-  const godRay1 = std.mul(
-    std.add(perlin3d.sample(d.vec3f(godRayUv, layout.$.time * 0.5)), 1),
-    // Tinting
-    std.mul(d.vec3f(0.18, 0.3, 0.5), godRayFactor),
-  )
-  const godRay2 = std.mul(
-    std.add(perlin3d.sample(d.vec3f(std.mul(godRayUv, 2), layout.$.time * 0.3)), 1),
-    // Tinting
-    std.mul(d.vec3f(0.18, 0.3, 0.5), godRayFactor * 0.4),
-  )
-  const godRays = std.add(godRay1, godRay2)
+  const godRayUv = rotateXY(-0.3).mul(uv).mul(d.vec2f(10, 2))
+  const godRayTint = d.vec3f(0.18, 0.3, 0.5)
+  const godRay1 = perlin3d.sample(d.vec3f(godRayUv, time * 0.5)) + 1
+  const godRay2 = perlin3d.sample(d.vec3f(godRayUv.mul(2), time * 0.3)) + 1
+  const godRayBlend = std.pow(uv.y, 2) * 0.5
+  const godRays = godRayTint.mul(godRay1 + godRay2).mul(godRayBlend * 0.6)
 
-  return d.vec4f(std.add(std.mix(noFogColor, fogColor, fog), godRays), 1)
+  return d.vec4f(std.mix(noFogColor, fogColor, fog).add(godRays), 1)
 })
 
 let isRunning = true
 let root: TgpuRoot | undefined
-let keyHandler: ((key: Buffer) => void) | null = null
-let handleResize: ((width: number, height: number) => void) | null = null
-let parentContainer: GroupRenderable | null = null
+let keyHandler: ((key: Buffer) => void) | undefined
+let handleResize: ((width: number, height: number) => void) | undefined
+let parentContainer: GroupRenderable | undefined
 
 export async function run(renderer: CliRenderer): Promise<void> {
+  isRunning = true
   renderer.start()
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
@@ -158,7 +154,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   // Bun WebGPU setup
   setupGlobals()
   const device = await createWebGPUDevice()
-  const canvas = new CLICanvas(device, WIDTH, HEIGHT, SuperSampleType.GPU)
+  const canvas = new CLICanvas(device, WIDTH * pixelRatio, HEIGHT * pixelRatio, SuperSampleType.GPU)
 
   root = tgpu.initFromDevice({ device })
 
@@ -174,6 +170,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   handleResize = (width: number, height: number) => {
     aspectBuffer.write(width / height)
+    canvas.setSize(width * pixelRatio, height * pixelRatio)
   }
 
   renderer.on("resize", handleResize)
@@ -219,12 +216,12 @@ export function destroy(renderer: CliRenderer): void {
   isRunning = false
   if (keyHandler) {
     process.stdin.off("data", keyHandler)
-    keyHandler = null
+    keyHandler = undefined
   }
 
   if (handleResize) {
     renderer.off("resize", handleResize)
-    handleResize = null
+    handleResize = undefined
   }
 
   renderer.clearFrameCallbacks()
@@ -232,6 +229,6 @@ export function destroy(renderer: CliRenderer): void {
 
   if (parentContainer) {
     renderer.remove("fractal-container")
-    parentContainer = null
+    parentContainer = undefined
   }
 }
