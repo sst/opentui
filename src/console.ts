@@ -6,6 +6,7 @@ import { RGBA } from "./types"
 import util from "node:util"
 import fs from "node:fs"
 import path from "node:path"
+import { Capture, CapturedWritableStream } from "./output.capture"
 
 interface CallerInfo {
   functionName: string
@@ -150,6 +151,21 @@ class TerminalConsoleCache extends EventEmitter {
     this.deactivate()
   }
 }
+
+export const capture = new Capture()
+const mockStdout = new CapturedWritableStream('stdout', capture);
+const mockStderr = new CapturedWritableStream('stderr', capture);
+
+global.console = new console.Console({
+  stdout: mockStdout,
+  stderr: mockStderr,
+  colorMode: true,
+  inspectOptions: {
+    compact: false,
+    breakLength: 80,
+    depth: 2
+  }
+});
 
 const terminalConsoleCache = new TerminalConsoleCache()
 process.on("exit", () => {

@@ -13,7 +13,7 @@ import { parseColor } from "./utils"
 import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
-import { TerminalConsole, type ConsoleOptions } from "./console"
+import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { parseMouseEvent, type MouseEventType, type RawMouseEvent } from "./parse.mouse"
 import { Selection } from "./selection"
 
@@ -46,6 +46,9 @@ export interface CliRendererConfig {
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
+  useAlternateScreen?: boolean
+  useConsole?: boolean
+  experimental_splitHeight?: number
 }
 
 export type PixelResolution = {
@@ -116,7 +119,7 @@ async function getTerminalPixelResolution(
         resolve(resolution)
       }
     })
-    stdout.write("\u001b[14t")
+    stdout.write(ANSI.queryPixelSize)
   })
 }
 
@@ -127,11 +130,12 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   const stdin = config.stdin || process.stdin
   const stdout = config.stdout || process.stdout
 
-  // Get terminal dimensions
   const width = stdout.columns || 80
   const height = stdout.rows || 24
+  const renderHeight = config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
+  
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, height)
+  const rendererPtr = ziglib.createRenderer(width, renderHeight)
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -167,6 +171,7 @@ export class CliRenderer extends Renderable {
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
   public nextRenderBuffer: OptimizedBuffer
+  public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
   private targetFps: number = 30
   private memorySnapshotInterval: number
@@ -181,6 +186,7 @@ export class CliRenderer extends Renderable {
   private frameTimes: number[] = []
   private maxStatSamples: number = 300
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
+  private backgroundColor: RGBA = RGBA.fromHex("#000000")
 
   private rendering: boolean = false
   private renderingNative: boolean = false
@@ -234,6 +240,7 @@ export class CliRenderer extends Renderable {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private _useAlternateScreen: boolean = true
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
@@ -241,6 +248,21 @@ export class CliRenderer extends Renderable {
   private currentSelection: Selection | null = null
   private selectionState: SelectionState | null = null
   private selectionContainers: Renderable[] = []
+  
+  private _splitHeight: number = 0
+  private renderOffset: number = 0
+  
+  private _terminalWidth: number = 0
+  private _terminalHeight: number = 0
+  
+  private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
+  private captureCallback: () => void = () => {
+    if (this._splitHeight > 0) {
+      this.needsUpdate = true
+    }
+  }
+
+  private _useConsole: boolean = true
   
   constructor(
     lib: RenderLib,
@@ -255,11 +277,22 @@ export class CliRenderer extends Renderable {
 
     this.stdin = stdin
     this.stdout = stdout
+    this.realStdoutWrite = stdout.write
     this.lib = lib
+    this._terminalWidth = stdout.columns
+    this._terminalHeight = stdout.rows
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
     this._resolution = config.resolution || null
+    this._splitHeight = config.experimental_splitHeight || 0
+
+    if (this._splitHeight > 0) {
+      capture.on('write', this.captureCallback)
+      this.renderOffset = height - this._splitHeight
+      this.height = this._splitHeight
+      lib.setRenderOffset(rendererPtr, this.renderOffset)
+    }
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
@@ -270,7 +303,9 @@ export class CliRenderer extends Renderable {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement || true
     this._useMouse = config.useMouse ?? true
+    this._useAlternateScreen = config.useAlternateScreen ?? true
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
+    this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
 
     this.setupTerminal()
@@ -280,6 +315,8 @@ export class CliRenderer extends Renderable {
       this.startMemorySnapshotTimer()
     }
 
+    this.stdout.write = this.interceptStdoutWrite.bind(this)
+    
     // Handle terminal resize
     process.on("SIGWINCH", () => {
       const width = this.stdout.columns || 80
@@ -309,9 +346,10 @@ export class CliRenderer extends Renderable {
         this.stop()
       }
     })
-
+    
     this._console = new TerminalConsole(this, config.consoleOptions)
-
+    this.useConsole = config.useConsole ?? true
+    
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = animationFrameId++
       this.animationRequest.set(id, callback)
@@ -326,6 +364,10 @@ export class CliRenderer extends Renderable {
       global.window = {} as Window & typeof globalThis
     }
     global.window.requestAnimationFrame = requestAnimationFrame
+  }
+
+  private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
+    return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
   public add(obj: Renderable): void {
@@ -343,6 +385,19 @@ export class CliRenderer extends Renderable {
     }
   }
 
+  public get useConsole(): boolean {
+    return this._useConsole
+  }
+
+  public set useConsole(value: boolean) {
+    this._useConsole = value
+    if (value) {
+      this.console.activate()
+    } else {
+      this.console.deactivate()
+    }
+  }
+
   public get isRunning(): boolean {
     return this._isRunning
   }
@@ -356,11 +411,11 @@ export class CliRenderer extends Renderable {
   }
 
   public get terminalWidth(): number {
-    return this.width
+    return this._terminalWidth
   }
 
   public get terminalHeight(): number {
-    return this.height
+    return this._terminalHeight
   }
 
   public get useThread(): boolean {
@@ -383,23 +438,115 @@ export class CliRenderer extends Renderable {
     }
   }
 
+  public get experimental_splitHeight(): number {
+    return this._splitHeight
+  }
+
+  public set experimental_splitHeight(splitHeight: number) {
+    if (splitHeight < 0) splitHeight = 0
+    
+    const prevSplitHeight = this._splitHeight
+    
+    if (splitHeight > 0) {
+      this._splitHeight = splitHeight
+      this.renderOffset = this._terminalHeight - this._splitHeight
+      this.height = this._splitHeight
+      
+      if (prevSplitHeight === 0) {
+        this.useConsole = false
+        capture.on('write', this.captureCallback)
+        const freedLines = this._terminalHeight - this._splitHeight
+        const scrollDown = ANSI.scrollDown(freedLines)
+        this.writeOut(scrollDown)
+      } else if (prevSplitHeight > this._splitHeight) {
+        const freedLines = prevSplitHeight - this._splitHeight
+        const scrollDown = ANSI.scrollDown(freedLines)
+        this.writeOut(scrollDown)
+      } else if (prevSplitHeight < this._splitHeight) {
+        const additionalLines = this._splitHeight - prevSplitHeight
+        const scrollUp = ANSI.scrollUp(additionalLines)
+        this.writeOut(scrollUp)
+      }
+    } else {
+      if (prevSplitHeight > 0) {
+        this.flushStdoutCache(this._terminalHeight, true)
+        
+        capture.off('write', this.captureCallback)
+        this.useConsole = true
+      }
+      
+      this._splitHeight = 0
+      this.renderOffset = 0
+      this.height = this._terminalHeight
+    }
+
+    this.width = this._terminalWidth
+    this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
+    this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
+    this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
+    
+    this._console.resize(this.width, this.height)
+    this.emit("resize", this.width, this.height)
+    this.needsUpdate = true
+  }
+
+  private interceptStdoutWrite = (chunk: any, encoding?: any, callback?: any): boolean => {
+    const text = chunk.toString()
+
+    capture.write('stdout', text)
+    if (this._splitHeight > 0) {
+      this.needsUpdate = true
+    }
+    
+    if (typeof callback === 'function') {
+      process.nextTick(callback)
+    }
+    
+    return true
+  }
+
+  private disableStdoutInterception(): void {
+    this.flushStdoutCache(this._splitHeight)
+    this.stdout.write = this.realStdoutWrite
+  }
+
+  private flushStdoutCache(space: number, force: boolean = false): boolean {
+    if (capture.output.length === 0 && !force) return false
+    
+    const output = capture.claimOutput()
+    
+    const rendererStartLine = this._terminalHeight - this._splitHeight
+    const flush = ANSI.moveCursorAndClear(rendererStartLine, 1)
+    
+    const outputLine = this._terminalHeight - this._splitHeight
+    const move = ANSI.moveCursor(outputLine, 1)
+    
+    const backgroundColor = this.backgroundColor.toInts()
+    const newlines = ' '.repeat(this.width) + '\n'.repeat(space)
+    const clear = ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) + newlines + ANSI.resetBackground
+    
+    this.writeOut(flush + move + output + clear)
+    
+    return true
+  }
+
   private enableMouse(): void {
-    this.stdout.write(ANSI.enableSGRMouseMode)
-    this.stdout.write(ANSI.enableMouseTracking)
-    this.stdout.write(ANSI.enableButtonEventTracking)
+    this.writeOut(ANSI.enableSGRMouseMode)
+    this.writeOut(ANSI.enableMouseTracking)
+    this.writeOut(ANSI.enableButtonEventTracking)
     
     if (this.enableMouseMovement) {
-      this.stdout.write(ANSI.enableAnyEventTracking)
+      this.writeOut(ANSI.enableAnyEventTracking)
     }
   }
 
   private disableMouse(): void {
     if (this.enableMouseMovement) {
-      this.stdout.write(ANSI.disableAnyEventTracking)
+      this.writeOut(ANSI.disableAnyEventTracking)
     }
-    this.stdout.write(ANSI.disableButtonEventTracking)
-    this.stdout.write(ANSI.disableMouseTracking)
-    this.stdout.write(ANSI.disableSGRMouseMode)
+    this.writeOut(ANSI.disableButtonEventTracking)
+    this.writeOut(ANSI.disableMouseTracking)
+    this.writeOut(ANSI.disableSGRMouseMode)
   }
 
   public set useThread(useThread: boolean) {
@@ -412,7 +559,7 @@ export class CliRenderer extends Renderable {
   }
 
   private setupTerminal(): void {
-    this.stdout.write(ANSI.saveCursorState)
+    this.writeOut(ANSI.saveCursorState)
     this.stdin.setRawMode(true)
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
@@ -437,7 +584,9 @@ export class CliRenderer extends Renderable {
       this.emit("key", data)
     })
   
-    this.stdout.write(ANSI.switchToAlternateScreen)
+    if (this._useAlternateScreen) {
+      this.writeOut(ANSI.switchToAlternateScreen)
+    }
     this.setCursorPosition(0, 0, false)
   }
 
@@ -445,6 +594,13 @@ export class CliRenderer extends Renderable {
     const mouseEvent = parseMouseEvent(data)
 
     if (mouseEvent) {
+      if (this._splitHeight > 0) {
+        if (mouseEvent.y < this.renderOffset) {
+          return false
+        }
+        mouseEvent.y -= this.renderOffset
+      }
+      
       const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
       const sameElement = maybeRenderableId === this.lastOverRenderableNum
       this.lastOverRenderableNum = maybeRenderableId
@@ -558,6 +714,11 @@ export class CliRenderer extends Renderable {
   }
 
   private handleResize(width: number, height: number): void {
+    if (this._splitHeight > 0) {
+      this.processResize(width, height)
+      return
+    }
+
     if (this.resizeTimeoutId !== null) {
       clearTimeout(this.resizeTimeoutId)
       this.resizeTimeoutId = null
@@ -570,21 +731,43 @@ export class CliRenderer extends Renderable {
   }
 
   private async processResize(width: number, height: number): Promise<void> {
-    if (width === this.width && height === this.height) return
+    if (width === this._terminalWidth && height === this._terminalHeight) return
 
-    this.width = width
-    this.height = height
+    const prevWidth = this._terminalWidth
+    
+    this._terminalWidth = width
+    this._terminalHeight = height
+
+    if (this._splitHeight > 0) {
+      // TODO: Handle resizing split mode properly
+      if (width < prevWidth) {
+        const start = this._terminalHeight - this._splitHeight * 2
+        const flush = ANSI.moveCursorAndClear(start, 1)
+        this.writeOut(flush)
+      }
+      this.renderOffset = height - this._splitHeight
+      this.width = width
+      this.height = this._splitHeight
+      this.currentRenderBuffer.clearLocal(RGBA.fromHex("#000000"), "\u0a00")
+      this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
+    } else {
+      this.width = width
+      this.height = height
+    }
+    
     this._resolution = await getTerminalPixelResolution(this.stdin, this.stdout)
     this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
-    this._console.resize(width, height)
-    this.emit("resize", width, height)
-    this.renderOnce()
+    this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
+    this._console.resize(this.width, this.height)
+    this.emit("resize", this.width, this.height)
+    this.needsUpdate = true
   }
 
   public setBackgroundColor(color: ColorInput): void {
     const parsedColor = parseColor(color)
     this.lib.setBackgroundColor(this.rendererPtr, parsedColor as RGBA)
+    this.backgroundColor = parsedColor as RGBA
     this.nextRenderBuffer.clear(parsedColor as RGBA)
     this.needsUpdate = true
   }
@@ -731,13 +914,22 @@ export class CliRenderer extends Renderable {
       this.memorySnapshotTimer = null
     }
 
+    this.disableStdoutInterception()
+
+    if (this._splitHeight > 0) {
+      const consoleEndLine = this._terminalHeight - this._splitHeight
+      this.writeOut(ANSI.moveCursor(consoleEndLine, 1))
+    }
+
     if (this._useMouse) {
       this.disableMouse()
     }
-    this.stdout.write(ANSI.resetCursorColor)
-    this.stdout.write(ANSI.showCursor)
+    this.writeOut(ANSI.resetCursorColor)
+    this.writeOut(ANSI.showCursor)
 
-    this.stdout.write(ANSI.switchToMainScreen)
+    if (this._useAlternateScreen) {
+      this.writeOut(ANSI.switchToMainScreen)
+    }
   }
 
   public async renderOnce(): Promise<void> {
@@ -841,8 +1033,16 @@ export class CliRenderer extends Renderable {
       console.error("Rendering called concurrently")
       throw new Error("Rendering called concurrently")
     }
+
+    let force = false
+    if (this._splitHeight > 0) {
+      // TODO: Flickering could maybe be even more reduced by moving the flush to the native layer,
+      // to output the flush with the buffered writer, after the render is done.
+      force = this.flushStdoutCache(this._splitHeight)
+    }
+    
     this.renderingNative = true
-    this.lib.render(this.rendererPtr)
+    this.lib.render(this.rendererPtr, force)
     this.renderingNative = false
   }
 

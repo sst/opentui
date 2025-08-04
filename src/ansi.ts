@@ -9,7 +9,18 @@ export const ANSI = {
   saveCursorState: "\x1b[s",
   restoreCursorState: "\x1b[u",
 
-  // Mouse handling
+  queryPixelSize: "\u001b[14t",
+
+  scrollDown: (lines: number) => `\x1b[${lines}T`,
+  scrollUp: (lines: number) => `\x1b[${lines}S`,
+
+  moveCursor: (row: number, col: number) => `\x1b[${row};${col}H`,
+  moveCursorAndClear: (row: number, col: number) => `\x1b[${row};${col}H\x1b[J`,
+  clearFromCursor: "\x1b[J",
+
+  setRgbBackground: (r: number, g: number, b: number) => `\x1b[48;2;${r};${g};${b}m`,
+  resetBackground: "\x1b[49m",
+
   enableMouseTracking: "\x1b[?1000h",
   disableMouseTracking: "\x1b[?1000l",
   enableButtonEventTracking: "\x1b[?1002h", 

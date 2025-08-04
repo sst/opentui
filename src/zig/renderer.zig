@@ -59,6 +59,7 @@ pub const CliRenderer = struct {
     currentRenderBuffer: *OptimizedBuffer,
     nextRenderBuffer: *OptimizedBuffer,
     backgroundColor: RGBA,
+    renderOffset: u32,
 
     renderStats: struct {
         lastFrameTime: f64,
@@ -175,6 +176,7 @@ pub const CliRenderer = struct {
             .currentRenderBuffer = currentBuffer,
             .nextRenderBuffer = nextBuffer,
             .backgroundColor = .{ 0.0, 0.0, 0.0, 1.0 },
+            .renderOffset = 0,
 
             .renderStats = .{
                 .lastFrameTime = 0,
@@ -339,6 +341,10 @@ pub const CliRenderer = struct {
         self.backgroundColor = rgba;
     }
 
+    pub fn setRenderOffset(self: *CliRenderer, offset: u32) void {
+        self.renderOffset = offset;
+    }
+
     fn renderThreadFn(self: *CliRenderer) void {
         while (true) {
             self.renderMutex.lock();
@@ -373,7 +379,7 @@ pub const CliRenderer = struct {
     }
 
     // Render once with current state
-    pub fn render(self: *CliRenderer) void {
+    pub fn render(self: *CliRenderer, force: bool) void {
         const now = std.time.microTimestamp();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
         const deltaTime = deltaTimeMs / 1000.0; // Convert to seconds
@@ -381,7 +387,7 @@ pub const CliRenderer = struct {
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
-        self.prepareRenderFrame();
+        self.prepareRenderFrame(force);
 
         if (self.useThread) {
             self.renderMutex.lock();
@@ -437,7 +443,7 @@ pub const CliRenderer = struct {
         return self.currentRenderBuffer;
     }
 
-    fn prepareRenderFrame(self: *CliRenderer) void {
+    fn prepareRenderFrame(self: *CliRenderer, force: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
 
@@ -475,26 +481,28 @@ pub const CliRenderer = struct {
 
                 if (currentCell == null or nextCell == null) continue;
 
-                const colorsEqual =
-                    buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
-                    buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon);
+                if (!force) {
+                    const colorsEqual =
+                        buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
+                        buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon);
 
-                // Skip if cell hasn't changed
-                if (currentCell.?.char == nextCell.?.char and
-                    colorsEqual and
-                    currentCell.?.attributes == nextCell.?.attributes)
-                {
-                    if (runLength > 0) {
-                        ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1))) catch {};
+                    // Skip if cell hasn't changed
+                    if (currentCell.?.char == nextCell.?.char and
+                        colorsEqual and
+                        currentCell.?.attributes == nextCell.?.attributes)
+                    {
+                        if (runLength > 0) {
+                            ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
 
-                        writer.writeAll(runBuffer[0..runBufferLen]) catch {};
-                        writer.writeAll(ansi.ANSI.reset) catch {};
+                            writer.writeAll(runBuffer[0..runBufferLen]) catch {};
+                            writer.writeAll(ansi.ANSI.reset) catch {};
 
-                        runStart = -1;
-                        runLength = 0;
-                        runBufferLen = 0;
+                            runStart = -1;
+                            runLength = 0;
+                            runBufferLen = 0;
+                        }
+                        continue;
                     }
-                    continue;
                 }
 
                 const cell = nextCell.?;
@@ -505,7 +513,7 @@ pub const CliRenderer = struct {
 
                 if (!sameAttributes or runStart == -1) {
                     if (runLength > 0) {
-                        ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1))) catch {};
+                        ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
 
                         writer.writeAll(runBuffer[0..runBufferLen]) catch {};
                         writer.writeAll(ansi.ANSI.reset) catch {};
@@ -519,7 +527,7 @@ pub const CliRenderer = struct {
                     currentBg = cell.bg;
                     currentAttributes = @intCast(cell.attributes);
 
-                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1) catch {};
+                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
                     const fgR = rgbaComponentToU8(cell.fg[0]);
                     const fgG = rgbaComponentToU8(cell.fg[1]);
@@ -548,7 +556,7 @@ pub const CliRenderer = struct {
             }
 
             if (runLength > 0) {
-                ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1))) catch {};
+                ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
                 writer.writeAll(runBuffer[0..runBufferLen]) catch {};
             }
         }
@@ -586,7 +594,7 @@ pub const CliRenderer = struct {
 
             ansi.ANSI.cursorColorOutputWriter(writer, cursorR, cursorG, cursorB) catch {};
             writer.writeAll(cursorStyleCode) catch {};
-            ansi.ANSI.moveToOutput(writer, globalCursor.x, globalCursor.y) catch {};
+            ansi.ANSI.moveToOutput(writer, globalCursor.x, globalCursor.y + self.renderOffset) catch {};
             writer.writeAll(ansi.ANSI.showCursor) catch {};
         } else {
             writer.writeAll(ansi.ANSI.hideCursor) catch {};

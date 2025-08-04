@@ -114,16 +114,16 @@ export class OptimizedBuffer {
     this.respectAlpha = respectAlpha
   }
 
-  public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
+  public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1), clearChar: string = " "): void {
     if (this.useFFI) {
       this.clearFFI(bg)
     } else {
-      this.clearLocal(bg)
+      this.clearLocal(bg, clearChar)
     }
   }
 
-  public clearLocal(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
-    this.buffer.char.fill(" ".charCodeAt(0))
+  public clearLocal(bg: RGBA = RGBA.fromValues(0, 0, 0, 1), clearChar: string = " "): void {
+    this.buffer.char.fill(clearChar.charCodeAt(0))
     this.buffer.attributes.fill(0)
 
     for (let i = 0; i < this.width * this.height; i++) {

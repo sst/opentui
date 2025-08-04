@@ -36,6 +36,7 @@ import * as inputSelectLayoutExample from "./input-select-layout-demo"
 import * as styledTextExample from "./styled-text-demo"
 import * as mouseInteractionExample from "./mouse-interaction-demo"
 import * as textSelectionExample from "./text-selection-demo"
+import * as splitModeExample from "./split-mode-demo"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
 interface Example {
@@ -189,6 +190,12 @@ const examples: Example[] = [
     description: "Interactive InputElement demo with validation and multiple fields",
     run: inputExample.run,
     destroy: inputExample.destroy,
+  },
+  {
+    name: "Split Mode Demo (Experimental)",
+    description: "Renderer confined to bottom area with normal terminal output above",
+    run: splitModeExample.run,
+    destroy: splitModeExample.destroy,
   },
 ]
 

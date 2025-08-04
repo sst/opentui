@@ -64,6 +64,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    setRenderOffset: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
     updateStats: {
       args: ["ptr", "f64", "u32", "f64"],
       returns: "void",
@@ -73,7 +77,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     render: {
-      args: ["ptr"],
+      args: ["ptr", "bool"],
       returns: "void",
     },
     getNextBuffer: {
@@ -212,9 +216,10 @@ export interface RenderLib {
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
+  setRenderOffset: (renderer: Pointer, offset: number) => void
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
-  render: (renderer: Pointer) => void
+  render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   createOptimizedBuffer: (
@@ -322,6 +327,10 @@ class FFIRenderLib implements RenderLib {
 
   public setBackgroundColor(renderer: Pointer, color: RGBA) {
     this.opentui.symbols.setBackgroundColor(renderer, color.buffer)
+  }
+
+  public setRenderOffset(renderer: Pointer, offset: number) {
+    this.opentui.symbols.setRenderOffset(renderer, offset)
   }
 
   public updateStats(renderer: Pointer, time: number, fps: number, frameCallbackTime: number) {
@@ -551,8 +560,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setCursorColor(color.buffer)
   }
 
-  public render(renderer: Pointer) {
-    this.opentui.symbols.render(renderer)
+  public render(renderer: Pointer, force: boolean) {
+    this.opentui.symbols.render(renderer, force)
   }
 
   public createOptimizedBuffer(

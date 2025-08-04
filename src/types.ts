@@ -23,6 +23,10 @@ export class RGBA {
     return hexToRgb(hex)
   }
 
+  toInts(): [number, number, number, number] {
+    return [Math.round(this.r * 255), Math.round(this.g * 255), Math.round(this.b * 255), Math.round(this.a * 255)]
+  }
+
   get r(): number {
     return this.buffer[0]
   }
