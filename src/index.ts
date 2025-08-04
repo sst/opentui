@@ -552,7 +552,7 @@ export class CliRenderer extends Renderable {
     this.writeOut(ANSI.disableButtonEventTracking)
     this.writeOut(ANSI.disableMouseTracking)
     this.writeOut(ANSI.disableSGRMouseMode)
-    
+
     this.capturedRenderable = undefined
     this.mouseParser.reset()
   }

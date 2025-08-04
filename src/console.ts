@@ -626,7 +626,7 @@ export class TerminalConsole extends EventEmitter {
 
       lineY++
     }
-    
+
     this.renderer.needsUpdate = true
   }
 

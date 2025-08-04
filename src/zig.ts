@@ -208,7 +208,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-
   })
 }
 
@@ -612,8 +611,6 @@ class FFIRenderLib implements RenderLib {
   public dumpHitGrid(renderer: Pointer): void {
     this.opentui.symbols.dumpHitGrid(renderer)
   }
-
-
 }
 
 let opentuiLibPath: string | undefined

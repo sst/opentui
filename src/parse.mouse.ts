@@ -33,7 +33,7 @@ export class MouseParser {
       let type: MouseEventType
       if (isMotion) {
         const isDragging = this.mouseButtonsPressed.size > 0
-        
+
         if (button === 3) {
           type = "move"
         } else if (isDragging) {
@@ -43,7 +43,7 @@ export class MouseParser {
         }
       } else {
         type = pressRelease === "M" ? "down" : "up"
-        
+
         if (type === "down" && button !== 3) {
           this.mouseButtonsPressed.add(button)
         } else if (type === "up") {
