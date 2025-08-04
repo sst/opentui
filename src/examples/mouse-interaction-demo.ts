@@ -12,6 +12,8 @@ import {
   type MouseEvent,
   OptimizedBuffer,
   BoxRenderable,
+  createTimeline,
+  engine,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -33,36 +35,61 @@ class DraggableBox extends BoxRenderable {
   private gotText = ""
   private dragOffsetX = 0
   private dragOffsetY = 0
+  private bounceScale = { value: 1 }
+  private baseWidth: number
+  private baseHeight: number
+  private centerX: number
+  private centerY: number
+  private originalBg: RGBA
+  private dragBg: RGBA
+  private originalBorderColor: RGBA
+  private dragBorderColor: RGBA
 
   constructor(id: string, x: number, y: number, width: number, height: number, color: RGBA, label: string) {
+    const bgColor = RGBA.fromValues(color.r, color.g, color.b, 0.8)
+    const borderColor = RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 1.0)
     super(id, {
       x,
       y,
       width,
       height,
       zIndex: 100,
-      bg: RGBA.fromValues(color.r, color.g, color.b, 0.8),
-      borderColor: RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 1.0),
+      bg: bgColor,
+      borderColor: borderColor,
       borderStyle: "rounded",
       title: label,
       titleAlignment: "center",
     })
+    this.baseWidth = width
+    this.baseHeight = height
+    this.centerX = x + width / 2
+    this.centerY = y + height / 2
+    this.originalBg = bgColor
+    this.dragBg = RGBA.fromValues(color.r, color.g, color.b, 0.3)
+    this.originalBorderColor = borderColor
+    this.dragBorderColor = RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 0.5)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
+    this.width = Math.round(this.baseWidth * this.bounceScale.value)
+    this.height = Math.round(this.baseHeight * this.bounceScale.value)
+    
+    this.x = Math.round(this.centerX - this.width / 2)
+    this.y = Math.round(this.centerY - this.height / 2)
+    
     super.renderSelf(buffer)
 
     if (this.isDragging) {
       const centerX = this.x + Math.floor(this.width / 2 - 2)
       const centerY = this.y + Math.floor(this.height / 2)
-      buffer.drawText("drag", centerX, centerY, RGBA.fromInts(255, 255, 0))
+      buffer.drawText("drag", centerX, centerY, RGBA.fromInts(64, 224, 208))
     }
 
     if (this.gotText) {
       const centerX = this.x + Math.floor(this.width / 2 - this.gotText.length / 2)
       const centerY = this.y + Math.floor(this.height / 2)
-      buffer.drawText("got", this.x + Math.floor(this.width / 2 - 2), centerY - 1, RGBA.fromInts(255, 255, 0))
-      buffer.drawText(this.gotText, centerX, centerY + (this.isDragging ? 1 : 0), RGBA.fromInts(255, 255, 0))
+      buffer.drawText("got", this.x + Math.floor(this.width / 2 - 2), centerY - 1, RGBA.fromInts(255, 182, 193))
+      buffer.drawText(this.gotText, centerX, centerY + (this.isDragging ? 1 : 0), RGBA.fromInts(147, 226, 255))
     }
   }
 
@@ -75,6 +102,8 @@ class DraggableBox extends BoxRenderable {
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
         this.zIndex = nextZIndex++
+        this.bg = this.dragBg
+        this.borderColor = this.dragBorderColor
         event.preventDefault()
         break
 
@@ -82,17 +111,22 @@ class DraggableBox extends BoxRenderable {
         if (this.isDragging) {
           this.isDragging = false
           this.zIndex = 100
+          this.bg = this.originalBg
+          this.borderColor = this.originalBorderColor
           event.preventDefault()
         }
         break
 
       case "drag":
         if (this.isDragging) {
-          this.x = event.x - this.dragOffsetX
-          this.y = event.y - this.dragOffsetY
+          const newX = event.x - this.dragOffsetX
+          const newY = event.y - this.dragOffsetY
 
-          this.x = Math.max(0, Math.min(this.x, (this.ctx?.width() || 80) - this.width))
-          this.y = Math.max(4, Math.min(this.y, (this.ctx?.height() || 24) - this.height))
+          const boundedX = Math.max(0, Math.min(newX, (this.ctx?.width() || 80) - this.width))
+          const boundedY = Math.max(4, Math.min(newY, (this.ctx?.height() || 24) - this.height))
+
+          this.centerX = boundedX + this.width / 2
+          this.centerY = boundedY + this.height / 2
 
           event.preventDefault()
         }
@@ -108,6 +142,19 @@ class DraggableBox extends BoxRenderable {
 
       case "drop":
         this.gotText = event.source?.id || ""
+        const timeline = createTimeline()
+        
+        timeline.add(this.bounceScale, {
+          value: 1.5,
+          duration: 200,
+          ease: "outExpo",
+        })
+        
+        timeline.add(this.bounceScale, {
+          value: 1.0,
+          duration: 400,
+          ease: "outExpo",
+        }, 150)
         break
     }
   }
@@ -231,12 +278,16 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   const backgroundColor = RGBA.fromInts(15, 15, 35, 255)
   renderer.setBackgroundColor(backgroundColor)
+  
+  renderer.setFrameCallback(async (deltaTime: number) => {
+    engine.update(deltaTime)
+  })
 
   titleText = new TextRenderable("mouse_demo_title", {
     content: "Mouse Interaction Demo with Draggable Objects",
     x: 2,
     y: 1,
-    fg: RGBA.fromInts(255, 215, 0),
+    fg: RGBA.fromInts(72, 209, 204),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
   })
@@ -259,10 +310,10 @@ Escape: menu`,
   renderer.add(demoContainer)
 
   draggableBoxes = [
-    new DraggableBox("drag-box-1", 10, 8, 14, 6, RGBA.fromInts(200, 100, 150), "Box 1"),
-    new DraggableBox("drag-box-2", 30, 12, 12, 6, RGBA.fromInts(100, 200, 150), "Box 2"),
-    new DraggableBox("drag-box-3", 50, 15, 14, 7, RGBA.fromInts(150, 150, 200), "Box 3"),
-    new DraggableBox("drag-box-4", 15, 20, 12, 6, RGBA.fromInts(200, 200, 100), "Box 4"),
+    new DraggableBox("drag-box-1", 10, 8, 18, 8, RGBA.fromInts(200, 100, 150), "Box 1"),
+    new DraggableBox("drag-box-2", 30, 12, 16, 8, RGBA.fromInts(100, 200, 150), "Box 2"),
+    new DraggableBox("drag-box-3", 50, 15, 18, 9, RGBA.fromInts(150, 150, 200), "Box 3"),
+    new DraggableBox("drag-box-4", 15, 20, 16, 8, RGBA.fromInts(200, 200, 100), "Box 4"),
   ]
 
   for (const box of draggableBoxes) {
