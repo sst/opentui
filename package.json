@@ -27,12 +27,12 @@
     "printWidth": 120
   },
   "dependencies": {
-    "@typegpu/noise": "https://pkg.pr.new/software-mansion/TypeGPU/@typegpu/noise@f71da6517c202229d3da92ec645b641bf6417816",
+    "@typegpu/noise": "^0.1.0",
     "bun-webgpu": "0.1.0",
     "jimp": "1.6.0",
     "three": "0.177.0",
-    "typegpu": "https://pkg.pr.new/software-mansion/TypeGPU/typegpu@f71da6517c202229d3da92ec645b641bf6417816",
-    "unplugin-typegpu": "https://pkg.pr.new/software-mansion/TypeGPU/unplugin-typegpu@f71da6517c202229d3da92ec645b641bf6417816",
+    "typegpu": "^0.7.0",
+    "unplugin-typegpu": "^0.2.2",
     "yoga-layout": "3.2.1"
   }
 }
