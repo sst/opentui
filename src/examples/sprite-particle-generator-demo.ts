@@ -9,7 +9,7 @@ import {
   GroupRenderable,
   TextRenderable,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
   SpriteAnimator,
@@ -474,5 +474,5 @@ if (import.meta.main) {
     targetFps: 60,
   })
   await run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

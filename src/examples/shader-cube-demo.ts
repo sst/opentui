@@ -8,7 +8,7 @@ import {
   TextRenderable,
   BoxRenderable,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA } from "../types"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
@@ -749,5 +749,5 @@ if (import.meta.main) {
   })
 
   await run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

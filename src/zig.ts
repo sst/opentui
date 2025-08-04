@@ -204,10 +204,11 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "u32",
     },
-    clearHitGrid: {
+    dumpHitGrid: {
       args: ["ptr"],
       returns: "void",
     },
+
   })
 }
 
@@ -298,7 +299,7 @@ export interface RenderLib {
   clearTerminal: (renderer: Pointer) => void
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
-  clearHitGrid: (renderer: Pointer) => void
+  dumpHitGrid: (renderer: Pointer) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -608,9 +609,11 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.checkHit(renderer, x, y)
   }
 
-  public clearHitGrid(renderer: Pointer) {
-    this.opentui.symbols.clearHitGrid(renderer)
+  public dumpHitGrid(renderer: Pointer): void {
+    this.opentui.symbols.dumpHitGrid(renderer)
   }
+
+
 }
 
 let opentuiLibPath: string | undefined

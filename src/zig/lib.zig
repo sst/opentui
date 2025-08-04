@@ -203,6 +203,6 @@ export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
 }
 
-export fn clearHitGrid(rendererPtr: *renderer.CliRenderer) void {
-    rendererPtr.clearHitGrid();
+export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.dumpHitGrid();
 }

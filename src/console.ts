@@ -211,13 +211,12 @@ const DEFAULT_CONSOLE_OPTIONS: Required<ConsoleOptions> = {
   startInDebugMode: false,
   title: "Console",
   titleBarColor: RGBA.fromValues(0.05, 0.05, 0.05, 0.7),
-  titleBarTextColor: "#FFFFFF", // Default to same as default log text color
-  cursorColor: "#00A0FF", // Bright blue default cursor
+  titleBarTextColor: "#FFFFFF",
+  cursorColor: "#00A0FF",
   maxStoredLogs: 2000,
   maxDisplayLines: 3000,
 }
 
-const CONSOLE_FB_ID = "____console_fb"
 const INDENT_WIDTH = 2
 
 interface DisplayLine {
@@ -376,7 +375,6 @@ export class TerminalConsole extends EventEmitter {
         break
       case "\u001b[1;2A": // Shift+UpArrow - Scroll to top
         if (this.scrollTopIndex > 0 || this.currentLineIndex > 0) {
-          // Check if not already at top
           this.scrollTopIndex = 0
           this.currentLineIndex = 0
           this.isScrolledToBottom = this._displayLines.length <= Math.max(1, this.consoleHeight - 1)
@@ -387,7 +385,6 @@ export class TerminalConsole extends EventEmitter {
         const logAreaHeightForScroll = Math.max(1, this.consoleHeight - 1)
         const maxScrollPossible = Math.max(0, this._displayLines.length - logAreaHeightForScroll)
         if (this.scrollTopIndex < maxScrollPossible || !this.isScrolledToBottom) {
-          // Check if not already at bottom
           this._scrollToBottom(true)
           needsRedraw = true
         }
@@ -525,7 +522,7 @@ export class TerminalConsole extends EventEmitter {
       this.show()
     }
     if (!this.renderer.isRunning) {
-      this.renderer.renderOnce()
+      this.renderer.needsUpdate = true
     }
   }
 
@@ -617,7 +614,6 @@ export class TerminalConsole extends EventEmitter {
       const linePrefix = displayLine.indent ? " ".repeat(INDENT_WIDTH) : ""
       const textToDraw = displayLine.text
       const textAvailableWidth = this.consoleWidth - 1 - (displayLine.indent ? INDENT_WIDTH : 0)
-
       const showCursor = this.isFocused && lineY - 1 === this.currentLineIndex
 
       if (showCursor) {
@@ -630,9 +626,8 @@ export class TerminalConsole extends EventEmitter {
 
       lineY++
     }
-    if (!this.renderer.isRunning) {
-      this.renderer.renderOnce()
-    }
+    
+    this.renderer.needsUpdate = true
   }
 
   public renderToBuffer(buffer: OptimizedBuffer): void {
@@ -677,7 +672,7 @@ export class TerminalConsole extends EventEmitter {
     for (let i = 0; i < initialLines.length; i++) {
       const lineText = initialLines[i]
       const isFirstLineOfEntry = i === 0
-      const availableWidth = this.consoleWidth - (isFirstLineOfEntry ? 0 : INDENT_WIDTH)
+      const availableWidth = this.consoleWidth - 1 - (isFirstLineOfEntry ? 0 : INDENT_WIDTH)
       const linePrefix = isFirstLineOfEntry ? prefix : " ".repeat(INDENT_WIDTH)
       const textToWrap = isFirstLineOfEntry ? linePrefix + lineText : lineText
 

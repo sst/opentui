@@ -10,7 +10,7 @@ import {
   type ParsedKey,
 } from "../index"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 /**
  * Simple text element for demonstration
@@ -520,6 +520,6 @@ if (import.meta.main) {
     targetFps: 30,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
 }

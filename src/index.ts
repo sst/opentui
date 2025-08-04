@@ -14,7 +14,7 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { parseMouseEvent, type MouseEventType, type RawMouseEvent } from "./parse.mouse"
+import { MouseParser, type MouseEventType, type RawMouseEvent } from "./parse.mouse"
 import { Selection } from "./selection"
 
 export * from "./objects"
@@ -264,6 +264,7 @@ export class CliRenderer extends Renderable {
   }
 
   private _useConsole: boolean = true
+  private mouseParser: MouseParser = new MouseParser()
 
   constructor(
     lib: RenderLib,
@@ -380,7 +381,7 @@ export class CliRenderer extends Renderable {
     if (!this.updateScheduled && !this._isRunning && value) {
       this.updateScheduled = true
       process.nextTick(() => {
-        this.renderOnce()
+        this.loop()
         this.updateScheduled = false
       })
     }
@@ -551,6 +552,9 @@ export class CliRenderer extends Renderable {
     this.writeOut(ANSI.disableButtonEventTracking)
     this.writeOut(ANSI.disableMouseTracking)
     this.writeOut(ANSI.disableSGRMouseMode)
+    
+    this.capturedRenderable = undefined
+    this.mouseParser.reset()
   }
 
   public set useThread(useThread: boolean) {
@@ -595,7 +599,7 @@ export class CliRenderer extends Renderable {
   }
 
   private handleMouseData(data: Buffer): boolean {
-    const mouseEvent = parseMouseEvent(data)
+    const mouseEvent = this.mouseParser.parseMouseEvent(data)
 
     if (mouseEvent) {
       if (this._splitHeight > 0) {
@@ -674,14 +678,17 @@ export class CliRenderer extends Renderable {
       }
 
       if (maybeRenderable) {
-        if (mouseEvent.type === "drag") {
+        if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
           this.capturedRenderable = maybeRenderable
+        } else {
+          this.capturedRenderable = undefined
         }
         const event = new MouseEvent(maybeRenderable, mouseEvent)
         maybeRenderable.processMouseEvent(event)
         return true
       }
 
+      this.capturedRenderable = undefined
       this.lastOverRenderable = undefined
       return true
     }
@@ -753,6 +760,9 @@ export class CliRenderer extends Renderable {
     this._terminalWidth = width
     this._terminalHeight = height
 
+    this.capturedRenderable = undefined
+    this.mouseParser.reset()
+
     if (this._splitHeight > 0) {
       // TODO: Handle resizing split mode properly
       if (width < prevWidth) {
@@ -803,6 +813,10 @@ export class CliRenderer extends Renderable {
 
   public clearTerminal(): void {
     this.lib.clearTerminal(this.rendererPtr)
+  }
+
+  public dumpHitGrid(): void {
+    this.lib.dumpHitGrid(this.rendererPtr)
   }
 
   public createFrameBuffer(id: string, options: Partial<FrameBufferOptions>) {
@@ -936,6 +950,8 @@ export class CliRenderer extends Renderable {
       this.writeOut(ANSI.moveCursor(consoleEndLine, 1))
     }
 
+    this.capturedRenderable = undefined
+
     if (this._useMouse) {
       this.disableMouse()
     }
@@ -945,10 +961,6 @@ export class CliRenderer extends Renderable {
     if (this._useAlternateScreen) {
       this.writeOut(ANSI.switchToMainScreen)
     }
-  }
-
-  public async renderOnce(): Promise<void> {
-    this.loop()
   }
 
   private startRenderLoop(): void {
@@ -1007,7 +1019,6 @@ export class CliRenderer extends Renderable {
     this.renderStats.frameCallbackTime = end - start
 
     // Render the renderable tree
-    this.lib.clearHitGrid(this.rendererPtr)
     this.render(this.nextRenderBuffer, deltaTime)
 
     for (const postProcessFn of this.postProcessFns) {

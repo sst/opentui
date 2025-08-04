@@ -12,7 +12,7 @@ import {
   GroupRenderable,
 } from "../index"
 import type { StyledTextRenderable } from "../objects"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let renderer: CliRenderer | null = null
 let parentContainer: GroupRenderable | null = null
@@ -134,7 +134,7 @@ Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
   })
   parentContainer.add(typesDisplay)
 
-  renderer.renderOnce()
+  renderer.needsUpdate = true
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
@@ -158,5 +158,5 @@ if (import.meta.main) {
     targetFps: 60,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

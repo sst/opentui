@@ -106,8 +106,8 @@ pub const CliRenderer = struct {
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
 
-    // Hit grid for tracking renderable IDs
-    hitGrid: []u32,
+    currentHitGrid: []u32,
+    nextHitGrid: []u32,
     hitGridWidth: u32,
     hitGridHeight: u32,
 
@@ -165,10 +165,11 @@ pub const CliRenderer = struct {
         try cellsUpdated.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
         try frameCallbackTimes.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
 
-        // Initialize hit grid
         const hitGridSize = width * height;
-        const hitGrid = try allocator.alloc(u32, hitGridSize);
-        @memset(hitGrid, 0); // Initialize with 0 (no renderable)
+        const currentHitGrid = try allocator.alloc(u32, hitGridSize);
+        const nextHitGrid = try allocator.alloc(u32, hitGridSize);
+        @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
+        @memset(nextHitGrid, 0);
 
         self.* = .{
             .width = width,
@@ -205,7 +206,8 @@ pub const CliRenderer = struct {
             .lastRenderTime = std.time.microTimestamp(),
             .allocator = allocator,
             .stdoutWriter = stdoutWriter,
-            .hitGrid = hitGrid,
+            .currentHitGrid = currentHitGrid,
+            .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
             .hitGridHeight = height,
         };
@@ -241,7 +243,8 @@ pub const CliRenderer = struct {
         self.statSamples.cellsUpdated.deinit();
         self.statSamples.frameCallbackTime.deinit();
 
-        self.allocator.free(self.hitGrid);
+        self.allocator.free(self.currentHitGrid);
+        self.allocator.free(self.nextHitGrid);
 
         self.allocator.destroy(self);
     }
@@ -322,11 +325,15 @@ pub const CliRenderer = struct {
         const newHitGridSize = width * height;
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
         if (newHitGridSize > currentHitGridSize) {
-            const newHitGrid = try self.allocator.alloc(u32, newHitGridSize);
-            @memset(newHitGrid, 0);
+            const newCurrentHitGrid = try self.allocator.alloc(u32, newHitGridSize);
+            const newNextHitGrid = try self.allocator.alloc(u32, newHitGridSize);
+            @memset(newCurrentHitGrid, 0);
+            @memset(newNextHitGrid, 0);
 
-            self.allocator.free(self.hitGrid);
-            self.hitGrid = newHitGrid;
+            self.allocator.free(self.currentHitGrid);
+            self.allocator.free(self.nextHitGrid);
+            self.currentHitGrid = newCurrentHitGrid;
+            self.nextHitGrid = newNextHitGrid;
             self.hitGridWidth = width;
             self.hitGridHeight = height;
         }
@@ -608,6 +615,11 @@ pub const CliRenderer = struct {
         self.renderStats.renderTime = renderTime;
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, null) catch {};
+
+        const temp = self.currentHitGrid;
+        self.currentHitGrid = self.nextHitGrid;
+        self.nextHitGrid = temp;
+        @memset(self.nextHitGrid, 0);
     }
 
     pub fn setDebugOverlay(self: *CliRenderer, enabled: bool, corner: DebugOverlayCorner) void {
@@ -639,7 +651,7 @@ pub const CliRenderer = struct {
             const startIdx = rowStart + uStartX;
             const endIdx = rowStart + uEndX;
 
-            @memset(self.hitGrid[startIdx..endIdx], id);
+            @memset(self.nextHitGrid[startIdx..endIdx], id);
         }
     }
 
@@ -649,11 +661,29 @@ pub const CliRenderer = struct {
         }
 
         const index = y * self.hitGridWidth + x;
-        return self.hitGrid[index];
+        return self.currentHitGrid[index];
     }
 
-    pub fn clearHitGrid(self: *CliRenderer) void {
-        @memset(self.hitGrid, 0);
+    pub fn dumpHitGrid(self: *CliRenderer) void {
+        const timestamp = std.time.timestamp();
+        var filename_buf: [64]u8 = undefined;
+        const filename = std.fmt.bufPrint(&filename_buf, "hitgrid_{d}.txt", .{timestamp}) catch return;
+
+        const file = std.fs.cwd().createFile(filename, .{}) catch return;
+        defer file.close();
+
+        const writer = file.writer();
+
+        for (0..self.hitGridHeight) |y| {
+            for (0..self.hitGridWidth) |x| {
+                const index = y * self.hitGridWidth + x;
+                const id = self.currentHitGrid[index];
+
+                const char = if (id == 0) '.' else ('0' + @as(u8, @intCast(id % 10)));
+                writer.writeByte(char) catch return;
+            }
+            writer.writeByte('\n') catch return;
+        }
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

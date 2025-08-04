@@ -10,7 +10,7 @@ import {
 import { InputElement, InputElementEvents } from "../ui/elements/input"
 import { SelectElement, SelectElementEvents, type SelectOption } from "../ui/elements/select"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 /**
  * Simple text element for labels and headers
@@ -363,6 +363,6 @@ if (import.meta.main) {
     parseKeys: true,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
 }

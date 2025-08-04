@@ -11,7 +11,7 @@ import {
 } from "../index"
 import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "../index"
 import { TabControllerElement } from "../ui/elements/tab-controller"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let globalTabController: TabControllerElement | null = null
 let globalKeyboardHandler: ((key: Buffer) => void) | null = null
@@ -933,5 +933,5 @@ if (import.meta.main) {
   })
 
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

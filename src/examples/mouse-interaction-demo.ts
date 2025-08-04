@@ -7,11 +7,13 @@ import {
   TextAttributes,
   FrameBufferRenderable,
   TextRenderable,
+  StyledTextRenderable,
+  t,
   type MouseEvent,
   OptimizedBuffer,
   BoxRenderable,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface TrailCell {
   x: number
@@ -22,7 +24,7 @@ interface TrailCell {
 
 let demoContainer: MouseInteractionFrameBuffer | null = null
 let titleText: TextRenderable | null = null
-let instructionsText: TextRenderable | null = null
+let instructionsText: StyledTextRenderable | null = null
 let draggableBoxes: DraggableBox[] = []
 let nextZIndex = 101
 
@@ -114,7 +116,6 @@ class DraggableBox extends BoxRenderable {
 class MouseInteractionFrameBuffer extends FrameBufferRenderable {
   private readonly trailCells = new Map<string, TrailCell>()
   private readonly activatedCells = new Set<string>()
-  private isMousePressed = false
   private readonly TRAIL_FADE_DURATION = 3000
 
   private readonly TRAIL_COLOR = RGBA.fromInts(64, 224, 208, 255)
@@ -190,14 +191,14 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
     if (event.defaultPrevented) return
 
     const cellKey = `${event.x},${event.y}`
-
+    console.log("event", event.type, event.button)
     switch (event.type) {
       case "move":
         this.trailCells.set(cellKey, {
           x: event.x,
           y: event.y,
           timestamp: Date.now(),
-          isDrag: this.isMousePressed,
+          isDrag: false,
         })
         break
 
@@ -211,17 +212,11 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
         break
 
       case "down":
-        this.isMousePressed = true
-
         if (this.activatedCells.has(cellKey)) {
           this.activatedCells.delete(cellKey)
         } else {
           this.activatedCells.add(cellKey)
         }
-        break
-
-      case "drag-end":
-        this.isMousePressed = false
         break
     }
   }
@@ -229,7 +224,6 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
   public clearState(): void {
     this.trailCells.clear()
     this.activatedCells.clear()
-    this.isMousePressed = false
   }
 }
 
@@ -248,12 +242,15 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.add(titleText)
 
-  instructionsText = new TextRenderable("mouse_demo_instructions", {
-    content:
-      "Drag boxes around • Move mouse: turquoise trails • Hold + move: orange drag trails • Click cells: toggle pink • Escape: menu",
+  instructionsText = renderer.createStyledText("mouse_demo_instructions", {
+    fragment: t`Drag boxes around • Move mouse: turquoise trails
+Hold + move: orange drag trails • Click cells: toggle pink
+Escape: menu`,
     x: 2,
     y: 2,
-    fg: RGBA.fromInts(176, 196, 222),
+    width: renderer.width - 4,
+    height: 3,
+    defaultFg: RGBA.fromInts(176, 196, 222),
     zIndex: 1000,
   })
   renderer.add(instructionsText)
@@ -303,5 +300,5 @@ if (import.meta.main) {
     exitOnCtrlC: true,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

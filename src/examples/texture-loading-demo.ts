@@ -10,7 +10,7 @@ import {
   GroupRenderable,
   TextRenderable,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
   Scene as ThreeScene,
@@ -298,5 +298,5 @@ if (import.meta.main) {
   })
 
   await run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

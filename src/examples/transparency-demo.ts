@@ -13,7 +13,7 @@ import {
   fg,
 } from "../index"
 import type { CliRenderer } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let nextZIndex = 101
 let draggableBoxes: DraggableTransparentBox[] = []
@@ -218,6 +218,6 @@ if (import.meta.main) {
   })
 
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
 }

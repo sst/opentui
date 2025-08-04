@@ -9,7 +9,7 @@ import {
   GroupRenderable,
   TextRenderable,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 
 // @ts-ignore - Bun specific import attribute for assets
@@ -186,5 +186,5 @@ if (import.meta.main) {
   })
 
   await run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

@@ -37,7 +37,9 @@ import * as styledTextExample from "./styled-text-demo"
 import * as mouseInteractionExample from "./mouse-interaction-demo"
 import * as textSelectionExample from "./text-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
+import * as consoleExample from "./console-demo"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
   name: string
@@ -58,6 +60,12 @@ const examples: Example[] = [
     description: "Text selection across multiple renderables with mouse drag",
     run: textSelectionExample.run,
     destroy: textSelectionExample.destroy,
+  },
+  {
+    name: "Console Demo",
+    description: "Interactive console logging with clickable buttons for different log levels",
+    run: consoleExample.run,
+    destroy: consoleExample.destroy,
   },
   {
     name: "Styled Text Demo",
@@ -214,7 +222,7 @@ class ExampleSelector {
     this.createStaticElements()
     this.createSelectElement()
     this.setupKeyboardHandling()
-    this.renderer.renderOnce()
+    this.renderer.needsUpdate = true
 
     this.renderer.on("resize", (width: number, height: number) => {
       this.handleResize(width, height)
@@ -317,7 +325,7 @@ class ExampleSelector {
       this.selectElement.setHeight(height - 8)
     }
 
-    this.renderer.renderOnce()
+    this.renderer.needsUpdate = true
   }
 
   private setupKeyboardHandling(): void {
@@ -335,14 +343,9 @@ class ExampleSelector {
           this.cleanup()
           process.exit(0)
           break
-        case "`":
-          this.renderer.console.toggle()
-          break
-        case "t":
-          this.renderer.toggleDebugOverlay()
-          break
       }
     })
+    setupCommonDemoKeys(this.renderer)
   }
 
   private runSelected(selected: Example): void {
@@ -363,7 +366,7 @@ class ExampleSelector {
         })
         this.renderer.add(this.notImplementedText)
       }
-      this.renderer.renderOnce()
+      this.renderer.needsUpdate = true
     }
   }
 
@@ -404,7 +407,7 @@ class ExampleSelector {
     this.renderer.pause()
     this.showMenuElements()
     this.renderer.setBackgroundColor("#001122")
-    this.renderer.renderOnce()
+    this.renderer.needsUpdate = true
   }
 
   private cleanup(): void {

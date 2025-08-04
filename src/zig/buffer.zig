@@ -254,7 +254,7 @@ pub const OptimizedBuffer = struct {
         const cellValue = Cell{
             .char = char,
             .fg = fg,
-            .bg = bg, // bg[3] is 1.0 here
+            .bg = bg,
             .attributes = attributes,
         };
         self.set(x, y, cellValue);
@@ -392,8 +392,6 @@ pub const OptimizedBuffer = struct {
 
                 const destRowStart = self.coordsToIndex(@intCast(startDestX), @intCast(dY));
                 const srcRowStart = frameBuffer.coordsToIndex(sX, sY);
-
-                // Calculate actual copy width for this row
                 const actualCopyWidth = @min(copyWidth, frameBuffer.width - sX);
 
                 @memcpy(self.buffer.char[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.char[srcRowStart .. srcRowStart + actualCopyWidth]);

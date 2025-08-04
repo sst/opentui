@@ -11,7 +11,7 @@ import {
   fg,
   underline,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { StyledTextRenderable } from "../objects"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
@@ -258,6 +258,6 @@ if (import.meta.main) {
   })
 
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
 }

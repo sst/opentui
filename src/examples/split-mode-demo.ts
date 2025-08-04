@@ -7,7 +7,7 @@ import {
   TextRenderable,
   GroupRenderable,
 } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
 
@@ -443,6 +443,6 @@ if (import.meta.main) {
   })
 
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
 }

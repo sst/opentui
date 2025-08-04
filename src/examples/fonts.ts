@@ -1,6 +1,6 @@
 import { CliRenderer, createCliRenderer, FrameBufferRenderable, RGBA, GroupRenderable, TextRenderable } from "../index"
 import { renderFontToFrameBuffer } from "../ui/ascii.font"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let scrollY = 0
 let contentHeight = 56
@@ -14,7 +14,7 @@ function updateScrollPosition(): void {
   const maxScroll = Math.max(0, contentHeight - renderer.terminalHeight)
   scrollY = Math.max(0, Math.min(scrollY, maxScroll))
   buffer.y = -scrollY
-  renderer.renderOnce()
+  renderer.needsUpdate = true
 }
 
 function handleKeyPress(key: string): void {
@@ -236,5 +236,5 @@ if (import.meta.main) {
     targetFps: 30,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

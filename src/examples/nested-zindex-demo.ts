@@ -1,5 +1,5 @@
 import { TextAttributes, createCliRenderer, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
 
 let globalKeyboardHandler: ((key: Buffer) => void) | null = null
@@ -317,5 +317,5 @@ if (import.meta.main) {
   })
 
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

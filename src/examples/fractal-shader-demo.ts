@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { CliRenderer, createCliRenderer, RGBA, ThreeCliRenderer, GroupRenderable, TextRenderable } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { Scene as ThreeScene, Mesh as ThreeMesh, PerspectiveCamera, PlaneGeometry, Vector2 } from "three"
 import { MeshBasicNodeMaterial } from "three/webgpu"
 import {
@@ -266,5 +266,5 @@ if (import.meta.main) {
     targetFps: 60,
   })
   await run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

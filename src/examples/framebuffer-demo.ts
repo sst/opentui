@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { CliRenderer, createCliRenderer, RGBA, TextAttributes, GroupRenderable, TextRenderable } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 /**
  * This demo showcases framebuffers with multiple
@@ -496,5 +496,5 @@ if (import.meta.main) {
     exitOnCtrlC: true,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
 }

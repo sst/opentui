@@ -1,6 +1,6 @@
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
 import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 class TimelineExample {
   private _mainTimeline: Timeline
@@ -632,6 +632,6 @@ if (import.meta.main) {
     targetFps: 60,
   })
 
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   run(renderer)
 }

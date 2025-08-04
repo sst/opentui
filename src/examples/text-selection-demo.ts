@@ -17,7 +17,7 @@ import {
   cyan,
   magenta,
 } from ".."
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
 let leftGroup: GroupRenderable | null = null
@@ -402,6 +402,6 @@ if (import.meta.main) {
     exitOnCtrlC: true,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
 }
