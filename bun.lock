@@ -7,7 +7,7 @@
         "bun-webgpu": "0.1.0",
         "jimp": "1.6.0",
         "three": "0.177.0",
-        "typegpu": "^0.6.0",
+        "typegpu": "^0.7.0",
         "yoga-layout": "3.2.1",
       },
       "devDependencies": {
@@ -194,7 +194,7 @@
 
     "typed-binary": ["typed-binary@4.3.2", "", {}, "sha512-HT3pIBM2njCZUmeczDaQUUErGiM6GXFCqMsHegE12HCoBtvHCkfR10JJni0TeGOTnLilTd6YFyj+YhflqQDrDQ=="],
 
-    "typegpu": ["typegpu@0.6.0", "", { "dependencies": { "tinyest": "~0.1.1", "typed-binary": "^4.3.1" } }, "sha512-ESfD+u5z7yDuQq6C4JeKszKmh+8IU6pgAXXPMp+rWnDNjz+UlGiLzMuFHtvSfUoTIedsg5bH18merMmzyLWeZg=="],
+    "typegpu": ["typegpu@0.7.0", "", { "dependencies": { "tinyest": "~0.1.1", "typed-binary": "^4.3.1" } }, "sha512-BueQ/74zgUCwqg/nmSxZ2aL7NFnv3jzANlUmgyKbGtKg0jkCu9kUAVtPjwdjWDmlah5WlzAAXi7qD5URlU6wtA=="],
 
     "typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
