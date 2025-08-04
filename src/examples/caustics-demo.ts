@@ -7,9 +7,7 @@ import * as d from "typegpu/data"
 import * as std from "typegpu/std"
 import { CLICanvas, type CliRenderer, GroupRenderable, SuperSampleType } from "../index"
 
-/**
- * With supersampling, the scene is rendered at 2x the resolution
- */
+/** With supersampling, the scene is rendered at 2x the resolution */
 const pixelRatio = 2
 /** Controls the angle of rotation for the pool tile texture */
 const angle = 0.2
@@ -17,7 +15,9 @@ const angle = 0.2
 const fogColor = d.vec3f(0.05, 0.2, 0.7)
 /** The ambient light color */
 const ambientColor = d.vec3f(0.2, 0.5, 1)
-const tileDensity = 2
+/** Color tint of the god rays */
+const godRayTint = d.vec3f(0.18, 0.3, 0.5)
+const tileDensity = 3
 
 const layout = tgpu.bindGroupLayout({
   aspect: { uniform: d.f32 },
@@ -63,8 +63,6 @@ const caustics = tgpu.fn(
   const noise = std.abs(perlin3d.sample(d.vec3f(uv2.mul(5), time)))
   return std.pow(d.vec3f(1 - noise), profile)
 })
-
-const clamp01 = tgpu.fn([d.f32], d.f32)((v) => std.clamp(v, 0, 1))
 
 /**
  * Returns a transformation matrix that represents an `angle` rotation
@@ -122,7 +120,6 @@ const mainFragment = tgpu["~unstable"].fragmentFn({
   // -- GOD RAYS --
 
   const godRayUv = rotateXY(-0.3).mul(uv).mul(d.vec2f(10, 2))
-  const godRayTint = d.vec3f(0.18, 0.3, 0.5)
   const godRay1 = perlin3d.sample(d.vec3f(godRayUv, time * 0.5)) + 1
   const godRay2 = perlin3d.sample(d.vec3f(godRayUv.mul(2), time * 0.3)) + 1
   const godRayBlend = std.pow(uv.y, 2) * 0.5
@@ -143,7 +140,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable("fractal-container", {
+  parentContainer = new GroupRenderable("shader-container", {
     x: 0,
     y: 0,
     zIndex: 10,
@@ -228,7 +225,7 @@ export function destroy(renderer: CliRenderer): void {
   root?.destroy()
 
   if (parentContainer) {
-    renderer.remove("fractal-container")
+    renderer.remove("shader-container")
     parentContainer = undefined
   }
 }
