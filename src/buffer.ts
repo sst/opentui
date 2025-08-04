@@ -78,11 +78,7 @@ export class OptimizedBuffer {
     this.buffer = buffer
   }
 
-  static create(
-    width: number,
-    height: number,
-    options: { respectAlpha?: boolean } = {},
-  ): OptimizedBuffer {
+  static create(width: number, height: number, options: { respectAlpha?: boolean } = {}): OptimizedBuffer {
     const lib = resolveRenderLib()
     const respectAlpha = options.respectAlpha || false
     return lib.createOptimizedBuffer(width, height, respectAlpha)
@@ -232,7 +228,15 @@ export class OptimizedBuffer {
     this.setCell(x, y, char, fg, bg, attributes)
   }
 
-  public drawText(text: string, x: number, y: number, fg: RGBA, bg?: RGBA, attributes: number = 0, selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA } | null): void {
+  public drawText(
+    text: string,
+    x: number,
+    y: number,
+    fg: RGBA,
+    bg?: RGBA,
+    attributes: number = 0,
+    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA } | null,
+  ): void {
     const method = this.useFFI ? this.drawTextFFI : this.drawTextLocal
     if (!selection) {
       method.call(this, text, x, y, fg, bg, attributes)
@@ -240,10 +244,10 @@ export class OptimizedBuffer {
     }
 
     const { start, end } = selection
-    
+
     let selectionBg: RGBA
     let selectionFg: RGBA
-    
+
     if (selection.bgColor) {
       selectionBg = selection.bgColor
       selectionFg = selection.fgColor || fg
@@ -252,17 +256,17 @@ export class OptimizedBuffer {
       selectionFg = defaultBg.a > 0 ? defaultBg : RGBA.fromValues(0, 0, 0, 1)
       selectionBg = fg
     }
-    
+
     if (start > 0) {
       const beforeText = text.slice(0, start)
       method.call(this, beforeText, x, y, fg, bg, attributes)
     }
-    
+
     if (end > start) {
       const selectedText = text.slice(start, end)
       method.call(this, selectedText, x + start, y, selectionFg, selectionBg, attributes)
     }
-    
+
     if (end < text.length) {
       const afterText = text.slice(end)
       method.call(this, afterText, x + end, y, fg, bg, attributes)
@@ -471,7 +475,7 @@ export class OptimizedBuffer {
     y: number,
     defaultFg: RGBA = RGBA.fromValues(1, 1, 1, 1),
     defaultBg: RGBA = RGBA.fromValues(0, 0, 0, 0),
-    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA }
+    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA },
   ): void {
     let currentX = x
     let currentY = y
@@ -487,9 +491,9 @@ export class OptimizedBuffer {
 
       let fg = styledChar.style.fg ? parseColor(styledChar.style.fg) : defaultFg
       let bg = styledChar.style.bg ? parseColor(styledChar.style.bg) : defaultBg
-      
+
       const isSelected = selection && charIndex >= selection.start && charIndex < selection.end
-      
+
       if (isSelected) {
         if (selection.bgColor) {
           bg = selection.bgColor
@@ -502,11 +506,11 @@ export class OptimizedBuffer {
           bg = temp
         }
       }
-      
+
       if (styledChar.style.reverse) {
         ;[fg, bg] = [bg, fg]
       }
-      
+
       const attributes = createTextAttributes({
         bold: styledChar.style.bold,
         italic: styledChar.style.italic,
@@ -525,7 +529,14 @@ export class OptimizedBuffer {
     }
   }
 
-  public drawStyledTextFragment(fragment: Fragment, x: number, y: number, defaultFg?: RGBA, defaultBg?: RGBA, selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA }): void {
+  public drawStyledTextFragment(
+    fragment: Fragment,
+    x: number,
+    y: number,
+    defaultFg?: RGBA,
+    defaultBg?: RGBA,
+    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA },
+  ): void {
     this.drawStyledTextFragmentLocal(fragment, x, y, defaultFg, defaultBg, selection)
   }
 
@@ -535,7 +546,7 @@ export class OptimizedBuffer {
     y: number,
     defaultFg?: RGBA,
     defaultBg?: RGBA,
-    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA }
+    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA },
   ): void {
     this.drawStyledTextLocal(fragment.toStyledText(), x, y, defaultFg, defaultBg, selection)
   }

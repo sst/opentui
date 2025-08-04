@@ -103,4 +103,3 @@ export interface SelectionState {
   isActive: boolean
   isSelecting: boolean
 }
-

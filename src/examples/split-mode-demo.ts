@@ -1,4 +1,12 @@
-import { createCliRenderer, StyledTextRenderable, Fragment, type CliRenderer, BoxRenderable, TextRenderable, GroupRenderable } from "../index"
+import {
+  createCliRenderer,
+  StyledTextRenderable,
+  Fragment,
+  type CliRenderer,
+  BoxRenderable,
+  TextRenderable,
+  GroupRenderable,
+} from "../index"
 import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
@@ -14,15 +22,19 @@ class SplitModeAnimations {
   private timeline: Timeline
   private renderer: CliRenderer
   private container: GroupRenderable
-  
+
   private systemLoadingBars: BoxRenderable[] = []
   private movingOrbs: BoxRenderable[] = []
   private statusCounters: TextRenderable[] = []
   private pulsingElements: BoxRenderable[] = []
-  
+
   private systemProgress = { cpu: 0, memory: 0, network: 0, disk: 0 }
   private counters = { packets: 0, connections: 0, processes: 0, uptime: 0 }
-  private orbPositions = [{ x: 2, y: 2 }, { x: 15, y: 3 }, { x: 30, y: 2 }]
+  private orbPositions = [
+    { x: 2, y: 2 },
+    { x: 15, y: 3 },
+    { x: 30, y: 2 },
+  ]
   private pulseValues = [1.0, 1.0, 1.0]
 
   constructor(renderer: CliRenderer) {
@@ -65,7 +77,7 @@ class SplitModeAnimations {
       { name: "CPU", color: "#6a5acd", y: 6 },
       { name: "MEM", color: "#4682b4", y: 7 },
       { name: "NET", color: "#20b2aa", y: 8 },
-      { name: "DSK", color: "#daa520", y: 9 }
+      { name: "DSK", color: "#daa520", y: 9 },
     ]
 
     systems.forEach((system, index) => {
@@ -121,7 +133,7 @@ class SplitModeAnimations {
     counterLabels.forEach((label, index) => {
       const counter = new TextRenderable(`counter-${index}`, {
         content: `${label}: 0`,
-        x: 4 + (index * 15),
+        x: 4 + index * 15,
         y: 15,
         fg: "#9a9acd",
         zIndex: 2,
@@ -150,7 +162,7 @@ class SplitModeAnimations {
     const pulseColors = ["#ff8a80", "#80cbc4", "#fff176"]
     pulseColors.forEach((color, index) => {
       const pulse = new BoxRenderable(`pulse-${index}`, {
-        x: this.renderer.width - 8 + (index * 2),
+        x: this.renderer.width - 8 + index * 2,
         y: 1,
         width: 1,
         height: 1,
@@ -176,14 +188,14 @@ class SplitModeAnimations {
         onUpdate: (values: JSAnimation) => {
           const progress = values.targets[0]
           const maxWidth = this.renderer.width - 16
-          
+
           this.systemLoadingBars[0].width = Math.max(1, Math.floor((progress.cpu / 100) * maxWidth))
           this.systemLoadingBars[1].width = Math.max(1, Math.floor((progress.memory / 100) * maxWidth))
           this.systemLoadingBars[2].width = Math.max(1, Math.floor((progress.network / 100) * maxWidth))
           this.systemLoadingBars[3].width = Math.max(1, Math.floor((progress.disk / 100) * maxWidth))
         },
       },
-      0
+      0,
     )
 
     this.timeline.add(
@@ -198,14 +210,14 @@ class SplitModeAnimations {
         onUpdate: (values: JSAnimation) => {
           const progress = values.targets[0]
           const maxWidth = this.renderer.width - 16
-          
+
           this.systemLoadingBars[0].width = Math.max(1, Math.floor((progress.cpu / 100) * maxWidth))
           this.systemLoadingBars[1].width = Math.max(1, Math.floor((progress.memory / 100) * maxWidth))
           this.systemLoadingBars[2].width = Math.max(1, Math.floor((progress.network / 100) * maxWidth))
           this.systemLoadingBars[3].width = Math.max(1, Math.floor((progress.disk / 100) * maxWidth))
         },
       },
-      4000
+      4000,
     )
 
     this.timeline.add(
@@ -225,7 +237,7 @@ class SplitModeAnimations {
           this.statusCounters[3].content = `UP: ${Math.floor(counters.uptime)}s`
         },
       },
-      0
+      0,
     )
 
     this.orbPositions.forEach((orbPos, index) => {
@@ -233,28 +245,28 @@ class SplitModeAnimations {
         orbPos,
         {
           x: this.renderer.width - 10,
-          duration: 2000 + (index * 400),
+          duration: 2000 + index * 400,
           ease: "inOutSine",
           onUpdate: (values: JSAnimation) => {
             const pos = values.targets[0]
             this.movingOrbs[index].x = Math.floor(pos.x)
           },
         },
-        index * 800
+        index * 800,
       )
 
       this.timeline.add(
         orbPos,
         {
           x: 2,
-          duration: 2000 + (index * 400),
+          duration: 2000 + index * 400,
           ease: "inOutSine",
           onUpdate: (values: JSAnimation) => {
             const pos = values.targets[0]
             this.movingOrbs[index].x = Math.floor(pos.x)
           },
         },
-        4000 + (index * 800)
+        4000 + index * 800,
       )
     })
 
@@ -274,7 +286,7 @@ class SplitModeAnimations {
             this.pulsingElements[index].height = Math.min(3, height)
           },
         },
-        index * 300
+        index * 300,
       )
     })
   }
@@ -307,19 +319,22 @@ export function run(rendererInstance: CliRenderer): void {
       bold: true,
     }),
   })
-  
+
   instructionsText = rendererInstance.createStyledText("instructions", {
     x: 2,
     y: 19,
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
-    fragment: Fragment.fromStyled("[+/-] Split height | [0] Toggle fullscreen | [M/L] Output speed | [U] Toggle mouse", {
-      fg: "#cccccc",
-      bg: "#1a1a2e",
-    }),
+    fragment: Fragment.fromStyled(
+      "[+/-] Split height | [0] Toggle fullscreen | [M/L] Output speed | [U] Toggle mouse",
+      {
+        fg: "#cccccc",
+        bg: "#1a1a2e",
+      },
+    ),
   })
-  
+
   rendererInstance.add(text)
   rendererInstance.add(instructionsText)
 
@@ -336,10 +351,10 @@ export function run(rendererInstance: CliRenderer): void {
   console.log("Console output should appear here and scroll naturally")
   console.log("The renderer should stay fixed at the bottom as a footer")
   console.log(`Test output running at ${testOutputInterval}ms intervals (use M/L to adjust speed)`)
-  console.log(`Mouse functionality: ${rendererInstance.useMouse ? 'enabled' : 'disabled'} (use U to toggle)`)
+  console.log(`Mouse functionality: ${rendererInstance.useMouse ? "enabled" : "disabled"} (use U to toggle)`)
 
   let messageCount = 0
-  
+
   const startTestOutput = () => {
     if (outputTimer) {
       clearInterval(outputTimer)
@@ -349,7 +364,7 @@ export function run(rendererInstance: CliRenderer): void {
       console.log(`Test output ${messageCount}: This should appear above the renderer and scroll naturally`)
     }, testOutputInterval)
   }
-  
+
   startTestOutput()
 
   keyHandler = (key) => {
@@ -381,7 +396,7 @@ export function run(rendererInstance: CliRenderer): void {
       console.log(`Test output speed decreased (interval: ${testOutputInterval}ms)`)
     } else if (key.name === "u") {
       rendererInstance.useMouse = !rendererInstance.useMouse
-      console.log(`Mouse functionality ${rendererInstance.useMouse ? 'enabled' : 'disabled'}`)
+      console.log(`Mouse functionality ${rendererInstance.useMouse ? "enabled" : "disabled"}`)
     }
   }
 
@@ -430,4 +445,4 @@ if (import.meta.main) {
   run(renderer)
   setupStandaloneDemoKeys(renderer)
   renderer.start()
-} 
+}

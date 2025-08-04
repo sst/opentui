@@ -51,7 +51,7 @@ export class TextRenderable extends Renderable {
     this.selectionHelper = new TextSelectionHelper(
       () => this.x,
       () => this.y,
-      () => this._content.length
+      () => this._content.length,
     )
 
     this.tabStopWidth = options.tabStopWidth || 2
@@ -305,7 +305,7 @@ export class StyledTextRenderable extends Renderable {
   private _selectionFg: RGBA | undefined
 
   private selectionHelper: TextSelectionHelper
-  
+
   private _plainText: string = ""
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
@@ -316,7 +316,7 @@ export class StyledTextRenderable extends Renderable {
       () => this.x,
       () => this.y,
       () => this._plainText.length,
-      () => this._lineInfo
+      () => this._lineInfo,
     )
 
     this.frameBuffer = buffer
@@ -368,13 +368,13 @@ export class StyledTextRenderable extends Renderable {
 
   private updateTextInfo(): void {
     this._plainText = this._fragment.toString()
-    
+
     this._lineInfo.lineStarts = [0]
     this._lineInfo.lineWidths = []
-    
+
     let currentLineWidth = 0
     for (let i = 0; i < this._plainText.length; i++) {
-      if (this._plainText[i] === '\n') {
+      if (this._plainText[i] === "\n") {
         this._lineInfo.lineWidths.push(currentLineWidth)
         this._lineInfo.lineStarts.push(i + 1)
         currentLineWidth = 0
@@ -383,7 +383,7 @@ export class StyledTextRenderable extends Renderable {
       }
     }
     this._lineInfo.lineWidths.push(currentLineWidth)
-    
+
     const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
     if (changed) {
       this.renderFragmentToBuffer()
@@ -416,15 +416,15 @@ export class StyledTextRenderable extends Renderable {
 
   private renderFragmentToBuffer(): void {
     this.frameBuffer.clear(this._defaultBg)
-    
+
     const selection = this.selectionHelper.getSelection()
     this.frameBuffer.drawStyledTextFragment(
-      this._fragment, 
-      0, 
-      0, 
-      this._defaultFg, 
+      this._fragment,
+      0,
+      0,
+      this._defaultFg,
       this._defaultBg,
-      selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined
+      selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined,
     )
   }
 

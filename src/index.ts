@@ -1,13 +1,13 @@
 import { ANSI } from "./ansi"
 import { FrameBufferRenderable, StyledTextRenderable, type FrameBufferOptions, type StyledTextOptions } from "./objects"
 import { Renderable } from "./Renderable"
-import { 
-  type ColorInput, 
-  type CursorStyle, 
-  DebugOverlayCorner, 
-  type RenderContext, 
-  RGBA, 
-  type SelectionState, 
+import {
+  type ColorInput,
+  type CursorStyle,
+  DebugOverlayCorner,
+  type RenderContext,
+  RGBA,
+  type SelectionState,
 } from "./types"
 import { parseColor } from "./utils"
 import type { Pointer } from "bun:ffi"
@@ -132,8 +132,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const width = stdout.columns || 80
   const height = stdout.rows || 24
-  const renderHeight = config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
-  
+  const renderHeight =
+    config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
+
   const ziglib = resolveRenderLib()
   const rendererPtr = ziglib.createRenderer(width, renderHeight)
   if (!rendererPtr) {
@@ -248,13 +249,13 @@ export class CliRenderer extends Renderable {
   private currentSelection: Selection | null = null
   private selectionState: SelectionState | null = null
   private selectionContainers: Renderable[] = []
-  
+
   private _splitHeight: number = 0
   private renderOffset: number = 0
-  
+
   private _terminalWidth: number = 0
   private _terminalHeight: number = 0
-  
+
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
   private captureCallback: () => void = () => {
     if (this._splitHeight > 0) {
@@ -263,7 +264,7 @@ export class CliRenderer extends Renderable {
   }
 
   private _useConsole: boolean = true
-  
+
   constructor(
     lib: RenderLib,
     rendererPtr: Pointer,
@@ -288,7 +289,7 @@ export class CliRenderer extends Renderable {
     this._splitHeight = config.experimental_splitHeight || 0
 
     if (this._splitHeight > 0) {
-      capture.on('write', this.captureCallback)
+      capture.on("write", this.captureCallback)
       this.renderOffset = height - this._splitHeight
       this.height = this._splitHeight
       lib.setRenderOffset(rendererPtr, this.renderOffset)
@@ -316,7 +317,7 @@ export class CliRenderer extends Renderable {
     }
 
     this.stdout.write = this.interceptStdoutWrite.bind(this)
-    
+
     // Handle terminal resize
     process.on("SIGWINCH", () => {
       const width = this.stdout.columns || 80
@@ -346,10 +347,10 @@ export class CliRenderer extends Renderable {
         this.stop()
       }
     })
-    
+
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
-    
+
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = animationFrameId++
       this.animationRequest.set(id, callback)
@@ -428,9 +429,9 @@ export class CliRenderer extends Renderable {
 
   public set useMouse(useMouse: boolean) {
     if (this._useMouse === useMouse) return // No change needed
-    
+
     this._useMouse = useMouse
-    
+
     if (useMouse) {
       this.enableMouse()
     } else {
@@ -444,17 +445,17 @@ export class CliRenderer extends Renderable {
 
   public set experimental_splitHeight(splitHeight: number) {
     if (splitHeight < 0) splitHeight = 0
-    
+
     const prevSplitHeight = this._splitHeight
-    
+
     if (splitHeight > 0) {
       this._splitHeight = splitHeight
       this.renderOffset = this._terminalHeight - this._splitHeight
       this.height = this._splitHeight
-      
+
       if (prevSplitHeight === 0) {
         this.useConsole = false
-        capture.on('write', this.captureCallback)
+        capture.on("write", this.captureCallback)
         const freedLines = this._terminalHeight - this._splitHeight
         const scrollDown = ANSI.scrollDown(freedLines)
         this.writeOut(scrollDown)
@@ -470,11 +471,11 @@ export class CliRenderer extends Renderable {
     } else {
       if (prevSplitHeight > 0) {
         this.flushStdoutCache(this._terminalHeight, true)
-        
-        capture.off('write', this.captureCallback)
+
+        capture.off("write", this.captureCallback)
         this.useConsole = true
       }
-      
+
       this._splitHeight = 0
       this.renderOffset = 0
       this.height = this._terminalHeight
@@ -484,7 +485,7 @@ export class CliRenderer extends Renderable {
     this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
     this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
-    
+
     this._console.resize(this.width, this.height)
     this.emit("resize", this.width, this.height)
     this.needsUpdate = true
@@ -493,15 +494,15 @@ export class CliRenderer extends Renderable {
   private interceptStdoutWrite = (chunk: any, encoding?: any, callback?: any): boolean => {
     const text = chunk.toString()
 
-    capture.write('stdout', text)
+    capture.write("stdout", text)
     if (this._splitHeight > 0) {
       this.needsUpdate = true
     }
-    
-    if (typeof callback === 'function') {
+
+    if (typeof callback === "function") {
       process.nextTick(callback)
     }
-    
+
     return true
   }
 
@@ -512,21 +513,24 @@ export class CliRenderer extends Renderable {
 
   private flushStdoutCache(space: number, force: boolean = false): boolean {
     if (capture.output.length === 0 && !force) return false
-    
+
     const output = capture.claimOutput()
-    
+
     const rendererStartLine = this._terminalHeight - this._splitHeight
     const flush = ANSI.moveCursorAndClear(rendererStartLine, 1)
-    
+
     const outputLine = this._terminalHeight - this._splitHeight
     const move = ANSI.moveCursor(outputLine, 1)
-    
+
     const backgroundColor = this.backgroundColor.toInts()
-    const newlines = ' '.repeat(this.width) + '\n'.repeat(space)
-    const clear = ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) + newlines + ANSI.resetBackground
-    
+    const newlines = " ".repeat(this.width) + "\n".repeat(space)
+    const clear =
+      ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
+      newlines +
+      ANSI.resetBackground
+
     this.writeOut(flush + move + output + clear)
-    
+
     return true
   }
 
@@ -534,7 +538,7 @@ export class CliRenderer extends Renderable {
     this.writeOut(ANSI.enableSGRMouseMode)
     this.writeOut(ANSI.enableMouseTracking)
     this.writeOut(ANSI.enableButtonEventTracking)
-    
+
     if (this.enableMouseMovement) {
       this.writeOut(ANSI.enableAnyEventTracking)
     }
@@ -583,7 +587,7 @@ export class CliRenderer extends Renderable {
 
       this.emit("key", data)
     })
-  
+
     if (this._useAlternateScreen) {
       this.writeOut(ANSI.switchToAlternateScreen)
     }
@@ -600,57 +604,68 @@ export class CliRenderer extends Renderable {
         }
         mouseEvent.y -= this.renderOffset
       }
-      
+
       const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
       const sameElement = maybeRenderableId === this.lastOverRenderableNum
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
-      if (mouseEvent.type === 'down' && mouseEvent.button === MouseButton.LEFT) {
-        if (maybeRenderable && maybeRenderable.selectable && 
-            maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)) {
+      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
+        if (
+          maybeRenderable &&
+          maybeRenderable.selectable &&
+          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
+        ) {
           this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
           return true
         }
       }
 
-      if (mouseEvent.type === 'drag' && this.selectionState?.isSelecting) {
+      if (mouseEvent.type === "drag" && this.selectionState?.isSelecting) {
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
         return true
       }
 
-      if (mouseEvent.type === 'up' && this.selectionState?.isSelecting) {
+      if (mouseEvent.type === "up" && this.selectionState?.isSelecting) {
         this.finishSelection()
         return true
       }
 
-      if (mouseEvent.type === 'down' && mouseEvent.button === MouseButton.LEFT && this.selectionState) {
+      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.selectionState) {
         this.clearSelection()
       }
 
-      if (!sameElement && (mouseEvent.type === 'drag' || mouseEvent.type === 'move')) {
+      if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
         if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
-          const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: 'out' })
+          const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
           this.lastOverRenderable.processMouseEvent(event)
         }
         this.lastOverRenderable = maybeRenderable
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, type: 'over', source: this.capturedRenderable })
+          const event = new MouseEvent(maybeRenderable, {
+            ...mouseEvent,
+            type: "over",
+            source: this.capturedRenderable,
+          })
           maybeRenderable.processMouseEvent(event)
         }
       }
 
-      if (this.capturedRenderable && mouseEvent.type !== 'up') {
+      if (this.capturedRenderable && mouseEvent.type !== "up") {
         const event = new MouseEvent(this.capturedRenderable, mouseEvent)
         this.capturedRenderable.processMouseEvent(event)
         return true
       }
 
-      if (this.capturedRenderable && mouseEvent.type === 'up') {
-        const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: 'drag-end' })
+      if (this.capturedRenderable && mouseEvent.type === "up") {
+        const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
         this.capturedRenderable.processMouseEvent(event)
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, type: 'drop', source: this.capturedRenderable })
+          const event = new MouseEvent(maybeRenderable, {
+            ...mouseEvent,
+            type: "drop",
+            source: this.capturedRenderable,
+          })
           maybeRenderable.processMouseEvent(event)
         }
         this.lastOverRenderable = this.capturedRenderable
@@ -659,7 +674,7 @@ export class CliRenderer extends Renderable {
       }
 
       if (maybeRenderable) {
-        if (mouseEvent.type === 'drag') {
+        if (mouseEvent.type === "drag") {
           this.capturedRenderable = maybeRenderable
         }
         const event = new MouseEvent(maybeRenderable, mouseEvent)
@@ -734,7 +749,7 @@ export class CliRenderer extends Renderable {
     if (width === this._terminalWidth && height === this._terminalHeight) return
 
     const prevWidth = this._terminalWidth
-    
+
     this._terminalWidth = width
     this._terminalHeight = height
 
@@ -754,7 +769,7 @@ export class CliRenderer extends Renderable {
       this.width = width
       this.height = height
     }
-    
+
     this._resolution = await getTerminalPixelResolution(this.stdin, this.stdout)
     this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
@@ -1040,7 +1055,7 @@ export class CliRenderer extends Renderable {
       // to output the flush with the buffered writer, after the render is done.
       force = this.flushStdoutCache(this._splitHeight)
     }
-    
+
     this.renderingNative = true
     this.lib.render(this.rendererPtr, force)
     this.renderingNative = false
@@ -1101,8 +1116,6 @@ export class CliRenderer extends Renderable {
     return this.currentSelection !== null
   }
 
-
-
   public clearSelection(): void {
     if (this.selectionState) {
       this.selectionState = null
@@ -1115,14 +1128,14 @@ export class CliRenderer extends Renderable {
   private startSelection(startRenderable: Renderable, x: number, y: number): void {
     this.clearSelection()
     this.selectionContainers.push(startRenderable.parent || this)
-    
+
     this.selectionState = {
       anchor: { x, y },
       focus: { x, y },
       isActive: true,
-      isSelecting: true
+      isSelecting: true,
     }
-    
+
     this.currentSelection = new Selection({ x, y }, { x, y })
     this.notifySelectablesOfSelectionChange()
   }
@@ -1130,31 +1143,31 @@ export class CliRenderer extends Renderable {
   private updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
     if (this.selectionState) {
       this.selectionState.focus = { x, y }
-      
+
       if (this.selectionContainers.length > 0) {
         const currentContainer = this.selectionContainers[this.selectionContainers.length - 1]
-        
+
         if (!currentRenderable || !this.isWithinContainer(currentRenderable, currentContainer)) {
           const parentContainer = currentContainer.parent || this
           this.selectionContainers.push(parentContainer)
         } else if (currentRenderable && this.selectionContainers.length > 1) {
           let containerIndex = this.selectionContainers.indexOf(currentRenderable)
-          
+
           if (containerIndex === -1) {
             const immediateParent = currentRenderable.parent || this
             containerIndex = this.selectionContainers.indexOf(immediateParent)
           }
-          
+
           if (containerIndex !== -1 && containerIndex < this.selectionContainers.length - 1) {
             this.selectionContainers = this.selectionContainers.slice(0, containerIndex + 1)
           }
         }
       }
-      
+
       if (this.currentSelection) {
         this.currentSelection = new Selection(this.selectionState.anchor, this.selectionState.focus)
       }
-      
+
       this.notifySelectablesOfSelectionChange()
     }
   }
@@ -1171,7 +1184,7 @@ export class CliRenderer extends Renderable {
   private finishSelection(): void {
     if (this.selectionState) {
       this.selectionState.isSelecting = false
-      this.emit('selection', this.currentSelection)
+      this.emit("selection", this.currentSelection)
     }
   }
 
@@ -1179,37 +1192,42 @@ export class CliRenderer extends Renderable {
     let normalizedSelection: SelectionState | null = null
     if (this.selectionState) {
       normalizedSelection = { ...this.selectionState }
-      
-      if (normalizedSelection.anchor.y > normalizedSelection.focus.y || 
-          (normalizedSelection.anchor.y === normalizedSelection.focus.y && 
-          normalizedSelection.anchor.x > normalizedSelection.focus.x)) {
+
+      if (
+        normalizedSelection.anchor.y > normalizedSelection.focus.y ||
+        (normalizedSelection.anchor.y === normalizedSelection.focus.y &&
+          normalizedSelection.anchor.x > normalizedSelection.focus.x)
+      ) {
         const temp = normalizedSelection.anchor
         normalizedSelection.anchor = normalizedSelection.focus
         normalizedSelection.focus = {
           x: temp.x + 1,
-          y: temp.y
+          y: temp.y,
         }
       }
     }
-    
+
     const selectedRenderables: Renderable[] = []
-    
+
     for (const [, renderable] of Renderable.renderablesByNumber) {
       if (renderable.visible && renderable.selectable) {
-        const currentContainer = this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : null
+        const currentContainer =
+          this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : null
         let hasSelection = false
         if (!currentContainer || this.isWithinContainer(renderable, currentContainer)) {
           hasSelection = renderable.onSelectionChanged(normalizedSelection)
         } else {
-          hasSelection = renderable.onSelectionChanged(normalizedSelection ? { ...normalizedSelection, isActive: false } : null)
+          hasSelection = renderable.onSelectionChanged(
+            normalizedSelection ? { ...normalizedSelection, isActive: false } : null,
+          )
         }
-        
+
         if (hasSelection) {
           selectedRenderables.push(renderable)
         }
       }
     }
-    
+
     if (this.currentSelection) {
       this.currentSelection.updateSelectedRenderables(selectedRenderables)
     }

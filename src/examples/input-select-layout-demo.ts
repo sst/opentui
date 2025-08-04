@@ -212,19 +212,23 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexShrink: 0,
   })
 
-  footer = new LabelElement("footer", "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit", {
-    x: 0,
-    y: 0,
-    zIndex: 0,
-    width: "auto",
-    height: 3,
-    backgroundColor: "#1e40af",
-    textColor: "#dbeafe",
-    border: true,
-    borderColor: "#1d4ed8",
-    flexGrow: 0,
-    flexShrink: 0,
-  })
+  footer = new LabelElement(
+    "footer",
+    "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit",
+    {
+      x: 0,
+      y: 0,
+      zIndex: 0,
+      width: "auto",
+      height: 3,
+      backgroundColor: "#1e40af",
+      textColor: "#dbeafe",
+      border: true,
+      borderColor: "#1d4ed8",
+      flexGrow: 0,
+      flexShrink: 0,
+    },
+  )
 
   selectContainer.add(leftSelect)
   selectContainer.add(rightSelect)
@@ -298,8 +302,8 @@ function handleResize(width: number, height: number): void {
 }
 
 function updateFocus(): void {
-  focusableElements.forEach(element => element.blur())
-  
+  focusableElements.forEach((element) => element.blur())
+
   if (focusableElements[currentFocusIndex]) {
     focusableElements[currentFocusIndex].focus()
   }
@@ -317,7 +321,6 @@ function handleKeyPress(key: ParsedKey): void {
     updateFocus()
     return
   }
-
 }
 
 export function run(rendererInstance: CliRenderer): void {
@@ -362,4 +365,4 @@ if (import.meta.main) {
   run(renderer)
   setupStandaloneDemoKeys(renderer)
   renderer.start()
-} 
+}

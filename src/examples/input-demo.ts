@@ -60,13 +60,13 @@ Type: Enter text in focused field`
 
   const nameStatus = nameInput?.isFocused() ? "FOCUSED" : "BLURRED"
   const nameColor = nameInput?.isFocused() ? "#00FF00" : "#FF0000"
-  
+
   const emailStatus = emailInput?.isFocused() ? "FOCUSED" : "BLURRED"
   const emailColor = emailInput?.isFocused() ? "#00FF00" : "#FF0000"
-  
+
   const passwordStatus = passwordInput?.isFocused() ? "FOCUSED" : "BLURRED"
   const passwordColor = passwordInput?.isFocused() ? "#00FF00" : "#FF0000"
-  
+
   const commentStatus = commentInput?.isFocused() ? "FOCUSED" : "BLURRED"
   const commentColor = commentInput?.isFocused() ? "#00FF00" : "#FF0000"
 
@@ -114,11 +114,11 @@ function validatePassword(value: string): boolean {
 function navigateToInput(index: number): void {
   const currentActive = getActiveInput()
   currentActive?.blur()
-  
+
   activeInputIndex = Math.max(0, Math.min(index, inputElements.length - 1))
   const newActive = getActiveInput()
   newActive?.focus()
-  
+
   lastActionText = `Switched to ${getInputName(newActive)} input`
   lastActionColor = "#FFCC00"
   updateDisplays()
@@ -127,7 +127,7 @@ function navigateToInput(index: number): void {
 function cycleBorderStyle(): void {
   const activeInput = getActiveInput()
   if (!activeInput) return
-  
+
   let currentBorder: BorderStyle | "none" = activeInput.getBorderStyle()
   if (activeInput.getBorder() === false) {
     currentBorder = "none"
@@ -135,7 +135,7 @@ function cycleBorderStyle(): void {
   const borderStyles: (BorderStyle | "none")[] = ["single", "double", "rounded", "heavy", "none"]
   const currentIndex = borderStyles.indexOf(currentBorder)
   const nextIndex = (currentIndex + 1) % borderStyles.length
-  
+
   if (borderStyles[nextIndex] === "none") {
     activeInput.setBorder(false, "single")
   } else {
@@ -149,11 +149,11 @@ function resetInputs(): void {
   emailInput?.setValue("")
   passwordInput?.setValue("")
   commentInput?.setValue("")
-  
+
   lastActionText = "All inputs reset to empty values"
   lastActionColor = "#FF00FF"
   updateDisplays()
-  
+
   setTimeout(() => {
     lastActionColor = "#FFCC00"
     updateDisplays()
@@ -301,10 +301,15 @@ export function run(rendererInstance: CliRenderer): void {
 
     input.on(InputElementEvents.ENTER, (value: string) => {
       const inputName = getInputName(input)
-      const isValid = inputName === "Name" ? validateName(value) :
-                     inputName === "Email" ? validateEmail(value) :
-                     inputName === "Password" ? validatePassword(value) : true
-      
+      const isValid =
+        inputName === "Name"
+          ? validateName(value)
+          : inputName === "Email"
+            ? validateEmail(value)
+            : inputName === "Password"
+              ? validatePassword(value)
+              : true
+
       lastActionText = `*** ${inputName} SUBMITTED: "${value}" ${isValid ? "(Valid)" : "(Invalid)"} ***`
       lastActionColor = isValid ? "#00FF00" : "#FF0000"
       updateDisplays()
@@ -326,8 +331,8 @@ export function run(rendererInstance: CliRenderer): void {
   updateDisplays()
 
   keyboardHandler = (key) => {
-    const anyInputFocused = inputElements.some(input => input.isFocused())
-    
+    const anyInputFocused = inputElements.some((input) => input.isFocused())
+
     if (key.name === "tab") {
       if (key.shift) {
         // Navigate backward
@@ -379,7 +384,7 @@ export function destroy(rendererInstance: CliRenderer): void {
     keyboardHandler = null
   }
 
-  inputElements.forEach(input => {
+  inputElements.forEach((input) => {
     if (input) {
       rendererInstance.remove(input.id)
       input.destroy()
@@ -407,4 +412,4 @@ if (import.meta.main) {
   run(renderer)
   setupStandaloneDemoKeys(renderer)
   renderer.start()
-} 
+}

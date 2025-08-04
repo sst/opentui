@@ -23,7 +23,7 @@ export const ANSI = {
 
   enableMouseTracking: "\x1b[?1000h",
   disableMouseTracking: "\x1b[?1000l",
-  enableButtonEventTracking: "\x1b[?1002h", 
+  enableButtonEventTracking: "\x1b[?1002h",
   disableButtonEventTracking: "\x1b[?1002l",
   enableAnyEventTracking: "\x1b[?1003h",
   disableAnyEventTracking: "\x1b[?1003l",

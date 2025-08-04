@@ -67,14 +67,14 @@ export abstract class LayoutElement extends Renderable {
   protected parentLayout: ILayout | null = null
   protected _positionType: "absolute" | "relative" = "relative"
   protected _position: Position = {}
-  
+
   constructor(id: string, options: Omit<RenderableOptions, "width" | "height"> & Partial<LayoutOptions>) {
     const renderableOptions: RenderableOptions = {
       ...options,
       width: typeof options.width === "number" ? options.width : 0,
       height: typeof options.height === "number" ? options.height : 0,
     }
-    
+
     super(id, renderableOptions)
 
     this.layoutNode = createTrackedNode({ renderable: this } as any)
@@ -250,7 +250,7 @@ export abstract class LayoutElement extends Renderable {
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
     const sizeChanged = this.width !== newWidth || this.height !== newHeight
-    
+
     this.width = newWidth
     this.height = newHeight
 
@@ -527,7 +527,7 @@ export abstract class BufferedElement extends Element {
       this.frameBuffer = null
       return
     }
-    
+
     try {
       this.frameBuffer = OptimizedBuffer.create(this.width, this.height, {
         respectAlpha: this.backgroundColor.a < 1.0,

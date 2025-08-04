@@ -222,11 +222,7 @@ export interface RenderLib {
   render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
-  createOptimizedBuffer: (
-    width: number,
-    height: number,
-    respectAlpha?: boolean,
-  ) => OptimizedBuffer
+  createOptimizedBuffer: (width: number, height: number, respectAlpha?: boolean) => OptimizedBuffer
   destroyOptimizedBuffer: (bufferPtr: Pointer) => void
   drawFrameBuffer: (
     targetBufferPtr: Pointer,
@@ -564,11 +560,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.render(renderer, force)
   }
 
-  public createOptimizedBuffer(
-    width: number,
-    height: number,
-    respectAlpha: boolean = false,
-  ): OptimizedBuffer {
+  public createOptimizedBuffer(width: number, height: number, respectAlpha: boolean = false): OptimizedBuffer {
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha)
     if (!bufferPtr) {
       throw new Error("Failed to create optimized buffer")

@@ -153,8 +153,8 @@ class TerminalConsoleCache extends EventEmitter {
 }
 
 export const capture = new Capture()
-const mockStdout = new CapturedWritableStream('stdout', capture);
-const mockStderr = new CapturedWritableStream('stderr', capture);
+const mockStdout = new CapturedWritableStream("stdout", capture)
+const mockStderr = new CapturedWritableStream("stderr", capture)
 
 global.console = new console.Console({
   stdout: mockStdout,
@@ -163,9 +163,9 @@ global.console = new console.Console({
   inspectOptions: {
     compact: false,
     breakLength: 80,
-    depth: 2
-  }
-});
+    depth: 2,
+  },
+})
 
 const terminalConsoleCache = new TerminalConsoleCache()
 process.on("exit", () => {
