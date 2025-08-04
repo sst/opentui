@@ -7,7 +7,7 @@ import { toArrayBuffer } from "bun:ffi"
 import { Jimp } from "jimp"
 
 const WORKGROUP_SIZE = 4
-const SUPERSAMPLING_COMPUTE_SHADER = await createSuperSamplingComputeShader(WORKGROUP_SIZE)
+const SUPERSAMPLING_COMPUTE_SHADER = createSuperSamplingComputeShader(WORKGROUP_SIZE)
 
 export enum SuperSampleAlgorithm {
   STANDARD = 0,
