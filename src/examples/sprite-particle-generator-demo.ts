@@ -8,6 +8,7 @@ import {
   ThreeCliRenderer,
   GroupRenderable,
   TextRenderable,
+  FrameBufferRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
@@ -30,6 +31,7 @@ import mainCharRunPath from "./assets/main_char_run_loop.png" with { type: "imag
 let engine: ThreeCliRenderer | null = null
 let scene: THREE.Scene | null = null
 let framebuffer: OptimizedBuffer | null = null
+let framebufferRenderableRef: FrameBufferRenderable | null = null
 let spriteAnimator: SpriteAnimator | null = null
 let resourceManager: SpriteResourceManager | null = null
 let generators: Record<string, SpriteParticleGenerator> = {}
@@ -51,19 +53,18 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermHeight = renderer.terminalHeight
 
   parentContainer = new GroupRenderable("particle-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
-  ;({ frameBuffer: framebuffer } = renderer.createFrameBuffer("particle-main", {
+  renderer.root.add(parentContainer)
+  const framebufferRenderable = new FrameBufferRenderable("particle-main", {
     width: initialTermWidth,
     height: initialTermHeight,
-    x: 0,
-    y: 0,
     zIndex: 10,
-  }))
+  })
+  renderer.root.add(framebufferRenderable)
+  framebufferRenderableRef = framebufferRenderable
+  framebuffer = framebufferRenderable.frameBuffer
 
   engine = new ThreeCliRenderer(renderer, {
     width: initialTermWidth,
@@ -84,8 +85,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
   instructionsText = new TextRenderable("particle-instructions", {
     content:
       "'g'(burst), 'a'(auto), 's'(stop), 'x'(clear), '1'(3D Static), '2'(2D Static), '3'(3D Animated), '4'(Custom), '5'(2D Animated)",
-    x: 1,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 1,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -93,8 +97,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   particleCountText = new TextRenderable("particle-count", {
     content: "Particles: 0",
-    x: 1,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -102,8 +109,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   configInfoText = new TextRenderable("particle-config-info", {
     content: "Mode: 3D Static | Auto-spawning",
-    x: 1,
-    y: 3,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 3,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -440,13 +450,14 @@ export function destroy(renderer: CliRenderer): void {
     resourceManager = null
   }
 
-  if (framebuffer) {
-    renderer.remove("particle-main")
-    framebuffer = null
+  if (framebufferRenderableRef) {
+    renderer.root.remove(framebufferRenderableRef.id)
+    framebufferRenderableRef = null
   }
+  framebuffer = null
 
   if (parentContainer) {
-    renderer.remove("particle-container")
+    renderer.root.remove("particle-container")
     parentContainer = null
   }
 

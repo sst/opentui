@@ -46,8 +46,11 @@ class ConsoleButton extends BoxRenderable {
     const borderColor = RGBA.fromValues(color.r * 1.3, color.g * 1.3, color.b * 1.3, 1.0)
 
     super(id, {
-      x,
-      y,
+      positionType: "absolute",
+      position: {
+        left: x,
+        top: y,
+      },
       width,
       height,
       zIndex: 100,
@@ -121,7 +124,7 @@ class ConsoleButton extends BoxRenderable {
 
     switch (this.logType) {
       case "log":
-        console.log(`🚀 Console Log #${count} triggered at ${timestamp}`, {
+        console.log(`Console Log #${count} triggered at ${timestamp}`, {
           data: "This is a regular log message",
           count,
           timestamp: new Date(),
@@ -130,7 +133,7 @@ class ConsoleButton extends BoxRenderable {
         break
 
       case "info":
-        console.info(`ℹ️ Info Log #${count} triggered at ${timestamp}`, {
+        console.info(`Info Log #${count} triggered at ${timestamp}`, {
           message: "This is an informational message",
           details: "Info messages are used for general information",
           level: "INFO",
@@ -139,7 +142,7 @@ class ConsoleButton extends BoxRenderable {
         break
 
       case "warn":
-        console.warn(`⚠️ Warning Log #${count} triggered at ${timestamp}`, {
+        console.warn(`Warning Log #${count} triggered at ${timestamp}`, {
           warning: "This is a warning message",
           reason: "Something might need attention",
           severity: "WARNING",
@@ -149,7 +152,7 @@ class ConsoleButton extends BoxRenderable {
         break
 
       case "error":
-        console.error(`❌ Error Log #${count} triggered at ${timestamp}`, {
+        console.error(`Error Log #${count} triggered at ${timestamp}`, {
           error: "This is an error message",
           details: "Something went wrong (simulated)",
           errorCode: `ERR_${count}`,
@@ -159,7 +162,7 @@ class ConsoleButton extends BoxRenderable {
         break
 
       case "debug":
-        console.debug(`🐛 Debug Log #${count} triggered at ${timestamp}`, {
+        console.debug(`Debug Log #${count} triggered at ${timestamp}`, {
           debug: "This is a debug message",
           variables: { x: Math.random(), y: Math.random(), count },
           state: "debugging",
@@ -183,33 +186,42 @@ export function run(renderer: CliRenderer): void {
 
   titleText = new TextRenderable("console_demo_title", {
     content: "Console Logging Demo",
-    x: 2,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 1,
+    },
     fg: RGBA.fromInts(255, 215, 135),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
   })
-  renderer.add(titleText)
+  renderer.root.add(titleText)
 
   instructionsText = new TextRenderable("console_demo_instructions", {
     content:
       "Click buttons to trigger different console log levels • Press ` to toggle console • Escape: return to menu",
-    x: 2,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
     fg: RGBA.fromInts(176, 196, 222),
     zIndex: 1000,
   })
-  renderer.add(instructionsText)
+  renderer.root.add(instructionsText)
 
   statusText = new TextRenderable("console_demo_status", {
     content: "Click any button to start logging...",
-    x: 2,
-    y: 4,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 4,
+    },
     fg: RGBA.fromInts(144, 238, 144),
     attributes: TextAttributes.ITALIC,
     zIndex: 1000,
   })
-  renderer.add(statusText)
+  renderer.root.add(statusText)
 
   const logColor = RGBA.fromInts(160, 160, 170, 255)
   const infoColor = RGBA.fromInts(100, 180, 200, 255)
@@ -231,56 +243,62 @@ export function run(renderer: CliRenderer): void {
   ]
 
   for (const button of consoleButtons) {
-    renderer.add(button)
+    renderer.root.add(button)
   }
 
   const decorText1 = new TextRenderable("decor1", {
     content: "✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦",
-    x: 2,
-    y: startY + 12,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: startY + 12,
+    },
     fg: RGBA.fromInts(100, 120, 150, 120),
     zIndex: 50,
   })
-  renderer.add(decorText1)
+  renderer.root.add(decorText1)
 
   const decorText2 = new TextRenderable("decor2", {
     content: "Console will appear at the bottom. Use Ctrl+P/Ctrl+O to change position, +/- to resize.",
-    x: 2,
-    y: startY + 14,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: startY + 14,
+    },
     fg: RGBA.fromInts(120, 140, 160, 200),
     attributes: TextAttributes.ITALIC,
     zIndex: 50,
   })
-  renderer.add(decorText2)
+  renderer.root.add(decorText2)
 
-  console.log("🎮 Console Demo initialized! Click the buttons above to test different log levels.")
+  console.log("Console Demo initialized! Click the buttons above to test different log levels.")
 }
 
 export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   if (titleText) {
-    renderer.remove("console_demo_title")
+    renderer.root.remove("console_demo_title")
     titleText = null
   }
 
   if (instructionsText) {
-    renderer.remove("console_demo_instructions")
+    renderer.root.remove("console_demo_instructions")
     instructionsText = null
   }
 
   if (statusText) {
-    renderer.remove("console_demo_status")
+    renderer.root.remove("console_demo_status")
     statusText = null
   }
 
   for (const button of consoleButtons) {
-    renderer.remove(button.id)
+    renderer.root.remove(button.id)
   }
   consoleButtons = []
 
-  renderer.remove("decor1")
-  renderer.remove("decor2")
+  renderer.root.remove("decor1")
+  renderer.root.remove("decor2")
 
   buttonCounters = {
     log: 0,

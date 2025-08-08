@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, ThreeCliRenderer, GroupRenderable, TextRenderable } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  RGBA,
+  ThreeCliRenderer,
+  GroupRenderable,
+  TextRenderable,
+  FrameBufferRenderable,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -48,20 +56,18 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermHeight = renderer.terminalHeight
 
   const parentContainer = new GroupRenderable("sprite-animation-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
-  const { frameBuffer: framebuffer } = renderer.createFrameBuffer("main", {
+  const framebufferRenderable = new FrameBufferRenderable("main", {
     width: initialTermWidth,
     height: initialTermHeight,
-    x: 0,
-    y: 0,
     zIndex: 10,
   })
+  renderer.root.add(framebufferRenderable)
+  const { frameBuffer: framebuffer } = framebufferRenderable
 
   const engine = new ThreeCliRenderer(renderer, {
     width: initialTermWidth,
@@ -117,8 +123,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const cameraModeText = new TextRenderable("cameraModeText", {
     content: `Camera: Perspective (Press 'c' to switch)`,
-    x: 1,
-    y: 3,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 3,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -377,8 +386,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const instructionsText = new TextRenderable("instructions", {
     content:
       "Controls: c=camera, e=explode, r=restore, p=stress test, x=explode random, t=debug, u=supersample, `=console, ESC=back",
-    x: 1,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 1,
+    },
     fg: "#AAAAAA",
     zIndex: 20,
   })
@@ -414,8 +426,8 @@ export function destroy(renderer: CliRenderer): void {
     demoState.explosionManager.disposeAll()
     demoState.engine.destroy()
 
-    renderer.remove("main")
-    renderer.remove("sprite-animation-container")
+    renderer.root.remove("main")
+    renderer.root.remove("sprite-animation-container")
     renderer.clearFrameCallbacks()
 
     demoState = null

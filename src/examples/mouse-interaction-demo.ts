@@ -49,8 +49,11 @@ class DraggableBox extends BoxRenderable {
     const bgColor = RGBA.fromValues(color.r, color.g, color.b, 0.8)
     const borderColor = RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 1.0)
     super(id, {
-      x,
-      y,
+      positionType: "absolute",
+      position: {
+        left: x,
+        top: y,
+      },
       width,
       height,
       zIndex: 100,
@@ -73,10 +76,10 @@ class DraggableBox extends BoxRenderable {
   protected renderSelf(buffer: OptimizedBuffer): void {
     this.width = Math.round(this.baseWidth * this.bounceScale.value)
     this.height = Math.round(this.baseHeight * this.bounceScale.value)
-    
+
     this.x = Math.round(this.centerX - this.width / 2)
     this.y = Math.round(this.centerY - this.height / 2)
-    
+
     super.renderSelf(buffer)
 
     if (this.isDragging) {
@@ -143,18 +146,22 @@ class DraggableBox extends BoxRenderable {
       case "drop":
         this.gotText = event.source?.id || ""
         const timeline = createTimeline()
-        
+
         timeline.add(this.bounceScale, {
           value: 1.5,
           duration: 200,
           ease: "outExpo",
         })
-        
-        timeline.add(this.bounceScale, {
-          value: 1.0,
-          duration: 400,
-          ease: "outExpo",
-        }, 150)
+
+        timeline.add(
+          this.bounceScale,
+          {
+            value: 1.0,
+            duration: 400,
+            ease: "outExpo",
+          },
+          150,
+        )
         break
     }
   }
@@ -172,23 +179,11 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
   private readonly CURSOR_COLOR = RGBA.fromInts(255, 255, 255, 255)
 
   constructor(id: string, renderer: CliRenderer) {
-    super(
-      id,
-      renderer.createFrameBuffer(id, {
-        width: renderer.terminalWidth,
-        height: renderer.terminalHeight,
-        x: 0,
-        y: 0,
-        zIndex: 0,
-      }).frameBuffer,
-      {
-        width: renderer.terminalWidth,
-        height: renderer.terminalHeight,
-        x: 0,
-        y: 0,
-        zIndex: 0,
-      },
-    )
+    super(id, {
+      width: renderer.terminalWidth,
+      height: renderer.terminalHeight,
+      zIndex: 0,
+    })
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -278,36 +273,42 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   const backgroundColor = RGBA.fromInts(15, 15, 35, 255)
   renderer.setBackgroundColor(backgroundColor)
-  
+
   renderer.setFrameCallback(async (deltaTime: number) => {
     engine.update(deltaTime)
   })
 
   titleText = new TextRenderable("mouse_demo_title", {
     content: "Mouse Interaction Demo with Draggable Objects",
-    x: 2,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 1,
+    },
     fg: RGBA.fromInts(72, 209, 204),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
   })
-  renderer.add(titleText)
+  renderer.root.add(titleText)
 
-  instructionsText = renderer.createStyledText("mouse_demo_instructions", {
+  instructionsText = new StyledTextRenderable("mouse_demo_instructions", {
     fragment: t`Drag boxes around • Move mouse: turquoise trails
 Hold + move: orange drag trails • Click cells: toggle pink
 Escape: menu`,
-    x: 2,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
     width: renderer.width - 4,
     height: 3,
     defaultFg: RGBA.fromInts(176, 196, 222),
     zIndex: 1000,
   })
-  renderer.add(instructionsText)
+  renderer.root.add(instructionsText)
 
   demoContainer = new MouseInteractionFrameBuffer("mouse-demo-buffer", renderer)
-  renderer.add(demoContainer)
+  renderer.root.add(demoContainer)
 
   draggableBoxes = [
     new DraggableBox("drag-box-1", 10, 8, 18, 8, RGBA.fromInts(200, 100, 150), "Box 1"),
@@ -317,7 +318,7 @@ Escape: menu`,
   ]
 
   for (const box of draggableBoxes) {
-    renderer.add(box)
+    renderer.root.add(box)
   }
 }
 
@@ -326,22 +327,22 @@ export function destroy(renderer: CliRenderer): void {
 
   if (demoContainer) {
     demoContainer.clearState()
-    renderer.remove("mouse-demo-buffer")
+    renderer.root.remove("mouse-demo-buffer")
     demoContainer = null
   }
 
   if (titleText) {
-    renderer.remove("mouse_demo_title")
+    renderer.root.remove("mouse_demo_title")
     titleText = null
   }
 
   if (instructionsText) {
-    renderer.remove("mouse_demo_instructions")
+    renderer.root.remove("mouse_demo_instructions")
     instructionsText = null
   }
 
   for (const box of draggableBoxes) {
-    renderer.remove(box.id)
+    renderer.root.remove(box.id)
   }
   draggableBoxes = []
 }

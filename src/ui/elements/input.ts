@@ -15,8 +15,6 @@ export interface InputElementOptions extends ElementOptions {
 export enum InputElementEvents {
   INPUT = "input",
   CHANGE = "change",
-  FOCUSED = "focused",
-  BLURRED = "blurred",
   ENTER = "enter",
 }
 
@@ -43,7 +41,7 @@ export class InputElement extends BufferedElement {
   }
 
   private updateCursorPosition(): void {
-    if (!this.focused) return
+    if (!this._focused) return
 
     const hasBorder = this.border !== false
     const contentX = hasBorder ? 1 : 0
@@ -107,7 +105,7 @@ export class InputElement extends BufferedElement {
       this.frameBuffer.drawText(visibleText, contentX, contentY, textColor)
     }
 
-    if (this.focused) {
+    if (this._focused) {
       this.updateCursorPosition()
     }
   }
@@ -250,7 +248,7 @@ export class InputElement extends BufferedElement {
   }
 
   protected destroySelf(): void {
-    if (this.focused) {
+    if (this._focused) {
       CliRenderer.setCursorPosition(0, 0, false)
     }
     super.destroySelf()

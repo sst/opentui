@@ -14,7 +14,7 @@ function updateScrollPosition(): void {
   const maxScroll = Math.max(0, contentHeight - renderer.terminalHeight)
   scrollY = Math.max(0, Math.min(scrollY, maxScroll))
   buffer.y = -scrollY
-  renderer.needsUpdate = true
+  renderer.needsUpdate()
 }
 
 function handleKeyPress(key: string): void {
@@ -40,20 +40,18 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.setBackgroundColor("#000028")
 
   parentContainer = new GroupRenderable("fonts-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
-  buffer = renderer.createFrameBuffer("ascii-demo", {
+  buffer = new FrameBufferRenderable("ascii-demo", {
     width: renderer.terminalWidth,
     height: contentHeight,
-    x: 0,
-    y: 0,
+    positionType: "absolute",
     zIndex: 10,
   })
+  rendererInstance.root.add(buffer)
   buffer.frameBuffer.clear()
 
   // Reset scroll position
@@ -196,8 +194,11 @@ export function run(rendererInstance: CliRenderer): void {
 
   const scrollInstructions = new TextRenderable("scroll-instructions", {
     content: "USE J/K OR ARROW KEYS TO SCROLL",
-    x: renderer.terminalWidth - 32,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: renderer.terminalWidth - 32,
+      top: 1,
+    },
     fg: RGBA.fromInts(255, 255, 0, 255),
     zIndex: 25,
   })
@@ -218,10 +219,10 @@ export function run(rendererInstance: CliRenderer): void {
 export function destroy(rendererInstance: CliRenderer): void {
   process.stdin.removeListener("data", handleKeyPress)
 
-  rendererInstance.remove("ascii-demo")
+  rendererInstance.root.remove("ascii-demo")
 
   if (parentContainer) {
-    rendererInstance.remove("fonts-container")
+    rendererInstance.root.remove("fonts-container")
     parentContainer = null
   }
 

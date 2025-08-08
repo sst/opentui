@@ -45,12 +45,10 @@ class SplitModeAnimations {
     })
 
     this.container = new GroupRenderable("animation-container", {
-      x: 0,
-      y: 0,
       zIndex: 5,
       visible: true,
     })
-    this.renderer.add(this.container)
+    this.renderer.root.add(this.container)
 
     this.setupUI()
     this.setupAnimations()
@@ -59,8 +57,11 @@ class SplitModeAnimations {
 
   private setupUI(): void {
     const statusPanel = new BoxRenderable("status-panel", {
-      x: 2,
-      y: 5,
+      positionType: "absolute",
+      position: {
+        left: 2,
+        top: 5,
+      },
       width: this.renderer.width - 6,
       height: 8,
       bg: "#1a1a2e",
@@ -83,16 +84,22 @@ class SplitModeAnimations {
     systems.forEach((system, index) => {
       const label = new TextRenderable(`${system.name.toLowerCase()}-label`, {
         content: `${system.name}:`,
-        x: 4,
-        y: system.y,
+        positionType: "absolute",
+        position: {
+          left: 4,
+          top: system.y,
+        },
         fg: system.color,
         zIndex: 2,
       })
       this.container.add(label)
 
       const bgBar = new BoxRenderable(`${system.name.toLowerCase()}-bg`, {
-        x: 9,
-        y: system.y,
+        positionType: "absolute",
+        position: {
+          left: 9,
+          top: system.y,
+        },
         width: this.renderer.width - 16,
         height: 1,
         bg: "#333333",
@@ -102,8 +109,11 @@ class SplitModeAnimations {
       this.container.add(bgBar)
 
       const progressBar = new BoxRenderable(`${system.name.toLowerCase()}-progress`, {
-        x: 9,
-        y: system.y,
+        positionType: "absolute",
+        position: {
+          left: 9,
+          top: system.y,
+        },
         width: 1,
         height: 1,
         bg: system.color,
@@ -115,8 +125,11 @@ class SplitModeAnimations {
     })
 
     const statsPanel = new BoxRenderable("stats-panel", {
-      x: 2,
-      y: 14,
+      positionType: "absolute",
+      position: {
+        left: 2,
+        top: 14,
+      },
       width: this.renderer.width - 6,
       height: 4,
       bg: "#2d1b2e",
@@ -133,8 +146,11 @@ class SplitModeAnimations {
     counterLabels.forEach((label, index) => {
       const counter = new TextRenderable(`counter-${index}`, {
         content: `${label}: 0`,
-        x: 4 + index * 15,
-        y: 15,
+        positionType: "absolute",
+        position: {
+          left: 4 + index * 15,
+          top: 15,
+        },
         fg: "#9a9acd",
         zIndex: 2,
       })
@@ -146,8 +162,11 @@ class SplitModeAnimations {
     const orbColors = ["#ff6b9d", "#4ecdc4", "#ffe66d"]
     orbColors.forEach((color, index) => {
       const orb = new BoxRenderable(`orb-${index}`, {
-        x: 2,
-        y: 2,
+        positionType: "absolute",
+        position: {
+          left: 2,
+          top: 2,
+        },
         width: 3,
         height: 1,
         bg: color,
@@ -162,8 +181,11 @@ class SplitModeAnimations {
     const pulseColors = ["#ff8a80", "#80cbc4", "#fff176"]
     pulseColors.forEach((color, index) => {
       const pulse = new BoxRenderable(`pulse-${index}`, {
-        x: this.renderer.width - 8 + index * 2,
-        y: 1,
+        positionType: "absolute",
+        position: {
+          left: this.renderer.width - 8 + index * 2,
+          top: 1,
+        },
         width: 1,
         height: 1,
         bg: color,
@@ -297,7 +319,7 @@ class SplitModeAnimations {
 
   public destroy(): void {
     this.timeline.pause()
-    this.renderer.remove("animation-container")
+    this.renderer.root.remove("animation-container")
   }
 }
 
@@ -307,9 +329,12 @@ export function run(rendererInstance: CliRenderer): void {
 
   animationSystem = new SplitModeAnimations(rendererInstance)
 
-  text = rendererInstance.createStyledText("demo-text", {
-    x: 2,
-    y: 0,
+  text = new StyledTextRenderable("demo-text", {
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 0,
+    },
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
@@ -320,9 +345,12 @@ export function run(rendererInstance: CliRenderer): void {
     }),
   })
 
-  instructionsText = rendererInstance.createStyledText("instructions", {
-    x: 2,
-    y: 19,
+  instructionsText = new StyledTextRenderable("instructions", {
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 19,
+    },
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
@@ -335,8 +363,8 @@ export function run(rendererInstance: CliRenderer): void {
     ),
   })
 
-  rendererInstance.add(text)
-  rendererInstance.add(instructionsText)
+  rendererInstance.root.add(text)
+  rendererInstance.root.add(instructionsText)
 
   rendererInstance.setFrameCallback(async (deltaTime: number) => {
     if (animationSystem) {
@@ -420,12 +448,12 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (text) {
-    rendererInstance.remove(text.id)
+    rendererInstance.root.remove(text.id)
     text = null
   }
 
   if (instructionsText) {
-    rendererInstance.remove(instructionsText.id)
+    rendererInstance.root.remove(instructionsText.id)
     instructionsText = null
   }
 

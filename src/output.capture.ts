@@ -8,10 +8,14 @@ export type CapturedOutput = {
 
 export class Capture extends EventEmitter {
   // TODO: Cache could rather be a buffer to avoid join()?
-  public output: CapturedOutput[] = []
+  private output: CapturedOutput[] = []
 
   constructor() {
     super()
+  }
+
+  get size(): number {
+    return this.output.length
   }
 
   write(stream: "stdout" | "stderr", data: string): void {

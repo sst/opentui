@@ -2,6 +2,7 @@ import {
   createCliRenderer,
   TabSelectElement,
   TabSelectElementEvents,
+  RenderableEvents,
   GroupRenderable,
   type TabSelectOption,
   type CliRenderer,
@@ -11,7 +12,7 @@ import {
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import type { StyledTextRenderable } from "../objects"
+import { StyledTextRenderable } from "../objects"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
 let tabSelect: TabSelectElement | null = null
@@ -64,8 +65,8 @@ W: Toggle wrap selection`
     ? `Selected: ${currentSelection.name} (${currentSelection.value}) - Index: ${tabSelect.getSelectedIndex()}`
     : "No selection"
 
-  const focusText = tabSelect.isFocused() ? "Tab selector is FOCUSED" : "Tab selector is BLURRED"
-  const focusColor = tabSelect.isFocused() ? "#00FF00" : "#FF0000"
+  const focusText = tabSelect.focused ? "Tab selector is FOCUSED" : "Tab selector is BLURRED"
+  const focusColor = tabSelect.focused ? "#00FF00" : "#FF0000"
 
   const statusText = t`${fg("#00FF00")(selectionText)}
 
@@ -100,16 +101,17 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.setBackgroundColor("#001122")
 
   parentContainer = new GroupRenderable("tab-select-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   tabSelect = new TabSelectElement("main-tabs", {
-    x: 5,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 2,
+    },
     width: 70,
     options: tabOptions,
     zIndex: 100,
@@ -127,26 +129,32 @@ export function run(rendererInstance: CliRenderer): void {
     wrapSelection: false,
   })
 
-  renderer.add(tabSelect)
+  renderer.root.add(tabSelect)
 
-  keyLegendDisplay = renderer.createStyledText("key-legend", {
+  keyLegendDisplay = new StyledTextRenderable("key-legend", {
     fragment: t``,
     width: 40,
     height: 10,
-    x: 5,
-    y: 8,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 8,
+    },
     zIndex: 50,
     defaultFg: "#AAAAAA",
   })
   parentContainer.add(keyLegendDisplay)
 
   // Create status display
-  statusDisplay = renderer.createStyledText("status-display", {
+  statusDisplay = new StyledTextRenderable("status-display", {
     fragment: t``,
     width: 80,
     height: 6,
-    x: 5,
-    y: 19,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 19,
+    },
     zIndex: 50,
   })
   parentContainer.add(statusDisplay)
@@ -159,11 +167,11 @@ export function run(rendererInstance: CliRenderer): void {
     updateDisplays()
   })
 
-  tabSelect.on(TabSelectElementEvents.FOCUSED, () => {
+  tabSelect.on(RenderableEvents.FOCUSED, () => {
     updateDisplays()
   })
 
-  tabSelect.on(TabSelectElementEvents.BLURRED, () => {
+  tabSelect.on(RenderableEvents.BLURRED, () => {
     updateDisplays()
   })
 
@@ -171,7 +179,7 @@ export function run(rendererInstance: CliRenderer): void {
 
   keyboardHandler = (key) => {
     if (key.name === "f") {
-      if (tabSelect?.isFocused()) {
+      if (tabSelect?.focused) {
         tabSelect.blur()
       } else {
         tabSelect?.focus()
@@ -204,13 +212,13 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (tabSelect) {
-    rendererInstance.remove(tabSelect.id)
+    rendererInstance.root.remove(tabSelect.id)
     tabSelect.destroy()
     tabSelect = null
   }
 
   if (parentContainer) {
-    rendererInstance.remove("tab-select-container")
+    rendererInstance.root.remove("tab-select-container")
     parentContainer = null
   }
 

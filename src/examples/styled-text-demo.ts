@@ -11,7 +11,7 @@ import {
   fg,
   GroupRenderable,
 } from "../index"
-import type { StyledTextRenderable } from "../objects"
+import { StyledTextRenderable } from "../objects"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let renderer: CliRenderer | null = null
@@ -25,12 +25,10 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.setBackgroundColor("#001122")
 
   parentContainer = new GroupRenderable("styled-text-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   counter = 0
 
@@ -41,12 +39,15 @@ With a ${bold(blue("window"))},
 And a ${blue("corvette")}
 And everything is blue`
 
-  const houseDisplay = renderer.createStyledText("house-text", {
+  const houseDisplay = new StyledTextRenderable("house-text", {
     fragment: houseText,
     width: 30,
     height: 6,
-    x: 2,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
     zIndex: 1,
   })
   parentContainer.add(houseDisplay)
@@ -57,12 +58,15 @@ ${bold(green("SUCCESS:"))} Data loaded
 ${bold(fg("#FFA500")("WARNING:"))} Low memory
 ${bgYellow(fg("black")(" NOTICE "))} System update available`
 
-  const statusDisplay = renderer.createStyledText("status-text", {
+  const statusDisplay = new StyledTextRenderable("status-text", {
     fragment: statusText,
     width: 50,
     height: 6,
-    x: 2,
-    y: 8,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 8,
+    },
     zIndex: 1,
   })
   parentContainer.add(statusDisplay)
@@ -81,12 +85,15 @@ ${underline("Dynamic:")} ${bold(fg("#FF6B6B")(Math.sin(counter * 0.1) > 0 ? "UP"
       if (dynamicDisplay) {
         dynamicDisplay.fragment = dynamicText
       } else {
-        const newDynamicDisplay = renderer!.createStyledText("dynamic-text", {
+        const newDynamicDisplay = new StyledTextRenderable("dynamic-text", {
           fragment: dynamicText,
           width: 40,
           height: 4,
-          x: 2,
-          y: 15,
+          positionType: "absolute",
+          position: {
+            left: 2,
+            top: 15,
+          },
           zIndex: 1,
         })
         parentContainer?.add(newDynamicDisplay)
@@ -106,12 +113,15 @@ ${underline("Features demonstrated:")}
 • Custom hex colors like ${fg("#FF6B6B")("this red")}
 • Dynamic updates`
 
-  const instructionsDisplay = renderer.createStyledText("instructions", {
+  const instructionsDisplay = new StyledTextRenderable("instructions", {
     fragment: instructionsText,
     width: 60,
     height: 12,
-    x: 40,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 40,
+      top: 2,
+    },
     zIndex: 1,
     defaultFg: "#CCCCCC",
   })
@@ -124,17 +134,20 @@ Boolean: ${red(true)}
 Float: ${blue((3.14159).toFixed(2))}
 Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
 
-  const typesDisplay = renderer.createStyledText("types-text", {
+  const typesDisplay = new StyledTextRenderable("types-text", {
     fragment: typesText,
     width: 30,
     height: 6,
-    x: 2,
-    y: 20,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 20,
+    },
     zIndex: 1,
   })
   parentContainer.add(typesDisplay)
 
-  renderer.needsUpdate = true
+  renderer.needsUpdate()
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
@@ -144,7 +157,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (parentContainer) {
-    rendererInstance.remove("styled-text-container")
+    rendererInstance.root.remove("styled-text-container")
     parentContainer = null
   }
 

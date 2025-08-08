@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, TextAttributes, GroupRenderable, TextRenderable } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  RGBA,
+  TextAttributes,
+  GroupRenderable,
+  TextRenderable,
+  FrameBufferRenderable,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 /**
@@ -30,17 +38,18 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor(backgroundColor)
 
   parentContainer = new GroupRenderable("framebuffer-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   const titleText = new TextRenderable("framebuffer_title", {
     content: "FrameBuffer Demo",
-    x: 2,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 1,
+    },
     fg: RGBA.fromInts(255, 255, 100),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -49,8 +58,11 @@ export function run(renderer: CliRenderer): void {
 
   const subtitleText = new TextRenderable("framebuffer_subtitle", {
     content: "Showcasing framebuffers with transparency and partial drawing",
-    x: 2,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
     fg: RGBA.fromInts(200, 200, 200),
     zIndex: 1000,
   })
@@ -58,21 +70,25 @@ export function run(renderer: CliRenderer): void {
 
   const instructionsText = new TextRenderable("framebuffer_instructions", {
     content: "Press Escape to return to menu",
-    x: 2,
-    y: 3,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 3,
+    },
     fg: RGBA.fromInts(150, 150, 150),
     zIndex: 1000,
   })
   parentContainer.add(instructionsText)
 
-  const { frameBuffer: patternBuffer } = renderer.createFrameBuffer("pattern", {
+  const patternBufferRenderable = new FrameBufferRenderable("pattern", {
     width: renderer.terminalWidth,
     height: renderer.terminalHeight,
-    x: 0,
-    y: 0,
+    positionType: "absolute",
     zIndex: 0,
     respectAlpha: true,
   })
+  renderer.root.add(patternBufferRenderable)
+  const { frameBuffer: patternBuffer } = patternBufferRenderable
 
   for (let y = 0; y < patternBuffer.getHeight(); y++) {
     for (let x = 0; x < patternBuffer.getWidth(); x++) {
@@ -82,13 +98,17 @@ export function run(renderer: CliRenderer): void {
     }
   }
 
-  const boxObj = renderer.createFrameBuffer("moving-box", {
+  const boxObj = new FrameBufferRenderable("moving-box", {
     width: 20,
     height: 10,
-    x: 10,
-    y: 10,
+    positionType: "absolute",
+    position: {
+      left: 10,
+      top: 10,
+    },
     zIndex: 1,
   })
+  renderer.root.add(boxObj)
   const boxBuffer = boxObj.frameBuffer
 
   const boxColor = RGBA.fromInts(80, 30, 100, 128)
@@ -110,14 +130,19 @@ export function run(renderer: CliRenderer): void {
 
   boxBuffer.drawText("Moving Box", 5, 2, RGBA.fromInts(255, 255, 255), RGBA.fromInts(100, 40, 120), TextAttributes.BOLD)
 
-  const { frameBuffer: overlayBuffer } = renderer.createFrameBuffer("overlay", {
+  const overlayBufferRenderable = new FrameBufferRenderable("overlay", {
     width: 40,
     height: 15,
-    x: 30,
-    y: 15,
+    positionType: "absolute",
+    position: {
+      left: 30,
+      top: 15,
+    },
     zIndex: 2,
     respectAlpha: true,
   })
+  renderer.root.add(overlayBufferRenderable)
+  const { frameBuffer: overlayBuffer } = overlayBufferRenderable
 
   for (let y = 0; y < overlayBuffer.getHeight(); y++) {
     for (let x = 0; x < overlayBuffer.getWidth(); x++) {
@@ -151,13 +176,17 @@ export function run(renderer: CliRenderer): void {
   )
   overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(0, 120, 180, 200))
 
-  const ballObj = renderer.createFrameBuffer("ball", {
+  const ballObj = new FrameBufferRenderable("ball", {
     width: 3,
     height: 3,
-    x: 20,
-    y: 20,
+    positionType: "absolute",
+    position: {
+      left: 20,
+      top: 20,
+    },
     zIndex: 3,
   })
+  renderer.root.add(ballObj)
   const ballBuffer = ballObj.frameBuffer
 
   ballBuffer.drawText(" ", 0, 0, RGBA.fromInts(255, 255, 255), RGBA.fromInts(200, 50, 50))
@@ -170,13 +199,17 @@ export function run(renderer: CliRenderer): void {
   ballBuffer.drawText(" ", 1, 2, RGBA.fromInts(255, 255, 255), RGBA.fromInts(200, 50, 50))
   ballBuffer.drawText(" ", 2, 2, RGBA.fromInts(255, 255, 255), RGBA.fromInts(200, 50, 50))
 
-  const resizableObj = renderer.createFrameBuffer("resizable-box", {
+  const resizableObj = new FrameBufferRenderable("resizable-box", {
     width: 10,
     height: 5,
-    x: 50,
-    y: 8,
+    positionType: "absolute",
+    position: {
+      left: 50,
+      top: 8,
+    },
     zIndex: 3,
   })
+  renderer.root.add(resizableObj)
   const resizableBuffer = resizableObj.frameBuffer
 
   function drawResizableContent() {
@@ -217,14 +250,14 @@ export function run(renderer: CliRenderer): void {
   drawResizableContent()
 
   // Create a large source framebuffer for partial drawing demonstration
-  const sourceObj = renderer.createFrameBuffer("large-source", {
+  const sourceObj = new FrameBufferRenderable("large-source", {
     width: 40,
     height: 20,
-    x: 0,
-    y: 0,
+    positionType: "absolute",
     zIndex: -1,
+    visible: false,
   })
-  sourceObj.visible = false
+  renderer.root.add(sourceObj)
   const sourceBuffer = sourceObj.frameBuffer
 
   // Fill source buffer with a pattern we can crop from
@@ -240,35 +273,53 @@ export function run(renderer: CliRenderer): void {
   }
 
   // Create smaller framebuffers to demonstrate partial drawing
-  const { frameBuffer: cropBuffer1 } = renderer.createFrameBuffer("crop-demo-1", {
+  const cropBuffer1Renderable = new FrameBufferRenderable("crop-demo-1", {
     width: 12,
     height: 8,
-    x: 5,
-    y: 35,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 35,
+    },
     zIndex: 4,
   })
+  renderer.root.add(cropBuffer1Renderable)
+  const { frameBuffer: cropBuffer1 } = cropBuffer1Renderable
 
-  const { frameBuffer: cropBuffer2 } = renderer.createFrameBuffer("crop-demo-2", {
+  const cropBuffer2Renderable = new FrameBufferRenderable("crop-demo-2", {
     width: 15,
     height: 6,
-    x: 25,
-    y: 35,
+    positionType: "absolute",
+    position: {
+      left: 25,
+      top: 35,
+    },
     zIndex: 4,
   })
+  renderer.root.add(cropBuffer2Renderable)
+  const { frameBuffer: cropBuffer2 } = cropBuffer2Renderable
 
-  const { frameBuffer: cropBuffer3 } = renderer.createFrameBuffer("crop-demo-3", {
+  const cropBuffer3Renderable = new FrameBufferRenderable("crop-demo-3", {
     width: 10,
     height: 10,
-    x: 45,
-    y: 35,
+    positionType: "absolute",
+    position: {
+      left: 45,
+      top: 35,
+    },
     zIndex: 4,
   })
+  renderer.root.add(cropBuffer3Renderable)
+  const { frameBuffer: cropBuffer3 } = cropBuffer3Renderable
 
   // Label for the crop demo
   const cropDemoLabel = new TextRenderable("crop_demo_label", {
     content: "Partial FrameBuffer Drawing Demo:",
-    x: 5,
-    y: 34,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 34,
+    },
     fg: RGBA.fromInts(255, 255, 200),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -450,8 +501,11 @@ export function run(renderer: CliRenderer): void {
 
   const debugInstructionsText = new TextRenderable("framebuffer_debug_instructions", {
     content: "Press 1-4 to change corner | Escape: Back to menu",
-    x: 2,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
     fg: RGBA.fromInts(200, 200, 200),
     zIndex: 1000,
   })
@@ -462,19 +516,19 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   if (parentContainer) {
-    renderer.remove("framebuffer-container")
+    renderer.root.remove("framebuffer-container")
     parentContainer = null
   }
 
-  renderer.remove("pattern")
-  renderer.remove("moving-box")
-  renderer.remove("overlay")
-  renderer.remove("ball")
-  renderer.remove("resizable-box")
-  renderer.remove("large-source")
-  renderer.remove("crop-demo-1")
-  renderer.remove("crop-demo-2")
-  renderer.remove("crop-demo-3")
+  renderer.root.remove("pattern")
+  renderer.root.remove("moving-box")
+  renderer.root.remove("overlay")
+  renderer.root.remove("ball")
+  renderer.root.remove("resizable-box")
+  renderer.root.remove("large-source")
+  renderer.root.remove("crop-demo-1")
+  renderer.root.remove("crop-demo-2")
+  renderer.root.remove("crop-demo-3")
 
   boxX = 10
   boxY = 10

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, ThreeCliRenderer, GroupRenderable, TextRenderable } from "../index"
+import { CliRenderer, ThreeCliRenderer, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -68,20 +68,18 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermHeight = renderer.terminalHeight
 
   const parentContainer = new GroupRenderable("planck-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
-  const { frameBuffer: framebuffer } = renderer.createFrameBuffer("planck-main", {
+  const framebufferRenderable = new FrameBufferRenderable("planck-main", {
     width: initialTermWidth,
     height: initialTermHeight,
-    x: 0,
-    y: 0,
     zIndex: 10,
   })
+  renderer.root.add(framebufferRenderable)
+  const { frameBuffer: framebuffer } = framebufferRenderable
 
   const engine = new ThreeCliRenderer(renderer, {
     width: initialTermWidth,
@@ -173,8 +171,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
   // Create UI elements
   const instructionsText = new TextRenderable("planck-instructions", {
     content: "Planck.js 2D Demo - Falling Crates (Instanced Sprites)",
-    x: 1,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 1,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -182,8 +183,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const controlsText = new TextRenderable("planck-controls", {
     content: "Press: [Space] spawn crate, [E] explode crate, [R] reset, [T] toggle debug, [C] clear crates",
-    x: 1,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -191,8 +195,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statsText = new TextRenderable("planck-stats", {
     content: "",
-    x: 1,
-    y: 3,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 3,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -464,7 +471,7 @@ export function destroy(renderer: CliRenderer): void {
 
   renderer.removeFrameCallback(demoState.frameCallback)
   process.stdin.removeListener("data", demoState.keyHandler)
-  renderer.removeListener("resize", demoState.resizeHandler)
+  renderer.root.removeListener("resize", demoState.resizeHandler)
 
   clearInterval(demoState.statsInterval)
 
@@ -476,8 +483,8 @@ export function destroy(renderer: CliRenderer): void {
   demoState.physicsExplosionManager.disposeAll()
   demoState.engine.destroy()
 
-  renderer.remove("planck-main")
-  renderer.remove("planck-container")
+  renderer.root.remove("planck-main")
+  renderer.root.remove("planck-container")
 
   demoState = null
   console.log("Planck physics demo cleaned up!")

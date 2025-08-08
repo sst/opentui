@@ -9,6 +9,7 @@ import {
   ThreeCliRenderer,
   GroupRenderable,
   TextRenderable,
+  FrameBufferRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
@@ -43,20 +44,18 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const HEIGHT = renderer.terminalHeight
 
   parentContainer = new GroupRenderable("texture-loading-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
-  const { frameBuffer: framebuffer } = renderer.createFrameBuffer("main", {
+  const framebufferRenderable = new FrameBufferRenderable("main", {
     width: WIDTH,
     height: HEIGHT,
-    x: 0,
-    y: 0,
     zIndex: 10,
   })
+  renderer.root.add(framebufferRenderable)
+  const { frameBuffer: framebuffer } = framebufferRenderable
 
   engine = new ThreeCliRenderer(renderer, {
     width: WIDTH,
@@ -100,8 +99,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const titleText = new TextRenderable("demo-title", {
     content: "Texture Loading Demo",
-    x: 0,
-    y: 0,
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -109,8 +106,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("status", {
     content: "Loading texture...",
-    x: 0,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: 1,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -118,8 +118,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const controlsText = new TextRenderable("controls", {
     content: "WASD: Move | QE: Rotate | ZX: Zoom | R: Reset | Space: Toggle rotation | Escape: Return",
-    x: 0,
-    y: HEIGHT - 2,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: HEIGHT - 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -275,10 +278,10 @@ export function destroy(renderer: CliRenderer): void {
     keyListener = null
   }
 
-  renderer.remove("main")
+  renderer.root.remove("main")
 
   if (parentContainer) {
-    renderer.remove("texture-loading-container")
+    renderer.root.remove("texture-loading-container")
     parentContainer = null
   }
 

@@ -208,6 +208,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    dumpBuffers: {
+      args: ["ptr", "i64"],
+      returns: "void",
+    },
+    dumpStdoutBuffer: {
+      args: ["ptr", "i64"],
+      returns: "void",
+    },
   })
 }
 
@@ -299,6 +307,8 @@ export interface RenderLib {
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
   dumpHitGrid: (renderer: Pointer) => void
+  dumpBuffers: (renderer: Pointer, timestamp?: number) => void
+  dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -561,6 +571,10 @@ class FFIRenderLib implements RenderLib {
   }
 
   public createOptimizedBuffer(width: number, height: number, respectAlpha: boolean = false): OptimizedBuffer {
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
+    }
+
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha)
     if (!bufferPtr) {
       throw new Error("Failed to create optimized buffer")
@@ -610,6 +624,16 @@ class FFIRenderLib implements RenderLib {
 
   public dumpHitGrid(renderer: Pointer): void {
     this.opentui.symbols.dumpHitGrid(renderer)
+  }
+
+  public dumpBuffers(renderer: Pointer, timestamp?: number): void {
+    const ts = timestamp ?? Date.now()
+    this.opentui.symbols.dumpBuffers(renderer, ts)
+  }
+
+  public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
+    const ts = timestamp ?? Date.now()
+    this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
   }
 }
 

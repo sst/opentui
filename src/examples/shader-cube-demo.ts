@@ -7,6 +7,7 @@ import {
   GroupRenderable,
   TextRenderable,
   BoxRenderable,
+  FrameBufferRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA } from "../types"
@@ -90,12 +91,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   // Create parent container for all UI elements
   const parentContainer = new GroupRenderable("shader-cube-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   // Initialize effect instances
   const distortionEffectInstance = new DistortionEffect()
@@ -122,8 +121,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   // Box in the background to show alpha channel works
   const backgroundBox = new BoxRenderable("shader-cube-box", {
-    x: 5,
-    y: 5,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 5,
+    },
     width: WIDTH - 10,
     height: HEIGHT - 10,
     bg: "#131336",
@@ -135,14 +137,14 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(backgroundBox)
 
-  const { frameBuffer: framebuffer } = renderer.createFrameBuffer("shader-cube-main", {
+  const framebufferRenderable = new FrameBufferRenderable("shader-cube-main", {
     width: WIDTH,
     height: HEIGHT,
-    x: 0,
-    y: 0,
     zIndex: 10,
     respectAlpha: true,
   })
+  renderer.root.add(framebufferRenderable)
+  const { frameBuffer: framebuffer } = framebufferRenderable
 
   const engine = new ThreeCliRenderer(renderer, {
     width: WIDTH,
@@ -274,8 +276,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
   let uiLine = 0
   const lightVizText = new TextRenderable("shader-light-viz", {
     content: "Light Visualization: ON (V to toggle)",
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -283,8 +288,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const lightColorText = new TextRenderable("shader-light-color", {
     content: "Point Light: Warm (C to change)",
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -292,8 +300,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const customLightsText = new TextRenderable("shader-custom-lights", {
     content: "Custom Lights: ON (L to toggle)",
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -301,8 +312,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const materialToggleText = new TextRenderable("shader-material-toggle", {
     content: "Material: Auto-cycling (M to toggle, N to change)",
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -310,8 +324,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const textureEffectsText = new TextRenderable("shader-texture-effects", {
     content: "Texture Effects: P-Specular [OFF] | B-Normal [OFF] | I-Emissive [OFF]",
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -319,8 +336,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const filterStatusText = new TextRenderable("shader-filter-status", {
     content: `Filter: ${filterFunctions[currentFilterIndex].name} (,/. to cycle)`,
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -328,8 +348,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const param1StatusText = new TextRenderable("shader-param1-status", {
     content: ``,
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -338,8 +361,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const param2StatusText = new TextRenderable("shader-param2-status", {
     content: ``,
-    x: 0,
-    y: uiLine++,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: uiLine++,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -349,8 +375,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const controlsText = new TextRenderable("shader-controls", {
     content:
       "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | ,/. Filter | [/]{/} Param Adjust",
-    x: 0,
-    y: HEIGHT - 2,
+    positionType: "absolute",
+    position: {
+      left: 0,
+      top: HEIGHT - 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -628,11 +657,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
     controlsText.y = height - 2
   }
 
-  // Set up event listeners
   process.stdin.on("data", keyHandler)
   renderer.on("resize", resizeHandler)
 
-  // Set up frame callback
   renderer.setFrameCallback(async (deltaMs) => {
     const deltaTime = deltaMs / 1000
     time += deltaTime
@@ -727,7 +754,7 @@ export function destroy(renderer: CliRenderer): void {
   if (!demoState) return
 
   process.stdin.removeListener("data", demoState.keyHandler)
-  renderer.removeListener("resize", demoState.resizeHandler)
+  renderer.root.removeListener("resize", demoState.resizeHandler)
 
   if (demoState.frameCallbackId) {
     renderer.clearFrameCallbacks()
@@ -736,8 +763,8 @@ export function destroy(renderer: CliRenderer): void {
   demoState.engine.destroy()
   renderer.clearPostProcessFns()
 
-  renderer.remove("shader-cube-main")
-  renderer.remove("shader-cube-container")
+  renderer.root.remove("shader-cube-main")
+  renderer.root.remove("shader-cube-container")
 
   demoState = null
 }

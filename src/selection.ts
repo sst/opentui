@@ -1,5 +1,6 @@
-import { Renderable, type CliRenderer } from "."
+import { Renderable } from "."
 import type { SelectionState } from "./types"
+import { coordinateToCharacterIndex, fonts } from "./ui/ascii.font"
 
 export class Selection {
   private _anchor: { x: number; y: number }
@@ -221,5 +222,124 @@ export class TextSelectionHelper {
     return selectionStart !== null && selectionEnd !== null && selectionStart < selectionEnd
       ? { start: selectionStart, end: selectionEnd }
       : null
+  }
+}
+
+export class ASCIIFontSelectionHelper {
+  private localSelection: { start: number; end: number } | null = null
+  private cachedGlobalSelection: SelectionState | null = null
+
+  constructor(
+    private getX: () => number,
+    private getY: () => number,
+    private getText: () => string,
+    private getFont: () => keyof typeof fonts,
+  ) {}
+
+  hasSelection(): boolean {
+    return this.localSelection !== null
+  }
+
+  getSelection(): { start: number; end: number } | null {
+    return this.localSelection
+  }
+
+  shouldStartSelection(x: number, y: number, width: number, height: number): boolean {
+    const localX = x - this.getX()
+    const localY = y - this.getY()
+
+    if (localX < 0 || localX >= width || localY < 0 || localY >= height) {
+      return false
+    }
+
+    const text = this.getText()
+    const font = this.getFont()
+    const charIndex = coordinateToCharacterIndex(localX, text, font)
+
+    return charIndex >= 0 && charIndex <= text.length
+  }
+
+  onSelectionChanged(selection: SelectionState | null, width: number, height: number): boolean {
+    this.cachedGlobalSelection = selection
+
+    const previousSelection = this.localSelection
+
+    if (!selection?.isActive) {
+      this.localSelection = null
+      return previousSelection !== null
+    }
+
+    const myX = this.getX()
+    const myY = this.getY()
+    const myEndY = myY + height - 1
+    const text = this.getText()
+    const font = this.getFont()
+
+    let selStart: { x: number; y: number }
+    let selEnd: { x: number; y: number }
+
+    if (
+      selection.anchor.y < selection.focus.y ||
+      (selection.anchor.y === selection.focus.y && selection.anchor.x <= selection.focus.x)
+    ) {
+      selStart = selection.anchor
+      selEnd = selection.focus
+    } else {
+      selStart = selection.focus
+      selEnd = selection.anchor
+    }
+
+    if (myEndY < selStart.y || myY > selEnd.y) {
+      this.localSelection = null
+      return previousSelection !== null
+    }
+
+    let startCharIndex = 0
+    let endCharIndex = text.length
+
+    if (selStart.y > myEndY) {
+      // Selection starts below us - we're not selected
+      this.localSelection = null
+      return previousSelection !== null
+    } else if (selStart.y >= myY && selStart.y <= myEndY) {
+      // Selection starts within our Y range - use the actual start X coordinate
+      const localX = selStart.x - myX
+      if (localX > 0) {
+        startCharIndex = coordinateToCharacterIndex(localX, text, font)
+      }
+    }
+
+    if (selEnd.y < myY) {
+      // Selection ends above us - we're not selected
+      this.localSelection = null
+      return previousSelection !== null
+    } else if (selEnd.y >= myY && selEnd.y <= myEndY) {
+      // Selection ends within our Y range - use the actual end X coordinate
+      const localX = selEnd.x - myX
+      if (localX >= 0) {
+        endCharIndex = coordinateToCharacterIndex(localX, text, font)
+      } else {
+        endCharIndex = 0
+      }
+    }
+
+    if (startCharIndex < endCharIndex && startCharIndex >= 0 && endCharIndex <= text.length) {
+      this.localSelection = { start: startCharIndex, end: endCharIndex }
+    } else {
+      this.localSelection = null
+    }
+
+    return (
+      (this.localSelection !== null) !== (previousSelection !== null) ||
+      this.localSelection?.start !== previousSelection?.start ||
+      this.localSelection?.end !== previousSelection?.end
+    )
+  }
+
+  reevaluateSelection(width: number, height: number): boolean {
+    if (!this.cachedGlobalSelection) {
+      return false
+    }
+    return this.onSelectionChanged(this.cachedGlobalSelection, width, height)
   }
 }

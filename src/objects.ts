@@ -12,20 +12,23 @@ import {
   Fragment,
   type SelectionState,
 } from "."
-import type { OptimizedBuffer } from "./buffer"
+import { OptimizedBuffer } from "./buffer"
 import { RGBA } from "./types"
 import { parseColor } from "./utils"
-import { TextSelectionHelper } from "./selection"
+import { ASCIIFontSelectionHelper, TextSelectionHelper } from "./selection"
+import {
+  renderFontToFrameBuffer,
+  measureText,
+  coordinateToCharacterIndex,
+  getCharacterPositions,
+  type fonts,
+} from "./ui/ascii.font"
 
-export interface TextOptions {
+export interface TextOptions extends RenderableOptions {
   content: string
-  x: number
-  y: number
-  zIndex: number
   fg?: string | RGBA
   bg?: string | RGBA
   attributes?: number
-  visible?: boolean
   tabStopWidth?: number
   selectable?: boolean
 }
@@ -63,12 +66,22 @@ export class TextRenderable extends Renderable {
   }
 
   private setContent(value: string) {
+    if (this._content === value) {
+      return
+    }
     this._content = sanitizeText(value, this.tabStopWidth)
-    this.width = this._content.length
+
+    // TODO: Fogure out the element width based on the content
+    // including wrapping etc. The check here exists so it doesn't unnecessarily
+    // trigger a layout update.
+    if (this._content.length !== this.minWidth) {
+      this.minWidth = this._content.length
+    }
+
     this.height = 1
     const changed = this.selectionHelper.reevaluateSelection(this.width)
     if (changed) {
-      this.needsUpdate = true
+      this.needsUpdate()
     }
   }
 
@@ -83,20 +96,20 @@ export class TextRenderable extends Renderable {
   set fg(value: RGBA | string | undefined) {
     if (value) {
       this._fg = parseColor(value)
-      this.needsUpdate = true
+      this.needsUpdate()
     }
   }
 
   set bg(value: RGBA | string | undefined) {
     if (value) {
       this._bg = parseColor(value)
-      this.needsUpdate = true
+      this.needsUpdate()
     }
   }
 
   set content(value: string) {
     this.setContent(value)
-    this.needsUpdate = true
+    this.needsUpdate()
   }
 
   get content(): string {
@@ -110,7 +123,7 @@ export class TextRenderable extends Renderable {
   onSelectionChanged(selection: SelectionState | null): boolean {
     const changed = this.selectionHelper.onSelectionChanged(selection, this.width)
     if (changed) {
-      this.needsUpdate = true
+      this.needsUpdate()
     }
     return this.selectionHelper.hasSelection()
   }
@@ -131,19 +144,13 @@ export class TextRenderable extends Renderable {
   }
 }
 
-export interface BoxOptions {
-  x: number
-  y: number
-  width: number
-  height: number
+export interface BoxOptions extends RenderableOptions {
   bg: string | RGBA
-  zIndex: number
   borderStyle?: BorderStyle
   border?: boolean | BorderSides[]
   borderColor?: string | RGBA
   customBorderChars?: BorderCharacters
   shouldFill?: boolean
-  visible?: boolean
   title?: string
   titleAlignment?: "left" | "center" | "right"
 }
@@ -165,8 +172,6 @@ export class BoxRenderable extends Renderable {
     const bgRgb = parseColor(options.bg)
     const borderRgb = parseColor(options.borderColor || RGBA.fromValues(255, 255, 255, 255))
 
-    this.width = options.width
-    this.height = options.height
     this._bg = bgRgb
     this._border = options.border ?? true
     this._borderStyle = options.borderStyle || "single"
@@ -191,13 +196,13 @@ export class BoxRenderable extends Renderable {
   public set border(value: boolean | BorderSides[]) {
     this._border = value
     this.borderSides = getBorderSides(value)
-    this.needsUpdate = true
+    this.needsUpdate()
   }
 
   public set borderStyle(value: BorderStyle) {
     this._borderStyle = value
     this.customBorderChars = BorderChars[this._borderStyle]
-    this.needsUpdate = true
+    this.needsUpdate()
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -248,29 +253,42 @@ export class BoxRenderable extends Renderable {
   }
 }
 
-export interface FrameBufferOptions {
+export interface FrameBufferOptions extends RenderableOptions {
   width: number
   height: number
-  x: number
-  y: number
-  zIndex: number
   respectAlpha?: boolean
 }
 
 export class FrameBufferRenderable extends Renderable {
   public frameBuffer: OptimizedBuffer
+  protected respectAlpha: boolean
 
-  constructor(id: string, buffer: OptimizedBuffer, options: FrameBufferOptions) {
+  constructor(id: string, options: FrameBufferOptions) {
     super(id, options)
-    this.frameBuffer = buffer
+    this.respectAlpha = options.respectAlpha || false
+    this.frameBuffer = OptimizedBuffer.create(options.width, options.height, {
+      respectAlpha: this.respectAlpha,
+    })
+  }
+
+  protected onResize(width: number, height: number): void {
+    if (width <= 0 || height <= 0) {
+      throw new Error(`Invalid resize dimensions for FrameBufferRenderable ${this.id}: ${width}x${height}`)
+    }
+
+    this.frameBuffer.resize(width, height)
+    super.onResize(width, height)
+    this.needsUpdate()
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
+    if (!this.visible) return
     buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
   }
 
   protected destroySelf(): void {
     this.frameBuffer.destroy()
+    super.destroySelf()
   }
 }
 
@@ -280,24 +298,29 @@ export class GroupRenderable extends Renderable {
   }
 }
 
-export interface StyledTextOptions {
+export interface StyledTextOptions extends RenderableOptions {
   fragment: Fragment
-  width: number
-  height: number
-  x: number
-  y: number
-  zIndex: number
+  width?: number
+  height?: number
   defaultFg?: string | RGBA
   defaultBg?: string | RGBA
   selectionBg?: string | RGBA
   selectionFg?: string | RGBA
-  visible?: boolean
   selectable?: boolean
 }
 
-export class StyledTextRenderable extends Renderable {
+export interface ASCIIFontOptions extends RenderableOptions {
+  text: string
+  font?: "tiny" | "block" | "shade" | "slick"
+  fg?: RGBA | RGBA[]
+  bg?: RGBA
+  selectionBg?: string | RGBA
+  selectionFg?: string | RGBA
+  selectable?: boolean
+}
+
+export class StyledTextRenderable extends FrameBufferRenderable {
   public selectable: boolean = true
-  public frameBuffer: OptimizedBuffer
   private _fragment: Fragment
   private _defaultFg: RGBA
   private _defaultBg: RGBA
@@ -309,8 +332,13 @@ export class StyledTextRenderable extends Renderable {
   private _plainText: string = ""
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
-  constructor(id: string, buffer: OptimizedBuffer, options: StyledTextOptions) {
-    super(id, options)
+  constructor(id: string, options: StyledTextOptions) {
+    super(id, {
+      ...options,
+      width: options.width || 1,
+      height: options.height || 1,
+      respectAlpha: true,
+    })
 
     this.selectionHelper = new TextSelectionHelper(
       () => this.x,
@@ -319,7 +347,6 @@ export class StyledTextRenderable extends Renderable {
       () => this._lineInfo,
     )
 
-    this.frameBuffer = buffer
     this._fragment = options.fragment
     this._defaultFg = options.defaultFg ? parseColor(options.defaultFg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.defaultBg ? parseColor(options.defaultBg) : RGBA.fromValues(0, 0, 0, 0)
@@ -339,7 +366,7 @@ export class StyledTextRenderable extends Renderable {
     this._fragment = value
     this.updateTextInfo()
     this.renderFragmentToBuffer()
-    this.needsUpdate = true
+    this.needsUpdate()
   }
 
   get defaultFg(): RGBA {
@@ -350,7 +377,7 @@ export class StyledTextRenderable extends Renderable {
     if (value) {
       this._defaultFg = parseColor(value)
       this.renderFragmentToBuffer()
-      this.needsUpdate = true
+      this.needsUpdate()
     }
   }
 
@@ -362,8 +389,13 @@ export class StyledTextRenderable extends Renderable {
     if (value) {
       this._defaultBg = parseColor(value)
       this.renderFragmentToBuffer()
-      this.needsUpdate = true
+      this.needsUpdate()
     }
+  }
+
+  protected onResize(width: number, height: number): void {
+    super.onResize(width, height)
+    this.renderFragmentToBuffer()
   }
 
   private updateTextInfo(): void {
@@ -387,7 +419,7 @@ export class StyledTextRenderable extends Renderable {
     const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
     if (changed) {
       this.renderFragmentToBuffer()
-      this.needsUpdate = true
+      this.needsUpdate()
     }
   }
 
@@ -399,7 +431,7 @@ export class StyledTextRenderable extends Renderable {
     const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
     if (changed) {
       this.renderFragmentToBuffer()
-      this.needsUpdate = true
+      this.needsUpdate()
     }
     return this.selectionHelper.hasSelection()
   }
@@ -427,12 +459,174 @@ export class StyledTextRenderable extends Renderable {
       selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined,
     )
   }
+}
 
-  protected renderSelf(buffer: OptimizedBuffer): void {
-    buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+export class ASCIIFontRenderable extends FrameBufferRenderable {
+  public selectable: boolean = true
+  private _text: string
+  private _font: keyof typeof fonts
+  private _fg: RGBA[]
+  private _bg: RGBA
+  private _selectionBg: RGBA | undefined
+  private _selectionFg: RGBA | undefined
+
+  private selectionHelper: ASCIIFontSelectionHelper
+
+  constructor(id: string, options: ASCIIFontOptions) {
+    const font = options.font || "tiny"
+    const measurements = measureText({ text: options.text, font })
+
+    super(id, {
+      ...options,
+      width: measurements.width,
+      height: measurements.height,
+      respectAlpha: true,
+    })
+
+    this._text = options.text
+    this._font = font
+    this._fg = Array.isArray(options.fg) ? options.fg : [options.fg || RGBA.fromInts(255, 255, 255, 255)]
+    this._bg = options.bg || RGBA.fromValues(0, 0, 0, 0)
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
+    this.selectable = options.selectable ?? true
+
+    this.selectionHelper = new ASCIIFontSelectionHelper(
+      () => this.x,
+      () => this.y,
+      () => this._text,
+      () => this._font,
+    )
+
+    this.renderFontToBuffer()
   }
 
-  protected destroySelf(): void {
-    this.frameBuffer.destroy()
+  get text(): string {
+    return this._text
+  }
+
+  set text(value: string) {
+    this._text = value
+    this.updateDimensions()
+    this.selectionHelper.reevaluateSelection(this.width, this.height)
+    this.renderFontToBuffer()
+    this.needsUpdate()
+  }
+
+  get font(): keyof typeof fonts {
+    return this._font
+  }
+
+  set font(value: keyof typeof fonts) {
+    this._font = value
+    this.updateDimensions()
+    this.selectionHelper.reevaluateSelection(this.width, this.height)
+    this.renderFontToBuffer()
+    this.needsUpdate()
+  }
+
+  get fg(): RGBA[] {
+    return this._fg
+  }
+
+  set fg(value: RGBA | RGBA[] | string | string[]) {
+    if (Array.isArray(value)) {
+      this._fg = value.map((color) => (typeof color === "string" ? parseColor(color) : color))
+    } else {
+      this._fg = [typeof value === "string" ? parseColor(value) : value]
+    }
+    this.renderFontToBuffer()
+    this.needsUpdate()
+  }
+
+  get bg(): RGBA {
+    return this._bg
+  }
+
+  set bg(value: RGBA | string) {
+    this._bg = typeof value === "string" ? parseColor(value) : value
+    this.renderFontToBuffer()
+    this.needsUpdate()
+  }
+
+  private updateDimensions(): void {
+    const measurements = measureText({ text: this._text, font: this._font })
+    this.width = measurements.width
+    this.height = measurements.height
+  }
+
+  shouldStartSelection(x: number, y: number): boolean {
+    return this.selectionHelper.shouldStartSelection(x, y, this.width, this.height)
+  }
+
+  onSelectionChanged(selection: SelectionState | null): boolean {
+    const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
+    if (changed) {
+      this.renderFontToBuffer()
+      this.needsUpdate()
+    }
+    return this.selectionHelper.hasSelection()
+  }
+
+  getSelectedText(): string {
+    const selection = this.selectionHelper.getSelection()
+    if (!selection) return ""
+    return this._text.slice(selection.start, selection.end)
+  }
+
+  hasSelection(): boolean {
+    return this.selectionHelper.hasSelection()
+  }
+
+  protected onResize(width: number, height: number): void {
+    super.onResize(width, height)
+    this.renderFontToBuffer()
+  }
+
+  private renderFontToBuffer(): void {
+    this.frameBuffer.clear(this._bg)
+
+    renderFontToFrameBuffer(this.frameBuffer, {
+      text: this._text,
+      x: 0,
+      y: 0,
+      fg: this._fg,
+      bg: this._bg,
+      font: this._font,
+    })
+
+    const selection = this.selectionHelper.getSelection()
+    if (selection && (this._selectionBg || this._selectionFg)) {
+      this.renderSelectionHighlight(selection)
+    }
+  }
+
+  private renderSelectionHighlight(selection: { start: number; end: number }): void {
+    if (!this._selectionBg && !this._selectionFg) return
+
+    const selectedText = this._text.slice(selection.start, selection.end)
+    if (!selectedText) return
+
+    const positions = getCharacterPositions(this._text, this._font)
+    const startX = positions[selection.start] || 0
+    const endX =
+      selection.end < positions.length
+        ? positions[selection.end]
+        : measureText({ text: this._text, font: this._font }).width
+
+    if (this._selectionBg) {
+      this.frameBuffer.fillRect(startX, 0, endX - startX, this.height, this._selectionBg)
+    }
+
+    if (this._selectionFg || this._selectionBg) {
+      renderFontToFrameBuffer(this.frameBuffer, {
+        text: selectedText,
+        x: startX,
+        y: 0,
+        fg: this._selectionFg ? [this._selectionFg] : this._fg,
+        bg: this._selectionBg || this._bg,
+        font: this._font,
+      })
+    }
   }
 }

@@ -144,6 +144,71 @@ export function measureText({ text, font = "tiny" }: { text: string; font?: keyo
   }
 }
 
+export function getCharacterPositions(text: string, font: keyof typeof fonts = "tiny"): number[] {
+  const fontDef = getParsedFont(font)
+  if (!fontDef) {
+    return [0]
+  }
+
+  const positions: number[] = [0]
+  let currentX = 0
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i].toUpperCase()
+    const charDef = fontDef.chars[char]
+
+    let charWidth = 0
+    if (!charDef) {
+      const spaceChar = fontDef.chars[" "]
+      if (spaceChar && spaceChar[0]) {
+        for (const segment of spaceChar[0]) {
+          charWidth += segment.text.length
+        }
+      } else {
+        charWidth = 1
+      }
+    } else if (charDef[0]) {
+      for (const segment of charDef[0]) {
+        charWidth += segment.text.length
+      }
+    }
+
+    currentX += charWidth
+
+    if (i < text.length - 1) {
+      currentX += fontDef.letterspace_size
+    }
+
+    positions.push(currentX)
+  }
+
+  return positions
+}
+
+export function coordinateToCharacterIndex(x: number, text: string, font: keyof typeof fonts = "tiny"): number {
+  const positions = getCharacterPositions(text, font)
+
+  if (x < 0) {
+    return 0
+  }
+
+  for (let i = 0; i < positions.length - 1; i++) {
+    const currentPos = positions[i]
+    const nextPos = positions[i + 1]
+
+    if (x >= currentPos && x < nextPos) {
+      const charMidpoint = currentPos + (nextPos - currentPos) / 2
+      return x < charMidpoint ? i : i + 1
+    }
+  }
+
+  if (positions.length > 0 && x >= positions[positions.length - 1]) {
+    return text.length
+  }
+
+  return 0
+}
+
 export function renderFontToFrameBuffer(
   buffer: OptimizedBuffer,
   {

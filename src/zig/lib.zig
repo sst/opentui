@@ -206,3 +206,11 @@ export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
 export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.dumpHitGrid();
 }
+
+export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
+    rendererPtr.dumpBuffers(timestamp);
+}
+
+export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
+    rendererPtr.dumpStdoutBuffer(timestamp);
+}

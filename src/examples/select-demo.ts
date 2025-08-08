@@ -2,6 +2,7 @@ import {
   createCliRenderer,
   SelectElement,
   SelectElementEvents,
+  RenderableEvents,
   GroupRenderable,
   type SelectOption,
   type CliRenderer,
@@ -9,10 +10,9 @@ import {
   t,
   bold,
   fg,
-  underline,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import type { StyledTextRenderable } from "../objects"
+import { StyledTextRenderable } from "../objects"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
 let selectElement: SelectElement | null = null
@@ -73,8 +73,8 @@ W: Toggle wrap selection`
     ? `Selection: ${currentSelection.name} (${currentSelection.value}) - Index: ${selectElement.getSelectedIndex()}`
     : "No selection"
 
-  const focusText = selectElement.isFocused() ? "Select element is FOCUSED" : "Select element is BLURRED"
-  const focusColor = selectElement.isFocused() ? "#00FF00" : "#FF0000"
+  const focusText = selectElement.focused ? "Select element is FOCUSED" : "Select element is BLURRED"
+  const focusColor = selectElement.focused ? "#00FF00" : "#FF0000"
 
   const statusText = t`${fg("#00FF00")(selectionText)}
 
@@ -111,16 +111,17 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.setBackgroundColor("#001122")
 
   const parentContainer = new GroupRenderable("parent-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   selectElement = new SelectElement("demo-select", {
-    x: 5,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 2,
+    },
     width: 50,
     height: 20,
     options: selectOptions,
@@ -142,25 +143,31 @@ export function run(rendererInstance: CliRenderer): void {
     fastScrollStep: 5,
   })
 
-  renderer.add(selectElement)
+  renderer.root.add(selectElement)
 
-  keyLegendDisplay = renderer.createStyledText("key-legend", {
+  keyLegendDisplay = new StyledTextRenderable("key-legend", {
     fragment: t``,
     width: 40,
     height: 9,
-    x: 60,
-    y: 3,
+    positionType: "absolute",
+    position: {
+      left: 60,
+      top: 3,
+    },
     zIndex: 50,
     defaultFg: "#AAAAAA",
   })
   parentContainer.add(keyLegendDisplay)
 
-  statusDisplay = renderer.createStyledText("status-display", {
+  statusDisplay = new StyledTextRenderable("status-display", {
     fragment: t``,
     width: 80,
     height: 8,
-    x: 5,
-    y: 24,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 24,
+    },
     zIndex: 50,
   })
   parentContainer.add(statusDisplay)
@@ -182,11 +189,11 @@ export function run(rendererInstance: CliRenderer): void {
     }, 1000)
   })
 
-  selectElement.on(SelectElementEvents.FOCUSED, () => {
+  selectElement.on(RenderableEvents.FOCUSED, () => {
     updateDisplays()
   })
 
-  selectElement.on(SelectElementEvents.BLURRED, () => {
+  selectElement.on(RenderableEvents.BLURRED, () => {
     updateDisplays()
   })
 
@@ -194,7 +201,7 @@ export function run(rendererInstance: CliRenderer): void {
 
   keyboardHandler = (key) => {
     if (key.name === "f") {
-      if (selectElement?.isFocused()) {
+      if (selectElement?.focused) {
         selectElement.blur()
         lastActionText = "Focus removed from select element"
       } else {
@@ -240,12 +247,12 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (selectElement) {
-    rendererInstance.remove(selectElement.id)
+    rendererInstance.root.remove(selectElement.id)
     selectElement.destroy()
     selectElement = null
   }
 
-  rendererInstance.remove("parent-container")
+  rendererInstance.root.remove("parent-container")
 
   keyLegendDisplay = null
   statusDisplay = null

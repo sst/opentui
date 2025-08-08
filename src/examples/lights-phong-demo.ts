@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, ThreeCliRenderer, GroupRenderable, TextRenderable } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  RGBA,
+  ThreeCliRenderer,
+  GroupRenderable,
+  TextRenderable,
+  FrameBufferRenderable,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
@@ -51,20 +59,18 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const HEIGHT = renderer.terminalHeight
 
   const parentContainer = new GroupRenderable("phong-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
-  const { frameBuffer: framebuffer } = renderer.createFrameBuffer("phong-main", {
+  const framebufferRenderable = new FrameBufferRenderable("phong-main", {
     width: WIDTH,
     height: HEIGHT,
-    x: 0,
-    y: 0,
     zIndex: 10,
   })
+  renderer.root.add(framebufferRenderable)
+  const { frameBuffer: framebuffer } = framebufferRenderable
 
   const engine = new ThreeCliRenderer(renderer, {
     width: WIDTH,
@@ -155,8 +161,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const titleText = new TextRenderable("phong-title", {
     content: "WebGPU Phong Lights Demo",
-    x: 0,
-    y: 0,
+    positionType: "absolute",
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -164,8 +169,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("phong-status", {
     content: "Ready.",
-    x: 0,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      top: 1,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -173,8 +180,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const controlsText = new TextRenderable("phong-controls", {
     content: "WASD: Move | QE: Rotate | ZX: Zoom | R: Reset | U: Super Sample",
-    x: 0,
-    y: HEIGHT - 2,
+    positionType: "absolute",
+    position: {
+      top: HEIGHT - 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -265,8 +274,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
 export function destroy(renderer: CliRenderer): void {
   if (demoState) {
     demoState.cleanup()
-    renderer.remove("phong-main")
-    renderer.remove("phong-container")
+    renderer.root.remove("phong-main")
+    renderer.root.remove("phong-container")
     demoState = null
   }
 }

@@ -41,12 +41,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const HEIGHT = renderer.terminalHeight
 
   parentContainer = new GroupRenderable("fractal-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   engine = new ThreeCliRenderer(renderer, {
     width: WIDTH,
@@ -133,8 +131,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const titleText = new TextRenderable("fractal_title", {
     content: "Shader by @XorDev",
-    x: 0,
-    y: 0,
     fg: "#FFFFFF",
     zIndex: 25,
   })
@@ -142,8 +138,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const controlsText = new TextRenderable("fractal_controls", {
     content: "Space: Pause/Resume | R: Reset | P: Screenshot | +/-: Speed | Escape: Back to menu",
-    x: 0,
-    y: HEIGHT - 2,
+    positionType: "absolute",
+    position: {
+      top: HEIGHT - 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -151,8 +149,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("fractal_status", {
     content: "Speed: 1.0x",
-    x: 0,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      top: 1,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -244,7 +244,7 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   if (parentContainer) {
-    renderer.remove("fractal-container")
+    renderer.root.remove("fractal-container")
     parentContainer = null
   }
 

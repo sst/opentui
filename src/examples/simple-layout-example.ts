@@ -1,6 +1,5 @@
 import {
   CliRenderer,
-  Layout,
   ContainerElement,
   BufferedElement,
   FlexDirection,
@@ -8,6 +7,8 @@ import {
   Justify,
   createCliRenderer,
   type ParsedKey,
+  type ElementOptions,
+  Element,
 } from "../index"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -16,26 +17,26 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
  * Simple text element for demonstration
  */
 class TextElement extends BufferedElement {
-  private text: string = ""
+  private _text: string = ""
 
-  constructor(id: string, text: string, options: any) {
+  constructor(id: string, text: string, options: ElementOptions) {
     super(id, options)
     this.text = text
   }
 
-  public setText(text: string): void {
-    this.text = text
+  public set text(text: string) {
+    this._text = text
     this.needsRefresh = true
   }
 
   protected refreshContent(contentX: number, contentY: number, contentWidth: number, contentHeight: number): void {
     if (!this.frameBuffer) return
 
-    const textX = Math.max(0, Math.floor((contentWidth - this.text.length) / 2))
+    const textX = Math.max(0, Math.floor((contentWidth - this._text.length) / 2))
     const textY = Math.floor(contentHeight / 2)
 
     if (textY >= 0 && textY < contentHeight) {
-      this.frameBuffer.drawText(this.text, contentX + textX, contentY + textY, this.textColor, this.backgroundColor)
+      this.frameBuffer.drawText(this._text, contentX + textX, contentY + textY, this.textColor, this._backgroundColor)
     }
   }
 }
@@ -47,7 +48,6 @@ interface LayoutDemo {
 }
 
 let renderer: CliRenderer | null = null
-let mainLayout: Layout | null = null
 let header: TextElement | null = null
 let contentArea: ContainerElement | null = null
 let sidebar: TextElement | null = null
@@ -85,16 +85,17 @@ const layoutDemos: LayoutDemo[] = [
   },
 ]
 
-function resetElementLayout(element: any): void {
-  element.setFlexBasis("auto")
-  element.setFlex(0, 0)
-  element.setWidth("auto")
-  element.setHeight("auto")
+function resetElementLayout(element: Element): void {
+  element.flexBasis = "auto"
+  element.flexGrow = 0
+  element.flexShrink = 0
+  element.width = "auto"
+  element.height = "auto"
 
-  element.layoutNode.yogaNode.setMinWidth(undefined)
-  element.layoutNode.yogaNode.setMaxWidth(undefined)
-  element.layoutNode.yogaNode.setMinHeight(undefined)
-  element.layoutNode.yogaNode.setMaxHeight(undefined)
+  element.minWidth = undefined
+  element.maxWidth = undefined
+  element.minHeight = undefined
+  element.maxHeight = undefined
 }
 
 function setupHorizontalLayout(): void {
@@ -107,25 +108,27 @@ function setupHorizontalLayout(): void {
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
 
-  contentArea.setFlexDirection(FlexDirection.Row)
-  contentArea.setAlignment(Align.Stretch)
+  contentArea.flexDirection = FlexDirection.Row
+  contentArea.alignItems = Align.Stretch
 
   const sidebarWidth = Math.max(15, Math.floor(renderer!.terminalWidth * 0.2))
-  sidebar.setFlexBasis(sidebarWidth)
-  sidebar.setFlex(0, 0)
-  sidebar.setWidth(sidebarWidth)
-  sidebar.setMinWidth(15)
-  sidebar.setHeight("auto")
-  sidebar.setText("LEFT SIDEBAR")
-  sidebar.setBackgroundColor("#64748b")
+  sidebar.flexBasis = sidebarWidth
+  sidebar.flexGrow = 0
+  sidebar.flexShrink = 0
+  sidebar.width = sidebarWidth
+  sidebar.minWidth = 15
+  sidebar.height = "auto"
+  sidebar.text = "LEFT SIDEBAR"
+  sidebar.backgroundColor = "#64748b"
 
-  mainContent.setFlexBasis("auto")
-  mainContent.setFlex(1, 1)
-  mainContent.setWidth("auto")
-  mainContent.setMinWidth(20)
-  mainContent.setHeight("auto")
-  mainContent.setText("MAIN CONTENT")
-  mainContent.setBackgroundColor("#eab308")
+  mainContent.flexBasis = "auto"
+  mainContent.flexGrow = 1
+  mainContent.flexShrink = 1
+  mainContent.width = "auto"
+  mainContent.minWidth = 20
+  mainContent.height = "auto"
+  mainContent.text = "MAIN CONTENT"
+  mainContent.backgroundColor = "#eab308"
 }
 
 function setupVerticalLayout(): void {
@@ -138,26 +141,28 @@ function setupVerticalLayout(): void {
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
 
-  contentArea.setFlexDirection(FlexDirection.Column)
-  contentArea.setAlignment(Align.Stretch)
+  contentArea.flexDirection = FlexDirection.Column
+  contentArea.alignItems = Align.Stretch
 
   const contentHeight = renderer!.terminalHeight - 6
   const topBarHeight = Math.max(3, Math.floor(contentHeight * 0.2))
-  sidebar.setFlexBasis(topBarHeight)
-  sidebar.setFlex(0, 0)
-  sidebar.setHeight(topBarHeight)
-  sidebar.setMinHeight(3)
-  sidebar.setWidth("auto")
-  sidebar.setText("TOP BAR")
-  sidebar.setBackgroundColor("#059669")
+  sidebar.flexBasis = topBarHeight
+  sidebar.flexGrow = 0
+  sidebar.flexShrink = 0
+  sidebar.height = topBarHeight
+  sidebar.minHeight = 3
+  sidebar.width = "auto"
+  sidebar.text = "TOP BAR"
+  sidebar.backgroundColor = "#059669"
 
-  mainContent.setFlexBasis("auto")
-  mainContent.setFlex(1, 1)
-  mainContent.setHeight("auto")
-  mainContent.setMinHeight(5)
-  mainContent.setWidth("auto")
-  mainContent.setText("MAIN CONTENT")
-  mainContent.setBackgroundColor("#eab308")
+  mainContent.flexBasis = "auto"
+  mainContent.flexGrow = 1
+  mainContent.flexShrink = 1
+  mainContent.height = "auto"
+  mainContent.minHeight = 5
+  mainContent.width = "auto"
+  mainContent.text = "MAIN CONTENT"
+  mainContent.backgroundColor = "#eab308"
 }
 
 function setupCenteredLayout(): void {
@@ -170,26 +175,29 @@ function setupCenteredLayout(): void {
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
 
-  contentArea.setFlexDirection(FlexDirection.Row)
-  contentArea.setAlignment(Align.Stretch, Justify.Center)
+  contentArea.flexDirection = FlexDirection.Row
+  contentArea.alignItems = Align.Stretch
+  contentArea.justifyContent = Justify.Center
 
-  sidebar.setFlexBasis(0)
-  sidebar.setFlex(0, 0)
-  sidebar.setWidth(0)
-  sidebar.setMinWidth(0)
-  sidebar.setHeight("auto")
-  sidebar.setText("")
-  sidebar.setBackgroundColor("transparent")
+  sidebar.flexBasis = 0
+  sidebar.flexGrow = 0
+  sidebar.flexShrink = 0
+  sidebar.width = 0
+  sidebar.minWidth = 0
+  sidebar.height = "auto"
+  sidebar.text = ""
+  sidebar.backgroundColor = "transparent"
 
   const centerWidth = Math.max(30, Math.floor(renderer!.terminalWidth * 0.6))
-  mainContent.setFlexBasis(centerWidth)
-  mainContent.setFlex(0, 0)
-  mainContent.setWidth(centerWidth)
-  mainContent.setMinWidth(30)
-  mainContent.setMaxWidth(Math.floor(renderer!.terminalWidth * 0.8))
-  mainContent.setHeight("auto")
-  mainContent.setText("CENTERED CONTENT")
-  mainContent.setBackgroundColor("#7c3aed")
+  mainContent.flexBasis = centerWidth
+  mainContent.flexGrow = 0
+  mainContent.flexShrink = 0
+  mainContent.width = centerWidth
+  mainContent.minWidth = 30
+  mainContent.maxWidth = Math.floor(renderer!.terminalWidth * 0.8)
+  mainContent.height = "auto"
+  mainContent.text = "CENTERED CONTENT"
+  mainContent.backgroundColor = "#7c3aed"
 }
 
 function setupThreeColumnLayout(): void {
@@ -203,53 +211,45 @@ function setupThreeColumnLayout(): void {
   resetElementLayout(mainContent)
   resetElementLayout(rightSidebar)
 
-  contentArea.setFlexDirection(FlexDirection.Row)
-  contentArea.setAlignment(Align.Stretch)
+  contentArea.flexDirection = FlexDirection.Row
+  contentArea.alignItems = Align.Stretch
 
   const terminalWidth = renderer!.terminalWidth
   const sidebarWidth = Math.max(12, Math.floor(terminalWidth * 0.15))
 
-  sidebar.setFlexBasis(sidebarWidth)
-  sidebar.setFlex(0, 0)
-  sidebar.setWidth(sidebarWidth)
-  sidebar.setMinWidth(12)
-  sidebar.setHeight("auto")
-  sidebar.setText("LEFT")
-  sidebar.setBackgroundColor("#dc2626")
+  sidebar.flexBasis = sidebarWidth
+  sidebar.flexGrow = 0
+  sidebar.flexShrink = 0
+  sidebar.width = sidebarWidth
+  sidebar.minWidth = 12
+  sidebar.height = "auto"
+  sidebar.text = "LEFT"
+  sidebar.backgroundColor = "#dc2626"
 
-  mainContent.setFlexBasis("auto")
-  mainContent.setFlex(1, 1)
-  mainContent.setWidth("auto")
-  mainContent.setMinWidth(20)
-  mainContent.setHeight("auto")
-  mainContent.setText("CENTER")
-  mainContent.setBackgroundColor("#059669")
+  mainContent.flexBasis = "auto"
+  mainContent.flexGrow = 1
+  mainContent.flexShrink = 1
+  mainContent.width = "auto"
+  mainContent.minWidth = 20
+  mainContent.height = "auto"
+  mainContent.text = "CENTER"
+  mainContent.backgroundColor = "#059669"
 
-  rightSidebar.setFlexBasis(sidebarWidth)
-  rightSidebar.setFlex(0, 0)
-  rightSidebar.setWidth(sidebarWidth)
-  rightSidebar.setMinWidth(12)
-  rightSidebar.setHeight("auto")
-  rightSidebar.setText("RIGHT")
-  rightSidebar.setBackgroundColor("#7c3aed")
+  rightSidebar.flexBasis = sidebarWidth
+  rightSidebar.flexGrow = 0
+  rightSidebar.flexShrink = 0
+  rightSidebar.width = sidebarWidth
+  rightSidebar.minWidth = 12
+  rightSidebar.height = "auto"
+  rightSidebar.text = "RIGHT"
+  rightSidebar.backgroundColor = "#7c3aed"
 }
 
 function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  mainLayout = new Layout("main-layout", {
-    x: 0,
-    y: 0,
-    zIndex: 1,
-    width: renderer.terminalWidth,
-    height: renderer.terminalHeight,
-  })
-  renderer.add(mainLayout)
-
   header = new TextElement("header", "LAYOUT DEMO", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -262,8 +262,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   contentArea = new ContainerElement("content-area", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -273,8 +271,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   sidebar = new TextElement("sidebar", "SIDEBAR", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -286,8 +282,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   mainContent = new TextElement("main-content", "MAIN CONTENT", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -299,8 +293,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   rightSidebar = new TextElement("right-sidebar", "RIGHT", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -312,8 +304,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   footer = new TextElement("footer", "", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -325,8 +315,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   moveableElement = new TextElement("moveable", "MOVE", {
-    x: 0,
-    y: 0,
     zIndex: 100,
     width: 8,
     height: 3,
@@ -340,10 +328,10 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   contentArea.add(sidebar)
   contentArea.add(mainContent)
-  mainLayout.add(header)
-  mainLayout.add(contentArea)
-  mainLayout.add(footer)
-  mainLayout.add(moveableElement)
+  renderer.root.add(header)
+  renderer.root.add(contentArea)
+  renderer.root.add(footer)
+  renderer.root.add(moveableElement)
 
   centerMoveableElement()
   updateFooterText()
@@ -351,8 +339,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 }
 
 function handleResize(width: number, height: number): void {
-  if (!mainLayout) return
-  mainLayout.resize(width, height)
+  // Root layout is automatically resized by the renderer
   centerMoveableElement()
 }
 
@@ -451,9 +438,7 @@ function updateFooterText(): void {
 
   const autoplayStatus = autoplayEnabled ? "ON" : "OFF"
   const moveableStatus = moveableElementVisible ? "ON" : "OFF"
-  footer.setText(
-    `SPACE: next | R: restart | P: autoplay (${autoplayStatus}) | V: overlay (${moveableStatus}) | WASD: move`,
-  )
+  footer.text = `SPACE: next | R: restart | P: autoplay (${autoplayStatus}) | V: overlay (${moveableStatus}) | WASD: move`
 }
 
 function applyCurrentDemo(): void {
@@ -461,7 +446,7 @@ function applyCurrentDemo(): void {
   if (!header) return
 
   const autoplayStatus = autoplayEnabled ? "AUTO" : "MANUAL"
-  header.setText(`${demo.name} (${currentDemoIndex + 1}/${layoutDemos.length}) - ${autoplayStatus}`)
+  header.text = `${demo.name} (${currentDemoIndex + 1}/${layoutDemos.length}) - ${autoplayStatus}`
   demo.setup()
 
   if (autoAdvanceTimeout) {
@@ -494,11 +479,10 @@ export function destroy(rendererInstance: CliRenderer): void {
     renderer.off("resize", handleResize)
   }
 
-  if (mainLayout) {
-    rendererInstance.remove(mainLayout.id)
-    mainLayout.destroy()
-    mainLayout = null
-  }
+  if (header) rendererInstance.root.remove(header.id)
+  if (contentArea) rendererInstance.root.remove(contentArea.id)
+  if (footer) rendererInstance.root.remove(footer.id)
+  if (moveableElement) rendererInstance.root.remove(moveableElement.id)
 
   header = null
   contentArea = null
@@ -521,5 +505,5 @@ if (import.meta.main) {
   })
   run(renderer)
   setupCommonDemoKeys(renderer)
-  renderer.start()
+  // renderer.start()
 }

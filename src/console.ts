@@ -55,8 +55,8 @@ class TerminalConsoleCache extends EventEmitter {
     debug: typeof console.debug
   }
   private _cachedLogs: [Date, LogLevel, any[], CallerInfo | null][] = []
-  private readonly MAX_CACHE_SIZE = 50
-  private _collectCallerInfo: boolean = false // Default to false
+  private readonly MAX_CACHE_SIZE = 1000
+  private _collectCallerInfo: boolean = false
   private _cachingEnabled: boolean = true
 
   get cachedLogs(): [Date, LogLevel, any[], CallerInfo | null][] {
@@ -243,6 +243,12 @@ export class TerminalConsole extends EventEmitter {
   private currentLineIndex: number = 0
   private _displayLines: DisplayLine[] = []
   private _allLogEntries: [Date, LogLevel, any[], CallerInfo | null][] = []
+  private _needsFrameBufferUpdate: boolean = false
+
+  private markNeedsUpdate(): void {
+    this._needsFrameBufferUpdate = true
+    this.renderer.needsUpdate()
+  }
 
   private _rgbaInfo: RGBA
   private _rgbaWarn: RGBA
@@ -323,7 +329,7 @@ export class TerminalConsole extends EventEmitter {
     if (this.isScrolledToBottom) {
       this._scrollToBottom()
     }
-    this.renderConsoleContent()
+    this.markNeedsUpdate()
   }
 
   private _updateConsoleDimensions(): void {
@@ -437,7 +443,7 @@ export class TerminalConsole extends EventEmitter {
     }
 
     if (needsRedraw) {
-      this.renderConsoleContent()
+      this.markNeedsUpdate()
     }
   }
 
@@ -500,7 +506,7 @@ export class TerminalConsole extends EventEmitter {
       this.currentLineIndex = Math.max(0, Math.min(this.currentLineIndex, visibleLineCount - 1))
 
       if (this.isVisible) {
-        this.renderConsoleContent()
+        this.markNeedsUpdate()
       }
     }
   }
@@ -508,7 +514,8 @@ export class TerminalConsole extends EventEmitter {
   public clear(): void {
     terminalConsoleCache.clearConsole()
     this._allLogEntries = []
-    this.renderConsoleContent()
+    this._displayLines = []
+    this.markNeedsUpdate()
   }
 
   public toggle(): void {
@@ -522,19 +529,19 @@ export class TerminalConsole extends EventEmitter {
       this.show()
     }
     if (!this.renderer.isRunning) {
-      this.renderer.needsUpdate = true
+      this.renderer.needsUpdate()
     }
   }
 
   public focus(): void {
     this.attachStdin()
     this._scrollToBottom(true)
-    this.renderConsoleContent()
+    this.markNeedsUpdate()
   }
 
   public blur(): void {
     this.detachStdin()
-    this.renderConsoleContent()
+    this.markNeedsUpdate()
   }
 
   public show(): void {
@@ -555,6 +562,7 @@ export class TerminalConsole extends EventEmitter {
       this._scrollToBottom(true)
 
       this.focus()
+      this.markNeedsUpdate()
     }
   }
 
@@ -566,14 +574,14 @@ export class TerminalConsole extends EventEmitter {
     }
   }
 
-  public dumpCache(): void {
-    for (const logEntry of terminalConsoleCache.cachedLogs) {
-      console.log(logEntry.join(" "))
-    }
+  public getCachedLogs(): string {
+    return terminalConsoleCache.cachedLogs
+      .map((logEntry) => logEntry[0].toISOString() + " " + logEntry.slice(1).join(" "))
+      .join("\n")
   }
 
-  private renderConsoleContent(): void {
-    if (!this.isVisible || !this.frameBuffer) return
+  private updateFrameBuffer(): void {
+    if (!this.frameBuffer) return
 
     this.frameBuffer.clear(this.backgroundColor)
 
@@ -626,19 +634,25 @@ export class TerminalConsole extends EventEmitter {
 
       lineY++
     }
-
-    this.renderer.needsUpdate = true
   }
 
   public renderToBuffer(buffer: OptimizedBuffer): void {
-    if (this.isVisible && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.consoleX, this.consoleY, this.frameBuffer)
+    if (!this.isVisible || !this.frameBuffer) return
+
+    if (this._needsFrameBufferUpdate) {
+      this.updateFrameBuffer()
+      this._needsFrameBufferUpdate = false
     }
+
+    buffer.drawFrameBuffer(this.consoleX, this.consoleY, this.frameBuffer)
   }
 
   public setDebugMode(enabled: boolean): void {
     this._debugModeEnabled = enabled
     terminalConsoleCache.setCollectCallerInfo(enabled)
+    if (this.isVisible) {
+      this.markNeedsUpdate()
+    }
   }
 
   public toggleDebugMode(): void {
@@ -688,7 +702,6 @@ export class TerminalConsole extends EventEmitter {
         })
 
         currentPos += availableWidth
-        // Handle empty first line case
         if (isFirstLineOfEntry && currentPos === 0 && textToWrap.length === 0) break
       }
     }

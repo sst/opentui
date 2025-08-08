@@ -95,6 +95,7 @@ export interface RenderContext {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
   width: () => number
   height: () => number
+  needsUpdate: () => void
 }
 
 export interface SelectionState {

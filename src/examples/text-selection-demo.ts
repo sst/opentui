@@ -8,9 +8,7 @@ import {
   StyledTextRenderable,
   GroupRenderable,
   t,
-  red,
   green,
-  blue,
   bold,
   italic,
   yellow,
@@ -34,8 +32,11 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
 
   mainContainer = new BoxRenderable("mainContainer", {
-    x: 1,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 1,
+    },
     width: 88,
     height: 22,
     bg: "#161b22",
@@ -44,18 +45,19 @@ export function run(renderer: CliRenderer): void {
     title: "Text Selection Demo",
     titleAlignment: "center",
   })
-  renderer.add(mainContainer)
+  renderer.root.add(mainContainer)
 
   leftGroup = new GroupRenderable("leftGroup", {
-    x: 2,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
     zIndex: 10,
   })
   mainContainer.add(leftGroup)
 
   const box1 = new BoxRenderable("box1", {
-    x: 0,
-    y: 0,
     width: 45,
     height: 7,
     bg: "#1e2936",
@@ -67,37 +69,45 @@ export function run(renderer: CliRenderer): void {
 
   const text1 = new TextRenderable("text1", {
     content: "This is a paragraph in the first box.",
-    x: 2,
-    y: 2,
+    position: {
+      left: 2,
+      top: 2,
+    },
     zIndex: 21,
     fg: "#f0f6fc",
   })
-  leftGroup.add(text1)
+  box1.add(text1)
   allTextRenderables.push(text1)
 
   const text2 = new TextRenderable("text2", {
     content: "It contains multiple lines of text",
-    x: 2,
-    y: 3,
+    position: {
+      left: 2,
+      top: 3,
+    },
     zIndex: 21,
     fg: "#f0f6fc",
   })
-  leftGroup.add(text2)
+  box1.add(text2)
   allTextRenderables.push(text2)
 
   const text3 = new TextRenderable("text3", {
     content: "that can be selected independently.",
-    x: 2,
-    y: 4,
+    position: {
+      left: 2,
+      top: 4,
+    },
     zIndex: 21,
     fg: "#f0f6fc",
   })
-  leftGroup.add(text3)
+  box1.add(text3)
   allTextRenderables.push(text3)
 
   const nestedBox = new BoxRenderable("nestedBox", {
-    x: 2,
-    y: 8,
+    position: {
+      left: 2,
+      top: 1,
+    },
     width: 31,
     height: 4,
     bg: "#2d1b69",
@@ -107,29 +117,36 @@ export function run(renderer: CliRenderer): void {
   })
   leftGroup.add(nestedBox)
 
-  const nestedText = renderer.createStyledText("nestedText", {
+  const nestedText = new StyledTextRenderable("nestedText", {
     fragment: t`${yellow("Important:")} ${bold(cyan("Nested content"))} ${italic(green("with styles"))}`,
-    x: 4,
-    y: 10,
+    position: {
+      left: 2,
+      top: 2,
+    },
     width: 27,
     height: 1,
     zIndex: 26,
     selectionBg: "#4a5568",
     selectionFg: "#ffffff",
   })
-  leftGroup.add(nestedText)
+  nestedBox.add(nestedText)
   allTextRenderables.push(nestedText)
 
   rightGroup = new GroupRenderable("rightGroup", {
-    x: 48,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 48,
+      top: 2,
+    },
     zIndex: 10,
   })
   mainContainer.add(rightGroup)
 
   const box2 = new BoxRenderable("box2", {
-    x: 0,
-    y: 0,
+    position: {
+      left: 2,
+      top: 0,
+    },
     width: 35,
     height: 12,
     bg: "#1c2128",
@@ -140,58 +157,69 @@ export function run(renderer: CliRenderer): void {
   })
   rightGroup.add(box2)
 
-  const codeText1 = renderer.createStyledText("codeText1", {
+  const codeText1 = new StyledTextRenderable("codeText1", {
     fragment: t`${magenta("function")} ${cyan("handleSelection")}() {`,
-    x: 2,
-    y: 2,
+    position: {
+      left: 2,
+      top: 2,
+    },
     width: 31,
     height: 1,
     zIndex: 21,
     selectionBg: "#4a5568",
     // selectionFg: "#ffffff",
   })
-  rightGroup.add(codeText1)
+  box2.add(codeText1)
   allTextRenderables.push(codeText1)
 
-  const codeText2 = renderer.createStyledText("codeText2", {
+  const codeText2 = new StyledTextRenderable("codeText2", {
     fragment: t`  ${magenta("const")} selected = ${cyan("getSelectedText")}()`,
-    x: 2,
-    y: 3,
+    position: {
+      left: 2,
+      top: 2,
+    },
     width: 31,
     height: 1,
     zIndex: 21,
     selectionBg: "#4a5568",
     // selectionFg: "#ffffff",
   })
-  rightGroup.add(codeText2)
+  box2.add(codeText2)
   allTextRenderables.push(codeText2)
 
-  const codeText3 = renderer.createStyledText("codeText3", {
+  const codeText3 = new StyledTextRenderable("codeText3", {
     fragment: t`  ${yellow("console")}.${green("log")}(selected)`,
-    x: 2,
-    y: 4,
+    position: {
+      left: 2,
+      top: 2,
+    },
     width: 31,
     height: 1,
     zIndex: 21,
     selectionBg: "#4a5568",
     // selectionFg: "#ffffff",
   })
-  rightGroup.add(codeText3)
+  box2.add(codeText3)
   allTextRenderables.push(codeText3)
 
   const codeText4 = new TextRenderable("codeText4", {
     content: "}",
-    x: 2,
-    y: 5,
+    position: {
+      left: 2,
+      top: 2,
+    },
     zIndex: 21,
     fg: "#e6edf3",
   })
-  rightGroup.add(codeText4)
+  box2.add(codeText4)
   allTextRenderables.push(codeText4)
 
   const floatingBox = new BoxRenderable("floatingBox", {
-    x: 90,
-    y: 11,
+    positionType: "absolute",
+    position: {
+      left: 90,
+      top: 11,
+    },
     width: 31,
     height: 6,
     bg: "#1b2f23",
@@ -200,15 +228,17 @@ export function run(renderer: CliRenderer): void {
     title: "README",
     borderStyle: "single",
   })
-  renderer.add(floatingBox)
+  renderer.root.add(floatingBox)
 
-  const multilineText = renderer.createStyledText("multilineText", {
+  const multilineText = new StyledTextRenderable("multilineText", {
     fragment: t`${bold(cyan("Selection Demo"))}
 ${green("✓")} Cross-renderable selection
 ${green("✓")} Nested groups and boxes
 ${green("✓")} Styled text support`,
-    x: 2,
-    y: 1,
+    position: {
+      left: 2,
+      top: 1,
+    },
     width: 27,
     height: 4,
     zIndex: 31,
@@ -220,8 +250,10 @@ ${green("✓")} Styled text support`,
 
   const instructions = new TextRenderable("instructions", {
     content: "Click and drag to select text across any elements. Press 'C' to clear selection.",
-    x: 2,
-    y: 17,
+    position: {
+      left: 2,
+      top: 17,
+    },
     zIndex: 2,
     fg: "#f0f6fc",
   })
@@ -229,8 +261,11 @@ ${green("✓")} Styled text support`,
   allTextRenderables.push(instructions)
 
   statusBox = new BoxRenderable("statusBox", {
-    x: 1,
-    y: 24,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 24,
+    },
     width: 88,
     height: 9,
     bg: "#0d1117",
@@ -239,52 +274,62 @@ ${green("✓")} Styled text support`,
     title: "Selection Status",
     titleAlignment: "left",
   })
-  renderer.add(statusBox)
+  renderer.root.add(statusBox)
 
   statusText = new TextRenderable("statusText", {
     content: "No selection - try selecting across different nested elements",
-    x: 3,
-    y: 26,
+    position: {
+      left: 3,
+      top: 26,
+    },
     zIndex: 2,
     fg: "#f0f6fc",
   })
-  renderer.add(statusText)
+  renderer.root.add(statusText)
 
   selectionStartText = new TextRenderable("selectionStartText", {
     content: "",
-    x: 3,
-    y: 27,
+    position: {
+      left: 3,
+      top: 27,
+    },
     zIndex: 2,
     fg: "#7dd3fc",
   })
-  renderer.add(selectionStartText)
+  renderer.root.add(selectionStartText)
 
   selectionMiddleText = new TextRenderable("selectionMiddleText", {
     content: "",
-    x: 3,
-    y: 28,
+    position: {
+      left: 3,
+      top: 28,
+    },
     zIndex: 2,
     fg: "#94a3b8",
   })
-  renderer.add(selectionMiddleText)
+  renderer.root.add(selectionMiddleText)
 
   selectionEndText = new TextRenderable("selectionEndText", {
     content: "",
-    x: 3,
-    y: 29,
+    position: {
+      left: 3,
+      top: 29,
+    },
     zIndex: 2,
     fg: "#7dd3fc",
   })
-  renderer.add(selectionEndText)
+  renderer.root.add(selectionEndText)
 
   debugText = new TextRenderable("debugText", {
     content: "",
-    x: 3,
-    y: 31,
+    position: {
+      left: 3,
+      top: 31,
+    },
     zIndex: 2,
     fg: "#e6edf3",
   })
-  renderer.add(debugText)
+  renderer.root.add(debugText)
 
   // Listen for selection events
   renderer.on("selection", (selection) => {
@@ -344,53 +389,53 @@ ${green("✓")} Styled text support`,
 export function destroy(renderer: CliRenderer): void {
   allTextRenderables = []
 
-  renderer.remove("nestedText")
-  renderer.remove("codeText1")
-  renderer.remove("codeText2")
-  renderer.remove("codeText3")
-  renderer.remove("multilineText")
+  renderer.root.remove("nestedText")
+  renderer.root.remove("codeText1")
+  renderer.root.remove("codeText2")
+  renderer.root.remove("codeText3")
+  renderer.root.remove("multilineText")
 
   if (leftGroup) {
-    renderer.remove("leftGroup")
+    renderer.root.remove("leftGroup")
     leftGroup = null
   }
   if (rightGroup) {
-    renderer.remove("rightGroup")
+    renderer.root.remove("rightGroup")
     rightGroup = null
   }
 
-  renderer.remove("floatingBox")
+  renderer.root.remove("floatingBox")
 
   if (mainContainer) {
-    renderer.remove("mainContainer")
+    renderer.root.remove("mainContainer")
     mainContainer = null
   }
   if (statusBox) {
-    renderer.remove("statusBox")
+    renderer.root.remove("statusBox")
     statusBox = null
   }
   if (statusText) {
-    renderer.remove("statusText")
+    renderer.root.remove("statusText")
     statusText = null
   }
   if (selectionStartText) {
-    renderer.remove("selectionStartText")
+    renderer.root.remove("selectionStartText")
     selectionStartText = null
   }
   if (selectionMiddleText) {
-    renderer.remove("selectionMiddleText")
+    renderer.root.remove("selectionMiddleText")
     selectionMiddleText = null
   }
   if (selectionEndText) {
-    renderer.remove("selectionEndText")
+    renderer.root.remove("selectionEndText")
     selectionEndText = null
   }
   if (debugText) {
-    renderer.remove("debugText")
+    renderer.root.remove("debugText")
     debugText = null
   }
 
-  renderer.remove("instructions")
+  renderer.root.remove("instructions")
 
   renderer.clearSelection()
 }

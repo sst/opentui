@@ -2,6 +2,7 @@ import {
   createCliRenderer,
   InputElement,
   InputElementEvents,
+  RenderableEvents,
   GroupRenderable,
   type CliRenderer,
   type BorderStyle,
@@ -10,7 +11,7 @@ import {
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import type { StyledTextRenderable } from "../objects"
+import { StyledTextRenderable } from "../objects"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
 let nameInput: InputElement | null = null
@@ -58,17 +59,17 @@ Type: Enter text in focused field`
   const passwordValue = passwordInput?.getValue() || ""
   const commentValue = commentInput?.getValue() || ""
 
-  const nameStatus = nameInput?.isFocused() ? "FOCUSED" : "BLURRED"
-  const nameColor = nameInput?.isFocused() ? "#00FF00" : "#FF0000"
+  const nameStatus = nameInput?.focused ? "FOCUSED" : "BLURRED"
+  const nameColor = nameInput?.focused ? "#00FF00" : "#FF0000"
 
-  const emailStatus = emailInput?.isFocused() ? "FOCUSED" : "BLURRED"
-  const emailColor = emailInput?.isFocused() ? "#00FF00" : "#FF0000"
+  const emailStatus = emailInput?.focused ? "FOCUSED" : "BLURRED"
+  const emailColor = emailInput?.focused ? "#00FF00" : "#FF0000"
 
-  const passwordStatus = passwordInput?.isFocused() ? "FOCUSED" : "BLURRED"
-  const passwordColor = passwordInput?.isFocused() ? "#00FF00" : "#FF0000"
+  const passwordStatus = passwordInput?.focused ? "FOCUSED" : "BLURRED"
+  const passwordColor = passwordInput?.focused ? "#00FF00" : "#FF0000"
 
-  const commentStatus = commentInput?.isFocused() ? "FOCUSED" : "BLURRED"
-  const commentColor = commentInput?.isFocused() ? "#00FF00" : "#FF0000"
+  const commentStatus = commentInput?.focused ? "FOCUSED" : "BLURRED"
+  const commentColor = commentInput?.focused ? "#00FF00" : "#FF0000"
 
   const statusText = t`${bold(fg("#FFFFFF")("Input Values:"))}
 Name: "${nameValue}" (${fg(nameColor)(nameStatus)})
@@ -165,17 +166,18 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.setBackgroundColor("#001122")
 
   const parentContainer = new GroupRenderable("parent-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   // Create input elements
   nameInput = new InputElement("name-input", {
-    x: 5,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 2,
+    },
     width: 40,
     height: 3,
     zIndex: 100,
@@ -194,8 +196,11 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   emailInput = new InputElement("email-input", {
-    x: 5,
-    y: 6,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 6,
+    },
     width: 40,
     height: 3,
     zIndex: 100,
@@ -214,8 +219,11 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   passwordInput = new InputElement("password-input", {
-    x: 5,
-    y: 10,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 10,
+    },
     width: 40,
     height: 3,
     zIndex: 100,
@@ -234,8 +242,11 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   commentInput = new InputElement("comment-input", {
-    x: 5,
-    y: 14,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 14,
+    },
     width: 60,
     height: 3,
     zIndex: 100,
@@ -255,28 +266,34 @@ export function run(rendererInstance: CliRenderer): void {
 
   inputElements.push(nameInput, emailInput, passwordInput, commentInput)
 
-  renderer.add(nameInput)
-  renderer.add(emailInput)
-  renderer.add(passwordInput)
-  renderer.add(commentInput)
+  renderer.root.add(nameInput)
+  renderer.root.add(emailInput)
+  renderer.root.add(passwordInput)
+  renderer.root.add(commentInput)
 
-  keyLegendDisplay = renderer.createStyledText("key-legend", {
+  keyLegendDisplay = new StyledTextRenderable("key-legend", {
     fragment: t``,
     width: 50,
     height: 12,
-    x: 50,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 50,
+      top: 2,
+    },
     zIndex: 50,
     defaultFg: "#AAAAAA",
   })
   parentContainer.add(keyLegendDisplay)
 
-  statusDisplay = renderer.createStyledText("status-display", {
+  statusDisplay = new StyledTextRenderable("status-display", {
     fragment: t``,
     width: 80,
     height: 18,
-    x: 5,
-    y: 19,
+    positionType: "absolute",
+    position: {
+      left: 5,
+      top: 19,
+    },
     zIndex: 50,
   })
   parentContainer.add(statusDisplay)
@@ -319,11 +336,11 @@ export function run(rendererInstance: CliRenderer): void {
       }, 1500)
     })
 
-    input.on(InputElementEvents.FOCUSED, () => {
+    input.on(RenderableEvents.FOCUSED, () => {
       updateDisplays()
     })
 
-    input.on(InputElementEvents.BLURRED, () => {
+    input.on(RenderableEvents.BLURRED, () => {
       updateDisplays()
     })
   })
@@ -331,7 +348,7 @@ export function run(rendererInstance: CliRenderer): void {
   updateDisplays()
 
   keyboardHandler = (key) => {
-    const anyInputFocused = inputElements.some((input) => input.isFocused())
+    const anyInputFocused = inputElements.some((input) => input.focused)
 
     if (key.name === "tab") {
       if (key.shift) {
@@ -344,7 +361,7 @@ export function run(rendererInstance: CliRenderer): void {
     } else if (key.ctrl && key.name === "f") {
       // Only respond to Ctrl+F for focus toggle
       const activeInput = getActiveInput()
-      if (activeInput?.isFocused()) {
+      if (activeInput?.focused) {
         activeInput.blur()
         lastActionText = `Focus removed from ${getInputName(activeInput)} input`
       } else {
@@ -386,13 +403,13 @@ export function destroy(rendererInstance: CliRenderer): void {
 
   inputElements.forEach((input) => {
     if (input) {
-      rendererInstance.remove(input.id)
+      rendererInstance.root.remove(input.id)
       input.destroy()
     }
   })
   inputElements.length = 0
 
-  rendererInstance.remove("parent-container")
+  rendererInstance.root.remove("parent-container")
 
   nameInput = null
   emailInput = null

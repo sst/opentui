@@ -139,6 +139,36 @@ pub const CliRenderer = struct {
         }
     };
 
+    fn codepointDisplayWidth(cp: u32) u2 {
+        // Treat NULL and control characters as width 0 (render as space)
+        if (cp == 0) return 0;
+        if (cp < 32) return 0;
+        // Basic control DEL
+        if (cp == 0x7F) return 0;
+
+        // Simple combining diacriticals range (partial; keeps minimal set)
+        if ((cp >= 0x0300 and cp <= 0x036F) or (cp >= 0x1AB0 and cp <= 0x1AFF) or (cp >= 0x1DC0 and cp <= 0x1DFF) or (cp >= 0x20D0 and cp <= 0x20FF) or (cp >= 0xFE20 and cp <= 0xFE2F)) {
+            return 0;
+        }
+
+        // Emoji and common East Asian Wide blocks (coarse coverage sufficient for terminals)
+        if ((cp >= 0x1100 and cp <= 0x115F) or // Hangul Jamo init
+            (cp == 0x2329 or cp == 0x232A) or // angle brackets
+            (cp >= 0x2E80 and cp <= 0xA4CF) or // CJK ... Yi
+            (cp >= 0xAC00 and cp <= 0xD7A3) or // Hangul syllables
+            (cp >= 0xF900 and cp <= 0xFAFF) or // CJK compatibility ideographs
+            (cp >= 0xFE10 and cp <= 0xFE19) or // vertical forms
+            (cp >= 0xFE30 and cp <= 0xFE6F) or // CJK forms
+            (cp >= 0xFF00 and cp <= 0xFF60) or // fullwidth forms
+            (cp >= 0xFFE0 and cp <= 0xFFE6) or // fullwidth signs
+            (cp >= 0x1F300 and cp <= 0x1FAFF)) // emoji blocks (broad)
+        {
+            return 2;
+        }
+
+        return 1;
+    }
+
     pub fn create(allocator: Allocator, width: u32, height: u32) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
 
@@ -364,7 +394,6 @@ pub const CliRenderer = struct {
                 break;
             }
 
-            // self.renderInProgress = true;
             self.renderRequested = false;
 
             const outputData = self.currentOutputBuffer;
@@ -406,12 +435,10 @@ pub const CliRenderer = struct {
                 activeBuffer = .B;
                 self.currentOutputBuffer = &outputBuffer;
                 self.currentOutputLen = outputBufferLen;
-                outputBufferLen = 0;
             } else {
                 activeBuffer = .A;
                 self.currentOutputBuffer = &outputBufferB;
                 self.currentOutputLen = outputBufferBLen;
-                outputBufferBLen = 0;
             }
 
             self.renderRequested = true;
@@ -478,8 +505,10 @@ pub const CliRenderer = struct {
             const y = @as(u32, @intCast(uy));
 
             var runStart: i64 = -1;
+            var runStartVisualCol: i64 = -1;
             var runLength: u32 = 0;
             runBufferLen = 0;
+            var currentVisualCol: u32 = 0;
 
             for (0..self.width) |ux| {
                 const x = @as(u32, @intCast(ux));
@@ -489,25 +518,28 @@ pub const CliRenderer = struct {
                 if (currentCell == null or nextCell == null) continue;
 
                 if (!force) {
-                    const colorsEqual =
-                        buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
-                        buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon);
+                    const charEqual = currentCell.?.char == nextCell.?.char;
+                    const attrEqual = currentCell.?.attributes == nextCell.?.attributes;
 
-                    // Skip if cell hasn't changed
-                    if (currentCell.?.char == nextCell.?.char and
-                        colorsEqual and
-                        currentCell.?.attributes == nextCell.?.attributes)
+                    if (charEqual and attrEqual and
+                        buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
+                        buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon))
                     {
                         if (runLength > 0) {
-                            ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
+                            const startCol: u32 = @intCast(runStartVisualCol + 1);
+                            ansi.ANSI.moveToOutput(writer, startCol, @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
 
                             writer.writeAll(runBuffer[0..runBufferLen]) catch {};
                             writer.writeAll(ansi.ANSI.reset) catch {};
 
                             runStart = -1;
+                            runStartVisualCol = -1;
                             runLength = 0;
                             runBufferLen = 0;
                         }
+                        const nextChar = nextCell.?.char;
+                        const w = codepointDisplayWidth(nextChar);
+                        currentVisualCol += if (w == 0) 1 else w;
                         continue;
                     }
                 }
@@ -520,7 +552,8 @@ pub const CliRenderer = struct {
 
                 if (!sameAttributes or runStart == -1) {
                     if (runLength > 0) {
-                        ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
+                        const startCol: u32 = @intCast(runStartVisualCol + 1);
+                        ansi.ANSI.moveToOutput(writer, startCol, @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
 
                         writer.writeAll(runBuffer[0..runBufferLen]) catch {};
                         writer.writeAll(ansi.ANSI.reset) catch {};
@@ -528,13 +561,14 @@ pub const CliRenderer = struct {
                     }
 
                     runStart = @intCast(x);
+                    runStartVisualCol = @intCast(currentVisualCol);
                     runLength = 0;
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
                     currentAttributes = @intCast(cell.attributes);
 
-                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                    ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(currentVisualCol + 1)), y + 1 + self.renderOffset) catch {};
 
                     const fgR = rgbaComponentToU8(cell.fg[0]);
                     const fgG = rgbaComponentToU8(cell.fg[1]);
@@ -550,7 +584,12 @@ pub const CliRenderer = struct {
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
 
-                const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
+                var outChar: u32 = cell.char;
+                const w = codepointDisplayWidth(outChar);
+                if (w == 0) {
+                    outChar = ' ';
+                }
+                const len = std.unicode.utf8Encode(@intCast(outChar), &utf8Buf) catch 1;
                 if (runBufferLen + len <= runBuffer.len) {
                     @memcpy(runBuffer[runBufferLen..][0..len], utf8Buf[0..len]);
                     runBufferLen += len;
@@ -560,11 +599,24 @@ pub const CliRenderer = struct {
                 self.currentRenderBuffer.set(x, y, nextCell.?);
 
                 cellsUpdated += 1;
+                currentVisualCol += if (w == 0) 1 else w;
+
+                // append an extra space if previous char was double-width next is a narrow glyph
+                const prevWidth = codepointDisplayWidth(currentCell.?.char);
+                if (prevWidth == 2 and (w == 0 or w == 1)) {
+                    if (runBufferLen + 1 <= runBuffer.len) {
+                        runBuffer[runBufferLen] = ' ';
+                        runBufferLen += 1;
+                        currentVisualCol += 1;
+                    }
+                }
             }
 
             if (runLength > 0) {
-                ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(runStart + 1)), @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
+                const startCol: u32 = @intCast(runStartVisualCol + 1);
+                ansi.ANSI.moveToOutput(writer, startCol, @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
                 writer.writeAll(runBuffer[0..runBufferLen]) catch {};
+                writer.writeAll(ansi.ANSI.reset) catch {};
             }
         }
 
@@ -684,6 +736,77 @@ pub const CliRenderer = struct {
             }
             writer.writeByte('\n') catch return;
         }
+    }
+
+    fn dumpSingleBuffer(self: *CliRenderer, buffer: *OptimizedBuffer, buffer_name: []const u8, timestamp: i64) void {
+        std.fs.cwd().makeDir("buffer_dump") catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return,
+        };
+
+        var filename_buf: [128]u8 = undefined;
+        const filename = std.fmt.bufPrint(&filename_buf, "buffer_dump/{s}_buffer_{d}.txt", .{ buffer_name, timestamp }) catch return;
+
+        const file = std.fs.cwd().createFile(filename, .{}) catch return;
+        defer file.close();
+
+        const writer = file.writer();
+
+        writer.print("{s} Buffer ({d}x{d}):\n", .{ buffer_name, self.width, self.height }) catch return;
+        writer.writeAll("Characters:\n") catch return;
+
+        for (0..self.height) |y| {
+            for (0..self.width) |x| {
+                const cell = buffer.get(@intCast(x), @intCast(y));
+                if (cell) |c| {
+                    var utf8Buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(c.char), &utf8Buf) catch 1;
+                    writer.writeAll(utf8Buf[0..len]) catch return;
+                } else {
+                    writer.writeByte(' ') catch return;
+                }
+            }
+            writer.writeByte('\n') catch return;
+        }
+    }
+
+    pub fn dumpStdoutBuffer(self: *CliRenderer, timestamp: i64) void {
+        _ = self;
+        std.fs.cwd().makeDir("buffer_dump") catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return,
+        };
+
+        var filename_buf: [128]u8 = undefined;
+        const filename = std.fmt.bufPrint(&filename_buf, "buffer_dump/stdout_buffer_{d}.txt", .{timestamp}) catch return;
+
+        const file = std.fs.cwd().createFile(filename, .{}) catch return;
+        defer file.close();
+
+        const writer = file.writer();
+
+        writer.print("Stdout Buffer Output (timestamp: {d}):\n", .{timestamp}) catch return;
+        writer.writeAll("Last Rendered ANSI Output:\n") catch return;
+        writer.writeAll("================\n") catch return;
+
+        const lastBuffer = if (activeBuffer == .A) &outputBufferB else &outputBuffer;
+        const lastLen = if (activeBuffer == .A) outputBufferBLen else outputBufferLen;
+
+        if (lastLen > 0) {
+            writer.writeAll(lastBuffer.*[0..lastLen]) catch return;
+        } else {
+            writer.writeAll("(no output rendered yet)\n") catch return;
+        }
+
+        writer.writeAll("\n================\n") catch return;
+        writer.print("Buffer size: {d} bytes\n", .{lastLen}) catch return;
+        writer.print("Active buffer: {s}\n", .{if (activeBuffer == .A) "A" else "B"}) catch return;
+    }
+
+    pub fn dumpBuffers(self: *CliRenderer, timestamp: i64) void {
+        self.dumpSingleBuffer(self.currentRenderBuffer, "current", timestamp);
+        self.dumpSingleBuffer(self.nextRenderBuffer, "next", timestamp);
+        self.dumpStdoutBuffer(timestamp);
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

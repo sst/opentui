@@ -7,7 +7,7 @@ export function setupCommonDemoKeys(renderer: CliRenderer) {
       renderer.console.toggle()
     } else if (key.name === "t") {
       renderer.toggleDebugOverlay()
-    } else if (key.name === "h") {
+    } else if (key.name === "g" && key.ctrl) {
       console.log("dumping hit grid")
       renderer.dumpHitGrid()
     }

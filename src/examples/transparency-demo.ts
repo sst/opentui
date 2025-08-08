@@ -11,6 +11,7 @@ import {
   bold,
   underline,
   fg,
+  StyledTextRenderable,
 } from "../index"
 import type { CliRenderer } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -26,14 +27,17 @@ class DraggableTransparentBox extends BoxRenderable {
 
   constructor(id: string, x: number, y: number, width: number, height: number, bg: RGBA, zIndex: number) {
     super(id, {
-      x,
-      y,
       width,
       height,
       zIndex,
       bg,
       border: false,
       titleAlignment: "center",
+      positionType: "absolute",
+      position: {
+        left: x,
+        top: y,
+      },
     })
     this.alphaPercentage = Math.round(bg.a * 100)
   }
@@ -85,22 +89,23 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0A0E14")
 
   const parentContainer = new GroupRenderable("parent-container", {
-    x: 0,
-    y: 0,
     zIndex: 10,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
   const headerText = t`${bold(underline(fg("#00D4AA")("Interactive Alpha Transparency & Blending Demo - Drag the boxes!")))}
 ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch how transparency layers blend")}`
 
-  const headerDisplay = renderer.createStyledText("header-text", {
+  const headerDisplay = new StyledTextRenderable("header-text", {
     fragment: headerText,
     width: 85,
     height: 3,
-    x: 10,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 10,
+      top: 2,
+    },
     zIndex: 1,
     selectable: false,
   })
@@ -108,8 +113,11 @@ ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch 
 
   const textUnderAlpha = new TextRenderable("text-under-alpha", {
     content: "This text should not be selectable",
-    x: 10,
-    y: 6,
+    positionType: "absolute",
+    position: {
+      left: 10,
+      top: 6,
+    },
     fg: "#FFB84D",
     attributes: TextAttributes.BOLD,
     zIndex: 4,
@@ -119,8 +127,11 @@ ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch 
 
   const moreTextUnder = new TextRenderable("more-text-under", {
     content: "Selectable text to show character preservation",
-    x: 15,
-    y: 10,
+    positionType: "absolute",
+    position: {
+      left: 15,
+      top: 10,
+    },
     fg: "#7B68EE",
     attributes: TextAttributes.BOLD,
     zIndex: 1,
@@ -204,11 +215,11 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   for (const box of draggableBoxes) {
-    renderer.remove(box.id)
+    renderer.root.remove(box.id)
   }
   draggableBoxes = []
 
-  renderer.remove("parent-container")
+  renderer.root.remove("parent-container")
   renderer.setCursorPosition(0, 0, false)
 }
 

@@ -8,6 +8,7 @@ import {
   ThreeCliRenderer,
   GroupRenderable,
   TextRenderable,
+  FrameBufferRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
@@ -32,20 +33,18 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const TERM_HEIGHT = renderer.terminalHeight
 
   parentContainer = new GroupRenderable("static-sprite-container", {
-    x: 0,
-    y: 0,
     zIndex: 15,
     visible: true,
   })
-  renderer.add(parentContainer)
+  renderer.root.add(parentContainer)
 
-  const { frameBuffer: framebuffer } = renderer.createFrameBuffer("main", {
+  const framebufferRenderable = new FrameBufferRenderable("main", {
     width: TERM_WIDTH,
     height: TERM_HEIGHT,
-    x: 0,
-    y: 0,
     zIndex: 10,
   })
+  renderer.root.add(framebufferRenderable)
+  const { frameBuffer: framebuffer } = framebufferRenderable
 
   engine = new ThreeCliRenderer(renderer, {
     width: TERM_WIDTH,
@@ -74,8 +73,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const titleText = new TextRenderable("demo-title", {
     content: "Static THREE.Sprite Demo",
-    x: 1,
-    y: 1,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 1,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -83,8 +85,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("status", {
     content: "Loading sprite texture...",
-    x: 1,
-    y: 2,
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 2,
+    },
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -156,10 +161,10 @@ export function destroy(renderer: CliRenderer): void {
     resizeHandler = null
   }
 
-  renderer.remove("main")
+  renderer.root.remove("main")
 
   if (parentContainer) {
-    renderer.remove("static-sprite-container")
+    renderer.root.remove("static-sprite-container")
     parentContainer = null
   }
 
