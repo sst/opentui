@@ -147,7 +147,7 @@ class Animation {
       if (this.currentLocalFrame !== oldLocalFrame || !this.isPlaying) {
         const absoluteFrame = this.state.animFrameOffset + this.currentLocalFrame
         this.frameAttribute.setX(this.instanceIndex, absoluteFrame)
-        this.frameAttribute.needsUpdate = true // Mark manager for update
+        this.frameAttribute.needsUpdate = true
         needsFrameAttributeUpdate = true
       }
     }

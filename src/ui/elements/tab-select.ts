@@ -26,8 +26,6 @@ export interface TabSelectElementOptions extends Omit<ElementOptions, "height"> 
 export enum TabSelectElementEvents {
   SELECTION_CHANGED = "selectionChanged",
   ITEM_SELECTED = "itemSelected",
-  FOCUSED = "focused",
-  BLURRED = "blurred",
 }
 
 function calculateDynamicHeight(

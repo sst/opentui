@@ -1,16 +1,16 @@
 import {
   CliRenderer,
-  Layout,
   ContainerElement,
   BufferedElement,
   FlexDirection,
   createCliRenderer,
   type ParsedKey,
+  type ElementOptions,
 } from "../index"
 import { InputElement, InputElementEvents } from "../ui/elements/input"
 import { SelectElement, SelectElementEvents, type SelectOption } from "../ui/elements/select"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
-import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 /**
  * Simple text element for labels and headers
@@ -18,7 +18,7 @@ import { setupStandaloneDemoKeys } from "./lib/standalone-keys"
 class LabelElement extends BufferedElement {
   private text: string = ""
 
-  constructor(id: string, text: string, options: any) {
+  constructor(id: string, text: string, options: ElementOptions) {
     super(id, options)
     this.text = text
   }
@@ -35,13 +35,12 @@ class LabelElement extends BufferedElement {
     const textY = Math.floor(contentHeight / 2)
 
     if (textY >= 0 && textY < contentHeight) {
-      this.frameBuffer.drawText(this.text, contentX + textX, contentY + textY, this.textColor, this.backgroundColor)
+      this.frameBuffer.drawText(this.text, contentX + textX, contentY + textY, this.textColor, this._backgroundColor)
     }
   }
 }
 
 let renderer: CliRenderer | null = null
-let mainLayout: Layout | null = null
 let header: LabelElement | null = null
 let selectContainer: ContainerElement | null = null
 let leftSelect: SelectElement | null = null
@@ -74,18 +73,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  mainLayout = new Layout("main-layout", {
-    x: 0,
-    y: 0,
-    zIndex: 1,
-    width: renderer.terminalWidth,
-    height: renderer.terminalHeight,
-  })
-  renderer.add(mainLayout)
-
   header = new LabelElement("header", "INPUT & SELECT LAYOUT DEMO", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -98,8 +86,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   selectContainer = new ContainerElement("select-container", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -113,8 +99,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   leftSelect = new SelectElement("color-select", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -139,8 +123,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   rightSelect = new SelectElement("size-select", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -165,8 +147,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   inputContainer = new ContainerElement("input-container", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -180,8 +160,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   inputLabel = new LabelElement("input-label", "Enter your text:", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -194,8 +172,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   textInput = new InputElement("text-input", {
-    x: 0,
-    y: 0,
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -212,29 +188,31 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexShrink: 0,
   })
 
-  footer = new LabelElement("footer", "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit", {
-    x: 0,
-    y: 0,
-    zIndex: 0,
-    width: "auto",
-    height: 3,
-    backgroundColor: "#1e40af",
-    textColor: "#dbeafe",
-    border: true,
-    borderColor: "#1d4ed8",
-    flexGrow: 0,
-    flexShrink: 0,
-  })
+  footer = new LabelElement(
+    "footer",
+    "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit",
+    {
+      zIndex: 0,
+      width: "auto",
+      height: 3,
+      backgroundColor: "#1e40af",
+      textColor: "#dbeafe",
+      border: true,
+      borderColor: "#1d4ed8",
+      flexGrow: 0,
+      flexShrink: 0,
+    },
+  )
 
   selectContainer.add(leftSelect)
   selectContainer.add(rightSelect)
   inputContainer.add(inputLabel)
   inputContainer.add(textInput)
 
-  mainLayout.add(header)
-  mainLayout.add(selectContainer)
-  mainLayout.add(inputContainer)
-  mainLayout.add(footer)
+  renderer.root.add(header)
+  renderer.root.add(selectContainer)
+  renderer.root.add(inputContainer)
+  renderer.root.add(footer)
 
   focusableElements.push(leftSelect, rightSelect, textInput)
   setupEventHandlers()
@@ -293,13 +271,12 @@ function updateDisplay(): void {
 }
 
 function handleResize(width: number, height: number): void {
-  if (!mainLayout) return
-  mainLayout.resize(width, height)
+  // Root layout is automatically resized by the renderer
 }
 
 function updateFocus(): void {
-  focusableElements.forEach(element => element.blur())
-  
+  focusableElements.forEach((element) => element.blur())
+
   if (focusableElements[currentFocusIndex]) {
     focusableElements[currentFocusIndex].focus()
   }
@@ -317,7 +294,6 @@ function handleKeyPress(key: ParsedKey): void {
     updateFocus()
     return
   }
-
 }
 
 export function run(rendererInstance: CliRenderer): void {
@@ -333,11 +309,11 @@ export function destroy(rendererInstance: CliRenderer): void {
     renderer.off("resize", handleResize)
   }
 
-  if (mainLayout) {
-    rendererInstance.remove(mainLayout.id)
-    mainLayout.destroy()
-    mainLayout = null
-  }
+  // Clean up elements directly from root
+  if (header) rendererInstance.root.remove(header.id)
+  if (selectContainer) rendererInstance.root.remove(selectContainer.id)
+  if (inputContainer) rendererInstance.root.remove(inputContainer.id)
+  if (footer) rendererInstance.root.remove(footer.id)
 
   // Clean up all elements
   header = null
@@ -357,9 +333,8 @@ if (import.meta.main) {
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 30,
-    parseKeys: true,
   })
   run(renderer)
-  setupStandaloneDemoKeys(renderer)
+  setupCommonDemoKeys(renderer)
   renderer.start()
-} 
+}

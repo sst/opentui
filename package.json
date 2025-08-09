@@ -8,7 +8,8 @@
     "build": "cd src/zig && zig build",
     "build:dev": "cd src/zig && zig build -Doptimize=Debug",
     "build:prod": "cd src/zig && zig build -Doptimize=ReleaseFast",
-    "test": "bun test"
+    "test": "bun test",
+    "prettier:write": "prettier --write ."
   },
   "license": "UNLICENSED",
   "devDependencies": {

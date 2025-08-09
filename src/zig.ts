@@ -64,6 +64,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    setRenderOffset: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
     updateStats: {
       args: ["ptr", "f64", "u32", "f64"],
       returns: "void",
@@ -73,7 +77,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     render: {
-      args: ["ptr"],
+      args: ["ptr", "bool"],
       returns: "void",
     },
     getNextBuffer: {
@@ -200,8 +204,16 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "u32",
     },
-    clearHitGrid: {
+    dumpHitGrid: {
       args: ["ptr"],
+      returns: "void",
+    },
+    dumpBuffers: {
+      args: ["ptr", "i64"],
+      returns: "void",
+    },
+    dumpStdoutBuffer: {
+      args: ["ptr", "i64"],
       returns: "void",
     },
   })
@@ -212,16 +224,13 @@ export interface RenderLib {
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
+  setRenderOffset: (renderer: Pointer, offset: number) => void
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
-  render: (renderer: Pointer) => void
+  render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
-  createOptimizedBuffer: (
-    width: number,
-    height: number,
-    respectAlpha?: boolean,
-  ) => OptimizedBuffer
+  createOptimizedBuffer: (width: number, height: number, respectAlpha?: boolean) => OptimizedBuffer
   destroyOptimizedBuffer: (bufferPtr: Pointer) => void
   drawFrameBuffer: (
     targetBufferPtr: Pointer,
@@ -297,7 +306,9 @@ export interface RenderLib {
   clearTerminal: (renderer: Pointer) => void
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
-  clearHitGrid: (renderer: Pointer) => void
+  dumpHitGrid: (renderer: Pointer) => void
+  dumpBuffers: (renderer: Pointer, timestamp?: number) => void
+  dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -322,6 +333,10 @@ class FFIRenderLib implements RenderLib {
 
   public setBackgroundColor(renderer: Pointer, color: RGBA) {
     this.opentui.symbols.setBackgroundColor(renderer, color.buffer)
+  }
+
+  public setRenderOffset(renderer: Pointer, offset: number) {
+    this.opentui.symbols.setRenderOffset(renderer, offset)
   }
 
   public updateStats(renderer: Pointer, time: number, fps: number, frameCallbackTime: number) {
@@ -551,15 +566,15 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setCursorColor(color.buffer)
   }
 
-  public render(renderer: Pointer) {
-    this.opentui.symbols.render(renderer)
+  public render(renderer: Pointer, force: boolean) {
+    this.opentui.symbols.render(renderer, force)
   }
 
-  public createOptimizedBuffer(
-    width: number,
-    height: number,
-    respectAlpha: boolean = false,
-  ): OptimizedBuffer {
+  public createOptimizedBuffer(width: number, height: number, respectAlpha: boolean = false): OptimizedBuffer {
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
+    }
+
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha)
     if (!bufferPtr) {
       throw new Error("Failed to create optimized buffer")
@@ -607,8 +622,18 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.checkHit(renderer, x, y)
   }
 
-  public clearHitGrid(renderer: Pointer) {
-    this.opentui.symbols.clearHitGrid(renderer)
+  public dumpHitGrid(renderer: Pointer): void {
+    this.opentui.symbols.dumpHitGrid(renderer)
+  }
+
+  public dumpBuffers(renderer: Pointer, timestamp?: number): void {
+    const ts = timestamp ?? Date.now()
+    this.opentui.symbols.dumpBuffers(renderer, ts)
+  }
+
+  public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
+    const ts = timestamp ?? Date.now()
+    this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
   }
 }
 
