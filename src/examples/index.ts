@@ -12,6 +12,8 @@ import {
   type ParsedKey,
 } from "../index"
 import { renderFontToFrameBuffer, measureText } from "../ui/ascii.font"
+import * as causticsDemo from "./caustics-demo"
+import * as lavalampDemo from "./lavalamp-demo"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
 import * as framebufferExample from "./framebuffer-demo"
@@ -163,6 +165,18 @@ const examples: Example[] = [
     description: "Fractal rendering with shaders",
     run: fractalShaderExample.run,
     destroy: fractalShaderExample.destroy,
+  },
+  {
+    name: "Caustics Shader",
+    description: "Caustics in a fragment shader",
+    run: causticsDemo.run,
+    destroy: causticsDemo.destroy,
+  },
+  {
+    name: "Lava Lamp Shader",
+    description: "Lava Lamp effect in a fragment shader",
+    run: lavalampDemo.run,
+    destroy: lavalampDemo.destroy,
   },
   {
     name: "Phong Lighting",
