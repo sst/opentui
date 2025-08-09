@@ -1,5 +1,5 @@
 import { ContainerElement, Element, type ElementOptions } from "../element"
-import { TabSelectElement, TabSelectElementEvents, GroupRenderable } from "../../index"
+import { TabSelectElement, TabSelectElementEvents, GroupRenderable, RenderableEvents } from "../../index"
 import type { CliRenderer, TabSelectOption } from "../../index"
 import type { ColorInput } from "../../types"
 
@@ -31,8 +31,6 @@ export interface TabControllerElementOptions extends ElementOptions {
 
 export enum TabControllerElementEvents {
   TAB_CHANGED = "tabChanged",
-  FOCUSED = "focused",
-  BLURRED = "blurred",
 }
 
 export class TabControllerElement extends Element {
@@ -52,9 +50,7 @@ export class TabControllerElement extends Element {
     this.tabBarHeight = options.tabBarHeight || 4
 
     this.tabSelectElement = new TabSelectElement(`${id}-tabs`, {
-      x: 0,
-      y: 0,
-      width: this.width,
+      width: "100%",
       height: this.tabBarHeight,
       options: [],
       zIndex: this.zIndex + 100,
@@ -62,7 +58,7 @@ export class TabControllerElement extends Element {
       selectedTextColor: options.selectedTextColor || "#FFFF00",
       textColor: this.textColor,
       selectedDescriptionColor: options.selectedDescriptionColor || "#FFFFFF",
-      backgroundColor: options.tabBarBackgroundColor || this.backgroundColor,
+      backgroundColor: options.tabBarBackgroundColor || this._backgroundColor,
       borderStyle: this.borderStyle,
       borderColor: this.borderColor,
       focusedBorderColor: this.focusedBorderColor,
@@ -85,12 +81,14 @@ export class TabControllerElement extends Element {
 
   public addTab(tabObject: TabObject): Tab {
     const tabGroup = new ContainerElement(`${this.id}-tab-${this.tabs.length}`, {
-      x: 0,
-      y: this.tabBarHeight,
+      position: {
+        left: 0,
+        top: this.tabBarHeight,
+      },
       zIndex: this.zIndex + 50,
       visible: false,
-      width: this.width,
-      height: this.height - this.tabBarHeight,
+      width: "100%",
+      height: 1,
     })
 
     this.add(tabGroup)
@@ -192,16 +190,16 @@ export class TabControllerElement extends Element {
 
   public focus(): void {
     this.tabSelectElement.focus()
-    this.emit(TabControllerElementEvents.FOCUSED)
+    this.emit(RenderableEvents.FOCUSED)
   }
 
   public blur(): void {
     this.tabSelectElement.blur()
-    this.emit(TabControllerElementEvents.BLURRED)
+    this.emit(RenderableEvents.BLURRED)
   }
 
-  public isFocused(): boolean {
-    return this.tabSelectElement.isFocused()
+  public get focused(): boolean {
+    return this.tabSelectElement.focused
   }
 
   public onResize(width: number, height: number): void {
@@ -210,11 +208,13 @@ export class TabControllerElement extends Element {
     this.width = width
     this.height = height
 
-    this.tabSelectElement.setWidth(width)
-    this.tabSelectElement.setHeight(this.tabBarHeight)
+    this.tabSelectElement.width = width
+    this.tabSelectElement.height = this.tabBarHeight
 
     for (const tab of this.tabs) {
       tab.group.y = this.tabBarHeight
+      tab.group.width = width
+      tab.group.height = height - this.tabBarHeight
     }
     super.onResize(width, height)
   }

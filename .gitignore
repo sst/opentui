@@ -6,6 +6,7 @@ out
 dist
 *.tgz
 *.log
+*.txt
 
 # code coverage
 coverage

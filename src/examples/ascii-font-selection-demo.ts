@@ -1,0 +1,278 @@
+#!/usr/bin/env bun
+
+import { CliRenderer, createCliRenderer, BoxRenderable, GroupRenderable, TextRenderable, RGBA } from ".."
+import { ASCIIFontRenderable } from "../objects"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
+
+let mainContainer: BoxRenderable | null = null
+let fontGroup: GroupRenderable | null = null
+let statusBox: BoxRenderable | null = null
+let statusText: TextRenderable | null = null
+let selectionStartText: TextRenderable | null = null
+let selectionMiddleText: TextRenderable | null = null
+let selectionEndText: TextRenderable | null = null
+let debugText: TextRenderable | null = null
+let allFontRenderables: ASCIIFontRenderable[] = []
+
+export function run(renderer: CliRenderer): void {
+  renderer.setBackgroundColor("#0d1117")
+
+  mainContainer = new BoxRenderable("mainContainer", {
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 1,
+    },
+    width: 95,
+    height: 30,
+    bg: "#161b22",
+    zIndex: 1,
+    borderColor: "#50565d",
+    title: "ASCII Font Selection Demo",
+    titleAlignment: "center",
+  })
+  renderer.root.add(mainContainer)
+
+  fontGroup = new GroupRenderable("fontGroup", {
+    positionType: "absolute",
+    position: {
+      left: 2,
+      top: 2,
+    },
+    zIndex: 10,
+  })
+  mainContainer.add(fontGroup)
+
+  const tinyFont = new ASCIIFontRenderable("tinyFont", {
+    text: "TINY FONT DEMO",
+    font: "tiny",
+    fg: RGBA.fromInts(255, 255, 0, 255),
+    bg: RGBA.fromInts(0, 0, 40, 255),
+    selectionBg: "#4a5568",
+    selectionFg: "#ffffff",
+    zIndex: 20,
+  })
+  fontGroup.add(tinyFont)
+  allFontRenderables.push(tinyFont)
+
+  const blockFont = new ASCIIFontRenderable("blockFont", {
+    text: "opentui",
+    font: "block",
+    fg: [RGBA.fromInts(255, 100, 100, 255), RGBA.fromInts(100, 255, 100, 255)],
+    bg: RGBA.fromInts(0, 0, 40, 255),
+    selectionBg: "#4a5568",
+    selectionFg: "#ffffff",
+    zIndex: 20,
+  })
+  fontGroup.add(blockFont)
+  allFontRenderables.push(blockFont)
+
+  const shadeFont = new ASCIIFontRenderable("shadeFont", {
+    text: "SHADE",
+    font: "shade",
+    fg: [RGBA.fromInts(255, 200, 100, 255), RGBA.fromInts(100, 150, 200, 255)],
+    bg: RGBA.fromInts(0, 0, 40, 255),
+    selectionBg: "#4a5568",
+    selectionFg: "#ffffff",
+    zIndex: 20,
+  })
+  fontGroup.add(shadeFont)
+  allFontRenderables.push(shadeFont)
+
+  const slickFont = new ASCIIFontRenderable("slickFont", {
+    text: "SLICK",
+    font: "slick",
+    fg: [RGBA.fromInts(100, 255, 100, 255), RGBA.fromInts(255, 100, 255, 255)],
+    bg: RGBA.fromInts(0, 0, 40, 255),
+    selectionBg: "#4a5568",
+    selectionFg: "#ffffff",
+    zIndex: 20,
+  })
+  fontGroup.add(slickFont)
+  allFontRenderables.push(slickFont)
+
+  const instructions = new TextRenderable("instructions", {
+    content: "Click and drag to select text across any ASCII font elements. Press 'C' to clear selection.",
+    position: {
+      left: 2,
+      top: 26,
+    },
+    zIndex: 2,
+    fg: "#f0f6fc",
+  })
+  mainContainer.add(instructions)
+
+  statusBox = new BoxRenderable("statusBox", {
+    positionType: "absolute",
+    position: {
+      left: 1,
+      top: 32,
+    },
+    width: 95,
+    height: 10,
+    bg: "#0d1117",
+    zIndex: 1,
+    borderColor: "#50565d",
+    title: "Selection Status",
+    titleAlignment: "left",
+  })
+  renderer.root.add(statusBox)
+
+  statusText = new TextRenderable("statusText", {
+    content: "No selection - try selecting across different ASCII fonts",
+    position: {
+      left: 3,
+      top: 34,
+    },
+    zIndex: 2,
+    fg: "#f0f6fc",
+  })
+  renderer.root.add(statusText)
+
+  selectionStartText = new TextRenderable("selectionStartText", {
+    content: "",
+    position: {
+      left: 3,
+      top: 35,
+    },
+    zIndex: 2,
+    fg: "#7dd3fc",
+  })
+  renderer.root.add(selectionStartText)
+
+  selectionMiddleText = new TextRenderable("selectionMiddleText", {
+    content: "",
+    position: {
+      left: 3,
+      top: 36,
+    },
+    zIndex: 2,
+    fg: "#94a3b8",
+  })
+  renderer.root.add(selectionMiddleText)
+
+  selectionEndText = new TextRenderable("selectionEndText", {
+    content: "",
+    position: {
+      left: 3,
+      top: 37,
+    },
+    zIndex: 2,
+    fg: "#7dd3fc",
+  })
+  renderer.root.add(selectionEndText)
+
+  debugText = new TextRenderable("debugText", {
+    content: "",
+    position: {
+      left: 3,
+      top: 39,
+    },
+    zIndex: 2,
+    fg: "#e6edf3",
+  })
+  renderer.root.add(debugText)
+
+  renderer.on("selection", (selection) => {
+    if (selection && statusText && debugText && selectionStartText && selectionMiddleText && selectionEndText) {
+      const selectedText = selection.getSelectedText()
+
+      const selectedCount = allFontRenderables.filter((r) => r.hasSelection()).length
+      const container = renderer.getSelectionContainer()
+      const containerInfo = container ? `Container: ${container.id}` : "Container: none"
+      debugText.content = `Selected fonts: ${selectedCount}/${allFontRenderables.length} | ${containerInfo}`
+
+      if (selectedText) {
+        const lines = selectedText.split("\n")
+        const totalLength = selectedText.length
+
+        if (lines.length > 1) {
+          statusText.content = `Selected ${lines.length} lines (${totalLength} chars):`
+          selectionStartText.content = lines[0]
+          selectionMiddleText.content = "..."
+          selectionEndText.content = lines[lines.length - 1]
+        } else if (selectedText.length > 60) {
+          statusText.content = `Selected ${totalLength} chars:`
+          selectionStartText.content = selectedText.substring(0, 30)
+          selectionMiddleText.content = "..."
+          selectionEndText.content = selectedText.substring(selectedText.length - 30)
+        } else {
+          statusText.content = `Selected ${totalLength} chars:`
+          selectionStartText.content = `"${selectedText}"`
+          selectionMiddleText.content = ""
+          selectionEndText.content = ""
+        }
+      } else {
+        statusText.content = "Empty selection"
+        selectionStartText.content = ""
+        selectionMiddleText.content = ""
+        selectionEndText.content = ""
+      }
+    }
+  })
+
+  renderer.on("key", (data) => {
+    const key = data.toString()
+    if (key === "c" || key === "C") {
+      renderer.clearSelection()
+      if (statusText && debugText && selectionStartText && selectionMiddleText && selectionEndText) {
+        statusText.content = "Selection cleared"
+        selectionStartText.content = ""
+        selectionMiddleText.content = ""
+        selectionEndText.content = ""
+        debugText.content = ""
+      }
+    }
+  })
+}
+
+export function destroy(renderer: CliRenderer): void {
+  allFontRenderables = []
+
+  if (fontGroup) {
+    renderer.root.remove("fontGroup")
+    fontGroup = null
+  }
+
+  if (mainContainer) {
+    renderer.root.remove("mainContainer")
+    mainContainer = null
+  }
+  if (statusBox) {
+    renderer.root.remove("statusBox")
+    statusBox = null
+  }
+  if (statusText) {
+    renderer.root.remove("statusText")
+    statusText = null
+  }
+  if (selectionStartText) {
+    renderer.root.remove("selectionStartText")
+    selectionStartText = null
+  }
+  if (selectionMiddleText) {
+    renderer.root.remove("selectionMiddleText")
+    selectionMiddleText = null
+  }
+  if (selectionEndText) {
+    renderer.root.remove("selectionEndText")
+    selectionEndText = null
+  }
+  if (debugText) {
+    renderer.root.remove("debugText")
+    debugText = null
+  }
+
+  renderer.root.remove("instructions")
+  renderer.clearSelection()
+}
+
+if (import.meta.main) {
+  const renderer = await createCliRenderer({
+    targetFps: 30,
+    enableMouseMovement: true,
+    exitOnCtrlC: true,
+  })
+  run(renderer)
+  setupCommonDemoKeys(renderer)
+}

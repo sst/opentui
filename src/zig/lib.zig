@@ -41,6 +41,10 @@ export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const
     rendererPtr.setBackgroundColor(f32PtrToRGBA(color));
 }
 
+export fn setRenderOffset(rendererPtr: *renderer.CliRenderer, offset: u32) void {
+    rendererPtr.setRenderOffset(offset);
+}
+
 export fn updateStats(rendererPtr: *renderer.CliRenderer, time: f64, fps: u32, frameCallbackTime: f64) void {
     rendererPtr.updateStats(time, fps, frameCallbackTime);
 }
@@ -65,8 +69,8 @@ export fn getBufferHeight(bufferPtr: *buffer.OptimizedBuffer) u32 {
     return bufferPtr.height;
 }
 
-export fn render(rendererPtr: *renderer.CliRenderer) void {
-    rendererPtr.render();
+export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
+    rendererPtr.render(force);
 }
 
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool) ?*buffer.OptimizedBuffer {
@@ -199,6 +203,14 @@ export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
 }
 
-export fn clearHitGrid(rendererPtr: *renderer.CliRenderer) void {
-    rendererPtr.clearHitGrid();
+export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.dumpHitGrid();
+}
+
+export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
+    rendererPtr.dumpBuffers(timestamp);
+}
+
+export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
+    rendererPtr.dumpStdoutBuffer(timestamp);
 }

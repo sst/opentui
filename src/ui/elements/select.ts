@@ -1,5 +1,4 @@
 import { BufferedElement, type ElementOptions } from "../element"
-import type { CliRenderer } from "../../index"
 import { parseColor } from "../../utils"
 import type { RGBA, ColorInput } from "../../types"
 import type { ParsedKey } from "../../parse.keypress"
@@ -28,8 +27,6 @@ export interface SelectElementOptions extends ElementOptions {
 export enum SelectElementEvents {
   SELECTION_CHANGED = "selectionChanged",
   ITEM_SELECTED = "itemSelected",
-  FOCUSED = "focused",
-  BLURRED = "blurred",
 }
 
 export class SelectElement extends BufferedElement {
@@ -109,7 +106,7 @@ export class SelectElement extends BufferedElement {
           x: contentX + 1 + indicatorWidth,
           y: itemY,
           fg: nameColor,
-          bg: isSelected ? this.selectedBackgroundColor : this.backgroundColor,
+          bg: isSelected ? this.selectedBackgroundColor : this._backgroundColor,
           font: this.font,
         })
         descX = contentX + 1 + indicatorWidth
@@ -209,7 +206,7 @@ export class SelectElement extends BufferedElement {
 
   private updateScrollOffset(): void {
     if (!this.options) return
-    
+
     const halfVisible = Math.floor(this.maxVisibleItems / 2)
     const newScrollOffset = Math.max(
       0,

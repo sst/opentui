@@ -1,3 +1,5 @@
+import { hexToRgb } from "./utils"
+
 export class RGBA {
   buffer: Float32Array
 
@@ -15,6 +17,14 @@ export class RGBA {
 
   static fromInts(r: number, g: number, b: number, a: number = 255) {
     return new RGBA(new Float32Array([r / 255, g / 255, b / 255, a / 255]))
+  }
+
+  static fromHex(hex: string): RGBA {
+    return hexToRgb(hex)
+  }
+
+  toInts(): [number, number, number, number] {
+    return [Math.round(this.r * 255), Math.round(this.g * 255), Math.round(this.b * 255), Math.round(this.a * 255)]
   }
 
   get r(): number {
@@ -85,6 +95,7 @@ export interface RenderContext {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
   width: () => number
   height: () => number
+  needsUpdate: () => void
 }
 
 export interface SelectionState {
@@ -93,4 +104,3 @@ export interface SelectionState {
   isActive: boolean
   isSelecting: boolean
 }
-
