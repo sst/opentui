@@ -6,6 +6,7 @@ import { RGBA } from "./types"
 import util from "node:util"
 import fs from "node:fs"
 import path from "node:path"
+import { Capture, CapturedWritableStream } from "./output.capture"
 
 interface CallerInfo {
   functionName: string
@@ -54,8 +55,8 @@ class TerminalConsoleCache extends EventEmitter {
     debug: typeof console.debug
   }
   private _cachedLogs: [Date, LogLevel, any[], CallerInfo | null][] = []
-  private readonly MAX_CACHE_SIZE = 50
-  private _collectCallerInfo: boolean = false // Default to false
+  private readonly MAX_CACHE_SIZE = 1000
+  private _collectCallerInfo: boolean = false
   private _cachingEnabled: boolean = true
 
   get cachedLogs(): [Date, LogLevel, any[], CallerInfo | null][] {
@@ -151,6 +152,21 @@ class TerminalConsoleCache extends EventEmitter {
   }
 }
 
+export const capture = new Capture()
+const mockStdout = new CapturedWritableStream("stdout", capture)
+const mockStderr = new CapturedWritableStream("stderr", capture)
+
+global.console = new console.Console({
+  stdout: mockStdout,
+  stderr: mockStderr,
+  colorMode: true,
+  inspectOptions: {
+    compact: false,
+    breakLength: 80,
+    depth: 2,
+  },
+})
+
 const terminalConsoleCache = new TerminalConsoleCache()
 process.on("exit", () => {
   terminalConsoleCache.destroy()
@@ -195,13 +211,12 @@ const DEFAULT_CONSOLE_OPTIONS: Required<ConsoleOptions> = {
   startInDebugMode: false,
   title: "Console",
   titleBarColor: RGBA.fromValues(0.05, 0.05, 0.05, 0.7),
-  titleBarTextColor: "#FFFFFF", // Default to same as default log text color
-  cursorColor: "#00A0FF", // Bright blue default cursor
+  titleBarTextColor: "#FFFFFF",
+  cursorColor: "#00A0FF",
   maxStoredLogs: 2000,
   maxDisplayLines: 3000,
 }
 
-const CONSOLE_FB_ID = "____console_fb"
 const INDENT_WIDTH = 2
 
 interface DisplayLine {
@@ -228,6 +243,12 @@ export class TerminalConsole extends EventEmitter {
   private currentLineIndex: number = 0
   private _displayLines: DisplayLine[] = []
   private _allLogEntries: [Date, LogLevel, any[], CallerInfo | null][] = []
+  private _needsFrameBufferUpdate: boolean = false
+
+  private markNeedsUpdate(): void {
+    this._needsFrameBufferUpdate = true
+    this.renderer.needsUpdate()
+  }
 
   private _rgbaInfo: RGBA
   private _rgbaWarn: RGBA
@@ -308,7 +329,7 @@ export class TerminalConsole extends EventEmitter {
     if (this.isScrolledToBottom) {
       this._scrollToBottom()
     }
-    this.renderConsoleContent()
+    this.markNeedsUpdate()
   }
 
   private _updateConsoleDimensions(): void {
@@ -360,7 +381,6 @@ export class TerminalConsole extends EventEmitter {
         break
       case "\u001b[1;2A": // Shift+UpArrow - Scroll to top
         if (this.scrollTopIndex > 0 || this.currentLineIndex > 0) {
-          // Check if not already at top
           this.scrollTopIndex = 0
           this.currentLineIndex = 0
           this.isScrolledToBottom = this._displayLines.length <= Math.max(1, this.consoleHeight - 1)
@@ -371,7 +391,6 @@ export class TerminalConsole extends EventEmitter {
         const logAreaHeightForScroll = Math.max(1, this.consoleHeight - 1)
         const maxScrollPossible = Math.max(0, this._displayLines.length - logAreaHeightForScroll)
         if (this.scrollTopIndex < maxScrollPossible || !this.isScrolledToBottom) {
-          // Check if not already at bottom
           this._scrollToBottom(true)
           needsRedraw = true
         }
@@ -424,7 +443,7 @@ export class TerminalConsole extends EventEmitter {
     }
 
     if (needsRedraw) {
-      this.renderConsoleContent()
+      this.markNeedsUpdate()
     }
   }
 
@@ -487,7 +506,7 @@ export class TerminalConsole extends EventEmitter {
       this.currentLineIndex = Math.max(0, Math.min(this.currentLineIndex, visibleLineCount - 1))
 
       if (this.isVisible) {
-        this.renderConsoleContent()
+        this.markNeedsUpdate()
       }
     }
   }
@@ -495,7 +514,8 @@ export class TerminalConsole extends EventEmitter {
   public clear(): void {
     terminalConsoleCache.clearConsole()
     this._allLogEntries = []
-    this.renderConsoleContent()
+    this._displayLines = []
+    this.markNeedsUpdate()
   }
 
   public toggle(): void {
@@ -509,19 +529,19 @@ export class TerminalConsole extends EventEmitter {
       this.show()
     }
     if (!this.renderer.isRunning) {
-      this.renderer.renderOnce()
+      this.renderer.needsUpdate()
     }
   }
 
   public focus(): void {
     this.attachStdin()
     this._scrollToBottom(true)
-    this.renderConsoleContent()
+    this.markNeedsUpdate()
   }
 
   public blur(): void {
     this.detachStdin()
-    this.renderConsoleContent()
+    this.markNeedsUpdate()
   }
 
   public show(): void {
@@ -542,6 +562,7 @@ export class TerminalConsole extends EventEmitter {
       this._scrollToBottom(true)
 
       this.focus()
+      this.markNeedsUpdate()
     }
   }
 
@@ -553,14 +574,14 @@ export class TerminalConsole extends EventEmitter {
     }
   }
 
-  public dumpCache(): void {
-    for (const logEntry of terminalConsoleCache.cachedLogs) {
-      console.log(logEntry.join(" "))
-    }
+  public getCachedLogs(): string {
+    return terminalConsoleCache.cachedLogs
+      .map((logEntry) => logEntry[0].toISOString() + " " + logEntry.slice(1).join(" "))
+      .join("\n")
   }
 
-  private renderConsoleContent(): void {
-    if (!this.isVisible || !this.frameBuffer) return
+  private updateFrameBuffer(): void {
+    if (!this.frameBuffer) return
 
     this.frameBuffer.clear(this.backgroundColor)
 
@@ -601,7 +622,6 @@ export class TerminalConsole extends EventEmitter {
       const linePrefix = displayLine.indent ? " ".repeat(INDENT_WIDTH) : ""
       const textToDraw = displayLine.text
       const textAvailableWidth = this.consoleWidth - 1 - (displayLine.indent ? INDENT_WIDTH : 0)
-
       const showCursor = this.isFocused && lineY - 1 === this.currentLineIndex
 
       if (showCursor) {
@@ -614,20 +634,25 @@ export class TerminalConsole extends EventEmitter {
 
       lineY++
     }
-    if (!this.renderer.isRunning) {
-      this.renderer.renderOnce()
-    }
   }
 
   public renderToBuffer(buffer: OptimizedBuffer): void {
-    if (this.isVisible && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.consoleX, this.consoleY, this.frameBuffer)
+    if (!this.isVisible || !this.frameBuffer) return
+
+    if (this._needsFrameBufferUpdate) {
+      this.updateFrameBuffer()
+      this._needsFrameBufferUpdate = false
     }
+
+    buffer.drawFrameBuffer(this.consoleX, this.consoleY, this.frameBuffer)
   }
 
   public setDebugMode(enabled: boolean): void {
     this._debugModeEnabled = enabled
     terminalConsoleCache.setCollectCallerInfo(enabled)
+    if (this.isVisible) {
+      this.markNeedsUpdate()
+    }
   }
 
   public toggleDebugMode(): void {
@@ -661,7 +686,7 @@ export class TerminalConsole extends EventEmitter {
     for (let i = 0; i < initialLines.length; i++) {
       const lineText = initialLines[i]
       const isFirstLineOfEntry = i === 0
-      const availableWidth = this.consoleWidth - (isFirstLineOfEntry ? 0 : INDENT_WIDTH)
+      const availableWidth = this.consoleWidth - 1 - (isFirstLineOfEntry ? 0 : INDENT_WIDTH)
       const linePrefix = isFirstLineOfEntry ? prefix : " ".repeat(INDENT_WIDTH)
       const textToWrap = isFirstLineOfEntry ? linePrefix + lineText : lineText
 
@@ -677,7 +702,6 @@ export class TerminalConsole extends EventEmitter {
         })
 
         currentPos += availableWidth
-        // Handle empty first line case
         if (isFirstLineOfEntry && currentPos === 0 && textToWrap.length === 0) break
       }
     }

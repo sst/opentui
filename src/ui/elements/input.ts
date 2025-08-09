@@ -15,8 +15,6 @@ export interface InputElementOptions extends ElementOptions {
 export enum InputElementEvents {
   INPUT = "input",
   CHANGE = "change",
-  FOCUSED = "focused",
-  BLURRED = "blurred",
   ENTER = "enter",
 }
 
@@ -43,7 +41,7 @@ export class InputElement extends BufferedElement {
   }
 
   private updateCursorPosition(): void {
-    if (!this.focused) return
+    if (!this._focused) return
 
     const hasBorder = this.border !== false
     const contentX = hasBorder ? 1 : 0
@@ -52,7 +50,7 @@ export class InputElement extends BufferedElement {
 
     const maxVisibleChars = contentWidth - 1
     let displayStartIndex = 0
-    
+
     if (this.cursorPosition >= maxVisibleChars) {
       displayStartIndex = this.cursorPosition - maxVisibleChars + 1
     }
@@ -62,7 +60,7 @@ export class InputElement extends BufferedElement {
     if (cursorDisplayX >= 0 && cursorDisplayX < contentWidth) {
       const absoluteCursorX = this.x + contentX + cursorDisplayX + 1
       const absoluteCursorY = this.y + contentY + 1
-      
+
       CliRenderer.setCursorPosition(absoluteCursorX, absoluteCursorY, true)
       CliRenderer.setCursorColor(this.cursorColor)
     }
@@ -78,12 +76,12 @@ export class InputElement extends BufferedElement {
   public blur(): void {
     super.blur()
     CliRenderer.setCursorPosition(0, 0, false) // Hide cursor
-    
+
     if (this.value !== this.lastCommittedValue) {
       this.lastCommittedValue = this.value
       this.emit(InputElementEvents.CHANGE, this.value)
     }
-    
+
     this.needsRefresh = true
   }
 
@@ -96,7 +94,7 @@ export class InputElement extends BufferedElement {
 
     const maxVisibleChars = contentWidth - 1
     let displayStartIndex = 0
-    
+
     if (this.cursorPosition >= maxVisibleChars) {
       displayStartIndex = this.cursorPosition - maxVisibleChars + 1
     }
@@ -107,7 +105,7 @@ export class InputElement extends BufferedElement {
       this.frameBuffer.drawText(visibleText, contentX, contentY, textColor)
     }
 
-    if (this.focused) {
+    if (this._focused) {
       this.updateCursorPosition()
     }
   }
@@ -192,27 +190,27 @@ export class InputElement extends BufferedElement {
       case "left":
         this.setCursorPosition(this.cursorPosition - 1)
         return true
-      
+
       case "right":
         this.setCursorPosition(this.cursorPosition + 1)
         return true
-      
+
       case "home":
         this.setCursorPosition(0)
         return true
-      
+
       case "end":
         this.setCursorPosition(this.value.length)
         return true
-      
+
       case "backspace":
         this.deleteCharacter("backward")
         return true
-      
+
       case "delete":
         this.deleteCharacter("forward")
         return true
-      
+
       case "return":
       case "enter":
         if (this.value !== this.lastCommittedValue) {
@@ -221,9 +219,14 @@ export class InputElement extends BufferedElement {
         }
         this.emit(InputElementEvents.ENTER, this.value)
         return true
-      
+
       default:
-        if (keySequence && keySequence.length === 1 && keySequence.charCodeAt(0) >= 32 && keySequence.charCodeAt(0) <= 126) {
+        if (
+          keySequence &&
+          keySequence.length === 1 &&
+          keySequence.charCodeAt(0) >= 32 &&
+          keySequence.charCodeAt(0) <= 126
+        ) {
           this.insertText(keySequence)
           return true
         }
@@ -245,9 +248,9 @@ export class InputElement extends BufferedElement {
   }
 
   protected destroySelf(): void {
-    if (this.focused) {
+    if (this._focused) {
       CliRenderer.setCursorPosition(0, 0, false)
     }
     super.destroySelf()
   }
-} 
+}

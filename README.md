@@ -35,5 +35,5 @@ class MyRenderable extends Renderable {
 
 const obj = new MyRenderable("my-obj", { x: 10, y: 5, zIndex: 1 })
 
-renderer.add(obj)
+renderer.root.add(obj)
 ```

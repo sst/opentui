@@ -38,7 +38,11 @@ import * as inputSelectLayoutExample from "./input-select-layout-demo"
 import * as styledTextExample from "./styled-text-demo"
 import * as mouseInteractionExample from "./mouse-interaction-demo"
 import * as textSelectionExample from "./text-selection-demo"
+import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
+import * as splitModeExample from "./split-mode-demo"
+import * as consoleExample from "./console-demo"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
   name: string
@@ -59,6 +63,18 @@ const examples: Example[] = [
     description: "Text selection across multiple renderables with mouse drag",
     run: textSelectionExample.run,
     destroy: textSelectionExample.destroy,
+  },
+  {
+    name: "ASCII Font Selection Demo",
+    description: "Text selection with ASCII fonts - precise character-level selection across different font types",
+    run: asciiFontSelectionExample.run,
+    destroy: asciiFontSelectionExample.destroy,
+  },
+  {
+    name: "Console Demo",
+    description: "Interactive console logging with clickable buttons for different log levels",
+    run: consoleExample.run,
+    destroy: consoleExample.destroy,
   },
   {
     name: "Styled Text Demo",
@@ -204,6 +220,12 @@ const examples: Example[] = [
     run: inputExample.run,
     destroy: inputExample.destroy,
   },
+  {
+    name: "Split Mode Demo (Experimental)",
+    description: "Renderer confined to bottom area with normal terminal output above",
+    run: splitModeExample.run,
+    destroy: splitModeExample.destroy,
+  },
 ]
 
 class ExampleSelector {
@@ -221,7 +243,7 @@ class ExampleSelector {
     this.createStaticElements()
     this.createSelectElement()
     this.setupKeyboardHandling()
-    this.renderer.renderOnce()
+    this.renderer.needsUpdate()
 
     this.renderer.on("resize", (width: number, height: number) => {
       this.handleResize(width, height)
@@ -234,14 +256,18 @@ class ExampleSelector {
     const { width: titleWidth, height: titleHeight } = measureText({ text: titleText, font: titleFont })
     const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
 
-    this.title = this.renderer.createFrameBuffer("title", {
+    this.title = new FrameBufferRenderable("title", {
       width: titleWidth,
       height: titleHeight,
-      x: centerX,
-      y: 1,
+      positionType: "absolute",
+      position: {
+        left: centerX,
+        top: 1,
+      },
       zIndex: 10,
     })
     this.title.frameBuffer.clear(RGBA.fromInts(0, 17, 34, 0))
+    this.renderer.root.add(this.title)
 
     renderFontToFrameBuffer(this.title.frameBuffer, {
       text: titleText,
@@ -260,14 +286,17 @@ class ExampleSelector {
     this.createTitle(width, height)
 
     this.instructions = new TextRenderable("instructions", {
-      x: 2,
-      y: 4,
+      positionType: "absolute",
+      position: {
+        left: 2,
+        top: 4,
+      },
       content:
         "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
       fg: "#AAAAAA",
       zIndex: 10,
     })
-    this.renderer.add(this.instructions)
+    this.renderer.root.add(this.instructions)
   }
 
   private createSelectElement(): void {
@@ -281,8 +310,11 @@ class ExampleSelector {
     }))
 
     this.selectElement = new SelectElement("example-selector", {
-      x: 1,
-      y: 6,
+      positionType: "absolute",
+      position: {
+        left: 1,
+        top: 6,
+      },
       width: width - 2,
       height: height - 8,
       zIndex: 5,
@@ -308,7 +340,7 @@ class ExampleSelector {
       this.runSelected(option.value as Example)
     })
 
-    this.renderer.add(this.selectElement)
+    this.renderer.root.add(this.selectElement)
     this.selectElement.focus()
   }
 
@@ -320,11 +352,11 @@ class ExampleSelector {
     }
 
     if (this.selectElement) {
-      this.selectElement.setWidth(width - 2)
-      this.selectElement.setHeight(height - 8)
+      this.selectElement.width = width - 2
+      this.selectElement.height = height - 8
     }
 
-    this.renderer.renderOnce()
+    this.renderer.needsUpdate()
   }
 
   private setupKeyboardHandling(): void {
@@ -342,14 +374,9 @@ class ExampleSelector {
           this.cleanup()
           process.exit(0)
           break
-        case "`":
-          this.renderer.console.toggle()
-          break
-        case "t":
-          this.renderer.toggleDebugOverlay()
-          break
       }
     })
+    setupCommonDemoKeys(this.renderer)
   }
 
   private runSelected(selected: Example): void {
@@ -362,15 +389,18 @@ class ExampleSelector {
     } else {
       if (!this.notImplementedText) {
         this.notImplementedText = new TextRenderable("not-implemented", {
-          x: 10,
-          y: 10,
+          positionType: "absolute",
+          position: {
+            left: 10,
+            top: 10,
+          },
           content: `${selected.name} not yet implemented. Press Escape to return.`,
           fg: "#FFFF00",
           zIndex: 10,
         })
-        this.renderer.add(this.notImplementedText)
+        this.renderer.root.add(this.notImplementedText)
       }
-      this.renderer.renderOnce()
+      this.renderer.needsUpdate()
     }
   }
 
@@ -399,7 +429,7 @@ class ExampleSelector {
     }
 
     if (this.notImplementedText) {
-      this.renderer.remove(this.notImplementedText.id)
+      this.renderer.root.remove(this.notImplementedText.id)
       this.notImplementedText = null
     }
 
@@ -411,7 +441,7 @@ class ExampleSelector {
     this.renderer.pause()
     this.showMenuElements()
     this.renderer.setBackgroundColor("#001122")
-    this.renderer.renderOnce()
+    this.renderer.needsUpdate()
   }
 
   private cleanup(): void {
