@@ -239,7 +239,7 @@ export function run(renderer: CliRenderer): void {
     new ConsoleButton("info-btn", 2 + spacing, startY, buttonWidth, buttonHeight, infoColor, "INFO", "info"),
     new ConsoleButton("warn-btn", 2 + spacing * 2, startY, buttonWidth, buttonHeight, warnColor, "WARN", "warn"),
     new ConsoleButton("error-btn", 2 + spacing * 3, startY, buttonWidth, buttonHeight, errorColor, "ERROR", "error"),
-    new ConsoleButton("debug-btn", 2, startY + 6, buttonWidth, buttonHeight, debugColor, "DEBUG", "debug"),
+    new ConsoleButton("debug-btn", 2 + spacing * 4, startY, buttonWidth, buttonHeight, debugColor, "DEBUG", "debug"),
   ]
 
   for (const button of consoleButtons) {
