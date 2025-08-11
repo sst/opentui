@@ -1,4 +1,4 @@
-import { type RenderableOptions, Renderable } from "..";
+import { type RenderableOptions, Renderable } from "../Renderable";
 import type { OptimizedBuffer } from "../buffer";
 import { TextSelectionHelper } from "../selection";
 import { RGBA, type SelectionState } from "../types";

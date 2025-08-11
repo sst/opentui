@@ -1,4 +1,4 @@
-import { type RenderableOptions, Renderable } from "..";
+import { type RenderableOptions, Renderable } from "../Renderable";
 import { OptimizedBuffer } from "../buffer";
 
 

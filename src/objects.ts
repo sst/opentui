@@ -1,4 +1,3 @@
-import { Renderable } from "./Renderable"
 
 import {
   type RenderableOptions,
@@ -16,28 +15,12 @@ import {
 } from "./ui/ascii.font"
 import { FrameBufferRenderable } from "./renderables/FrameBuffer"
 
-export class GroupRenderable extends Renderable {
-  constructor(id: string, options: Omit<RenderableOptions, "width" | "height">) {
-    super(id, { ...options, width: 0, height: 0 })
-  }
-}
-
 export interface StyledTextOptions extends RenderableOptions {
   fragment: Fragment
   width?: number
   height?: number
   defaultFg?: string | RGBA
   defaultBg?: string | RGBA
-  selectionBg?: string | RGBA
-  selectionFg?: string | RGBA
-  selectable?: boolean
-}
-
-export interface ASCIIFontOptions extends RenderableOptions {
-  text: string
-  font?: "tiny" | "block" | "shade" | "slick"
-  fg?: RGBA | RGBA[]
-  bg?: RGBA
   selectionBg?: string | RGBA
   selectionFg?: string | RGBA
   selectable?: boolean
@@ -183,6 +166,16 @@ export class StyledTextRenderable extends FrameBufferRenderable {
       selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined,
     )
   }
+}
+
+export interface ASCIIFontOptions extends RenderableOptions {
+  text: string
+  font?: "tiny" | "block" | "shade" | "slick"
+  fg?: RGBA | RGBA[]
+  bg?: RGBA
+  selectionBg?: string | RGBA
+  selectionFg?: string | RGBA
+  selectable?: boolean
 }
 
 export class ASCIIFontRenderable extends FrameBufferRenderable {

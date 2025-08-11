@@ -1,4 +1,4 @@
-import { type RenderableOptions, Renderable } from "..";
+import { type RenderableOptions, Renderable } from "../Renderable";
 import type { OptimizedBuffer } from "../buffer";
 import { RGBA } from "../types";
 import { type BorderStyle, type BorderSides, type BorderCharacters, type BorderSidesConfig, BorderChars, getBorderSides, drawBorder } from "../ui";
