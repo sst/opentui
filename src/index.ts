@@ -1,4 +1,3 @@
-export * from "./objects"
 export * from "./Renderable"
 export * from "./types"
 export * from "./utils"

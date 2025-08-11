@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { CliRenderer, createCliRenderer, BoxRenderable, GroupRenderable, TextRenderable, RGBA } from ".."
-import { ASCIIFontRenderable } from "../objects"
+import { ASCIIFontRenderable } from "../renderables/ASCIIFont"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null

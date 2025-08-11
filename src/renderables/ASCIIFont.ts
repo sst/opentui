@@ -1,18 +1,11 @@
+import type { RenderableOptions } from "../Renderable";
+import { ASCIIFontSelectionHelper } from "../selection";
+import { RGBA, type SelectionState } from "../types";
+import { type fonts, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../ui/ascii.font";
+import { parseColor } from "../utils";
+import { FrameBufferRenderable } from "./FrameBuffer";
 
-import {
-  type RenderableOptions,
-  type SelectionState,
-} from "."
-import { RGBA } from "./types"
-import { parseColor } from "./utils"
-import { ASCIIFontSelectionHelper } from "./selection"
-import {
-  renderFontToFrameBuffer,
-  measureText,
-  getCharacterPositions,
-  type fonts,
-} from "./ui/ascii.font"
-import { FrameBufferRenderable } from "./renderables/FrameBuffer"
+
 
 export interface ASCIIFontOptions extends RenderableOptions {
   text: string
@@ -25,7 +18,7 @@ export interface ASCIIFontOptions extends RenderableOptions {
 }
 
 export class ASCIIFontRenderable extends FrameBufferRenderable {
-  public selectable: boolean = true
+  public selectable: boolean = true;
   private _text: string
   private _font: keyof typeof fonts
   private _fg: RGBA[]
@@ -58,7 +51,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
       () => this.x,
       () => this.y,
       () => this._text,
-      () => this._font,
+      () => this._font
     )
 
     this.renderFontToBuffer()
@@ -164,7 +157,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     }
   }
 
-  private renderSelectionHighlight(selection: { start: number; end: number }): void {
+  private renderSelectionHighlight(selection: { start: number; end: number} ): void {
     if (!this._selectionBg && !this._selectionFg) return
 
     const selectedText = this._text.slice(selection.start, selection.end)
@@ -172,10 +165,9 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
 
     const positions = getCharacterPositions(this._text, this._font)
     const startX = positions[selection.start] || 0
-    const endX =
-      selection.end < positions.length
-        ? positions[selection.end]
-        : measureText({ text: this._text, font: this._font }).width
+    const endX = selection.end < positions.length
+      ? positions[selection.end]
+      : measureText({ text: this._text, font: this._font }).width
 
     if (this._selectionBg) {
       this.frameBuffer.fillRect(startX, 0, endX - startX, this.height, this._selectionBg)
