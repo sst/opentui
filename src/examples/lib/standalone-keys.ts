@@ -1,5 +1,5 @@
 import type { CliRenderer, ParsedKey } from "../.."
-import { getKeyHandler } from "../../ui/lib/KeyHandler"
+import { getKeyHandler } from "../../lib/KeyHandler"
 
 export function setupCommonDemoKeys(renderer: CliRenderer) {
   getKeyHandler().on("keypress", (key: ParsedKey) => {

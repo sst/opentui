@@ -1,45 +1,16 @@
 import {
   CliRenderer,
-  ContainerElement,
-  BufferedElement,
+  GroupRenderable,
+  BoxRenderable,
+  TextRenderable,
   FlexDirection,
   Align,
   Justify,
   createCliRenderer,
   type ParsedKey,
-  type ElementOptions,
-  Element,
 } from "../index"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-
-/**
- * Simple text element for demonstration
- */
-class TextElement extends BufferedElement {
-  private _text: string = ""
-
-  constructor(id: string, text: string, options: ElementOptions) {
-    super(id, options)
-    this.text = text
-  }
-
-  public set text(text: string) {
-    this._text = text
-    this.needsRefresh = true
-  }
-
-  protected refreshContent(contentX: number, contentY: number, contentWidth: number, contentHeight: number): void {
-    if (!this.frameBuffer) return
-
-    const textX = Math.max(0, Math.floor((contentWidth - this._text.length) / 2))
-    const textY = Math.floor(contentHeight / 2)
-
-    if (textY >= 0 && textY < contentHeight) {
-      this.frameBuffer.drawText(this._text, contentX + textX, contentY + textY, this.textColor, this._backgroundColor)
-    }
-  }
-}
 
 interface LayoutDemo {
   name: string
@@ -48,13 +19,19 @@ interface LayoutDemo {
 }
 
 let renderer: CliRenderer | null = null
-let header: TextElement | null = null
-let contentArea: ContainerElement | null = null
-let sidebar: TextElement | null = null
-let mainContent: TextElement | null = null
-let rightSidebar: TextElement | null = null
-let footer: TextElement | null = null
-let moveableElement: TextElement | null = null
+let header: BoxRenderable | null = null
+let headerText: TextRenderable | null = null
+let contentArea: GroupRenderable | null = null
+let sidebar: BoxRenderable | null = null
+let sidebarText: TextRenderable | null = null
+let mainContent: BoxRenderable | null = null
+let mainContentText: TextRenderable | null = null
+let rightSidebar: BoxRenderable | null = null
+let rightSidebarText: TextRenderable | null = null
+let footer: BoxRenderable | null = null
+let footerText: TextRenderable | null = null
+let moveableElement: BoxRenderable | null = null
+let moveableText: TextRenderable | null = null
 let currentDemoIndex = 0
 let autoAdvanceTimeout: Timer | null = null
 let autoplayEnabled = true
@@ -85,7 +62,7 @@ const layoutDemos: LayoutDemo[] = [
   },
 ]
 
-function resetElementLayout(element: Element): void {
+function resetElementLayout(element: BoxRenderable): void {
   element.flexBasis = "auto"
   element.flexGrow = 0
   element.flexShrink = 0
@@ -101,9 +78,9 @@ function resetElementLayout(element: Element): void {
 function setupHorizontalLayout(): void {
   if (!contentArea || !sidebar || !mainContent || !rightSidebar) return
 
-  if (contentArea.getRenderable("right-sidebar")) {
-    contentArea.remove("right-sidebar")
-  }
+  sidebar.visible = true
+  mainContent.visible = true
+  rightSidebar.visible = false
 
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
@@ -118,8 +95,8 @@ function setupHorizontalLayout(): void {
   sidebar.width = sidebarWidth
   sidebar.minWidth = 15
   sidebar.height = "auto"
-  sidebar.text = "LEFT SIDEBAR"
-  sidebar.backgroundColor = "#64748b"
+  if (sidebarText) sidebarText.content = "LEFT SIDEBAR"
+  sidebar.bg = "#64748b"
 
   mainContent.flexBasis = "auto"
   mainContent.flexGrow = 1
@@ -127,16 +104,16 @@ function setupHorizontalLayout(): void {
   mainContent.width = "auto"
   mainContent.minWidth = 20
   mainContent.height = "auto"
-  mainContent.text = "MAIN CONTENT"
-  mainContent.backgroundColor = "#eab308"
+  if (mainContentText) mainContentText.content = "MAIN CONTENT"
+  mainContent.bg = "#eab308"
 }
 
 function setupVerticalLayout(): void {
   if (!contentArea || !sidebar || !mainContent || !rightSidebar) return
 
-  if (contentArea.getRenderable("right-sidebar")) {
-    contentArea.remove("right-sidebar")
-  }
+  sidebar.visible = true
+  mainContent.visible = true
+  rightSidebar.visible = false
 
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
@@ -152,8 +129,8 @@ function setupVerticalLayout(): void {
   sidebar.height = topBarHeight
   sidebar.minHeight = 3
   sidebar.width = "auto"
-  sidebar.text = "TOP BAR"
-  sidebar.backgroundColor = "#059669"
+  if (sidebarText) sidebarText.content = "TOP BAR"
+  sidebar.bg = "#059669"
 
   mainContent.flexBasis = "auto"
   mainContent.flexGrow = 1
@@ -161,32 +138,22 @@ function setupVerticalLayout(): void {
   mainContent.height = "auto"
   mainContent.minHeight = 5
   mainContent.width = "auto"
-  mainContent.text = "MAIN CONTENT"
-  mainContent.backgroundColor = "#eab308"
+  if (mainContentText) mainContentText.content = "MAIN CONTENT"
+  mainContent.bg = "#eab308"
 }
 
 function setupCenteredLayout(): void {
   if (!contentArea || !sidebar || !mainContent || !rightSidebar) return
 
-  if (contentArea.getRenderable("right-sidebar")) {
-    contentArea.remove("right-sidebar")
-  }
+  sidebar.visible = false
+  mainContent.visible = true
+  rightSidebar.visible = false
 
-  resetElementLayout(sidebar)
   resetElementLayout(mainContent)
 
   contentArea.flexDirection = FlexDirection.Row
   contentArea.alignItems = Align.Stretch
   contentArea.justifyContent = Justify.Center
-
-  sidebar.flexBasis = 0
-  sidebar.flexGrow = 0
-  sidebar.flexShrink = 0
-  sidebar.width = 0
-  sidebar.minWidth = 0
-  sidebar.height = "auto"
-  sidebar.text = ""
-  sidebar.backgroundColor = "transparent"
 
   const centerWidth = Math.max(30, Math.floor(renderer!.terminalWidth * 0.6))
   mainContent.flexBasis = centerWidth
@@ -196,16 +163,16 @@ function setupCenteredLayout(): void {
   mainContent.minWidth = 30
   mainContent.maxWidth = Math.floor(renderer!.terminalWidth * 0.8)
   mainContent.height = "auto"
-  mainContent.text = "CENTERED CONTENT"
-  mainContent.backgroundColor = "#7c3aed"
+  if (mainContentText) mainContentText.content = "CENTERED CONTENT"
+  mainContent.bg = "#7c3aed"
 }
 
 function setupThreeColumnLayout(): void {
   if (!contentArea || !sidebar || !mainContent || !rightSidebar) return
 
-  if (!contentArea.getRenderable("right-sidebar")) {
-    contentArea.add(rightSidebar)
-  }
+  sidebar.visible = true
+  mainContent.visible = true
+  rightSidebar.visible = true
 
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
@@ -223,8 +190,8 @@ function setupThreeColumnLayout(): void {
   sidebar.width = sidebarWidth
   sidebar.minWidth = 12
   sidebar.height = "auto"
-  sidebar.text = "LEFT"
-  sidebar.backgroundColor = "#dc2626"
+  if (sidebarText) sidebarText.content = "LEFT"
+  sidebar.bg = "#dc2626"
 
   mainContent.flexBasis = "auto"
   mainContent.flexGrow = 1
@@ -232,8 +199,8 @@ function setupThreeColumnLayout(): void {
   mainContent.width = "auto"
   mainContent.minWidth = 20
   mainContent.height = "auto"
-  mainContent.text = "CENTER"
-  mainContent.backgroundColor = "#059669"
+  if (mainContentText) mainContentText.content = "CENTER"
+  mainContent.bg = "#059669"
 
   rightSidebar.flexBasis = sidebarWidth
   rightSidebar.flexGrow = 0
@@ -241,27 +208,37 @@ function setupThreeColumnLayout(): void {
   rightSidebar.width = sidebarWidth
   rightSidebar.minWidth = 12
   rightSidebar.height = "auto"
-  rightSidebar.text = "RIGHT"
-  rightSidebar.backgroundColor = "#7c3aed"
+  if (rightSidebarText) rightSidebarText.content = "RIGHT"
+  rightSidebar.bg = "#7c3aed"
 }
 
 function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  header = new TextElement("header", "LAYOUT DEMO", {
+  header = new BoxRenderable("header", {
     zIndex: 0,
     width: "auto",
     height: 3,
-    backgroundColor: "#3b82f6",
-    textColor: "#ffffff",
-    border: true,
+    bg: "#3b82f6",
+    borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
     flexDirection: FlexDirection.Row,
+    alignItems: Align.Center,
+    justifyContent: Justify.Center,
   })
 
-  contentArea = new ContainerElement("content-area", {
+  headerText = new TextRenderable("header-text", {
+    content: "LAYOUT DEMO",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 1,
+  })
+
+  header.add(headerText)
+
+  contentArea = new GroupRenderable("content-area", {
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -270,64 +247,125 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexShrink: 1,
   })
 
-  sidebar = new TextElement("sidebar", "SIDEBAR", {
+  sidebar = new BoxRenderable("sidebar", {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    backgroundColor: "#64748b",
-    textColor: "#ffffff",
-    border: true,
+    bg: "#64748b",
+    borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
+    flexDirection: FlexDirection.Row,
+    alignItems: Align.Center,
+    justifyContent: Justify.Center,
   })
 
-  mainContent = new TextElement("main-content", "MAIN CONTENT", {
+  sidebarText = new TextRenderable("sidebar-text", {
+    content: "SIDEBAR",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 1,
+  })
+
+  sidebar.add(sidebarText)
+
+  mainContent = new BoxRenderable("main-content", {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    backgroundColor: "#919599",
-    textColor: "#1e293b",
-    border: true,
+    bg: "#919599",
+    borderStyle: "single",
     flexGrow: 1,
     flexShrink: 1,
+    flexDirection: FlexDirection.Row,
+    alignItems: Align.Center,
+    justifyContent: Justify.Center,
   })
 
-  rightSidebar = new TextElement("right-sidebar", "RIGHT", {
+  mainContentText = new TextRenderable("main-content-text", {
+    content: "MAIN CONTENT",
+    fg: "#1e293b",
+    bg: "transparent",
+    zIndex: 1,
+  })
+
+  mainContent.add(mainContentText)
+
+  rightSidebar = new BoxRenderable("right-sidebar", {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    backgroundColor: "#7c3aed",
-    textColor: "#ffffff",
-    border: true,
+    bg: "#7c3aed",
+    borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
+    flexDirection: FlexDirection.Row,
+    alignItems: Align.Center,
+    justifyContent: Justify.Center,
   })
 
-  footer = new TextElement("footer", "", {
+  rightSidebarText = new TextRenderable("right-sidebar-text", {
+    content: "RIGHT",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 1,
+  })
+
+  rightSidebar.add(rightSidebarText)
+
+  footer = new BoxRenderable("footer", {
     zIndex: 0,
     width: "auto",
     height: 3,
-    backgroundColor: "#1e40af",
-    textColor: "#ffffff",
-    border: true,
+    bg: "#1e40af",
+    borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
+    flexDirection: FlexDirection.Row,
+    alignItems: Align.Center,
+    justifyContent: Justify.Center,
   })
 
-  moveableElement = new TextElement("moveable", "MOVE", {
+  footerText = new TextRenderable("footer-text", {
+    content: "",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 1,
+  })
+
+  footer.add(footerText)
+
+  moveableElement = new BoxRenderable("moveable", {
     zIndex: 100,
     width: 8,
     height: 3,
-    backgroundColor: "#ff6b6b",
-    textColor: "#ffffff",
-    border: true,
+    bg: "#ff6b6b",
+    borderStyle: "single",
     borderColor: "#ff4757",
     positionType: "absolute",
     position: { left: 0, top: 0 },
+    flexDirection: FlexDirection.Row,
+    alignItems: Align.Center,
+    justifyContent: Justify.Center,
   })
 
+  moveableText = new TextRenderable("moveable-text", {
+    content: "MOVE",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 101,
+  })
+
+  moveableElement.add(moveableText)
+
+  // Add all elements to contentArea in the correct order: left, center, right
   contentArea.add(sidebar)
   contentArea.add(mainContent)
+  contentArea.add(rightSidebar)
+
+  // Set initial visibility (rightSidebar is hidden for the first demo)
+  rightSidebar.visible = false
+
   renderer.root.add(header)
   renderer.root.add(contentArea)
   renderer.root.add(footer)
@@ -434,19 +472,19 @@ function centerMoveableElement(): void {
 }
 
 function updateFooterText(): void {
-  if (!footer) return
+  if (!footerText) return
 
   const autoplayStatus = autoplayEnabled ? "ON" : "OFF"
   const moveableStatus = moveableElementVisible ? "ON" : "OFF"
-  footer.text = `SPACE: next | R: restart | P: autoplay (${autoplayStatus}) | V: overlay (${moveableStatus}) | WASD: move`
+  footerText.content = `SPACE: next | R: restart | P: autoplay (${autoplayStatus}) | V: overlay (${moveableStatus}) | WASD: move`
 }
 
 function applyCurrentDemo(): void {
   const demo = layoutDemos[currentDemoIndex]
-  if (!header) return
+  if (!headerText) return
 
   const autoplayStatus = autoplayEnabled ? "AUTO" : "MANUAL"
-  header.text = `${demo.name} (${currentDemoIndex + 1}/${layoutDemos.length}) - ${autoplayStatus}`
+  headerText.content = `${demo.name} (${currentDemoIndex + 1}/${layoutDemos.length}) - ${autoplayStatus}`
   demo.setup()
 
   if (autoAdvanceTimeout) {
@@ -485,12 +523,18 @@ export function destroy(rendererInstance: CliRenderer): void {
   if (moveableElement) rendererInstance.root.remove(moveableElement.id)
 
   header = null
+  headerText = null
   contentArea = null
   sidebar = null
+  sidebarText = null
   mainContent = null
+  mainContentText = null
   rightSidebar = null
+  rightSidebarText = null
   footer = null
+  footerText = null
   moveableElement = null
+  moveableText = null
   renderer = null
   currentDemoIndex = 0
   moveableElementVisible = true

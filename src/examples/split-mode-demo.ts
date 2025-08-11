@@ -1,14 +1,14 @@
 import {
   createCliRenderer,
   StyledTextRenderable,
-  Fragment,
+  TextFragment,
   type CliRenderer,
   BoxRenderable,
   TextRenderable,
   GroupRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { getKeyHandler } from "../lib/KeyHandler"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
 
 let text: StyledTextRenderable | null = null
@@ -338,7 +338,7 @@ export function run(rendererInstance: CliRenderer): void {
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
-    fragment: Fragment.fromStyled("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆", {
+    fragment: TextFragment.fromStyled("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆", {
       fg: "#00ffff",
       bg: "#003366",
       bold: true,
@@ -354,7 +354,7 @@ export function run(rendererInstance: CliRenderer): void {
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
-    fragment: Fragment.fromStyled(
+    fragment: TextFragment.fromStyled(
       "[+/-] Split height | [0] Toggle fullscreen | [M/L] Output speed | [U] Toggle mouse",
       {
         fg: "#cccccc",

@@ -1,6 +1,5 @@
-import { type RenderableOptions, Renderable } from "../Renderable";
-import { OptimizedBuffer } from "../buffer";
-
+import { type RenderableOptions, Renderable } from "../Renderable"
+import { OptimizedBuffer } from "../buffer"
 
 export interface FrameBufferOptions extends RenderableOptions {
   width: number

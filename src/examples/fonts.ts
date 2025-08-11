@@ -1,5 +1,5 @@
 import { CliRenderer, createCliRenderer, FrameBufferRenderable, RGBA, GroupRenderable, TextRenderable } from "../index"
-import { renderFontToFrameBuffer } from "../ui/ascii.font"
+import { renderFontToFrameBuffer } from "../lib/ascii.font"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let scrollY = 0

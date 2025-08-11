@@ -70,12 +70,6 @@ export function run(renderer: CliRenderer): void {
     flexDirection: FlexDirection.Row,
     alignItems: Align.Stretch,
     justifyContent: Justify.SpaceBetween,
-    padding: {
-      top: 2,
-      right: 2,
-      bottom: 2,
-      left: 2,
-    },
   })
   parentContainerA.add(parentBoxA)
 
@@ -148,15 +142,14 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#44FF44",
     title: "Parent B (moves vertically)",
     titleAlignment: "center",
+    padding: 1,
+    flexDirection: FlexDirection.Column,
+    justifyContent: Justify.SpaceBetween,
   })
   parentContainerB.add(parentBoxB)
 
   const parentLabelB = new TextRenderable("parent-label-b", {
     content: "Parent B Position: (50, 8)",
-    position: {
-      left: 2,
-      top: 1,
-    },
     fg: "#44FF44",
     attributes: TextAttributes.BOLD,
     zIndex: 2,
@@ -165,10 +158,6 @@ export function run(renderer: CliRenderer): void {
 
   const childB1 = new TextRenderable("child-b1", {
     content: "Child at (1,3) - relative to parent",
-    position: {
-      left: 2,
-      top: 3,
-    },
     fg: "#88FF88",
     zIndex: 2,
   })
@@ -176,10 +165,6 @@ export function run(renderer: CliRenderer): void {
 
   const childB2 = new TextRenderable("child-b2", {
     content: "Child at (1,5) - relative to parent",
-    position: {
-      left: 2,
-      top: 5,
-    },
     fg: "#88FF88",
     zIndex: 2,
   })
@@ -209,15 +194,13 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#FFFF44",
     title: "Static Parent (doesn't move)",
     titleAlignment: "center",
+    padding: 1,
+    flexDirection: FlexDirection.Column,
   })
   staticContainer.add(staticBox)
 
   const staticChild1 = new TextRenderable("static-child1", {
     content: "Static child at (2,2) - never moves",
-    position: {
-      left: 2,
-      top: 2,
-    },
     fg: "#FFFF88",
     zIndex: 2,
   })
@@ -225,10 +208,6 @@ export function run(renderer: CliRenderer): void {
 
   const staticChild2 = new TextRenderable("static-child2", {
     content: "Static child at (2,4) - never moves",
-    position: {
-      left: 2,
-      top: 4,
-    },
     fg: "#FFFF88",
     zIndex: 2,
   })

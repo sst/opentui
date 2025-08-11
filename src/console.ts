@@ -6,7 +6,7 @@ import { RGBA } from "./types"
 import util from "node:util"
 import fs from "node:fs"
 import path from "node:path"
-import { Capture, CapturedWritableStream } from "./output.capture"
+import { Capture, CapturedWritableStream } from "./lib/output.capture"
 
 interface CallerInfo {
   functionName: string

@@ -13,8 +13,8 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { MouseParser, type MouseEventType, type RawMouseEvent } from "./parse.mouse"
-import { Selection } from "./selection"
+import { MouseParser, type MouseEventType, type RawMouseEvent } from "./lib/parse.mouse"
+import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 
 export interface CliRendererConfig {

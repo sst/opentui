@@ -1,8 +1,8 @@
-import { BufferedElement, type ElementOptions } from "../element"
-import type { BorderSides, BorderStyle, CliRenderer } from "../../index"
-import { parseColor } from "../../utils"
-import type { RGBA, ColorInput } from "../../types"
-import type { ParsedKey } from "../../parse.keypress"
+import { Renderable, type RenderableOptions } from "../Renderable"
+import { OptimizedBuffer } from "../buffer"
+import { parseColor } from "../utils"
+import type { RGBA, ColorInput } from "../types"
+import type { ParsedKey } from "../lib/parse.keypress"
 
 export interface TabSelectOption {
   name: string
@@ -10,10 +10,14 @@ export interface TabSelectOption {
   value?: any
 }
 
-export interface TabSelectElementOptions extends Omit<ElementOptions, "height"> {
+export interface TabSelectRenderableOptions extends Omit<RenderableOptions, "height"> {
   height?: number
   options: TabSelectOption[]
   tabWidth?: number
+  backgroundColor?: ColorInput
+  textColor?: ColorInput
+  focusedBackgroundColor?: ColorInput
+  focusedTextColor?: ColorInput
   selectedBackgroundColor?: ColorInput
   selectedTextColor?: ColorInput
   selectedDescriptionColor?: ColorInput
@@ -23,17 +27,12 @@ export interface TabSelectElementOptions extends Omit<ElementOptions, "height"> 
   wrapSelection?: boolean
 }
 
-export enum TabSelectElementEvents {
+export enum TabSelectRenderableEvents {
   SELECTION_CHANGED = "selectionChanged",
   ITEM_SELECTED = "itemSelected",
 }
 
-function calculateDynamicHeight(
-  border: boolean | BorderSides[],
-  showUnderline: boolean,
-  showDescription: boolean,
-): number {
-  const hasBorder = border !== false
+function calculateDynamicHeight(showUnderline: boolean, showDescription: boolean): number {
   let height = 1
 
   if (showUnderline) {
@@ -44,20 +43,20 @@ function calculateDynamicHeight(
     height += 1
   }
 
-  if (hasBorder) {
-    height += 2
-  }
-
   return height
 }
 
-export class TabSelectElement extends BufferedElement {
+export class TabSelectRenderable extends Renderable {
   private options: TabSelectOption[]
   private selectedIndex: number = 0
   private scrollOffset: number = 0
   private tabWidth: number
   private maxVisibleTabs: number
 
+  private backgroundColor: RGBA
+  private textColor: RGBA
+  private focusedBackgroundColor: RGBA
+  private focusedTextColor: RGBA
   private selectedBackgroundColor: RGBA
   private selectedTextColor: RGBA
   private selectedDescriptionColor: RGBA
@@ -66,15 +65,15 @@ export class TabSelectElement extends BufferedElement {
   private showUnderline: boolean
   private wrapSelection: boolean
 
-  constructor(id: string, options: TabSelectElementOptions) {
-    const calculatedHeight = calculateDynamicHeight(
-      options.border ?? true,
-      options.showUnderline ?? true,
-      options.showDescription ?? true,
-    )
+  constructor(id: string, options: TabSelectRenderableOptions) {
+    const calculatedHeight = calculateDynamicHeight(options.showUnderline ?? true, options.showDescription ?? true)
 
-    super(id, { ...options, height: calculatedHeight })
+    super(id, { ...options, height: calculatedHeight, buffered: true })
 
+    this.backgroundColor = parseColor(options.backgroundColor || "transparent")
+    this.textColor = parseColor(options.textColor || "#FFFFFF")
+    this.focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
+    this.focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
     this.options = options.options || []
     this.tabWidth = options.tabWidth || 20
     this.showDescription = options.showDescription ?? true
@@ -82,9 +81,7 @@ export class TabSelectElement extends BufferedElement {
     this.showScrollArrows = options.showScrollArrows ?? true
     this.wrapSelection = options.wrapSelection ?? false
 
-    const hasBorder = this.border !== false
-    const usableWidth = hasBorder ? this.width - 2 : this.width
-    this.maxVisibleTabs = Math.max(1, Math.floor(usableWidth / this.tabWidth))
+    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this.tabWidth))
 
     this.selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
     this.selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
@@ -92,11 +89,29 @@ export class TabSelectElement extends BufferedElement {
   }
 
   private calculateDynamicHeight(): number {
-    return calculateDynamicHeight(this.border, this.showUnderline, this.showDescription)
+    return calculateDynamicHeight(this.showUnderline, this.showDescription)
   }
 
-  protected refreshContent(contentX: number, contentY: number, contentWidth: number, contentHeight: number): void {
+  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (!this.visible || !this.frameBuffer) return
+
+    if (this.isDirty) {
+      this.refreshFrameBuffer()
+      this.markClean()
+    }
+  }
+
+  private refreshFrameBuffer(): void {
     if (!this.frameBuffer || this.options.length === 0) return
+
+    // Use focused colors if focused
+    const bgColor = this._focused ? this.focusedBackgroundColor : this.backgroundColor
+    this.frameBuffer.clear(bgColor)
+
+    const contentX = 0
+    const contentY = 0
+    const contentWidth = this.width
+    const contentHeight = this.height
 
     const visibleOptions = this.options.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleTabs)
 
@@ -115,13 +130,15 @@ export class TabSelectElement extends BufferedElement {
         this.frameBuffer.fillRect(tabX, contentY, actualTabWidth, 1, this.selectedBackgroundColor)
       }
 
-      const nameColor = isSelected ? this.selectedTextColor : this.textColor
+      const baseTextColor = this._focused ? this.focusedTextColor : this.textColor
+      const nameColor = isSelected ? this.selectedTextColor : baseTextColor
       const nameContent = this.truncateText(option.name, actualTabWidth - 2)
       this.frameBuffer.drawText(nameContent, tabX + 1, contentY, nameColor)
 
       if (isSelected && this.showUnderline && contentHeight >= 2) {
         const underlineY = contentY + 1
-        this.frameBuffer.drawText("▬".repeat(actualTabWidth), tabX, underlineY, nameColor, this.selectedBackgroundColor)
+        const underlineBg = isSelected ? this.selectedBackgroundColor : bgColor
+        this.frameBuffer.drawText("▬".repeat(actualTabWidth), tabX, underlineY, nameColor, underlineBg)
       }
     }
 
@@ -169,7 +186,7 @@ export class TabSelectElement extends BufferedElement {
     this.options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.needsRefresh = true
+    this.markDirty()
   }
 
   public getSelectedOption(): TabSelectOption | null {
@@ -190,8 +207,8 @@ export class TabSelectElement extends BufferedElement {
     }
 
     this.updateScrollOffset()
-    this.needsRefresh = true
-    this.emit(TabSelectElementEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+    this.markDirty()
+    this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
   public moveRight(): void {
@@ -204,14 +221,14 @@ export class TabSelectElement extends BufferedElement {
     }
 
     this.updateScrollOffset()
-    this.needsRefresh = true
-    this.emit(TabSelectElementEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+    this.markDirty()
+    this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
   public selectCurrent(): void {
     const selected = this.getSelectedOption()
     if (selected) {
-      this.emit(TabSelectElementEvents.ITEM_SELECTED, this.selectedIndex, selected)
+      this.emit(TabSelectRenderableEvents.ITEM_SELECTED, this.selectedIndex, selected)
     }
   }
 
@@ -219,8 +236,8 @@ export class TabSelectElement extends BufferedElement {
     if (index >= 0 && index < this.options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
-      this.needsRefresh = true
-      this.emit(TabSelectElementEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+      this.markDirty()
+      this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
     }
   }
 
@@ -233,29 +250,24 @@ export class TabSelectElement extends BufferedElement {
 
     if (newScrollOffset !== this.scrollOffset) {
       this.scrollOffset = newScrollOffset
-      this.needsRefresh = true
+      this.markDirty()
     }
   }
 
   protected onResize(width: number, height: number): void {
-    const hasBorder = this.border !== false
-    const usableWidth = hasBorder ? width - 2 : width
-    this.maxVisibleTabs = Math.max(1, Math.floor(usableWidth / this.tabWidth))
+    this.maxVisibleTabs = Math.max(1, Math.floor(width / this.tabWidth))
     this.updateScrollOffset()
-    super.onResize(width, height)
+    this.markDirty()
   }
 
   public setTabWidth(tabWidth: number): void {
     if (this.tabWidth === tabWidth) return
 
     this.tabWidth = tabWidth
-
-    const hasBorder = this.border !== false
-    const usableWidth = hasBorder ? this.width - 2 : this.width
-    this.maxVisibleTabs = Math.max(1, Math.floor(usableWidth / this.tabWidth))
+    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this.tabWidth))
 
     this.updateScrollOffset()
-    this.needsRefresh = true
+    this.markDirty()
   }
 
   public getTabWidth(): number {
@@ -287,7 +299,7 @@ export class TabSelectElement extends BufferedElement {
     if (this.showDescription !== show) {
       this.showDescription = show
       const newHeight = this.calculateDynamicHeight()
-      this.setHeight(newHeight)
+      this.height = newHeight
     }
   }
 
@@ -299,7 +311,7 @@ export class TabSelectElement extends BufferedElement {
     if (this.showUnderline !== show) {
       this.showUnderline = show
       const newHeight = this.calculateDynamicHeight()
-      this.setHeight(newHeight)
+      this.height = newHeight
     }
   }
 
@@ -307,20 +319,10 @@ export class TabSelectElement extends BufferedElement {
     return this.showUnderline
   }
 
-  protected onBorderChanged(border: boolean | BorderSides[], borderStyle: BorderStyle): void {
-    const newHeight = this.calculateDynamicHeight()
-    this.setHeight(newHeight)
-
-    const hasBorder = border !== false
-    const usableWidth = hasBorder ? this.width - 2 : this.width
-    this.maxVisibleTabs = Math.max(1, Math.floor(usableWidth / this.tabWidth))
-    this.updateScrollOffset()
-  }
-
   public setShowScrollArrows(show: boolean): void {
     if (this.showScrollArrows !== show) {
       this.showScrollArrows = show
-      this.needsRefresh = true
+      this.markDirty()
     }
   }
 
@@ -335,4 +337,6 @@ export class TabSelectElement extends BufferedElement {
   public getWrapSelection(): boolean {
     return this.wrapSelection
   }
+
+  // Focus and blur already call markDirty() in the base Renderable class
 }

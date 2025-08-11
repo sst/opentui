@@ -1,57 +1,37 @@
 import {
   CliRenderer,
-  ContainerElement,
-  BufferedElement,
+  GroupRenderable,
+  BoxRenderable,
+  TextRenderable,
   FlexDirection,
   createCliRenderer,
   type ParsedKey,
-  type ElementOptions,
 } from "../index"
-import { InputElement, InputElementEvents } from "../ui/elements/input"
-import { SelectElement, SelectElementEvents, type SelectOption } from "../ui/elements/select"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
+import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select"
+import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
-/**
- * Simple text element for labels and headers
- */
-class LabelElement extends BufferedElement {
-  private text: string = ""
-
-  constructor(id: string, text: string, options: ElementOptions) {
-    super(id, options)
-    this.text = text
-  }
-
-  public setText(text: string): void {
-    this.text = text
-    this.needsRefresh = true
-  }
-
-  protected refreshContent(contentX: number, contentY: number, contentWidth: number, contentHeight: number): void {
-    if (!this.frameBuffer) return
-
-    const textX = Math.max(0, Math.floor((contentWidth - this.text.length) / 2))
-    const textY = Math.floor(contentHeight / 2)
-
-    if (textY >= 0 && textY < contentHeight) {
-      this.frameBuffer.drawText(this.text, contentX + textX, contentY + textY, this.textColor, this._backgroundColor)
-    }
-  }
-}
-
 let renderer: CliRenderer | null = null
-let header: LabelElement | null = null
-let selectContainer: ContainerElement | null = null
-let leftSelect: SelectElement | null = null
-let rightSelect: SelectElement | null = null
-let inputContainer: ContainerElement | null = null
-let inputLabel: LabelElement | null = null
-let textInput: InputElement | null = null
-let footer: LabelElement | null = null
+let header: TextRenderable | null = null
+let headerBox: BoxRenderable | null = null
+let selectContainer: GroupRenderable | null = null
+let selectContainerBox: BoxRenderable | null = null
+let leftSelect: SelectRenderable | null = null
+let leftSelectBox: BoxRenderable | null = null
+let rightSelect: SelectRenderable | null = null
+let rightSelectBox: BoxRenderable | null = null
+let inputContainer: GroupRenderable | null = null
+let inputContainerBox: BoxRenderable | null = null
+let inputLabel: TextRenderable | null = null
+let textInput: InputRenderable | null = null
+let textInputBox: BoxRenderable | null = null
+let footer: TextRenderable | null = null
+let footerBox: BoxRenderable | null = null
 let currentFocusIndex = 0
 
-const focusableElements: Array<InputElement | SelectElement> = []
+const focusableElements: Array<InputRenderable | SelectRenderable> = []
+const focusableBoxes: Array<BoxRenderable | null> = []
 
 const colorOptions: SelectOption[] = [
   { name: "Red", description: "A warm primary color", value: "#ff0000" },
@@ -73,46 +53,56 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  header = new LabelElement("header", "INPUT & SELECT LAYOUT DEMO", {
+  headerBox = new BoxRenderable("header-box", {
     zIndex: 0,
     width: "auto",
     height: 3,
-    backgroundColor: "#3b82f6",
-    textColor: "#ffffff",
-    border: true,
+    bg: "#3b82f6",
+    borderStyle: "single",
     borderColor: "#2563eb",
     flexGrow: 0,
     flexShrink: 0,
   })
 
-  selectContainer = new ContainerElement("select-container", {
+  header = new TextRenderable("header", {
+    content: "INPUT & SELECT LAYOUT DEMO",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  headerBox.add(header)
+
+  selectContainerBox = new BoxRenderable("select-container-box", {
     zIndex: 0,
+    width: "auto",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 10,
+    bg: "#1e293b",
+    borderStyle: "single",
+    borderColor: "#475569",
+  })
+
+  selectContainer = new GroupRenderable("select-container", {
+    zIndex: 1,
     width: "auto",
     height: "auto",
     flexDirection: FlexDirection.Row,
     flexGrow: 1,
     flexShrink: 1,
-    minHeight: 10,
-    backgroundColor: "#1e293b",
-    border: true,
-    borderColor: "#475569",
   })
 
-  leftSelect = new SelectElement("color-select", {
+  selectContainerBox.add(selectContainer)
+
+  leftSelectBox = new BoxRenderable("color-select-box", {
     zIndex: 0,
     width: "auto",
     height: "auto",
     minHeight: 8,
-    options: colorOptions,
-    backgroundColor: "#1e293b",
-    selectedBackgroundColor: "#3b82f6",
-    textColor: "#e2e8f0",
-    selectedTextColor: "#ffffff",
-    descriptionColor: "#94a3b8",
-    selectedDescriptionColor: "#cbd5e1",
-    showScrollIndicator: true,
-    wrapSelection: true,
-    showDescription: true,
     borderStyle: "single",
     borderColor: "#475569",
     focusedBorderColor: "#3b82f6",
@@ -120,23 +110,37 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     titleAlignment: "center",
     flexGrow: 1,
     flexShrink: 1,
+    bg: "transparent",
   })
 
-  rightSelect = new SelectElement("size-select", {
-    zIndex: 0,
+  leftSelect = new SelectRenderable("color-select", {
+    zIndex: 1,
     width: "auto",
     height: "auto",
-    minHeight: 8,
-    options: sizeOptions,
+    minHeight: 6,
+    options: colorOptions,
     backgroundColor: "#1e293b",
-    selectedBackgroundColor: "#059669",
+    focusedBackgroundColor: "#2d3748",
     textColor: "#e2e8f0",
+    focusedTextColor: "#f7fafc",
+    selectedBackgroundColor: "#3b82f6",
     selectedTextColor: "#ffffff",
     descriptionColor: "#94a3b8",
     selectedDescriptionColor: "#cbd5e1",
     showScrollIndicator: true,
     wrapSelection: true,
     showDescription: true,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  leftSelectBox.add(leftSelect)
+
+  rightSelectBox = new BoxRenderable("size-select-box", {
+    zIndex: 0,
+    width: "auto",
+    height: "auto",
+    minHeight: 8,
     borderStyle: "single",
     borderColor: "#475569",
     focusedBorderColor: "#059669",
@@ -144,77 +148,128 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     titleAlignment: "center",
     flexGrow: 1,
     flexShrink: 1,
+    bg: "transparent",
   })
 
-  inputContainer = new ContainerElement("input-container", {
-    zIndex: 0,
+  rightSelect = new SelectRenderable("size-select", {
+    zIndex: 1,
     width: "auto",
     height: "auto",
     minHeight: 6,
-    flexDirection: FlexDirection.Column,
+    options: sizeOptions,
+    backgroundColor: "#1e293b",
+    focusedBackgroundColor: "#2d3748",
+    textColor: "#e2e8f0",
+    focusedTextColor: "#f7fafc",
+    selectedBackgroundColor: "#059669",
+    selectedTextColor: "#ffffff",
+    descriptionColor: "#94a3b8",
+    selectedDescriptionColor: "#cbd5e1",
+    showScrollIndicator: true,
+    wrapSelection: true,
+    showDescription: true,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  rightSelectBox.add(rightSelect)
+
+  inputContainerBox = new BoxRenderable("input-container-box", {
+    zIndex: 0,
+    width: "auto",
+    height: 7,
     flexGrow: 0,
     flexShrink: 0,
-    backgroundColor: "#0f172a",
-    border: true,
+    bg: "#0f172a",
+    borderStyle: "single",
     borderColor: "#334155",
   })
 
-  inputLabel = new LabelElement("input-label", "Enter your text:", {
-    zIndex: 0,
+  inputContainer = new GroupRenderable("input-container", {
+    zIndex: 1,
     width: "auto",
     height: "auto",
-    minHeight: 3,
-    backgroundColor: "#0f172a",
-    textColor: "#f1f5f9",
-    border: false,
+    flexDirection: FlexDirection.Column,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  inputContainerBox.add(inputContainer)
+
+  inputLabel = new TextRenderable("input-label", {
+    content: "Enter your text:",
+    fg: "#f1f5f9",
+    bg: "#0f172a",
+    zIndex: 0,
     flexGrow: 0,
     flexShrink: 0,
   })
 
-  textInput = new InputElement("text-input", {
+  textInputBox = new BoxRenderable("text-input-box", {
     zIndex: 0,
     width: "auto",
     height: 3,
-    placeholder: "Type something here...",
-    backgroundColor: "#1e293b",
-    textColor: "#f1f5f9",
-    placeholderColor: "#64748b",
-    cursorColor: "#f1f5f9",
-    border: true,
+    borderStyle: "single",
     borderColor: "#475569",
     focusedBorderColor: "#eab308",
+    flexGrow: 0,
+    flexShrink: 0,
+    margin: { top: 1 },
+    bg: "transparent",
+  })
+
+  textInput = new InputRenderable("text-input", {
+    zIndex: 1,
+    width: "auto",
+    height: 1,
+    placeholder: "Type something here...",
+    backgroundColor: "#1e293b",
+    focusedBackgroundColor: "#334155",
+    textColor: "#f1f5f9",
+    focusedTextColor: "#ffffff",
+    placeholderColor: "#64748b",
+    cursorColor: "#f1f5f9",
     maxLength: 100,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  textInputBox.add(textInput)
+
+  footerBox = new BoxRenderable("footer-box", {
+    zIndex: 0,
+    width: "auto",
+    height: 3,
+    bg: "#1e40af",
+    borderStyle: "single",
+    borderColor: "#1d4ed8",
     flexGrow: 0,
     flexShrink: 0,
   })
 
-  footer = new LabelElement(
-    "footer",
-    "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit",
-    {
-      zIndex: 0,
-      width: "auto",
-      height: 3,
-      backgroundColor: "#1e40af",
-      textColor: "#dbeafe",
-      border: true,
-      borderColor: "#1d4ed8",
-      flexGrow: 0,
-      flexShrink: 0,
-    },
-  )
+  footer = new TextRenderable("footer", {
+    content: "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit",
+    fg: "#dbeafe",
+    bg: "transparent",
+    zIndex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
 
-  selectContainer.add(leftSelect)
-  selectContainer.add(rightSelect)
+  footerBox.add(footer)
+
+  selectContainer.add(leftSelectBox)
+  selectContainer.add(rightSelectBox)
   inputContainer.add(inputLabel)
-  inputContainer.add(textInput)
+  inputContainer.add(textInputBox)
 
-  renderer.root.add(header)
-  renderer.root.add(selectContainer)
-  renderer.root.add(inputContainer)
-  renderer.root.add(footer)
+  renderer.root.add(headerBox)
+  renderer.root.add(selectContainerBox)
+  renderer.root.add(inputContainerBox)
+  renderer.root.add(footerBox)
 
   focusableElements.push(leftSelect, rightSelect, textInput)
+  focusableBoxes.push(leftSelectBox, rightSelectBox, textInputBox)
   setupEventHandlers()
   updateFocus()
 
@@ -224,27 +279,27 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 function setupEventHandlers(): void {
   if (!leftSelect || !rightSelect || !textInput) return
 
-  leftSelect.on(SelectElementEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
+  leftSelect.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
     updateDisplay()
   })
 
-  leftSelect.on(SelectElementEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
+  leftSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
     updateDisplay()
   })
 
-  rightSelect.on(SelectElementEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
+  rightSelect.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
     updateDisplay()
   })
 
-  rightSelect.on(SelectElementEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
+  rightSelect.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
     updateDisplay()
   })
 
-  textInput.on(InputElementEvents.INPUT, (value: string) => {
+  textInput.on(InputRenderableEvents.INPUT, (value: string) => {
     updateDisplay()
   })
 
-  textInput.on(InputElementEvents.CHANGE, (value: string) => {
+  textInput.on(InputRenderableEvents.CHANGE, (value: string) => {
     updateDisplay()
   })
 }
@@ -267,7 +322,7 @@ function updateDisplay(): void {
     displayText += ` (${selectedSize.name})`
   }
 
-  inputLabel.setText(displayText)
+  inputLabel.content = displayText
 }
 
 function handleResize(width: number, height: number): void {
@@ -276,9 +331,15 @@ function handleResize(width: number, height: number): void {
 
 function updateFocus(): void {
   focusableElements.forEach((element) => element.blur())
+  focusableBoxes.forEach((box) => {
+    if (box) box.blur()
+  })
 
   if (focusableElements[currentFocusIndex]) {
     focusableElements[currentFocusIndex].focus()
+  }
+  if (focusableBoxes[currentFocusIndex]) {
+    focusableBoxes[currentFocusIndex]!.focus()
   }
 }
 
@@ -309,24 +370,37 @@ export function destroy(rendererInstance: CliRenderer): void {
     renderer.off("resize", handleResize)
   }
 
+  // Properly destroy all elements that need cleanup
+  if (leftSelect) leftSelect.destroy()
+  if (rightSelect) rightSelect.destroy()
+  if (textInput) textInput.destroy()
+
   // Clean up elements directly from root
-  if (header) rendererInstance.root.remove(header.id)
-  if (selectContainer) rendererInstance.root.remove(selectContainer.id)
-  if (inputContainer) rendererInstance.root.remove(inputContainer.id)
-  if (footer) rendererInstance.root.remove(footer.id)
+  if (headerBox) rendererInstance.root.remove(headerBox.id)
+  if (selectContainerBox) rendererInstance.root.remove(selectContainerBox.id)
+  if (inputContainerBox) rendererInstance.root.remove(inputContainerBox.id)
+  if (footerBox) rendererInstance.root.remove(footerBox.id)
 
   // Clean up all elements
   header = null
+  headerBox = null
   selectContainer = null
+  selectContainerBox = null
   leftSelect = null
+  leftSelectBox = null
   rightSelect = null
+  rightSelectBox = null
   inputContainer = null
+  inputContainerBox = null
   inputLabel = null
   textInput = null
+  textInputBox = null
   footer = null
+  footerBox = null
   renderer = null
   currentFocusIndex = 0
   focusableElements.length = 0
+  focusableBoxes.length = 0
 }
 
 if (import.meta.main) {

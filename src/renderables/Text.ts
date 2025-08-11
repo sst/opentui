@@ -1,9 +1,8 @@
-import { type RenderableOptions, Renderable } from "../Renderable";
-import type { OptimizedBuffer } from "../buffer";
-import { TextSelectionHelper } from "../selection";
-import { RGBA, type SelectionState } from "../types";
-import { parseColor } from "../utils";
-
+import { type RenderableOptions, Renderable } from "../Renderable"
+import type { OptimizedBuffer } from "../buffer"
+import { TextSelectionHelper } from "../lib/selection"
+import { RGBA, type SelectionState } from "../types"
+import { parseColor } from "../utils"
 
 export interface TextOptions extends RenderableOptions {
   content: string
@@ -19,12 +18,12 @@ export function sanitizeText(text: string, tabStopWidth: number): string {
 }
 
 export class TextRenderable extends Renderable {
-  public selectable: boolean = true;
-  private _content: string = "";
+  public selectable: boolean = true
+  private _content: string = ""
   private _fg: RGBA
   private _bg: RGBA
-  public attributes: number = 0;
-  public tabStopWidth: number = 2;
+  public attributes: number = 0
+  public tabStopWidth: number = 2
   private selectionHelper: TextSelectionHelper
 
   constructor(id: string, options: TextOptions) {
@@ -35,7 +34,7 @@ export class TextRenderable extends Renderable {
     this.selectionHelper = new TextSelectionHelper(
       () => this.x,
       () => this.y,
-      () => this._content.length
+      () => this._content.length,
     )
 
     this.tabStopWidth = options.tabStopWidth || 2
@@ -52,7 +51,7 @@ export class TextRenderable extends Renderable {
     }
     this._content = sanitizeText(value, this.tabStopWidth)
 
-    // TODO: Fogure out the element width based on the content
+    // TODO: Figure out the element width based on the content
     // including wrapping etc. The check here exists so it doesn't unnecessarily
     // trigger a layout update.
     if (this._content.length !== this.minWidth) {

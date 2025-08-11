@@ -1,8 +1,9 @@
-import { BufferedElement, type ElementOptions } from "../element"
-import { parseColor } from "../../utils"
-import type { RGBA, ColorInput } from "../../types"
-import type { ParsedKey } from "../../parse.keypress"
-import { renderFontToFrameBuffer, measureText, fonts } from "../ascii.font"
+import { Renderable, type RenderableOptions } from "../Renderable"
+import { OptimizedBuffer } from "../buffer"
+import { parseColor } from "../utils"
+import type { RGBA, ColorInput } from "../types"
+import type { ParsedKey } from "../lib/parse.keypress"
+import { renderFontToFrameBuffer, measureText, fonts } from "../lib/ascii.font"
 
 export interface SelectOption {
   name: string
@@ -10,7 +11,11 @@ export interface SelectOption {
   value?: any
 }
 
-export interface SelectElementOptions extends ElementOptions {
+export interface SelectRenderableOptions extends RenderableOptions {
+  backgroundColor?: ColorInput
+  textColor?: ColorInput
+  focusedBackgroundColor?: ColorInput
+  focusedTextColor?: ColorInput
   options: SelectOption[]
   selectedBackgroundColor?: ColorInput
   selectedTextColor?: ColorInput
@@ -24,17 +29,21 @@ export interface SelectElementOptions extends ElementOptions {
   fastScrollStep?: number
 }
 
-export enum SelectElementEvents {
+export enum SelectRenderableEvents {
   SELECTION_CHANGED = "selectionChanged",
   ITEM_SELECTED = "itemSelected",
 }
 
-export class SelectElement extends BufferedElement {
+export class SelectRenderable extends Renderable {
   private options: SelectOption[]
   private selectedIndex: number = 0
   private scrollOffset: number = 0
   private maxVisibleItems: number
 
+  private backgroundColor: RGBA
+  private textColor: RGBA
+  private focusedBackgroundColor: RGBA
+  private focusedTextColor: RGBA
   private selectedBackgroundColor: RGBA
   private selectedTextColor: RGBA
   private descriptionColor: RGBA
@@ -48,9 +57,13 @@ export class SelectElement extends BufferedElement {
   private fontHeight: number
   private fastScrollStep: number
 
-  constructor(id: string, options: SelectElementOptions) {
-    super(id, options)
+  constructor(id: string, options: SelectRenderableOptions) {
+    super(id, { ...options, buffered: true })
 
+    this.backgroundColor = parseColor(options.backgroundColor || "transparent")
+    this.textColor = parseColor(options.textColor || "#FFFFFF")
+    this.focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
+    this.focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
     this.options = options.options || []
 
     this.showScrollIndicator = options.showScrollIndicator ?? false
@@ -63,19 +76,37 @@ export class SelectElement extends BufferedElement {
     this.linesPerItem = this.showDescription ? (this.font ? this.fontHeight + 1 : 2) : this.font ? this.fontHeight : 1
     this.linesPerItem += this.itemSpacing
 
-    const hasBorder = this.border !== false
-    const usableHeight = hasBorder ? this.height - 2 : this.height
-    this.maxVisibleItems = Math.max(1, Math.floor(usableHeight / this.linesPerItem))
+    this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
 
     this.selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
     this.selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
     this.descriptionColor = parseColor(options.descriptionColor || "#888888")
     this.selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
     this.fastScrollStep = options.fastScrollStep || 5
+
+    this.markDirty() // Initial render needed
   }
 
-  protected refreshContent(contentX: number, contentY: number, contentWidth: number, contentHeight: number): void {
+  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (!this.visible || !this.frameBuffer) return
+
+    if (this.isDirty) {
+      this.refreshFrameBuffer()
+      this.markClean()
+    }
+  }
+
+  private refreshFrameBuffer(): void {
     if (!this.frameBuffer || this.options.length === 0) return
+
+    // Use focused colors if focused
+    const bgColor = this._focused ? this.focusedBackgroundColor : this.backgroundColor
+    this.frameBuffer.clear(bgColor)
+
+    const contentX = 0
+    const contentY = 0
+    const contentWidth = this.width
+    const contentHeight = this.height
 
     const visibleOptions = this.options.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleItems)
 
@@ -93,7 +124,8 @@ export class SelectElement extends BufferedElement {
       }
 
       const nameContent = `${isSelected ? "▶ " : "  "}${option.name}`
-      const nameColor = isSelected ? this.selectedTextColor : this.textColor
+      const baseTextColor = this._focused ? this.focusedTextColor : this.textColor
+      const nameColor = isSelected ? this.selectedTextColor : baseTextColor
       let descX = contentX + 3
 
       if (this.font) {
@@ -106,7 +138,7 @@ export class SelectElement extends BufferedElement {
           x: contentX + 1 + indicatorWidth,
           y: itemY,
           fg: nameColor,
-          bg: isSelected ? this.selectedBackgroundColor : this._backgroundColor,
+          bg: isSelected ? this.selectedBackgroundColor : bgColor,
           font: this.font,
         })
         descX = contentX + 1 + indicatorWidth
@@ -116,6 +148,7 @@ export class SelectElement extends BufferedElement {
 
       if (this.showDescription && itemY + this.fontHeight < contentY + contentHeight) {
         const descColor = isSelected ? this.selectedDescriptionColor : this.descriptionColor
+        const descBg = this._focused ? this.focusedBackgroundColor : this.backgroundColor
         this.frameBuffer.drawText(option.description, descX, itemY + this.fontHeight, descColor)
       }
     }
@@ -145,7 +178,7 @@ export class SelectElement extends BufferedElement {
     this.options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.needsRefresh = true
+    this.markDirty()
   }
 
   public getSelectedOption(): SelectOption | null {
@@ -168,8 +201,8 @@ export class SelectElement extends BufferedElement {
     }
 
     this.updateScrollOffset()
-    this.needsRefresh = true
-    this.emit(SelectElementEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+    this.markDirty()
+    this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
   public moveDown(steps: number = 1): void {
@@ -184,14 +217,14 @@ export class SelectElement extends BufferedElement {
     }
 
     this.updateScrollOffset()
-    this.needsRefresh = true
-    this.emit(SelectElementEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+    this.markDirty()
+    this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
   public selectCurrent(): void {
     const selected = this.getSelectedOption()
     if (selected) {
-      this.emit(SelectElementEvents.ITEM_SELECTED, this.selectedIndex, selected)
+      this.emit(SelectRenderableEvents.ITEM_SELECTED, this.selectedIndex, selected)
     }
   }
 
@@ -199,8 +232,8 @@ export class SelectElement extends BufferedElement {
     if (index >= 0 && index < this.options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
-      this.needsRefresh = true
-      this.emit(SelectElementEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+      this.markDirty()
+      this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
     }
   }
 
@@ -215,16 +248,14 @@ export class SelectElement extends BufferedElement {
 
     if (newScrollOffset !== this.scrollOffset) {
       this.scrollOffset = newScrollOffset
-      this.needsRefresh = true
+      this.markDirty()
     }
   }
 
   protected onResize(width: number, height: number): void {
-    const hasBorder = this.border !== false
-    const usableHeight = hasBorder ? height - 2 : height
-    this.maxVisibleItems = Math.max(1, Math.floor(usableHeight / this.linesPerItem))
+    this.maxVisibleItems = Math.max(1, Math.floor(height / this.linesPerItem))
     this.updateScrollOffset()
-    super.onResize(width, height)
+    this.markDirty()
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
@@ -255,7 +286,7 @@ export class SelectElement extends BufferedElement {
 
   public setShowScrollIndicator(show: boolean): void {
     this.showScrollIndicator = show
-    this.needsRefresh = true
+    this.markDirty()
   }
 
   public getShowDescription(): boolean {
@@ -268,11 +299,9 @@ export class SelectElement extends BufferedElement {
       this.linesPerItem = this.showDescription ? (this.font ? this.fontHeight + 1 : 2) : this.font ? this.fontHeight : 1
       this.linesPerItem += this.itemSpacing
 
-      const hasBorder = this.border !== false
-      const usableHeight = hasBorder ? this.height - 2 : this.height
-      this.maxVisibleItems = Math.max(1, Math.floor(usableHeight / this.linesPerItem))
+      this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
       this.updateScrollOffset()
-      this.needsRefresh = true
+      this.markDirty()
     }
   }
 

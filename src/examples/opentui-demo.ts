@@ -10,17 +10,17 @@ import {
   getBorderFromSides,
 } from "../index"
 import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "../index"
-import { TabControllerElement } from "../ui/elements/tab-controller"
+import { TabControllerRenderable } from "./lib/tab-controller"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
-let globalTabController: TabControllerElement | null = null
+let globalTabController: TabControllerRenderable | null = null
 let globalKeyboardHandler: ((key: Buffer) => void) | null = null
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#000028")
 
-  const tabController = new TabControllerElement("main-tab-controller", renderer, {
+  const tabController = new TabControllerRenderable("main-tab-controller", renderer, {
     positionType: "absolute",
     position: {
       left: 0,
@@ -831,7 +831,7 @@ export function run(renderer: CliRenderer): void {
 
       const colorBox = tabGroup.getRenderable("color-box") as BoxRenderable
       if (colorBox) {
-        colorBox._bg = parseColor(hexColor)
+        colorBox.bg = parseColor(hexColor)
       }
     },
   })

@@ -1,14 +1,12 @@
-import type { RenderableOptions } from "../Renderable";
-import { TextSelectionHelper } from "../selection";
-import type { Fragment } from "../styled-text";
-import { RGBA, type SelectionState } from "../types";
-import { parseColor } from "../utils";
-import { FrameBufferRenderable } from "./FrameBuffer";
-
-
+import type { RenderableOptions } from "../Renderable"
+import { TextSelectionHelper } from "../lib/selection"
+import type { TextFragment } from "../lib/styled-text"
+import { RGBA, type SelectionState } from "../types"
+import { parseColor } from "../utils"
+import { FrameBufferRenderable } from "./FrameBuffer"
 
 export interface StyledTextOptions extends RenderableOptions {
-  fragment: Fragment
+  fragment: TextFragment
   width?: number
   height?: number
   defaultFg?: string | RGBA
@@ -19,8 +17,8 @@ export interface StyledTextOptions extends RenderableOptions {
 }
 
 export class StyledTextRenderable extends FrameBufferRenderable {
-  public selectable: boolean = true;
-  private _fragment: Fragment
+  public selectable: boolean = true
+  private _fragment: TextFragment
   private _defaultFg: RGBA
   private _defaultBg: RGBA
   private _selectionBg: RGBA | undefined
@@ -28,8 +26,8 @@ export class StyledTextRenderable extends FrameBufferRenderable {
 
   private selectionHelper: TextSelectionHelper
 
-  private _plainText: string = "";
-  private _lineInfo: { lineStarts: number[]; lineWidths: number[]}  = { lineStarts: [], lineWidths: [] };
+  private _plainText: string = ""
+  private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
   constructor(id: string, options: StyledTextOptions) {
     super(id, {
@@ -43,7 +41,7 @@ export class StyledTextRenderable extends FrameBufferRenderable {
       () => this.x,
       () => this.y,
       () => this._plainText.length,
-      () => this._lineInfo
+      () => this._lineInfo,
     )
 
     this._fragment = options.fragment
@@ -57,11 +55,11 @@ export class StyledTextRenderable extends FrameBufferRenderable {
     this.renderFragmentToBuffer()
   }
 
-  get fragment(): Fragment {
+  get fragment(): TextFragment {
     return this._fragment
   }
 
-  set fragment(value: Fragment) {
+  set fragment(value: TextFragment) {
     this._fragment = value
     this.updateTextInfo()
     this.renderFragmentToBuffer()
@@ -155,7 +153,7 @@ export class StyledTextRenderable extends FrameBufferRenderable {
       0,
       this._defaultFg,
       this._defaultBg,
-      selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined
+      selection ? { ...selection, bgColor: this._selectionBg, fgColor: this._selectionFg } : undefined,
     )
   }
 }

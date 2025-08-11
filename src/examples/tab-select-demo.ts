@@ -1,21 +1,20 @@
 import {
   createCliRenderer,
-  TabSelectElement,
-  TabSelectElementEvents,
+  TabSelectRenderable,
+  TabSelectRenderableEvents,
   RenderableEvents,
   GroupRenderable,
   type TabSelectOption,
   type CliRenderer,
-  type BorderStyle,
   t,
   bold,
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { StyledTextRenderable } from "../renderables/StyledText"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { getKeyHandler } from "../lib/KeyHandler"
 
-let tabSelect: TabSelectElement | null = null
+let tabSelect: TabSelectRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
 let parentContainer: GroupRenderable | null = null
@@ -40,7 +39,6 @@ const tabOptions: TabSelectOption[] = [
 function updateDisplays() {
   if (!tabSelect || !parentContainer) return
 
-  const border = tabSelect.getBorderStyle()
   const underlineStatus = tabSelect.getShowUnderline() ? "on" : "off"
   const description = tabSelect.getShowDescription() ? "on" : "off"
   const scrollArrows = tabSelect.getShowScrollArrows() ? "on" : "off"
@@ -52,7 +50,6 @@ Enter: Select tab
 F: Toggle focus
 U: Toggle underline
 P: Toggle description
-B: Cycle borders
 S: Toggle scroll arrows
 W: Toggle wrap selection`
 
@@ -72,28 +69,11 @@ W: Toggle wrap selection`
 
 ${fg(focusColor)(focusText)}
 
-${fg("#CCCCCC")(`Border: ${border} | Underline: ${underlineStatus} | Description: ${description} | Scroll arrows: ${scrollArrows} | Wrap: ${wrap}`)}`
+${fg("#CCCCCC")(`Underline: ${underlineStatus} | Description: ${description} | Scroll arrows: ${scrollArrows} | Wrap: ${wrap}`)}`
 
   if (statusDisplay) {
     statusDisplay.fragment = statusText
   }
-}
-
-function cycleBorderStyle() {
-  if (!tabSelect) return
-  let currentBorder: BorderStyle | "none" = tabSelect.getBorderStyle()
-  if (tabSelect.getBorder() === false) {
-    currentBorder = "none"
-  }
-  const borderStyles: (BorderStyle | "none")[] = ["single", "double", "rounded", "heavy", "none"]
-  const currentIndex = borderStyles.indexOf(currentBorder)
-  const nextIndex = (currentIndex + 1) % borderStyles.length
-  if (borderStyles[nextIndex] === "none") {
-    tabSelect.setBorder(false, "single")
-  } else {
-    tabSelect.setBorder(true, borderStyles[nextIndex])
-  }
-  updateDisplays()
 }
 
 export function run(rendererInstance: CliRenderer): void {
@@ -106,7 +86,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   renderer.root.add(parentContainer)
 
-  tabSelect = new TabSelectElement("main-tabs", {
+  tabSelect = new TabSelectRenderable("main-tabs", {
     positionType: "absolute",
     position: {
       left: 5,
@@ -116,13 +96,13 @@ export function run(rendererInstance: CliRenderer): void {
     options: tabOptions,
     zIndex: 100,
     tabWidth: 12,
-    selectedBackgroundColor: "#334455",
-    selectedTextColor: "#FFFF00",
-    textColor: "#CCCCCC",
-    selectedDescriptionColor: "#FFFFFF",
-    borderStyle: "single",
-    borderColor: "#666666",
-    focusedBorderColor: "#00AAFF",
+    backgroundColor: "#1e293b",
+    focusedBackgroundColor: "#2d3748",
+    textColor: "#e2e8f0",
+    focusedTextColor: "#f7fafc",
+    selectedBackgroundColor: "#3b82f6",
+    selectedTextColor: "#ffffff",
+    selectedDescriptionColor: "#cbd5e1",
     showDescription: true,
     showUnderline: true,
     showScrollArrows: true,
@@ -159,11 +139,11 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(statusDisplay)
 
-  tabSelect.on(TabSelectElementEvents.SELECTION_CHANGED, (index: number, option: TabSelectOption) => {
+  tabSelect.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: TabSelectOption) => {
     updateDisplays()
   })
 
-  tabSelect.on(TabSelectElementEvents.ITEM_SELECTED, (index: number, option: TabSelectOption) => {
+  tabSelect.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabSelectOption) => {
     updateDisplays()
   })
 
@@ -190,8 +170,6 @@ export function run(rendererInstance: CliRenderer): void {
     } else if (key.name === "p") {
       tabSelect?.setShowDescription(!tabSelect.getShowDescription())
       updateDisplays()
-    } else if (key.name === "b") {
-      cycleBorderStyle()
     } else if (key.name === "s") {
       tabSelect?.setShowScrollArrows(!tabSelect.getShowScrollArrows())
       updateDisplays()

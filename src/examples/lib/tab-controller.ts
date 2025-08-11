@@ -1,12 +1,15 @@
-import { ContainerElement, Element, type ElementOptions } from "../element"
-import { TabSelectElement, TabSelectElementEvents, GroupRenderable, RenderableEvents } from "../../index"
+import { Renderable, type RenderableOptions, RenderableEvents } from "../../Renderable"
+import { OptimizedBuffer } from "../../buffer"
+import { GroupRenderable } from "../../renderables"
+import { TabSelectRenderable, TabSelectRenderableEvents } from "../../renderables/TabSelect"
 import type { CliRenderer, TabSelectOption } from "../../index"
 import type { ColorInput } from "../../types"
+import { parseColor } from "../../utils"
 
 export interface TabObject {
   title: string
-  init(tabGroup: ContainerElement): void
-  update?(deltaMs: number, tabGroup: ContainerElement): void
+  init(tabGroup: Renderable): void
+  update?(deltaMs: number, tabGroup: Renderable): void
   show?(): void
   hide?(): void
 }
@@ -14,11 +17,13 @@ export interface TabObject {
 interface Tab {
   title: string
   tabObject: TabObject
-  group: ContainerElement
+  group: Renderable
   initialized: boolean
 }
 
-export interface TabControllerElementOptions extends ElementOptions {
+export interface TabControllerOptions extends RenderableOptions {
+  backgroundColor?: ColorInput
+  textColor?: ColorInput
   tabBarHeight?: number
   tabBarBackgroundColor?: ColorInput
   selectedBackgroundColor?: ColorInput
@@ -29,45 +34,42 @@ export interface TabControllerElementOptions extends ElementOptions {
   showScrollArrows?: boolean
 }
 
-export enum TabControllerElementEvents {
+export enum TabControllerEvents {
   TAB_CHANGED = "tabChanged",
 }
 
-export class TabControllerElement extends Element {
+export class TabControllerRenderable extends Renderable {
   public tabs: Tab[] = []
   private currentTabIndex = 0
-  private tabSelectElement: TabSelectElement
+  private tabSelectElement: TabSelectRenderable
   private tabBarHeight: number
   private frameCallback: ((deltaMs: number) => Promise<void>) | null = null
 
   constructor(
     id: string,
     private renderer: CliRenderer,
-    options: TabControllerElementOptions,
+    options: TabControllerOptions,
   ) {
-    super(id, options)
+    super(id, { ...options, buffered: options.backgroundColor ? true : false })
 
     this.tabBarHeight = options.tabBarHeight || 4
 
-    this.tabSelectElement = new TabSelectElement(`${id}-tabs`, {
+    this.tabSelectElement = new TabSelectRenderable(`${id}-tabs`, {
       width: "100%",
       height: this.tabBarHeight,
       options: [],
       zIndex: this.zIndex + 100,
       selectedBackgroundColor: options.selectedBackgroundColor || "#333333",
       selectedTextColor: options.selectedTextColor || "#FFFF00",
-      textColor: this.textColor,
+      textColor: parseColor(options.textColor || "#FFFFFF"),
       selectedDescriptionColor: options.selectedDescriptionColor || "#FFFFFF",
-      backgroundColor: options.tabBarBackgroundColor || this._backgroundColor,
-      borderStyle: this.borderStyle,
-      borderColor: this.borderColor,
-      focusedBorderColor: this.focusedBorderColor,
+      backgroundColor: options.tabBarBackgroundColor || options.backgroundColor || "transparent",
       showDescription: options.showDescription ?? true,
       showUnderline: options.showUnderline ?? true,
       showScrollArrows: options.showScrollArrows ?? true,
     })
 
-    this.tabSelectElement.on(TabSelectElementEvents.SELECTION_CHANGED, (index: number) => {
+    this.tabSelectElement.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number) => {
       this.switchToTab(index)
     })
 
@@ -80,7 +82,7 @@ export class TabControllerElement extends Element {
   }
 
   public addTab(tabObject: TabObject): Tab {
-    const tabGroup = new ContainerElement(`${this.id}-tab-${this.tabs.length}`, {
+    const tabGroup = new GroupRenderable(`${this.id}-tab-${this.tabs.length}`, {
       position: {
         left: 0,
         top: this.tabBarHeight,
@@ -136,7 +138,7 @@ export class TabControllerElement extends Element {
     return this.tabs[this.currentTabIndex]
   }
 
-  public getCurrentTabGroup(): GroupRenderable {
+  public getCurrentTabGroup(): Renderable {
     return this.getCurrentTab().group
   }
 
@@ -162,7 +164,7 @@ export class TabControllerElement extends Element {
       newTab.tabObject.show()
     }
 
-    this.emit(TabControllerElementEvents.TAB_CHANGED, index, newTab)
+    this.emit(TabControllerEvents.TAB_CHANGED, index, newTab)
   }
 
   public nextTab(): void {
@@ -184,7 +186,7 @@ export class TabControllerElement extends Element {
     return this.currentTabIndex
   }
 
-  public getTabSelectElement(): TabSelectElement {
+  public getTabSelectElement(): TabSelectRenderable {
     return this.tabSelectElement
   }
 
@@ -216,7 +218,11 @@ export class TabControllerElement extends Element {
       tab.group.width = width
       tab.group.height = height - this.tabBarHeight
     }
-    super.onResize(width, height)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+    // TabController doesn't render content directly, it manages tab selection and tab content
+    // The tab select element and tab content groups handle their own rendering
   }
 
   protected destroySelf(): void {

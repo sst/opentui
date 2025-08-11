@@ -1,34 +1,33 @@
 import {
   createCliRenderer,
-  InputElement,
-  InputElementEvents,
+  InputRenderable,
+  InputRenderableEvents,
   RenderableEvents,
   GroupRenderable,
   type CliRenderer,
-  type BorderStyle,
   t,
   bold,
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { StyledTextRenderable } from "../renderables/StyledText"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { getKeyHandler } from "../lib/KeyHandler"
 
-let nameInput: InputElement | null = null
-let emailInput: InputElement | null = null
-let passwordInput: InputElement | null = null
-let commentInput: InputElement | null = null
+let nameInput: InputRenderable | null = null
+let emailInput: InputRenderable | null = null
+let passwordInput: InputRenderable | null = null
+let commentInput: InputRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
 let keyLegendDisplay: StyledTextRenderable | null = null
 let statusDisplay: StyledTextRenderable | null = null
-let lastActionText: string = "Welcome to InputElement demo! Use Tab to navigate between fields."
+let lastActionText: string = "Welcome to InputRenderable demo! Use Tab to navigate between fields."
 let lastActionColor: string = "#FFCC00"
 let activeInputIndex: number = 0
 
-const inputElements: InputElement[] = []
+const inputElements: InputRenderable[] = []
 
-function getActiveInput(): InputElement | null {
+function getActiveInput(): InputRenderable | null {
   return inputElements[activeInputIndex] || null
 }
 
@@ -47,7 +46,6 @@ Enter: Submit current input
 Ctrl+F: Toggle focus on active input
 Ctrl+C: Clear active input
 Ctrl+R: Reset all inputs to defaults
-Ctrl+B: Cycle border styles
 Type: Enter text in focused field`
 
   if (keyLegendDisplay) {
@@ -91,7 +89,7 @@ ${fg(lastActionColor)(lastActionText)}`
   }
 }
 
-function getInputName(input: InputElement | null): string {
+function getInputName(input: InputRenderable | null): string {
   if (input === nameInput) return "Name"
   if (input === emailInput) return "Email"
   if (input === passwordInput) return "Password"
@@ -125,26 +123,6 @@ function navigateToInput(index: number): void {
   updateDisplays()
 }
 
-function cycleBorderStyle(): void {
-  const activeInput = getActiveInput()
-  if (!activeInput) return
-
-  let currentBorder: BorderStyle | "none" = activeInput.getBorderStyle()
-  if (activeInput.getBorder() === false) {
-    currentBorder = "none"
-  }
-  const borderStyles: (BorderStyle | "none")[] = ["single", "double", "rounded", "heavy", "none"]
-  const currentIndex = borderStyles.indexOf(currentBorder)
-  const nextIndex = (currentIndex + 1) % borderStyles.length
-
-  if (borderStyles[nextIndex] === "none") {
-    activeInput.setBorder(false, "single")
-  } else {
-    activeInput.setBorder(true, borderStyles[nextIndex])
-  }
-  updateDisplays()
-}
-
 function resetInputs(): void {
   nameInput?.setValue("")
   emailInput?.setValue("")
@@ -172,7 +150,7 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.root.add(parentContainer)
 
   // Create input elements
-  nameInput = new InputElement("name-input", {
+  nameInput = new InputRenderable("name-input", {
     positionType: "absolute",
     position: {
       left: 5,
@@ -183,19 +161,14 @@ export function run(rendererInstance: CliRenderer): void {
     zIndex: 100,
     backgroundColor: "#001122",
     textColor: "#FFFFFF",
-    borderStyle: "single",
-    borderColor: "#666666",
-    focusedBorderColor: "#00AAFF",
     placeholder: "Enter your name...",
     placeholderColor: "#666666",
     cursorColor: "#FFFF00",
     value: "",
     maxLength: 50,
-    title: "Name",
-    titleAlignment: "left",
   })
 
-  emailInput = new InputElement("email-input", {
+  emailInput = new InputRenderable("email-input", {
     positionType: "absolute",
     position: {
       left: 5,
@@ -206,19 +179,14 @@ export function run(rendererInstance: CliRenderer): void {
     zIndex: 100,
     backgroundColor: "#001122",
     textColor: "#FFFFFF",
-    borderStyle: "single",
-    borderColor: "#666666",
-    focusedBorderColor: "#00AAFF",
     placeholder: "Enter your email...",
     placeholderColor: "#666666",
     cursorColor: "#FFFF00",
     value: "",
     maxLength: 100,
-    title: "Email",
-    titleAlignment: "left",
   })
 
-  passwordInput = new InputElement("password-input", {
+  passwordInput = new InputRenderable("password-input", {
     positionType: "absolute",
     position: {
       left: 5,
@@ -229,19 +197,14 @@ export function run(rendererInstance: CliRenderer): void {
     zIndex: 100,
     backgroundColor: "#001122",
     textColor: "#FFFFFF",
-    borderStyle: "single",
-    borderColor: "#666666",
-    focusedBorderColor: "#00AAFF",
     placeholder: "Enter password...",
     placeholderColor: "#666666",
     cursorColor: "#FFFF00",
     value: "",
     maxLength: 50,
-    title: "Password",
-    titleAlignment: "left",
   })
 
-  commentInput = new InputElement("comment-input", {
+  commentInput = new InputRenderable("comment-input", {
     positionType: "absolute",
     position: {
       left: 5,
@@ -252,16 +215,11 @@ export function run(rendererInstance: CliRenderer): void {
     zIndex: 100,
     backgroundColor: "#001122",
     textColor: "#FFFFFF",
-    borderStyle: "single",
-    borderColor: "#666666",
-    focusedBorderColor: "#00AAFF",
     placeholder: "Enter a comment...",
     placeholderColor: "#666666",
     cursorColor: "#FFFF00",
     value: "",
     maxLength: 200,
-    title: "Comment",
-    titleAlignment: "left",
   })
 
   inputElements.push(nameInput, emailInput, passwordInput, commentInput)
@@ -300,13 +258,13 @@ export function run(rendererInstance: CliRenderer): void {
 
   // Set up event handlers for all inputs
   inputElements.forEach((input, index) => {
-    input.on(InputElementEvents.INPUT, (value: string) => {
+    input.on(InputRenderableEvents.INPUT, (value: string) => {
       lastActionText = `${getInputName(input)} input: "${value}"`
       lastActionColor = "#00FFFF"
       updateDisplays()
     })
 
-    input.on(InputElementEvents.CHANGE, (value: string) => {
+    input.on(InputRenderableEvents.CHANGE, (value: string) => {
       lastActionText = `*** ${getInputName(input)} CHANGED: "${value}" ***`
       lastActionColor = "#FF00FF"
       updateDisplays()
@@ -316,7 +274,7 @@ export function run(rendererInstance: CliRenderer): void {
       }, 1000)
     })
 
-    input.on(InputElementEvents.ENTER, (value: string) => {
+    input.on(InputRenderableEvents.ENTER, (value: string) => {
       const inputName = getInputName(input)
       const isValid =
         inputName === "Name"
@@ -379,12 +337,6 @@ export function run(rendererInstance: CliRenderer): void {
         lastActionColor = "#FFAA00"
         updateDisplays()
       }
-    } else if (key.ctrl && key.name === "b") {
-      // Only respond to Ctrl+B for border style
-      cycleBorderStyle()
-      lastActionText = `Border style changed`
-      lastActionColor = "#FFCC00"
-      updateDisplays()
     } else if (key.ctrl && key.name === "r") {
       // Only respond to Ctrl+R for reset
       resetInputs()

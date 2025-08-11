@@ -1,4 +1,4 @@
-import type { Fragment, StyledText } from "./styled-text"
+import type { TextFragment, StyledText } from "./lib/styled-text"
 import { RGBA } from "./types"
 import { createTextAttributes, parseColor } from "./utils"
 import { resolveRenderLib, type RenderLib } from "./zig"
@@ -530,7 +530,7 @@ export class OptimizedBuffer {
   }
 
   public drawStyledTextFragment(
-    fragment: Fragment,
+    fragment: TextFragment,
     x: number,
     y: number,
     defaultFg?: RGBA,
@@ -541,7 +541,7 @@ export class OptimizedBuffer {
   }
 
   public drawStyledTextFragmentLocal(
-    fragment: Fragment,
+    fragment: TextFragment,
     x: number,
     y: number,
     defaultFg?: RGBA,

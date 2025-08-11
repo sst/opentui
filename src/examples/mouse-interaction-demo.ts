@@ -99,7 +99,6 @@ class DraggableBox extends BoxRenderable {
   protected onMouseEvent(event: MouseEvent): void {
     switch (event.type) {
       case "down":
-        console.log("down", event.x, event.y)
         this.gotText = ""
         this.isDragging = true
         this.dragOffsetX = event.x - this.x
@@ -233,7 +232,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
     if (event.defaultPrevented) return
 
     const cellKey = `${event.x},${event.y}`
-    console.log("event", event.type, event.button)
+
     switch (event.type) {
       case "move":
         this.trailCells.set(cellKey, {
@@ -311,10 +310,10 @@ Escape: menu`,
   renderer.root.add(demoContainer)
 
   draggableBoxes = [
-    new DraggableBox("drag-box-1", 10, 8, 18, 8, RGBA.fromInts(200, 100, 150), "Box 1"),
-    new DraggableBox("drag-box-2", 30, 12, 16, 8, RGBA.fromInts(100, 200, 150), "Box 2"),
-    new DraggableBox("drag-box-3", 50, 15, 18, 9, RGBA.fromInts(150, 150, 200), "Box 3"),
-    new DraggableBox("drag-box-4", 15, 20, 16, 8, RGBA.fromInts(200, 200, 100), "Box 4"),
+    new DraggableBox("drag-box-1", 10, 8, 20, 10, RGBA.fromInts(200, 100, 150), "Box 1"),
+    new DraggableBox("drag-box-2", 30, 12, 18, 10, RGBA.fromInts(100, 200, 150), "Box 2"),
+    new DraggableBox("drag-box-3", 50, 15, 20, 11, RGBA.fromInts(150, 150, 200), "Box 3"),
+    new DraggableBox("drag-box-4", 15, 20, 18, 11, RGBA.fromInts(200, 200, 100), "Box 4"),
   ]
 
   for (const box of draggableBoxes) {

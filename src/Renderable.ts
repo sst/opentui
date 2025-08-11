@@ -1,14 +1,14 @@
 import { OptimizedBuffer, type RenderContext, type MouseEvent, type SelectionState } from "."
 import { EventEmitter } from "events"
 import Yoga, { FlexDirection, Direction, PositionType, Edge, Align, Justify, type Config, Display } from "yoga-layout"
-import { TrackedNode, createTrackedNode } from "./ui/lib/TrackedNode"
-import type { ParsedKey } from "./parse.keypress"
-import { getKeyHandler, type KeyHandler } from "./ui/lib/KeyHandler"
+import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
+import type { ParsedKey } from "./lib/parse.keypress"
+import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
-  ELEMENT_ADDED = "element-added",
-  ELEMENT_REMOVED = "element-removed",
+  ADDED = "added",
+  REMOVED = "removed",
   RESIZED = "resized",
 }
 
@@ -32,24 +32,32 @@ export interface LayoutOptions {
   flexDirection?: FlexDirection
   alignItems?: Align
   justifyContent?: Justify
+  flexBasis?: number | "auto" | undefined
   positionType?: "absolute" | "relative"
   position?: Position
   minWidth?: number
   minHeight?: number
   maxWidth?: number
   maxHeight?: number
-  margin?: {
-    top?: number
-    right?: number
-    bottom?: number
-    left?: number
-  }
-  padding?: {
-    top?: number
-    right?: number
-    bottom?: number
-    left?: number
-  }
+  margin?:
+    | {
+        top?: number
+        right?: number
+        bottom?: number
+        left?: number
+      }
+    | number
+    | "auto"
+    | `${number}%`
+  padding?:
+    | {
+        top?: number
+        right?: number
+        bottom?: number
+        left?: number
+      }
+    | number
+    | `${number}%`
   enableLayout?: boolean
 }
 
@@ -58,6 +66,7 @@ export interface RenderableOptions extends Partial<LayoutOptions> {
   height?: number | "auto" | `${number}%`
   zIndex: number
   visible?: boolean
+  buffered?: boolean
 }
 
 let renderableNumber = 1
@@ -77,12 +86,14 @@ export abstract class Renderable extends EventEmitter {
   private _zIndex: number
   protected _visible: boolean
   public selectable: boolean = false
+  protected buffered: boolean
+  protected frameBuffer: OptimizedBuffer | null = null
+  private _dirty: boolean = false
 
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
 
-  public isLayoutElement: boolean = true
   protected layoutNode: TrackedNode
   protected _positionType: "absolute" | "relative" = "relative"
   protected _position: Position = {}
@@ -108,10 +119,15 @@ export abstract class Renderable extends EventEmitter {
     this._height = options.height ?? "auto"
     this._zIndex = options.zIndex
     this._visible = options.visible !== false
+    this.buffered = options.buffered ?? false
 
     this.layoutNode = createTrackedNode({ renderable: this } as any)
     this.layoutNode.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
+
+    if (this.buffered) {
+      this.createFrameBuffer()
+    }
   }
 
   public get visible(): boolean {
@@ -121,6 +137,9 @@ export abstract class Renderable extends EventEmitter {
   public set visible(value: boolean) {
     this._visible = value
     this.layoutNode.yogaNode.setDisplay(value ? Display.Flex : Display.None)
+    if (this._focused) {
+      this.blur()
+    }
     this.requestLayout()
   }
 
@@ -146,7 +165,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._focused) return
 
     this._focused = true
-    this.needsUpdate()
+    this.markDirty()
 
     this.keypressHandler = (key: ParsedKey) => {
       if (this.handleKeyPress) {
@@ -162,7 +181,7 @@ export abstract class Renderable extends EventEmitter {
     if (!this._focused) return
 
     this._focused = false
-    this.needsUpdate()
+    this.markDirty()
 
     if (this.keypressHandler) {
       this.keyHandler.off("keypress", this.keypressHandler)
@@ -177,6 +196,19 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public handleKeyPress?(key: ParsedKey | string): boolean
+
+  protected get isDirty(): boolean {
+    return this._dirty
+  }
+
+  protected markDirty(): void {
+    this._dirty = true
+    this.needsUpdate()
+  }
+
+  protected markClean(): void {
+    this._dirty = false
+  }
 
   public needsUpdate() {
     this.ctx?.needsUpdate()
@@ -265,10 +297,8 @@ export abstract class Renderable extends EventEmitter {
   private setupYogaProperties(options: RenderableOptions): void {
     const node = this.layoutNode.yogaNode
 
-    if (options.flexGrow === 0 || options.flexGrow === undefined) {
-      node.setFlexBasis(typeof options.height === "number" ? options.height : undefined)
-    } else {
-      node.setFlexBasisAuto()
+    if (options.flexBasis !== undefined) {
+      node.setFlexBasis(options.flexBasis)
     }
 
     if (options.minWidth !== undefined) {
@@ -327,20 +357,30 @@ export abstract class Renderable extends EventEmitter {
       node.setMaxHeight(options.maxHeight)
     }
 
-    if (options.margin) {
+    if (typeof options.margin === "object") {
       const { top, right, bottom, left } = options.margin
       if (top !== undefined) node.setMargin(Edge.Top, top)
       if (right !== undefined) node.setMargin(Edge.Right, right)
       if (bottom !== undefined) node.setMargin(Edge.Bottom, bottom)
       if (left !== undefined) node.setMargin(Edge.Left, left)
+    } else if (options.margin !== undefined) {
+      node.setMargin(Edge.Top, options.margin)
+      node.setMargin(Edge.Right, options.margin)
+      node.setMargin(Edge.Bottom, options.margin)
+      node.setMargin(Edge.Left, options.margin)
     }
 
-    if (options.padding) {
+    if (typeof options.padding === "object") {
       const { top, right, bottom, left } = options.padding
       if (top !== undefined) node.setPadding(Edge.Top, top)
       if (right !== undefined) node.setPadding(Edge.Right, right)
       if (bottom !== undefined) node.setPadding(Edge.Bottom, bottom)
       if (left !== undefined) node.setPadding(Edge.Left, left)
+    } else if (options.padding !== undefined) {
+      node.setPadding(Edge.Top, options.padding)
+      node.setPadding(Edge.Right, options.padding)
+      node.setPadding(Edge.Bottom, options.padding)
+      node.setPadding(Edge.Left, options.padding)
     }
   }
 
@@ -471,7 +511,41 @@ export abstract class Renderable extends EventEmitter {
 
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
+      this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
+      this.markDirty()
+    }
+  }
+
+  protected handleFrameBufferResize(width: number, height: number): void {
+    if (!this.buffered) return
+
+    if (width <= 0 || height <= 0) {
+      return
+    }
+
+    if (this.frameBuffer) {
+      this.frameBuffer.resize(width, height)
+    } else {
+      this.createFrameBuffer()
+    }
+  }
+
+  protected createFrameBuffer(): void {
+    const w = this.width
+    const h = this.height
+
+    if (w <= 0 || h <= 0) {
+      return
+    }
+
+    try {
+      this.frameBuffer = OptimizedBuffer.create(w, h, {
+        respectAlpha: true,
+      })
+    } catch (error) {
+      console.error(`Failed to create frame buffer for ${this.id}:`, error)
+      this.frameBuffer = null
     }
   }
 
@@ -553,10 +627,6 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
-  public getAllElementIds(): string[] {
-    return Array.from(this.renderableMap.keys())
-  }
-
   public getChildren(): Renderable[] {
     return [...this.renderableArray]
   }
@@ -569,12 +639,18 @@ export abstract class Renderable extends EventEmitter {
       this.layoutNode.yogaNode.markLayoutSeen()
     }
 
-    this.renderSelf(buffer, deltaTime)
+    const renderBuffer = this.buffered && this.frameBuffer ? this.frameBuffer : buffer
+
+    this.renderSelf(renderBuffer, deltaTime)
     this.ctx?.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
 
     for (const child of this.renderableArray) {
-      child.render(buffer, deltaTime)
+      child.render(renderBuffer, deltaTime)
+    }
+
+    if (this.buffered && this.frameBuffer) {
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
     }
   }
 
@@ -585,15 +661,19 @@ export abstract class Renderable extends EventEmitter {
 
   public destroy(): void {
     if (this.parent) {
-      throw new Error(
-        `Cannot destroy ${this.id} while it still has a parent (${this.parent.id}). Remove from parent first.`,
-      )
+      this.parent.remove(this.id)
+    }
+
+    if (this.frameBuffer) {
+      this.frameBuffer.destroy()
+      this.frameBuffer = null
     }
 
     for (const child of this.renderableArray) {
       child.parent = null
       child.destroy()
     }
+
     this.renderableArray = []
     this.renderableMap.clear()
     Renderable.renderablesByNumber.delete(this.num)
@@ -606,7 +686,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   protected destroySelf(): void {
-    // Default implementation: do nothing
+    // Default implementation: do nothing else
     // Override this method to provide custom cleanup
   }
 
@@ -652,7 +732,7 @@ export class RootRenderable extends Renderable {
     const childLayoutNode = obj.getLayoutNode()
     this.layoutNode.addChild(childLayoutNode)
     this.requestLayout()
-    this.emit(LayoutEvents.ELEMENT_ADDED, obj)
+    this.emit(LayoutEvents.ADDED, obj)
   }
 
   public remove(id: string): void {
@@ -660,7 +740,7 @@ export class RootRenderable extends Renderable {
 
     if (obj) {
       this.layoutNode.removeChild(obj.getLayoutNode())
-      this.emit(LayoutEvents.ELEMENT_REMOVED, obj)
+      this.emit(LayoutEvents.REMOVED, obj)
       this.requestLayout()
     }
 

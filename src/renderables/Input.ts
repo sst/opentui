@@ -1,10 +1,15 @@
-import { BufferedElement, type ElementOptions } from "../element"
-import { parseColor } from "../../utils"
-import type { RGBA, ColorInput } from "../../types"
-import type { ParsedKey } from "../../parse.keypress"
-import { CliRenderer } from "../.."
+import { Renderable, type RenderableOptions } from "../Renderable"
+import { OptimizedBuffer } from "../buffer"
+import { parseColor } from "../utils"
+import type { RGBA, ColorInput } from "../types"
+import type { ParsedKey } from "../lib/parse.keypress"
+import { CliRenderer } from ".."
 
-export interface InputElementOptions extends ElementOptions {
+export interface InputRenderableOptions extends RenderableOptions {
+  backgroundColor?: ColorInput
+  textColor?: ColorInput
+  focusedBackgroundColor?: ColorInput
+  focusedTextColor?: ColorInput
   placeholder?: string
   placeholderColor?: ColorInput
   cursorColor?: ColorInput
@@ -12,24 +17,32 @@ export interface InputElementOptions extends ElementOptions {
   value?: string
 }
 
-export enum InputElementEvents {
+export enum InputRenderableEvents {
   INPUT = "input",
   CHANGE = "change",
   ENTER = "enter",
 }
 
-export class InputElement extends BufferedElement {
+export class InputRenderable extends Renderable {
   private value: string = ""
   private cursorPosition: number = 0
   private placeholder: string
+  private backgroundColor: RGBA
+  private textColor: RGBA
+  private focusedBackgroundColor: RGBA
+  private focusedTextColor: RGBA
   private placeholderColor: RGBA
   private cursorColor: RGBA
   private maxLength: number
   private lastCommittedValue: string = ""
 
-  constructor(id: string, options: InputElementOptions) {
-    super(id, options)
+  constructor(id: string, options: InputRenderableOptions) {
+    super(id, { ...options, buffered: true })
 
+    this.backgroundColor = parseColor(options.backgroundColor || "transparent")
+    this.textColor = parseColor(options.textColor || "#FFFFFF")
+    this.focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
+    this.focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
     this.placeholder = options.placeholder || ""
     this.value = options.value || ""
     this.lastCommittedValue = this.value
@@ -43,10 +56,9 @@ export class InputElement extends BufferedElement {
   private updateCursorPosition(): void {
     if (!this._focused) return
 
-    const hasBorder = this.border !== false
-    const contentX = hasBorder ? 1 : 0
-    const contentY = hasBorder ? 1 : 0
-    const contentWidth = hasBorder ? this.width - 2 : this.width
+    const contentX = 0
+    const contentY = 0
+    const contentWidth = this.width
 
     const maxVisibleChars = contentWidth - 1
     let displayStartIndex = 0
@@ -70,27 +82,42 @@ export class InputElement extends BufferedElement {
     super.focus()
     CliRenderer.setCursorStyle("block", true, this.cursorColor)
     this.updateCursorPosition()
-    this.needsRefresh = true
   }
 
   public blur(): void {
     super.blur()
-    CliRenderer.setCursorPosition(0, 0, false) // Hide cursor
+    CliRenderer.setCursorPosition(0, 0, false)
 
     if (this.value !== this.lastCommittedValue) {
       this.lastCommittedValue = this.value
-      this.emit(InputElementEvents.CHANGE, this.value)
+      this.emit(InputRenderableEvents.CHANGE, this.value)
     }
-
-    this.needsRefresh = true
   }
 
-  protected refreshContent(contentX: number, contentY: number, contentWidth: number, contentHeight: number): void {
+  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (!this.visible || !this.frameBuffer) return
+
+    if (this.isDirty) {
+      this.refreshFrameBuffer()
+      this.markClean()
+    }
+  }
+
+  private refreshFrameBuffer(): void {
     if (!this.frameBuffer) return
+
+    const bgColor = this._focused ? this.focusedBackgroundColor : this.backgroundColor
+    this.frameBuffer.clear(bgColor)
+
+    const contentX = 0
+    const contentY = 0
+    const contentWidth = this.width
+    const contentHeight = this.height
 
     const displayText = this.value || this.placeholder
     const isPlaceholder = !this.value && this.placeholder
-    const textColor = isPlaceholder ? this.placeholderColor : this.textColor
+    const baseTextColor = this._focused ? this.focusedTextColor : this.textColor
+    const textColor = isPlaceholder ? this.placeholderColor : baseTextColor
 
     const maxVisibleChars = contentWidth - 1
     let displayStartIndex = 0
@@ -115,9 +142,9 @@ export class InputElement extends BufferedElement {
     if (this.value !== newValue) {
       this.value = newValue
       this.cursorPosition = Math.min(this.cursorPosition, this.value.length)
-      this.needsRefresh = true
+      this.markDirty()
       this.updateCursorPosition()
-      this.emit(InputElementEvents.INPUT, this.value)
+      this.emit(InputRenderableEvents.INPUT, this.value)
     }
   }
 
@@ -132,7 +159,7 @@ export class InputElement extends BufferedElement {
   public setPlaceholder(placeholder: string): void {
     if (this.placeholder !== placeholder) {
       this.placeholder = placeholder
-      this.needsRefresh = true
+      this.markDirty()
     }
   }
 
@@ -144,7 +171,7 @@ export class InputElement extends BufferedElement {
     const newPosition = Math.max(0, Math.min(position, this.value.length))
     if (this.cursorPosition !== newPosition) {
       this.cursorPosition = newPosition
-      this.needsRefresh = true
+      this.markDirty()
       this.updateCursorPosition()
     }
   }
@@ -158,9 +185,9 @@ export class InputElement extends BufferedElement {
     const afterCursor = this.value.substring(this.cursorPosition)
     this.value = beforeCursor + text + afterCursor
     this.cursorPosition += text.length
-    this.needsRefresh = true
+    this.markDirty()
     this.updateCursorPosition()
-    this.emit(InputElementEvents.INPUT, this.value)
+    this.emit(InputRenderableEvents.INPUT, this.value)
   }
 
   private deleteCharacter(direction: "backward" | "forward"): void {
@@ -169,16 +196,16 @@ export class InputElement extends BufferedElement {
       const afterCursor = this.value.substring(this.cursorPosition)
       this.value = beforeCursor + afterCursor
       this.cursorPosition--
-      this.needsRefresh = true
+      this.markDirty()
       this.updateCursorPosition()
-      this.emit(InputElementEvents.INPUT, this.value)
+      this.emit(InputRenderableEvents.INPUT, this.value)
     } else if (direction === "forward" && this.cursorPosition < this.value.length) {
       const beforeCursor = this.value.substring(0, this.cursorPosition)
       const afterCursor = this.value.substring(this.cursorPosition + 1)
       this.value = beforeCursor + afterCursor
-      this.needsRefresh = true
+      this.markDirty()
       this.updateCursorPosition()
-      this.emit(InputElementEvents.INPUT, this.value)
+      this.emit(InputRenderableEvents.INPUT, this.value)
     }
   }
 
@@ -215,9 +242,9 @@ export class InputElement extends BufferedElement {
       case "enter":
         if (this.value !== this.lastCommittedValue) {
           this.lastCommittedValue = this.value
-          this.emit(InputElementEvents.CHANGE, this.value)
+          this.emit(InputRenderableEvents.CHANGE, this.value)
         }
-        this.emit(InputElementEvents.ENTER, this.value)
+        this.emit(InputRenderableEvents.ENTER, this.value)
         return true
 
       default:

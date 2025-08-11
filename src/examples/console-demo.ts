@@ -230,9 +230,9 @@ export function run(renderer: CliRenderer): void {
   const debugColor = RGBA.fromInts(140, 140, 150, 255)
 
   const startY = 7
-  const buttonWidth = 14
-  const buttonHeight = 4
-  const spacing = 16
+  const buttonWidth = 16
+  const buttonHeight = 6
+  const spacing = 18
 
   consoleButtons = [
     new ConsoleButton("log-btn", 2, startY, buttonWidth, buttonHeight, logColor, "LOG", "log"),

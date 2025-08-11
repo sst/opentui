@@ -1,26 +1,25 @@
 import {
   createCliRenderer,
-  SelectElement,
-  SelectElementEvents,
+  SelectRenderable,
+  SelectRenderableEvents,
   RenderableEvents,
   GroupRenderable,
   type SelectOption,
   type CliRenderer,
-  type BorderStyle,
   t,
   bold,
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { StyledTextRenderable } from "../renderables/StyledText"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { getKeyHandler } from "../lib/KeyHandler"
 
-let selectElement: SelectElement | null = null
+let selectElement: SelectRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
 let keyLegendDisplay: StyledTextRenderable | null = null
 let statusDisplay: StyledTextRenderable | null = null
-let lastActionText: string = "Welcome to SelectElement demo! Use the controls to test features."
+let lastActionText: string = "Welcome to SelectRenderable demo! Use the controls to test features."
 let lastActionColor: string = "#FFCC00"
 
 const selectOptions: SelectOption[] = [
@@ -49,7 +48,6 @@ const selectOptions: SelectOption[] = [
 function updateDisplays() {
   if (!selectElement) return
 
-  const border = selectElement.getBorder()
   const scrollIndicator = selectElement.getShowScrollIndicator() ? "on" : "off"
   const description = selectElement.getShowDescription() ? "on" : "off"
   const wrap = selectElement.getWrapSelection() ? "on" : "off"
@@ -60,7 +58,6 @@ Shift+↑/↓ or Shift+j/k: Fast scroll
 Enter: Select item
 F: Toggle focus
 D: Toggle descriptions
-B: Cycle border styles
 S: Toggle scroll indicator
 W: Toggle wrap selection`
 
@@ -80,30 +77,13 @@ W: Toggle wrap selection`
 
 ${fg(focusColor)(focusText)}
 
-${fg("#CCCCCC")(`Border: ${border} | Scroll indicator: ${scrollIndicator} | Description: ${description} | Wrap: ${wrap}`)}
+${fg("#CCCCCC")(`Scroll indicator: ${scrollIndicator} | Description: ${description} | Wrap: ${wrap}`)}
 
 ${fg(lastActionColor)(lastActionText)}`
 
   if (statusDisplay) {
     statusDisplay.fragment = statusText
   }
-}
-
-function cycleBorderStyle() {
-  if (!selectElement) return
-  let currentBorder: BorderStyle | "none" = selectElement.getBorderStyle()
-  if (selectElement.getBorder() === false) {
-    currentBorder = "none"
-  }
-  const borderStyles: (BorderStyle | "none")[] = ["single", "double", "rounded", "heavy", "none"]
-  const currentIndex = borderStyles.indexOf(currentBorder)
-  const nextIndex = (currentIndex + 1) % borderStyles.length
-  if (borderStyles[nextIndex] === "none") {
-    selectElement.setBorder(false, "single")
-  } else {
-    selectElement.setBorder(true, borderStyles[nextIndex])
-  }
-  updateDisplays()
 }
 
 export function run(rendererInstance: CliRenderer): void {
@@ -116,7 +96,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   renderer.root.add(parentContainer)
 
-  selectElement = new SelectElement("demo-select", {
+  selectElement = new SelectRenderable("demo-select", {
     positionType: "absolute",
     position: {
       left: 5,
@@ -126,20 +106,17 @@ export function run(rendererInstance: CliRenderer): void {
     height: 20,
     options: selectOptions,
     zIndex: 100,
-    backgroundColor: "#001122",
-    selectedBackgroundColor: "#334455",
-    selectedTextColor: "#FFFF00",
-    textColor: "#CCCCCC",
-    selectedDescriptionColor: "#FFFFFF",
-    descriptionColor: "#888888",
-    borderStyle: "single",
-    borderColor: "#666666",
-    focusedBorderColor: "#00AAFF",
+    backgroundColor: "#1e293b",
+    focusedBackgroundColor: "#2d3748",
+    textColor: "#e2e8f0",
+    focusedTextColor: "#f7fafc",
+    selectedBackgroundColor: "#3b82f6",
+    selectedTextColor: "#ffffff",
+    descriptionColor: "#94a3b8",
+    selectedDescriptionColor: "#cbd5e1",
     showDescription: true,
     showScrollIndicator: true,
     wrapSelection: false,
-    title: "Menu Options",
-    titleAlignment: "center",
     fastScrollStep: 5,
   })
 
@@ -172,17 +149,16 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(statusDisplay)
 
-  selectElement.on(SelectElementEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
+  selectElement.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
     lastActionText = `Navigation: Moved to "${option.name}"`
     lastActionColor = "#FFCC00"
     updateDisplays()
   })
 
-  selectElement.on(SelectElementEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
+  selectElement.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
     lastActionText = `*** ACTIVATED: ${option.name} (${option.value}) ***`
     lastActionColor = "#FF00FF"
     updateDisplays()
-    // Reset color after a moment
     setTimeout(() => {
       lastActionColor = "#FFCC00"
       updateDisplays()
@@ -214,11 +190,6 @@ export function run(rendererInstance: CliRenderer): void {
       const newState = !selectElement?.getShowDescription()
       selectElement?.setShowDescription(newState)
       lastActionText = `Descriptions ${newState ? "enabled" : "disabled"}`
-      lastActionColor = "#FFCC00"
-      updateDisplays()
-    } else if (key.name === "b") {
-      cycleBorderStyle()
-      lastActionText = `Border style changed to ${selectElement?.getBorderStyle()}`
       lastActionColor = "#FFCC00"
       updateDisplays()
     } else if (key.name === "s") {

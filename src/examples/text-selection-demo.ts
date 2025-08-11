@@ -14,6 +14,7 @@ import {
   yellow,
   cyan,
   magenta,
+  FlexDirection,
 } from ".."
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -64,15 +65,13 @@ export function run(renderer: CliRenderer): void {
     zIndex: 20,
     borderColor: "#58a6ff",
     title: "Document Section 1",
+    flexDirection: FlexDirection.Column,
+    padding: 1,
   })
   leftGroup.add(box1)
 
   const text1 = new TextRenderable("text1", {
     content: "This is a paragraph in the first box.",
-    position: {
-      left: 2,
-      top: 2,
-    },
     zIndex: 21,
     fg: "#f0f6fc",
   })
@@ -81,10 +80,6 @@ export function run(renderer: CliRenderer): void {
 
   const text2 = new TextRenderable("text2", {
     content: "It contains multiple lines of text",
-    position: {
-      left: 2,
-      top: 3,
-    },
     zIndex: 21,
     fg: "#f0f6fc",
   })
@@ -93,10 +88,6 @@ export function run(renderer: CliRenderer): void {
 
   const text3 = new TextRenderable("text3", {
     content: "that can be selected independently.",
-    position: {
-      left: 2,
-      top: 4,
-    },
     zIndex: 21,
     fg: "#f0f6fc",
   })
@@ -119,10 +110,6 @@ export function run(renderer: CliRenderer): void {
 
   const nestedText = new StyledTextRenderable("nestedText", {
     fragment: t`${yellow("Important:")} ${bold(cyan("Nested content"))} ${italic(green("with styles"))}`,
-    position: {
-      left: 2,
-      top: 2,
-    },
     width: 27,
     height: 1,
     zIndex: 26,
@@ -154,15 +141,12 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#f85149",
     title: "Code Example",
     borderStyle: "rounded",
+    padding: 1,
   })
   rightGroup.add(box2)
 
   const codeText1 = new StyledTextRenderable("codeText1", {
     fragment: t`${magenta("function")} ${cyan("handleSelection")}() {`,
-    position: {
-      left: 2,
-      top: 2,
-    },
     width: 31,
     height: 1,
     zIndex: 21,
@@ -174,10 +158,6 @@ export function run(renderer: CliRenderer): void {
 
   const codeText2 = new StyledTextRenderable("codeText2", {
     fragment: t`  ${magenta("const")} selected = ${cyan("getSelectedText")}()`,
-    position: {
-      left: 2,
-      top: 2,
-    },
     width: 31,
     height: 1,
     zIndex: 21,
@@ -189,10 +169,6 @@ export function run(renderer: CliRenderer): void {
 
   const codeText3 = new StyledTextRenderable("codeText3", {
     fragment: t`  ${yellow("console")}.${green("log")}(selected)`,
-    position: {
-      left: 2,
-      top: 2,
-    },
     width: 31,
     height: 1,
     zIndex: 21,
@@ -204,10 +180,6 @@ export function run(renderer: CliRenderer): void {
 
   const codeText4 = new TextRenderable("codeText4", {
     content: "}",
-    position: {
-      left: 2,
-      top: 2,
-    },
     zIndex: 21,
     fg: "#e6edf3",
   })
@@ -235,10 +207,6 @@ export function run(renderer: CliRenderer): void {
 ${green("✓")} Cross-renderable selection
 ${green("✓")} Nested groups and boxes
 ${green("✓")} Styled text support`,
-    position: {
-      left: 2,
-      top: 1,
-    },
     width: 27,
     height: 4,
     zIndex: 31,
@@ -273,63 +241,44 @@ ${green("✓")} Styled text support`,
     borderColor: "#50565d",
     title: "Selection Status",
     titleAlignment: "left",
+    padding: 1,
   })
   renderer.root.add(statusBox)
 
   statusText = new TextRenderable("statusText", {
     content: "No selection - try selecting across different nested elements",
-    position: {
-      left: 3,
-      top: 26,
-    },
     zIndex: 2,
     fg: "#f0f6fc",
   })
-  renderer.root.add(statusText)
+  statusBox.add(statusText)
 
   selectionStartText = new TextRenderable("selectionStartText", {
     content: "",
-    position: {
-      left: 3,
-      top: 27,
-    },
     zIndex: 2,
     fg: "#7dd3fc",
   })
-  renderer.root.add(selectionStartText)
+  statusBox.add(selectionStartText)
 
   selectionMiddleText = new TextRenderable("selectionMiddleText", {
     content: "",
-    position: {
-      left: 3,
-      top: 28,
-    },
     zIndex: 2,
     fg: "#94a3b8",
   })
-  renderer.root.add(selectionMiddleText)
+  statusBox.add(selectionMiddleText)
 
   selectionEndText = new TextRenderable("selectionEndText", {
     content: "",
-    position: {
-      left: 3,
-      top: 29,
-    },
     zIndex: 2,
     fg: "#7dd3fc",
   })
-  renderer.root.add(selectionEndText)
+  statusBox.add(selectionEndText)
 
   debugText = new TextRenderable("debugText", {
     content: "",
-    position: {
-      left: 3,
-      top: 31,
-    },
     zIndex: 2,
     fg: "#e6edf3",
   })
-  renderer.root.add(debugText)
+  statusBox.add(debugText)
 
   // Listen for selection events
   renderer.on("selection", (selection) => {

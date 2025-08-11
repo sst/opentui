@@ -1,6 +1,6 @@
-import { Renderable } from "."
-import type { SelectionState } from "./types"
-import { coordinateToCharacterIndex, fonts } from "./ui/ascii.font"
+import { Renderable } from ".."
+import type { SelectionState } from "../types"
+import { coordinateToCharacterIndex, fonts } from "./ascii.font"
 
 export class Selection {
   private _anchor: { x: number; y: number }

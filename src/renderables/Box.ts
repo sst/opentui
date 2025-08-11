@@ -1,12 +1,20 @@
-import { type RenderableOptions, Renderable } from "../Renderable";
-import type { OptimizedBuffer } from "../buffer";
-import { RGBA } from "../types";
-import { type BorderStyle, type BorderSides, type BorderCharacters, type BorderSidesConfig, BorderChars, getBorderSides, drawBorder } from "../ui";
-import { parseColor } from "../utils";
-
+import { type RenderableOptions, Renderable, Edge } from "../Renderable"
+import type { OptimizedBuffer } from "../buffer"
+import { RGBA } from "../types"
+import {
+  type BorderStyle,
+  type BorderSides,
+  type BorderCharacters,
+  type BorderSidesConfig,
+  BorderChars,
+  getBorderSides,
+  drawBorder,
+} from "../lib"
+import { parseColor } from "../utils"
+import type { ColorInput } from "../types"
 
 export interface BoxOptions extends RenderableOptions {
-  bg: string | RGBA
+  bg?: string | RGBA
   borderStyle?: BorderStyle
   border?: boolean | BorderSides[]
   borderColor?: string | RGBA
@@ -14,34 +22,36 @@ export interface BoxOptions extends RenderableOptions {
   shouldFill?: boolean
   title?: string
   titleAlignment?: "left" | "center" | "right"
+  focusedBorderColor?: ColorInput
 }
 
 export class BoxRenderable extends Renderable {
-  public _bg: RGBA
-  public _border: boolean | BorderSides[]
-  public _borderStyle: BorderStyle
-  public borderColor: RGBA
-  public customBorderChars: BorderCharacters
-  public borderSides: BorderSidesConfig
+  protected _bg: RGBA
+  protected _border: boolean | BorderSides[]
+  protected _borderStyle: BorderStyle
+  protected _borderColor: RGBA
+  protected _focusedBorderColor: RGBA
+  protected customBorderChars: BorderCharacters
+  protected borderSides: BorderSidesConfig
   public shouldFill: boolean
-  public title?: string
-  public titleAlignment: "left" | "center" | "right"
+  protected _title?: string
+  protected _titleAlignment: "left" | "center" | "right"
 
   constructor(id: string, options: BoxOptions) {
     super(id, options)
 
-    const bgRgb = parseColor(options.bg)
-    const borderRgb = parseColor(options.borderColor || RGBA.fromValues(255, 255, 255, 255))
-
-    this._bg = bgRgb
+    this._bg = parseColor(options.bg || "transparent")
     this._border = options.border ?? true
     this._borderStyle = options.borderStyle || "single"
-    this.borderColor = borderRgb
+    this._borderColor = parseColor(options.borderColor || "#FFFFFF")
+    this._focusedBorderColor = parseColor(options.focusedBorderColor || "#00AAFF")
     this.customBorderChars = options.customBorderChars || BorderChars[this._borderStyle]
     this.borderSides = getBorderSides(this._border)
-    this.shouldFill = options.shouldFill !== false
-    this.title = options.title
-    this.titleAlignment = options.titleAlignment || "left"
+    this.shouldFill = options.shouldFill ?? true
+    this._title = options.title
+    this._titleAlignment = options.titleAlignment || "left"
+
+    this.applyYogaBorders()
   }
 
   public get bg(): RGBA {
@@ -50,27 +60,94 @@ export class BoxRenderable extends Renderable {
 
   public set bg(value: RGBA | string | undefined) {
     if (value) {
-      this._bg = parseColor(value)
+      const newColor = parseColor(value)
+      if (this._bg !== newColor) {
+        this._bg = newColor
+        this.markDirty()
+      }
     }
   }
 
+  public get border(): boolean | BorderSides[] {
+    return this._border
+  }
+
   public set border(value: boolean | BorderSides[]) {
-    this._border = value
-    this.borderSides = getBorderSides(value)
-    this.needsUpdate()
+    if (this._border !== value) {
+      this._border = value
+      this.borderSides = getBorderSides(value)
+      this.applyYogaBorders()
+      this.markDirty()
+    }
+  }
+
+  public get borderStyle(): BorderStyle {
+    return this._borderStyle
   }
 
   public set borderStyle(value: BorderStyle) {
-    this._borderStyle = value
-    this.customBorderChars = BorderChars[this._borderStyle]
-    this.needsUpdate()
+    if (this._borderStyle !== value) {
+      this._borderStyle = value
+      this.customBorderChars = BorderChars[this._borderStyle]
+      this.markDirty()
+    }
+  }
+
+  public get borderColor(): RGBA {
+    return this._borderColor
+  }
+
+  public set borderColor(value: RGBA | string) {
+    const newColor = parseColor(value)
+    if (this._borderColor !== newColor) {
+      this._borderColor = newColor
+      this.markDirty()
+    }
+  }
+
+  public get focusedBorderColor(): RGBA {
+    return this._focusedBorderColor
+  }
+
+  public set focusedBorderColor(value: RGBA | string) {
+    const newColor = parseColor(value)
+    if (this._focusedBorderColor !== newColor) {
+      this._focusedBorderColor = newColor
+      if (this._focused) {
+        this.markDirty()
+      }
+    }
+  }
+
+  public get title(): string | undefined {
+    return this._title
+  }
+
+  public set title(value: string | undefined) {
+    if (this._title !== value) {
+      this._title = value
+      this.markDirty()
+    }
+  }
+
+  public get titleAlignment(): "left" | "center" | "right" {
+    return this._titleAlignment
+  }
+
+  public set titleAlignment(value: "left" | "center" | "right") {
+    if (this._titleAlignment !== value) {
+      this._titleAlignment = value
+      this.markDirty()
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    if (this.x >= buffer.getWidth() ||
+    if (
+      this.x >= buffer.getWidth() ||
       this.y >= buffer.getHeight() ||
       this.x + this.width <= 0 ||
-      this.y + this.height <= 0) {
+      this.y + this.height <= 0
+    ) {
       return
     }
 
@@ -80,7 +157,7 @@ export class BoxRenderable extends Renderable {
     const endY = Math.min(buffer.getHeight() - 1, this.y + this.height - 1)
 
     if (this.shouldFill) {
-      if (this.border === false) {
+      if (this._border === false) {
         buffer.fillRect(startX, startY, endX - startX + 1, endY - startY + 1, this._bg)
       } else {
         const innerStartX = startX + (this.borderSides.left ? 1 : 0)
@@ -94,7 +171,8 @@ export class BoxRenderable extends Renderable {
       }
     }
 
-    if (this.border !== false) {
+    if (this._border !== false) {
+      const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
       drawBorder(buffer, {
         x: this.x,
         y: this.y,
@@ -102,12 +180,21 @@ export class BoxRenderable extends Renderable {
         height: this.height,
         borderStyle: this._borderStyle,
         border: this._border,
-        borderColor: this.borderColor,
+        borderColor: currentBorderColor,
         backgroundColor: this._bg,
         customBorderChars: this.customBorderChars,
-        title: this.title,
-        titleAlignment: this.titleAlignment,
+        title: this._title,
+        titleAlignment: this._titleAlignment,
       })
     }
+  }
+
+  private applyYogaBorders(): void {
+    const node = this.layoutNode.yogaNode
+    node.setBorder(Edge.Left, this.borderSides.left ? 1 : 0)
+    node.setBorder(Edge.Right, this.borderSides.right ? 1 : 0)
+    node.setBorder(Edge.Top, this.borderSides.top ? 1 : 0)
+    node.setBorder(Edge.Bottom, this.borderSides.bottom ? 1 : 0)
+    this.requestLayout()
   }
 }

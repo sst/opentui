@@ -6,12 +6,13 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   RGBA,
-  SelectElement,
-  SelectElementEvents,
+  SelectRenderable,
+  SelectRenderableEvents,
+  BoxRenderable,
   type SelectOption,
   type ParsedKey,
 } from "../index"
-import { renderFontToFrameBuffer, measureText } from "../ui/ascii.font"
+import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
 import * as framebufferExample from "./framebuffer-demo"
@@ -39,7 +40,7 @@ import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
-import { getKeyHandler } from "../ui/lib/KeyHandler"
+import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -221,7 +222,8 @@ class ExampleSelector {
 
   private title: FrameBufferRenderable | null = null
   private instructions: TextRenderable | null = null
-  private selectElement: SelectElement | null = null
+  private selectElement: SelectRenderable | null = null
+  private selectBox: BoxRenderable | null = null
   private notImplementedText: TextRenderable | null = null
 
   constructor(renderer: CliRenderer) {
@@ -295,7 +297,7 @@ class ExampleSelector {
       value: example,
     }))
 
-    this.selectElement = new SelectElement("example-selector", {
+    this.selectBox = new BoxRenderable("example-selector-box", {
       positionType: "absolute",
       position: {
         left: 1,
@@ -304,6 +306,19 @@ class ExampleSelector {
       width: width - 2,
       height: height - 8,
       zIndex: 5,
+      borderStyle: "single",
+      borderColor: "#FFFFFF",
+      focusedBorderColor: "#00AAFF",
+      title: "Examples",
+      titleAlignment: "center",
+      bg: "transparent",
+      shouldFill: false,
+    })
+
+    this.selectElement = new SelectRenderable("example-selector", {
+      width: width - 4,
+      height: height - 10,
+      zIndex: 6,
       options: selectOptions,
       backgroundColor: "#001122",
       selectedBackgroundColor: "#334455",
@@ -315,18 +330,14 @@ class ExampleSelector {
       wrapSelection: true,
       showDescription: true,
       fastScrollStep: 5, // Shift+K/J or Shift+Up/Down moves 5 items at once
-      borderStyle: "single",
-      borderColor: "#FFFFFF",
-      focusedBorderColor: "#00AAFF",
-      title: "Examples",
-      titleAlignment: "center",
     })
 
-    this.selectElement.on(SelectElementEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
+    this.selectElement.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
       this.runSelected(option.value as Example)
     })
 
-    this.renderer.root.add(this.selectElement)
+    this.selectBox.add(this.selectElement)
+    this.renderer.root.add(this.selectBox)
     this.selectElement.focus()
   }
 
@@ -337,9 +348,14 @@ class ExampleSelector {
       this.title.x = centerX
     }
 
+    if (this.selectBox) {
+      this.selectBox.width = width - 2
+      this.selectBox.height = height - 8
+    }
+
     if (this.selectElement) {
-      this.selectElement.width = width - 2
-      this.selectElement.height = height - 8
+      this.selectElement.width = width - 4
+      this.selectElement.height = height - 10
     }
 
     this.renderer.needsUpdate()
@@ -393,8 +409,10 @@ class ExampleSelector {
   private hideMenuElements(): void {
     if (this.title) this.title.visible = false
     if (this.instructions) this.instructions.visible = false
+    if (this.selectBox) {
+      this.selectBox.visible = false
+    }
     if (this.selectElement) {
-      this.selectElement.visible = false
       this.selectElement.blur()
     }
   }
@@ -402,8 +420,10 @@ class ExampleSelector {
   private showMenuElements(): void {
     if (this.title) this.title.visible = true
     if (this.instructions) this.instructions.visible = true
+    if (this.selectBox) {
+      this.selectBox.visible = true
+    }
     if (this.selectElement) {
-      this.selectElement.visible = true
       this.selectElement.focus()
     }
   }

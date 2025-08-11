@@ -1,6 +1,6 @@
-import type { OptimizedBuffer } from "../../buffer"
-import type { ColorInput } from "../../types"
-import { parseColor } from "../../utils"
+import type { OptimizedBuffer } from "../buffer"
+import type { ColorInput } from "../types"
+import { parseColor } from "../utils"
 
 export interface BorderCharacters {
   topLeft: string
