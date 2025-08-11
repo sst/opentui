@@ -11,7 +11,7 @@ import {
   fg,
   GroupRenderable,
 } from "../index"
-import { StyledTextRenderable } from "../objects"
+import { StyledTextRenderable } from "../renderables/StyledText"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let renderer: CliRenderer | null = null

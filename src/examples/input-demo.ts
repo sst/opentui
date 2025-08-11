@@ -11,7 +11,7 @@ import {
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { StyledTextRenderable } from "../objects"
+import { StyledTextRenderable } from "../renderables/StyledText"
 import { getKeyHandler } from "../ui/lib/KeyHandler"
 
 let nameInput: InputElement | null = null
