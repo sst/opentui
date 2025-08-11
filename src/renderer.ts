@@ -28,7 +28,6 @@ export interface CliRendererConfig {
   gatherStats?: boolean
   maxStatSamples?: number
   consoleOptions?: ConsoleOptions
-  resolution?: PixelResolution | null
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
@@ -83,31 +82,6 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-async function getTerminalPixelResolution(
-  stdin: NodeJS.ReadStream,
-  stdout: NodeJS.WriteStream,
-): Promise<PixelResolution | null> {
-  return new Promise<PixelResolution | null>((resolve) => {
-    stdin.setRawMode(true)
-    const timeout = setTimeout(() => {
-      resolve(null)
-    }, 100)
-    stdin.once("data", (data) => {
-      clearTimeout(timeout)
-      const str = data.toString()
-      if (/\x1b\[4/.test(str)) {
-        // <ESC>[4;<height>;<width>t
-        const [, height, width] = str.split(";")
-        const resolution: PixelResolution = {
-          width: parseInt(width),
-          height: parseInt(height),
-        }
-        resolve(resolution)
-      }
-    })
-    stdout.write(ANSI.queryPixelSize)
-  })
-}
 
 export async function createCliRenderer(config: CliRendererConfig = {}): Promise<CliRenderer> {
   if (process.argv.includes("--delay-start")) {
@@ -130,8 +104,6 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.useThread = true
   }
 
-  const resolution = await getTerminalPixelResolution(stdin, stdout)
-
   // Disable threading on linux because there currently is currently an issue
   // might be just a missing dependency for the build or something, but threads crash on linux
   if (process.platform === "linux") {
@@ -139,10 +111,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
-  return new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, {
-    ...config,
-    resolution,
-  })
+  return new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
 }
 
 export enum CliRenderEvents {
@@ -158,6 +127,7 @@ export class CliRenderer extends EventEmitter {
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
   private isDestroyed: boolean = false
+  private isShuttingDown: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -178,6 +148,7 @@ export class CliRenderer extends EventEmitter {
   private maxStatSamples: number = 300
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromHex("#000000")
+  private waitingForPixelResolution: boolean = false
 
   private rendering: boolean = false
   private renderingNative: boolean = false
@@ -258,6 +229,7 @@ export class CliRenderer extends EventEmitter {
 
   private _useConsole: boolean = true
   private mouseParser: MouseParser = new MouseParser()
+  private sigwinchHandler: (() => void) | null = null
 
   constructor(
     lib: RenderLib,
@@ -279,7 +251,6 @@ export class CliRenderer extends EventEmitter {
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
-    this._resolution = config.resolution || null
     this._splitHeight = config.experimental_splitHeight || 0
 
     if (this._splitHeight > 0) {
@@ -315,15 +286,17 @@ export class CliRenderer extends EventEmitter {
     this.stdout.write = this.interceptStdoutWrite.bind(this)
 
     // Handle terminal resize
-    process.on("SIGWINCH", () => {
+    this.sigwinchHandler = () => {
+      if (this.isShuttingDown) return
       const width = this.stdout.columns || 80
       const height = this.stdout.rows || 24
       this.handleResize(width, height)
-    })
+    }
+    process.on("SIGWINCH", this.sigwinchHandler)
 
     const handleError = (error: Error) => {
-      this.console.deactivate()
       this.stop()
+
       new Promise((resolve) => {
         setTimeout(() => {
           resolve(true)
@@ -342,6 +315,7 @@ export class CliRenderer extends EventEmitter {
         this.realStdoutWrite.call(this.stdout, "\n")
         this.realStdoutWrite.call(this.stdout, error.stack || error.toString())
         this.realStdoutWrite.call(this.stdout, "\n")
+
         process.exit(1)
       })
     }
@@ -349,10 +323,8 @@ export class CliRenderer extends EventEmitter {
     process.on("uncaughtException", handleError)
     process.on("unhandledRejection", handleError)
     process.on("exit", (code: number) => {
+      this.stop()
       this.destroy()
-      if (!code || code === 0) {
-        this.stop()
-      }
     })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
@@ -372,6 +344,8 @@ export class CliRenderer extends EventEmitter {
       global.window = {} as Window & typeof globalThis
     }
     global.window.requestAnimationFrame = requestAnimationFrame
+
+    this.queryPixelResolution()
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
@@ -570,7 +544,9 @@ export class CliRenderer extends EventEmitter {
 
   private setupTerminal(): void {
     this.writeOut(ANSI.saveCursorState)
-    this.stdin.setRawMode(true)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(true)
+    }
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
 
@@ -579,8 +555,23 @@ export class CliRenderer extends EventEmitter {
     }
 
     this.stdin.on("data", (data: Buffer) => {
-      if (this.exitOnCtrlC && data.toString() === "\u0003") {
-        this.stop()
+      const str = data.toString()
+      
+      if (this.waitingForPixelResolution && /\x1b\[4;\d+;\d+t/.test(str)) {
+        const match = str.match(/\x1b\[4;(\d+);(\d+)t/)
+        if (match) {
+          const resolution: PixelResolution = {
+            width: parseInt(match[2]),
+            height: parseInt(match[1]),
+          }
+          
+          this._resolution = resolution
+          this.waitingForPixelResolution = false
+          return
+        }
+      }
+      
+      if (this.exitOnCtrlC && str === "\u0003") {
         process.nextTick(() => {
           process.exit(0)
         })
@@ -738,6 +729,7 @@ export class CliRenderer extends EventEmitter {
   }
 
   private handleResize(width: number, height: number): void {
+    if (this.isShuttingDown) return
     if (this._splitHeight > 0) {
       this.processResize(width, height)
       return
@@ -754,14 +746,20 @@ export class CliRenderer extends EventEmitter {
     }, this.resizeDebounceDelay)
   }
 
-  private async processResize(width: number, height: number): Promise<void> {
+  private queryPixelResolution() {
+    this.waitingForPixelResolution = true
+    this.writeOut(ANSI.queryPixelSize)
+  }
+
+  private processResize(width: number, height: number): void {
     if (width === this._terminalWidth && height === this._terminalHeight) return
 
     const prevWidth = this._terminalWidth
 
     this._terminalWidth = width
     this._terminalHeight = height
-
+    this.queryPixelResolution()
+    
     this.capturedRenderable = undefined
     this.mouseParser.reset()
 
@@ -782,7 +780,6 @@ export class CliRenderer extends EventEmitter {
       this.height = height
     }
 
-    this._resolution = await getTerminalPixelResolution(this.stdin, this.stdout)
     this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -901,8 +898,19 @@ export class CliRenderer extends EventEmitter {
   }
 
   public stop(): void {
+    if (this.isShuttingDown) return
     this._isRunning = false
+    this.isShuttingDown = true
+    
+    this.waitingForPixelResolution = false
+
+    if (this.sigwinchHandler) {
+      process.removeListener("SIGWINCH", this.sigwinchHandler)
+      this.sigwinchHandler = null
+    }
+    
     this._console.deactivate()
+    this.disableStdoutInterception()
 
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -914,13 +922,11 @@ export class CliRenderer extends EventEmitter {
       this.memorySnapshotTimer = null
     }
 
-    this.disableStdoutInterception()
-
     if (this._splitHeight > 0) {
       const consoleEndLine = this._terminalHeight - this._splitHeight
       this.writeOut(ANSI.moveCursor(consoleEndLine, 1))
     }
-
+    
     this.capturedRenderable = undefined
 
     if (this._useMouse) {
@@ -936,6 +942,7 @@ export class CliRenderer extends EventEmitter {
 
   public destroy(): void {
     if (this.isDestroyed) return
+    
     this.lib.destroyRenderer(this.rendererPtr)
     this.isDestroyed = true
   }
