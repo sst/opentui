@@ -633,7 +633,7 @@ export abstract class Renderable extends EventEmitter {
 
     this.beforeRender()
     this.updateFromLayout()
-    
+
     const renderBuffer = this.buffered && this.frameBuffer ? this.frameBuffer : buffer
 
     this.renderSelf(renderBuffer, deltaTime)

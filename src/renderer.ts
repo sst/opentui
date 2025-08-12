@@ -82,7 +82,6 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-
 export async function createCliRenderer(config: CliRendererConfig = {}): Promise<CliRenderer> {
   if (process.argv.includes("--delay-start")) {
     await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -556,7 +555,7 @@ export class CliRenderer extends EventEmitter {
 
     this.stdin.on("data", (data: Buffer) => {
       const str = data.toString()
-      
+
       if (this.waitingForPixelResolution && /\x1b\[4;\d+;\d+t/.test(str)) {
         const match = str.match(/\x1b\[4;(\d+);(\d+)t/)
         if (match) {
@@ -564,13 +563,13 @@ export class CliRenderer extends EventEmitter {
             width: parseInt(match[2]),
             height: parseInt(match[1]),
           }
-          
+
           this._resolution = resolution
           this.waitingForPixelResolution = false
           return
         }
       }
-      
+
       if (this.exitOnCtrlC && str === "\u0003") {
         process.nextTick(() => {
           process.exit(0)
@@ -759,7 +758,7 @@ export class CliRenderer extends EventEmitter {
     this._terminalWidth = width
     this._terminalHeight = height
     this.queryPixelResolution()
-    
+
     this.capturedRenderable = undefined
     this.mouseParser.reset()
 
@@ -901,14 +900,14 @@ export class CliRenderer extends EventEmitter {
     if (this.isShuttingDown) return
     this._isRunning = false
     this.isShuttingDown = true
-    
+
     this.waitingForPixelResolution = false
 
     if (this.sigwinchHandler) {
       process.removeListener("SIGWINCH", this.sigwinchHandler)
       this.sigwinchHandler = null
     }
-    
+
     this._console.deactivate()
     this.disableStdoutInterception()
 
@@ -926,7 +925,7 @@ export class CliRenderer extends EventEmitter {
       const consoleEndLine = this._terminalHeight - this._splitHeight
       this.writeOut(ANSI.moveCursor(consoleEndLine, 1))
     }
-    
+
     this.capturedRenderable = undefined
 
     if (this._useMouse) {
@@ -942,7 +941,7 @@ export class CliRenderer extends EventEmitter {
 
   public destroy(): void {
     if (this.isDestroyed) return
-    
+
     this.lib.destroyRenderer(this.rendererPtr)
     this.isDestroyed = true
   }
