@@ -13,7 +13,7 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { MouseParser, type MouseEventType, type RawMouseEvent } from "./lib/parse.mouse"
+import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 
@@ -52,6 +52,7 @@ export class MouseEvent {
     alt: boolean
     ctrl: boolean
   }
+  public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
   private _defaultPrevented: boolean = false
 
@@ -66,6 +67,7 @@ export class MouseEvent {
     this.x = attributes.x
     this.y = attributes.y
     this.modifiers = attributes.modifiers
+    this.scroll = attributes.scroll
     this.source = attributes.source
   }
 
@@ -301,7 +303,7 @@ export class CliRenderer extends EventEmitter {
           resolve(true)
         }, 100)
       }).then(() => {
-        this.realStdoutWrite.call(this.stdout, "\n=== ERROR OCCURRED ===\n")
+        this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
         this.realStdoutWrite.call(this.stdout, "Console cache:\n")
         this.realStdoutWrite.call(this.stdout, this.console.getCachedLogs())
         this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
@@ -599,6 +601,17 @@ export class CliRenderer extends EventEmitter {
           return false
         }
         mouseEvent.y -= this.renderOffset
+      }
+
+      if (mouseEvent.type === "scroll") {
+        const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
+        const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, mouseEvent)
+          maybeRenderable.processMouseEvent(event)
+        }
+        return true
       }
 
       const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)

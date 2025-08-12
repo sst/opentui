@@ -33,6 +33,8 @@ let nextZIndex = 101
 class DraggableBox extends BoxRenderable {
   private isDragging = false
   private gotText = ""
+  private scrollText = ""
+  private scrollTimestamp = 0
   private dragOffsetX = 0
   private dragOffsetY = 0
   private bounceScale = { value: 1 }
@@ -82,17 +84,43 @@ class DraggableBox extends BoxRenderable {
 
     super.renderSelf(buffer)
 
+    const currentTime = Date.now()
+    if (this.scrollText && currentTime - this.scrollTimestamp > 2000) {
+      this.scrollText = ""
+    }
+
+    const baseCenterX = this.x + Math.floor(this.width / 2)
+    const baseCenterY = this.y + Math.floor(this.height / 2)
+
+    let textLines = 0
+    if (this.isDragging) textLines++
+    if (this.scrollText) textLines++
+    if (this.gotText) textLines += 2
+
+    let currentY = textLines > 1 ? baseCenterY - Math.floor(textLines / 2) : baseCenterY
+
     if (this.isDragging) {
-      const centerX = this.x + Math.floor(this.width / 2 - 2)
-      const centerY = this.y + Math.floor(this.height / 2)
-      buffer.drawText("drag", centerX, centerY, RGBA.fromInts(64, 224, 208))
+      const centerX = baseCenterX - 2
+      buffer.drawText("drag", centerX, currentY, RGBA.fromInts(64, 224, 208))
+      currentY++
+    }
+
+    if (this.scrollText) {
+      const age = currentTime - this.scrollTimestamp
+      const fadeRatio = Math.max(0, 1 - age / 2000)
+      const alpha = Math.round(255 * fadeRatio)
+      
+      const centerX = baseCenterX - Math.floor(this.scrollText.length / 2)
+      buffer.drawText(this.scrollText, centerX, currentY, RGBA.fromInts(255, 255, 0, alpha))
+      currentY++
     }
 
     if (this.gotText) {
-      const centerX = this.x + Math.floor(this.width / 2 - this.gotText.length / 2)
-      const centerY = this.y + Math.floor(this.height / 2)
-      buffer.drawText("got", this.x + Math.floor(this.width / 2 - 2), centerY - 1, RGBA.fromInts(255, 182, 193))
-      buffer.drawText(this.gotText, centerX, centerY + (this.isDragging ? 1 : 0), RGBA.fromInts(147, 226, 255))
+      const gotX = baseCenterX - 2
+      const gotTextX = baseCenterX - Math.floor(this.gotText.length / 2)
+      buffer.drawText("got", gotX, currentY, RGBA.fromInts(255, 182, 193))
+      currentY++
+      buffer.drawText(this.gotText, gotTextX, currentY, RGBA.fromInts(147, 226, 255))
     }
   }
 
@@ -135,7 +163,7 @@ class DraggableBox extends BoxRenderable {
         break
 
       case "over":
-        this.gotText = "over " + (event.source?.id || "over")
+        this.gotText = "over " + (event.source?.id || "")
         break
 
       case "out":
@@ -161,6 +189,14 @@ class DraggableBox extends BoxRenderable {
           },
           150,
         )
+        break
+
+      case "scroll":
+        if (event.scroll) {
+          this.scrollText = `scroll ${event.scroll.direction}`
+          this.scrollTimestamp = Date.now()
+          event.preventDefault()
+        }
         break
     }
   }
@@ -293,7 +329,7 @@ export function run(renderer: CliRenderer): void {
   instructionsText = new StyledTextRenderable("mouse_demo_instructions", {
     fragment: t`Drag boxes around • Move mouse: turquoise trails
 Hold + move: orange drag trails • Click cells: toggle pink
-Escape: menu`,
+Scroll on boxes: shows direction • Escape: menu`,
     positionType: "absolute",
     position: {
       left: 2,
