@@ -577,7 +577,7 @@ class FFIRenderLib implements RenderLib {
 
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha)
     if (!bufferPtr) {
-      throw new Error("Failed to create optimized buffer")
+      throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
