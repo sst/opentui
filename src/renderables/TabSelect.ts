@@ -47,6 +47,8 @@ function calculateDynamicHeight(showUnderline: boolean, showDescription: boolean
 }
 
 export class TabSelectRenderable extends Renderable {
+  protected focusable: boolean = true
+
   private options: TabSelectOption[]
   private selectedIndex: number = 0
   private scrollOffset: number = 0

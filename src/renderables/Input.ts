@@ -24,6 +24,8 @@ export enum InputRenderableEvents {
 }
 
 export class InputRenderable extends Renderable {
+  protected focusable: boolean = true
+
   private value: string = ""
   private cursorPosition: number = 0
   private placeholder: string

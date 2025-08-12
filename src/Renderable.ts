@@ -90,6 +90,7 @@ export abstract class Renderable extends EventEmitter {
   protected frameBuffer: OptimizedBuffer | null = null
   private _dirty: boolean = false
 
+  protected focusable: boolean = false
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
@@ -162,7 +163,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public focus(): void {
-    if (this._focused) return
+    if (this._focused || !this.focusable) return
 
     this._focused = true
     this.needsUpdate()
@@ -178,7 +179,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public blur(): void {
-    if (!this._focused) return
+    if (!this._focused || !this.focusable) return
 
     this._focused = false
     this.needsUpdate()
