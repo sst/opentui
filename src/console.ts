@@ -477,13 +477,13 @@ export class TerminalConsole extends EventEmitter {
         }
         if (typeof arg === "object" && arg !== null) {
           try {
-            return util.inspect(arg, { depth: null })
+            return util.inspect(arg, { depth: 2 })
           } catch (e) {
             return String(arg)
           }
         }
         try {
-          return util.inspect(arg, { depth: null })
+          return util.inspect(arg, { depth: 2 })
         } catch (e) {
           return String(arg)
         }
