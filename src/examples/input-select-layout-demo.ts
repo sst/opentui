@@ -344,8 +344,6 @@ function updateFocus(): void {
 }
 
 function handleKeyPress(key: ParsedKey): void {
-  const currentElement = focusableElements[currentFocusIndex]
-
   if (key.name === "tab") {
     if (key.shift) {
       currentFocusIndex = (currentFocusIndex - 1 + focusableElements.length) % focusableElements.length

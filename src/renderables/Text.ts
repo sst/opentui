@@ -89,7 +89,6 @@ export class TextRenderable extends Renderable {
 
   set content(value: string) {
     this.setContent(value)
-    this.needsUpdate()
   }
 
   get content(): string {

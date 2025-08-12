@@ -142,15 +142,6 @@ export class BoxRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    if (
-      this.x >= buffer.getWidth() ||
-      this.y >= buffer.getHeight() ||
-      this.x + this.width <= 0 ||
-      this.y + this.height <= 0
-    ) {
-      return
-    }
-
     const startX = Math.max(0, this.x)
     const startY = Math.max(0, this.y)
     const endX = Math.min(buffer.getWidth() - 1, this.x + this.width - 1)

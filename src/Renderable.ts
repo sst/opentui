@@ -631,11 +631,9 @@ export abstract class Renderable extends EventEmitter {
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
 
-    if (this.layoutNode.yogaNode.hasNewLayout()) {
-      this.updateFromLayout()
-      this.layoutNode.yogaNode.markLayoutSeen()
-    }
-
+    this.beforeRender()
+    this.updateFromLayout()
+    
     const renderBuffer = this.buffered && this.frameBuffer ? this.frameBuffer : buffer
 
     this.renderSelf(renderBuffer, deltaTime)
@@ -650,6 +648,11 @@ export abstract class Renderable extends EventEmitter {
     if (this.buffered && this.frameBuffer) {
       buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
     }
+  }
+
+  protected beforeRender(): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom rendering
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -761,8 +764,10 @@ export class RootRenderable extends Renderable {
     this.emit(LayoutEvents.RESIZED, { width, height })
   }
 
-  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
-    this.calculateLayout()
+  protected beforeRender(): void {
+    if (this.layoutNode.yogaNode.isDirty()) {
+      this.calculateLayout()
+    }
   }
 
   protected destroySelf(): void {
