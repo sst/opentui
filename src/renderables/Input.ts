@@ -99,7 +99,6 @@ export class InputRenderable extends Renderable {
 
     if (this.isDirty) {
       this.refreshFrameBuffer()
-      this.markClean()
     }
   }
 
@@ -142,7 +141,7 @@ export class InputRenderable extends Renderable {
     if (this.value !== newValue) {
       this.value = newValue
       this.cursorPosition = Math.min(this.cursorPosition, this.value.length)
-      this.markDirty()
+      this.needsUpdate()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this.value)
     }
@@ -159,7 +158,7 @@ export class InputRenderable extends Renderable {
   public setPlaceholder(placeholder: string): void {
     if (this.placeholder !== placeholder) {
       this.placeholder = placeholder
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -171,7 +170,7 @@ export class InputRenderable extends Renderable {
     const newPosition = Math.max(0, Math.min(position, this.value.length))
     if (this.cursorPosition !== newPosition) {
       this.cursorPosition = newPosition
-      this.markDirty()
+      this.needsUpdate()
       this.updateCursorPosition()
     }
   }
@@ -185,7 +184,7 @@ export class InputRenderable extends Renderable {
     const afterCursor = this.value.substring(this.cursorPosition)
     this.value = beforeCursor + text + afterCursor
     this.cursorPosition += text.length
-    this.markDirty()
+    this.needsUpdate()
     this.updateCursorPosition()
     this.emit(InputRenderableEvents.INPUT, this.value)
   }
@@ -196,14 +195,14 @@ export class InputRenderable extends Renderable {
       const afterCursor = this.value.substring(this.cursorPosition)
       this.value = beforeCursor + afterCursor
       this.cursorPosition--
-      this.markDirty()
+      this.needsUpdate()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this.value)
     } else if (direction === "forward" && this.cursorPosition < this.value.length) {
       const beforeCursor = this.value.substring(0, this.cursorPosition)
       const afterCursor = this.value.substring(this.cursorPosition + 1)
       this.value = beforeCursor + afterCursor
-      this.markDirty()
+      this.needsUpdate()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this.value)
     }

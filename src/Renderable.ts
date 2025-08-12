@@ -165,7 +165,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._focused) return
 
     this._focused = true
-    this.markDirty()
+    this.needsUpdate()
 
     this.keypressHandler = (key: ParsedKey) => {
       if (this.handleKeyPress) {
@@ -181,7 +181,7 @@ export abstract class Renderable extends EventEmitter {
     if (!this._focused) return
 
     this._focused = false
-    this.markDirty()
+    this.needsUpdate()
 
     if (this.keypressHandler) {
       this.keyHandler.off("keypress", this.keypressHandler)
@@ -201,16 +201,12 @@ export abstract class Renderable extends EventEmitter {
     return this._dirty
   }
 
-  protected markDirty(): void {
-    this._dirty = true
-    this.needsUpdate()
-  }
-
-  protected markClean(): void {
+  private markClean(): void {
     this._dirty = false
   }
 
   public needsUpdate() {
+    this._dirty = true
     this.ctx?.needsUpdate()
   }
 
@@ -513,7 +509,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._visible) {
       this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -642,6 +638,7 @@ export abstract class Renderable extends EventEmitter {
     const renderBuffer = this.buffered && this.frameBuffer ? this.frameBuffer : buffer
 
     this.renderSelf(renderBuffer, deltaTime)
+    this.markClean()
     this.ctx?.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
 

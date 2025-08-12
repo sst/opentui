@@ -63,7 +63,7 @@ export class BoxRenderable extends Renderable {
       const newColor = parseColor(value)
       if (this._bg !== newColor) {
         this._bg = newColor
-        this.markDirty()
+        this.needsUpdate()
       }
     }
   }
@@ -77,7 +77,7 @@ export class BoxRenderable extends Renderable {
       this._border = value
       this.borderSides = getBorderSides(value)
       this.applyYogaBorders()
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -89,7 +89,7 @@ export class BoxRenderable extends Renderable {
     if (this._borderStyle !== value) {
       this._borderStyle = value
       this.customBorderChars = BorderChars[this._borderStyle]
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -101,7 +101,7 @@ export class BoxRenderable extends Renderable {
     const newColor = parseColor(value)
     if (this._borderColor !== newColor) {
       this._borderColor = newColor
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -114,7 +114,7 @@ export class BoxRenderable extends Renderable {
     if (this._focusedBorderColor !== newColor) {
       this._focusedBorderColor = newColor
       if (this._focused) {
-        this.markDirty()
+        this.needsUpdate()
       }
     }
   }
@@ -126,7 +126,7 @@ export class BoxRenderable extends Renderable {
   public set title(value: string | undefined) {
     if (this._title !== value) {
       this._title = value
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -137,7 +137,7 @@ export class BoxRenderable extends Renderable {
   public set titleAlignment(value: "left" | "center" | "right") {
     if (this._titleAlignment !== value) {
       this._titleAlignment = value
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 

@@ -97,7 +97,6 @@ export class TabSelectRenderable extends Renderable {
 
     if (this.isDirty) {
       this.refreshFrameBuffer()
-      this.markClean()
     }
   }
 
@@ -186,7 +185,7 @@ export class TabSelectRenderable extends Renderable {
     this.options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
   }
 
   public getSelectedOption(): TabSelectOption | null {
@@ -207,7 +206,7 @@ export class TabSelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
     this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -221,7 +220,7 @@ export class TabSelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
     this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -236,7 +235,7 @@ export class TabSelectRenderable extends Renderable {
     if (index >= 0 && index < this.options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
-      this.markDirty()
+      this.needsUpdate()
       this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
     }
   }
@@ -250,14 +249,14 @@ export class TabSelectRenderable extends Renderable {
 
     if (newScrollOffset !== this.scrollOffset) {
       this.scrollOffset = newScrollOffset
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
   protected onResize(width: number, height: number): void {
     this.maxVisibleTabs = Math.max(1, Math.floor(width / this.tabWidth))
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
   }
 
   public setTabWidth(tabWidth: number): void {
@@ -267,7 +266,7 @@ export class TabSelectRenderable extends Renderable {
     this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this.tabWidth))
 
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
   }
 
   public getTabWidth(): number {
@@ -322,7 +321,7 @@ export class TabSelectRenderable extends Renderable {
   public setShowScrollArrows(show: boolean): void {
     if (this.showScrollArrows !== show) {
       this.showScrollArrows = show
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
@@ -337,6 +336,4 @@ export class TabSelectRenderable extends Renderable {
   public getWrapSelection(): boolean {
     return this.wrapSelection
   }
-
-  // Focus and blur already call markDirty() in the base Renderable class
 }

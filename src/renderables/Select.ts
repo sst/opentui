@@ -84,7 +84,7 @@ export class SelectRenderable extends Renderable {
     this.selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
     this.fastScrollStep = options.fastScrollStep || 5
 
-    this.markDirty() // Initial render needed
+    this.needsUpdate() // Initial render needed
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -92,14 +92,12 @@ export class SelectRenderable extends Renderable {
 
     if (this.isDirty) {
       this.refreshFrameBuffer()
-      this.markClean()
     }
   }
 
   private refreshFrameBuffer(): void {
     if (!this.frameBuffer || this.options.length === 0) return
 
-    // Use focused colors if focused
     const bgColor = this._focused ? this.focusedBackgroundColor : this.backgroundColor
     this.frameBuffer.clear(bgColor)
 
@@ -178,7 +176,7 @@ export class SelectRenderable extends Renderable {
     this.options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
   }
 
   public getSelectedOption(): SelectOption | null {
@@ -201,7 +199,7 @@ export class SelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
     this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -217,7 +215,7 @@ export class SelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
     this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -232,7 +230,7 @@ export class SelectRenderable extends Renderable {
     if (index >= 0 && index < this.options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
-      this.markDirty()
+      this.needsUpdate()
       this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
     }
   }
@@ -248,14 +246,14 @@ export class SelectRenderable extends Renderable {
 
     if (newScrollOffset !== this.scrollOffset) {
       this.scrollOffset = newScrollOffset
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
   protected onResize(width: number, height: number): void {
     this.maxVisibleItems = Math.max(1, Math.floor(height / this.linesPerItem))
     this.updateScrollOffset()
-    this.markDirty()
+    this.needsUpdate()
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
@@ -286,7 +284,7 @@ export class SelectRenderable extends Renderable {
 
   public setShowScrollIndicator(show: boolean): void {
     this.showScrollIndicator = show
-    this.markDirty()
+    this.needsUpdate()
   }
 
   public getShowDescription(): boolean {
@@ -301,7 +299,7 @@ export class SelectRenderable extends Renderable {
 
       this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
       this.updateScrollOffset()
-      this.markDirty()
+      this.needsUpdate()
     }
   }
 
