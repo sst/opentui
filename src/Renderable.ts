@@ -71,6 +71,19 @@ export interface RenderableOptions extends Partial<LayoutOptions> {
 
 let renderableNumber = 1
 
+function validateOptions(id: string, options: RenderableOptions): void {
+  if (typeof options.width === "number") {
+    if (options.width < 0) {
+      throw new TypeError(`Invalid width for Renderable ${id}: ${options.width}`)
+    }
+  }
+  if (typeof options.height === "number") {
+    if (options.height < 0) {
+      throw new TypeError(`Invalid height for Renderable ${id}: ${options.height}`)
+    }
+  }
+}
+
 export abstract class Renderable extends EventEmitter {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
@@ -116,8 +129,18 @@ export abstract class Renderable extends EventEmitter {
     this.num = renderableNumber++
     Renderable.renderablesByNumber.set(this.num, this)
 
+    validateOptions(id, options)
+
     this._width = options.width ?? "auto"
     this._height = options.height ?? "auto"
+
+    if (typeof this._width === "number") {
+      this._widthValue = this._width
+    }
+    if (typeof this._height === "number") {
+      this._heightValue = this._height
+    }
+
     this._zIndex = options.zIndex
     this._visible = options.visible !== false
     this.buffered = options.buffered ?? false
