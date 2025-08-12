@@ -11,7 +11,7 @@
     "test": "bun test",
     "prettier:write": "prettier --write ."
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "devDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
     "@types/bun": "latest",
