@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
 import { dirname, join, relative, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
@@ -142,6 +142,39 @@ if (buildLib) {
     },
   )
 
+  console.log("Generating TypeScript declarations...")
+  
+  const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
+  const tsconfigBuild = {
+    extends: "./tsconfig.json",
+    compilerOptions: {
+      declaration: true,
+      declarationOnly: true,
+      emitDeclarationOnly: true,
+      outDir: "./dist",
+      noEmit: false,
+      rootDir: "./src",
+      types: ["bun", "node", "three"],
+    },
+    include: ["src/**/*"],
+    exclude: ["**/*.test.ts", "**/*.spec.ts", "src/examples/**/*", "src/benchmark/**/*", "src/zig/**/*"]
+  }
+  
+  writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
+  
+  const tscResult = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
+    cwd: rootDir,
+    stdio: "inherit",
+  })
+  
+  rmSync(tsconfigBuildPath, { force: true })
+  
+  if (tscResult.status !== 0) {
+    console.warn("Warning: TypeScript declaration generation failed")
+  } else {
+    console.log("TypeScript declarations generated")
+  }
+
   let exports = packageJson.exports
   try {
     exports = JSON.parse(JSON.stringify(exports).replaceAll(`${relative(rootDir, distDir)}/`, ""))
@@ -157,6 +190,8 @@ if (buildLib) {
       {
         name: packageJson.name,
         module: "index.js",
+        main: "index.js",
+        types: "index.d.ts",
         type: packageJson.type,
         version: packageJson.version,
         description: packageJson.description,
