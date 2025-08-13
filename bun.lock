@@ -4,18 +4,20 @@
     "": {
       "name": "opentui",
       "dependencies": {
-        "bun-webgpu": "0.1.0",
         "jimp": "1.6.0",
-        "three": "0.177.0",
         "yoga-layout": "3.2.1",
       },
       "devDependencies": {
-        "@dimforge/rapier2d-simd-compat": "^0.17.3",
         "@types/bun": "latest",
         "@types/three": "^0.177.0",
         "commander": "^13.1.0",
-        "planck": "^1.4.2",
         "prettier": "3.6.2",
+      },
+      "optionalDependencies": {
+        "@dimforge/rapier2d-simd-compat": "^0.17.3",
+        "bun-webgpu": "0.1.0",
+        "planck": "^1.4.2",
+        "three": "0.177.0",
       },
       "peerDependencies": {
         "typescript": "^5",

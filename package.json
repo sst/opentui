@@ -1,23 +1,31 @@
 {
   "name": "@opentui/core",
+  "description": "OpenTUI is a TypeScript library for building terminal user interfaces (TUIs)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sst/opentui"
+  },
   "module": "src/index.ts",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "cd src/zig && zig build",
     "build:dev": "cd src/zig && zig build -Doptimize=Debug",
     "build:prod": "cd src/zig && zig build -Doptimize=ReleaseFast",
+    "build": "bun run build:native && bun run build:lib",
+    "build:lib": "node scripts/build.mjs --lib",
+    "build:native": "node scripts/build.mjs --native",
+    "pack": "node scripts/pack.mjs",
+    "pack:verbose": "node scripts/pack.mjs --verbose",
+    "publish": "node scripts/publish.mjs",
     "test": "bun test",
     "prettier:write": "prettier --write ."
   },
   "license": "MIT",
   "devDependencies": {
-    "@dimforge/rapier2d-simd-compat": "^0.17.3",
     "@types/bun": "latest",
     "@types/three": "^0.177.0",
     "commander": "^13.1.0",
-    "planck": "^1.4.2",
     "prettier": "3.6.2"
   },
   "peerDependencies": {
@@ -28,9 +36,13 @@
     "printWidth": 120
   },
   "dependencies": {
-    "bun-webgpu": "0.1.0",
     "jimp": "1.6.0",
-    "three": "0.177.0",
     "yoga-layout": "3.2.1"
+  },
+  "optionalDependencies": {
+    "@dimforge/rapier2d-simd-compat": "^0.17.3",
+    "bun-webgpu": "0.1.0",
+    "planck": "^1.4.2",
+    "three": "0.177.0"
   }
 }

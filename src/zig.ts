@@ -1,47 +1,39 @@
 import { dlopen, suffix, toArrayBuffer, type Pointer } from "bun:ffi"
-import { join } from "path"
-import { existsSync } from "fs"
-import os from "os"
+import { dirname, join } from "path"
+import { existsSync, readFileSync } from "fs"
 import type { CursorStyle, DebugOverlayCorner } from "./types"
 import { RGBA } from "./types"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
+import { createRequire } from "module"
+import { fileURLToPath } from "url"
 
-function getPlatformTarget(): string {
-  const platform = os.platform()
-  const arch = os.arch()
+const require = createRequire(import.meta.url)
 
-  const platformMap: Record<string, string> = {
-    darwin: "macos",
-    win32: "windows",
-    linux: "linux",
-  }
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
-  const archMap: Record<string, string> = {
-    x64: "x86_64",
-    arm64: "aarch64",
-  }
-
-  const zigPlatform = platformMap[platform] || platform
-  const zigArch = archMap[arch] || arch
-
-  return `${zigArch}-${zigPlatform}`
-}
+const packageJson = JSON.parse(
+  readFileSync(
+    join(__dirname, ...(__filename.endsWith(".ts") ? ["..", "dist", "./package.json"] : ["./package.json"])),
+    { encoding: "utf8" },
+  ),
+)
 
 function findLibrary(): string {
-  const target = getPlatformTarget()
-  const libDir = join(__dirname, "zig/lib")
+  try {
+    // First try target-specific directory
+    const isWindows = process.platform === "win32"
+    const libraryName = isWindows ? "opentui" : "libopentui"
+    const targetLibPath = require.resolve(
+      `${packageJson.name}-${process.platform}-${process.arch}/${libraryName}.${suffix}`,
+    )
+    if (existsSync(targetLibPath)) {
+      return targetLibPath
+    }
+  } catch {}
 
-  // First try target-specific directory
-  const [arch, os] = target.split("-")
-  const isWindows = os === "windows"
-  const libraryName = isWindows ? "opentui" : "libopentui"
-  const targetLibPath = join(libDir, target, `${libraryName}.${suffix}`)
-  if (existsSync(targetLibPath)) {
-    return targetLibPath
-  }
-
-  throw new Error(`Could not find opentui library for platform: ${target}`)
+  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
 }
 
 function getOpenTUILib(libPath?: string) {
