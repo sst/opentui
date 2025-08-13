@@ -103,11 +103,26 @@ if (buildLib) {
   rmSync(distDir, { recursive: true, force: true })
   mkdirSync(distDir, { recursive: true })
 
-  spawnSync("bun", ["build", "--target=bun", "--outdir=dist", packageJson.module], {
-    cwd: rootDir,
-    shell: true,
-    stdio: "inherit",
-  })
+  const externalDeps = [
+    ...Object.keys(packageJson.optionalDependencies || {}),
+    ...Object.keys(packageJson.peerDependencies || {}),
+  ]
+
+  spawnSync(
+    "bun",
+    [
+      "build",
+      "--target=bun",
+      "--outdir=dist",
+      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      packageJson.module,
+    ],
+    {
+      cwd: rootDir,
+      shell: true,
+      stdio: "inherit",
+    },
+  )
 
   let exports = packageJson.exports
   try {
@@ -135,7 +150,10 @@ if (buildLib) {
         bugs: packageJson.bugs,
         exports,
         dependencies: packageJson.dependencies,
-        optionalDependencies: optionalDeps,
+        optionalDependencies: {
+          ...packageJson.optionalDependencies,
+          ...optionalDeps,
+        },
       },
       null,
       2,
