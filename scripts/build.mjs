@@ -127,6 +127,7 @@ if (buildLib) {
     ...Object.keys(packageJson.peerDependencies || {}),
   ]
 
+  // Build main entry point
   spawnSync(
     "bun",
     [
@@ -142,6 +143,26 @@ if (buildLib) {
     },
   )
 
+  // Build additional entry points
+  const entryPoints = ["src/3d.ts"]
+  for (const entryPoint of entryPoints) {
+    const entryName = entryPoint.split("/").pop().replace(".ts", "")
+    spawnSync(
+      "bun",
+      [
+        "build",
+        "--target=bun",
+        `--outfile=dist/${entryName}.js`,
+        ...externalDeps.flatMap((dep) => ["--external", dep]),
+        entryPoint,
+      ],
+      {
+        cwd: rootDir,
+        stdio: "inherit",
+      },
+    )
+  }
+
   console.log("Generating TypeScript declarations...")
   
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
@@ -149,12 +170,12 @@ if (buildLib) {
     extends: "./tsconfig.json",
     compilerOptions: {
       declaration: true,
-      declarationOnly: true,
       emitDeclarationOnly: true,
       outDir: "./dist",
       noEmit: false,
       rootDir: "./src",
       types: ["bun", "node", "three"],
+      skipLibCheck: true,
     },
     include: ["src/**/*"],
     exclude: ["**/*.test.ts", "**/*.spec.ts", "src/examples/**/*", "src/benchmark/**/*", "src/zig/**/*"]
@@ -175,10 +196,19 @@ if (buildLib) {
     console.log("TypeScript declarations generated")
   }
 
-  let exports = packageJson.exports
-  try {
-    exports = JSON.parse(JSON.stringify(exports).replaceAll(`${relative(rootDir, distDir)}/`, ""))
-  } catch {}
+  // Configure exports for multiple entry points
+  const exports = {
+    ".": {
+      import: "./index.js",
+      require: "./index.js",
+      types: "./index.d.ts"
+    },
+    "./3d": {
+      import: "./3d.js",
+      require: "./3d.js",
+      types: "./3d.d.ts"
+    }
+  }
 
   const optionalDeps = Object.fromEntries(
     variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, `^${packageJson.version}`]),

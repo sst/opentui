@@ -1,8 +1,6 @@
-// Export all 3D components
 export * from "./WGPURenderer"
 export * from "./TextureUtils"
 export * from "./canvas"
-export * from "bun-webgpu"
 export * from "./SpriteUtils"
 export * from "./animation/SpriteAnimator"
 export * from "./animation/ExplodingSpriteEffect"
