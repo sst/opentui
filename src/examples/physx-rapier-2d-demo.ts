@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, ThreeCliRenderer, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import { CliRenderer, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -14,6 +14,7 @@ import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../3d/anim
 import { RapierPhysicsWorld } from "../3d/physics/RapierPhysicsAdapter"
 import RAPIER from "@dimforge/rapier2d-simd-compat"
 import { MeshLambertNodeMaterial } from "three/webgpu"
+import { ThreeCliRenderer } from "../3d"
 
 // @ts-ignore
 import cratePath from "./assets/concrete.png" with { type: "image/png" }

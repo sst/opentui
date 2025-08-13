@@ -2,7 +2,6 @@
 
 import {
   createCliRenderer,
-  ThreeCliRenderer,
   CliRenderer,
   GroupRenderable,
   TextRenderable,
@@ -26,6 +25,7 @@ import {
 import * as Filters from "../post/filters"
 import { DistortionEffect, VignetteEffect, BrightnessEffect, BlurEffect, BloomEffect } from "../post/filters"
 import type { OptimizedBuffer } from "../buffer"
+import { ThreeCliRenderer } from "../3d"
 
 // State management for the demo
 interface ShaderCubeDemoState {

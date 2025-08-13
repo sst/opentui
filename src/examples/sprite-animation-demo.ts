@@ -4,7 +4,6 @@ import {
   CliRenderer,
   createCliRenderer,
   RGBA,
-  ThreeCliRenderer,
   GroupRenderable,
   TextRenderable,
   FrameBufferRenderable,
@@ -28,6 +27,7 @@ import {
 import mainCharIdlePath from "./assets/main_char_idle.png" with { type: "image/png" }
 import { randFloat } from "three/src/math/MathUtils.js"
 import { MeshLambertNodeMaterial } from "three/webgpu"
+import { ThreeCliRenderer } from "../3d"
 
 interface SpriteAnimationDemoState {
   engine: ThreeCliRenderer

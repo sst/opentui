@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, ThreeCliRenderer, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import { CliRenderer, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -13,6 +13,7 @@ import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResource
 import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../3d/animation/PhysicsExplodingSpriteEffect"
 import { PlanckPhysicsWorld } from "../3d/physics/PlanckPhysicsAdapter"
 import * as planck from "planck"
+import { ThreeCliRenderer } from "../3d"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }

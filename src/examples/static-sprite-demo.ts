@@ -4,14 +4,14 @@ import {
   CliRenderer,
   createCliRenderer,
   RGBA,
-  SpriteUtils,
-  ThreeCliRenderer,
   GroupRenderable,
   TextRenderable,
   FrameBufferRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
+import { ThreeCliRenderer } from "../3d"
+import { SpriteUtils } from "../3d/SpriteUtils"
 
 // @ts-ignore - Bun specific import attribute for assets
 import staticImagePath from "./assets/main_char_idle.png" with { type: "image/png" }

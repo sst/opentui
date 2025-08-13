@@ -5,8 +5,6 @@ import {
   createCliRenderer,
   OptimizedBuffer,
   RGBA,
-  SuperSampleAlgorithm,
-  ThreeCliRenderer,
   GroupRenderable,
   TextRenderable,
   FrameBufferRenderable,
@@ -25,6 +23,7 @@ import {
 } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
+import { ThreeCliRenderer, SuperSampleAlgorithm } from "../3d"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }
