@@ -13,7 +13,7 @@ const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8
 const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
-const isDev = args.includes("--dev") || process.env.NODE_ENV !== "production"
+const isDev = args.includes("--dev")
 
 const variants = [
   { platform: "darwin", arch: "x64" },
