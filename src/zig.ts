@@ -1,32 +1,19 @@
 import { dlopen, suffix, toArrayBuffer, type Pointer } from "bun:ffi"
-import { dirname, join } from "path"
-import { existsSync, readFileSync } from "fs"
+import { existsSync } from "fs"
 import type { CursorStyle, DebugOverlayCorner } from "./types"
 import { RGBA } from "./types"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { createRequire } from "module"
-import { fileURLToPath } from "url"
 
 const require = createRequire(import.meta.url)
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-
-const packageJson = JSON.parse(
-  readFileSync(
-    join(__dirname, ...(__filename.endsWith(".ts") ? ["..", "dist", "./package.json"] : ["./package.json"])),
-    { encoding: "utf8" },
-  ),
-)
-
 function findLibrary(): string {
   try {
-    // First try target-specific directory
     const isWindows = process.platform === "win32"
     const libraryName = isWindows ? "opentui" : "libopentui"
     const targetLibPath = require.resolve(
-      `${packageJson.name}-${process.platform}-${process.arch}/${libraryName}.${suffix}`,
+      `@opentui/core-${process.platform}-${process.arch}/${libraryName}.${suffix}`,
     )
     if (existsSync(targetLibPath)) {
       return targetLibPath
