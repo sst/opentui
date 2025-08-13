@@ -45,7 +45,6 @@ export function stringToStyledText(content: string): StyledText {
     __isChunk: true as const,
     text: textEncoder.encode(content),
     plainText: content,
-    attributes: 0,
   }
   return new StyledText([chunk], content.length, content)
 }
@@ -62,7 +61,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
     const bg = style.bg ? parseColor(style.bg) : existingChunk.bg
 
     const newAttrs = createTextAttributes(style)
-    const mergedAttrs = existingChunk.attributes | newAttrs
+    const mergedAttrs = existingChunk.attributes ? existingChunk.attributes | newAttrs : newAttrs
 
     return {
       __isChunk: true,

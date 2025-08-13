@@ -9,7 +9,7 @@ export interface TextChunk {
   plainText: string
   fg?: RGBA
   bg?: RGBA
-  attributes: number
+  attributes?: number
 }
 
 export class TextBuffer {
