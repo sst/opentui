@@ -46,7 +46,6 @@ if (buildNative) {
 
   spawnSync("zig", ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`], {
     cwd: join(rootDir, "src", "zig"),
-    shell: true,
     stdio: "inherit",
   })
 
@@ -119,7 +118,6 @@ if (buildLib) {
     ],
     {
       cwd: rootDir,
-      shell: true,
       stdio: "inherit",
     },
   )
