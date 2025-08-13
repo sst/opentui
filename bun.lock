@@ -15,6 +15,12 @@
       },
       "optionalDependencies": {
         "@dimforge/rapier2d-simd-compat": "^0.17.3",
+        "@opentui/core-darwin-arm64": "latest",
+        "@opentui/core-darwin-x64": "latest",
+        "@opentui/core-linux-arm64": "latest",
+        "@opentui/core-linux-x64": "latest",
+        "@opentui/core-win32-arm64": "latest",
+        "@opentui/core-win32-x64": "latest",
         "bun-webgpu": "0.1.0",
         "planck": "^1.4.2",
         "three": "0.177.0",
@@ -84,6 +90,18 @@
     "@jimp/types": ["@jimp/types@1.6.0", "", { "dependencies": { "zod": "^3.23.8" } }, "sha512-7UfRsiKo5GZTAATxm2qQ7jqmUXP0DxTArztllTcYdyw6Xi5oT4RaoXynVtCD4UyLK5gJgkZJcwonoijrhYFKfg=="],
 
     "@jimp/utils": ["@jimp/utils@1.6.0", "", { "dependencies": { "@jimp/types": "1.6.0", "tinycolor2": "^1.6.0" } }, "sha512-gqFTGEosKbOkYF/WFj26jMHOI5OH2jeP1MmC/zbK6BF6VJBf8rIC5898dPfSzZEbSA0wbbV5slbntWVc5PKLFA=="],
+
+    "@opentui/core-darwin-arm64": ["@opentui/core-darwin-arm64@0.1.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-qz6ATFSoHIlHYtaIUZuHTJaGa6dZ7AWccCOW9C3V774ZUvhbx6FjMABVvX2XYemnA0AHNZzUdmqpDty2j3VIWQ=="],
+
+    "@opentui/core-darwin-x64": ["@opentui/core-darwin-x64@0.1.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-lyNmS6aB9oO9elxfu6tQsliwq36vnLrBpu5ipx34n/2TBiYPPwzJkqsYkJZxyr9SwNfBSD7Nm3LO1i4ZR4rlMw=="],
+
+    "@opentui/core-linux-arm64": ["@opentui/core-linux-arm64@0.1.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-7bcLl4qQ2ChoA5KsdHAhfsdSN+VbiwPC0G1NJQEaAjXx7HJpuJq71osFBNIGwIvtcDw6O+MNEFdPUmSR01m5Jw=="],
+
+    "@opentui/core-linux-x64": ["@opentui/core-linux-x64@0.1.1", "", { "os": "linux", "cpu": "x64" }, "sha512-Wfp78Q4uEADt7K2zAfV/lvaNEnowyronuk6AD1eJ0qjcXzccypRhdHsUjWh600C0ygT5NawSEE8AXM19so0Rdw=="],
+
+    "@opentui/core-win32-arm64": ["@opentui/core-win32-arm64@0.1.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-/psCMbZOVpRFt6iuOVwjCBSryreiU34QV6heDhHvgqF7fLZLRb8lh4+BvVl6XV46dht6swfK4t+ODV84FvEIPg=="],
+
+    "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.1.1", "", { "os": "win32", "cpu": "x64" }, "sha512-gg8WOys6PVY44L2u/BDhoiwHKEeTrdXB4+4nXEhRjsWHAP4bLSfiqrDzZui+UBycInBK+gzoDhNR6g9km3SMSg=="],
 
     "@tokenizer/token": ["@tokenizer/token@0.3.0", "", {}, "sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A=="],
 

@@ -43,6 +43,12 @@
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
     "bun-webgpu": "0.1.0",
     "planck": "^1.4.2",
-    "three": "0.177.0"
+    "three": "0.177.0",
+    "@opentui/core-darwin-x64": "latest",
+    "@opentui/core-darwin-arm64": "latest",
+    "@opentui/core-linux-x64": "latest",
+    "@opentui/core-linux-arm64": "latest",
+    "@opentui/core-win32-x64": "latest",
+    "@opentui/core-win32-arm64": "latest"
   }
 }
