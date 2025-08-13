@@ -187,6 +187,46 @@ export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }
 
+export fn bufferDrawBox(
+    bufferPtr: *buffer.OptimizedBuffer,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    borderChars: [*]const u32,
+    packedOptions: u32,
+    borderColor: [*]const f32,
+    backgroundColor: [*]const f32,
+    title: ?[*]const u8,
+    titleLen: u32,
+) void {
+    const borderSides = buffer.BorderSides{
+        .top = (packedOptions & 0b1000) != 0,
+        .right = (packedOptions & 0b0100) != 0,
+        .bottom = (packedOptions & 0b0010) != 0,
+        .left = (packedOptions & 0b0001) != 0,
+    };
+
+    const shouldFill = ((packedOptions >> 4) & 1) != 0;
+    const titleAlignment = @as(u8, @intCast((packedOptions >> 5) & 0b11));
+
+    const titleSlice = if (title) |t| t[0..titleLen] else null;
+
+    bufferPtr.drawBox(
+        x,
+        y,
+        width,
+        height,
+        borderChars,
+        borderSides,
+        f32PtrToRGBA(borderColor),
+        f32PtrToRGBA(backgroundColor),
+        shouldFill,
+        titleSlice,
+        titleAlignment,
+    ) catch {};
+}
+
 export fn bufferResize(bufferPtr: *buffer.OptimizedBuffer, width: u32, height: u32) void {
     bufferPtr.resize(width, height) catch {};
 }
@@ -213,4 +253,132 @@ export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
 
 export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
     rendererPtr.dumpStdoutBuffer(timestamp);
+}
+
+// ====== TextBuffer exports ======
+const text_buffer = @import("text-buffer.zig");
+
+export fn createTextBuffer(length: u32) ?*text_buffer.TextBuffer {
+    const tb = text_buffer.TextBuffer.init(allocator, length) catch return null;
+    return tb;
+}
+
+export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
+    tb.deinit();
+}
+
+export fn textBufferGetCharPtr(tb: *text_buffer.TextBuffer) [*]u32 {
+    return tb.getCharPtr();
+}
+
+export fn textBufferGetFgPtr(tb: *text_buffer.TextBuffer) [*]RGBA {
+    return tb.getFgPtr();
+}
+
+export fn textBufferGetBgPtr(tb: *text_buffer.TextBuffer) [*]RGBA {
+    return tb.getBgPtr();
+}
+
+export fn textBufferGetAttributesPtr(tb: *text_buffer.TextBuffer) [*]u16 {
+    return tb.getAttributesPtr();
+}
+
+export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getLength();
+}
+
+export fn textBufferSetCell(tb: *text_buffer.TextBuffer, index: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attr: u16) void {
+    tb.setCell(index, char, f32PtrToRGBA(fg), f32PtrToRGBA(bg), attr) catch {};
+}
+
+export fn textBufferConcat(tb1: *text_buffer.TextBuffer, tb2: *text_buffer.TextBuffer) ?*text_buffer.TextBuffer {
+    const result = tb1.concat(tb2) catch return null;
+    return result;
+}
+
+export fn textBufferResize(tb: *text_buffer.TextBuffer, newLength: u32) void {
+    tb.resize(newLength) catch {};
+}
+
+export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
+    tb.reset();
+}
+
+export fn textBufferSetSelection(tb: *text_buffer.TextBuffer, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    tb.setSelection(start, end, bg, fg);
+}
+
+export fn textBufferResetSelection(tb: *text_buffer.TextBuffer) void {
+    tb.resetSelection();
+}
+
+export fn textBufferSetDefaultFg(tb: *text_buffer.TextBuffer, fg: ?[*]const f32) void {
+    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    tb.setDefaultFg(fgColor);
+}
+
+export fn textBufferSetDefaultBg(tb: *text_buffer.TextBuffer, bg: ?[*]const f32) void {
+    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    tb.setDefaultBg(bgColor);
+}
+
+export fn textBufferSetDefaultAttributes(tb: *text_buffer.TextBuffer, attr: ?[*]const u8) void {
+    const attrValue = if (attr) |a| a[0] else null;
+    tb.setDefaultAttributes(attrValue);
+}
+
+export fn textBufferResetDefaults(tb: *text_buffer.TextBuffer) void {
+    tb.resetDefaults();
+}
+
+export fn textBufferWriteChunk(tb: *text_buffer.TextBuffer, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: ?[*]const u8) u32 {
+    const textSlice = textBytes[0..textLen];
+    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const attrValue = if (attr) |a| a[0] else null;
+
+    return tb.writeChunk(textSlice, fgColor, bgColor, attrValue) catch 0;
+}
+
+export fn textBufferGetCapacity(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getCapacity();
+}
+
+export fn textBufferFinalizeLineInfo(tb: *text_buffer.TextBuffer) void {
+    tb.finalizeLineInfo();
+}
+
+export fn textBufferGetLineStartsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
+    return tb.getLineStarts().ptr;
+}
+
+export fn textBufferGetLineWidthsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
+    return tb.getLineWidths().ptr;
+}
+
+export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getLineCount();
+}
+
+export fn bufferDrawTextBuffer(
+    bufferPtr: *buffer.OptimizedBuffer,
+    textBufferPtr: *text_buffer.TextBuffer,
+    x: i32,
+    y: i32,
+    clipX: i32,
+    clipY: i32,
+    clipWidth: u32,
+    clipHeight: u32,
+    hasClipRect: bool,
+) void {
+    const clip_rect = if (hasClipRect) buffer.ClipRect{
+        .x = clipX,
+        .y = clipY,
+        .width = clipWidth,
+        .height = clipHeight,
+    } else null;
+
+    bufferPtr.drawTextBuffer(textBufferPtr, x, y, clip_rect) catch {};
 }

@@ -10,7 +10,7 @@ import {
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { StyledTextRenderable } from "../renderables/StyledText"
+import { TextRenderable } from "../renderables/Text"
 import { getKeyHandler } from "../lib/KeyHandler"
 
 let nameInput: InputRenderable | null = null
@@ -19,8 +19,8 @@ let passwordInput: InputRenderable | null = null
 let commentInput: InputRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
-let keyLegendDisplay: StyledTextRenderable | null = null
-let statusDisplay: StyledTextRenderable | null = null
+let keyLegendDisplay: TextRenderable | null = null
+let statusDisplay: TextRenderable | null = null
 let lastActionText: string = "Welcome to InputRenderable demo! Use Tab to navigate between fields."
 let lastActionColor: string = "#FFCC00"
 let activeInputIndex: number = 0
@@ -49,7 +49,7 @@ Ctrl+R: Reset all inputs to defaults
 Type: Enter text in focused field`
 
   if (keyLegendDisplay) {
-    keyLegendDisplay.fragment = keyLegendText
+    keyLegendDisplay.content = keyLegendText
   }
 
   const nameValue = nameInput?.getValue() || ""
@@ -85,7 +85,7 @@ Password: ${validatePassword(passwordValue) ? fg("#00FF00")("✓ Valid") : fg("#
 ${fg(lastActionColor)(lastActionText)}`
 
   if (statusDisplay) {
-    statusDisplay.fragment = statusText
+    statusDisplay.content = statusText
   }
 }
 
@@ -229,8 +229,8 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.root.add(passwordInput)
   renderer.root.add(commentInput)
 
-  keyLegendDisplay = new StyledTextRenderable("key-legend", {
-    fragment: t``,
+  keyLegendDisplay = new TextRenderable("key-legend", {
+    content: t``,
     width: 50,
     height: 12,
     positionType: "absolute",
@@ -239,12 +239,12 @@ export function run(rendererInstance: CliRenderer): void {
       top: 2,
     },
     zIndex: 50,
-    defaultFg: "#AAAAAA",
+    fg: "#AAAAAA",
   })
   parentContainer.add(keyLegendDisplay)
 
-  statusDisplay = new StyledTextRenderable("status-display", {
-    fragment: t``,
+  statusDisplay = new TextRenderable("status-display", {
+    content: t``,
     width: 80,
     height: 18,
     positionType: "absolute",

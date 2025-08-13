@@ -1,98 +1,194 @@
-import { type RenderableOptions, Renderable } from "../Renderable"
-import type { OptimizedBuffer } from "../buffer"
+import { Renderable, type RenderableOptions } from "../Renderable"
 import { TextSelectionHelper } from "../lib/selection"
+import { stringToStyledText, StyledText } from "../lib/styled-text"
+import { TextBuffer } from "../text-buffer"
 import { RGBA, type SelectionState } from "../types"
 import { parseColor } from "../utils"
+import type { OptimizedBuffer } from "../buffer"
+import { MeasureMode } from "yoga-layout"
 
 export interface TextOptions extends RenderableOptions {
-  content: string
+  content: StyledText | string
   fg?: string | RGBA
   bg?: string | RGBA
-  attributes?: number
-  tabStopWidth?: number
+  selectionBg?: string | RGBA
+  selectionFg?: string | RGBA
   selectable?: boolean
-}
-
-export function sanitizeText(text: string, tabStopWidth: number): string {
-  return text.replace(/\t/g, " ".repeat(tabStopWidth))
+  attributes?: number
 }
 
 export class TextRenderable extends Renderable {
   public selectable: boolean = true
-  private _content: string = ""
-  private _fg: RGBA
-  private _bg: RGBA
-  public attributes: number = 0
-  public tabStopWidth: number = 2
+  private _text: StyledText
+  private _defaultFg: RGBA
+  private _defaultBg: RGBA
+  private _defaultAttributes: number
+  private _selectionBg: RGBA | undefined
+  private _selectionFg: RGBA | undefined
   private selectionHelper: TextSelectionHelper
+  
+  private textBuffer: TextBuffer
+  private _plainText: string = ""
+  private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
   constructor(id: string, options: TextOptions) {
-    super(id, { ...options, width: 0, height: 0 })
-
-    const fgRgb = parseColor(options.fg || RGBA.fromInts(255, 255, 255, 255))
+    super(id, options)
 
     this.selectionHelper = new TextSelectionHelper(
       () => this.x,
       () => this.y,
-      () => this._content.length,
+      () => this._plainText.length,
+      () => this._lineInfo,
     )
 
-    this.tabStopWidth = options.tabStopWidth || 2
-    this.setContent(options.content)
-    this._fg = fgRgb
-    this._bg = options.bg !== undefined ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
-    this.attributes = options.attributes || 0
+    this._text = typeof options.content === "string" 
+      ? stringToStyledText(options.content)
+      : options.content
+    this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
+    this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
+    this._defaultAttributes = options.attributes ?? 0
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
     this.selectable = options.selectable ?? true
+
+    this.textBuffer = TextBuffer.create(64)
+    
+    this.textBuffer.setDefaultFg(this._defaultFg)
+    this.textBuffer.setDefaultBg(this._defaultBg)
+    this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+
+    this.updateTextInfo()
+    this.setupMeasureFunc()
   }
 
-  private setContent(value: string) {
-    if (this._content === value) {
-      return
-    }
-    this._content = sanitizeText(value, this.tabStopWidth)
+  get content(): StyledText {
+    return this._text
+  }
 
-    // TODO: Figure out the element width based on the content
-    // including wrapping etc. The check here exists so it doesn't unnecessarily
-    // trigger a layout update.
-    if (this._content.length !== this.minWidth) {
-      this.minWidth = this._content.length
-    }
-
-    this.height = 1
-    const changed = this.selectionHelper.reevaluateSelection(this.width)
-    if (changed) {
-      this.needsUpdate()
-    }
+  set content(value: StyledText | string) {
+    this._text = typeof value === "string" 
+      ? stringToStyledText(value)
+      : value
+    this.updateTextInfo()
+    this.setupMeasureFunc()
+    this.needsUpdate()
   }
 
   get fg(): RGBA {
-    return this._fg
-  }
-
-  get bg(): RGBA {
-    return this._bg
+    return this._defaultFg
   }
 
   set fg(value: RGBA | string | undefined) {
     if (value) {
-      this._fg = parseColor(value)
+      this._defaultFg = parseColor(value)
+      this.textBuffer.setDefaultFg(this._defaultFg)
       this.needsUpdate()
     }
+  }
+
+  get bg(): RGBA {
+    return this._defaultBg
   }
 
   set bg(value: RGBA | string | undefined) {
     if (value) {
-      this._bg = parseColor(value)
+      this._defaultBg = parseColor(value)
+      this.textBuffer.setDefaultBg(this._defaultBg)
       this.needsUpdate()
     }
   }
 
-  set content(value: string) {
-    this.setContent(value)
+  get attributes(): number {
+    return this._defaultAttributes
   }
 
-  get content(): string {
-    return this._content
+  set attributes(value: number) {
+    this._defaultAttributes = value
+    this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+    this.needsUpdate()
+  }
+
+  protected onResize(width: number, height: number): void {
+    const changed = this.selectionHelper.reevaluateSelection(width, height)
+    if (changed) {
+      this.syncSelectionToTextBuffer()
+      this.needsUpdate()
+    }
+  }
+
+  private syncSelectionToTextBuffer(): void {
+    const selection = this.selectionHelper.getSelection()
+    if (selection) {
+      this.textBuffer.setSelection(
+        selection.start,
+        selection.end,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    } else {
+      this.textBuffer.resetSelection()
+    }
+  }
+
+  private updateTextInfo(): void {
+    this._plainText = this._text.toString()
+    this.updateTextBuffer()
+    
+    const lineInfo = this.textBuffer.lineInfo
+    this._lineInfo.lineStarts = lineInfo.lineStarts
+    this._lineInfo.lineWidths = lineInfo.lineWidths
+    
+    const numLines = this._lineInfo.lineStarts.length
+    if (this._height === "auto") {
+      this.height = numLines
+    }
+    
+    const maxLineWidth = Math.max(...this._lineInfo.lineWidths)
+    if (this._positionType === "absolute" && this._width === "auto") {
+      this.width = maxLineWidth
+    }
+
+    const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
+    if (changed) {
+      this.syncSelectionToTextBuffer()
+      this.needsUpdate()
+    }
+  }
+
+  private setupMeasureFunc(): void {
+    if (this._positionType === "relative" && this._width === "auto") {
+      const measureFunc = (
+        width: number,
+        widthMode: MeasureMode,
+        height: number,
+        heightMode: MeasureMode
+      ): { width: number; height: number } => {
+        const maxLineWidth = Math.max(...this._lineInfo.lineWidths, 0)
+        const numLines = this._lineInfo.lineStarts.length || 1
+        
+        let measuredWidth = maxLineWidth
+        let measuredHeight = numLines
+        
+        if (widthMode === MeasureMode.Exactly) {
+          measuredWidth = width
+        } else if (widthMode === MeasureMode.AtMost) {
+          measuredWidth = Math.min(maxLineWidth, width)
+        }
+        
+        if (heightMode === MeasureMode.Exactly) {
+          measuredHeight = height
+        } else if (heightMode === MeasureMode.AtMost) {
+          measuredHeight = Math.min(numLines, height)
+        }
+        
+        return {
+          width: Math.max(1, measuredWidth),
+          height: Math.max(1, measuredHeight)
+        }
+      }
+      
+      this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
+    }
   }
 
   shouldStartSelection(x: number, y: number): boolean {
@@ -100,8 +196,9 @@ export class TextRenderable extends Renderable {
   }
 
   onSelectionChanged(selection: SelectionState | null): boolean {
-    const changed = this.selectionHelper.onSelectionChanged(selection, this.width)
+    const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
     if (changed) {
+      this.syncSelectionToTextBuffer()
       this.needsUpdate()
     }
     return this.selectionHelper.hasSelection()
@@ -110,15 +207,37 @@ export class TextRenderable extends Renderable {
   getSelectedText(): string {
     const selection = this.selectionHelper.getSelection()
     if (!selection) return ""
-    return this._content.slice(selection.start, selection.end)
+    return this._plainText.slice(selection.start, selection.end)
   }
 
   hasSelection(): boolean {
     return this.selectionHelper.hasSelection()
   }
 
+  private updateTextBuffer(): void {
+    this.textBuffer.setStyledText(this._text)
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
-    const selection = this.selectionHelper.getSelection()
-    buffer.drawText(this._content, this.x, this.y, this._fg, this._bg, this.attributes, selection)
+    if (this.textBuffer.ptr) {
+      const clipRect = {
+        x: this.x,
+        y: this.y,
+        width: this.width,
+        height: this.height,
+      }
+
+      buffer.drawTextBuffer(
+        this.textBuffer,
+        this.x,
+        this.y,
+        clipRect,
+      )
+    }
+  }
+
+  destroy(): void {
+    this.textBuffer.destroy()
+    super.destroy()
   }
 }

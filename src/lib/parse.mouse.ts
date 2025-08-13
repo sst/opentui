@@ -16,12 +16,12 @@ export type RawMouseEvent = {
 
 export class MouseParser {
   private mouseButtonsPressed = new Set<number>()
-  
+
   private static readonly SCROLL_DIRECTIONS: Record<number, "up" | "down" | "left" | "right"> = {
     64: "up",
-    65: "down", 
+    65: "down",
     66: "left",
-    67: "right"
+    67: "right",
   }
 
   public reset(): void {

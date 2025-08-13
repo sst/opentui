@@ -12,7 +12,7 @@ import {
   GroupRenderable,
   type ParsedKey,
 } from "../index"
-import { StyledTextRenderable } from "../renderables/StyledText"
+import { TextRenderable } from "../renderables/Text"
 import { BoxRenderable } from "../renderables/Box"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
@@ -26,7 +26,7 @@ let complexTemplateCounter = 0
 let startTime = Date.now()
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let dashboardBox: BoxRenderable | null = null
-let complexDisplay: StyledTextRenderable | null = null
+let complexDisplay: TextRenderable | null = null
 
 export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
@@ -48,8 +48,8 @@ With a ${bold(blue("window"))},
 And a ${blue("corvette")}
 And everything is blue`
 
-  const houseDisplay = new StyledTextRenderable("house-text", {
-    fragment: houseText,
+  const houseDisplay = new TextRenderable("house-text", {
+    content: houseText,
     width: 30,
     height: 6,
     positionType: "absolute",
@@ -67,8 +67,8 @@ ${bold(green("SUCCESS:"))} Data loaded
 ${bold(fg("#FFA500")("WARNING:"))} Low memory
 ${bgYellow(fg("black")(" NOTICE "))} System update available`
 
-  const statusDisplay = new StyledTextRenderable("status-text", {
-    fragment: statusText,
+  const statusDisplay = new TextRenderable("status-text", {
+    content: statusText,
     width: 50,
     height: 6,
     positionType: "absolute",
@@ -83,7 +83,7 @@ ${bgYellow(fg("black")(" NOTICE "))} System update available`
   // Example 3 - Original dynamic text (updates every second)
   dashboardBox = new BoxRenderable("dashboard-box", {
     width: 72,
-    height: 18,
+    height: 21,
     positionType: "absolute",
     position: {
       left: 2,
@@ -116,11 +116,8 @@ ${fg("#2ECC71")("Status:")} ${bold(fg("#E74C3C")("●"))} ${green("ALL SYSTEMS G
 
 ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit")}`
 
-  complexDisplay = new StyledTextRenderable("complex-template", {
-    fragment: initialText,
-    width: 68,
-    height: 16,
-    positionType: "relative",
+  complexDisplay = new TextRenderable("complex-template", {
+    content: initialText,
     position: {
       left: 1,
       top: 1,
@@ -139,12 +136,12 @@ ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit
 ${blue("Time:")} ${(counter / 60).toFixed(1)}s
 ${underline("Dynamic:")} ${bold(fg("#FF6B6B")(Math.sin(counter * 0.1) > 0 ? "UP" : "DOWN"))}`
 
-      const dynamicDisplay = parentContainer?.getRenderable("dynamic-text") as StyledTextRenderable
+      const dynamicDisplay = parentContainer?.getRenderable("dynamic-text") as TextRenderable
       if (dynamicDisplay) {
-        dynamicDisplay.fragment = dynamicText
+        dynamicDisplay.content = dynamicText
       } else {
-        const newDynamicDisplay = new StyledTextRenderable("dynamic-text", {
-          fragment: dynamicText,
+        const newDynamicDisplay = new TextRenderable("dynamic-text", {
+          content: dynamicText,
           width: 40,
           height: 4,
           positionType: "absolute",
@@ -194,7 +191,7 @@ ${fg("#2ECC71")("Status:")} ${bold(fg("#E74C3C")("●"))} ${alertLevel === "CRIT
 
 ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit")}`
 
-      complexDisplay.fragment = complexText
+      complexDisplay.content = complexText
     }
   }
 
@@ -221,8 +218,8 @@ ${underline("Features demonstrated:")}
 • Dynamic updates with ${green("controllable frequency")}
 • Complex templates with ${red("many variables")}`
 
-  const instructionsDisplay = new StyledTextRenderable("instructions", {
-    fragment: instructionsText,
+  const instructionsDisplay = new TextRenderable("instructions", {
+    content: instructionsText,
     width: 60,
     height: 12,
     positionType: "absolute",
@@ -231,7 +228,7 @@ ${underline("Features demonstrated:")}
       top: 2,
     },
     zIndex: 1,
-    defaultFg: "#CCCCCC",
+    fg: "#CCCCCC",
   })
   parentContainer.add(instructionsDisplay)
 
@@ -242,8 +239,8 @@ Boolean: ${red(true)}
 Float: ${blue((3.14159).toFixed(2))}
 Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
 
-  const typesDisplay = new StyledTextRenderable("types-text", {
-    fragment: typesText,
+  const typesDisplay = new TextRenderable("types-text", {
+    content: typesText,
     width: 30,
     height: 6,
     positionType: "absolute",

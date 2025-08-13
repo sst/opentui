@@ -7,7 +7,6 @@ import {
   TextAttributes,
   FrameBufferRenderable,
   TextRenderable,
-  StyledTextRenderable,
   t,
   type MouseEvent,
   OptimizedBuffer,
@@ -26,7 +25,7 @@ interface TrailCell {
 
 let demoContainer: MouseInteractionFrameBuffer | null = null
 let titleText: TextRenderable | null = null
-let instructionsText: StyledTextRenderable | null = null
+let instructionsText: TextRenderable | null = null
 let draggableBoxes: DraggableBox[] = []
 let nextZIndex = 101
 
@@ -109,7 +108,7 @@ class DraggableBox extends BoxRenderable {
       const age = currentTime - this.scrollTimestamp
       const fadeRatio = Math.max(0, 1 - age / 2000)
       const alpha = Math.round(255 * fadeRatio)
-      
+
       const centerX = baseCenterX - Math.floor(this.scrollText.length / 2)
       buffer.drawText(this.scrollText, centerX, currentY, RGBA.fromInts(255, 255, 0, alpha))
       currentY++
@@ -315,6 +314,7 @@ export function run(renderer: CliRenderer): void {
 
   titleText = new TextRenderable("mouse_demo_title", {
     content: "Mouse Interaction Demo with Draggable Objects",
+    width: "100%",
     positionType: "absolute",
     position: {
       left: 2,
@@ -326,8 +326,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(titleText)
 
-  instructionsText = new StyledTextRenderable("mouse_demo_instructions", {
-    fragment: t`Drag boxes around • Move mouse: turquoise trails
+  instructionsText = new TextRenderable("mouse_demo_instructions", {
+    content: t`Drag boxes around • Move mouse: turquoise trails
 Hold + move: orange drag trails • Click cells: toggle pink
 Scroll on boxes: shows direction • Escape: menu`,
     positionType: "absolute",
@@ -337,7 +337,7 @@ Scroll on boxes: shows direction • Escape: menu`,
     },
     width: renderer.width - 4,
     height: 3,
-    defaultFg: RGBA.fromInts(176, 196, 222),
+    fg: RGBA.fromInts(176, 196, 222),
     zIndex: 1000,
   })
   renderer.root.add(instructionsText)

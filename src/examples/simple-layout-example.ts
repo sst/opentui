@@ -222,11 +222,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     height: 3,
     bg: "#3b82f6",
     borderStyle: "single",
-    flexGrow: 0,
-    flexShrink: 0,
-    flexDirection: FlexDirection.Row,
     alignItems: Align.Center,
-    justifyContent: Justify.Center,
   })
 
   headerText = new TextRenderable("header-text", {

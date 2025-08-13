@@ -11,15 +11,15 @@ import {
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { StyledTextRenderable } from "../renderables/StyledText"
+import { TextRenderable } from "../renderables/Text"
 import { getKeyHandler } from "../lib/KeyHandler"
 
 let tabSelect: TabSelectRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
 let parentContainer: GroupRenderable | null = null
-let keyLegendDisplay: StyledTextRenderable | null = null
-let statusDisplay: StyledTextRenderable | null = null
+let keyLegendDisplay: TextRenderable | null = null
+let statusDisplay: TextRenderable | null = null
 
 const tabOptions: TabSelectOption[] = [
   { name: "Home", description: "Welcome to the home page", value: "home" },
@@ -54,7 +54,7 @@ S: Toggle scroll arrows
 W: Toggle wrap selection`
 
   if (keyLegendDisplay) {
-    keyLegendDisplay.fragment = keyLegendText
+    keyLegendDisplay.content = keyLegendText
   }
 
   const currentSelection = tabSelect.getSelectedOption()
@@ -72,7 +72,7 @@ ${fg(focusColor)(focusText)}
 ${fg("#CCCCCC")(`Underline: ${underlineStatus} | Description: ${description} | Scroll arrows: ${scrollArrows} | Wrap: ${wrap}`)}`
 
   if (statusDisplay) {
-    statusDisplay.fragment = statusText
+    statusDisplay.content = statusText
   }
 }
 
@@ -111,8 +111,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   renderer.root.add(tabSelect)
 
-  keyLegendDisplay = new StyledTextRenderable("key-legend", {
-    fragment: t``,
+  keyLegendDisplay = new TextRenderable("key-legend", {
+    content: t``,
     width: 40,
     height: 10,
     positionType: "absolute",
@@ -121,13 +121,13 @@ export function run(rendererInstance: CliRenderer): void {
       top: 8,
     },
     zIndex: 50,
-    defaultFg: "#AAAAAA",
+    fg: "#AAAAAA",
   })
   parentContainer.add(keyLegendDisplay)
 
   // Create status display
-  statusDisplay = new StyledTextRenderable("status-display", {
-    fragment: t``,
+  statusDisplay = new TextRenderable("status-display", {
+    content: t``,
     width: 80,
     height: 6,
     positionType: "absolute",

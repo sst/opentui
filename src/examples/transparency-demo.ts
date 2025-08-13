@@ -11,7 +11,6 @@ import {
   bold,
   underline,
   fg,
-  StyledTextRenderable,
 } from "../index"
 import type { CliRenderer } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -97,8 +96,8 @@ export function run(renderer: CliRenderer): void {
   const headerText = t`${bold(underline(fg("#00D4AA")("Interactive Alpha Transparency & Blending Demo - Drag the boxes!")))}
 ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch how transparency layers blend")}`
 
-  const headerDisplay = new StyledTextRenderable("header-text", {
-    fragment: headerText,
+  const headerDisplay = new TextRenderable("header-text", {
+    content: headerText,
     width: 85,
     height: 3,
     positionType: "absolute",

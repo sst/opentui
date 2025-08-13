@@ -248,7 +248,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   footer = new TextRenderable("footer", {
-    content: "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ENTER: select | ESC: quit",
+    content: "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ESC: quit",
     fg: "#dbeafe",
     bg: "transparent",
     zIndex: 1,

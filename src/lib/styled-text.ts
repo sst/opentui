@@ -1,6 +1,9 @@
+import type { TextChunk } from "../text-buffer"
 import type { ColorInput } from "../types"
+import { createTextAttributes, parseColor } from "../utils"
 
 export type Color = ColorInput
+const textEncoder = new TextEncoder()
 
 export interface StyleAttrs {
   fg?: Color
@@ -14,114 +17,227 @@ export interface StyleAttrs {
   blink?: boolean
 }
 
-export interface StyledChar {
-  char: string
-  style: StyleAttrs
-}
+export class StyledText {
+  public readonly chunks: TextChunk[]
+  private _length: number
+  // TODO: plaintext should not be needed anymore when selection moved to native
+  private _plainText: string
 
-export type StyledText = StyledChar[]
+  constructor(chunks: TextChunk[], length: number, plainText: string) {
+    this.chunks = chunks
 
-// TODO: The chars could be stored as a packed buffer of char+fg+bg+attributes
-// and use the buffer.drawPackedBuffer method to draw more efficiently.
-export class TextFragment {
-  constructor(public chars: StyledText) {}
-
-  append(other: TextFragment): TextFragment {
-    return new TextFragment([...this.chars, ...other.chars])
-  }
-
-  static fromPlain(text: string): TextFragment {
-    return new TextFragment([...text].map((c) => ({ char: c, style: {} })))
-  }
-
-  static fromStyled(text: string, style: StyleAttrs): TextFragment {
-    return new TextFragment([...text].map((c) => ({ char: c, style })))
+    this._length = length
+    this._plainText = plainText
   }
 
   toString(): string {
-    return this.chars.map((c) => c.char).join("")
+    return this._plainText
   }
 
-  toStyledText(): StyledText {
-    return [...this.chars]
+  get length(): number {
+    return this._length
   }
 }
 
-function applyStyle(input: StylableInput, style: StyleAttrs): TextFragment {
-  const chars = input instanceof TextFragment ? input.chars : TextFragment.fromPlain(String(input)).chars
-
-  const styled = chars.map((c) => ({
-    char: c.char,
-    style: { ...c.style, ...style },
-  }))
-
-  return new TextFragment(styled)
+export function stringToStyledText(content: string): StyledText {
+  const textEncoder = new TextEncoder()
+  const chunk = {
+    __isChunk: true as const,
+    text: textEncoder.encode(content),
+    plainText: content,
+    attributes: 0,
+  }
+  return new StyledText([chunk], content.length, content)
 }
 
-export type StylableInput = string | number | boolean | TextFragment
+export type StylableInput = string | number | boolean | TextChunk
 
-export const black = (input: StylableInput): TextFragment => applyStyle(input, { fg: "black" })
-export const red = (input: StylableInput): TextFragment => applyStyle(input, { fg: "red" })
-export const green = (input: StylableInput): TextFragment => applyStyle(input, { fg: "green" })
-export const yellow = (input: StylableInput): TextFragment => applyStyle(input, { fg: "yellow" })
-export const blue = (input: StylableInput): TextFragment => applyStyle(input, { fg: "blue" })
-export const magenta = (input: StylableInput): TextFragment => applyStyle(input, { fg: "magenta" })
-export const cyan = (input: StylableInput): TextFragment => applyStyle(input, { fg: "cyan" })
-export const white = (input: StylableInput): TextFragment => applyStyle(input, { fg: "white" })
+const templateCache = new WeakMap<TemplateStringsArray, (TextChunk | null)[]>()
+
+function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
+  if (typeof input === "object" && "__isChunk" in input) {
+    const existingChunk = input as TextChunk
+
+    const fg = style.fg ? parseColor(style.fg) : existingChunk.fg
+    const bg = style.bg ? parseColor(style.bg) : existingChunk.bg
+
+    const newAttrs = createTextAttributes(style)
+    const mergedAttrs = existingChunk.attributes | newAttrs
+
+    return {
+      __isChunk: true,
+      text: existingChunk.text,
+      plainText: existingChunk.plainText,
+      fg,
+      bg,
+      attributes: mergedAttrs,
+    }
+  } else {
+    const plainTextStr = String(input)
+    const text = textEncoder.encode(plainTextStr)
+    const fg = style.fg ? parseColor(style.fg) : undefined
+    const bg = style.bg ? parseColor(style.bg) : undefined
+    const attributes = createTextAttributes(style)
+
+    return {
+      __isChunk: true,
+      text,
+      plainText: plainTextStr,
+      fg,
+      bg,
+      attributes,
+    }
+  }
+}
+
+// Color functions
+export const black = (input: StylableInput): TextChunk => applyStyle(input, { fg: "black" })
+export const red = (input: StylableInput): TextChunk => applyStyle(input, { fg: "red" })
+export const green = (input: StylableInput): TextChunk => applyStyle(input, { fg: "green" })
+export const yellow = (input: StylableInput): TextChunk => applyStyle(input, { fg: "yellow" })
+export const blue = (input: StylableInput): TextChunk => applyStyle(input, { fg: "blue" })
+export const magenta = (input: StylableInput): TextChunk => applyStyle(input, { fg: "magenta" })
+export const cyan = (input: StylableInput): TextChunk => applyStyle(input, { fg: "cyan" })
+export const white = (input: StylableInput): TextChunk => applyStyle(input, { fg: "white" })
 
 // Bright color functions
-export const brightBlack = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightBlack" })
-export const brightRed = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightRed" })
-export const brightGreen = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightGreen" })
-export const brightYellow = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightYellow" })
-export const brightBlue = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightBlue" })
-export const brightMagenta = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightMagenta" })
-export const brightCyan = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightCyan" })
-export const brightWhite = (input: StylableInput): TextFragment => applyStyle(input, { fg: "brightWhite" })
+export const brightBlack = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightBlack" })
+export const brightRed = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightRed" })
+export const brightGreen = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightGreen" })
+export const brightYellow = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightYellow" })
+export const brightBlue = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightBlue" })
+export const brightMagenta = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightMagenta" })
+export const brightCyan = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightCyan" })
+export const brightWhite = (input: StylableInput): TextChunk => applyStyle(input, { fg: "brightWhite" })
 
 // Background color functions
-export const bgBlack = (input: StylableInput): TextFragment => applyStyle(input, { bg: "black" })
-export const bgRed = (input: StylableInput): TextFragment => applyStyle(input, { bg: "red" })
-export const bgGreen = (input: StylableInput): TextFragment => applyStyle(input, { bg: "green" })
-export const bgYellow = (input: StylableInput): TextFragment => applyStyle(input, { bg: "yellow" })
-export const bgBlue = (input: StylableInput): TextFragment => applyStyle(input, { bg: "blue" })
-export const bgMagenta = (input: StylableInput): TextFragment => applyStyle(input, { bg: "magenta" })
-export const bgCyan = (input: StylableInput): TextFragment => applyStyle(input, { bg: "cyan" })
-export const bgWhite = (input: StylableInput): TextFragment => applyStyle(input, { bg: "white" })
+export const bgBlack = (input: StylableInput): TextChunk => applyStyle(input, { bg: "black" })
+export const bgRed = (input: StylableInput): TextChunk => applyStyle(input, { bg: "red" })
+export const bgGreen = (input: StylableInput): TextChunk => applyStyle(input, { bg: "green" })
+export const bgYellow = (input: StylableInput): TextChunk => applyStyle(input, { bg: "yellow" })
+export const bgBlue = (input: StylableInput): TextChunk => applyStyle(input, { bg: "blue" })
+export const bgMagenta = (input: StylableInput): TextChunk => applyStyle(input, { bg: "magenta" })
+export const bgCyan = (input: StylableInput): TextChunk => applyStyle(input, { bg: "cyan" })
+export const bgWhite = (input: StylableInput): TextChunk => applyStyle(input, { bg: "white" })
 
 // Style functions
-export const bold = (input: StylableInput): TextFragment => applyStyle(input, { bold: true })
-export const italic = (input: StylableInput): TextFragment => applyStyle(input, { italic: true })
-export const underline = (input: StylableInput): TextFragment => applyStyle(input, { underline: true })
-export const strikethrough = (input: StylableInput): TextFragment => applyStyle(input, { strikethrough: true })
-export const dim = (input: StylableInput): TextFragment => applyStyle(input, { dim: true })
-export const reverse = (input: StylableInput): TextFragment => applyStyle(input, { reverse: true })
-export const blink = (input: StylableInput): TextFragment => applyStyle(input, { blink: true })
+export const bold = (input: StylableInput): TextChunk => applyStyle(input, { bold: true })
+export const italic = (input: StylableInput): TextChunk => applyStyle(input, { italic: true })
+export const underline = (input: StylableInput): TextChunk => applyStyle(input, { underline: true })
+export const strikethrough = (input: StylableInput): TextChunk => applyStyle(input, { strikethrough: true })
+export const dim = (input: StylableInput): TextChunk => applyStyle(input, { dim: true })
+export const reverse = (input: StylableInput): TextChunk => applyStyle(input, { reverse: true })
+export const blink = (input: StylableInput): TextChunk => applyStyle(input, { blink: true })
 
 // Custom color functions
 export const fg =
   (color: Color) =>
-  (input: StylableInput): TextFragment =>
+  (input: StylableInput): TextChunk =>
     applyStyle(input, { fg: color })
 export const bg =
   (color: Color) =>
-  (input: StylableInput): TextFragment =>
+  (input: StylableInput): TextChunk =>
     applyStyle(input, { bg: color })
 
-export function t(strings: TemplateStringsArray, ...values: StylableInput[]): TextFragment {
-  const parts: TextFragment[] = []
+/**
+ * Template literal handler for styled text (non-cached version).
+ * Returns a StyledText object containing chunks of text with optional styles.
+ */
+export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
+  const chunks: TextChunk[] = []
+  let length = 0
+  let plainText = ""
 
   for (let i = 0; i < strings.length; i++) {
     const raw = strings[i]
-    if (raw) parts.push(TextFragment.fromPlain(raw))
+
+    if (raw) {
+      chunks.push({
+        __isChunk: true,
+        text: textEncoder.encode(raw),
+        plainText: raw,
+        attributes: 0,
+      })
+      length += raw.length
+      plainText += raw
+    }
 
     const val = values[i]
-    if (val instanceof TextFragment) {
-      parts.push(val)
+    if (typeof val === "object" && "__isChunk" in val) {
+      chunks.push(val as TextChunk)
+      length += (val as TextChunk).plainText.length
+      plainText += (val as TextChunk).plainText
     } else if (val !== undefined) {
-      parts.push(TextFragment.fromPlain(String(val)))
+      const plainTextStr = String(val)
+      chunks.push({
+        __isChunk: true,
+        text: textEncoder.encode(plainTextStr),
+        plainText: plainTextStr,
+        attributes: 0,
+      })
+      length += plainTextStr.length
+      plainText += plainTextStr
     }
   }
 
-  return parts.reduce((acc, curr) => acc.append(curr), new TextFragment([]))
+  return new StyledText(chunks, length, plainText)
+}
+
+/**
+ * Template literal handler for styled text (cached version).
+ * Returns a StyledText object containing chunks of text with optional styles.
+ * Uses caching to avoid re-encoding the same template strings.
+ */
+export function t(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
+  let cachedStringChunks = templateCache.get(strings)
+  let length = 0
+  let plainText = ""
+  
+  if (!cachedStringChunks) {
+    cachedStringChunks = []
+    for (let i = 0; i < strings.length; i++) {
+      const raw = strings[i]
+      if (raw) {
+        cachedStringChunks.push({
+          __isChunk: true,
+          text: textEncoder.encode(raw),
+          plainText: raw,
+          attributes: 0,
+        })
+      } else {
+        cachedStringChunks.push(null)
+      }
+    }
+    templateCache.set(strings, cachedStringChunks)
+  }
+
+  const chunks: TextChunk[] = []
+  
+  for (let i = 0; i < strings.length; i++) {
+    const stringChunk = cachedStringChunks[i]
+    if (stringChunk) {
+      chunks.push(stringChunk)
+      length += stringChunk.plainText.length
+      plainText += stringChunk.plainText
+    }
+
+    const val = values[i]
+    if (typeof val === "object" && "__isChunk" in val) {
+      chunks.push(val as TextChunk)
+      length += (val as TextChunk).plainText.length
+      plainText += (val as TextChunk).plainText
+    } else if (val !== undefined) {
+      const plainTextStr = String(val)
+      chunks.push({
+        __isChunk: true,
+        text: textEncoder.encode(plainTextStr),
+        plainText: plainTextStr,
+        attributes: 0,
+      })
+      length += plainTextStr.length
+      plainText += plainTextStr
+    }
+  }
+
+  return new StyledText(chunks, length, plainText)
 }

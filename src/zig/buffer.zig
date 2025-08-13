@@ -1,17 +1,55 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
-const math = std.math; // Import math
+const tb = @import("text-buffer.zig");
+const math = std.math;
 
 pub const RGBA = ansi.RGBA;
 pub const Vec3f = @Vector(3, f32);
 pub const Vec4f = @Vector(4, f32);
+
+const TextBuffer = tb.TextBuffer;
 
 const INV_255: f32 = 1.0 / 255.0;
 const DEFAULT_SPACE_CHAR: u32 = 32;
 const MAX_UNICODE_CODEPOINT: u32 = 0x10FFFF;
 const BLOCK_CHAR: u32 = 0x2588; // Full block █
 const QUADRANT_CHARS_COUNT = 16;
+
+pub const BorderSides = packed struct {
+    top: bool = false,
+    right: bool = false,
+    bottom: bool = false,
+    left: bool = false,
+};
+
+pub const BorderCharIndex = enum(u8) {
+    topLeft = 0,
+    topRight = 1,
+    bottomLeft = 2,
+    bottomRight = 3,
+    horizontal = 4,
+    vertical = 5,
+    topT = 6,
+    bottomT = 7,
+    leftT = 8,
+    rightT = 9,
+    cross = 10,
+};
+
+pub const TextSelection = struct {
+    start: u32,
+    end: u32,
+    bgColor: ?RGBA,
+    fgColor: ?RGBA,
+};
+
+pub const ClipRect = struct {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+};
 
 pub const BufferError = error{
     OutOfMemory,
@@ -419,6 +457,264 @@ pub const OptimizedBuffer = struct {
                 if (frameBuffer.buffer.bg[srcIndex][3] == 0.0 and frameBuffer.buffer.fg[srcIndex][3] == 0.0) continue;
 
                 self.setCellWithAlphaBlending(@intCast(dX), @intCast(dY), frameBuffer.buffer.char[srcIndex], frameBuffer.buffer.fg[srcIndex], frameBuffer.buffer.bg[srcIndex], frameBuffer.buffer.attributes[srcIndex]) catch {};
+            }
+        }
+    }
+
+    /// Draw a TextBuffer to this OptimizedBuffer with selection support
+    pub fn drawTextBuffer(
+        self: *OptimizedBuffer,
+        text_buffer: *const TextBuffer,
+        x: i32,
+        y: i32,
+        clip_rect: ?ClipRect,
+    ) !void {
+        var currentX = x;
+        var currentY = y;
+
+        var i: u32 = 0;
+        while (i < text_buffer.cursor) : (i += 1) {
+            const charCode = text_buffer.char[i];
+
+            // TODO: This implementation is very naive and inefficient but works for now.
+
+            if (charCode == '\n') {
+                currentY += 1;
+                currentX = x;
+                continue;
+            }
+
+            if (currentX < 0 or currentY < 0) {
+                currentX += 1;
+                continue;
+            }
+            if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
+                currentX += 1;
+                continue;
+            }
+
+            if (clip_rect) |clip| {
+                if (currentX < clip.x or currentY < clip.y or
+                    currentX >= clip.x + @as(i32, @intCast(clip.width)) or
+                    currentY >= clip.y + @as(i32, @intCast(clip.height)))
+                {
+                    currentX += 1;
+                    continue;
+                }
+            }
+
+            var fg = text_buffer.fg[i];
+            var bg = text_buffer.bg[i];
+            const attributesRaw = text_buffer.attributes[i];
+
+            if (attributesRaw & tb.USE_DEFAULT_FG != 0) {
+                if (text_buffer.default_fg) |defFg| {
+                    fg = defFg;
+                }
+            }
+
+            if (attributesRaw & tb.USE_DEFAULT_BG != 0) {
+                if (text_buffer.default_bg) |defBg| {
+                    bg = defBg;
+                }
+            }
+
+            var attributes: u8 = @intCast(attributesRaw & tb.ATTR_MASK);
+            if (attributesRaw & tb.USE_DEFAULT_ATTR != 0) {
+                if (text_buffer.default_attributes) |defAttr| {
+                    attributes = defAttr;
+                }
+            }
+
+            if (text_buffer.selection) |sel| {
+                const isSelected = i >= sel.start and i < sel.end;
+                if (isSelected) {
+                    if (sel.bgColor) |selBg| {
+                        bg = selBg;
+                        if (sel.fgColor) |selFg| {
+                            fg = selFg;
+                        }
+                    } else {
+                        // Swap fg and bg for default selection style
+                        const temp = fg;
+                        fg = if (bg[3] > 0) bg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                        bg = temp;
+                    }
+                }
+            }
+
+            // Wait, isn't that handled by the ansi itself?
+            if (attributes & (1 << 5) != 0) { // reverse bit
+                const temp = fg;
+                fg = bg;
+                bg = temp;
+            }
+
+            try self.setCellWithAlphaBlending(
+                @intCast(currentX),
+                @intCast(currentY),
+                charCode,
+                fg,
+                bg,
+                attributes,
+            );
+
+            currentX += 1;
+        }
+    }
+
+    /// Draw a box with borders and optional fill
+    pub fn drawBox(
+        self: *OptimizedBuffer,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        borderChars: [*]const u32, // Array of 11 border characters
+        borderSides: BorderSides,
+        borderColor: RGBA,
+        backgroundColor: RGBA,
+        shouldFill: bool,
+        title: ?[]const u8,
+        titleAlignment: u8, // 0=left, 1=center, 2=right
+    ) !void {
+        const startX = @max(0, x);
+        const startY = @max(0, y);
+        const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
+        const endY = @min(@as(i32, @intCast(self.height)) - 1, y + @as(i32, @intCast(height)) - 1);
+
+        if (startX > endX or startY > endY) return;
+
+        const isAtActualLeft = startX == x;
+        const isAtActualRight = endX == x + @as(i32, @intCast(width)) - 1;
+        const isAtActualTop = startY == y;
+        const isAtActualBottom = endY == y + @as(i32, @intCast(height)) - 1;
+
+        var shouldDrawTitle = false;
+        var titleX: i32 = startX;
+        var titleStartX: i32 = 0;
+        var titleEndX: i32 = 0;
+
+        if (title) |titleText| {
+            if (titleText.len > 0 and borderSides.top and isAtActualTop) {
+                const titleLength = @as(i32, @intCast(titleText.len));
+                const minTitleSpace = 4;
+
+                shouldDrawTitle = @as(i32, @intCast(width)) >= titleLength + minTitleSpace;
+
+                if (shouldDrawTitle) {
+                    const padding = 2;
+
+                    if (titleAlignment == 1) { // center
+                        titleX = startX + @max(padding, @divFloor(@as(i32, @intCast(width)) - titleLength, 2));
+                    } else if (titleAlignment == 2) { // right
+                        titleX = startX + @as(i32, @intCast(width)) - padding - titleLength;
+                    } else { // left
+                        titleX = startX + padding;
+                    }
+
+                    titleX = @max(startX + padding, @min(titleX, endX - titleLength));
+                    titleStartX = titleX;
+                    titleEndX = titleX + titleLength - 1;
+                }
+            }
+        }
+
+        if (shouldFill) {
+            if (!borderSides.top and !borderSides.right and !borderSides.bottom and !borderSides.left) {
+                const fillWidth = @as(u32, @intCast(endX - startX + 1));
+                const fillHeight = @as(u32, @intCast(endY - startY + 1));
+                try self.fillRect(@intCast(startX), @intCast(startY), fillWidth, fillHeight, backgroundColor);
+            } else {
+                const innerStartX = startX + if (borderSides.left and isAtActualLeft) @as(i32, 1) else @as(i32, 0);
+                const innerStartY = startY + if (borderSides.top and isAtActualTop) @as(i32, 1) else @as(i32, 0);
+                const innerEndX = endX - if (borderSides.right and isAtActualRight) @as(i32, 1) else @as(i32, 0);
+                const innerEndY = endY - if (borderSides.bottom and isAtActualBottom) @as(i32, 1) else @as(i32, 0);
+
+                if (innerEndX >= innerStartX and innerEndY >= innerStartY) {
+                    const fillWidth = @as(u32, @intCast(innerEndX - innerStartX + 1));
+                    const fillHeight = @as(u32, @intCast(innerEndY - innerStartY + 1));
+                    try self.fillRect(@intCast(innerStartX), @intCast(innerStartY), fillWidth, fillHeight, backgroundColor);
+                }
+            }
+        }
+
+        // Special cases for extending vertical borders
+        const leftBorderOnly = borderSides.left and isAtActualLeft and !borderSides.top and !borderSides.bottom;
+        const rightBorderOnly = borderSides.right and isAtActualRight and !borderSides.top and !borderSides.bottom;
+        const bottomOnlyWithVerticals = borderSides.bottom and isAtActualBottom and !borderSides.top and (borderSides.left or borderSides.right);
+        const topOnlyWithVerticals = borderSides.top and isAtActualTop and !borderSides.bottom and (borderSides.left or borderSides.right);
+
+        const extendVerticalsToTop = leftBorderOnly or rightBorderOnly or bottomOnlyWithVerticals;
+        const extendVerticalsToBottom = leftBorderOnly or rightBorderOnly or topOnlyWithVerticals;
+
+        // Draw horizontal borders
+        if (borderSides.top or borderSides.bottom) {
+            // Draw top border
+            if (borderSides.top and isAtActualTop) {
+                var drawX = startX;
+                while (drawX <= endX) : (drawX += 1) {
+                    if (startY >= 0 and startY < @as(i32, @intCast(self.height))) {
+                        if (shouldDrawTitle and drawX >= titleStartX and drawX <= titleEndX) {
+                            continue;
+                        }
+
+                        var char = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+
+                        // Handle corners
+                        if (drawX == startX and isAtActualLeft) {
+                            char = if (borderSides.left) borderChars[@intFromEnum(BorderCharIndex.topLeft)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+                        } else if (drawX == endX and isAtActualRight) {
+                            char = if (borderSides.right) borderChars[@intFromEnum(BorderCharIndex.topRight)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+                        }
+
+                        try self.setCellWithAlphaBlending(@intCast(drawX), @intCast(startY), char, borderColor, backgroundColor, 0);
+                    }
+                }
+            }
+
+            // Draw bottom border
+            if (borderSides.bottom and isAtActualBottom) {
+                var drawX = startX;
+                while (drawX <= endX) : (drawX += 1) {
+                    if (endY >= 0 and endY < @as(i32, @intCast(self.height))) {
+                        var char = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+
+                        // Handle corners
+                        if (drawX == startX and isAtActualLeft) {
+                            char = if (borderSides.left) borderChars[@intFromEnum(BorderCharIndex.bottomLeft)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+                        } else if (drawX == endX and isAtActualRight) {
+                            char = if (borderSides.right) borderChars[@intFromEnum(BorderCharIndex.bottomRight)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+                        }
+
+                        try self.setCellWithAlphaBlending(@intCast(drawX), @intCast(endY), char, borderColor, backgroundColor, 0);
+                    }
+                }
+            }
+        }
+
+        // Draw vertical borders
+        const verticalStartY = if (extendVerticalsToTop) startY else startY + if (borderSides.top and isAtActualTop) @as(i32, 1) else @as(i32, 0);
+        const verticalEndY = if (extendVerticalsToBottom) endY else endY - if (borderSides.bottom and isAtActualBottom) @as(i32, 1) else @as(i32, 0);
+
+        if (borderSides.left or borderSides.right) {
+            var drawY = verticalStartY;
+            while (drawY <= verticalEndY) : (drawY += 1) {
+                // Left border
+                if (borderSides.left and isAtActualLeft and startX >= 0 and startX < @as(i32, @intCast(self.width))) {
+                    try self.setCellWithAlphaBlending(@intCast(startX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0);
+                }
+
+                // Right border
+                if (borderSides.right and isAtActualRight and endX >= 0 and endX < @as(i32, @intCast(self.width))) {
+                    try self.setCellWithAlphaBlending(@intCast(endX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0);
+                }
+            }
+        }
+
+        if (shouldDrawTitle) {
+            if (title) |titleText| {
+                try self.drawText(titleText, @intCast(titleX), @intCast(startY), borderColor, backgroundColor, 0);
             }
         }
     }

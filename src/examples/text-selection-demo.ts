@@ -5,7 +5,6 @@ import {
   createCliRenderer,
   TextRenderable,
   BoxRenderable,
-  StyledTextRenderable,
   GroupRenderable,
   t,
   green,
@@ -27,7 +26,7 @@ let selectionStartText: TextRenderable | null = null
 let selectionMiddleText: TextRenderable | null = null
 let selectionEndText: TextRenderable | null = null
 let debugText: TextRenderable | null = null
-let allTextRenderables: (TextRenderable | StyledTextRenderable)[] = []
+let allTextRenderables: (TextRenderable | TextRenderable)[] = []
 
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
@@ -108,8 +107,8 @@ export function run(renderer: CliRenderer): void {
   })
   leftGroup.add(nestedBox)
 
-  const nestedText = new StyledTextRenderable("nestedText", {
-    fragment: t`${yellow("Important:")} ${bold(cyan("Nested content"))} ${italic(green("with styles"))}`,
+  const nestedText = new TextRenderable("nestedText", {
+    content: t`${yellow("Important:")} ${bold(cyan("Nested content"))} ${italic(green("with styles"))}`,
     width: 27,
     height: 1,
     zIndex: 26,
@@ -141,39 +140,31 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#f85149",
     title: "Code Example",
     borderStyle: "rounded",
+    flexDirection: FlexDirection.Column,
     padding: 1,
   })
   rightGroup.add(box2)
 
-  const codeText1 = new StyledTextRenderable("codeText1", {
-    fragment: t`${magenta("function")} ${cyan("handleSelection")}() {`,
-    width: 31,
-    height: 1,
+  const codeText1 = new TextRenderable("codeText1", {
+    content: t`${magenta("function")} ${cyan("handleSelection")}() {`,
     zIndex: 21,
     selectionBg: "#4a5568",
-    // selectionFg: "#ffffff",
   })
   box2.add(codeText1)
   allTextRenderables.push(codeText1)
 
-  const codeText2 = new StyledTextRenderable("codeText2", {
-    fragment: t`  ${magenta("const")} selected = ${cyan("getSelectedText")}()`,
-    width: 31,
-    height: 1,
+  const codeText2 = new TextRenderable("codeText2", {
+    content: t`  ${magenta("const")} selected = ${cyan("getSelectedText")}()`,
     zIndex: 21,
     selectionBg: "#4a5568",
-    // selectionFg: "#ffffff",
   })
   box2.add(codeText2)
   allTextRenderables.push(codeText2)
 
-  const codeText3 = new StyledTextRenderable("codeText3", {
-    fragment: t`  ${yellow("console")}.${green("log")}(selected)`,
-    width: 31,
-    height: 1,
+  const codeText3 = new TextRenderable("codeText3", {
+    content: t`  ${yellow("console")}.${green("log")}(selected)`,
     zIndex: 21,
     selectionBg: "#4a5568",
-    // selectionFg: "#ffffff",
   })
   box2.add(codeText3)
   allTextRenderables.push(codeText3)
@@ -202,13 +193,11 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(floatingBox)
 
-  const multilineText = new StyledTextRenderable("multilineText", {
-    fragment: t`${bold(cyan("Selection Demo"))}
+  const multilineText = new TextRenderable("multilineText", {
+    content: t`${bold(cyan("Selection Demo"))}
 ${green("✓")} Cross-renderable selection
 ${green("✓")} Nested groups and boxes
 ${green("✓")} Styled text support`,
-    width: 27,
-    height: 4,
     zIndex: 31,
     selectionBg: "#4a5568",
     selectionFg: "#ffffff",

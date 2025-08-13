@@ -5,6 +5,7 @@ import os from "os"
 import type { CursorStyle, DebugOverlayCorner } from "./types"
 import { RGBA } from "./types"
 import { OptimizedBuffer } from "./buffer"
+import { TextBuffer } from "./text-buffer"
 
 function getPlatformTarget(): string {
   const platform = os.platform()
@@ -195,6 +196,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize", "u32", "u32", "u32", "u32"],
       returns: "void",
     },
+    bufferDrawBox: {
+      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
+      returns: "void",
+    },
 
     addToHitGrid: {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
@@ -214,6 +219,104 @@ function getOpenTUILib(libPath?: string) {
     },
     dumpStdoutBuffer: {
       args: ["ptr", "i64"],
+      returns: "void",
+    },
+
+    // TextBuffer functions
+    createTextBuffer: {
+      args: ["u32"],
+      returns: "ptr",
+    },
+    destroyTextBuffer: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferGetCharPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    textBufferGetFgPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    textBufferGetBgPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    textBufferGetAttributesPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    textBufferGetLength: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    textBufferSetCell: {
+      args: ["ptr", "u32", "u32", "ptr", "ptr", "u16"],
+      returns: "void",
+    },
+    textBufferConcat: {
+      args: ["ptr", "ptr"],
+      returns: "ptr",
+    },
+    textBufferResize: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    textBufferReset: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferSetSelection: {
+      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
+    textBufferResetSelection: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferSetDefaultFg: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    textBufferSetDefaultBg: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    textBufferSetDefaultAttributes: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    textBufferResetDefaults: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferWriteChunk: {
+      args: ["ptr", "ptr", "u32", "ptr", "ptr", "ptr"],
+      returns: "u32",
+    },
+    textBufferGetCapacity: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    textBufferFinalizeLineInfo: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferGetLineStartsPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    textBufferGetLineWidthsPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    textBufferGetLineCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    bufferDrawTextBuffer: {
+      args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
       returns: "void",
     },
   })
@@ -288,6 +391,18 @@ export interface RenderLib {
     terminalWidthCells: number,
     terminalHeightCells: number,
   ) => void
+  bufferDrawBox: (
+    buffer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    borderChars: Uint32Array,
+    packedOptions: number,
+    borderColor: RGBA,
+    backgroundColor: RGBA,
+    title: string | null,
+  ) => void
   bufferResize: (
     buffer: Pointer,
     width: number,
@@ -309,6 +424,60 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+
+  // TextBuffer methods
+  createTextBuffer: (capacity: number) => TextBuffer
+  destroyTextBuffer: (buffer: Pointer) => void
+  textBufferGetCharPtr: (buffer: Pointer) => Pointer
+  textBufferGetFgPtr: (buffer: Pointer) => Pointer
+  textBufferGetBgPtr: (buffer: Pointer) => Pointer
+  textBufferGetAttributesPtr: (buffer: Pointer) => Pointer
+  textBufferGetLength: (buffer: Pointer) => number
+  textBufferSetCell: (
+    buffer: Pointer,
+    index: number,
+    char: number,
+    fg: Float32Array,
+    bg: Float32Array,
+    attr: number,
+  ) => void
+  textBufferConcat: (buffer1: Pointer, buffer2: Pointer) => TextBuffer
+  textBufferResize: (buffer: Pointer, newLength: number) => {
+    char: Uint32Array
+    fg: Float32Array
+    bg: Float32Array
+    attributes: Uint16Array
+  }
+  textBufferReset: (buffer: Pointer) => void
+  textBufferSetSelection: (buffer: Pointer, start: number, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
+  textBufferResetSelection: (buffer: Pointer) => void
+  textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
+  textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
+  textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
+  textBufferResetDefaults: (buffer: Pointer) => void
+  textBufferWriteChunk: (
+    buffer: Pointer,
+    textBytes: Uint8Array,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number | null,
+  ) => number
+  textBufferGetCapacity: (buffer: Pointer) => number
+  textBufferFinalizeLineInfo: (buffer: Pointer) => void
+  textBufferGetLineInfo: (buffer: Pointer) => { lineStarts: number[]; lineWidths: number[] }
+  getTextBufferArrays: (buffer: Pointer, size: number) => {
+    char: Uint32Array
+    fg: Float32Array
+    bg: Float32Array
+    attributes: Uint16Array
+  }
+  bufferDrawTextBuffer: (
+    buffer: Pointer,
+    textBuffer: Pointer,
+    x: number,
+    y: number,
+    clipRect?: { x: number; y: number; width: number; height: number },
+  ) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -398,6 +567,34 @@ class FFIRenderLib implements RenderLib {
       fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)), // 4 floats per RGBA
       bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)), // 4 floats per RGBA
       attributes: new Uint8Array(toArrayBuffer(attributesPtr, 0, size)),
+    }
+
+    return buffers
+  }
+
+  private getTextBuffer(
+    bufferPtr: Pointer,
+    size: number,
+  ): {
+    char: Uint32Array
+    fg: Float32Array
+    bg: Float32Array
+    attributes: Uint16Array
+  } {
+    const charPtr = this.opentui.symbols.textBufferGetCharPtr(bufferPtr)
+    const fgPtr = this.opentui.symbols.textBufferGetFgPtr(bufferPtr)
+    const bgPtr = this.opentui.symbols.textBufferGetBgPtr(bufferPtr)
+    const attributesPtr = this.opentui.symbols.textBufferGetAttributesPtr(bufferPtr)
+
+    if (!charPtr || !fgPtr || !bgPtr || !attributesPtr) {
+      throw new Error("Failed to get text buffer pointers")
+    }
+
+    const buffers = {
+      char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
+      fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)), // 4 floats per RGBA
+      bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)), // 4 floats per RGBA
+      attributes: new Uint16Array(toArrayBuffer(attributesPtr, 0, size * 2)), // 2 bytes per u16
     }
 
     return buffers
@@ -534,6 +731,37 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
+  public bufferDrawBox(
+    buffer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    borderChars: Uint32Array,
+    packedOptions: number,
+    borderColor: RGBA,
+    backgroundColor: RGBA,
+    title: string | null,
+  ): void {
+    const titleBytes = title ? this.encoder.encode(title) : null
+    const titleLen = title ? titleBytes!.length : 0
+    const titlePtr = title ? titleBytes : null
+    
+    this.opentui.symbols.bufferDrawBox(
+      buffer,
+      x,
+      y,
+      width,
+      height,
+      borderChars,
+      packedOptions,
+      borderColor.buffer,
+      backgroundColor.buffer,
+      titlePtr,
+      titleLen,
+    )
+  }
+
   public bufferResize(
     buffer: Pointer,
     width: number,
@@ -634,6 +862,228 @@ class FFIRenderLib implements RenderLib {
   public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+  }
+
+  // TextBuffer methods
+  public createTextBuffer(capacity: number): TextBuffer {
+    const bufferPtr = this.opentui.symbols.createTextBuffer(capacity)
+    if (!bufferPtr) {
+      throw new Error(`Failed to create TextBuffer with capacity ${capacity}`)
+    }
+
+    const charPtr = this.textBufferGetCharPtr(bufferPtr)
+    const fgPtr = this.textBufferGetFgPtr(bufferPtr)
+    const bgPtr = this.textBufferGetBgPtr(bufferPtr)
+    const attributesPtr = this.textBufferGetAttributesPtr(bufferPtr)
+
+    const buffer = {
+      char: new Uint32Array(toArrayBuffer(charPtr, 0, capacity * 4)),
+      fg: new Float32Array(toArrayBuffer(fgPtr, 0, capacity * 4 * 4)),
+      bg: new Float32Array(toArrayBuffer(bgPtr, 0, capacity * 4 * 4)),
+      attributes: new Uint16Array(toArrayBuffer(attributesPtr, 0, capacity * 2)), // 2 bytes per u16
+    }
+
+    return new TextBuffer(this, bufferPtr, buffer, capacity)
+  }
+
+  public destroyTextBuffer(buffer: Pointer): void {
+    this.opentui.symbols.destroyTextBuffer(buffer)
+  }
+
+  public textBufferGetCharPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.textBufferGetCharPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get TextBuffer char pointer")
+    }
+    return ptr
+  }
+
+  public textBufferGetFgPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.textBufferGetFgPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get TextBuffer fg pointer")
+    }
+    return ptr
+  }
+
+  public textBufferGetBgPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.textBufferGetBgPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get TextBuffer bg pointer")
+    }
+    return ptr
+  }
+
+  public textBufferGetAttributesPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.textBufferGetAttributesPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get TextBuffer attributes pointer")
+    }
+    return ptr
+  }
+
+  public textBufferGetLength(buffer: Pointer): number {
+    return this.opentui.symbols.textBufferGetLength(buffer)
+  }
+
+  public textBufferSetCell(
+    buffer: Pointer,
+    index: number,
+    char: number,
+    fg: Float32Array,
+    bg: Float32Array,
+    attr: number,
+  ): void {
+    this.opentui.symbols.textBufferSetCell(buffer, index, char, fg, bg, attr)
+  }
+
+  public textBufferConcat(buffer1: Pointer, buffer2: Pointer): TextBuffer {
+    const resultPtr = this.opentui.symbols.textBufferConcat(buffer1, buffer2)
+    if (!resultPtr) {
+      throw new Error("Failed to concatenate TextBuffers")
+    }
+
+    const length = this.textBufferGetLength(resultPtr)
+    const charPtr = this.textBufferGetCharPtr(resultPtr)
+    const fgPtr = this.textBufferGetFgPtr(resultPtr)
+    const bgPtr = this.textBufferGetBgPtr(resultPtr)
+    const attributesPtr = this.textBufferGetAttributesPtr(resultPtr)
+
+    const buffer = {
+      char: new Uint32Array(toArrayBuffer(charPtr, 0, length * 4)),
+      fg: new Float32Array(toArrayBuffer(fgPtr, 0, length * 4 * 4)),
+      bg: new Float32Array(toArrayBuffer(bgPtr, 0, length * 4 * 4)),
+      attributes: new Uint16Array(toArrayBuffer(attributesPtr, 0, length * 2)),
+    }
+
+    return new TextBuffer(this, resultPtr, buffer, length)
+  }
+
+  public textBufferResize(buffer: Pointer, newLength: number): {
+    char: Uint32Array
+    fg: Float32Array
+    bg: Float32Array
+    attributes: Uint16Array
+  } {
+    this.opentui.symbols.textBufferResize(buffer, newLength)
+    const buffers = this.getTextBuffer(buffer, newLength)
+    return buffers
+  }
+
+  public textBufferReset(buffer: Pointer): void {
+    this.opentui.symbols.textBufferReset(buffer)
+  }
+
+  public textBufferSetSelection(buffer: Pointer, start: number, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
+    const bg = bgColor ? bgColor.buffer : null
+    const fg = fgColor ? fgColor.buffer : null
+    this.opentui.symbols.textBufferSetSelection(buffer, start, end, bg, fg)
+  }
+
+  public textBufferResetSelection(buffer: Pointer): void {
+    this.opentui.symbols.textBufferResetSelection(buffer)
+  }
+
+  public textBufferSetDefaultFg(buffer: Pointer, fg: RGBA | null): void {
+    const fgPtr = fg ? fg.buffer : null
+    this.opentui.symbols.textBufferSetDefaultFg(buffer, fgPtr)
+  }
+
+  public textBufferSetDefaultBg(buffer: Pointer, bg: RGBA | null): void {
+    const bgPtr = bg ? bg.buffer : null
+    this.opentui.symbols.textBufferSetDefaultBg(buffer, bgPtr)
+  }
+
+  public textBufferSetDefaultAttributes(buffer: Pointer, attributes: number | null): void {
+    const attrValue = attributes === null ? null : new Uint8Array([attributes])
+    this.opentui.symbols.textBufferSetDefaultAttributes(buffer, attrValue)
+  }
+
+  public textBufferResetDefaults(buffer: Pointer): void {
+    this.opentui.symbols.textBufferResetDefaults(buffer)
+  }
+
+  public textBufferWriteChunk(
+    buffer: Pointer,
+    textBytes: Uint8Array,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number | null,
+  ): number {
+    const attrValue = attributes === null ? null : new Uint8Array([attributes])
+    return this.opentui.symbols.textBufferWriteChunk(
+      buffer,
+      textBytes,
+      textBytes.length,
+      fg ? fg.buffer : null,
+      bg ? bg.buffer : null,
+      attrValue,
+    )
+  }
+
+  public textBufferGetCapacity(buffer: Pointer): number {
+    return this.opentui.symbols.textBufferGetCapacity(buffer)
+  }
+  
+  public textBufferFinalizeLineInfo(buffer: Pointer): void {
+    this.opentui.symbols.textBufferFinalizeLineInfo(buffer)
+  }
+  
+  public textBufferGetLineInfo(buffer: Pointer): { lineStarts: number[]; lineWidths: number[] } {
+    const lineCount = this.opentui.symbols.textBufferGetLineCount(buffer)
+    if (lineCount === 0) {
+      return { lineStarts: [], lineWidths: [] }
+    }
+    
+    const lineStartsPtr = this.opentui.symbols.textBufferGetLineStartsPtr(buffer)
+    const lineWidthsPtr = this.opentui.symbols.textBufferGetLineWidthsPtr(buffer)
+    
+    if (!lineStartsPtr || !lineWidthsPtr) {
+      return { lineStarts: [], lineWidths: [] }
+    }
+    
+    const lineStartsArray = new Uint32Array(toArrayBuffer(lineStartsPtr, 0, lineCount * 4))
+    const lineWidthsArray = new Uint32Array(toArrayBuffer(lineWidthsPtr, 0, lineCount * 4))
+    
+    const lineStarts = Array.from(lineStartsArray)
+    const lineWidths = Array.from(lineWidthsArray)
+    
+    return { lineStarts, lineWidths }
+  }
+
+  public getTextBufferArrays(buffer: Pointer, size: number): {
+    char: Uint32Array
+    fg: Float32Array
+    bg: Float32Array
+    attributes: Uint16Array
+  } {
+    return this.getTextBuffer(buffer, size)
+  }
+
+  public bufferDrawTextBuffer(
+    buffer: Pointer,
+    textBuffer: Pointer,
+    x: number,
+    y: number,
+    clipRect?: { x: number; y: number; width: number; height: number },
+  ): void {
+    const hasClipRect = clipRect !== undefined && clipRect !== null
+    const clipX = clipRect?.x ?? 0
+    const clipY = clipRect?.y ?? 0
+    const clipWidth = clipRect?.width ?? 0
+    const clipHeight = clipRect?.height ?? 0
+
+    this.opentui.symbols.bufferDrawTextBuffer(
+      buffer,
+      textBuffer,
+      x,
+      y,
+      clipX,
+      clipY,
+      clipWidth,
+      clipHeight,
+      hasClipRect,
+    )
   }
 }
 

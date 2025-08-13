@@ -180,7 +180,6 @@ export function run(renderer: CliRenderer): void {
 
             const existingPixel = tabGroup.getRenderable(pixelId) as TextRenderable
             if (existingPixel) {
-              existingPixel.content = "█"
               existingPixel.setPosition({ left: x, top: y })
               existingPixel.fg = color
             } else {

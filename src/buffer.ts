@@ -1,13 +1,52 @@
-import type { TextFragment, StyledText } from "./lib/styled-text"
+import type { TextBuffer } from "./text-buffer"
 import { RGBA } from "./types"
-import { createTextAttributes, parseColor } from "./utils"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
+import { 
+  type BorderStyle, 
+  type BorderSides, 
+  type BorderCharacters,
+  BorderCharArrays,
+  borderCharsToArray 
+} from "./lib"
 
 let fbIdCounter = 0
 
 function isRGBAWithAlpha(color: RGBA): boolean {
   return color.a < 1.0
+}
+
+// Pack drawing options into a single u32
+// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
+function packDrawOptions(
+  border: boolean | BorderSides[],
+  shouldFill: boolean,
+  titleAlignment: "left" | "center" | "right"
+): number {
+  let packed = 0
+  
+  if (border === true) {
+    packed |= 0b1111 // All sides
+  } else if (Array.isArray(border)) {
+    if (border.includes("top")) packed |= 0b1000
+    if (border.includes("right")) packed |= 0b0100
+    if (border.includes("bottom")) packed |= 0b0010
+    if (border.includes("left")) packed |= 0b0001
+  }
+  
+  if (shouldFill) {
+    packed |= 1 << 4
+  }
+  
+  const alignmentMap: Record<string, number> = {
+    left: 0,
+    center: 1,
+    right: 2,
+  }
+  const alignment = alignmentMap[titleAlignment]
+  packed |= alignment << 5
+  
+  return packed
 }
 
 function blendColors(overlay: RGBA, text: RGBA): RGBA {
@@ -237,9 +276,8 @@ export class OptimizedBuffer {
     attributes: number = 0,
     selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA } | null,
   ): void {
-    const method = this.useFFI ? this.drawTextFFI : this.drawTextLocal
     if (!selection) {
-      method.call(this, text, x, y, fg, bg, attributes)
+      this.drawTextFFI.call(this, text, x, y, fg, bg, attributes)
       return
     }
 
@@ -259,51 +297,17 @@ export class OptimizedBuffer {
 
     if (start > 0) {
       const beforeText = text.slice(0, start)
-      method.call(this, beforeText, x, y, fg, bg, attributes)
+      this.drawTextFFI.call(this, beforeText, x, y, fg, bg, attributes)
     }
 
     if (end > start) {
       const selectedText = text.slice(start, end)
-      method.call(this, selectedText, x + start, y, selectionFg, selectionBg, attributes)
+      this.drawTextFFI.call(this, selectedText, x + start, y, selectionFg, selectionBg, attributes)
     }
 
     if (end < text.length) {
       const afterText = text.slice(end)
-      method.call(this, afterText, x + end, y, fg, bg, attributes)
-    }
-  }
-
-  public drawTextLocal(text: string, x: number, y: number, fg: RGBA, bg?: RGBA, attributes: number = 0): void {
-    if (y < 0 || y >= this.height) return
-    if (!text || typeof text !== "string") {
-      console.warn("drawTextLocal called with invalid text:", { text, x, y, fg, bg })
-      return
-    }
-
-    let startX = this.width
-    let endX = 0
-
-    let i = 0
-    for (const char of text) {
-      const charX = x + i
-      i++
-
-      if (charX < 0 || charX >= this.width) continue
-
-      startX = Math.min(startX, charX)
-      endX = Math.max(endX, charX)
-
-      let bgColor = bg
-      if (!bgColor) {
-        const existingCell = this.get(charX, y)
-        if (existingCell) {
-          bgColor = existingCell.bg
-        } else {
-          bgColor = RGBA.fromValues(0.0, 0.0, 0.0, 1.0) // Default black if no existing cell
-        }
-      }
-
-      this.setCellWithAlphaBlending(charX, y, char, fg, bgColor, attributes)
+      this.drawTextFFI.call(this, afterText, x + end, y, fg, bg, attributes)
     }
   }
 
@@ -459,96 +463,14 @@ export class OptimizedBuffer {
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 
-  public drawStyledText(
-    styledText: StyledText,
+  public drawTextBuffer(
+    textBuffer: TextBuffer,
     x: number,
     y: number,
-    defaultFg: RGBA = RGBA.fromValues(1, 1, 1, 1),
-    defaultBg: RGBA = RGBA.fromValues(0, 0, 0, 0),
+    clipRect?: { x: number; y: number; width: number; height: number },
   ): void {
-    this.drawStyledTextLocal(styledText, x, y, defaultFg, defaultBg)
-  }
-
-  public drawStyledTextLocal(
-    styledText: StyledText,
-    x: number,
-    y: number,
-    defaultFg: RGBA = RGBA.fromValues(1, 1, 1, 1),
-    defaultBg: RGBA = RGBA.fromValues(0, 0, 0, 0),
-    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA },
-  ): void {
-    let currentX = x
-    let currentY = y
-    let charIndex = 0
-
-    for (const styledChar of styledText) {
-      if (styledChar.char === "\n") {
-        currentY++
-        currentX = x
-        charIndex++
-        continue
-      }
-
-      let fg = styledChar.style.fg ? parseColor(styledChar.style.fg) : defaultFg
-      let bg = styledChar.style.bg ? parseColor(styledChar.style.bg) : defaultBg
-
-      const isSelected = selection && charIndex >= selection.start && charIndex < selection.end
-
-      if (isSelected) {
-        if (selection.bgColor) {
-          bg = selection.bgColor
-          if (selection.fgColor) {
-            fg = selection.fgColor
-          }
-        } else {
-          const temp = fg
-          fg = bg.a > 0 ? bg : RGBA.fromValues(0, 0, 0, 1)
-          bg = temp
-        }
-      }
-
-      if (styledChar.style.reverse) {
-        ;[fg, bg] = [bg, fg]
-      }
-
-      const attributes = createTextAttributes({
-        bold: styledChar.style.bold,
-        italic: styledChar.style.italic,
-        underline: styledChar.style.underline,
-        dim: styledChar.style.dim,
-        blink: styledChar.style.blink,
-        inverse: styledChar.style.reverse,
-        hidden: false,
-        strikethrough: styledChar.style.strikethrough,
-      })
-
-      this.setCellWithAlphaBlending(currentX, currentY, styledChar.char, fg, bg, attributes)
-
-      currentX++
-      charIndex++
-    }
-  }
-
-  public drawStyledTextFragment(
-    fragment: TextFragment,
-    x: number,
-    y: number,
-    defaultFg?: RGBA,
-    defaultBg?: RGBA,
-    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA },
-  ): void {
-    this.drawStyledTextFragmentLocal(fragment, x, y, defaultFg, defaultBg, selection)
-  }
-
-  public drawStyledTextFragmentLocal(
-    fragment: TextFragment,
-    x: number,
-    y: number,
-    defaultFg?: RGBA,
-    defaultBg?: RGBA,
-    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA },
-  ): void {
-    this.drawStyledTextLocal(fragment.toStyledText(), x, y, defaultFg, defaultBg, selection)
+    // Use native implementation
+    this.lib.bufferDrawTextBuffer(this.bufferPtr, textBuffer.ptr, x, y, clipRect)
   }
 
   public drawSuperSampleBuffer(
@@ -654,5 +576,42 @@ export class OptimizedBuffer {
     sourceHeight?: number,
   ): void {
     this.lib.drawFrameBuffer(this.bufferPtr, destX, destY, frameBuffer.ptr, sourceX, sourceY, sourceWidth, sourceHeight)
+  }
+
+  public drawBox(options: {
+    x: number
+    y: number
+    width: number
+    height: number
+    borderStyle?: BorderStyle
+    customBorderChars?: Uint32Array
+    border: boolean | BorderSides[]
+    borderColor: RGBA
+    backgroundColor: RGBA
+    shouldFill?: boolean
+    title?: string
+    titleAlignment?: "left" | "center" | "right"
+  }): void {
+    const style = options.borderStyle || "single"
+    const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
+
+    const packedOptions = packDrawOptions(
+      options.border,
+      options.shouldFill ?? false,
+      options.titleAlignment || "left"
+    )
+
+    this.lib.bufferDrawBox(
+      this.bufferPtr,
+      options.x,
+      options.y,
+      options.width,
+      options.height,
+      borderChars,
+      packedOptions,
+      options.borderColor,
+      options.backgroundColor,
+      options.title ?? null,
+    )
   }
 }

@@ -11,14 +11,14 @@ import {
   fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { StyledTextRenderable } from "../renderables/StyledText"
+import { TextRenderable } from "../renderables/Text"
 import { getKeyHandler } from "../lib/KeyHandler"
 
 let selectElement: SelectRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
-let keyLegendDisplay: StyledTextRenderable | null = null
-let statusDisplay: StyledTextRenderable | null = null
+let keyLegendDisplay: TextRenderable | null = null
+let statusDisplay: TextRenderable | null = null
 let lastActionText: string = "Welcome to SelectRenderable demo! Use the controls to test features."
 let lastActionColor: string = "#FFCC00"
 
@@ -62,7 +62,7 @@ S: Toggle scroll indicator
 W: Toggle wrap selection`
 
   if (keyLegendDisplay) {
-    keyLegendDisplay.fragment = keyLegendText
+    keyLegendDisplay.content = keyLegendText
   }
 
   const currentSelection = selectElement.getSelectedOption()
@@ -82,7 +82,7 @@ ${fg("#CCCCCC")(`Scroll indicator: ${scrollIndicator} | Description: ${descripti
 ${fg(lastActionColor)(lastActionText)}`
 
   if (statusDisplay) {
-    statusDisplay.fragment = statusText
+    statusDisplay.content = statusText
   }
 }
 
@@ -122,8 +122,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   renderer.root.add(selectElement)
 
-  keyLegendDisplay = new StyledTextRenderable("key-legend", {
-    fragment: t``,
+  keyLegendDisplay = new TextRenderable("key-legend", {
+    content: t``,
     width: 40,
     height: 9,
     positionType: "absolute",
@@ -132,12 +132,12 @@ export function run(rendererInstance: CliRenderer): void {
       top: 3,
     },
     zIndex: 50,
-    defaultFg: "#AAAAAA",
+    fg: "#AAAAAA",
   })
   parentContainer.add(keyLegendDisplay)
 
-  statusDisplay = new StyledTextRenderable("status-display", {
-    fragment: t``,
+  statusDisplay = new TextRenderable("status-display", {
+    content: t``,
     width: 80,
     height: 8,
     positionType: "absolute",

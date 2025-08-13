@@ -6,9 +6,8 @@ import {
   type BorderSides,
   type BorderCharacters,
   type BorderSidesConfig,
-  BorderChars,
   getBorderSides,
-  drawBorder,
+  borderCharsToArray,
 } from "../lib"
 import { parseColor } from "../utils"
 import type { ColorInput } from "../types"
@@ -31,7 +30,7 @@ export class BoxRenderable extends Renderable {
   protected _borderStyle: BorderStyle
   protected _borderColor: RGBA
   protected _focusedBorderColor: RGBA
-  protected customBorderChars: BorderCharacters
+  protected customBorderChars?: Uint32Array
   protected borderSides: BorderSidesConfig
   public shouldFill: boolean
   protected _title?: string
@@ -45,7 +44,7 @@ export class BoxRenderable extends Renderable {
     this._borderStyle = options.borderStyle || "single"
     this._borderColor = parseColor(options.borderColor || "#FFFFFF")
     this._focusedBorderColor = parseColor(options.focusedBorderColor || "#00AAFF")
-    this.customBorderChars = options.customBorderChars || BorderChars[this._borderStyle]
+    this.customBorderChars = options.customBorderChars ? borderCharsToArray(options.customBorderChars) : undefined
     this.borderSides = getBorderSides(this._border)
     this.shouldFill = options.shouldFill ?? true
     this._title = options.title
@@ -88,7 +87,7 @@ export class BoxRenderable extends Renderable {
   public set borderStyle(value: BorderStyle) {
     if (this._borderStyle !== value) {
       this._borderStyle = value
-      this.customBorderChars = BorderChars[this._borderStyle]
+      this.customBorderChars = undefined
       this.needsUpdate()
     }
   }
@@ -142,42 +141,22 @@ export class BoxRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    const startX = Math.max(0, this.x)
-    const startY = Math.max(0, this.y)
-    const endX = Math.min(buffer.getWidth() - 1, this.x + this.width - 1)
-    const endY = Math.min(buffer.getHeight() - 1, this.y + this.height - 1)
-
-    if (this.shouldFill) {
-      if (this._border === false) {
-        buffer.fillRect(startX, startY, endX - startX + 1, endY - startY + 1, this._bg)
-      } else {
-        const innerStartX = startX + (this.borderSides.left ? 1 : 0)
-        const innerStartY = startY + (this.borderSides.top ? 1 : 0)
-        const innerEndX = endX - (this.borderSides.right ? 1 : 0)
-        const innerEndY = endY - (this.borderSides.bottom ? 1 : 0)
-
-        if (innerEndX >= innerStartX && innerEndY >= innerStartY) {
-          buffer.fillRect(innerStartX, innerStartY, innerEndX - innerStartX + 1, innerEndY - innerStartY + 1, this._bg)
-        }
-      }
-    }
-
-    if (this._border !== false) {
-      const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
-      drawBorder(buffer, {
-        x: this.x,
-        y: this.y,
-        width: this.width,
-        height: this.height,
-        borderStyle: this._borderStyle,
-        border: this._border,
-        borderColor: currentBorderColor,
-        backgroundColor: this._bg,
-        customBorderChars: this.customBorderChars,
-        title: this._title,
-        titleAlignment: this._titleAlignment,
-      })
-    }
+    const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
+    
+    buffer.drawBox({
+      x: this.x,
+      y: this.y,
+      width: this.width,
+      height: this.height,
+      borderStyle: this._borderStyle,
+      customBorderChars: this.customBorderChars,
+      border: this._border,
+      borderColor: currentBorderColor,
+      backgroundColor: this._bg,
+      shouldFill: this.shouldFill,
+      title: this._title,
+      titleAlignment: this._titleAlignment,
+    })
   }
 
   private applyYogaBorders(): void {

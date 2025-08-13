@@ -1,18 +1,19 @@
 import {
   createCliRenderer,
-  StyledTextRenderable,
-  TextFragment,
+  TextRenderable,
+  t,
   type CliRenderer,
   BoxRenderable,
-  TextRenderable,
   GroupRenderable,
+  bold,
+  fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
 
-let text: StyledTextRenderable | null = null
-let instructionsText: StyledTextRenderable | null = null
+let text: TextRenderable | null = null
+let instructionsText: TextRenderable | null = null
 let keyHandler: ((key: any) => void) | null = null
 let outputTimer: Timer | null = null
 let animationSystem: SplitModeAnimations | null = null
@@ -329,7 +330,7 @@ export function run(rendererInstance: CliRenderer): void {
 
   animationSystem = new SplitModeAnimations(rendererInstance)
 
-  text = new StyledTextRenderable("demo-text", {
+  text = new TextRenderable("demo-text", {
     positionType: "absolute",
     position: {
       left: 2,
@@ -338,14 +339,10 @@ export function run(rendererInstance: CliRenderer): void {
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
-    fragment: TextFragment.fromStyled("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆", {
-      fg: "#00ffff",
-      bg: "#003366",
-      bold: true,
-    }),
+    content: t`${bold(fg("#00ffff")("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆"))}`,
   })
 
-  instructionsText = new StyledTextRenderable("instructions", {
+  instructionsText = new TextRenderable("instructions", {
     positionType: "absolute",
     position: {
       left: 2,
@@ -354,13 +351,7 @@ export function run(rendererInstance: CliRenderer): void {
     width: rendererInstance.width - 4,
     height: 2,
     zIndex: 10,
-    fragment: TextFragment.fromStyled(
-      "[+/-] Split height | [0] Toggle fullscreen | [M/L] Output speed | [U] Toggle mouse",
-      {
-        fg: "#cccccc",
-        bg: "#1a1a2e",
-      },
-    ),
+    content: t`${bold(fg("#cccccc")("[+/-] Split height | [0] Toggle fullscreen | [M/L] Output speed | [U] Toggle mouse"))}`,
   })
 
   rendererInstance.root.add(text)
