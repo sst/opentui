@@ -159,20 +159,20 @@ ${underline("Dynamic:")} ${bold(fg("#FF6B6B")(Math.sin(counter * 0.1) > 0 ? "UP"
       const currentTime = Date.now()
       const elapsedMs = currentTime - startTime
       const elapsedSeconds = elapsedMs / 1000
-      
+
       const cpuLoad = Math.sin(elapsedSeconds * 0.5) * 50 + 50
       const memoryUsage = Math.cos(elapsedSeconds * 0.3) * 30 + 70
       const networkSpeed = Math.abs(Math.sin(elapsedSeconds * 2)) * 1000
       const temperature = Math.sin(elapsedSeconds * 0.1) * 20 + 60
-      const batteryLevel = Math.max(0, 100 - (elapsedSeconds * 0.5))
+      const batteryLevel = Math.max(0, 100 - elapsedSeconds * 0.5)
       const randomValue = Math.floor(Math.random() * 9999)
       const waveValue = Math.sin(elapsedSeconds * 3) * 10
-      const progressBar = "█".repeat(Math.floor((elapsedSeconds % 10) / 10 * 20))
-      
+      const progressBar = "█".repeat(Math.floor(((elapsedSeconds % 10) / 10) * 20))
+
       const connectionStatus = Math.sin(elapsedSeconds) > 0 ? "ONLINE" : "OFFLINE"
       const systemHealth = cpuLoad < 80 ? "GOOD" : "HIGH"
       const alertLevel = temperature > 75 ? "CRITICAL" : "NORMAL"
-      
+
       const complexText = t`${bold("System Stats:")} ${fg("#888")(`[Update: ${updateFrequency === 1 ? "Every Frame" : `Every ${updateFrequency} frames`}]`)}
 ${blue("Uptime:")} ${fg("#00FF00")(elapsedSeconds.toFixed(2))}s ${fg("#666")(`(${Math.floor(elapsedSeconds / 60)}m ${Math.floor(elapsedSeconds % 60)}s)`)}
 ${red("CPU Load:")} ${cpuLoad > 80 ? red(bold(`${cpuLoad.toFixed(1)}%`)) : green(`${cpuLoad.toFixed(1)}%`)} ${fg("#444")("█".repeat(Math.floor(cpuLoad / 5)))}

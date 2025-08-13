@@ -2,13 +2,7 @@ import type { TextBuffer } from "./text-buffer"
 import { RGBA } from "./types"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
-import { 
-  type BorderStyle, 
-  type BorderSides, 
-  type BorderCharacters,
-  BorderCharArrays,
-  borderCharsToArray 
-} from "./lib"
+import { type BorderStyle, type BorderSides, type BorderCharacters, BorderCharArrays, borderCharsToArray } from "./lib"
 
 let fbIdCounter = 0
 
@@ -21,10 +15,10 @@ function isRGBAWithAlpha(color: RGBA): boolean {
 function packDrawOptions(
   border: boolean | BorderSides[],
   shouldFill: boolean,
-  titleAlignment: "left" | "center" | "right"
+  titleAlignment: "left" | "center" | "right",
 ): number {
   let packed = 0
-  
+
   if (border === true) {
     packed |= 0b1111 // All sides
   } else if (Array.isArray(border)) {
@@ -33,11 +27,11 @@ function packDrawOptions(
     if (border.includes("bottom")) packed |= 0b0010
     if (border.includes("left")) packed |= 0b0001
   }
-  
+
   if (shouldFill) {
     packed |= 1 << 4
   }
-  
+
   const alignmentMap: Record<string, number> = {
     left: 0,
     center: 1,
@@ -45,7 +39,7 @@ function packDrawOptions(
   }
   const alignment = alignmentMap[titleAlignment]
   packed |= alignment << 5
-  
+
   return packed
 }
 
@@ -595,11 +589,7 @@ export class OptimizedBuffer {
     const style = options.borderStyle || "single"
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
-    const packedOptions = packDrawOptions(
-      options.border,
-      options.shouldFill ?? false,
-      options.titleAlignment || "left"
-    )
+    const packedOptions = packDrawOptions(options.border, options.shouldFill ?? false, options.titleAlignment || "left")
 
     this.lib.bufferDrawBox(
       this.bufferPtr,

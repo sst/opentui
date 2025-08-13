@@ -142,7 +142,7 @@ export class BoxRenderable extends Renderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
-    
+
     buffer.drawBox({
       x: this.x,
       y: this.y,

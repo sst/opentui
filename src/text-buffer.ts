@@ -103,7 +103,7 @@ export class TextBuffer {
   public get ptr(): Pointer {
     return this.bufferPtr
   }
-  
+
   public get lineInfo(): { lineStarts: number[]; lineWidths: number[] } {
     if (!this._lineInfo) {
       this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)

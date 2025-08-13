@@ -26,7 +26,7 @@ export class TextRenderable extends Renderable {
   private _selectionBg: RGBA | undefined
   private _selectionFg: RGBA | undefined
   private selectionHelper: TextSelectionHelper
-  
+
   private textBuffer: TextBuffer
   private _plainText: string = ""
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
@@ -41,9 +41,7 @@ export class TextRenderable extends Renderable {
       () => this._lineInfo,
     )
 
-    this._text = typeof options.content === "string" 
-      ? stringToStyledText(options.content)
-      : options.content
+    this._text = typeof options.content === "string" ? stringToStyledText(options.content) : options.content
     this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
     this._defaultAttributes = options.attributes ?? 0
@@ -52,7 +50,7 @@ export class TextRenderable extends Renderable {
     this.selectable = options.selectable ?? true
 
     this.textBuffer = TextBuffer.create(64)
-    
+
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
@@ -66,9 +64,7 @@ export class TextRenderable extends Renderable {
   }
 
   set content(value: StyledText | string) {
-    this._text = typeof value === "string" 
-      ? stringToStyledText(value)
-      : value
+    this._text = typeof value === "string" ? stringToStyledText(value) : value
     this.updateTextInfo()
     this.setupMeasureFunc()
     this.needsUpdate()
@@ -119,12 +115,7 @@ export class TextRenderable extends Renderable {
   private syncSelectionToTextBuffer(): void {
     const selection = this.selectionHelper.getSelection()
     if (selection) {
-      this.textBuffer.setSelection(
-        selection.start,
-        selection.end,
-        this._selectionBg,
-        this._selectionFg,
-      )
+      this.textBuffer.setSelection(selection.start, selection.end, this._selectionBg, this._selectionFg)
     } else {
       this.textBuffer.resetSelection()
     }
@@ -133,16 +124,16 @@ export class TextRenderable extends Renderable {
   private updateTextInfo(): void {
     this._plainText = this._text.toString()
     this.updateTextBuffer()
-    
+
     const lineInfo = this.textBuffer.lineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
-    
+
     const numLines = this._lineInfo.lineStarts.length
     if (this._height === "auto") {
       this.height = numLines
     }
-    
+
     const maxLineWidth = Math.max(...this._lineInfo.lineWidths)
     if (this._positionType === "absolute" && this._width === "auto") {
       this.width = maxLineWidth
@@ -161,32 +152,32 @@ export class TextRenderable extends Renderable {
         width: number,
         widthMode: MeasureMode,
         height: number,
-        heightMode: MeasureMode
+        heightMode: MeasureMode,
       ): { width: number; height: number } => {
         const maxLineWidth = Math.max(...this._lineInfo.lineWidths, 0)
         const numLines = this._lineInfo.lineStarts.length || 1
-        
+
         let measuredWidth = maxLineWidth
         let measuredHeight = numLines
-        
+
         if (widthMode === MeasureMode.Exactly) {
           measuredWidth = width
         } else if (widthMode === MeasureMode.AtMost) {
           measuredWidth = Math.min(maxLineWidth, width)
         }
-        
+
         if (heightMode === MeasureMode.Exactly) {
           measuredHeight = height
         } else if (heightMode === MeasureMode.AtMost) {
           measuredHeight = Math.min(numLines, height)
         }
-        
+
         return {
           width: Math.max(1, measuredWidth),
-          height: Math.max(1, measuredHeight)
+          height: Math.max(1, measuredHeight),
         }
       }
-      
+
       this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
     }
   }
@@ -227,12 +218,7 @@ export class TextRenderable extends Renderable {
         height: this.height,
       }
 
-      buffer.drawTextBuffer(
-        this.textBuffer,
-        this.x,
-        this.y,
-        clipRect,
-      )
+      buffer.drawTextBuffer(this.textBuffer, this.x, this.y, clipRect)
     }
   }
 

@@ -192,7 +192,7 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
   let cachedStringChunks = templateCache.get(strings)
   let length = 0
   let plainText = ""
-  
+
   if (!cachedStringChunks) {
     cachedStringChunks = []
     for (let i = 0; i < strings.length; i++) {
@@ -212,7 +212,7 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
   }
 
   const chunks: TextChunk[] = []
-  
+
   for (let i = 0; i < strings.length; i++) {
     const stringChunk = cachedStringChunks[i]
     if (stringChunk) {

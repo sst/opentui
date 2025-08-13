@@ -442,14 +442,23 @@ export interface RenderLib {
     attr: number,
   ) => void
   textBufferConcat: (buffer1: Pointer, buffer2: Pointer) => TextBuffer
-  textBufferResize: (buffer: Pointer, newLength: number) => {
+  textBufferResize: (
+    buffer: Pointer,
+    newLength: number,
+  ) => {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
     attributes: Uint16Array
   }
   textBufferReset: (buffer: Pointer) => void
-  textBufferSetSelection: (buffer: Pointer, start: number, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
+  textBufferSetSelection: (
+    buffer: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => void
   textBufferResetSelection: (buffer: Pointer) => void
   textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
   textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
@@ -465,7 +474,10 @@ export interface RenderLib {
   textBufferGetCapacity: (buffer: Pointer) => number
   textBufferFinalizeLineInfo: (buffer: Pointer) => void
   textBufferGetLineInfo: (buffer: Pointer) => { lineStarts: number[]; lineWidths: number[] }
-  getTextBufferArrays: (buffer: Pointer, size: number) => {
+  getTextBufferArrays: (
+    buffer: Pointer,
+    size: number,
+  ) => {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
@@ -746,7 +758,7 @@ class FFIRenderLib implements RenderLib {
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
-    
+
     this.opentui.symbols.bufferDrawBox(
       buffer,
       x,
@@ -959,7 +971,10 @@ class FFIRenderLib implements RenderLib {
     return new TextBuffer(this, resultPtr, buffer, length)
   }
 
-  public textBufferResize(buffer: Pointer, newLength: number): {
+  public textBufferResize(
+    buffer: Pointer,
+    newLength: number,
+  ): {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
@@ -974,7 +989,13 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferReset(buffer)
   }
 
-  public textBufferSetSelection(buffer: Pointer, start: number, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
+  public textBufferSetSelection(
+    buffer: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ): void {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
     this.opentui.symbols.textBufferSetSelection(buffer, start, end, bg, fg)
@@ -1024,34 +1045,37 @@ class FFIRenderLib implements RenderLib {
   public textBufferGetCapacity(buffer: Pointer): number {
     return this.opentui.symbols.textBufferGetCapacity(buffer)
   }
-  
+
   public textBufferFinalizeLineInfo(buffer: Pointer): void {
     this.opentui.symbols.textBufferFinalizeLineInfo(buffer)
   }
-  
+
   public textBufferGetLineInfo(buffer: Pointer): { lineStarts: number[]; lineWidths: number[] } {
     const lineCount = this.opentui.symbols.textBufferGetLineCount(buffer)
     if (lineCount === 0) {
       return { lineStarts: [], lineWidths: [] }
     }
-    
+
     const lineStartsPtr = this.opentui.symbols.textBufferGetLineStartsPtr(buffer)
     const lineWidthsPtr = this.opentui.symbols.textBufferGetLineWidthsPtr(buffer)
-    
+
     if (!lineStartsPtr || !lineWidthsPtr) {
       return { lineStarts: [], lineWidths: [] }
     }
-    
+
     const lineStartsArray = new Uint32Array(toArrayBuffer(lineStartsPtr, 0, lineCount * 4))
     const lineWidthsArray = new Uint32Array(toArrayBuffer(lineWidthsPtr, 0, lineCount * 4))
-    
+
     const lineStarts = Array.from(lineStartsArray)
     const lineWidths = Array.from(lineWidthsArray)
-    
+
     return { lineStarts, lineWidths }
   }
 
-  public getTextBufferArrays(buffer: Pointer, size: number): {
+  public getTextBufferArrays(
+    buffer: Pointer,
+    size: number,
+  ): {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
