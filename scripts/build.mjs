@@ -7,13 +7,13 @@ import process from "process"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
-const licensePath = join(rootDir, "LICENSE.md")
+const licensePath = join(rootDir, "LICENSE")
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
 const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
-const isDev = Boolean(args.find((arg) => arg === "--dev")) ?? process.env.NODE_ENV !== "production"
+const isDev = args.includes("--dev") || process.env.NODE_ENV !== "production"
 
 const variants = [
   { platform: "darwin", arch: "x64" },
@@ -24,7 +24,10 @@ const variants = [
   { platform: "win32", arch: "arm64" },
 ]
 
-if ([buildLib, buildNative].filter(Boolean).length < 1) process.exit(1)
+if (!buildLib && !buildNative) {
+  console.error("Error: Please specify --lib, --native, or both")
+  process.exit(1)
+}
 
 const getZigTarget = (platform, arch) => {
   const platformMap = { darwin: "macos", win32: "windows", linux: "linux" }
@@ -41,13 +44,30 @@ const replaceLinks = (text) => {
     : text
 }
 
+const requiredFields = ["name", "version", "license", "repository", "description"]
+const missingRequired = requiredFields.filter(field => !packageJson[field])
+if (missingRequired.length > 0) {
+  console.error(`Error: Missing required fields in package.json: ${missingRequired.join(", ")}`)
+  process.exit(1)
+}
+
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries...`)
 
-  spawnSync("zig", ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`], {
+  const zigBuild = spawnSync("zig", ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`], {
     cwd: join(rootDir, "src", "zig"),
     stdio: "inherit",
   })
+  
+  if (zigBuild.error) {
+    console.error("Error: Zig is not installed or not in PATH")
+    process.exit(1)
+  }
+  
+  if (zigBuild.status !== 0) {
+    console.error("Error: Zig build failed")
+    process.exit(1)
+  }
 
   for (const { platform, arch } of variants) {
     const nativeName = `${packageJson.name}-${platform}-${arch}`
@@ -90,7 +110,7 @@ if (buildNative) {
       replaceLinks(`## ${nativeName}\n\n> Prebuilt ${platform}-${arch} binaries for \`${packageJson.name}\`.`),
     )
 
-    if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE.md"))
+    if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
     console.log("Built:", nativeName)
   }
 }
@@ -159,7 +179,7 @@ if (buildLib) {
   )
 
   writeFileSync(join(distDir, "README.md"), replaceLinks(readFileSync(join(rootDir, "README.md"), "utf8")))
-  if (existsSync(licensePath)) copyFileSync(licensePath, join(distDir, "LICENSE.md"))
+  if (existsSync(licensePath)) copyFileSync(licensePath, join(distDir, "LICENSE"))
 
   console.log("Library built at:", distDir)
 }

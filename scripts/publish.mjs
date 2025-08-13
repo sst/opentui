@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
@@ -48,9 +48,7 @@ if (confirm.status !== 0) {
 
 try {
   const versions = JSON.parse(
-    spawnSync("npm", ["view", packageJson.name, "versions", "--json"], {
-      shell: true,
-    })
+    spawnSync("npm", ["view", packageJson.name, "versions", "--json"], {})
       .stdout.toString()
       .trim(),
   )
@@ -63,6 +61,11 @@ try {
 } catch {}
 
 const libDir = join(rootDir, "dist")
+if (!existsSync(libDir)) {
+  console.error("Error: dist directory not found. Please run 'bun run build' first.")
+  process.exit(1)
+}
+
 const mismatches = []
 const packageJsons = {
   [libDir]: JSON.parse(readFileSync(join(libDir, "package.json"), "utf8")),
@@ -72,6 +75,11 @@ for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies).fil
   x.startsWith(packageJson.name),
 )) {
   const nativeDir = join(rootDir, "node_modules", pkgName)
+  if (!existsSync(nativeDir)) {
+    console.error(`Error: Native package directory not found: ${nativeDir}`)
+    console.error("Please run 'bun run build:native' first.")
+    process.exit(1)
+  }
   packageJsons[nativeDir] = JSON.parse(readFileSync(join(nativeDir, "package.json"), "utf8"))
 }
 
@@ -93,14 +101,23 @@ if (mismatches.length > 0) {
 }
 
 if (process.env.NPM_AUTH_TOKEN) {
-  writeFileSync(join(process.env.HOME, ".npmrc"), `//registry.npmjs.org/:_authToken=${process.env.NPM_AUTH_TOKEN}`)
+  const npmrcPath = join(process.env.HOME, ".npmrc")
+  const npmrcContent = `//registry.npmjs.org/:_authToken=${process.env.NPM_AUTH_TOKEN}\n`
+  
+  if (existsSync(npmrcPath)) {
+    const existing = readFileSync(npmrcPath, 'utf8')
+    if (!existing.includes('//registry.npmjs.org/:_authToken')) {
+      writeFileSync(npmrcPath, existing + '\n' + npmrcContent)
+    }
+  } else {
+    writeFileSync(npmrcPath, npmrcContent)
+  }
 }
 
 Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
   try {
     const versions = JSON.parse(
       spawnSync("npm", ["view", name, "versions", "--json"], {
-        shell: true,
         cwd: dir,
       })
         .stdout.toString()
@@ -114,17 +131,15 @@ Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
     }
   } catch {}
 
-  const npmAuth = spawnSync("npm", ["whoami"], {
-    shell: true,
-  })
+  const npmAuth = spawnSync("npm", ["whoami"], {})
   if (npmAuth.status !== 0) {
     console.error("Error: NPM authentication failed. Please run 'npm login' or ensure NPM_AUTH_TOKEN is set")
     process.exit(1)
   }
 
   const publish = spawnSync("npm", ["publish", "--access=public"], {
-    shell: true,
     cwd: dir,
+    stdio: "inherit",
   })
   if (publish.status !== 0) {
     console.error(`Error: Failed to publish '${name}@${version}'.`)
