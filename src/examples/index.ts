@@ -252,7 +252,6 @@ class ExampleSelector {
         left: centerX,
         top: 1,
       },
-      zIndex: 10,
     })
     this.title.frameBuffer.clear(RGBA.fromInts(0, 17, 34, 0))
     this.renderer.root.add(this.title)
@@ -282,7 +281,6 @@ class ExampleSelector {
       content:
         "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
       fg: "#AAAAAA",
-      zIndex: 10,
     })
     this.renderer.root.add(this.instructions)
   }
@@ -305,7 +303,6 @@ class ExampleSelector {
       },
       width: width - 2,
       height: height - 8,
-      zIndex: 5,
       borderStyle: "single",
       borderColor: "#FFFFFF",
       focusedBorderColor: "#00AAFF",
@@ -318,7 +315,6 @@ class ExampleSelector {
     this.selectElement = new SelectRenderable("example-selector", {
       width: width - 4,
       height: height - 10,
-      zIndex: 6,
       options: selectOptions,
       backgroundColor: "#001122",
       selectedBackgroundColor: "#334455",

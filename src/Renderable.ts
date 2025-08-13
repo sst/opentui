@@ -64,8 +64,7 @@ export interface LayoutOptions {
 export interface RenderableOptions extends Partial<LayoutOptions> {
   width?: number | "auto" | `${number}%`
   height?: number | "auto" | `${number}%`
-  // TODO: zIndex does not need to be mandatory.
-  zIndex: number
+  zIndex?: number
   visible?: boolean
   buffered?: boolean
 }
@@ -142,7 +141,7 @@ export abstract class Renderable extends EventEmitter {
       this._heightValue = this._height
     }
 
-    this._zIndex = options.zIndex
+    this._zIndex = options.zIndex ?? 0
     this._visible = options.visible !== false
     this.buffered = options.buffered ?? false
 
