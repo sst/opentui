@@ -146,13 +146,12 @@ if (buildLib) {
   // Build additional entry points
   const entryPoints = ["src/3d.ts"]
   for (const entryPoint of entryPoints) {
-    const entryName = entryPoint.split("/").pop().replace(".ts", "")
     spawnSync(
       "bun",
       [
         "build",
         "--target=bun",
-        `--outfile=dist/${entryName}.js`,
+        "--outdir=dist",
         ...externalDeps.flatMap((dep) => ["--external", dep]),
         entryPoint,
       ],
