@@ -309,7 +309,7 @@ function updateDisplay(): void {
 
   const selectedColor = leftSelect.getSelectedOption()
   const selectedSize = rightSelect.getSelectedOption()
-  const inputValue = textInput.getValue()
+  const inputValue = textInput.value
 
   let displayText = "Enter your text:"
   if (inputValue) {

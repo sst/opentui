@@ -52,10 +52,10 @@ Type: Enter text in focused field`
     keyLegendDisplay.content = keyLegendText
   }
 
-  const nameValue = nameInput?.getValue() || ""
-  const emailValue = emailInput?.getValue() || ""
-  const passwordValue = passwordInput?.getValue() || ""
-  const commentValue = commentInput?.getValue() || ""
+  const nameValue = nameInput?.value || ""
+  const emailValue = emailInput?.value || ""
+  const passwordValue = passwordInput?.value || ""
+  const commentValue = commentInput?.value || ""
 
   const nameStatus = nameInput?.focused ? "FOCUSED" : "BLURRED"
   const nameColor = nameInput?.focused ? "#00FF00" : "#FF0000"
@@ -124,10 +124,10 @@ function navigateToInput(index: number): void {
 }
 
 function resetInputs(): void {
-  nameInput?.setValue("")
-  emailInput?.setValue("")
-  passwordInput?.setValue("")
-  commentInput?.setValue("")
+  nameInput!.value = ""
+  emailInput!.value = ""
+  passwordInput!.value = ""
+  commentInput!.value = ""
 
   lastActionText = "All inputs reset to empty values"
   lastActionColor = "#FF00FF"
@@ -332,7 +332,7 @@ export function run(rendererInstance: CliRenderer): void {
       // Only respond to Ctrl+C for clear
       const activeInput = getActiveInput()
       if (activeInput) {
-        activeInput.setValue("")
+        activeInput.value = ""
         lastActionText = `${getInputName(activeInput)} input cleared`
         lastActionColor = "#FFAA00"
         updateDisplays()
