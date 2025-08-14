@@ -75,7 +75,13 @@ export class SelectRenderable extends Renderable {
     this._itemSpacing = options.itemSpacing || 0
 
     this.fontHeight = this._font ? measureText({ text: "A", font: this._font }).height : 1
-    this.linesPerItem = this.showDescription ? (this._font ? this.fontHeight + 1 : 2) : this._font ? this.fontHeight : 1
+    this.linesPerItem = this._showDescription
+      ? this._font
+        ? this.fontHeight + 1
+        : 2
+      : this._font
+        ? this.fontHeight
+        : 1
     this.linesPerItem += this._itemSpacing
 
     this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
@@ -265,11 +271,11 @@ export class SelectRenderable extends Renderable {
     switch (keyName) {
       case "up":
       case "k":
-        this.moveUp(isShift ? this.fastScrollStep : 1)
+        this.moveUp(isShift ? this._fastScrollStep : 1)
         return true
       case "down":
       case "j":
-        this.moveDown(isShift ? this.fastScrollStep : 1)
+        this.moveDown(isShift ? this._fastScrollStep : 1)
         return true
       case "return":
       case "enter":
@@ -362,8 +368,14 @@ export class SelectRenderable extends Renderable {
   public set font(font: keyof typeof fonts) {
     this._font = font
     this.fontHeight = measureText({ text: "A", font: this._font }).height
-    this.linesPerItem = this.showDescription ? (this._font ? this.fontHeight + 1 : 2) : this._font ? this.fontHeight : 1
-    this.linesPerItem += this.itemSpacing
+    this.linesPerItem = this._showDescription
+      ? this._font
+        ? this.fontHeight + 1
+        : 2
+      : this._font
+        ? this.fontHeight
+        : 1
+    this.linesPerItem += this._itemSpacing
     this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
     this.updateScrollOffset()
     this.needsUpdate()
@@ -371,7 +383,13 @@ export class SelectRenderable extends Renderable {
 
   public set itemSpacing(spacing: number) {
     this._itemSpacing = spacing
-    this.linesPerItem = this.showDescription ? (this._font ? this.fontHeight + 1 : 2) : this._font ? this.fontHeight : 1
+    this.linesPerItem = this._showDescription
+      ? this._font
+        ? this.fontHeight + 1
+        : 2
+      : this._font
+        ? this.fontHeight
+        : 1
     this.linesPerItem += this._itemSpacing
     this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
     this.updateScrollOffset()
