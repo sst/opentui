@@ -1,4 +1,17 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
+const SupportedZigVersion = struct {
+    major: u32,
+    minor: u32,
+    patch: u32,
+};
+
+const SUPPORTED_ZIG_VERSIONS = [_]SupportedZigVersion{
+    .{ .major = 0, .minor = 14, .patch = 0 },
+    .{ .major = 0, .minor = 14, .patch = 1 },
+    // .{ .major = 0, .minor = 15, .patch = 0 },
+};
 
 const SupportedTarget = struct {
     cpu_arch: std.Target.Cpu.Arch,
@@ -17,7 +30,42 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
+fn checkZigVersion() void {
+    const current_version = builtin.zig_version;
+    var is_supported = false;
+
+    for (SUPPORTED_ZIG_VERSIONS) |supported| {
+        if (current_version.major == supported.major and
+            current_version.minor == supported.minor and
+            current_version.patch == supported.patch)
+        {
+            is_supported = true;
+            break;
+        }
+    }
+
+    if (!is_supported) {
+        std.debug.print("\x1b[31mError: Unsupported Zig version {}.{}.{}\x1b[0m\n", .{
+            current_version.major,
+            current_version.minor,
+            current_version.patch,
+        });
+        std.debug.print("Supported Zig versions:\n", .{});
+        for (SUPPORTED_ZIG_VERSIONS) |supported| {
+            std.debug.print("  - {}.{}.{}\n", .{
+                supported.major,
+                supported.minor,
+                supported.patch,
+            });
+        }
+        std.debug.print("\nPlease install a supported Zig version to continue.\n", .{});
+        std.process.exit(1);
+    }
+}
+
 pub fn build(b: *std.Build) void {
+    checkZigVersion();
+
     const optimize = b.option(std.builtin.OptimizeMode, "optimize", "Optimization level (Debug, ReleaseFast, ReleaseSafe, ReleaseSmall)") orelse .Debug;
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux'). If not specified, builds for all supported targets.");
 
@@ -58,13 +106,17 @@ fn buildTargetFromQuery(
     optimize: std.builtin.OptimizeMode,
 ) !void {
     const target = b.resolveTargetQuery(target_query);
+    var target_output: *std.Build.Step.Compile = undefined;
 
-    const target_output = b.addSharedLibrary(.{
-        .name = LIB_NAME,
+    const module = b.addModule(LIB_NAME, .{
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
         .link_libc = false,
+    });
+    target_output = b.addLibrary(.{
+        .name = LIB_NAME,
+        .root_module = module,
     });
 
     const target_name = try createTargetName(b.allocator, target.result);
