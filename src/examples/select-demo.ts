@@ -48,9 +48,9 @@ const selectOptions: SelectOption[] = [
 function updateDisplays() {
   if (!selectElement) return
 
-  const scrollIndicator = selectElement.getShowScrollIndicator() ? "on" : "off"
-  const description = selectElement.getShowDescription() ? "on" : "off"
-  const wrap = selectElement.getWrapSelection() ? "on" : "off"
+  const scrollIndicator = selectElement.showScrollIndicator ? "on" : "off"
+  const description = selectElement.showDescription ? "on" : "off"
+  const wrap = selectElement.wrapSelection ? "on" : "off"
 
   const keyLegendText = t`${bold(fg("#FFFFFF")("Key Controls:"))}
 ↑/↓ or j/k: Navigate items
@@ -187,20 +187,20 @@ export function run(rendererInstance: CliRenderer): void {
       lastActionColor = "#FFCC00"
       updateDisplays()
     } else if (key.name === "d") {
-      const newState = !selectElement?.getShowDescription()
-      selectElement?.setShowDescription(newState)
+      const newState = !selectElement?.showDescription
+      selectElement!.showDescription = newState
       lastActionText = `Descriptions ${newState ? "enabled" : "disabled"}`
       lastActionColor = "#FFCC00"
       updateDisplays()
     } else if (key.name === "s") {
-      const newState = !selectElement?.getShowScrollIndicator()
-      selectElement?.setShowScrollIndicator(newState)
+      const newState = !selectElement?.showScrollIndicator
+      selectElement!.showScrollIndicator = newState
       lastActionText = `Scroll indicator ${newState ? "enabled" : "disabled"}`
       lastActionColor = "#FFCC00"
       updateDisplays()
     } else if (key.name === "w") {
-      const newState = !selectElement?.getWrapSelection()
-      selectElement?.setWrapSelection(newState)
+      const newState = !selectElement?.wrapSelection
+      selectElement!.wrapSelection = newState
       lastActionText = `Wrap selection ${newState ? "enabled" : "disabled"}`
       lastActionColor = "#FFCC00"
       updateDisplays()
