@@ -12,9 +12,7 @@ function findLibrary(): string {
   try {
     const isWindows = process.platform === "win32"
     const libraryName = isWindows ? "opentui" : "libopentui"
-    const targetLibPath = require.resolve(
-      `@opentui/core-${process.platform}-${process.arch}/${libraryName}.${suffix}`,
-    )
+    const targetLibPath = require.resolve(`@opentui/core-${process.platform}-${process.arch}/${libraryName}.${suffix}`)
     if (existsSync(targetLibPath)) {
       return targetLibPath
     }

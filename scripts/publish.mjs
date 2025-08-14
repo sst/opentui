@@ -48,9 +48,7 @@ if (confirm.status !== 0) {
 
 try {
   const versions = JSON.parse(
-    spawnSync("npm", ["view", packageJson.name, "versions", "--json"], {})
-      .stdout.toString()
-      .trim(),
+    spawnSync("npm", ["view", packageJson.name, "versions", "--json"], {}).stdout.toString().trim(),
   )
 
   if (versions.includes(packageJson.version)) {
@@ -103,11 +101,11 @@ if (mismatches.length > 0) {
 if (process.env.NPM_AUTH_TOKEN) {
   const npmrcPath = join(process.env.HOME, ".npmrc")
   const npmrcContent = `//registry.npmjs.org/:_authToken=${process.env.NPM_AUTH_TOKEN}\n`
-  
+
   if (existsSync(npmrcPath)) {
-    const existing = readFileSync(npmrcPath, 'utf8')
-    if (!existing.includes('//registry.npmjs.org/:_authToken')) {
-      writeFileSync(npmrcPath, existing + '\n' + npmrcContent)
+    const existing = readFileSync(npmrcPath, "utf8")
+    if (!existing.includes("//registry.npmjs.org/:_authToken")) {
+      writeFileSync(npmrcPath, existing + "\n" + npmrcContent)
     }
   } else {
     writeFileSync(npmrcPath, npmrcContent)

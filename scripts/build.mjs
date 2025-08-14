@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
-import { dirname, join, relative, resolve } from "path"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
+import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
 
@@ -45,7 +45,7 @@ const replaceLinks = (text) => {
 }
 
 const requiredFields = ["name", "version", "license", "repository", "description"]
-const missingRequired = requiredFields.filter(field => !packageJson[field])
+const missingRequired = requiredFields.filter((field) => !packageJson[field])
 if (missingRequired.length > 0) {
   console.error(`Error: Missing required fields in package.json: ${missingRequired.join(", ")}`)
   process.exit(1)
@@ -58,12 +58,12 @@ if (buildNative) {
     cwd: join(rootDir, "src", "zig"),
     stdio: "inherit",
   })
-  
+
   if (zigBuild.error) {
     console.error("Error: Zig is not installed or not in PATH")
     process.exit(1)
   }
-  
+
   if (zigBuild.status !== 0) {
     console.error("Error: Zig build failed")
     process.exit(1)
@@ -148,13 +148,7 @@ if (buildLib) {
   for (const entryPoint of entryPoints) {
     spawnSync(
       "bun",
-      [
-        "build",
-        "--target=bun",
-        "--outdir=dist",
-        ...externalDeps.flatMap((dep) => ["--external", dep]),
-        entryPoint,
-      ],
+      ["build", "--target=bun", "--outdir=dist", ...externalDeps.flatMap((dep) => ["--external", dep]), entryPoint],
       {
         cwd: rootDir,
         stdio: "inherit",
@@ -163,7 +157,7 @@ if (buildLib) {
   }
 
   console.log("Generating TypeScript declarations...")
-  
+
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
   const tsconfigBuild = {
     extends: "./tsconfig.json",
@@ -177,18 +171,18 @@ if (buildLib) {
       skipLibCheck: true,
     },
     include: ["src/**/*"],
-    exclude: ["**/*.test.ts", "**/*.spec.ts", "src/examples/**/*", "src/benchmark/**/*", "src/zig/**/*"]
+    exclude: ["**/*.test.ts", "**/*.spec.ts", "src/examples/**/*", "src/benchmark/**/*", "src/zig/**/*"],
   }
-  
+
   writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
-  
+
   const tscResult = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
     cwd: rootDir,
     stdio: "inherit",
   })
-  
+
   rmSync(tsconfigBuildPath, { force: true })
-  
+
   if (tscResult.status !== 0) {
     console.warn("Warning: TypeScript declaration generation failed")
   } else {
@@ -200,13 +194,13 @@ if (buildLib) {
     ".": {
       import: "./index.js",
       require: "./index.js",
-      types: "./index.d.ts"
+      types: "./index.d.ts",
     },
     "./3d": {
       import: "./3d.js",
       require: "./3d.js",
-      types: "./3d.d.ts"
-    }
+      types: "./3d.d.ts",
+    },
   }
 
   const optionalDeps = Object.fromEntries(

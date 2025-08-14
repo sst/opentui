@@ -1,13 +1,6 @@
 #!/usr/bin/env bun
 
-import {
-  CliRenderer,
-  createCliRenderer,
-  RGBA,
-  GroupRenderable,
-  TextRenderable,
-  FrameBufferRenderable,
-} from "../index"
+import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
