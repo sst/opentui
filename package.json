@@ -50,5 +50,8 @@
     "@opentui/core-linux-arm64": "latest",
     "@opentui/core-win32-x64": "latest",
     "@opentui/core-win32-arm64": "latest"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
   }
 }
