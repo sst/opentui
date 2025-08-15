@@ -36,9 +36,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Zig build cache
-.zig-cache
-zig-out
-src/zig/lib
-
 screenshot-*.png

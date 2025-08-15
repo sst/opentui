@@ -4,38 +4,19 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 development and is not ready for production use. It will be the foundational TUI framework for both
 [opencode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
 
+This monorepo contains the following packages:
+- [`@opentui/core`](packages/core) - The core library also works completely standalone, providing an imperative API and all the primitives.
+
 ## Install
 
 ```bash
 bun install @opentui/core
 ```
 
-## Build
+## Running Examples
 
 ```bash
-bun run build
-```
-
-This creates platform-specific libraries that are automatically loaded by the TypeScript layer.
-
-## Examples
-
-```bash
+bun install
+cd packages/core
 bun run src/examples/index.ts
-```
-
-## CLI Renderer
-
-### Renderables
-
-Renderables are hierarchical objects that can be positioned, nested, styled and rendered to the terminal:
-
-```typescript
-import { createCliRenderer, TextRenderable } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-const obj = new TextRenderable("my-obj", { content: "Hello, world!" })
-
-renderer.root.add(obj)
 ```
