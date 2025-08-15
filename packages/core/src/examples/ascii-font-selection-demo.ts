@@ -18,7 +18,7 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
 
   mainContainer = new BoxRenderable("mainContainer", {
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 1,
     width: 95,
@@ -32,7 +32,7 @@ export function run(renderer: CliRenderer): void {
   renderer.root.add(mainContainer)
 
   fontGroup = new GroupRenderable("fontGroup", {
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 2,
     zIndex: 10,
@@ -97,7 +97,7 @@ export function run(renderer: CliRenderer): void {
   mainContainer.add(instructions)
 
   statusBox = new BoxRenderable("statusBox", {
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 32,
     width: 95,

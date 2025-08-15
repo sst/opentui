@@ -41,7 +41,7 @@ export interface LayoutOptions {
   alignItems?: AlignString
   justifyContent?: JustifyString
   flexBasis?: number | "auto" | undefined
-  positionType?: PositionTypeString
+  position?: PositionTypeString
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
   bottom?: number | "auto" | `${number}%`
@@ -450,7 +450,7 @@ export abstract class Renderable extends EventEmitter {
       this.layoutNode.setHeight(options.height)
     }
 
-    this._positionType = options.positionType ?? "relative"
+    this._positionType = options.position ?? "relative"
     if (this._positionType === "absolute") {
       node.setPositionType(PositionType.Absolute)
     }

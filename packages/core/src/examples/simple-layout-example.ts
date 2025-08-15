@@ -335,7 +335,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     backgroundColor: "#ff6b6b",
     borderStyle: "single",
     borderColor: "#ff4757",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: 0,
     flexDirection: "row",

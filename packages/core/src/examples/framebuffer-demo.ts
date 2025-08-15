@@ -45,7 +45,7 @@ export function run(renderer: CliRenderer): void {
 
   const titleText = new TextRenderable("framebuffer_title", {
     content: "FrameBuffer Demo",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 1,
     fg: RGBA.fromInts(255, 255, 100),
@@ -56,7 +56,7 @@ export function run(renderer: CliRenderer): void {
 
   const subtitleText = new TextRenderable("framebuffer_subtitle", {
     content: "Showcasing framebuffers with transparency and partial drawing",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 2,
     fg: RGBA.fromInts(200, 200, 200),
@@ -66,7 +66,7 @@ export function run(renderer: CliRenderer): void {
 
   const instructionsText = new TextRenderable("framebuffer_instructions", {
     content: "Press Escape to return to menu",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 3,
     fg: RGBA.fromInts(150, 150, 150),
@@ -77,7 +77,7 @@ export function run(renderer: CliRenderer): void {
   const patternBufferRenderable = new FrameBufferRenderable("pattern", {
     width: renderer.terminalWidth,
     height: renderer.terminalHeight,
-    positionType: "absolute",
+    position: "absolute",
     zIndex: 0,
     respectAlpha: true,
   })
@@ -95,7 +95,7 @@ export function run(renderer: CliRenderer): void {
   const boxObj = new FrameBufferRenderable("moving-box", {
     width: 20,
     height: 10,
-    positionType: "absolute",
+    position: "absolute",
     left: 10,
     top: 10,
     zIndex: 1,
@@ -125,7 +125,7 @@ export function run(renderer: CliRenderer): void {
   const overlayBufferRenderable = new FrameBufferRenderable("overlay", {
     width: 40,
     height: 15,
-    positionType: "absolute",
+    position: "absolute",
     left: 30,
     top: 15,
     zIndex: 2,
@@ -169,7 +169,7 @@ export function run(renderer: CliRenderer): void {
   const ballObj = new FrameBufferRenderable("ball", {
     width: 3,
     height: 3,
-    positionType: "absolute",
+    position: "absolute",
     left: 20,
     top: 20,
     zIndex: 3,
@@ -190,7 +190,7 @@ export function run(renderer: CliRenderer): void {
   const resizableObj = new FrameBufferRenderable("resizable-box", {
     width: 10,
     height: 5,
-    positionType: "absolute",
+    position: "absolute",
     left: 50,
     top: 8,
     zIndex: 3,
@@ -239,7 +239,7 @@ export function run(renderer: CliRenderer): void {
   const sourceObj = new FrameBufferRenderable("large-source", {
     width: 40,
     height: 20,
-    positionType: "absolute",
+    position: "absolute",
     zIndex: -1,
     visible: false,
   })
@@ -262,7 +262,7 @@ export function run(renderer: CliRenderer): void {
   const cropBuffer1Renderable = new FrameBufferRenderable("crop-demo-1", {
     width: 12,
     height: 8,
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 35,
     zIndex: 4,
@@ -273,7 +273,7 @@ export function run(renderer: CliRenderer): void {
   const cropBuffer2Renderable = new FrameBufferRenderable("crop-demo-2", {
     width: 15,
     height: 6,
-    positionType: "absolute",
+    position: "absolute",
     left: 25,
     top: 35,
     zIndex: 4,
@@ -284,7 +284,7 @@ export function run(renderer: CliRenderer): void {
   const cropBuffer3Renderable = new FrameBufferRenderable("crop-demo-3", {
     width: 10,
     height: 10,
-    positionType: "absolute",
+    position: "absolute",
     left: 45,
     top: 35,
     zIndex: 4,
@@ -295,7 +295,7 @@ export function run(renderer: CliRenderer): void {
   // Label for the crop demo
   const cropDemoLabel = new TextRenderable("crop_demo_label", {
     content: "Partial FrameBuffer Drawing Demo:",
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 34,
     fg: RGBA.fromInts(255, 255, 200),
@@ -479,7 +479,7 @@ export function run(renderer: CliRenderer): void {
 
   const debugInstructionsText = new TextRenderable("framebuffer_debug_instructions", {
     content: "Press 1-4 to change corner | Escape: Back to menu",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 2,
     fg: RGBA.fromInts(200, 200, 200),

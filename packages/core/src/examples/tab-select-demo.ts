@@ -87,7 +87,7 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.root.add(parentContainer)
 
   tabSelect = new TabSelectRenderable("main-tabs", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 2,
     width: 70,
@@ -113,7 +113,7 @@ export function run(rendererInstance: CliRenderer): void {
     content: t``,
     width: 40,
     height: 10,
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 8,
     zIndex: 50,
@@ -126,7 +126,7 @@ export function run(rendererInstance: CliRenderer): void {
     content: t``,
     width: 80,
     height: 6,
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 19,
     zIndex: 50,

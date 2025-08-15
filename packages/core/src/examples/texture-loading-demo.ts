@@ -105,7 +105,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("status", {
     content: "Loading texture...",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: 1,
     fg: "#FFFFFF",
@@ -115,7 +115,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const controlsText = new TextRenderable("controls", {
     content: "WASD: Move | QE: Rotate | ZX: Zoom | R: Reset | Space: Toggle rotation | Escape: Return",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: HEIGHT - 2,
     fg: "#FFFFFF",

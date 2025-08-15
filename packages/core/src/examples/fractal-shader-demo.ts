@@ -139,7 +139,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const controlsText = new TextRenderable("fractal_controls", {
     content: "Space: Pause/Resume | R: Reset | P: Screenshot | +/-: Speed | Escape: Back to menu",
-    positionType: "absolute",
+    position: "absolute",
     top: HEIGHT - 2,
     fg: "#FFFFFF",
     zIndex: 20,
@@ -148,7 +148,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("fractal_status", {
     content: "Speed: 1.0x",
-    positionType: "absolute",
+    position: "absolute",
     top: 1,
     fg: "#FFFFFF",
     zIndex: 20,

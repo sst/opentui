@@ -121,7 +121,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   // Box in the background to show alpha channel works
   const backgroundBox = new BoxRenderable("shader-cube-box", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 5,
     width: WIDTH - 10,
@@ -274,7 +274,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   let uiLine = 0
   const lightVizText = new TextRenderable("shader-light-viz", {
     content: "Light Visualization: ON (V to toggle)",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -284,7 +284,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const lightColorText = new TextRenderable("shader-light-color", {
     content: "Point Light: Warm (C to change)",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -294,7 +294,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const customLightsText = new TextRenderable("shader-custom-lights", {
     content: "Custom Lights: ON (L to toggle)",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -304,7 +304,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const materialToggleText = new TextRenderable("shader-material-toggle", {
     content: "Material: Auto-cycling (M to toggle, N to change)",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -314,7 +314,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const textureEffectsText = new TextRenderable("shader-texture-effects", {
     content: "Texture Effects: P-Specular [OFF] | B-Normal [OFF] | I-Emissive [OFF]",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -324,7 +324,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const filterStatusText = new TextRenderable("shader-filter-status", {
     content: `Filter: ${filterFunctions[currentFilterIndex].name} (,/. to cycle)`,
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -334,7 +334,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const param1StatusText = new TextRenderable("shader-param1-status", {
     content: ``,
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -345,7 +345,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const param2StatusText = new TextRenderable("shader-param2-status", {
     content: ``,
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: uiLine++,
     fg: "#FFFFFF",
@@ -357,7 +357,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const controlsText = new TextRenderable("shader-controls", {
     content:
       "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | ,/. Filter | [/]{/} Param Adjust",
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: HEIGHT - 2,
     fg: "#FFFFFF",

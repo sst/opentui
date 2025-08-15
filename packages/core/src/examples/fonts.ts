@@ -48,7 +48,7 @@ export function run(rendererInstance: CliRenderer): void {
   buffer = new FrameBufferRenderable("ascii-demo", {
     width: renderer.terminalWidth,
     height: contentHeight,
-    positionType: "absolute",
+    position: "absolute",
     zIndex: 10,
   })
   rendererInstance.root.add(buffer)
@@ -194,7 +194,7 @@ export function run(rendererInstance: CliRenderer): void {
 
   const scrollInstructions = new TextRenderable("scroll-instructions", {
     content: "USE J/K OR ARROW KEYS TO SCROLL",
-    positionType: "absolute",
+    position: "absolute",
     left: renderer.terminalWidth - 32,
     top: 1,
     fg: RGBA.fromInts(255, 255, 0, 255),
