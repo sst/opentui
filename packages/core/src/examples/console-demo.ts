@@ -54,7 +54,7 @@ class ConsoleButton extends BoxRenderable {
       width,
       height,
       zIndex: 100,
-      bg: color,
+      backgroundColor: color,
       borderColor: borderColor,
       borderStyle: "rounded",
       title: label,
@@ -69,11 +69,11 @@ class ConsoleButton extends BoxRenderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.isPressed) {
-      this._bg = this.pressBg
+      this.backgroundColor = this.pressBg
     } else if (this.isHovered) {
-      this._bg = this.hoverBg
+      this.backgroundColor = this.hoverBg
     } else {
-      this._bg = this.originalBg
+      this.backgroundColor = this.originalBg
     }
 
     super.renderSelf(buffer)
@@ -86,8 +86,8 @@ class ConsoleButton extends BoxRenderable {
       const centerX = this.x + Math.floor(this.width / 2)
       const centerY = this.y + Math.floor(this.height / 2)
 
-      buffer.setCell(centerX - 1, centerY, "✦", sparkleColor, this._bg)
-      buffer.setCell(centerX + 1, centerY, "✦", sparkleColor, this._bg)
+      buffer.setCell(centerX - 1, centerY, "✦", sparkleColor, this.backgroundColor)
+      buffer.setCell(centerX + 1, centerY, "✦", sparkleColor, this.backgroundColor)
     }
   }
 

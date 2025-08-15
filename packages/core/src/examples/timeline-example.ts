@@ -58,7 +58,7 @@ class TimelineExample {
       },
       width: 8,
       height: 4,
-      bg: "#FF6B6B",
+      backgroundColor: "#FF6B6B",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -75,7 +75,7 @@ class TimelineExample {
       },
       width: 12,
       height: 4,
-      bg: "#FF0000",
+      backgroundColor: "#FF0000",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -92,7 +92,7 @@ class TimelineExample {
       },
       width: 12,
       height: 4,
-      bg: "#4ECDC4",
+      backgroundColor: "#4ECDC4",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -109,7 +109,7 @@ class TimelineExample {
       },
       width: 8,
       height: 4,
-      bg: "#9B59B6",
+      backgroundColor: "#9B59B6",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -126,7 +126,7 @@ class TimelineExample {
       },
       width: 60,
       height: 3,
-      bg: "#333366",
+      backgroundColor: "#333366",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -143,7 +143,7 @@ class TimelineExample {
       },
       width: 30,
       height: 3,
-      bg: "#333366",
+      backgroundColor: "#333366",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -160,7 +160,7 @@ class TimelineExample {
       },
       width: 27,
       height: 3,
-      bg: "#333366",
+      backgroundColor: "#333366",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -177,7 +177,7 @@ class TimelineExample {
       },
       width: 60,
       height: 14,
-      bg: "#1a1a2e",
+      backgroundColor: "#1a1a2e",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
@@ -320,7 +320,7 @@ class TimelineExample {
         },
         width: Math.max(1, Math.floor(mainProgress)),
         height: 1,
-        bg: "#FFE66D",
+        backgroundColor: "#FFE66D",
         zIndex: 2,
         border: false,
       })
@@ -339,7 +339,7 @@ class TimelineExample {
         },
         width: Math.max(1, Math.floor(sub1Progress)),
         height: 1,
-        bg: "#FF6B6B",
+        backgroundColor: "#FF6B6B",
         zIndex: 2,
         border: false,
       })
@@ -358,7 +358,7 @@ class TimelineExample {
         },
         width: Math.max(1, Math.floor(sub2Progress)),
         height: 1,
-        bg: "#4ECDC4",
+        backgroundColor: "#4ECDC4",
         zIndex: 2,
         border: false,
       })
@@ -487,7 +487,7 @@ class TimelineExample {
           const hexColor = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
           const colorObject = this.parentContainer.getRenderable("color-object") as BoxRenderable
           if (colorObject) {
-            colorObject.bg = hexColor
+            colorObject.backgroundColor = hexColor
           }
 
           this.statusLine4.content = `Color: rgb(${r}, ${g}, ${b})`
@@ -528,7 +528,7 @@ class TimelineExample {
           const hexColor = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
           const colorObject = this.parentContainer.getRenderable("color-object") as BoxRenderable
           if (colorObject) {
-            colorObject.bg = hexColor
+            colorObject.backgroundColor = hexColor
           }
 
           this.statusLine4.content = `Final Color: rgb(${r}, ${g}, ${b}), opacity=${opacity.toFixed(2)}`

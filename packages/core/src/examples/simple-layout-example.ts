@@ -96,7 +96,7 @@ function setupHorizontalLayout(): void {
   sidebar.minWidth = 15
   sidebar.height = "auto"
   if (sidebarText) sidebarText.content = "LEFT SIDEBAR"
-  sidebar.bg = "#64748b"
+  sidebar.backgroundColor = "#64748b"
 
   mainContent.flexBasis = "auto"
   mainContent.flexGrow = 1
@@ -105,7 +105,7 @@ function setupHorizontalLayout(): void {
   mainContent.minWidth = 20
   mainContent.height = "auto"
   if (mainContentText) mainContentText.content = "MAIN CONTENT"
-  mainContent.bg = "#eab308"
+  mainContent.backgroundColor = "#eab308"
 }
 
 function setupVerticalLayout(): void {
@@ -130,7 +130,7 @@ function setupVerticalLayout(): void {
   sidebar.minHeight = 3
   sidebar.width = "auto"
   if (sidebarText) sidebarText.content = "TOP BAR"
-  sidebar.bg = "#059669"
+  sidebar.backgroundColor = "#059669"
 
   mainContent.flexBasis = "auto"
   mainContent.flexGrow = 1
@@ -139,7 +139,7 @@ function setupVerticalLayout(): void {
   mainContent.minHeight = 5
   mainContent.width = "auto"
   if (mainContentText) mainContentText.content = "MAIN CONTENT"
-  mainContent.bg = "#eab308"
+  mainContent.backgroundColor = "#eab308"
 }
 
 function setupCenteredLayout(): void {
@@ -164,7 +164,7 @@ function setupCenteredLayout(): void {
   mainContent.maxWidth = Math.floor(renderer!.terminalWidth * 0.8)
   mainContent.height = "auto"
   if (mainContentText) mainContentText.content = "CENTERED CONTENT"
-  mainContent.bg = "#7c3aed"
+  mainContent.backgroundColor = "#7c3aed"
 }
 
 function setupThreeColumnLayout(): void {
@@ -191,7 +191,7 @@ function setupThreeColumnLayout(): void {
   sidebar.minWidth = 12
   sidebar.height = "auto"
   if (sidebarText) sidebarText.content = "LEFT"
-  sidebar.bg = "#dc2626"
+  sidebar.backgroundColor = "#dc2626"
 
   mainContent.flexBasis = "auto"
   mainContent.flexGrow = 1
@@ -200,7 +200,7 @@ function setupThreeColumnLayout(): void {
   mainContent.minWidth = 20
   mainContent.height = "auto"
   if (mainContentText) mainContentText.content = "CENTER"
-  mainContent.bg = "#059669"
+  mainContent.backgroundColor = "#059669"
 
   rightSidebar.flexBasis = sidebarWidth
   rightSidebar.flexGrow = 0
@@ -209,7 +209,7 @@ function setupThreeColumnLayout(): void {
   rightSidebar.minWidth = 12
   rightSidebar.height = "auto"
   if (rightSidebarText) rightSidebarText.content = "RIGHT"
-  rightSidebar.bg = "#7c3aed"
+  rightSidebar.backgroundColor = "#7c3aed"
 }
 
 function createLayoutElements(rendererInstance: CliRenderer): void {
@@ -220,7 +220,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: 3,
-    bg: "#3b82f6",
+    backgroundColor: "#3b82f6",
     borderStyle: "single",
     alignItems: Align.Center,
   })
@@ -247,7 +247,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    bg: "#64748b",
+    backgroundColor: "#64748b",
     borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
@@ -269,7 +269,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    bg: "#919599",
+    backgroundColor: "#919599",
     borderStyle: "single",
     flexGrow: 1,
     flexShrink: 1,
@@ -291,7 +291,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    bg: "#7c3aed",
+    backgroundColor: "#7c3aed",
     borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
@@ -313,7 +313,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: 3,
-    bg: "#1e40af",
+    backgroundColor: "#1e40af",
     borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
@@ -335,7 +335,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 100,
     width: 8,
     height: 3,
-    bg: "#ff6b6b",
+    backgroundColor: "#ff6b6b",
     borderStyle: "single",
     borderColor: "#ff4757",
     positionType: "absolute",

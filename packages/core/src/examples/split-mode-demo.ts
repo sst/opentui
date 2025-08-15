@@ -65,7 +65,7 @@ class SplitModeAnimations {
       },
       width: this.renderer.width - 6,
       height: 8,
-      bg: "#1a1a2e",
+      backgroundColor: "#1a1a2e",
       zIndex: 1,
       borderStyle: "double",
       borderColor: "#4a4a6a",
@@ -103,7 +103,7 @@ class SplitModeAnimations {
         },
         width: this.renderer.width - 16,
         height: 1,
-        bg: "#333333",
+        backgroundColor: "#333333",
         zIndex: 1,
         border: false,
       })
@@ -117,7 +117,7 @@ class SplitModeAnimations {
         },
         width: 1,
         height: 1,
-        bg: system.color,
+        backgroundColor: system.color,
         zIndex: 2,
         border: false,
       })
@@ -133,7 +133,7 @@ class SplitModeAnimations {
       },
       width: this.renderer.width - 6,
       height: 4,
-      bg: "#2d1b2e",
+      backgroundColor: "#2d1b2e",
       zIndex: 1,
       borderStyle: "single",
       borderColor: "#8a4a8a",
@@ -170,7 +170,7 @@ class SplitModeAnimations {
         },
         width: 3,
         height: 1,
-        bg: color,
+        backgroundColor: color,
         zIndex: 3,
         border: false,
       })
@@ -189,7 +189,7 @@ class SplitModeAnimations {
         },
         width: 1,
         height: 1,
-        bg: color,
+        backgroundColor: color,
         zIndex: 3,
         border: false,
       })

@@ -308,7 +308,7 @@ class ExampleSelector {
       focusedBorderColor: "#00AAFF",
       title: "Examples",
       titleAlignment: "center",
-      bg: "transparent",
+      backgroundColor: "transparent",
       shouldFill: false,
     })
 
