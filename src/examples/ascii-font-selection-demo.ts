@@ -91,7 +91,7 @@ export function run(renderer: CliRenderer): void {
   fontGroup.add(slickFont)
   allFontRenderables.push(slickFont)
 
-  const instructions = new TextRenderable("instructions", {
+  const instructions = new TextRenderable("ascii-font-instructions", {
     content: "Click and drag to select text across any ASCII font elements. Press 'C' to clear selection.",
     position: {
       left: 2,
@@ -111,7 +111,6 @@ export function run(renderer: CliRenderer): void {
     width: 95,
     height: 10,
     bg: "#0d1117",
-    zIndex: 1,
     borderColor: "#50565d",
     title: "Selection Status",
     titleAlignment: "left",
@@ -120,14 +119,9 @@ export function run(renderer: CliRenderer): void {
 
   statusText = new TextRenderable("statusText", {
     content: "No selection - try selecting across different ASCII fonts",
-    position: {
-      left: 3,
-      top: 34,
-    },
-    zIndex: 2,
     fg: "#f0f6fc",
   })
-  renderer.root.add(statusText)
+  statusBox.add(statusText)
 
   selectionStartText = new TextRenderable("selectionStartText", {
     content: "",
@@ -138,7 +132,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 2,
     fg: "#7dd3fc",
   })
-  renderer.root.add(selectionStartText)
+  statusBox.add(selectionStartText)
 
   selectionMiddleText = new TextRenderable("selectionMiddleText", {
     content: "",
@@ -149,7 +143,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 2,
     fg: "#94a3b8",
   })
-  renderer.root.add(selectionMiddleText)
+  statusBox.add(selectionMiddleText)
 
   selectionEndText = new TextRenderable("selectionEndText", {
     content: "",
@@ -160,7 +154,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 2,
     fg: "#7dd3fc",
   })
-  renderer.root.add(selectionEndText)
+  statusBox.add(selectionEndText)
 
   debugText = new TextRenderable("debugText", {
     content: "",
@@ -171,7 +165,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 2,
     fg: "#e6edf3",
   })
-  renderer.root.add(debugText)
+  statusBox.add(debugText)
 
   renderer.on("selection", (selection) => {
     if (selection && statusText && debugText && selectionStartText && selectionMiddleText && selectionEndText) {
@@ -229,41 +223,19 @@ export function run(renderer: CliRenderer): void {
 export function destroy(renderer: CliRenderer): void {
   allFontRenderables = []
 
-  if (fontGroup) {
-    renderer.root.remove("fontGroup")
-    fontGroup = null
-  }
+  fontGroup?.destroyRecursively()
+  mainContainer?.destroyRecursively()
+  statusBox?.destroyRecursively()
+  
+  fontGroup = null
+  mainContainer = null
+  statusBox = null
+  statusText = null
+  selectionStartText = null
+  selectionMiddleText = null
+  selectionEndText = null
+  debugText = null
 
-  if (mainContainer) {
-    renderer.root.remove("mainContainer")
-    mainContainer = null
-  }
-  if (statusBox) {
-    renderer.root.remove("statusBox")
-    statusBox = null
-  }
-  if (statusText) {
-    renderer.root.remove("statusText")
-    statusText = null
-  }
-  if (selectionStartText) {
-    renderer.root.remove("selectionStartText")
-    selectionStartText = null
-  }
-  if (selectionMiddleText) {
-    renderer.root.remove("selectionMiddleText")
-    selectionMiddleText = null
-  }
-  if (selectionEndText) {
-    renderer.root.remove("selectionEndText")
-    selectionEndText = null
-  }
-  if (debugText) {
-    renderer.root.remove("debugText")
-    debugText = null
-  }
-
-  renderer.root.remove("instructions")
   renderer.clearSelection()
 }
 
