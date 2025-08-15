@@ -10,7 +10,6 @@ import {
   Justify,
   LogLevel,
   MeasureMode,
-  NodeType,
   Overflow,
   PositionType,
   Unit,
