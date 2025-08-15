@@ -28,13 +28,13 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
 
   constructor(id: string, options: ASCIIFontOptions) {
     const font = options.font || "tiny"
-    const text = options.text || "known"
+    const text = options.text || ""
     const measurements = measureText({ text: text, font })
 
     super(id, {
       ...options,
-      width: measurements.width,
-      height: measurements.height,
+      width: measurements.width || 1,
+      height: measurements.height || 1,
       respectAlpha: true,
     })
 
