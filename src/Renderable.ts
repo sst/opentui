@@ -377,31 +377,9 @@ export abstract class Renderable extends EventEmitter {
       node.setMaxHeight(options.maxHeight)
     }
 
-    if (typeof options.margin === "object") {
-      const { top, right, bottom, left } = options.margin
-      if (top !== undefined) node.setMargin(Edge.Top, top)
-      if (right !== undefined) node.setMargin(Edge.Right, right)
-      if (bottom !== undefined) node.setMargin(Edge.Bottom, bottom)
-      if (left !== undefined) node.setMargin(Edge.Left, left)
-    } else if (options.margin !== undefined) {
-      node.setMargin(Edge.Top, options.margin)
-      node.setMargin(Edge.Right, options.margin)
-      node.setMargin(Edge.Bottom, options.margin)
-      node.setMargin(Edge.Left, options.margin)
-    }
+    this.margin = options.margin
 
-    if (typeof options.padding === "object") {
-      const { top, right, bottom, left } = options.padding
-      if (top !== undefined) node.setPadding(Edge.Top, top)
-      if (right !== undefined) node.setPadding(Edge.Right, right)
-      if (bottom !== undefined) node.setPadding(Edge.Bottom, bottom)
-      if (left !== undefined) node.setPadding(Edge.Left, left)
-    } else if (options.padding !== undefined) {
-      node.setPadding(Edge.Top, options.padding)
-      node.setPadding(Edge.Right, options.padding)
-      node.setPadding(Edge.Bottom, options.padding)
-      node.setPadding(Edge.Left, options.padding)
-    }
+    this.padding = options.padding
   }
 
   public setPosition(position: Position): void {
@@ -502,6 +480,40 @@ export abstract class Renderable extends EventEmitter {
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
     this.layoutNode.yogaNode.setMaxHeight(maxHeight)
+    this.requestLayout()
+  }
+
+  public set margin(margin: LayoutOptions["margin"]) {
+    const node = this.layoutNode.yogaNode
+    if (typeof margin === "object") {
+      const { top, right, bottom, left } = margin
+      if (top !== undefined) node.setMargin(Edge.Top, top)
+      if (right !== undefined) node.setMargin(Edge.Right, right)
+      if (bottom !== undefined) node.setMargin(Edge.Bottom, bottom)
+      if (left !== undefined) node.setMargin(Edge.Left, left)
+    } else if (margin !== undefined) {
+      node.setMargin(Edge.Top, margin)
+      node.setMargin(Edge.Right, margin)
+      node.setMargin(Edge.Bottom, margin)
+      node.setMargin(Edge.Left, margin)
+    }
+    this.requestLayout()
+  }
+
+  public set padding(padding: LayoutOptions["padding"]) {
+    const node = this.layoutNode.yogaNode
+    if (typeof padding === "object") {
+      const { top, right, bottom, left } = padding
+      if (top !== undefined) node.setPadding(Edge.Top, top)
+      if (right !== undefined) node.setPadding(Edge.Right, right)
+      if (bottom !== undefined) node.setPadding(Edge.Bottom, bottom)
+      if (left !== undefined) node.setPadding(Edge.Left, left)
+    } else if (padding !== undefined) {
+      node.setPadding(Edge.Top, padding)
+      node.setPadding(Edge.Right, padding)
+      node.setPadding(Edge.Bottom, padding)
+      node.setPadding(Edge.Left, padding)
+    }
     this.requestLayout()
   }
 
