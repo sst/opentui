@@ -14,7 +14,7 @@ import type { ColorInput } from "../types"
 import { Edge } from "yoga-layout"
 
 export interface BoxOptions extends RenderableOptions {
-  bg?: string | RGBA
+  backgroundColor?: string | RGBA
   borderStyle?: BorderStyle
   border?: boolean | BorderSides[]
   borderColor?: string | RGBA
@@ -26,7 +26,7 @@ export interface BoxOptions extends RenderableOptions {
 }
 
 export class BoxRenderable extends Renderable {
-  protected _bg: RGBA
+  protected _backgroundColor: RGBA
   protected _border: boolean | BorderSides[]
   protected _borderStyle: BorderStyle
   protected _borderColor: RGBA
@@ -40,7 +40,7 @@ export class BoxRenderable extends Renderable {
   constructor(id: string, options: BoxOptions) {
     super(id, options)
 
-    this._bg = parseColor(options.bg || "transparent")
+    this._backgroundColor = parseColor(options.backgroundColor || "transparent")
     this._border = options.border ?? true
     this._borderStyle = options.borderStyle || "single"
     this._borderColor = parseColor(options.borderColor || "#FFFFFF")
@@ -54,15 +54,15 @@ export class BoxRenderable extends Renderable {
     this.applyYogaBorders()
   }
 
-  public get bg(): RGBA {
-    return this._bg
+  public get backgroundColor(): RGBA {
+    return this._backgroundColor
   }
 
-  public set bg(value: RGBA | string | undefined) {
+  public set backgroundColor(value: RGBA | string | undefined) {
     if (value) {
       const newColor = parseColor(value)
-      if (this._bg !== newColor) {
-        this._bg = newColor
+      if (this._backgroundColor !== newColor) {
+        this._backgroundColor = newColor
         this.needsUpdate()
       }
     }
@@ -153,7 +153,7 @@ export class BoxRenderable extends Renderable {
       customBorderChars: this.customBorderChars,
       border: this._border,
       borderColor: currentBorderColor,
-      backgroundColor: this._bg,
+      backgroundColor: this._backgroundColor,
       shouldFill: this.shouldFill,
       title: this._title,
       titleAlignment: this._titleAlignment,

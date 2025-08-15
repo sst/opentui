@@ -548,7 +548,7 @@ function displayBenchmarkResults(): void {
     },
     width: Math.floor((WIDTH * 2) / 3),
     height: Math.floor((HEIGHT * 2) / 3),
-    bg: RGBA.fromInts(10, 10, 40),
+    backgroundColor: RGBA.fromInts(10, 10, 40),
     zIndex: 30,
   })
   uiContainer.add(resultsBox)

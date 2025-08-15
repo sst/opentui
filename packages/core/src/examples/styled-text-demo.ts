@@ -90,7 +90,7 @@ ${bgYellow(fg("black")(" NOTICE "))} System update available`
       top: 27,
     },
     zIndex: 1,
-    bg: "#001122",
+    backgroundColor: "#001122",
     borderColor: "#00FFFF",
     borderStyle: "single",
     title: "COMPLEX REAL-TIME DASHBOARD",

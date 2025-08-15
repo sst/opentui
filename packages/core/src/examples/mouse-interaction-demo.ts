@@ -58,7 +58,7 @@ class DraggableBox extends BoxRenderable {
       width,
       height,
       zIndex: 100,
-      bg: bgColor,
+      backgroundColor: bgColor,
       borderColor: borderColor,
       borderStyle: "rounded",
       title: label,
@@ -131,7 +131,7 @@ class DraggableBox extends BoxRenderable {
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
         this.zIndex = nextZIndex++
-        this.bg = this.dragBg
+        this.backgroundColor = this.dragBg
         this.borderColor = this.dragBorderColor
         event.preventDefault()
         break
@@ -140,7 +140,7 @@ class DraggableBox extends BoxRenderable {
         if (this.isDragging) {
           this.isDragging = false
           this.zIndex = 100
-          this.bg = this.originalBg
+          this.backgroundColor = this.originalBg
           this.borderColor = this.originalBorderColor
           event.preventDefault()
         }
