@@ -63,7 +63,6 @@ if (process.env.SKIP_CONSOLE_CACHE !== "true") {
   })
 }
 
-
 class TerminalConsoleCache extends EventEmitter {
   private originalConsole: {
     log: typeof console.log

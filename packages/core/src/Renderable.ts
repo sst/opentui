@@ -614,7 +614,7 @@ export abstract class Renderable extends EventEmitter {
       console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
       this.remove(obj.id)
     }
-    
+
     this.replaceParent(obj)
 
     const childLayoutNode = obj.getLayoutNode()
