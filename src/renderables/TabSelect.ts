@@ -12,7 +12,7 @@ export interface TabSelectOption {
 
 export interface TabSelectRenderableOptions extends Omit<RenderableOptions, "height"> {
   height?: number
-  options: TabSelectOption[]
+  options?: TabSelectOption[]
   tabWidth?: number
   backgroundColor?: ColorInput
   textColor?: ColorInput
@@ -49,7 +49,7 @@ function calculateDynamicHeight(showUnderline: boolean, showDescription: boolean
 export class TabSelectRenderable extends Renderable {
   protected focusable: boolean = true
 
-  private options: TabSelectOption[]
+  private options: TabSelectOption[] = []
   private selectedIndex: number = 0
   private scrollOffset: number = 0
   private tabWidth: number

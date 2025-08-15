@@ -6,7 +6,7 @@ import { parseColor } from "../utils"
 import { FrameBufferRenderable } from "./FrameBuffer"
 
 export interface ASCIIFontOptions extends RenderableOptions {
-  text: string
+  text?: string
   font?: "tiny" | "block" | "shade" | "slick"
   fg?: RGBA | RGBA[]
   bg?: RGBA
@@ -28,16 +28,17 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
 
   constructor(id: string, options: ASCIIFontOptions) {
     const font = options.font || "tiny"
-    const measurements = measureText({ text: options.text, font })
+    const text = options.text || ""
+    const measurements = measureText({ text: text, font })
 
     super(id, {
       ...options,
-      width: measurements.width,
-      height: measurements.height,
+      width: measurements.width || 1,
+      height: measurements.height || 1,
       respectAlpha: true,
     })
 
-    this._text = options.text
+    this._text = text
     this._font = font
     this._fg = Array.isArray(options.fg) ? options.fg : [options.fg || RGBA.fromInts(255, 255, 255, 255)]
     this._bg = options.bg || RGBA.fromValues(0, 0, 0, 0)

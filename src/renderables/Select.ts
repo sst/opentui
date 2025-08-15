@@ -16,7 +16,7 @@ export interface SelectRenderableOptions extends RenderableOptions {
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
   focusedTextColor?: ColorInput
-  options: SelectOption[]
+  options?: SelectOption[]
   selectedBackgroundColor?: ColorInput
   selectedTextColor?: ColorInput
   descriptionColor?: ColorInput
@@ -37,7 +37,7 @@ export enum SelectRenderableEvents {
 export class SelectRenderable extends Renderable {
   protected focusable: boolean = true
 
-  private options: SelectOption[]
+  private options: SelectOption[] = []
   private selectedIndex: number = 0
   private scrollOffset: number = 0
   private maxVisibleItems: number

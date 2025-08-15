@@ -5,6 +5,7 @@
     "type": "git",
     "url": "https://github.com/sst/opentui"
   },
+  "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "dist/index.js",
   "version": "0.1.1",
