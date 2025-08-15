@@ -52,10 +52,8 @@ class TimelineExample {
 
     this.boxObject = new BoxRenderable("box-object", {
       positionType: "absolute",
-      position: {
-        left: 10,
-        top: 8,
-      },
+      left: 10,
+      top: 8,
       width: 8,
       height: 4,
       backgroundColor: "#FF6B6B",
@@ -69,10 +67,8 @@ class TimelineExample {
 
     const colorObject = new BoxRenderable("color-object", {
       positionType: "absolute",
-      position: {
-        left: 25,
-        top: 8,
-      },
+      left: 25,
+      top: 8,
       width: 12,
       height: 4,
       backgroundColor: "#FF0000",
@@ -86,10 +82,8 @@ class TimelineExample {
 
     const physicsObject = new BoxRenderable("physics-object", {
       positionType: "absolute",
-      position: {
-        left: 45,
-        top: 8,
-      },
+      left: 45,
+      top: 8,
       width: 12,
       height: 4,
       backgroundColor: "#4ECDC4",
@@ -103,10 +97,8 @@ class TimelineExample {
 
     this.alternatingObject = new BoxRenderable("alternating-object", {
       positionType: "absolute",
-      position: {
-        left: 1,
-        top: 1,
-      },
+      left: 1,
+      top: 1,
       width: 8,
       height: 4,
       backgroundColor: "#9B59B6",
@@ -120,10 +112,8 @@ class TimelineExample {
 
     const mainTimelineBox = new BoxRenderable("main-timeline", {
       positionType: "absolute",
-      position: {
-        left: 2,
-        top: 15,
-      },
+      left: 2,
+      top: 15,
       width: 60,
       height: 3,
       backgroundColor: "#333366",
@@ -137,10 +127,8 @@ class TimelineExample {
 
     const subTimeline1Box = new BoxRenderable("sub-timeline-1", {
       positionType: "absolute",
-      position: {
-        left: 2,
-        top: 19,
-      },
+      left: 2,
+      top: 19,
       width: 30,
       height: 3,
       backgroundColor: "#333366",
@@ -154,10 +142,8 @@ class TimelineExample {
 
     const subTimeline2Box = new BoxRenderable("sub-timeline-2", {
       positionType: "absolute",
-      position: {
-        left: 35,
-        top: 19,
-      },
+      left: 35,
+      top: 19,
       width: 27,
       height: 3,
       backgroundColor: "#333366",
@@ -171,10 +157,8 @@ class TimelineExample {
 
     const statusBox = new BoxRenderable("status", {
       positionType: "absolute",
-      position: {
-        left: 2,
-        top: 24,
-      },
+      left: 2,
+      top: 24,
       width: 60,
       height: 14,
       backgroundColor: "#1a1a2e",
@@ -189,10 +173,8 @@ class TimelineExample {
     this.statusLine1 = new TextRenderable("status-line1", {
       content: "Timeline: Initializing...",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 25,
-      },
+      left: 4,
+      top: 25,
       fg: "#FFFFFF",
       zIndex: 2,
     })
@@ -201,10 +183,8 @@ class TimelineExample {
     this.statusLine2 = new TextRenderable("status-line2", {
       content: "Box Position: x=0.0, y=0.0",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 26,
-      },
+      left: 4,
+      top: 26,
       fg: "#FFFF00",
       zIndex: 2,
     })
@@ -213,10 +193,8 @@ class TimelineExample {
     this.statusLine3 = new TextRenderable("status-line3", {
       content: "Box Scale/Rot: scale=1.0, rot=0.0",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 27,
-      },
+      left: 4,
+      top: 27,
       fg: "#FFE66D",
       zIndex: 2,
     })
@@ -225,10 +203,8 @@ class TimelineExample {
     this.statusLine4 = new TextRenderable("status-line4", {
       content: "Color: rgb(255, 0, 0)",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 28,
-      },
+      left: 4,
+      top: 28,
       fg: "#FF6B6B",
       zIndex: 2,
     })
@@ -237,10 +213,8 @@ class TimelineExample {
     this.statusLine5 = new TextRenderable("status-line5", {
       content: "Color Opacity: 1.0",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 29,
-      },
+      left: 4,
+      top: 29,
       fg: "#FF9999",
       zIndex: 2,
     })
@@ -249,10 +223,8 @@ class TimelineExample {
     this.statusLine6 = new TextRenderable("status-line6", {
       content: "Physics: v=0.0, a=0.0, m=1.0",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 30,
-      },
+      left: 4,
+      top: 30,
       fg: "#4ECDC4",
       zIndex: 2,
     })
@@ -261,10 +233,8 @@ class TimelineExample {
     this.statusLine7 = new TextRenderable("status-line7", {
       content: "Progress: Main=0% Sub1=0% Sub2=0%",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 31,
-      },
+      left: 4,
+      top: 31,
       fg: "#CCCCCC",
       zIndex: 2,
     })
@@ -273,10 +243,8 @@ class TimelineExample {
     this.statusLine8 = new TextRenderable("status-line8", {
       content: "Example Value: 0.000 (0.0 → 0.5)",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 32,
-      },
+      left: 4,
+      top: 32,
       fg: "#FFE66D",
       zIndex: 2,
     })
@@ -285,10 +253,8 @@ class TimelineExample {
     this.statusLine9 = new TextRenderable("status-line9", {
       content: "Alternating: x=65 (left/right loop=5)",
       positionType: "absolute",
-      position: {
-        left: 4,
-        top: 33,
-      },
+      left: 4,
+      top: 33,
       fg: "#9B59B6",
       zIndex: 2,
     })
@@ -314,10 +280,8 @@ class TimelineExample {
     } else {
       const newMainProgressBox = new BoxRenderable("main-progress", {
         positionType: "absolute",
-        position: {
-          left: 3,
-          top: 16,
-        },
+        left: 3,
+        top: 16,
         width: Math.max(1, Math.floor(mainProgress)),
         height: 1,
         backgroundColor: "#FFE66D",
@@ -333,10 +297,8 @@ class TimelineExample {
     } else {
       const newSub1ProgressBox = new BoxRenderable("sub1-progress", {
         positionType: "absolute",
-        position: {
-          left: 3,
-          top: 20,
-        },
+        left: 3,
+        top: 20,
         width: Math.max(1, Math.floor(sub1Progress)),
         height: 1,
         backgroundColor: "#FF6B6B",
@@ -352,10 +314,8 @@ class TimelineExample {
     } else {
       const newSub2ProgressBox = new BoxRenderable("sub2-progress", {
         positionType: "absolute",
-        position: {
-          left: 36,
-          top: 20,
-        },
+        left: 36,
+        top: 20,
         width: Math.max(1, Math.floor(sub2Progress)),
         height: 1,
         backgroundColor: "#4ECDC4",

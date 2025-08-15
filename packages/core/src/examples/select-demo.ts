@@ -98,10 +98,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   selectElement = new SelectRenderable("demo-select", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 2,
-    },
+    left: 5,
+    top: 2,
     width: 50,
     height: 20,
     options: selectOptions,
@@ -127,10 +125,8 @@ export function run(rendererInstance: CliRenderer): void {
     width: 40,
     height: 9,
     positionType: "absolute",
-    position: {
-      left: 60,
-      top: 3,
-    },
+    left: 60,
+    top: 3,
     zIndex: 50,
     fg: "#AAAAAA",
   })
@@ -141,10 +137,8 @@ export function run(rendererInstance: CliRenderer): void {
     width: 80,
     height: 8,
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 24,
-    },
+    left: 5,
+    top: 24,
     zIndex: 50,
   })
   parentContainer.add(statusDisplay)

@@ -53,10 +53,8 @@ And everything is blue`
     width: 30,
     height: 6,
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 2,
-    },
+    left: 2,
+    top: 2,
     zIndex: 1,
   })
   parentContainer.add(houseDisplay)
@@ -72,10 +70,8 @@ ${bgYellow(fg("black")(" NOTICE "))} System update available`
     width: 50,
     height: 6,
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 8,
-    },
+    left: 2,
+    top: 8,
     zIndex: 1,
   })
   parentContainer.add(statusDisplay)
@@ -85,10 +81,8 @@ ${bgYellow(fg("black")(" NOTICE "))} System update available`
     width: 72,
     height: 21,
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 27,
-    },
+    left: 2,
+    top: 27,
     zIndex: 1,
     backgroundColor: "#001122",
     borderColor: "#00FFFF",
@@ -118,10 +112,8 @@ ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit
 
   complexDisplay = new TextRenderable("complex-template", {
     content: initialText,
-    position: {
-      left: 1,
-      top: 1,
-    },
+    left: 1,
+    top: 1,
     zIndex: 1,
   })
   dashboardBox.add(complexDisplay)
@@ -145,10 +137,8 @@ ${underline("Dynamic:")} ${bold(fg("#FF6B6B")(Math.sin(counter * 0.1) > 0 ? "UP"
           width: 40,
           height: 4,
           positionType: "absolute",
-          position: {
-            left: 2,
-            top: 15,
-          },
+          left: 2,
+          top: 15,
           zIndex: 1,
         })
         parentContainer?.add(newDynamicDisplay)
@@ -223,10 +213,8 @@ ${underline("Features demonstrated:")}
     width: 60,
     height: 12,
     positionType: "absolute",
-    position: {
-      left: 40,
-      top: 2,
-    },
+    left: 40,
+    top: 2,
     zIndex: 1,
     fg: "#CCCCCC",
   })
@@ -244,10 +232,8 @@ Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
     width: 30,
     height: 6,
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 20,
-    },
+    left: 2,
+    top: 20,
     zIndex: 1,
   })
   parentContainer.add(typesDisplay)

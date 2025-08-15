@@ -152,10 +152,8 @@ export function run(rendererInstance: CliRenderer): void {
   // Create input elements
   nameInput = new InputRenderable("name-input", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 2,
-    },
+    left: 5,
+    top: 2,
     width: 40,
     height: 3,
     zIndex: 100,
@@ -170,10 +168,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   emailInput = new InputRenderable("email-input", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 6,
-    },
+    left: 5,
+    top: 6,
     width: 40,
     height: 3,
     zIndex: 100,
@@ -188,10 +184,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   passwordInput = new InputRenderable("password-input", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 10,
-    },
+    left: 5,
+    top: 10,
     width: 40,
     height: 3,
     zIndex: 100,
@@ -206,10 +200,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   commentInput = new InputRenderable("comment-input", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 14,
-    },
+    left: 5,
+    top: 14,
     width: 60,
     height: 3,
     zIndex: 100,
@@ -234,10 +226,8 @@ export function run(rendererInstance: CliRenderer): void {
     width: 50,
     height: 12,
     positionType: "absolute",
-    position: {
-      left: 50,
-      top: 2,
-    },
+    left: 50,
+    top: 2,
     zIndex: 50,
     fg: "#AAAAAA",
   })
@@ -248,10 +238,8 @@ export function run(rendererInstance: CliRenderer): void {
     width: 80,
     height: 18,
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 19,
-    },
+    left: 5,
+    top: 19,
     zIndex: 50,
   })
   parentContainer.add(statusDisplay)

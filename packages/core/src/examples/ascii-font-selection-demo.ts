@@ -19,10 +19,8 @@ export function run(renderer: CliRenderer): void {
 
   mainContainer = new BoxRenderable("mainContainer", {
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 1,
-    },
+    left: 1,
+    top: 1,
     width: 95,
     height: 30,
     backgroundColor: "#161b22",
@@ -35,10 +33,8 @@ export function run(renderer: CliRenderer): void {
 
   fontGroup = new GroupRenderable("fontGroup", {
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 2,
-    },
+    left: 2,
+    top: 2,
     zIndex: 10,
   })
   mainContainer.add(fontGroup)
@@ -93,10 +89,8 @@ export function run(renderer: CliRenderer): void {
 
   const instructions = new TextRenderable("ascii-font-instructions", {
     content: "Click and drag to select text across any ASCII font elements. Press 'C' to clear selection.",
-    position: {
-      left: 2,
-      top: 26,
-    },
+    left: 2,
+    top: 26,
     zIndex: 2,
     fg: "#f0f6fc",
   })
@@ -104,10 +98,8 @@ export function run(renderer: CliRenderer): void {
 
   statusBox = new BoxRenderable("statusBox", {
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 32,
-    },
+    left: 1,
+    top: 32,
     width: 95,
     height: 10,
     backgroundColor: "#0d1117",
@@ -125,10 +117,7 @@ export function run(renderer: CliRenderer): void {
 
   selectionStartText = new TextRenderable("selectionStartText", {
     content: "",
-    position: {
-      left: 3,
-      top: 35,
-    },
+    left: 3,
     zIndex: 2,
     fg: "#7dd3fc",
   })
@@ -136,10 +125,7 @@ export function run(renderer: CliRenderer): void {
 
   selectionMiddleText = new TextRenderable("selectionMiddleText", {
     content: "",
-    position: {
-      left: 3,
-      top: 36,
-    },
+    left: 3,
     zIndex: 2,
     fg: "#94a3b8",
   })
@@ -147,10 +133,7 @@ export function run(renderer: CliRenderer): void {
 
   selectionEndText = new TextRenderable("selectionEndText", {
     content: "",
-    position: {
-      left: 3,
-      top: 37,
-    },
+    left: 3,
     zIndex: 2,
     fg: "#7dd3fc",
   })
@@ -158,10 +141,7 @@ export function run(renderer: CliRenderer): void {
 
   debugText = new TextRenderable("debugText", {
     content: "",
-    position: {
-      left: 3,
-      top: 39,
-    },
+    left: 3,
     zIndex: 2,
     fg: "#e6edf3",
   })

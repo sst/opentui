@@ -86,10 +86,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
     content:
       "'g'(burst), 'a'(auto), 's'(stop), 'x'(clear), '1'(3D Static), '2'(2D Static), '3'(3D Animated), '4'(Custom), '5'(2D Animated)",
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 1,
-    },
+    left: 1,
+    top: 1,
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -98,10 +96,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   particleCountText = new TextRenderable("particle-count", {
     content: "Particles: 0",
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 2,
-    },
+    left: 1,
+    top: 2,
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -110,10 +106,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   configInfoText = new TextRenderable("particle-config-info", {
     content: "Mode: 3D Static | Auto-spawning",
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 3,
-    },
+    left: 1,
+    top: 3,
     fg: "#FFFFFF",
     zIndex: 20,
   })

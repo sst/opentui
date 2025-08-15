@@ -213,7 +213,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     focusedBorderColor: "#eab308",
     flexGrow: 0,
     flexShrink: 0,
-    margin: { top: 1 },
+    marginTop: 1,
     backgroundColor: "transparent",
   })
 

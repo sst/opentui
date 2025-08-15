@@ -33,10 +33,8 @@ export function run(renderer: CliRenderer): void {
 
   mainContainer = new BoxRenderable("mainContainer", {
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 1,
-    },
+    left: 1,
+    top: 1,
     width: 88,
     height: 22,
     backgroundColor: "#161b22",
@@ -49,10 +47,8 @@ export function run(renderer: CliRenderer): void {
 
   leftGroup = new GroupRenderable("leftGroup", {
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 2,
-    },
+    left: 2,
+    top: 2,
     zIndex: 10,
   })
   mainContainer.add(leftGroup)
@@ -94,10 +90,8 @@ export function run(renderer: CliRenderer): void {
   allTextRenderables.push(text3)
 
   const nestedBox = new BoxRenderable("nestedBox", {
-    position: {
-      left: 2,
-      top: 1,
-    },
+    left: 2,
+    top: 1,
     width: 31,
     height: 4,
     backgroundColor: "#2d1b69",
@@ -120,19 +114,15 @@ export function run(renderer: CliRenderer): void {
 
   rightGroup = new GroupRenderable("rightGroup", {
     positionType: "absolute",
-    position: {
-      left: 48,
-      top: 2,
-    },
+    left: 48,
+    top: 2,
     zIndex: 10,
   })
   mainContainer.add(rightGroup)
 
   const box2 = new BoxRenderable("box2", {
-    position: {
-      left: 2,
-      top: 0,
-    },
+    left: 2,
+    top: 0,
     width: 35,
     height: 12,
     backgroundColor: "#1c2128",
@@ -179,10 +169,8 @@ export function run(renderer: CliRenderer): void {
 
   floatingBox = new BoxRenderable("floatingBox", {
     positionType: "absolute",
-    position: {
-      left: 90,
-      top: 11,
-    },
+    left: 90,
+    top: 11,
     width: 31,
     height: 6,
     backgroundColor: "#1b2f23",
@@ -207,10 +195,8 @@ ${green("✓")} Styled text support`,
 
   const instructions = new TextRenderable("instructions", {
     content: "Click and drag to select text across any elements. Press 'C' to clear selection.",
-    position: {
-      left: 2,
-      top: 17,
-    },
+    left: 2,
+    top: 17,
     zIndex: 2,
     fg: "#f0f6fc",
   })
@@ -219,10 +205,8 @@ ${green("✓")} Styled text support`,
 
   statusBox = new BoxRenderable("statusBox", {
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 24,
-    },
+    left: 1,
+    top: 24,
     width: 88,
     height: 9,
     backgroundColor: "#0d1117",

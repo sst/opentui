@@ -33,30 +33,24 @@ export interface LayoutOptions {
   justifyContent?: JustifyString
   flexBasis?: number | "auto" | undefined
   positionType?: PositionTypeString
-  position?: Position
+  top?: number | "auto" | `${number}%`
+  right?: number | "auto" | `${number}%`
+  bottom?: number | "auto" | `${number}%`
+  left?: number | "auto" | `${number}%`
   minWidth?: number
   minHeight?: number
   maxWidth?: number
   maxHeight?: number
-  margin?:
-    | {
-        top?: number
-        right?: number
-        bottom?: number
-        left?: number
-      }
-    | number
-    | "auto"
-    | `${number}%`
-  padding?:
-    | {
-        top?: number
-        right?: number
-        bottom?: number
-        left?: number
-      }
-    | number
-    | `${number}%`
+  margin?: number | "auto" | `${number}%`
+  marginTop?: number | "auto" | `${number}%`
+  marginRight?: number | "auto" | `${number}%`
+  marginBottom?: number | "auto" | `${number}%`
+  marginLeft?: number | "auto" | `${number}%`
+  padding?: number | `${number}%`
+  paddingTop?: number | `${number}%`
+  paddingRight?: number | `${number}%`
+  paddingBottom?: number | `${number}%`
+  paddingLeft?: number | `${number}%`
   enableLayout?: boolean
 }
 
@@ -81,6 +75,66 @@ function validateOptions(id: string, options: RenderableOptions): void {
       throw new TypeError(`Invalid height for Renderable ${id}: ${options.height}`)
     }
   }
+}
+
+function isValidPercentage(value: any): value is `${number}%` {
+  if (typeof value === "string" && value.endsWith("%")) {
+    const numPart = value.slice(0, -1)
+    const num = parseFloat(numPart)
+    return !Number.isNaN(num)
+  }
+  return false
+}
+
+export function isMarginType(value: any): value is number | "auto" | `${number}%` {
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  if (value === "auto") {
+    return true
+  }
+  return isValidPercentage(value)
+}
+
+export function isPaddingType(value: any): value is number | `${number}%` {
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  return isValidPercentage(value)
+}
+
+export function isPositionType(value: any): value is number | "auto" | `${number}%` {
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  if (value === "auto") {
+    return true
+  }
+  return isValidPercentage(value)
+}
+
+export function isDimensionType(value: any): value is number | "auto" | `${number}%` {
+  return isPositionType(value)
+}
+
+export function isFlexBasisType(value: any): value is number | "auto" | undefined {
+  if (value === undefined || value === "auto") {
+    return true
+  }
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  return false
+}
+
+export function isSizeType(value: any): value is number | `${number}%` | undefined {
+  if (value === undefined) {
+    return true
+  }
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  return isValidPercentage(value)
 }
 
 export abstract class Renderable extends EventEmitter {
@@ -241,21 +295,47 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set x(value: number) {
-    this.setPosition({
-      left: value,
-    })
+    this.left = value
   }
 
-  public set top(value: number) {
-    this.setPosition({
-      top: value,
-    })
+  public get top(): number | "auto" | `${number}%` | undefined {
+    return this._position.top
   }
 
-  public set left(value: number) {
-    this.setPosition({
-      left: value,
-    })
+  public set top(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ top: value })
+    }
+  }
+
+  public get right(): number | "auto" | `${number}%` | undefined {
+    return this._position.right
+  }
+
+  public set right(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ right: value })
+    }
+  }
+
+  public get bottom(): number | "auto" | `${number}%` | undefined {
+    return this._position.bottom
+  }
+
+  public set bottom(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ bottom: value })
+    }
+  }
+
+  public get left(): number | "auto" | `${number}%` | undefined {
+    return this._position.left
+  }
+
+  public set left(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ left: value })
+    }
   }
 
   public get y(): number {
@@ -266,9 +346,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set y(value: number) {
-    this.setPosition({
-      top: value,
-    })
+    this.top = value
   }
 
   public get width(): number {
@@ -276,9 +354,11 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set width(value: number | "auto" | `${number}%`) {
-    this._width = value
-    this.layoutNode.setWidth(value)
-    this.requestLayout()
+    if (isDimensionType(value)) {
+      this._width = value
+      this.layoutNode.setWidth(value)
+      this.requestLayout()
+    }
   }
 
   public get height(): number {
@@ -286,9 +366,11 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set height(value: number | "auto" | `${number}%`) {
-    this._height = value
-    this.layoutNode.setHeight(value)
-    this.requestLayout()
+    if (isDimensionType(value)) {
+      this._height = value
+      this.layoutNode.setHeight(value)
+      this.requestLayout()
+    }
   }
 
   public get zIndex(): number {
@@ -316,14 +398,14 @@ export abstract class Renderable extends EventEmitter {
   private setupYogaProperties(options: RenderableOptions): void {
     const node = this.layoutNode.yogaNode
 
-    if (options.flexBasis !== undefined) {
+    if (isFlexBasisType(options.flexBasis)) {
       node.setFlexBasis(options.flexBasis)
     }
 
-    if (options.minWidth !== undefined) {
+    if (isSizeType(options.minWidth)) {
       node.setMinWidth(options.minWidth)
     }
-    if (options.minHeight !== undefined) {
+    if (isSizeType(options.minHeight)) {
       node.setMinHeight(options.minHeight)
     }
 
@@ -350,11 +432,11 @@ export abstract class Renderable extends EventEmitter {
       node.setJustifyContent(parseJustify(options.justifyContent))
     }
 
-    if (options.width !== undefined) {
+    if (isDimensionType(options.width)) {
       this._width = options.width
       this.layoutNode.setWidth(options.width)
     }
-    if (options.height !== undefined) {
+    if (isDimensionType(options.height)) {
       this._height = options.height
       this.layoutNode.setHeight(options.height)
     }
@@ -364,25 +446,75 @@ export abstract class Renderable extends EventEmitter {
       node.setPositionType(PositionType.Absolute)
     }
 
-    if (options.position) {
-      this._position = options.position
-      this.updateYogaPosition(options.position)
+    // TODO: flatten position properties internally as well
+    const hasPositionProps = options.top !== undefined || options.right !== undefined || 
+                            options.bottom !== undefined || options.left !== undefined
+    if (hasPositionProps) {
+      this._position = {
+        top: options.top,
+        right: options.right,
+        bottom: options.bottom,
+        left: options.left
+      }
+      this.updateYogaPosition(this._position)
     }
 
-    if (options.maxWidth !== undefined) {
+    if (isSizeType(options.maxWidth)) {
       node.setMaxWidth(options.maxWidth)
     }
-    if (options.maxHeight !== undefined) {
+    if (isSizeType(options.maxHeight)) {
       node.setMaxHeight(options.maxHeight)
     }
 
-    this.margin = options.margin
+    this.setupMarginAndPadding(options)
+  }
 
-    this.padding = options.padding
+  private setupMarginAndPadding(options: RenderableOptions): void {
+    const node = this.layoutNode.yogaNode
+    
+    if (isMarginType(options.margin)) {
+      node.setMargin(Edge.Top, options.margin)
+      node.setMargin(Edge.Right, options.margin)
+      node.setMargin(Edge.Bottom, options.margin)
+      node.setMargin(Edge.Left, options.margin)
+    }
+    
+    if (isMarginType(options.marginTop)) {
+      node.setMargin(Edge.Top, options.marginTop)
+    }
+    if (isMarginType(options.marginRight)) {
+      node.setMargin(Edge.Right, options.marginRight)
+    }
+    if (isMarginType(options.marginBottom)) {
+      node.setMargin(Edge.Bottom, options.marginBottom)
+    }
+    if (isMarginType(options.marginLeft)) {
+      node.setMargin(Edge.Left, options.marginLeft)
+    }
+    
+    if (isPaddingType(options.padding)) {
+      node.setPadding(Edge.Top, options.padding)
+      node.setPadding(Edge.Right, options.padding)
+      node.setPadding(Edge.Bottom, options.padding)
+      node.setPadding(Edge.Left, options.padding)
+    }
+    
+    if (isPaddingType(options.paddingTop)) {
+      node.setPadding(Edge.Top, options.paddingTop)
+    }
+    if (isPaddingType(options.paddingRight)) {
+      node.setPadding(Edge.Right, options.paddingRight)
+    }
+    if (isPaddingType(options.paddingBottom)) {
+      node.setPadding(Edge.Bottom, options.paddingBottom)
+    }
+    if (isPaddingType(options.paddingLeft)) {
+      node.setPadding(Edge.Left, options.paddingLeft)
+    }
   }
 
   public setPosition(position: Position): void {
-    this._position = position
+    this._position = { ...this._position, ...position }
     this.updateYogaPosition(position)
   }
 
@@ -391,28 +523,28 @@ export abstract class Renderable extends EventEmitter {
     const { top, right, bottom, left } = position
 
     if (this._positionType === "relative") {
-      if (top !== undefined) {
+      if (isPositionType(top)) {
         if (top === "auto") {
           node.setPositionAuto(Edge.Top)
         } else {
           node.setPosition(Edge.Top, top)
         }
       }
-      if (right !== undefined) {
+      if (isPositionType(right)) {
         if (right === "auto") {
           node.setPositionAuto(Edge.Right)
         } else {
           node.setPosition(Edge.Right, right)
         }
       }
-      if (bottom !== undefined) {
+      if (isPositionType(bottom)) {
         if (bottom === "auto") {
           node.setPositionAuto(Edge.Bottom)
         } else {
           node.setPosition(Edge.Bottom, bottom)
         }
       }
-      if (left !== undefined) {
+      if (isPositionType(left)) {
         if (left === "auto") {
           node.setPositionAuto(Edge.Left)
         } else {
@@ -458,62 +590,116 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set flexBasis(basis: number | "auto" | undefined) {
-    this.layoutNode.yogaNode.setFlexBasis(basis)
-    this.requestLayout()
+    if (isFlexBasisType(basis)) {
+      this.layoutNode.yogaNode.setFlexBasis(basis)
+      this.requestLayout()
+    }
   }
 
   public set minWidth(minWidth: number | `${number}%` | undefined) {
-    this.layoutNode.yogaNode.setMinWidth(minWidth)
-    this.requestLayout()
+    if (isSizeType(minWidth)) {
+      this.layoutNode.yogaNode.setMinWidth(minWidth)
+      this.requestLayout()
+    }
   }
 
   public set maxWidth(maxWidth: number | `${number}%` | undefined) {
-    this.layoutNode.yogaNode.setMaxWidth(maxWidth)
-    this.requestLayout()
+    if (isSizeType(maxWidth)) {
+      this.layoutNode.yogaNode.setMaxWidth(maxWidth)
+      this.requestLayout()
+    }
   }
 
   public set minHeight(minHeight: number | `${number}%` | undefined) {
-    this.layoutNode.yogaNode.setMinHeight(minHeight)
-    this.requestLayout()
+    if (isSizeType(minHeight)) {
+      this.layoutNode.yogaNode.setMinHeight(minHeight)
+      this.requestLayout()
+    }
   }
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
-    this.layoutNode.yogaNode.setMaxHeight(maxHeight)
-    this.requestLayout()
+    if (isSizeType(maxHeight)) {
+      this.layoutNode.yogaNode.setMaxHeight(maxHeight)
+      this.requestLayout()
+    }
   }
 
-  public set margin(margin: LayoutOptions["margin"]) {
-    const node = this.layoutNode.yogaNode
-    if (typeof margin === "object") {
-      const { top, right, bottom, left } = margin
-      if (top !== undefined) node.setMargin(Edge.Top, top)
-      if (right !== undefined) node.setMargin(Edge.Right, right)
-      if (bottom !== undefined) node.setMargin(Edge.Bottom, bottom)
-      if (left !== undefined) node.setMargin(Edge.Left, left)
-    } else if (margin !== undefined) {
+  public set margin(margin: number | "auto" | `${number}%` | undefined) {
+    if (isMarginType(margin)) {
+      const node = this.layoutNode.yogaNode
       node.setMargin(Edge.Top, margin)
       node.setMargin(Edge.Right, margin)
       node.setMargin(Edge.Bottom, margin)
       node.setMargin(Edge.Left, margin)
+      this.requestLayout()
     }
-    this.requestLayout()
   }
 
-  public set padding(padding: LayoutOptions["padding"]) {
-    const node = this.layoutNode.yogaNode
-    if (typeof padding === "object") {
-      const { top, right, bottom, left } = padding
-      if (top !== undefined) node.setPadding(Edge.Top, top)
-      if (right !== undefined) node.setPadding(Edge.Right, right)
-      if (bottom !== undefined) node.setPadding(Edge.Bottom, bottom)
-      if (left !== undefined) node.setPadding(Edge.Left, left)
-    } else if (padding !== undefined) {
+  public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
+    if (isMarginType(margin)) {
+      this.layoutNode.yogaNode.setMargin(Edge.Top, margin)
+      this.requestLayout()
+    }
+  }
+
+  public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
+    if (isMarginType(margin)) {
+      this.layoutNode.yogaNode.setMargin(Edge.Right, margin)
+      this.requestLayout()
+    }
+  }
+
+  public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
+    if (isMarginType(margin)) {
+      this.layoutNode.yogaNode.setMargin(Edge.Bottom, margin)
+      this.requestLayout()
+    }
+  }
+
+  public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
+    if (isMarginType(margin)) {
+      this.layoutNode.yogaNode.setMargin(Edge.Left, margin)
+      this.requestLayout()
+    }
+  }
+
+  public set padding(padding: number | `${number}%` | undefined) {
+    if (isPaddingType(padding)) {
+      const node = this.layoutNode.yogaNode
       node.setPadding(Edge.Top, padding)
       node.setPadding(Edge.Right, padding)
       node.setPadding(Edge.Bottom, padding)
       node.setPadding(Edge.Left, padding)
+      this.requestLayout()
     }
-    this.requestLayout()
+  }
+
+  public set paddingTop(padding: number | `${number}%` | undefined) {
+    if (isPaddingType(padding)) {
+      this.layoutNode.yogaNode.setPadding(Edge.Top, padding)
+      this.requestLayout()
+    }
+  }
+
+  public set paddingRight(padding: number | `${number}%` | undefined) {
+    if (isPaddingType(padding)) {
+      this.layoutNode.yogaNode.setPadding(Edge.Right, padding)
+      this.requestLayout()
+    }
+  }
+
+  public set paddingBottom(padding: number | `${number}%` | undefined) {
+    if (isPaddingType(padding)) {
+      this.layoutNode.yogaNode.setPadding(Edge.Bottom, padding)
+      this.requestLayout()
+    }
+  }
+
+  public set paddingLeft(padding: number | `${number}%` | undefined) {
+    if (isPaddingType(padding)) {
+      this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
+      this.requestLayout()
+    }
   }
 
   public getLayoutNode(): TrackedNode {
