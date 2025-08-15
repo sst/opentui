@@ -8,7 +8,7 @@ import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 
 export interface TextOptions extends RenderableOptions {
-  content: StyledText | string
+  content?: StyledText | string
   fg?: string | RGBA
   bg?: string | RGBA
   selectionBg?: string | RGBA
@@ -19,7 +19,7 @@ export interface TextOptions extends RenderableOptions {
 
 export class TextRenderable extends Renderable {
   public selectable: boolean = true
-  private _text: StyledText
+  private _text: StyledText = stringToStyledText("")
   private _defaultFg: RGBA
   private _defaultBg: RGBA
   private _defaultAttributes: number
@@ -41,7 +41,9 @@ export class TextRenderable extends Renderable {
       () => this._lineInfo,
     )
 
-    this._text = typeof options.content === "string" ? stringToStyledText(options.content) : options.content
+    if (options.content) {
+      this._text = typeof options.content === "string" ? stringToStyledText(options.content) : options.content
+    }
     this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
     this._defaultAttributes = options.attributes ?? 0
