@@ -226,7 +226,7 @@ export function destroy(renderer: CliRenderer): void {
   fontGroup?.destroyRecursively()
   mainContainer?.destroyRecursively()
   statusBox?.destroyRecursively()
-  
+
   fontGroup = null
   mainContainer = null
   statusBox = null

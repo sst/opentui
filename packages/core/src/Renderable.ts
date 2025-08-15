@@ -4,6 +4,7 @@ import Yoga, { FlexDirection, Direction, PositionType, Edge, Align, Justify, typ
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
+import { parseAlign, parseFlexDirection, parseJustify, parsePositionType, type AlignString, type FlexDirectionString, type JustifyString, type PositionTypeString } from "./lib/yoga.options"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -17,8 +18,6 @@ export enum RenderableEvents {
   BLURRED = "blurred",
 }
 
-export { Justify, Align, FlexDirection, Direction, PositionType, Edge }
-
 export interface Position {
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
@@ -29,11 +28,11 @@ export interface Position {
 export interface LayoutOptions {
   flexGrow?: number
   flexShrink?: number
-  flexDirection?: FlexDirection
-  alignItems?: Align
-  justifyContent?: Justify
+  flexDirection?: FlexDirectionString
+  alignItems?: AlignString
+  justifyContent?: JustifyString
   flexBasis?: number | "auto" | undefined
-  positionType?: "absolute" | "relative"
+  positionType?: PositionTypeString
   position?: Position
   minWidth?: number
   minHeight?: number
@@ -109,7 +108,7 @@ export abstract class Renderable extends EventEmitter {
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
 
   protected layoutNode: TrackedNode
-  protected _positionType: "absolute" | "relative" = "relative"
+  protected _positionType: PositionTypeString = "relative"
   protected _position: Position = {}
 
   private renderableMap: Map<string, Renderable> = new Map()
@@ -342,13 +341,13 @@ export abstract class Renderable extends EventEmitter {
     }
 
     if (options.flexDirection !== undefined) {
-      node.setFlexDirection(options.flexDirection)
+      node.setFlexDirection(parseFlexDirection(options.flexDirection))
     }
     if (options.alignItems !== undefined) {
-      node.setAlignItems(options.alignItems)
+      node.setAlignItems(parseAlign(options.alignItems))
     }
     if (options.justifyContent !== undefined) {
-      node.setJustifyContent(options.justifyContent)
+      node.setJustifyContent(parseJustify(options.justifyContent))
     }
 
     if (options.width !== undefined) {
@@ -443,18 +442,18 @@ export abstract class Renderable extends EventEmitter {
     this.requestLayout()
   }
 
-  public set flexDirection(direction: FlexDirection) {
-    this.layoutNode.yogaNode.setFlexDirection(direction)
+  public set flexDirection(direction: FlexDirectionString) {
+    this.layoutNode.yogaNode.setFlexDirection(parseFlexDirection(direction))
     this.requestLayout()
   }
 
-  public set alignItems(alignItems: Align) {
-    this.layoutNode.yogaNode.setAlignItems(alignItems)
+  public set alignItems(alignItems: AlignString) {
+    this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
     this.requestLayout()
   }
 
-  public set justifyContent(justifyContent: Justify) {
-    this.layoutNode.yogaNode.setJustifyContent(justifyContent)
+  public set justifyContent(justifyContent: JustifyString) {
+    this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
     this.requestLayout()
   }
 
@@ -614,7 +613,7 @@ export abstract class Renderable extends EventEmitter {
       console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
       this.remove(obj.id)
     }
-    
+
     this.replaceParent(obj)
 
     const childLayoutNode = obj.getLayoutNode()

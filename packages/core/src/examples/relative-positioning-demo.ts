@@ -4,9 +4,6 @@ import {
   GroupRenderable,
   TextRenderable,
   BoxRenderable,
-  FlexDirection,
-  Align,
-  Justify,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
@@ -67,9 +64,9 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#FF44FF",
     title: "Parent A (moves in circle)",
     titleAlignment: "center",
-    flexDirection: FlexDirection.Row,
-    alignItems: Align.Stretch,
-    justifyContent: Justify.SpaceBetween,
+    flexDirection: "row",
+    alignItems: "stretch",
+    justifyContent: "space-between",
   })
   parentContainerA.add(parentBoxA)
 
@@ -143,8 +140,8 @@ export function run(renderer: CliRenderer): void {
     title: "Parent B (moves vertically)",
     titleAlignment: "center",
     padding: 1,
-    flexDirection: FlexDirection.Column,
-    justifyContent: Justify.SpaceBetween,
+    flexDirection: "column",
+    justifyContent: "space-between",
   })
   parentContainerB.add(parentBoxB)
 
@@ -195,7 +192,7 @@ export function run(renderer: CliRenderer): void {
     title: "Static Parent (doesn't move)",
     titleAlignment: "center",
     padding: 1,
-    flexDirection: FlexDirection.Column,
+    flexDirection: "column",
   })
   staticContainer.add(staticBox)
 
