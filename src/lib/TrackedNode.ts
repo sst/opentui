@@ -16,7 +16,6 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
   metadata: T
   parent: TrackedNode<any> | null
   children: TrackedNode<any>[]
-  zIndex: number
   protected _destroyed: boolean = false
 
   // Yoga calculates subpixels and the setMeasureFunc throws all over the place when trying to use it,
@@ -31,7 +30,6 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     this.metadata = metadata
     this.parent = null
     this.children = []
-    this.zIndex = 0
   }
 
   parseWidth(width: number | "auto" | `${number}%`): number | "auto" {
@@ -99,11 +97,6 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
 
     const index = this.children.length
     this.children.push(childNode)
-
-    if (!childNode.zIndex) {
-      childNode.zIndex = this.zIndex + 100
-    }
-
     this.yogaNode.insertChild(childNode.yogaNode, index)
 
     try {
@@ -176,7 +169,6 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     }
 
     childNode.parent = this
-    childNode.zIndex = this.zIndex + 100
     const boundedIndex = Math.max(0, Math.min(index, this.children.length))
 
     this.children.splice(boundedIndex, 0, childNode)
