@@ -1,28 +1,18 @@
-import { dlopen, suffix, toArrayBuffer, type Pointer } from "bun:ffi"
+import { dlopen, toArrayBuffer, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import type { CursorStyle, DebugOverlayCorner } from "./types"
 import { RGBA } from "./types"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
-import { createRequire } from "module"
 
-const require = createRequire(import.meta.url)
-
-function findLibrary(): string {
-  try {
-    const isWindows = process.platform === "win32"
-    const libraryName = isWindows ? "opentui" : "libopentui"
-    const targetLibPath = require.resolve(`@opentui/core-${process.platform}-${process.arch}/${libraryName}.${suffix}`)
-    if (existsSync(targetLibPath)) {
-      return targetLibPath
-    }
-  } catch {}
-
+const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+const targetLibPath = module.default
+if (!existsSync(targetLibPath)) {
   throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
 }
 
 function getOpenTUILib(libPath?: string) {
-  const resolvedLibPath = libPath || findLibrary()
+  const resolvedLibPath = libPath || targetLibPath
 
   return dlopen(resolvedLibPath, {
     // Renderer management

@@ -78,12 +78,17 @@ if (buildNative) {
     mkdirSync(nativeDir, { recursive: true })
 
     let copiedFiles = 0
+    let libraryFileName = null
     for (const name of ["libopentui", "opentui"]) {
       for (const ext of [".so", ".dll", ".dylib"]) {
         const src = join(libDir, `${name}${ext}`)
         if (existsSync(src)) {
-          copyFileSync(src, join(nativeDir, `${name}${ext}`))
+          const fileName = `${name}${ext}`
+          copyFileSync(src, join(nativeDir, fileName))
           copiedFiles++
+          if (!libraryFileName) {
+            libraryFileName = fileName
+          }
         }
       }
     }
@@ -101,6 +106,12 @@ if (buildNative) {
       process.exit(1)
     }
 
+    const indexTsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
+const path = module.default
+export default path;
+`
+    writeFileSync(join(nativeDir, "index.ts"), indexTsContent)
+
     writeFileSync(
       join(nativeDir, "package.json"),
       JSON.stringify(
@@ -108,6 +119,8 @@ if (buildNative) {
           name: nativeName,
           version: packageJson.version,
           description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
+          main: "index.ts",
+          types: "index.ts",
           license: packageJson.license,
           author: packageJson.author,
           homepage: packageJson.homepage,
