@@ -778,27 +778,6 @@ export class RootRenderable extends Renderable {
     this.calculateLayout()
   }
 
-  public add(obj: Renderable): void {
-    super.add(obj)
-
-    const childLayoutNode = obj.getLayoutNode()
-    this.layoutNode.addChild(childLayoutNode)
-    this.requestLayout()
-    this.emit(LayoutEvents.ADDED, obj)
-  }
-
-  public remove(id: string): void {
-    const obj = this.getRenderable(id)
-
-    if (obj) {
-      this.layoutNode.removeChild(obj.getLayoutNode())
-      this.emit(LayoutEvents.REMOVED, obj)
-      this.requestLayout()
-    }
-
-    super.remove(id)
-  }
-
   public requestLayout(): void {
     this.needsUpdate()
   }
