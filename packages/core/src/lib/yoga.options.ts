@@ -17,7 +17,24 @@ import {
   Wrap,
 } from "yoga-layout"
 
-export function parseAlign(value: string): Align {
+export type AlignString = "auto" | "flex-start" | "center" | "flex-end" | "stretch" | "baseline" | "space-between" | "space-around" | "space-evenly"
+export type BoxSizingString = "border-box" | "content-box"
+export type DimensionString = "width" | "height"
+export type DirectionString = "inherit" | "ltr" | "rtl"
+export type DisplayString = "flex" | "none" | "contents"
+export type EdgeString = "left" | "top" | "right" | "bottom" | "start" | "end" | "horizontal" | "vertical" | "all"
+export type FlexDirectionString = "column" | "column-reverse" | "row" | "row-reverse"
+export type GutterString = "column" | "row" | "all"
+export type JustifyString = "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly"
+export type LogLevelString = "error" | "warn" | "info" | "debug" | "verbose" | "fatal"
+export type MeasureModeString = "undefined" | "exactly" | "at-most"
+export type NodeTypeString = "default" | "text"
+export type OverflowString = "visible" | "hidden" | "scroll"
+export type PositionTypeString = "static" | "relative" | "absolute"
+export type UnitString = "undefined" | "point" | "percent" | "auto"
+export type WrapString = "no-wrap" | "wrap" | "wrap-reverse"
+
+export function parseAlign(value: AlignString): Align {
   switch (value.toLowerCase()) {
     case "auto":
       return Align.Auto
@@ -42,7 +59,7 @@ export function parseAlign(value: string): Align {
   }
 }
 
-export function parseBoxSizing(value: string): BoxSizing {
+export function parseBoxSizing(value: BoxSizingString): BoxSizing {
   switch (value.toLowerCase()) {
     case "border-box":
       return BoxSizing.BorderBox
@@ -53,7 +70,7 @@ export function parseBoxSizing(value: string): BoxSizing {
   }
 }
 
-export function parseDimension(value: string): Dimension {
+export function parseDimension(value: DimensionString): Dimension {
   switch (value.toLowerCase()) {
     case "width":
       return Dimension.Width
@@ -64,7 +81,7 @@ export function parseDimension(value: string): Dimension {
   }
 }
 
-export function parseDirection(value: string): Direction {
+export function parseDirection(value: DirectionString): Direction {
   switch (value.toLowerCase()) {
     case "inherit":
       return Direction.Inherit
@@ -77,7 +94,7 @@ export function parseDirection(value: string): Direction {
   }
 }
 
-export function parseDisplay(value: string): Display {
+export function parseDisplay(value: DisplayString): Display {
   switch (value.toLowerCase()) {
     case "flex":
       return Display.Flex
@@ -90,7 +107,7 @@ export function parseDisplay(value: string): Display {
   }
 }
 
-export function parseEdge(value: string): Edge {
+export function parseEdge(value: EdgeString): Edge {
   switch (value.toLowerCase()) {
     case "left":
       return Edge.Left
@@ -115,7 +132,7 @@ export function parseEdge(value: string): Edge {
   }
 }
 
-export function parseFlexDirection(value: string): FlexDirection {
+export function parseFlexDirection(value: FlexDirectionString): FlexDirection {
   switch (value.toLowerCase()) {
     case "column":
       return FlexDirection.Column
@@ -130,7 +147,7 @@ export function parseFlexDirection(value: string): FlexDirection {
   }
 }
 
-export function parseGutter(value: string): Gutter {
+export function parseGutter(value: GutterString): Gutter {
   switch (value.toLowerCase()) {
     case "column":
       return Gutter.Column
@@ -143,7 +160,7 @@ export function parseGutter(value: string): Gutter {
   }
 }
 
-export function parseJustify(value: string): Justify {
+export function parseJustify(value: JustifyString): Justify {
   switch (value.toLowerCase()) {
     case "flex-start":
       return Justify.FlexStart
@@ -162,7 +179,7 @@ export function parseJustify(value: string): Justify {
   }
 }
 
-export function parseLogLevel(value: string): LogLevel {
+export function parseLogLevel(value: LogLevelString): LogLevel {
   switch (value.toLowerCase()) {
     case "error":
       return LogLevel.Error
@@ -181,7 +198,7 @@ export function parseLogLevel(value: string): LogLevel {
   }
 }
 
-export function parseMeasureMode(value: string): MeasureMode {
+export function parseMeasureMode(value: MeasureModeString): MeasureMode {
   switch (value.toLowerCase()) {
     case "undefined":
       return MeasureMode.Undefined
@@ -194,7 +211,7 @@ export function parseMeasureMode(value: string): MeasureMode {
   }
 }
 
-export function parseNodeType(value: string): NodeType {
+export function parseNodeType(value: NodeTypeString): NodeType {
   switch (value.toLowerCase()) {
     case "default":
       return NodeType.Default
@@ -205,7 +222,7 @@ export function parseNodeType(value: string): NodeType {
   }
 }
 
-export function parseOverflow(value: string): Overflow {
+export function parseOverflow(value: OverflowString): Overflow {
   switch (value.toLowerCase()) {
     case "visible":
       return Overflow.Visible
@@ -218,7 +235,7 @@ export function parseOverflow(value: string): Overflow {
   }
 }
 
-export function parsePositionType(value: string): PositionType {
+export function parsePositionType(value: PositionTypeString): PositionType {
   switch (value.toLowerCase()) {
     case "static":
       return PositionType.Static
@@ -231,7 +248,7 @@ export function parsePositionType(value: string): PositionType {
   }
 }
 
-export function parseUnit(value: string): Unit {
+export function parseUnit(value: UnitString): Unit {
   switch (value.toLowerCase()) {
     case "undefined":
       return Unit.Undefined
@@ -246,7 +263,7 @@ export function parseUnit(value: string): Unit {
   }
 }
 
-export function parseWrap(value: string): Wrap {
+export function parseWrap(value: WrapString): Wrap {
   switch (value.toLowerCase()) {
     case "no-wrap":
       return Wrap.NoWrap
