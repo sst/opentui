@@ -1,4 +1,4 @@
-import { type RenderableOptions, Renderable, Edge } from "../Renderable"
+import { type RenderableOptions, Renderable } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
 import { RGBA } from "../types"
 import {
@@ -11,6 +11,7 @@ import {
 } from "../lib"
 import { parseColor } from "../utils"
 import type { ColorInput } from "../types"
+import { Edge } from "yoga-layout"
 
 export interface BoxOptions extends RenderableOptions {
   bg?: string | RGBA

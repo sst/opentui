@@ -3,9 +3,6 @@ import {
   GroupRenderable,
   BoxRenderable,
   TextRenderable,
-  FlexDirection,
-  Align,
-  Justify,
   createCliRenderer,
   type ParsedKey,
 } from "../index"
@@ -85,8 +82,8 @@ function setupHorizontalLayout(): void {
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
 
-  contentArea.flexDirection = FlexDirection.Row
-  contentArea.alignItems = Align.Stretch
+  contentArea.flexDirection = "row"
+  contentArea.alignItems = "stretch"
 
   const sidebarWidth = Math.max(15, Math.floor(renderer!.terminalWidth * 0.2))
   sidebar.flexBasis = sidebarWidth
@@ -118,8 +115,8 @@ function setupVerticalLayout(): void {
   resetElementLayout(sidebar)
   resetElementLayout(mainContent)
 
-  contentArea.flexDirection = FlexDirection.Column
-  contentArea.alignItems = Align.Stretch
+  contentArea.flexDirection = "column"
+  contentArea.alignItems = "stretch"
 
   const contentHeight = renderer!.terminalHeight - 6
   const topBarHeight = Math.max(3, Math.floor(contentHeight * 0.2))
@@ -151,9 +148,9 @@ function setupCenteredLayout(): void {
 
   resetElementLayout(mainContent)
 
-  contentArea.flexDirection = FlexDirection.Row
-  contentArea.alignItems = Align.Stretch
-  contentArea.justifyContent = Justify.Center
+  contentArea.flexDirection = "row"
+  contentArea.alignItems = "stretch"
+  contentArea.justifyContent = "center"
 
   const centerWidth = Math.max(30, Math.floor(renderer!.terminalWidth * 0.6))
   mainContent.flexBasis = centerWidth
@@ -178,8 +175,8 @@ function setupThreeColumnLayout(): void {
   resetElementLayout(mainContent)
   resetElementLayout(rightSidebar)
 
-  contentArea.flexDirection = FlexDirection.Row
-  contentArea.alignItems = Align.Stretch
+  contentArea.flexDirection = "row"
+  contentArea.alignItems = "stretch"
 
   const terminalWidth = renderer!.terminalWidth
   const sidebarWidth = Math.max(12, Math.floor(terminalWidth * 0.15))
@@ -222,7 +219,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     height: 3,
     bg: "#3b82f6",
     borderStyle: "single",
-    alignItems: Align.Center,
+    alignItems: "center",
   })
 
   headerText = new TextRenderable("header-text", {
@@ -238,7 +235,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: "auto",
-    flexDirection: FlexDirection.Row,
+    flexDirection: "row",
     flexGrow: 1,
     flexShrink: 1,
   })
@@ -251,9 +248,9 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
-    flexDirection: FlexDirection.Row,
-    alignItems: Align.Center,
-    justifyContent: Justify.Center,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   })
 
   sidebarText = new TextRenderable("sidebar-text", {
@@ -273,9 +270,9 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     borderStyle: "single",
     flexGrow: 1,
     flexShrink: 1,
-    flexDirection: FlexDirection.Row,
-    alignItems: Align.Center,
-    justifyContent: Justify.Center,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   })
 
   mainContentText = new TextRenderable("main-content-text", {
@@ -295,9 +292,9 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
-    flexDirection: FlexDirection.Row,
-    alignItems: Align.Center,
-    justifyContent: Justify.Center,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   })
 
   rightSidebarText = new TextRenderable("right-sidebar-text", {
@@ -317,9 +314,9 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     borderStyle: "single",
     flexGrow: 0,
     flexShrink: 0,
-    flexDirection: FlexDirection.Row,
-    alignItems: Align.Center,
-    justifyContent: Justify.Center,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   })
 
   footerText = new TextRenderable("footer-text", {
@@ -340,9 +337,9 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     borderColor: "#ff4757",
     positionType: "absolute",
     position: { left: 0, top: 0 },
-    flexDirection: FlexDirection.Row,
-    alignItems: Align.Center,
-    justifyContent: Justify.Center,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   })
 
   moveableText = new TextRenderable("moveable-text", {

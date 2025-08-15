@@ -3,7 +3,6 @@ import {
   GroupRenderable,
   BoxRenderable,
   TextRenderable,
-  FlexDirection,
   createCliRenderer,
   type ParsedKey,
 } from "../index"
@@ -91,7 +90,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 1,
     width: "auto",
     height: "auto",
-    flexDirection: FlexDirection.Row,
+    flexDirection: "row",
     flexGrow: 1,
     flexShrink: 1,
   })
@@ -189,7 +188,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 1,
     width: "auto",
     height: "auto",
-    flexDirection: FlexDirection.Column,
+    flexDirection: "column",
     flexGrow: 1,
     flexShrink: 1,
   })
