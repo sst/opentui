@@ -18,6 +18,7 @@ import {
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
+let floatingBox: BoxRenderable | null = null
 let leftGroup: GroupRenderable | null = null
 let rightGroup: GroupRenderable | null = null
 let statusBox: BoxRenderable | null = null
@@ -177,7 +178,7 @@ export function run(renderer: CliRenderer): void {
   box2.add(codeText4)
   allTextRenderables.push(codeText4)
 
-  const floatingBox = new BoxRenderable("floatingBox", {
+  floatingBox = new BoxRenderable("floatingBox", {
     positionType: "absolute",
     position: {
       left: 90,
@@ -327,53 +328,19 @@ ${green("✓")} Styled text support`,
 export function destroy(renderer: CliRenderer): void {
   allTextRenderables = []
 
-  renderer.root.remove("nestedText")
-  renderer.root.remove("codeText1")
-  renderer.root.remove("codeText2")
-  renderer.root.remove("codeText3")
-  renderer.root.remove("multilineText")
+  mainContainer?.destroyRecursively()
+  statusBox?.destroyRecursively()
+  floatingBox?.destroyRecursively()
 
-  if (leftGroup) {
-    renderer.root.remove("leftGroup")
-    leftGroup = null
-  }
-  if (rightGroup) {
-    renderer.root.remove("rightGroup")
-    rightGroup = null
-  }
-
-  renderer.root.remove("floatingBox")
-
-  if (mainContainer) {
-    renderer.root.remove("mainContainer")
-    mainContainer = null
-  }
-  if (statusBox) {
-    renderer.root.remove("statusBox")
-    statusBox = null
-  }
-  if (statusText) {
-    renderer.root.remove("statusText")
-    statusText = null
-  }
-  if (selectionStartText) {
-    renderer.root.remove("selectionStartText")
-    selectionStartText = null
-  }
-  if (selectionMiddleText) {
-    renderer.root.remove("selectionMiddleText")
-    selectionMiddleText = null
-  }
-  if (selectionEndText) {
-    renderer.root.remove("selectionEndText")
-    selectionEndText = null
-  }
-  if (debugText) {
-    renderer.root.remove("debugText")
-    debugText = null
-  }
-
-  renderer.root.remove("instructions")
+  mainContainer = null
+  leftGroup = null
+  rightGroup = null
+  statusBox = null
+  statusText = null
+  selectionStartText = null
+  selectionMiddleText = null
+  selectionEndText = null
+  debugText = null
 
   renderer.clearSelection()
 }

@@ -342,7 +342,7 @@ export function run(rendererInstance: CliRenderer): void {
     content: t`${bold(fg("#00ffff")("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆"))}`,
   })
 
-  instructionsText = new TextRenderable("instructions", {
+  instructionsText = new TextRenderable("split-mode-instructions", {
     positionType: "absolute",
     position: {
       left: 2,

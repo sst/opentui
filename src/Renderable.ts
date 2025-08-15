@@ -588,9 +588,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   private replaceParent(obj: Renderable) {
-    if (this.renderableMap.has(obj.id)) {
-      this.remove(obj.id)
-    }
     if (obj.parent) {
       obj.parent.remove(obj.id)
     }
@@ -601,6 +598,11 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public add(obj: Renderable, index?: number): number {
+    if (this.renderableMap.has(obj.id)) {
+      console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
+      this.remove(obj.id)
+    }
+    
     this.replaceParent(obj)
 
     const childLayoutNode = obj.getLayoutNode()
@@ -623,7 +625,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   insertBefore(obj: Renderable, anchor?: Renderable): number {
-    // Fallback to add if anchor is not provided
     if (!anchor) {
       return this.add(obj)
     }
@@ -737,6 +738,13 @@ export abstract class Renderable extends EventEmitter {
     this.destroySelf()
   }
 
+  public destroyRecursively(): void {
+    this.destroy()
+    for (const child of this.renderableArray) {
+      child.destroyRecursively()
+    }
+  }
+
   protected destroySelf(): void {
     // Default implementation: do nothing else
     // Override this method to provide custom cleanup
@@ -776,27 +784,6 @@ export class RootRenderable extends Renderable {
     this.layoutNode.yogaNode.setFlexDirection(FlexDirection.Column)
 
     this.calculateLayout()
-  }
-
-  public add(obj: Renderable): void {
-    super.add(obj)
-
-    const childLayoutNode = obj.getLayoutNode()
-    this.layoutNode.addChild(childLayoutNode)
-    this.requestLayout()
-    this.emit(LayoutEvents.ADDED, obj)
-  }
-
-  public remove(id: string): void {
-    const obj = this.getRenderable(id)
-
-    if (obj) {
-      this.layoutNode.removeChild(obj.getLayoutNode())
-      this.emit(LayoutEvents.REMOVED, obj)
-      this.requestLayout()
-    }
-
-    super.remove(id)
   }
 
   public requestLayout(): void {
