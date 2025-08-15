@@ -588,9 +588,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   private replaceParent(obj: Renderable) {
-    if (this.renderableMap.has(obj.id)) {
-      this.remove(obj.id)
-    }
     if (obj.parent) {
       obj.parent.remove(obj.id)
     }
@@ -601,6 +598,11 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public add(obj: Renderable, index?: number): number {
+    if (this.renderableMap.has(obj.id)) {
+      console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
+      this.remove(obj.id)
+    }
+    
     this.replaceParent(obj)
 
     const childLayoutNode = obj.getLayoutNode()
@@ -623,7 +625,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   insertBefore(obj: Renderable, anchor?: Renderable): number {
-    // Fallback to add if anchor is not provided
     if (!anchor) {
       return this.add(obj)
     }
@@ -735,6 +736,13 @@ export abstract class Renderable extends EventEmitter {
     this.removeAllListeners()
 
     this.destroySelf()
+  }
+
+  public destroyRecursively(): void {
+    this.destroy()
+    for (const child of this.renderableArray) {
+      child.destroyRecursively()
+    }
   }
 
   protected destroySelf(): void {
