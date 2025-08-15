@@ -58,7 +58,7 @@ class SplitModeAnimations {
 
   private setupUI(): void {
     const statusPanel = new BoxRenderable("status-panel", {
-      positionType: "absolute",
+      position: "absolute",
       left: 2,
       top: 5,
       width: this.renderer.width - 6,
@@ -83,7 +83,7 @@ class SplitModeAnimations {
     systems.forEach((system, index) => {
       const label = new TextRenderable(`${system.name.toLowerCase()}-label`, {
         content: `${system.name}:`,
-        positionType: "absolute",
+        position: "absolute",
         left: 4,
         top: system.y,
         fg: system.color,
@@ -92,7 +92,7 @@ class SplitModeAnimations {
       this.container.add(label)
 
       const bgBar = new BoxRenderable(`${system.name.toLowerCase()}-bg`, {
-        positionType: "absolute",
+        position: "absolute",
         left: 9,
         top: system.y,
         width: this.renderer.width - 16,
@@ -104,7 +104,7 @@ class SplitModeAnimations {
       this.container.add(bgBar)
 
       const progressBar = new BoxRenderable(`${system.name.toLowerCase()}-progress`, {
-        positionType: "absolute",
+        position: "absolute",
         left: 9,
         top: system.y,
         width: 1,
@@ -118,7 +118,7 @@ class SplitModeAnimations {
     })
 
     const statsPanel = new BoxRenderable("stats-panel", {
-      positionType: "absolute",
+      position: "absolute",
       left: 2,
       top: 14,
       width: this.renderer.width - 6,
@@ -137,7 +137,7 @@ class SplitModeAnimations {
     counterLabels.forEach((label, index) => {
       const counter = new TextRenderable(`counter-${index}`, {
         content: `${label}: 0`,
-        positionType: "absolute",
+        position: "absolute",
         left: 4 + index * 15,
         top: 15,
         fg: "#9a9acd",
@@ -151,7 +151,7 @@ class SplitModeAnimations {
     const orbColors = ["#ff6b9d", "#4ecdc4", "#ffe66d"]
     orbColors.forEach((color, index) => {
       const orb = new BoxRenderable(`orb-${index}`, {
-        positionType: "absolute",
+        position: "absolute",
         left: 2,
         top: 2,
         width: 3,
@@ -168,7 +168,7 @@ class SplitModeAnimations {
     const pulseColors = ["#ff8a80", "#80cbc4", "#fff176"]
     pulseColors.forEach((color, index) => {
       const pulse = new BoxRenderable(`pulse-${index}`, {
-        positionType: "absolute",
+        position: "absolute",
         left: this.renderer.width - 8 + index * 2,
         top: 1,
         width: 1,
@@ -315,7 +315,7 @@ export function run(rendererInstance: CliRenderer): void {
   animationSystem = new SplitModeAnimations(rendererInstance)
 
   text = new TextRenderable("demo-text", {
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 0,
     width: rendererInstance.width - 4,
@@ -325,7 +325,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   instructionsText = new TextRenderable("split-mode-instructions", {
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 19,
     width: rendererInstance.width - 4,

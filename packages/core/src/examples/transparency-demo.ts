@@ -32,7 +32,7 @@ class DraggableTransparentBox extends BoxRenderable {
       backgroundColor: bg,
       border: false,
       titleAlignment: "center",
-      positionType: "absolute",
+      position: "absolute",
       left: x,
       top: y,
     })
@@ -98,7 +98,7 @@ ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch 
     content: headerText,
     width: 85,
     height: 3,
-    positionType: "absolute",
+    position: "absolute",
     left: 10,
     top: 2,
     zIndex: 1,
@@ -108,7 +108,7 @@ ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch 
 
   const textUnderAlpha = new TextRenderable("text-under-alpha", {
     content: "This text should not be selectable",
-    positionType: "absolute",
+    position: "absolute",
     left: 10,
     top: 6,
     fg: "#FFB84D",
@@ -120,7 +120,7 @@ ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch 
 
   const moreTextUnder = new TextRenderable("more-text-under", {
     content: "Selectable text to show character preservation",
-    positionType: "absolute",
+    position: "absolute",
     left: 15,
     top: 10,
     fg: "#7B68EE",

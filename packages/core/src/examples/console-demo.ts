@@ -46,7 +46,7 @@ class ConsoleButton extends BoxRenderable {
     const borderColor = RGBA.fromValues(color.r * 1.3, color.g * 1.3, color.b * 1.3, 1.0)
 
     super(id, {
-      positionType: "absolute",
+      position: "absolute",
       left: x,
       top: y,
       width,
@@ -184,7 +184,7 @@ export function run(renderer: CliRenderer): void {
 
   titleText = new TextRenderable("console_demo_title", {
     content: "Console Logging Demo",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 1,
     fg: RGBA.fromInts(255, 215, 135),
@@ -196,7 +196,7 @@ export function run(renderer: CliRenderer): void {
   instructionsText = new TextRenderable("console_demo_instructions", {
     content:
       "Click buttons to trigger different console log levels • Press ` to toggle console • Escape: return to menu",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 2,
     fg: RGBA.fromInts(176, 196, 222),
@@ -206,7 +206,7 @@ export function run(renderer: CliRenderer): void {
 
   statusText = new TextRenderable("console_demo_status", {
     content: "Click any button to start logging...",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 4,
     fg: RGBA.fromInts(144, 238, 144),
@@ -240,7 +240,7 @@ export function run(renderer: CliRenderer): void {
 
   const decorText1 = new TextRenderable("decor1", {
     content: "✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: startY + 12,
     fg: RGBA.fromInts(100, 120, 150, 120),
@@ -250,7 +250,7 @@ export function run(renderer: CliRenderer): void {
 
   const decorText2 = new TextRenderable("decor2", {
     content: "Console will appear at the bottom. Use Ctrl+P/Ctrl+O to change position, +/- to resize.",
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: startY + 14,
     fg: RGBA.fromInts(120, 140, 160, 200),

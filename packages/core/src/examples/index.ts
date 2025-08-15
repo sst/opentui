@@ -247,7 +247,7 @@ class ExampleSelector {
     this.title = new FrameBufferRenderable("title", {
       width: titleWidth,
       height: titleHeight,
-      positionType: "absolute",
+      position: "absolute",
       left: centerX,
       top: 1,
     })
@@ -271,7 +271,7 @@ class ExampleSelector {
     this.createTitle(width, height)
 
     this.instructions = new TextRenderable("instructions", {
-      positionType: "absolute",
+      position: "absolute",
       left: 2,
       top: 4,
       content:
@@ -292,7 +292,7 @@ class ExampleSelector {
     }))
 
     this.selectBox = new BoxRenderable("example-selector-box", {
-      positionType: "absolute",
+      position: "absolute",
       left: 1,
       top: 6,
       width: width - 2,
@@ -381,7 +381,7 @@ class ExampleSelector {
     } else {
       if (!this.notImplementedText) {
         this.notImplementedText = new TextRenderable("not-implemented", {
-          positionType: "absolute",
+          position: "absolute",
           left: 10,
           top: 10,
           content: `${selected.name} not yet implemented. Press Escape to return.`,

@@ -172,7 +172,7 @@ uiContainer.add(benchmarkStatus)
 
 const cubeCountStatus = new TextRenderable("cube-count", {
   content: `Test cubes outside view: ${TEST_CUBE_COUNT}`,
-  positionType: "absolute",
+  position: "absolute",
   left: 0,
   top: 1,
   zIndex: 20,
@@ -182,7 +182,7 @@ uiContainer.add(cubeCountStatus)
 if (options.debug) {
   const debugStatus = new TextRenderable("debug", {
     content: `Culling: ${options.culling !== false ? "ON" : "OFF"}`,
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: HEIGHT - 1,
     zIndex: 20,
@@ -537,7 +537,7 @@ function getScenarioName(scenario: BenchmarkScenario): string {
 
 function displayBenchmarkResults(): void {
   const resultsBox = new BoxRenderable("results-box", {
-    positionType: "absolute",
+    position: "absolute",
     left: Math.floor(WIDTH / 6),
     top: Math.floor(HEIGHT / 6),
     width: Math.floor((WIDTH * 2) / 3),
@@ -548,7 +548,7 @@ function displayBenchmarkResults(): void {
   uiContainer.add(resultsBox)
 
   const resultsTitle = new TextRenderable("results-title", {
-    positionType: "absolute",
+    position: "absolute",
     left: Math.floor(WIDTH / 6) + 2,
     top: Math.floor(HEIGHT / 6) + 1,
     content: "📊 BENCHMARK RESULTS 📊",
@@ -559,7 +559,7 @@ function displayBenchmarkResults(): void {
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
     const resultHeader = new TextRenderable(`result-header-${i}`, {
-      positionType: "absolute",
+      position: "absolute",
       left: Math.floor(WIDTH / 6) + 2,
       top: y++,
       content: `Scenario ${i + 1}: ${result.name}`,
@@ -574,7 +574,7 @@ function displayBenchmarkResults(): void {
     ]
     for (let j = 0; j < statLines.length; j++) {
       const statText = new TextRenderable(`result-stat-${i}-${j}`, {
-        positionType: "absolute",
+        position: "absolute",
         left: Math.floor(WIDTH / 6) + 2,
         top: y + j,
         content: statLines[j],
@@ -613,7 +613,7 @@ function displayBenchmarkResults(): void {
       ]
       for (let j = 0; j < memStatLines.length; j++) {
         const memStatText = new TextRenderable(`result-mem-stat-${i}-${j}`, {
-          positionType: "absolute",
+          position: "absolute",
           left: Math.floor(WIDTH / 6) + 2,
           top: y + j,
           content: memStatLines[j],
@@ -627,7 +627,7 @@ function displayBenchmarkResults(): void {
   }
   if (results.length > 1) {
     const comparisonTitle = new TextRenderable("results-comparison", {
-      positionType: "absolute",
+      position: "absolute",
       left: Math.floor(WIDTH / 6) + 2,
       top: y++,
       content: "Performance Comparison:",
@@ -642,7 +642,7 @@ function displayBenchmarkResults(): void {
       const percent = ((ratio - 1) * 100).toFixed(1)
       const compareText = `  • ${results[i].name}: ${ratio > 1 ? "+" : ""}${percent}% frame time vs. baseline`
       const compareTextObj = new TextRenderable(`result-compare-${i}`, {
-        positionType: "absolute",
+        position: "absolute",
         left: Math.floor(WIDTH / 6) + 2,
         top: y++,
         content: compareText,
@@ -653,7 +653,7 @@ function displayBenchmarkResults(): void {
   }
 
   const resultsFooter = new TextRenderable("results-footer", {
-    positionType: "absolute",
+    position: "absolute",
     left: Math.floor(WIDTH / 6) + 2,
     top: Math.floor((HEIGHT * 5) / 6) - 2,
     content: "Press Ctrl+C to exit",

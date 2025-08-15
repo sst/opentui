@@ -17,7 +17,7 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#001122")
 
   const rootContainer = new GroupRenderable("root-container", {
-    positionType: "relative",
+    position: "relative",
     left: 0,
     top: 0,
     zIndex: 10,
@@ -27,7 +27,7 @@ export function run(renderer: CliRenderer): void {
 
   const title = new TextRenderable("main-title", {
     content: "Relative Positioning Demo - Child positions are relative to parent",
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 1,
     fg: "#FFFF00",
@@ -37,7 +37,7 @@ export function run(renderer: CliRenderer): void {
   rootContainer.add(title)
 
   const parentContainerA = new GroupRenderable("parent-container-a", {
-    positionType: "absolute",
+    position: "absolute",
     left: 10,
     top: 5,
     zIndex: 50,
@@ -108,7 +108,7 @@ export function run(renderer: CliRenderer): void {
   parentBoxA.add(childA3)
 
   const parentContainerB = new GroupRenderable("parent-container-b", {
-    positionType: "absolute",
+    position: "absolute",
     left: 50,
     top: 8,
     zIndex: 50,
@@ -156,7 +156,7 @@ export function run(renderer: CliRenderer): void {
   parentBoxB.add(childB2)
 
   const staticContainer = new GroupRenderable("static-container", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 20,
     zIndex: 50,
@@ -196,7 +196,7 @@ export function run(renderer: CliRenderer): void {
 
   const explanation1 = new TextRenderable("explanation1", {
     content: "Key Concept: Parent A uses flex layout - children are arranged in a row",
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 30,
     fg: "#AAAAAA",
@@ -207,7 +207,7 @@ export function run(renderer: CliRenderer): void {
 
   const explanation2 = new TextRenderable("explanation2", {
     content: "When parent moves, children move with it while maintaining flex layout",
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 31,
     fg: "#AAAAAA",
@@ -217,7 +217,7 @@ export function run(renderer: CliRenderer): void {
 
   const explanation3 = new TextRenderable("explanation3", {
     content: "Flex children automatically fit parent width and grow/shrink as needed",
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 32,
     fg: "#AAAAAA",
@@ -227,7 +227,7 @@ export function run(renderer: CliRenderer): void {
 
   const controls = new TextRenderable("controls", {
     content: "Controls: +/- to change animation speed",
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 34,
     fg: "#FFFFFF",
@@ -238,7 +238,7 @@ export function run(renderer: CliRenderer): void {
 
   const speedDisplay = new TextRenderable("speed-display", {
     content: `Animation Speed: ${animationSpeed}ms (min: 500, max: 8000)`,
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 35,
     fg: "#CCCCCC",

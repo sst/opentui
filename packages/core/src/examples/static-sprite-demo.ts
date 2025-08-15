@@ -66,7 +66,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const titleText = new TextRenderable("demo-title", {
     content: "Static THREE.Sprite Demo",
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 1,
     fg: "#FFFFFF",
@@ -76,7 +76,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const statusText = new TextRenderable("status", {
     content: "Loading sprite texture...",
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 2,
     fg: "#FFFFFF",

@@ -32,7 +32,7 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
 
   mainContainer = new BoxRenderable("mainContainer", {
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 1,
     width: 88,
@@ -46,7 +46,7 @@ export function run(renderer: CliRenderer): void {
   renderer.root.add(mainContainer)
 
   leftGroup = new GroupRenderable("leftGroup", {
-    positionType: "absolute",
+    position: "absolute",
     left: 2,
     top: 2,
     zIndex: 10,
@@ -113,7 +113,7 @@ export function run(renderer: CliRenderer): void {
   allTextRenderables.push(nestedText)
 
   rightGroup = new GroupRenderable("rightGroup", {
-    positionType: "absolute",
+    position: "absolute",
     left: 48,
     top: 2,
     zIndex: 10,
@@ -168,7 +168,7 @@ export function run(renderer: CliRenderer): void {
   allTextRenderables.push(codeText4)
 
   floatingBox = new BoxRenderable("floatingBox", {
-    positionType: "absolute",
+    position: "absolute",
     left: 90,
     top: 11,
     width: 31,
@@ -204,7 +204,7 @@ ${green("✓")} Styled text support`,
   allTextRenderables.push(instructions)
 
   statusBox = new BoxRenderable("statusBox", {
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 24,
     width: 88,

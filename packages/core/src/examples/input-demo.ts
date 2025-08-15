@@ -151,7 +151,7 @@ export function run(rendererInstance: CliRenderer): void {
 
   // Create input elements
   nameInput = new InputRenderable("name-input", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 2,
     width: 40,
@@ -167,7 +167,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   emailInput = new InputRenderable("email-input", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 6,
     width: 40,
@@ -183,7 +183,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   passwordInput = new InputRenderable("password-input", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 10,
     width: 40,
@@ -199,7 +199,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   commentInput = new InputRenderable("comment-input", {
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 14,
     width: 60,
@@ -225,7 +225,7 @@ export function run(rendererInstance: CliRenderer): void {
     content: t``,
     width: 50,
     height: 12,
-    positionType: "absolute",
+    position: "absolute",
     left: 50,
     top: 2,
     zIndex: 50,
@@ -237,7 +237,7 @@ export function run(rendererInstance: CliRenderer): void {
     content: t``,
     width: 80,
     height: 18,
-    positionType: "absolute",
+    position: "absolute",
     left: 5,
     top: 19,
     zIndex: 50,

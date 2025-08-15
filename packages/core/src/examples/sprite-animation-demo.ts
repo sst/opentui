@@ -116,7 +116,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const cameraModeText = new TextRenderable("cameraModeText", {
     content: `Camera: Perspective (Press 'c' to switch)`,
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 3,
     fg: "#FFFFFF",
@@ -377,7 +377,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const instructionsText = new TextRenderable("instructions", {
     content:
       "Controls: c=camera, e=explode, r=restore, p=stress test, x=explode random, t=debug, u=supersample, `=console, ESC=back",
-    positionType: "absolute",
+    position: "absolute",
     left: 1,
     top: 1,
     fg: "#AAAAAA",

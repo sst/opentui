@@ -21,7 +21,7 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#000028")
 
   const tabController = new TabControllerRenderable("main-tab-controller", renderer, {
-    positionType: "absolute",
+    position: "absolute",
     left: 0,
     top: 0,
     width: renderer.terminalWidth,
@@ -42,7 +42,7 @@ export function run(renderer: CliRenderer): void {
     init: (tabGroup) => {
       const textTitle = new TextRenderable("text-title", {
         content: "Text Styling & Color Gradients",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 5,
         fg: "#FFFF00",
@@ -54,7 +54,7 @@ export function run(renderer: CliRenderer): void {
       // Text attributes
       const attrBold = new TextRenderable("attr-bold", {
         content: "Bold Text",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 8,
         fg: "#FFFFFF",
@@ -65,7 +65,7 @@ export function run(renderer: CliRenderer): void {
 
       const attrItalic = new TextRenderable("attr-italic", {
         content: "Italic Text",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 9,
         fg: "#FFFFFF",
@@ -76,7 +76,7 @@ export function run(renderer: CliRenderer): void {
 
       const attrUnderline = new TextRenderable("attr-underline", {
         content: "Underlined Text",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 10,
         fg: "#FFFFFF",
@@ -87,7 +87,7 @@ export function run(renderer: CliRenderer): void {
 
       const attrDim = new TextRenderable("attr-dim", {
         content: "Dim Text",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 11,
         fg: "#FFFFFF",
@@ -98,7 +98,7 @@ export function run(renderer: CliRenderer): void {
 
       const attrCombined = new TextRenderable("attr-combined", {
         content: "Bold + Italic + Underline",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 12,
         fg: "#FF6464",
@@ -110,7 +110,7 @@ export function run(renderer: CliRenderer): void {
       // Color gradient
       const gradientTitle = new TextRenderable("gradient-title", {
         content: "Rainbow Gradient:",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 15,
         fg: "#CCCCCC",
@@ -125,7 +125,7 @@ export function run(renderer: CliRenderer): void {
 
         const gradientPixel = new TextRenderable(`gradient-${i}`, {
           content: "█",
-          positionType: "absolute",
+          position: "absolute",
           left: 10 + i,
           top: 17,
           fg: hexColor,
@@ -167,7 +167,7 @@ export function run(renderer: CliRenderer): void {
             } else {
               const wheelPixel = new TextRenderable(pixelId, {
                 content: "█",
-                positionType: "absolute",
+                position: "absolute",
                 left: x,
                 top: y,
                 fg: color,
@@ -207,7 +207,7 @@ export function run(renderer: CliRenderer): void {
     init: (tabGroup) => {
       const title = new TextRenderable("opentui-title", {
         content: "Basic CLI Renderer Demo",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 5,
         fg: "#FFFF00",
@@ -217,7 +217,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(title)
 
       const box1 = new BoxRenderable("box1", {
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 8,
         width: 20,
@@ -231,7 +231,7 @@ export function run(renderer: CliRenderer): void {
 
       const box1Title = new TextRenderable("box1-title", {
         content: "Simple Box",
-        positionType: "absolute",
+        position: "absolute",
         left: 12,
         top: 10,
         fg: "#FFFFFF",
@@ -241,7 +241,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(box1Title)
 
       const box2 = new BoxRenderable("box2", {
-        positionType: "absolute",
+        position: "absolute",
         left: 35,
         top: 10,
         width: 25,
@@ -255,7 +255,7 @@ export function run(renderer: CliRenderer): void {
 
       const box2Title = new TextRenderable("box2-title", {
         content: "Double Border Box",
-        positionType: "absolute",
+        position: "absolute",
         left: 37,
         top: 12,
         fg: "#FFFFFF",
@@ -266,7 +266,7 @@ export function run(renderer: CliRenderer): void {
 
       const description = new TextRenderable("description", {
         content: "This tab demonstrates basic box and text rendering with different border styles.",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 18,
         fg: "#CCCCCC",
@@ -276,7 +276,7 @@ export function run(renderer: CliRenderer): void {
 
       const cursorInfo = new TextRenderable("cursor-info", {
         content: "Cursor: (0,0) - Style: block",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 20,
         fg: "#FFFFFF",
@@ -347,7 +347,7 @@ export function run(renderer: CliRenderer): void {
     init: (tabGroup) => {
       const borderTitle = new TextRenderable("border-title", {
         content: "Border Styles & Partial Borders",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 5,
         fg: "#FFFF00",
@@ -358,7 +358,7 @@ export function run(renderer: CliRenderer): void {
 
       // Different border styles
       const singleBox = new BoxRenderable("single-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 8,
         width: 15,
@@ -371,7 +371,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(singleBox)
       const singleLabel = new TextRenderable("single-label", {
         content: "Single",
-        positionType: "absolute",
+        position: "absolute",
         left: 12,
         top: 10,
         fg: "#FFFFFF",
@@ -381,7 +381,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(singleLabel)
 
       const doubleBox = new BoxRenderable("double-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 30,
         top: 8,
         width: 15,
@@ -394,7 +394,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(doubleBox)
       const doubleLabel = new TextRenderable("double-label", {
         content: "Double",
-        positionType: "absolute",
+        position: "absolute",
         left: 32,
         top: 10,
         fg: "#FFFFFF",
@@ -404,7 +404,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(doubleLabel)
 
       const roundedBox = new BoxRenderable("rounded-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 50,
         top: 8,
         width: 15,
@@ -417,7 +417,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(roundedBox)
       const roundedLabel = new TextRenderable("rounded-label", {
         content: "Rounded",
-        positionType: "absolute",
+        position: "absolute",
         left: 52,
         top: 10,
         fg: "#FFFFFF",
@@ -429,7 +429,7 @@ export function run(renderer: CliRenderer): void {
       // Partial borders
       const partialTitle = new TextRenderable("partial-title", {
         content: "Partial Borders:",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 15,
         fg: "#CCCCCC",
@@ -439,7 +439,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(partialTitle)
 
       const partialLeft = new BoxRenderable("partial-left", {
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 17,
         width: 12,
@@ -453,7 +453,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(partialLeft)
       const partialLeftLabel = new TextRenderable("partial-left-label", {
         content: "Left Only",
-        positionType: "absolute",
+        position: "absolute",
         left: 12,
         top: 18,
         fg: "#FFFFFF",
@@ -462,7 +462,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(partialLeftLabel)
 
       const partialAnimated = new BoxRenderable("partial-animated", {
-        positionType: "absolute",
+        position: "absolute",
         left: 30,
         top: 17,
         width: 20,
@@ -475,7 +475,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(partialAnimated)
       const partialAnimatedLabel = new TextRenderable("partial-animated-label", {
         content: "Animated Borders",
-        positionType: "absolute",
+        position: "absolute",
         left: 32,
         top: 18,
         fg: "#FFFFFF",
@@ -485,7 +485,7 @@ export function run(renderer: CliRenderer): void {
 
       const partialPhase = new TextRenderable("partial-phase", {
         content: "Phase: 1/8",
-        positionType: "absolute",
+        position: "absolute",
         left: 30,
         top: 22,
         fg: "#AAAAAA",
@@ -495,7 +495,7 @@ export function run(renderer: CliRenderer): void {
 
       const customBorderTitle = new TextRenderable("custom-border-title", {
         content: "Custom Border Characters:",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 25,
         fg: "#CCCCCC",
@@ -547,7 +547,7 @@ export function run(renderer: CliRenderer): void {
       }
 
       const asciiBox = new BoxRenderable("ascii-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 27,
         width: 15,
@@ -561,7 +561,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(asciiBox)
       const asciiLabel = new TextRenderable("ascii-label", {
         content: "ASCII Border",
-        positionType: "absolute",
+        position: "absolute",
         left: 12,
         top: 29,
         fg: "#FFFFFF",
@@ -571,7 +571,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(asciiLabel)
 
       const blockBox = new BoxRenderable("block-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 30,
         top: 27,
         width: 15,
@@ -585,7 +585,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(blockBox)
       const blockLabel = new TextRenderable("block-label", {
         content: "Block Border",
-        positionType: "absolute",
+        position: "absolute",
         left: 32,
         top: 29,
         fg: "#FFFFFF",
@@ -595,7 +595,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(blockLabel)
 
       const starBox = new BoxRenderable("star-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 50,
         top: 27,
         width: 15,
@@ -609,7 +609,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(starBox)
       const starLabel = new TextRenderable("star-label", {
         content: "Star Border",
-        positionType: "absolute",
+        position: "absolute",
         left: 52,
         top: 29,
         fg: "#FFFFFF",
@@ -656,7 +656,7 @@ export function run(renderer: CliRenderer): void {
     init: (tabGroup) => {
       const animTitle = new TextRenderable("anim-title", {
         content: "Animation Demonstrations",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 5,
         fg: "#FFFF00",
@@ -667,7 +667,7 @@ export function run(renderer: CliRenderer): void {
 
       const movingText = new TextRenderable("moving-text", {
         content: "Moving Text",
-        positionType: "absolute",
+        position: "absolute",
         left: animPosition,
         top: 8,
         fg: "#00FF00",
@@ -677,7 +677,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(movingText)
 
       const animatedBox = new BoxRenderable("animated-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: animPosition,
         top: 10,
         width: 10,
@@ -690,7 +690,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(animatedBox)
 
       const colorBox = new BoxRenderable("color-box", {
-        positionType: "absolute",
+        position: "absolute",
         left: 50,
         top: 12,
         width: 18,
@@ -704,7 +704,7 @@ export function run(renderer: CliRenderer): void {
 
       const colorBoxTitle = new TextRenderable("color-box-title", {
         content: "Animated Color",
-        positionType: "absolute",
+        position: "absolute",
         left: 52,
         top: 14,
         fg: "#FFFFFF",
@@ -757,7 +757,7 @@ export function run(renderer: CliRenderer): void {
     init: (tabGroup) => {
       const layoutTitle = new TextRenderable("layout-title", {
         content: "Box Titles",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 5,
         fg: "#FFFF00",
@@ -768,7 +768,7 @@ export function run(renderer: CliRenderer): void {
 
       // Boxes with titles and different alignments
       const titledLeft = new BoxRenderable("titled-left", {
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 8,
         width: 20,
@@ -783,7 +783,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(titledLeft)
 
       const titledCenter = new BoxRenderable("titled-center", {
-        positionType: "absolute",
+        position: "absolute",
         left: 35,
         top: 8,
         width: 20,
@@ -798,7 +798,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(titledCenter)
 
       const titledRight = new BoxRenderable("titled-right", {
-        positionType: "absolute",
+        position: "absolute",
         left: 60,
         top: 8,
         width: 20,
@@ -827,7 +827,7 @@ export function run(renderer: CliRenderer): void {
     init: (tabGroup) => {
       const interactiveTitle = new TextRenderable("interactive-title", {
         content: "Interactive Controls",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 5,
         fg: "#FFFF00",
@@ -837,7 +837,7 @@ export function run(renderer: CliRenderer): void {
       tabGroup.add(interactiveTitle)
 
       const interactiveBorder = new BoxRenderable("interactive-border", {
-        positionType: "absolute",
+        position: "absolute",
         left: 15,
         top: 8,
         width: 40,
@@ -851,7 +851,7 @@ export function run(renderer: CliRenderer): void {
 
       const interactiveLabel = new TextRenderable("interactive-label", {
         content: "Press keys to toggle borders",
-        positionType: "absolute",
+        position: "absolute",
         left: 22,
         top: 12,
         fg: "#FFFFFF",
@@ -862,7 +862,7 @@ export function run(renderer: CliRenderer): void {
 
       const interactiveInstructions = new TextRenderable("interactive-instructions", {
         content: "Keyboard Controls:",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 18,
         fg: "#FFFFFF",
@@ -873,7 +873,7 @@ export function run(renderer: CliRenderer): void {
 
       const keyT = new TextRenderable("key-t", {
         content: "T - Toggle top border",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 19,
         fg: "#CCCCCC",
@@ -883,7 +883,7 @@ export function run(renderer: CliRenderer): void {
 
       const keyR = new TextRenderable("key-r", {
         content: "R - Toggle right border",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 20,
         fg: "#CCCCCC",
@@ -893,7 +893,7 @@ export function run(renderer: CliRenderer): void {
 
       const keyB = new TextRenderable("key-b", {
         content: "B - Toggle bottom border",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 21,
         fg: "#CCCCCC",
@@ -903,7 +903,7 @@ export function run(renderer: CliRenderer): void {
 
       const keyL = new TextRenderable("key-l", {
         content: "L - Toggle left border",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 22,
         fg: "#CCCCCC",
@@ -913,7 +913,7 @@ export function run(renderer: CliRenderer): void {
 
       const borderState = new TextRenderable("border-state", {
         content: "Active borders: All",
-        positionType: "absolute",
+        position: "absolute",
         left: 10,
         top: 24,
         fg: "#AAAAAA",
