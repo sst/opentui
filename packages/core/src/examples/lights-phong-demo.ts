@@ -163,9 +163,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const statusText = new TextRenderable("phong-status", {
     content: "Ready.",
     positionType: "absolute",
-    position: {
-      top: 1,
-    },
+    top: 1,
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -174,9 +172,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const controlsText = new TextRenderable("phong-controls", {
     content: "WASD: Move | QE: Rotate | ZX: Zoom | R: Reset | U: Super Sample",
     positionType: "absolute",
-    position: {
-      top: HEIGHT - 2,
-    },
+    top: HEIGHT - 2,
     fg: "#FFFFFF",
     zIndex: 20,
   })

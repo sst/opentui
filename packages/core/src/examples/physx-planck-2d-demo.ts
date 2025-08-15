@@ -173,10 +173,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const instructionsText = new TextRenderable("planck-instructions", {
     content: "Planck.js 2D Demo - Falling Crates (Instanced Sprites)",
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 1,
-    },
+    left: 1,
+    top: 1,
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -185,10 +183,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const controlsText = new TextRenderable("planck-controls", {
     content: "Press: [Space] spawn crate, [E] explode crate, [R] reset, [T] toggle debug, [C] clear crates",
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 2,
-    },
+    left: 1,
+    top: 2,
     fg: "#FFFFFF",
     zIndex: 20,
   })
@@ -197,10 +193,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const statsText = new TextRenderable("planck-stats", {
     content: "",
     positionType: "absolute",
-    position: {
-      left: 1,
-      top: 3,
-    },
+    left: 1,
+    top: 3,
     fg: "#FFFFFF",
     zIndex: 20,
   })

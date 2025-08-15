@@ -18,10 +18,8 @@ export function run(renderer: CliRenderer): void {
 
   const rootContainer = new GroupRenderable("root-container", {
     positionType: "relative",
-    position: {
-      left: 0,
-      top: 0,
-    },
+    left: 0,
+    top: 0,
     zIndex: 10,
     visible: true,
   })
@@ -30,10 +28,8 @@ export function run(renderer: CliRenderer): void {
   const title = new TextRenderable("main-title", {
     content: "Relative Positioning Demo - Child positions are relative to parent",
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 1,
-    },
+    left: 5,
+    top: 1,
     fg: "#FFFF00",
     attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE,
     zIndex: 1000,
@@ -42,20 +38,16 @@ export function run(renderer: CliRenderer): void {
 
   const parentContainerA = new GroupRenderable("parent-container-a", {
     positionType: "absolute",
-    position: {
-      left: 10,
-      top: 5,
-    },
+    left: 10,
+    top: 5,
     zIndex: 50,
     visible: true,
   })
   rootContainer.add(parentContainerA)
 
   const parentBoxA = new BoxRenderable("parent-box-a", {
-    position: {
-      left: 0,
-      top: 0,
-    },
+    left: 0,
+    top: 0,
     width: 40,
     height: 12,
     backgroundColor: "#220044",
@@ -117,20 +109,16 @@ export function run(renderer: CliRenderer): void {
 
   const parentContainerB = new GroupRenderable("parent-container-b", {
     positionType: "absolute",
-    position: {
-      left: 50,
-      top: 8,
-    },
+    left: 50,
+    top: 8,
     zIndex: 50,
     visible: true,
   })
   rootContainer.add(parentContainerB)
 
   const parentBoxB = new BoxRenderable("parent-box-b", {
-    position: {
-      left: 0,
-      top: 0,
-    },
+    left: 0,
+    top: 0,
     width: 40,
     height: 10,
     backgroundColor: "#004422",
@@ -169,20 +157,16 @@ export function run(renderer: CliRenderer): void {
 
   const staticContainer = new GroupRenderable("static-container", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 20,
-    },
+    left: 5,
+    top: 20,
     zIndex: 50,
     visible: true,
   })
   rootContainer.add(staticContainer)
 
   const staticBox = new BoxRenderable("static-box", {
-    position: {
-      left: 0,
-      top: 0,
-    },
+    left: 0,
+    top: 0,
     width: 40,
     height: 8,
     backgroundColor: "#442200",
@@ -213,10 +197,8 @@ export function run(renderer: CliRenderer): void {
   const explanation1 = new TextRenderable("explanation1", {
     content: "Key Concept: Parent A uses flex layout - children are arranged in a row",
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 30,
-    },
+    left: 5,
+    top: 30,
     fg: "#AAAAAA",
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -226,10 +208,8 @@ export function run(renderer: CliRenderer): void {
   const explanation2 = new TextRenderable("explanation2", {
     content: "When parent moves, children move with it while maintaining flex layout",
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 31,
-    },
+    left: 5,
+    top: 31,
     fg: "#AAAAAA",
     zIndex: 1000,
   })
@@ -238,10 +218,8 @@ export function run(renderer: CliRenderer): void {
   const explanation3 = new TextRenderable("explanation3", {
     content: "Flex children automatically fit parent width and grow/shrink as needed",
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 32,
-    },
+    left: 5,
+    top: 32,
     fg: "#AAAAAA",
     zIndex: 1000,
   })
@@ -250,10 +228,8 @@ export function run(renderer: CliRenderer): void {
   const controls = new TextRenderable("controls", {
     content: "Controls: +/- to change animation speed",
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 34,
-    },
+    left: 5,
+    top: 34,
     fg: "#FFFFFF",
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -263,10 +239,8 @@ export function run(renderer: CliRenderer): void {
   const speedDisplay = new TextRenderable("speed-display", {
     content: `Animation Speed: ${animationSpeed}ms (min: 500, max: 8000)`,
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 35,
-    },
+    left: 5,
+    top: 35,
     fg: "#CCCCCC",
     zIndex: 1000,
   })

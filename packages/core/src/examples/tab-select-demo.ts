@@ -88,10 +88,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   tabSelect = new TabSelectRenderable("main-tabs", {
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 2,
-    },
+    left: 5,
+    top: 2,
     width: 70,
     options: tabOptions,
     zIndex: 100,
@@ -116,10 +114,8 @@ export function run(rendererInstance: CliRenderer): void {
     width: 40,
     height: 10,
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 8,
-    },
+    left: 5,
+    top: 8,
     zIndex: 50,
     fg: "#AAAAAA",
   })
@@ -131,10 +127,8 @@ export function run(rendererInstance: CliRenderer): void {
     width: 80,
     height: 6,
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 19,
-    },
+    left: 5,
+    top: 19,
     zIndex: 50,
   })
   parentContainer.add(statusDisplay)

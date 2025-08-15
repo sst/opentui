@@ -33,7 +33,10 @@ export interface LayoutOptions {
   justifyContent?: JustifyString
   flexBasis?: number | "auto" | undefined
   positionType?: PositionTypeString
-  position?: Position
+  top?: number | "auto" | `${number}%`
+  right?: number | "auto" | `${number}%`
+  bottom?: number | "auto" | `${number}%`
+  left?: number | "auto" | `${number}%`
   minWidth?: number
   minHeight?: number
   maxWidth?: number
@@ -292,21 +295,47 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set x(value: number) {
-    this.setPosition({
-      left: value,
-    })
+    this.left = value
   }
 
-  public set top(value: number) {
-    this.setPosition({
-      top: value,
-    })
+  public get top(): number | "auto" | `${number}%` | undefined {
+    return this._position.top
   }
 
-  public set left(value: number) {
-    this.setPosition({
-      left: value,
-    })
+  public set top(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ top: value })
+    }
+  }
+
+  public get right(): number | "auto" | `${number}%` | undefined {
+    return this._position.right
+  }
+
+  public set right(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ right: value })
+    }
+  }
+
+  public get bottom(): number | "auto" | `${number}%` | undefined {
+    return this._position.bottom
+  }
+
+  public set bottom(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ bottom: value })
+    }
+  }
+
+  public get left(): number | "auto" | `${number}%` | undefined {
+    return this._position.left
+  }
+
+  public set left(value: number | "auto" | `${number}%` | undefined) {
+    if (isPositionType(value) || value === undefined) {
+      this.setPosition({ left: value })
+    }
   }
 
   public get y(): number {
@@ -317,9 +346,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set y(value: number) {
-    this.setPosition({
-      top: value,
-    })
+    this.top = value
   }
 
   public get width(): number {
@@ -419,9 +446,17 @@ export abstract class Renderable extends EventEmitter {
       node.setPositionType(PositionType.Absolute)
     }
 
-    if (options.position) {
-      this._position = options.position
-      this.updateYogaPosition(options.position)
+    // TODO: flatten position properties internally as well
+    const hasPositionProps = options.top !== undefined || options.right !== undefined || 
+                            options.bottom !== undefined || options.left !== undefined
+    if (hasPositionProps) {
+      this._position = {
+        top: options.top,
+        right: options.right,
+        bottom: options.bottom,
+        left: options.left
+      }
+      this.updateYogaPosition(this._position)
     }
 
     if (isSizeType(options.maxWidth)) {
@@ -479,7 +514,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public setPosition(position: Position): void {
-    this._position = position
+    this._position = { ...this._position, ...position }
     this.updateYogaPosition(position)
   }
 

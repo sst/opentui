@@ -51,10 +51,8 @@ class DraggableBox extends BoxRenderable {
     const borderColor = RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 1.0)
     super(id, {
       positionType: "absolute",
-      position: {
-        left: x,
-        top: y,
-      },
+      left: x,
+      top: y,
       width,
       height,
       zIndex: 100,
@@ -316,10 +314,8 @@ export function run(renderer: CliRenderer): void {
     content: "Mouse Interaction Demo with Draggable Objects",
     width: "100%",
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 1,
-    },
+    left: 2,
+    top: 1,
     fg: RGBA.fromInts(72, 209, 204),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -331,10 +327,8 @@ export function run(renderer: CliRenderer): void {
 Hold + move: orange drag trails • Click cells: toggle pink
 Scroll on boxes: shows direction • Escape: menu`,
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 2,
-    },
+    left: 2,
+    top: 2,
     width: renderer.width - 4,
     height: 3,
     fg: RGBA.fromInts(176, 196, 222),

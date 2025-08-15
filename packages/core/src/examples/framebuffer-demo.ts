@@ -46,10 +46,8 @@ export function run(renderer: CliRenderer): void {
   const titleText = new TextRenderable("framebuffer_title", {
     content: "FrameBuffer Demo",
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 1,
-    },
+    left: 2,
+    top: 1,
     fg: RGBA.fromInts(255, 255, 100),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -59,10 +57,8 @@ export function run(renderer: CliRenderer): void {
   const subtitleText = new TextRenderable("framebuffer_subtitle", {
     content: "Showcasing framebuffers with transparency and partial drawing",
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 2,
-    },
+    left: 2,
+    top: 2,
     fg: RGBA.fromInts(200, 200, 200),
     zIndex: 1000,
   })
@@ -71,10 +67,8 @@ export function run(renderer: CliRenderer): void {
   const instructionsText = new TextRenderable("framebuffer_instructions", {
     content: "Press Escape to return to menu",
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 3,
-    },
+    left: 2,
+    top: 3,
     fg: RGBA.fromInts(150, 150, 150),
     zIndex: 1000,
   })
@@ -102,10 +96,8 @@ export function run(renderer: CliRenderer): void {
     width: 20,
     height: 10,
     positionType: "absolute",
-    position: {
-      left: 10,
-      top: 10,
-    },
+    left: 10,
+    top: 10,
     zIndex: 1,
   })
   renderer.root.add(boxObj)
@@ -134,10 +126,8 @@ export function run(renderer: CliRenderer): void {
     width: 40,
     height: 15,
     positionType: "absolute",
-    position: {
-      left: 30,
-      top: 15,
-    },
+    left: 30,
+    top: 15,
     zIndex: 2,
     respectAlpha: true,
   })
@@ -180,10 +170,8 @@ export function run(renderer: CliRenderer): void {
     width: 3,
     height: 3,
     positionType: "absolute",
-    position: {
-      left: 20,
-      top: 20,
-    },
+    left: 20,
+    top: 20,
     zIndex: 3,
   })
   renderer.root.add(ballObj)
@@ -203,10 +191,8 @@ export function run(renderer: CliRenderer): void {
     width: 10,
     height: 5,
     positionType: "absolute",
-    position: {
-      left: 50,
-      top: 8,
-    },
+    left: 50,
+    top: 8,
     zIndex: 3,
   })
   renderer.root.add(resizableObj)
@@ -277,10 +263,8 @@ export function run(renderer: CliRenderer): void {
     width: 12,
     height: 8,
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 35,
-    },
+    left: 5,
+    top: 35,
     zIndex: 4,
   })
   renderer.root.add(cropBuffer1Renderable)
@@ -290,10 +274,8 @@ export function run(renderer: CliRenderer): void {
     width: 15,
     height: 6,
     positionType: "absolute",
-    position: {
-      left: 25,
-      top: 35,
-    },
+    left: 25,
+    top: 35,
     zIndex: 4,
   })
   renderer.root.add(cropBuffer2Renderable)
@@ -303,10 +285,8 @@ export function run(renderer: CliRenderer): void {
     width: 10,
     height: 10,
     positionType: "absolute",
-    position: {
-      left: 45,
-      top: 35,
-    },
+    left: 45,
+    top: 35,
     zIndex: 4,
   })
   renderer.root.add(cropBuffer3Renderable)
@@ -316,10 +296,8 @@ export function run(renderer: CliRenderer): void {
   const cropDemoLabel = new TextRenderable("crop_demo_label", {
     content: "Partial FrameBuffer Drawing Demo:",
     positionType: "absolute",
-    position: {
-      left: 5,
-      top: 34,
-    },
+    left: 5,
+    top: 34,
     fg: RGBA.fromInts(255, 255, 200),
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
@@ -502,10 +480,8 @@ export function run(renderer: CliRenderer): void {
   const debugInstructionsText = new TextRenderable("framebuffer_debug_instructions", {
     content: "Press 1-4 to change corner | Escape: Back to menu",
     positionType: "absolute",
-    position: {
-      left: 2,
-      top: 2,
-    },
+    left: 2,
+    top: 2,
     fg: RGBA.fromInts(200, 200, 200),
     zIndex: 1000,
   })

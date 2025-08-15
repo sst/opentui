@@ -173,10 +173,8 @@ uiContainer.add(benchmarkStatus)
 const cubeCountStatus = new TextRenderable("cube-count", {
   content: `Test cubes outside view: ${TEST_CUBE_COUNT}`,
   positionType: "absolute",
-  position: {
-    left: 0,
-    top: 1,
-  },
+  left: 0,
+  top: 1,
   zIndex: 20,
 })
 uiContainer.add(cubeCountStatus)
@@ -185,10 +183,8 @@ if (options.debug) {
   const debugStatus = new TextRenderable("debug", {
     content: `Culling: ${options.culling !== false ? "ON" : "OFF"}`,
     positionType: "absolute",
-    position: {
-      left: 0,
-      top: HEIGHT - 1,
-    },
+    left: 0,
+    top: HEIGHT - 1,
     zIndex: 20,
   })
   uiContainer.add(debugStatus)
@@ -542,10 +538,8 @@ function getScenarioName(scenario: BenchmarkScenario): string {
 function displayBenchmarkResults(): void {
   const resultsBox = new BoxRenderable("results-box", {
     positionType: "absolute",
-    position: {
-      left: Math.floor(WIDTH / 6),
-      top: Math.floor(HEIGHT / 6),
-    },
+    left: Math.floor(WIDTH / 6),
+    top: Math.floor(HEIGHT / 6),
     width: Math.floor((WIDTH * 2) / 3),
     height: Math.floor((HEIGHT * 2) / 3),
     backgroundColor: RGBA.fromInts(10, 10, 40),
@@ -555,10 +549,8 @@ function displayBenchmarkResults(): void {
 
   const resultsTitle = new TextRenderable("results-title", {
     positionType: "absolute",
-    position: {
-      left: Math.floor(WIDTH / 6) + 2,
-      top: Math.floor(HEIGHT / 6) + 1,
-    },
+    left: Math.floor(WIDTH / 6) + 2,
+    top: Math.floor(HEIGHT / 6) + 1,
     content: "📊 BENCHMARK RESULTS 📊",
     zIndex: 31,
   })
@@ -568,10 +560,8 @@ function displayBenchmarkResults(): void {
     const result = results[i]
     const resultHeader = new TextRenderable(`result-header-${i}`, {
       positionType: "absolute",
-      position: {
-        left: Math.floor(WIDTH / 6) + 2,
-        top: y++,
-      },
+      left: Math.floor(WIDTH / 6) + 2,
+      top: y++,
       content: `Scenario ${i + 1}: ${result.name}`,
       zIndex: 31,
     })
@@ -585,10 +575,8 @@ function displayBenchmarkResults(): void {
     for (let j = 0; j < statLines.length; j++) {
       const statText = new TextRenderable(`result-stat-${i}-${j}`, {
         positionType: "absolute",
-        position: {
-          left: Math.floor(WIDTH / 6) + 2,
-          top: y + j,
-        },
+        left: Math.floor(WIDTH / 6) + 2,
+        top: y + j,
         content: statLines[j],
         zIndex: 31,
       })
@@ -626,10 +614,8 @@ function displayBenchmarkResults(): void {
       for (let j = 0; j < memStatLines.length; j++) {
         const memStatText = new TextRenderable(`result-mem-stat-${i}-${j}`, {
           positionType: "absolute",
-          position: {
-            left: Math.floor(WIDTH / 6) + 2,
-            top: y + j,
-          },
+          left: Math.floor(WIDTH / 6) + 2,
+          top: y + j,
           content: memStatLines[j],
           zIndex: 31,
         })
@@ -642,10 +628,8 @@ function displayBenchmarkResults(): void {
   if (results.length > 1) {
     const comparisonTitle = new TextRenderable("results-comparison", {
       positionType: "absolute",
-      position: {
-        left: Math.floor(WIDTH / 6) + 2,
-        top: y++,
-      },
+      left: Math.floor(WIDTH / 6) + 2,
+      top: y++,
       content: "Performance Comparison:",
       zIndex: 31,
     })
@@ -659,10 +643,8 @@ function displayBenchmarkResults(): void {
       const compareText = `  • ${results[i].name}: ${ratio > 1 ? "+" : ""}${percent}% frame time vs. baseline`
       const compareTextObj = new TextRenderable(`result-compare-${i}`, {
         positionType: "absolute",
-        position: {
-          left: Math.floor(WIDTH / 6) + 2,
-          top: y++,
-        },
+        left: Math.floor(WIDTH / 6) + 2,
+        top: y++,
         content: compareText,
         zIndex: 31,
       })
@@ -672,10 +654,8 @@ function displayBenchmarkResults(): void {
 
   const resultsFooter = new TextRenderable("results-footer", {
     positionType: "absolute",
-    position: {
-      left: Math.floor(WIDTH / 6) + 2,
-      top: Math.floor((HEIGHT * 5) / 6) - 2,
-    },
+    left: Math.floor(WIDTH / 6) + 2,
+    top: Math.floor((HEIGHT * 5) / 6) - 2,
     content: "Press Ctrl+C to exit",
     zIndex: 31,
   })

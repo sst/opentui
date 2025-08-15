@@ -248,10 +248,8 @@ class ExampleSelector {
       width: titleWidth,
       height: titleHeight,
       positionType: "absolute",
-      position: {
-        left: centerX,
-        top: 1,
-      },
+      left: centerX,
+      top: 1,
     })
     this.title.frameBuffer.clear(RGBA.fromInts(0, 17, 34, 0))
     this.renderer.root.add(this.title)
@@ -274,10 +272,8 @@ class ExampleSelector {
 
     this.instructions = new TextRenderable("instructions", {
       positionType: "absolute",
-      position: {
-        left: 2,
-        top: 4,
-      },
+      left: 2,
+      top: 4,
       content:
         "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
       fg: "#AAAAAA",
@@ -297,10 +293,8 @@ class ExampleSelector {
 
     this.selectBox = new BoxRenderable("example-selector-box", {
       positionType: "absolute",
-      position: {
-        left: 1,
-        top: 6,
-      },
+      left: 1,
+      top: 6,
       width: width - 2,
       height: height - 8,
       borderStyle: "single",
@@ -388,10 +382,8 @@ class ExampleSelector {
       if (!this.notImplementedText) {
         this.notImplementedText = new TextRenderable("not-implemented", {
           positionType: "absolute",
-          position: {
-            left: 10,
-            top: 10,
-          },
+          left: 10,
+          top: 10,
           content: `${selected.name} not yet implemented. Press Escape to return.`,
           fg: "#FFFF00",
           zIndex: 10,
