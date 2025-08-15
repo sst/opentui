@@ -46,6 +46,24 @@ enum LogLevel {
   DEBUG = "DEBUG",
 }
 
+export const capture = new Capture()
+const mockStdout = new CapturedWritableStream("stdout", capture)
+const mockStderr = new CapturedWritableStream("stderr", capture)
+
+if (process.env.SKIP_CONSOLE_CACHE !== "true") {
+  global.console = new console.Console({
+    stdout: mockStdout,
+    stderr: mockStderr,
+    colorMode: true,
+    inspectOptions: {
+      compact: false,
+      breakLength: 80,
+      depth: 2,
+    },
+  })
+}
+
+
 class TerminalConsoleCache extends EventEmitter {
   private originalConsole: {
     log: typeof console.log
@@ -151,21 +169,6 @@ class TerminalConsoleCache extends EventEmitter {
     this.deactivate()
   }
 }
-
-export const capture = new Capture()
-const mockStdout = new CapturedWritableStream("stdout", capture)
-const mockStderr = new CapturedWritableStream("stderr", capture)
-
-global.console = new console.Console({
-  stdout: mockStdout,
-  stderr: mockStderr,
-  colorMode: true,
-  inspectOptions: {
-    compact: false,
-    breakLength: 80,
-    depth: 2,
-  },
-})
 
 const terminalConsoleCache = new TerminalConsoleCache()
 process.on("exit", () => {
