@@ -13,7 +13,6 @@ import {
   yellow,
   cyan,
   magenta,
-  FlexDirection,
 } from ".."
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -65,7 +64,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 20,
     borderColor: "#58a6ff",
     title: "Document Section 1",
-    flexDirection: FlexDirection.Column,
+    flexDirection: "column",
     padding: 1,
   })
   leftGroup.add(box1)
@@ -141,7 +140,7 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#f85149",
     title: "Code Example",
     borderStyle: "rounded",
-    flexDirection: FlexDirection.Column,
+    flexDirection: "column",
     padding: 1,
   })
   rightGroup.add(box2)
