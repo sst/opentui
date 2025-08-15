@@ -35,7 +35,11 @@ export class FrameBufferRenderable extends Renderable {
   }
 
   protected destroySelf(): void {
-    this.frameBuffer.destroy()
+    // TODO: framebuffer collides with buffered Renderable, which holds a framebuffer
+    // and destroys it if it exists already. Maybe instead of extending FrameBufferRenderable,
+    // subclasses can use the buffered option on the base renderable instead,
+    // then this would become something that takes in an external framebuffer to bring it into layout.
+    this.frameBuffer?.destroy()
     super.destroySelf()
   }
 }
