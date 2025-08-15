@@ -34,7 +34,7 @@ export type PositionTypeString = "static" | "relative" | "absolute"
 export type UnitString = "undefined" | "point" | "percent" | "auto"
 export type WrapString = "no-wrap" | "wrap" | "wrap-reverse"
 
-export function parseAlign(value: AlignString): Align {
+export function parseAlign(value: string): Align {
   switch (value.toLowerCase()) {
     case "auto":
       return Align.Auto
@@ -55,33 +55,33 @@ export function parseAlign(value: AlignString): Align {
     case "space-evenly":
       return Align.SpaceEvenly
     default:
-      throw new Error(`Unknown Align value: ${value}`)
+      return Align.Auto
   }
 }
 
-export function parseBoxSizing(value: BoxSizingString): BoxSizing {
+export function parseBoxSizing(value: string): BoxSizing {
   switch (value.toLowerCase()) {
     case "border-box":
       return BoxSizing.BorderBox
     case "content-box":
       return BoxSizing.ContentBox
     default:
-      throw new Error(`Unknown BoxSizing value: ${value}`)
+      return BoxSizing.BorderBox
   }
 }
 
-export function parseDimension(value: DimensionString): Dimension {
+export function parseDimension(value: string): Dimension {
   switch (value.toLowerCase()) {
     case "width":
       return Dimension.Width
     case "height":
       return Dimension.Height
     default:
-      throw new Error(`Unknown Dimension value: ${value}`)
+      return Dimension.Width
   }
 }
 
-export function parseDirection(value: DirectionString): Direction {
+export function parseDirection(value: string): Direction {
   switch (value.toLowerCase()) {
     case "inherit":
       return Direction.Inherit
@@ -90,11 +90,11 @@ export function parseDirection(value: DirectionString): Direction {
     case "rtl":
       return Direction.RTL
     default:
-      throw new Error(`Unknown Direction value: ${value}`)
+      return Direction.LTR
   }
 }
 
-export function parseDisplay(value: DisplayString): Display {
+export function parseDisplay(value: string): Display {
   switch (value.toLowerCase()) {
     case "flex":
       return Display.Flex
@@ -103,11 +103,11 @@ export function parseDisplay(value: DisplayString): Display {
     case "contents":
       return Display.Contents
     default:
-      throw new Error(`Unknown Display value: ${value}`)
+      return Display.Flex
   }
 }
 
-export function parseEdge(value: EdgeString): Edge {
+export function parseEdge(value: string): Edge {
   switch (value.toLowerCase()) {
     case "left":
       return Edge.Left
@@ -128,11 +128,11 @@ export function parseEdge(value: EdgeString): Edge {
     case "all":
       return Edge.All
     default:
-      throw new Error(`Unknown Edge value: ${value}`)
+      return Edge.All
   }
 }
 
-export function parseFlexDirection(value: FlexDirectionString): FlexDirection {
+export function parseFlexDirection(value: string): FlexDirection {
   switch (value.toLowerCase()) {
     case "column":
       return FlexDirection.Column
@@ -143,11 +143,11 @@ export function parseFlexDirection(value: FlexDirectionString): FlexDirection {
     case "row-reverse":
       return FlexDirection.RowReverse
     default:
-      throw new Error(`Unknown FlexDirection value: ${value}`)
+      return FlexDirection.Column
   }
 }
 
-export function parseGutter(value: GutterString): Gutter {
+export function parseGutter(value: string): Gutter {
   switch (value.toLowerCase()) {
     case "column":
       return Gutter.Column
@@ -156,11 +156,11 @@ export function parseGutter(value: GutterString): Gutter {
     case "all":
       return Gutter.All
     default:
-      throw new Error(`Unknown Gutter value: ${value}`)
+      return Gutter.All
   }
 }
 
-export function parseJustify(value: JustifyString): Justify {
+export function parseJustify(value: string): Justify {
   switch (value.toLowerCase()) {
     case "flex-start":
       return Justify.FlexStart
@@ -175,11 +175,11 @@ export function parseJustify(value: JustifyString): Justify {
     case "space-evenly":
       return Justify.SpaceEvenly
     default:
-      throw new Error(`Unknown Justify value: ${value}`)
+      return Justify.FlexStart
   }
 }
 
-export function parseLogLevel(value: LogLevelString): LogLevel {
+export function parseLogLevel(value: string): LogLevel {
   switch (value.toLowerCase()) {
     case "error":
       return LogLevel.Error
@@ -194,11 +194,11 @@ export function parseLogLevel(value: LogLevelString): LogLevel {
     case "fatal":
       return LogLevel.Fatal
     default:
-      throw new Error(`Unknown LogLevel value: ${value}`)
+      return LogLevel.Info
   }
 }
 
-export function parseMeasureMode(value: MeasureModeString): MeasureMode {
+export function parseMeasureMode(value: string): MeasureMode {
   switch (value.toLowerCase()) {
     case "undefined":
       return MeasureMode.Undefined
@@ -207,22 +207,22 @@ export function parseMeasureMode(value: MeasureModeString): MeasureMode {
     case "at-most":
       return MeasureMode.AtMost
     default:
-      throw new Error(`Unknown MeasureMode value: ${value}`)
+      return MeasureMode.Undefined
   }
 }
 
-export function parseNodeType(value: NodeTypeString): NodeType {
+export function parseNodeType(value: string): NodeType {
   switch (value.toLowerCase()) {
     case "default":
       return NodeType.Default
     case "text":
       return NodeType.Text
     default:
-      throw new Error(`Unknown NodeType value: ${value}`)
+      return NodeType.Default
   }
 }
 
-export function parseOverflow(value: OverflowString): Overflow {
+export function parseOverflow(value: string): Overflow {
   switch (value.toLowerCase()) {
     case "visible":
       return Overflow.Visible
@@ -231,11 +231,11 @@ export function parseOverflow(value: OverflowString): Overflow {
     case "scroll":
       return Overflow.Scroll
     default:
-      throw new Error(`Unknown Overflow value: ${value}`)
+      return Overflow.Visible
   }
 }
 
-export function parsePositionType(value: PositionTypeString): PositionType {
+export function parsePositionType(value: string): PositionType {
   switch (value.toLowerCase()) {
     case "static":
       return PositionType.Static
@@ -244,11 +244,11 @@ export function parsePositionType(value: PositionTypeString): PositionType {
     case "absolute":
       return PositionType.Absolute
     default:
-      throw new Error(`Unknown PositionType value: ${value}`)
+      return PositionType.Static
   }
 }
 
-export function parseUnit(value: UnitString): Unit {
+export function parseUnit(value: string): Unit {
   switch (value.toLowerCase()) {
     case "undefined":
       return Unit.Undefined
@@ -259,11 +259,11 @@ export function parseUnit(value: UnitString): Unit {
     case "auto":
       return Unit.Auto
     default:
-      throw new Error(`Unknown Unit value: ${value}`)
+      return Unit.Point
   }
 }
 
-export function parseWrap(value: WrapString): Wrap {
+export function parseWrap(value: string): Wrap {
   switch (value.toLowerCase()) {
     case "no-wrap":
       return Wrap.NoWrap
@@ -272,6 +272,6 @@ export function parseWrap(value: WrapString): Wrap {
     case "wrap-reverse":
       return Wrap.WrapReverse
     default:
-      throw new Error(`Unknown Wrap value: ${value}`)
+      return Wrap.NoWrap
   }
 }
