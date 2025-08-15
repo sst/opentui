@@ -24,6 +24,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .cpu_arch = .x86_64, .os_tag = .macos, .description = "macOS x86_64 (Intel)" },
     .{ .cpu_arch = .aarch64, .os_tag = .macos, .description = "macOS aarch64 (Apple Silicon)" },
     .{ .cpu_arch = .x86_64, .os_tag = .windows, .description = "Windows x86_64" },
+    .{ .cpu_arch = .aarch64, .os_tag = .windows, .description = "Windows aarch64" },
     .{ .cpu_arch = .aarch64, .os_tag = .linux, .description = "Linux aarch64" },
 };
 

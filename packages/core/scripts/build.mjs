@@ -21,7 +21,7 @@ const variants = [
   { platform: "linux", arch: "x64" },
   { platform: "linux", arch: "arm64" },
   { platform: "win32", arch: "x64" },
-  // { platform: "win32", arch: "arm64" },
+  { platform: "win32", arch: "arm64" },
 ]
 
 if (!buildLib && !buildNative) {
