@@ -1,10 +1,4 @@
-import {
-  TextAttributes,
-  createCliRenderer,
-  GroupRenderable,
-  TextRenderable,
-  BoxRenderable,
-} from "../index"
+import { TextAttributes, createCliRenderer, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
 

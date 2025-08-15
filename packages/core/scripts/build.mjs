@@ -234,7 +234,7 @@ if (buildLib) {
   }
 
   const optionalDeps = Object.fromEntries(
-    variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, `^${packageJson.version}`]),
+    variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, packageJson.version]),
   )
 
   writeFileSync(

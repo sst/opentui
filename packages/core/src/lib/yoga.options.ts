@@ -16,7 +16,16 @@ import {
   Wrap,
 } from "yoga-layout"
 
-export type AlignString = "auto" | "flex-start" | "center" | "flex-end" | "stretch" | "baseline" | "space-between" | "space-around" | "space-evenly"
+export type AlignString =
+  | "auto"
+  | "flex-start"
+  | "center"
+  | "flex-end"
+  | "stretch"
+  | "baseline"
+  | "space-between"
+  | "space-around"
+  | "space-evenly"
 export type BoxSizingString = "border-box" | "content-box"
 export type DimensionString = "width" | "height"
 export type DirectionString = "inherit" | "ltr" | "rtl"

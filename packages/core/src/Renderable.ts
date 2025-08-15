@@ -4,7 +4,16 @@ import Yoga, { FlexDirection, Direction, PositionType, Edge, Align, Justify, typ
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
-import { parseAlign, parseFlexDirection, parseJustify, parsePositionType, type AlignString, type FlexDirectionString, type JustifyString, type PositionTypeString } from "./lib/yoga.options"
+import {
+  parseAlign,
+  parseFlexDirection,
+  parseJustify,
+  parsePositionType,
+  type AlignString,
+  type FlexDirectionString,
+  type JustifyString,
+  type PositionTypeString,
+} from "./lib/yoga.options"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -447,14 +456,17 @@ export abstract class Renderable extends EventEmitter {
     }
 
     // TODO: flatten position properties internally as well
-    const hasPositionProps = options.top !== undefined || options.right !== undefined || 
-                            options.bottom !== undefined || options.left !== undefined
+    const hasPositionProps =
+      options.top !== undefined ||
+      options.right !== undefined ||
+      options.bottom !== undefined ||
+      options.left !== undefined
     if (hasPositionProps) {
       this._position = {
         top: options.top,
         right: options.right,
         bottom: options.bottom,
-        left: options.left
+        left: options.left,
       }
       this.updateYogaPosition(this._position)
     }
@@ -471,14 +483,14 @@ export abstract class Renderable extends EventEmitter {
 
   private setupMarginAndPadding(options: RenderableOptions): void {
     const node = this.layoutNode.yogaNode
-    
+
     if (isMarginType(options.margin)) {
       node.setMargin(Edge.Top, options.margin)
       node.setMargin(Edge.Right, options.margin)
       node.setMargin(Edge.Bottom, options.margin)
       node.setMargin(Edge.Left, options.margin)
     }
-    
+
     if (isMarginType(options.marginTop)) {
       node.setMargin(Edge.Top, options.marginTop)
     }
@@ -491,14 +503,14 @@ export abstract class Renderable extends EventEmitter {
     if (isMarginType(options.marginLeft)) {
       node.setMargin(Edge.Left, options.marginLeft)
     }
-    
+
     if (isPaddingType(options.padding)) {
       node.setPadding(Edge.Top, options.padding)
       node.setPadding(Edge.Right, options.padding)
       node.setPadding(Edge.Bottom, options.padding)
       node.setPadding(Edge.Left, options.padding)
     }
-    
+
     if (isPaddingType(options.paddingTop)) {
       node.setPadding(Edge.Top, options.paddingTop)
     }
