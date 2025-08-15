@@ -28,7 +28,6 @@ export type GutterString = "column" | "row" | "all"
 export type JustifyString = "flex-start" | "center" | "flex-end" | "space-between" | "space-around" | "space-evenly"
 export type LogLevelString = "error" | "warn" | "info" | "debug" | "verbose" | "fatal"
 export type MeasureModeString = "undefined" | "exactly" | "at-most"
-export type NodeTypeString = "default" | "text"
 export type OverflowString = "visible" | "hidden" | "scroll"
 export type PositionTypeString = "static" | "relative" | "absolute"
 export type UnitString = "undefined" | "point" | "percent" | "auto"
@@ -208,17 +207,6 @@ export function parseMeasureMode(value: string): MeasureMode {
       return MeasureMode.AtMost
     default:
       return MeasureMode.Undefined
-  }
-}
-
-export function parseNodeType(value: string): NodeType {
-  switch (value.toLowerCase()) {
-    case "default":
-      return NodeType.Default
-    case "text":
-      return NodeType.Text
-    default:
-      return NodeType.Default
   }
 }
 
