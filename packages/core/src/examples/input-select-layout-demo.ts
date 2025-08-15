@@ -56,7 +56,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: 3,
-    bg: "#3b82f6",
+    backgroundColor: "#3b82f6",
     borderStyle: "single",
     borderColor: "#2563eb",
     flexGrow: 0,
@@ -81,7 +81,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexGrow: 1,
     flexShrink: 1,
     minHeight: 10,
-    bg: "#1e293b",
+    backgroundColor: "#1e293b",
     borderStyle: "single",
     borderColor: "#475569",
   })
@@ -109,7 +109,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     titleAlignment: "center",
     flexGrow: 1,
     flexShrink: 1,
-    bg: "transparent",
+    backgroundColor: "transparent",
   })
 
   leftSelect = new SelectRenderable("color-select", {
@@ -147,7 +147,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     titleAlignment: "center",
     flexGrow: 1,
     flexShrink: 1,
-    bg: "transparent",
+    backgroundColor: "transparent",
   })
 
   rightSelect = new SelectRenderable("size-select", {
@@ -179,7 +179,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     height: 7,
     flexGrow: 0,
     flexShrink: 0,
-    bg: "#0f172a",
+    backgroundColor: "#0f172a",
     borderStyle: "single",
     borderColor: "#334155",
   })
@@ -214,7 +214,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexGrow: 0,
     flexShrink: 0,
     margin: { top: 1 },
-    bg: "transparent",
+    backgroundColor: "transparent",
   })
 
   textInput = new InputRenderable("text-input", {
@@ -239,7 +239,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     zIndex: 0,
     width: "auto",
     height: 3,
-    bg: "#1e40af",
+    backgroundColor: "#1e40af",
     borderStyle: "single",
     borderColor: "#1d4ed8",
     flexGrow: 0,

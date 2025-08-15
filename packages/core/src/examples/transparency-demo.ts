@@ -29,7 +29,7 @@ class DraggableTransparentBox extends BoxRenderable {
       width,
       height,
       zIndex,
-      bg,
+      backgroundColor: bg,
       border: false,
       titleAlignment: "center",
       positionType: "absolute",

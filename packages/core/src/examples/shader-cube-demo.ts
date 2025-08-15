@@ -128,7 +128,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     },
     width: WIDTH - 10,
     height: HEIGHT - 10,
-    bg: "#131336",
+    backgroundColor: "#131336",
     zIndex: 0,
     borderStyle: "single",
     borderColor: "#FFFFFF",
