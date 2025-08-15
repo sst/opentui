@@ -587,19 +587,21 @@ export abstract class Renderable extends EventEmitter {
     this.needsUpdate()
   }
 
-  public add(obj: Renderable): void {
+  private replaceParent(obj: Renderable) {
     if (this.renderableMap.has(obj.id)) {
       this.remove(obj.id)
     }
-
     if (obj.parent) {
       obj.parent.remove(obj.id)
     }
-
     obj.parent = this
     if (this.ctx) {
       obj.propagateContext(this.ctx)
     }
+  }
+
+  public add(obj: Renderable): void {
+    this.replaceParent(obj)
 
     this.renderableArray.push(obj)
     this.needsZIndexSort = true
@@ -609,6 +611,33 @@ export abstract class Renderable extends EventEmitter {
     this.layoutNode.addChild(childLayoutNode)
     this.requestLayout()
 
+    this.emit("child:added", obj)
+  }
+
+  insertBefore(obj: Renderable, anchor?: Renderable) {
+    // Fallback to add if anchor is not provided
+    if (!anchor) {
+      return this.add(obj)
+    }
+
+    if (!this.renderableMap.has(anchor.id)) {
+      throw new Error("Anchor does not exist")
+    }
+
+    const anchorIndex = this.renderableArray.indexOf(anchor)
+    if (anchorIndex === -1) {
+      throw new Error("Anchor does not exist")
+    }
+
+    this.replaceParent(obj)
+
+    this.renderableArray.splice(anchorIndex, 0, obj)
+    this.renderableMap.set(obj.id, obj)
+    const childLayoutNode = obj.getLayoutNode()
+    this.layoutNode.insertChild(childLayoutNode, anchorIndex)
+
+    this.needsZIndexSort = true
+    this.requestLayout()
     this.emit("child:added", obj)
   }
 
