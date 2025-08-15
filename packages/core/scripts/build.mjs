@@ -21,7 +21,7 @@ const variants = [
   { platform: "linux", arch: "x64" },
   { platform: "linux", arch: "arm64" },
   { platform: "win32", arch: "x64" },
-  { platform: "win32", arch: "arm64" },
+  // { platform: "win32", arch: "arm64" },
 ]
 
 if (!buildLib && !buildNative) {
@@ -77,11 +77,28 @@ if (buildNative) {
     rmSync(nativeDir, { recursive: true, force: true })
     mkdirSync(nativeDir, { recursive: true })
 
+    let copiedFiles = 0
     for (const name of ["libopentui", "opentui"]) {
       for (const ext of [".so", ".dll", ".dylib"]) {
         const src = join(libDir, `${name}${ext}`)
-        if (existsSync(src)) copyFileSync(src, join(nativeDir, `${name}${ext}`))
+        if (existsSync(src)) {
+          copyFileSync(src, join(nativeDir, `${name}${ext}`))
+          copiedFiles++
+        }
       }
+    }
+
+    if (copiedFiles === 0) {
+      console.error(`Error: No dynamic libraries found for ${platform}-${arch} in ${libDir}`)
+      console.error(`Expected to find files like: libopentui.so, libopentui.dylib, opentui.dll`)
+      console.error(`Found files in ${libDir}:`)
+      if (existsSync(libDir)) {
+        const files = spawnSync("ls", ["-la", libDir], { stdio: "pipe" })
+        if (files.stdout) console.error(files.stdout.toString())
+      } else {
+        console.error("Directory does not exist")
+      }
+      process.exit(1)
     }
 
     writeFileSync(
