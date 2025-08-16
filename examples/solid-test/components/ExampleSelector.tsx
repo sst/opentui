@@ -16,7 +16,7 @@ import {
 import { createSignal, Show, onMount, Switch, Match } from "solid-js";
 import { SplitModeDemo } from "./split-mode";
 import InputScene from "./input-demo";
-import MouseScene from './mouse-demo.tsx'
+import MouseScene from "./mouse-demo.tsx";
 import { ConsolePosition } from "@opentui/core/src/console";
 
 const EXAMPLES = [
@@ -71,23 +71,23 @@ const ExampleSelector = () => {
   });
 
   return (
-    <Box style={{ height: "100%", backgroundColor: "#001122", border: false, padding: 1 }}>
-      <Group alignItems="center">
-        <ASCIIFont
+    <box style={{ height: "100%", backgroundColor: "#001122", border: false, padding: 1 }}>
+      <group alignItems="center">
+        <ascii_font
           style={{
             width: titleWidth,
             height: titleHeight,
             font: titleFont,
           }}
-        >
-          {titleText}
-        </ASCIIFont>
-      </Group>
-      <Text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
-        Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console,
-        ctrl+c to quit {selected()}
-      </Text>
-      <Box
+          text={titleText}
+        />
+      </group>
+      <text
+        style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}
+        content={`Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for console,
+        ctrl+c to quit {selected()}`}
+      />
+      <box
         title="Examples"
         style={{
           flexGrow: 1,
@@ -100,8 +100,8 @@ const ExampleSelector = () => {
         <Show
           when={inMenu()}
           fallback={
-            <Box border={false}>
-              <Text fg="#00FF00">Press Escape to return to menu.</Text>
+            <box border={false}>
+              <text fg="#00FF00" content="Press Escape to return to menu." />
               <Switch>
                 <Match when={EXAMPLES.at(selected())?.scene === "split-mode"}>
                   <SplitModeDemo />
@@ -113,10 +113,10 @@ const ExampleSelector = () => {
                   <MouseScene />
                 </Match>
               </Switch>
-            </Box>
+            </box>
           }
         >
-          <Select
+          <select
             focused
             onSelect={(index) => {
               handleSelect(index);
@@ -127,7 +127,7 @@ const ExampleSelector = () => {
               value: i,
             }))}
             style={{
-              height: 20,
+              height: 30,
               backgroundColor: "transparent",
               focusedBackgroundColor: "transparent",
               selectedBackgroundColor: "#334455",
@@ -139,8 +139,8 @@ const ExampleSelector = () => {
             fastScrollStep={5}
           />
         </Show>
-      </Box>
-    </Box>
+      </box>
+    </box>
   );
 };
 

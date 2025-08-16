@@ -24,14 +24,28 @@ import { createElement, effect, insert, setProp, spread, use } from "../reconcil
 export * from "./hooks";
 
 export const elements = {
-  opentui_box: BoxRenderable,
-  opentui_group: GroupRenderable,
-  opentui_input: InputRenderable,
-  opentui_tab_select: TabSelectRenderable,
-  opentui_text: TextRenderable,
-  opentui_select: SelectRenderable,
-  opentui_ascii_font: ASCIIFontRenderable,
+  ascii_font: ASCIIFontRenderable,
+  box: BoxRenderable,
+  group: GroupRenderable,
+  input: InputRenderable,
+  select: SelectRenderable,
+  tab_select: TabSelectRenderable,
+  text: TextRenderable,
 };
+
+declare module "solid-js" {
+  namespace JSX {
+    interface IntrinsicElements {
+      ascii_font: ASCIIFontElementProps;
+      box: BoxElementProps;
+      group: GroupElementProps;
+      input: InputElementProps;
+      select: SelectElementProps;
+      tab_select: TabSelectElementProps;
+      text: TextElementProps;
+    }
+  }
+}
 
 export type Element = keyof typeof elements;
 
@@ -49,9 +63,9 @@ type ElementProps<
 const createCustomElement = <T extends Record<string, any>>(tagName: string, acceptChildren?: string | true) => {
   return (props: T) => {
     const element = createElement(tagName);
-    onCleanup(() => {
-      element.destroy();
-    });
+    // onCleanup(() => {
+    //   element.destroy();
+    // });
     if (props.ref) {
       typeof props.ref === "function"
         ? use(props.ref, element, undefined)
@@ -81,71 +95,57 @@ const createCustomElement = <T extends Record<string, any>>(tagName: string, acc
 
 type ContianerProps = { children?: JSX.Element };
 
-export const Box = createCustomElement<ElementProps<BoxOptions, BoxRenderable> & ContianerProps>("opentui_box", true);
+export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable> & ContianerProps;
+export const Box = createCustomElement<BoxElementProps>("box", true);
 
-export const Group = createCustomElement<ElementProps<RenderableOptions, GroupRenderable> & ContianerProps>(
-  "opentui_group",
-  true,
-);
+export type GroupElementProps = ElementProps<RenderableOptions, GroupRenderable> & ContianerProps;
+export const Group = createCustomElement<GroupElementProps>("group", true);
 
-export const Input = createCustomElement<
-  ElementProps<
-    InputRenderableOptions,
-    InputRenderable,
-    "value" | "maxLength" | "placeholder" // NonStyleKeys
-  > & {
-    onInput?: (value: string) => void;
-    onSubmit?: (value: string) => void;
-    onChange?: (value: string) => void;
-    focused?: boolean;
-  }
->("opentui_input");
+export type InputElementProps = ElementProps<
+  InputRenderableOptions,
+  InputRenderable,
+  "value" | "maxLength" | "placeholder"
+> & {
+  onInput?: (value: string) => void;
+  onSubmit?: (value: string) => void;
+  onChange?: (value: string) => void;
+  focused?: boolean;
+};
+export const Input = createCustomElement<InputElementProps>("input");
 
-export const TabSelect = createCustomElement<
-  ElementProps<
-    TabSelectRenderableOptions,
-    TabSelectRenderable,
-    "options" | "showScrollArrows" | "showDescription" | "wrapSelection" // NonStyleKeys
-  >
->("opentui_tab_select");
+export type TabSelectElementProps = ElementProps<
+  TabSelectRenderableOptions,
+  TabSelectRenderable,
+  "options" | "showScrollArrows" | "showDescription" | "wrapSelection"
+>;
+export const TabSelect = createCustomElement<TabSelectElementProps>("tab_select");
 
 type SelectEventCallback = (index: number, option: SelectOption) => void;
 
-export const Select = createCustomElement<
-  ElementProps<
-    SelectRenderableOptions,
-    SelectRenderable,
-    "options" | "showScrollIndicator" | "wrapSelection" | "fastScrollStep" // NonStyleKeys
-  > & {
-    onSelect?: SelectEventCallback;
-    onChange?: SelectEventCallback;
-    focused?: boolean;
-    children?: JSX.Element;
-  }
->("opentui_select");
+export type SelectElementProps = ElementProps<
+  SelectRenderableOptions,
+  SelectRenderable,
+  "options" | "showScrollIndicator" | "wrapSelection" | "fastScrollStep"
+> & {
+  onSelect?: SelectEventCallback;
+  onChange?: SelectEventCallback;
+  focused?: boolean;
+  children?: JSX.Element;
+};
+export const Select = createCustomElement<SelectElementProps>("select");
 
 type TextChildTypes = (string & {}) | number | boolean | null | undefined;
 type TextProps = {
   children: TextChildTypes | Array<TextChildTypes> | StyledText;
 };
 
-export const ASCIIFont = createCustomElement<
-  ElementProps<
-    ASCIIFontOptions,
-    ASCIIFontRenderable,
-    "text" | "selectable" // NonStyleKeys
-  > &
-    TextProps
->("opentui_ascii_font", "text");
+export type ASCIIFontElementProps = ElementProps<
+  ASCIIFontOptions,
+  ASCIIFontRenderable,
+  "text" | "selectable" // NonStyleKeys
+>;
 
-export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps;
-export const Text = createCustomElement<TextElementProps>("opentui_text", "content");
+export const ASCIIFont = createCustomElement<ASCIIFontElementProps & TextProps>("ascii_font", "text");
 
-declare module "solid-js" {
-  namespace JSX {
-    interface IntrinsicElements {
-      text: TextElementProps;
-    }
-  }
-}
-
+export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable">;
+export const Text = createCustomElement<TextElementProps & TextProps>("text", "content");
