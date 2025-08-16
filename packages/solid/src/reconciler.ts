@@ -9,6 +9,7 @@ import {
   SelectRenderableEvents,
 } from "@opentui/core";
 import { elements, type Element } from "./elements";
+import { onCleanup } from "solid-js";
 
 type DomNode = Renderable;
 
@@ -35,6 +36,9 @@ export const {
     const id = getNextId(tagName);
     const element = new elements[tagName as Element](id, {});
     log("[Reconciler] Element created with id:", id, element.id);
+    onCleanup(() => {
+      element.destroy();
+    });
     return element;
   },
 
