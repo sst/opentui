@@ -1,0 +1,25 @@
+{
+  "name": "@opentui/solid",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "main": "index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./reconciler": {
+      "types": "./src/reconciler.ts",
+      "import": "./src/reconciler.ts"
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.9",
+    "@opentui/core": "workspace:*",
+    "typescript": "^5"
+  }
+}

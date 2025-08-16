@@ -1,0 +1,26 @@
+{
+  "name": "example",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --conditions=browser index.tsx",
+    "build": "bun run scripts/build.ts",
+    "start": "bun run dist/index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "babel-plugin-module-resolver": "^5.0.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "babel-preset-solid": "^1.9.9",
+    "solid-js": "^1.9.9",
+		"@opentui/solid": "workspace:*",
+		"@opentui/core": "workspace:*"
+  }
+}
