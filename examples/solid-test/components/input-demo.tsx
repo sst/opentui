@@ -12,7 +12,7 @@ const InputScene = () => {
   return (
     <Box height={4}>
       <Text>Name: {nameValue()}</Text>
-      <Input focused onChange={(value) => setNameValue(value)} />
+      <Input focused onInput={(value) => setNameValue(value)} />
     </Box>
   );
 };
