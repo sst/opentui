@@ -3,7 +3,7 @@ import { transformAsync } from "@babel/core";
 import ts from "@babel/preset-typescript";
 // @ts-expect-error - Types not important.
 import solid from "babel-preset-solid";
-import { plugin, type BunPlugin } from "bun";
+import { type BunPlugin } from "bun";
 
 const solidTransformPlugin: BunPlugin = {
   name: "bun-plugin-solid",
@@ -13,19 +13,12 @@ const solidTransformPlugin: BunPlugin = {
     //   const code = await readFile(args.path, "utf8");
     //   const transforms = await transformAsync(code, {
     //     filename: args.path,
-    //     plugins: [
-    //       [
-    //         "module-resolver",
-    //         {
-    //           alias: {
-    //             "^solid-js$": "solid-js/dist/solid.js",
-    //           },
-    //         },
-    //       ],
-    //     ],
-    //     presets: [
-    //       [ts, {}],
-    //     ],
+    //     // env: {
+    //     //   development: {
+    //     //     plugins: ["solid-refresh/babel"],
+    //     //   },
+    //     // },
+    //     presets: [[ts, {}]],
     //   });
     //   return {
     //     contents: transforms.code,
@@ -37,16 +30,12 @@ const solidTransformPlugin: BunPlugin = {
       const code = await readFile(args.path, "utf8");
       const transforms = await transformAsync(code, {
         filename: args.path,
-        plugins: [
-          [
-            "module-resolver",
-            {
-              alias: {
-                "^solid-js$": "solid-js/dist/solid.js",
-              },
-            },
-          ],
-        ],
+        // env: {
+        //   development: {
+        //     plugins: [["solid-refresh/babel", { "bundler": "esm" }]],
+        //   },
+        // },
+        plugins: [["solid-refresh/babel", { bundler: "esm" }]],
         presets: [
           [
             solid,
@@ -55,7 +44,7 @@ const solidTransformPlugin: BunPlugin = {
               generate: "universal",
             },
           ],
-          [ts, {}],
+          [ts],
         ],
       });
       return {
@@ -66,4 +55,4 @@ const solidTransformPlugin: BunPlugin = {
   },
 };
 
-plugin(solidTransformPlugin);
+export default solidTransformPlugin;

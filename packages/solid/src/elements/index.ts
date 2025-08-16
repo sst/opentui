@@ -6,6 +6,7 @@ import type {
   RenderableOptions,
   SelectOption,
   SelectRenderableOptions,
+  StyledText,
   TabSelectRenderableOptions,
   TextOptions,
 } from "@opentui/core";
@@ -125,7 +126,7 @@ export const Select = createCustomElement<
 
 type TextChildTypes = (string & {}) | number | boolean | null | undefined;
 type TextProps = {
-  children: TextChildTypes | Array<TextChildTypes>;
+  children: TextChildTypes | Array<TextChildTypes> | StyledText;
 };
 
 export const ASCIIFont = createCustomElement<
@@ -137,6 +138,14 @@ export const ASCIIFont = createCustomElement<
     TextProps
 >("opentui_ascii_font", "text");
 
-export const Text = createCustomElement<
-  ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps
->("opentui_text", "content");
+export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps;
+export const Text = createCustomElement<TextElementProps>("opentui_text", "content");
+
+declare module "solid-js" {
+  namespace JSX {
+    interface IntrinsicElements {
+      text: TextElementProps;
+    }
+  }
+}
+

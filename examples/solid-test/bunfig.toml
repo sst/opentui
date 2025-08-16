@@ -1,1 +1,1 @@
-preload = ["./scripts/solid-plugin.ts"]
+preload = ["./scripts/preload.ts"]
