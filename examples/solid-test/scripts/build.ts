@@ -18,16 +18,6 @@ await Bun.build({
           const code = await readFile(args.path, "utf8");
           const transforms = await transformAsync(code, {
             filename: args.path,
-            plugins: [
-              [
-                "module-resolver",
-                {
-                  alias: {
-                    "^solid-js$": "solid-js/dist/solid.js",
-                  },
-                },
-              ],
-            ],
             presets: [
               [
                 solid,
