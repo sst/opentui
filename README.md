@@ -15,6 +15,8 @@ bun install @opentui/core
 
 ## Running Examples
 
+Requires running a build script first. (`build`, `build:dev`, `build:prod`)
+
 ```bash
 bun install
 cd packages/core
