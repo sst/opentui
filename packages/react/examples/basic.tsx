@@ -37,33 +37,41 @@ export const App = () => {
   }, [username, password])
 
   return (
-    <Group padding={2} flexDirection="column">
-      <Text content="OpenTUI with React!" fg="#FFFF00" attributes={TextAttributes.BOLD | TextAttributes.ITALIC} />
+    <Group style={{ padding: 2, flexDirection: "column" }}>
+      <Text
+        content="OpenTUI with React!"
+        style={{
+          fg: "#FFFF00",
+          attributes: TextAttributes.BOLD | TextAttributes.ITALIC,
+        }}
+      />
       <Text content={t`${bold(italic(fg("cyan")(`Styled Text!`)))}`} />
 
-      <Box width={40} height={3} title="Username" marginTop={1}>
+      <Box title="Username" style={{ width: 40, height: 3, marginTop: 1 }}>
         <Input
           placeholder="Enter your username..."
           onInput={handleUsernameChange}
           onSubmit={handleSubmit}
           focused={focused === "username"}
-          focusedBackgroundColor="#000000"
+          style={{ focusedBackgroundColor: "#000000" }}
         />
       </Box>
 
-      <Box width={40} height={3} title="Password" marginTop={1} marginBottom={1}>
+      <Box title="Password" style={{ width: 40, height: 3, marginTop: 1, marginBottom: 1 }}>
         <Input
           placeholder="Enter your password..."
           onInput={handlePasswordChange}
           onSubmit={handleSubmit}
           focused={focused === "password"}
-          focusedBackgroundColor="#000000"
+          style={{ focusedBackgroundColor: "#000000" }}
         />
       </Box>
 
       <Text
-        fg={status === "idle" ? "#AAAAAA" : status === "success" ? "green" : "red"}
         content={status.toUpperCase()}
+        style={{
+          fg: status === "idle" ? "#AAAAAA" : status === "success" ? "green" : "red",
+        }}
       />
     </Group>
   )

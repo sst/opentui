@@ -18,6 +18,28 @@ function initEventListeners(instance: Instance, eventName: string, listener: any
   }
 }
 
+function setStyle(instance: Instance, styles: any, oldStyles: any) {
+  if (styles && typeof styles === "object") {
+    if (oldStyles != null) {
+      for (const styleName in styles) {
+        const value = styles[styleName]
+        if (styles.hasOwnProperty(styleName) && oldStyles[styleName] !== value) {
+          // @ts-expect-error props are not strongly typed in the reconciler, so we need to allow dynamic property access
+          instance[styleName] = value
+        }
+      }
+    } else {
+      for (const styleName in styles) {
+        if (styles.hasOwnProperty(styleName)) {
+          const value = styles[styleName]
+          // @ts-expect-error props are not strongly typed in the reconciler, so we need to allow dynamic property access
+          instance[styleName] = value
+        }
+      }
+    }
+  }
+}
+
 function setProperty(instance: Instance, type: Type, propKey: string, propValue: any, oldPropValue?: any) {
   switch (propKey) {
     case "onChange":
@@ -52,6 +74,9 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
       } else {
         instance.blur()
       }
+      break
+    case "style":
+      setStyle(instance, propValue, oldPropValue)
       break
     case "children":
       // skip
