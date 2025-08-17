@@ -4,9 +4,8 @@ import ExampleSelector from "./components/ExampleSelector";
 
 const App = () => <ExampleSelector />;
 
-render(() => <App />, {
+render(App, {
   targetFps: 30,
-  exitOnCtrlC: false,
   consoleOptions: {
     position: ConsolePosition.BOTTOM,
     maxStoredLogs: 1000,

@@ -20,8 +20,7 @@ import {
   TabSelectRenderable,
   TextRenderable,
 } from "@opentui/core";
-import { onCleanup, children as resolveChildren, type JSX, type Ref } from "solid-js";
-import { createElement, effect, insert, setProp, spread, use } from "../reconciler";
+import type { JSX, Ref } from "solid-js";
 export * from "./hooks";
 
 export const elements = {
@@ -33,6 +32,7 @@ export const elements = {
   tab_select: TabSelectRenderable,
   text: TextRenderable,
 };
+export type Element = keyof typeof elements;
 
 declare module "solid-js" {
   namespace JSX {
@@ -48,8 +48,6 @@ declare module "solid-js" {
   }
 }
 
-export type Element = keyof typeof elements;
-
 type RenderableNonStyleKeys = "buffered";
 
 type ElementProps<
@@ -59,48 +57,14 @@ type ElementProps<
 > = {
   style?: Omit<T, NonStyleKeys | RenderableNonStyleKeys>;
   ref?: Ref<K>;
-} & Pick<T, NonStyleKeys>;
-
-const createCustomElement = <T extends Record<string, any>>(tagName: string, acceptChildren?: string | true) => {
-  return (props: T) => {
-    const element = createElement(tagName);
-    // onCleanup(() => {
-    //   element.destroy();
-    // });
-    if (props.ref) {
-      typeof props.ref === "function"
-        ? use(props.ref, element, undefined)
-        : // @ts-expect-error: directly assigning to ref as is done after transpile
-          (props.ref = element);
-    }
-    spread(element, props, true);
-    if (acceptChildren) {
-      const resolved = resolveChildren(() => props.children);
-      if (acceptChildren === true) {
-        insert(element, resolved);
-      } else {
-        effect((prev) => {
-          const value = resolved();
-          if (prev !== value) {
-            setProp(element, acceptChildren, value, prev);
-          }
-
-          return value;
-        }, "");
-      }
-    }
-
-    return element as JSX.Element;
-  };
-};
+} & T;
+// } & Pick<T, NonStyleKeys>;
 
 type ContianerProps = { children?: JSX.Element };
 
-export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable> & ContianerProps;
-export const Box = createCustomElement<BoxElementProps>("box", true);
+export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable, "title"> & ContianerProps;
 
 export type GroupElementProps = ElementProps<RenderableOptions, GroupRenderable> & ContianerProps;
-export const Group = createCustomElement<GroupElementProps>("group", true);
 
 export type InputElementProps = ElementProps<
   InputRenderableOptions,
@@ -112,14 +76,12 @@ export type InputElementProps = ElementProps<
   onChange?: (value: string) => void;
   focused?: boolean;
 };
-export const Input = createCustomElement<InputElementProps>("input");
 
 export type TabSelectElementProps = ElementProps<
   TabSelectRenderableOptions,
   TabSelectRenderable,
   "options" | "showScrollArrows" | "showDescription" | "wrapSelection"
 >;
-export const TabSelect = createCustomElement<TabSelectElementProps>("tab_select");
 
 type SelectEventCallback = (index: number, option: SelectOption) => void;
 
@@ -131,14 +93,10 @@ export type SelectElementProps = ElementProps<
   onSelect?: SelectEventCallback;
   onChange?: SelectEventCallback;
   focused?: boolean;
-  children?: JSX.Element;
 };
-export const Select = createCustomElement<SelectElementProps>("select");
 
 type TextChildTypes = (string & {}) | number | boolean | null | undefined;
 type TextProps = {
-  // TODO: dependent on custom universal expression implementation
-  // children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes | StyledText | TextChunk>;
   children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes | TextChunk>;
 };
 
@@ -146,9 +104,8 @@ export type ASCIIFontElementProps = ElementProps<
   ASCIIFontOptions,
   ASCIIFontRenderable,
   "text" | "selectable" // NonStyleKeys
->;
-
-export const ASCIIFont = createCustomElement<ASCIIFontElementProps & TextProps>("ascii_font", "text");
+> & {
+  children?: TextChildTypes | Array<TextChildTypes>;
+};
 
 export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps;
-export const Text = createCustomElement<TextElementProps & TextProps>("text", "content");

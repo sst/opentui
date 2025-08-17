@@ -9,7 +9,15 @@ export const render = async (node: JSX.Element, renderConfig: CliRendererConfig 
   const renderer = await createCliRenderer(renderConfig);
 
   _render(
-    () => createComponent(RendererContext.Provider, { value: renderer, children: node }),
+    () =>
+      createComponent(RendererContext.Provider, {
+        get value() {
+          return renderer;
+        },
+        get children() {
+          return createComponent(node, {});
+        },
+      }),
     renderer.root,
   );
 };

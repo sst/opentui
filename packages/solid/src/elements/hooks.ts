@@ -1,10 +1,12 @@
 import {
   getKeyHandler,
+  Selection,
   Timeline,
   type AnimationOptions,
   type CliRenderer,
   type JSAnimation,
   type ParsedKey,
+  type SelectionState,
   type TimelineOptions,
 } from "@opentui/core";
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js";
@@ -57,6 +59,18 @@ export const useKeyHandler = (callback: (key: ParsedKey) => void) => {
 
   onCleanup(() => {
     keyHandler.off("keypress", callback);
+  });
+};
+
+export const useSelectionHandler = (callback: (selection: Selection) => void) => {
+  const renderer = useRenderer();
+
+  onMount(() => {
+    renderer.on("selection", callback);
+  });
+
+  onCleanup(() => {
+    renderer.off("selection", callback);
   });
 };
 

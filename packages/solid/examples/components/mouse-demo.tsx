@@ -1,5 +1,4 @@
 import { BoxRenderable, OptimizedBuffer, RGBA, MouseEvent, t, bold, underline, fg, CliRenderer } from "@opentui/core";
-import { Group, Text } from "@opentui/solid";
 
 let nextZIndex = 101;
 class DraggableTransparentBox extends BoxRenderable {
@@ -25,7 +24,7 @@ class DraggableTransparentBox extends BoxRenderable {
       backgroundColor: bg,
       border: false,
       titleAlignment: "center",
-      positionType: "absolute",
+      position: "absolute",
       left: x,
       top: y,
     });
@@ -112,9 +111,9 @@ export default function MouseDraggableScene() {
 ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch how transparency layers blend")}`;
 
   return (
-    <Group zIndex={10}>
-      <Text>{headerText}</Text>
+    <group zIndex={10} marginTop={1}>
+      <text>{headerText}</text>
       {alphaBox50}
-    </Group>
+    </group>
   );
 }

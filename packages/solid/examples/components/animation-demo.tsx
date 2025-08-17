@@ -1,35 +1,5 @@
-import { Box, Group, Text, useTerminalDimensions, useTimeline, createComponentTimeline } from "@opentui/solid";
+import { useTerminalDimensions, useTimeline, createComponentTimeline } from "@opentui/solid";
 import { For } from "solid-js";
-
-const DummComponent = () => {
-  const timeline = createComponentTimeline({
-    duration: 8000,
-    loop: true,
-  });
-
-  const animatedSystem = useTimeline(
-    timeline,
-    {
-      cpu: 0,
-      memory: 0,
-      network: 0,
-      disk: 0,
-    },
-    {
-      cpu: 85,
-      memory: 70,
-      network: 95,
-      disk: 60,
-    },
-    {
-      duration: 3000,
-      ease: "inOutQuad",
-    },
-    0,
-  );
-
-  return <Text style={{ fg: "#ffffff" }}>{animatedSystem().cpu}</Text>;
-};
 
 export const SplitModeDemo = () => {
   const tDims = useTerminalDimensions();
@@ -52,24 +22,21 @@ export const SplitModeDemo = () => {
     {
       duration: 3000,
       ease: "inOutQuad",
-      onUpdate: (val) => {
-        console.log("anim", val.targets[0].cpu);
-      },
     },
     0,
   );
 
   return (
-    <Group
+    <group
       style={{
         zIndex: 5,
       }}
     >
-      <Box
+      <box
         title="SYSTEM MONITOR"
         titleAlignment="center"
         style={{
-          positionType: "absolute",
+          position: "absolute",
           left: 2,
           top: 5,
           width: tDims().width - 6,
@@ -81,11 +48,11 @@ export const SplitModeDemo = () => {
           borderColor: "#4a4a4a",
         }}
       >
-        <Text>{animatedSystem().cpu}</Text>
+        <text>{animatedSystem().cpu}</text>
         {/* <DummComponent /> */}
         <For each={systems}>
           {(system) => (
-            <Group
+            <group
               style={{
                 flexDirection: "row",
                 height: 1,
@@ -94,7 +61,7 @@ export const SplitModeDemo = () => {
                 paddingRight: 2,
               }}
             >
-              <Text
+              <text
                 style={{
                   fg: system.color,
                   zIndex: 2,
@@ -102,8 +69,8 @@ export const SplitModeDemo = () => {
                 }}
               >
                 {system.name}
-              </Text>
-              <Box
+              </text>
+              <box
                 style={{
                   height: 1,
                   backgroundColor: "#333333",
@@ -112,28 +79,28 @@ export const SplitModeDemo = () => {
                   flexGrow: 1,
                 }}
               >
-                <Box
+                <box
                   style={{
-                    // width: `${Math.round(
-                    //   animatedSystem()[system.animKey]
-                    // )}%`,
+                    width: `${Math.round(
+                      animatedSystem()[system.animKey]
+                    )}%`,
                     height: 1,
                     backgroundColor: system.color,
                     zIndex: 2,
                     border: false,
                   }}
                 />
-              </Box>
-            </Group>
+              </box>
+            </group>
           )}
         </For>
-      </Box>
+      </box>
 
-      <Box
+      <box
         title="◇ REAL-TIME STATS ◇"
         titleAlignment="center"
         style={{
-          positionType: "absolute",
+          position: "absolute",
           left: 2,
           top: 14,
           width: tDims().width - 6,
@@ -148,9 +115,9 @@ export const SplitModeDemo = () => {
 
       <For each={["PACKETS", "CONNECTIONS", "PROCESSES", "UPTIME"] as const}>
         {(label, index) => (
-          <Text
+          <text
             style={{
-              positionType: "absolute",
+              position: "absolute",
               left: 4 + index() * 15,
               top: 15,
               fg: "#9a9acd",
@@ -158,15 +125,15 @@ export const SplitModeDemo = () => {
             }}
           >
             {label}: 0
-          </Text>
+          </text>
         )}
       </For>
 
       <For each={["#ff6b9d", "#4ecdc4", "#ffe66d"] as const}>
         {(color) => (
-          <Box
+          <box
             style={{
-              positionType: "absolute",
+              position: "absolute",
               left: 2,
               top: 2,
               width: 3,
@@ -181,9 +148,9 @@ export const SplitModeDemo = () => {
 
       <For each={["#ff8a80", "#80cbc4", "#fff176"] as const}>
         {(color, index) => (
-          <Box
+          <box
             style={{
-              positionType: "absolute",
+              position: "absolute",
               left: tDims().width - 8 + index() * 2,
               top: 1,
               width: 1,
@@ -195,6 +162,6 @@ export const SplitModeDemo = () => {
           />
         )}
       </For>
-    </Group>
+    </group>
   );
 };

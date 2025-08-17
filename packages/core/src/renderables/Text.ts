@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { TextSelectionHelper } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
-import { TextBuffer } from "../text-buffer"
+import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, type SelectionState } from "../types"
 import { parseColor } from "../utils"
 import type { OptimizedBuffer } from "../buffer"
@@ -44,6 +44,7 @@ export class TextRenderable extends Renderable {
     if (options.content) {
       this._text = typeof options.content === "string" ? stringToStyledText(options.content) : options.content
     }
+    this._text.registerOnTextUpdate(this.handleTextUpdate.bind(this))
     this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
     this._defaultAttributes = options.attributes ?? 0
@@ -65,10 +66,16 @@ export class TextRenderable extends Renderable {
     return this._text
   }
 
-  set content(value: StyledText | string) {
-    this._text = typeof value === "string" ? stringToStyledText(value) : value
+  handleTextUpdate(): void {
     this.updateTextInfo()
     this.needsUpdate()
+    this.syncSelectionToTextBuffer()
+  }
+
+  set content(value: StyledText | string) {
+    this._text = typeof value === "string" ? stringToStyledText(value) : value
+    this._text.registerOnTextUpdate(this.handleTextUpdate.bind(this))
+    this.handleTextUpdate()
   }
 
   get fg(): RGBA {

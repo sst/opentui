@@ -1,4 +1,4 @@
-import { Box, Input, Text, useRenderer } from "@opentui/solid";
+import { useRenderer } from "@opentui/solid";
 import { createSignal, onMount } from "solid-js";
 
 const InputScene = () => {
@@ -10,10 +10,10 @@ const InputScene = () => {
   const [nameValue, setNameValue] = createSignal("");
 
   return (
-    <Box height={4}>
-      <Text>Name: {nameValue()}</Text>
-      <Input focused onInput={(value) => setNameValue(value)} />
-    </Box>
+    <box height={4}>
+      <text>Name: {nameValue()}</text>
+      <input focused onInput={(value) => setNameValue(value)} />
+    </box>
   );
 };
 
