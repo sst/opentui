@@ -48,14 +48,14 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
         console.log("anchor not found");
         return;
       }
-      styledText.insertChunk(node.chunk, anchorIndex);
+      styledText.insert(node.chunk, anchorIndex);
     } else {
       const firstChunk = parent.content.chunks[0];
       // Handles the default unlinked chunk
       if (firstChunk && !ChunkToTextNodeMap.has(firstChunk)) {
-        styledText.replaceChunk(node.chunk, firstChunk);
+        styledText.replace(node.chunk, firstChunk);
       } else {
-        styledText.insertChunk(node.chunk);
+        styledText.insert(node.chunk);
       }
     }
     parent.content = styledText;
@@ -81,7 +81,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   if (parent instanceof TextRenderable && node instanceof TextNode) {
     ChunkToTextNodeMap.delete(node.chunk);
     const styledText = parent.content;
-    styledText.removeChunk(node.chunk);
+    styledText.remove(node.chunk);
     parent.content = styledText;
   } else if (parent instanceof Renderable && node instanceof Renderable) {
     node.destroyRecursively();
@@ -142,7 +142,7 @@ export const {
     }
     if (parent instanceof TextRenderable) {
       const styledText = parent.content;
-      styledText.replaceChunk(newChunk, textNode.chunk);
+      styledText.replace(newChunk, textNode.chunk);
       parent.content = styledText;
 
       textNode.chunk = newChunk;
