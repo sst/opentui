@@ -37,6 +37,53 @@ export class StyledText {
   get length(): number {
     return this._length
   }
+
+  private _chunksToPlainText(): void {
+    this._plainText = ""
+    for (const chunk of this.chunks) {
+      this._plainText += chunk.plainText
+    }
+  }
+
+  insert(chunk: TextChunk, index?: number): void {
+    const originalLength = this.chunks.length
+    if (index === undefined) {
+      this.chunks.push(chunk)
+    } else {
+      this.chunks.splice(index, 0, chunk)
+    }
+    if (index === undefined || index === originalLength) {
+      this._plainText += chunk.plainText
+    } else {
+      this._chunksToPlainText()
+    }
+    this._length = this._plainText.length
+  }
+
+  remove(chunk: TextChunk): void {
+    const originalLength = this.chunks.length
+    const index = this.chunks.indexOf(chunk)
+    if (index === -1) return
+    this.chunks.splice(index, 1)
+    if (index === originalLength - 1) {
+      this._plainText = this._plainText.slice(0, this._plainText.length - chunk.plainText.length)
+    } else {
+      this._chunksToPlainText()
+    }
+    this._length = this._plainText.length
+  }
+
+  replace(chunk: TextChunk, oldChunk: TextChunk): void {
+    const index = this.chunks.indexOf(oldChunk)
+    if (index === -1) return
+    this.chunks.splice(index, 1, chunk)
+    if (index === this.chunks.length - 1) {
+      this._plainText = this._plainText.slice(0, this._plainText.length - oldChunk.plainText.length) + chunk.plainText
+    } else {
+      this._chunksToPlainText()
+    }
+    this._length = this._plainText.length
+  }
 }
 
 export function stringToStyledText(content: string): StyledText {
