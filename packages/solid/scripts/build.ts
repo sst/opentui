@@ -5,7 +5,7 @@ import ts from "@babel/preset-typescript";
 import solid from "babel-preset-solid";
 
 await Bun.build({
-  entrypoints: ["./index.tsx"],
+  entrypoints: ["./examples/index.tsx"],
   target: "bun",
 	conditions: "browser",
 	splitting: true,
