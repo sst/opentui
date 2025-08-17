@@ -58,8 +58,7 @@ export const hostConfig: HostConfig<
 
   // Insert a child at a specific index
   insertInContainerBefore(parent: Container, child: Instance, beforeChild: Instance) {
-    // For opentui, we'll just add the child (z-index will determine order)
-    parent.add(child)
+    parent.insertBefore(child, beforeChild)
   },
 
   // Remove a child from container
