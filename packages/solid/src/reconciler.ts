@@ -40,23 +40,25 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
     if (!(parent instanceof TextRenderable)) {
       throw new Error(`Cannot insert text:"${node.chunk.plainText}" unless wrapped with a <text> element.`);
     }
+    const styledText = parent.content;
 
     if (anchor && anchor instanceof TextNode) {
-      const anchorIndex = parent.content.chunks.indexOf(anchor.chunk);
+      const anchorIndex = styledText.chunks.indexOf(anchor.chunk);
       if (anchorIndex == -1) {
         console.log("anchor not found");
         return;
       }
-      parent.content.insertChunk(node.chunk, anchorIndex);
+      styledText.insertChunk(node.chunk, anchorIndex);
     } else {
       const firstChunk = parent.content.chunks[0];
       // Handles the default unlinked chunk
       if (firstChunk && !ChunkToTextNodeMap.has(firstChunk)) {
-        parent.content.replaceChunk(node.chunk, firstChunk);
+        styledText.replaceChunk(node.chunk, firstChunk);
       } else {
-        parent.content.insertChunk(node.chunk);
+        styledText.insertChunk(node.chunk);
       }
     }
+    parent.content = styledText;
     node.parent = parent;
     return;
   }
@@ -78,7 +80,9 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", node.id, "from parent:", parent.id);
   if (parent instanceof TextRenderable && node instanceof TextNode) {
     ChunkToTextNodeMap.delete(node.chunk);
-    parent.content.removeChunk(node.chunk);
+    const styledText = parent.content;
+    styledText.removeChunk(node.chunk);
+    parent.content = styledText;
   } else if (parent instanceof Renderable && node instanceof Renderable) {
     node.destroyRecursively();
     parent.remove(node.id);
@@ -137,7 +141,9 @@ export const {
       return;
     }
     if (parent instanceof TextRenderable) {
-      parent.content.replaceChunk(newChunk, textNode.chunk);
+      const styledText = parent.content;
+      styledText.replaceChunk(newChunk, textNode.chunk);
+      parent.content = styledText;
 
       textNode.chunk = newChunk;
       ChunkToTextNodeMap.set(newChunk, textNode);

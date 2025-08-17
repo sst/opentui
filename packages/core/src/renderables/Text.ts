@@ -44,7 +44,6 @@ export class TextRenderable extends Renderable {
     if (options.content) {
       this._text = typeof options.content === "string" ? stringToStyledText(options.content) : options.content
     }
-    this._text.registerOnTextUpdate(this.handleTextUpdate.bind(this))
     this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
     this._defaultAttributes = options.attributes ?? 0
@@ -66,16 +65,11 @@ export class TextRenderable extends Renderable {
     return this._text
   }
 
-  handleTextUpdate(): void {
+  set content(value: StyledText | string) {
+    this._text = typeof value === "string" ? stringToStyledText(value) : value
     this.updateTextInfo()
     this.needsUpdate()
     this.syncSelectionToTextBuffer()
-  }
-
-  set content(value: StyledText | string) {
-    this._text = typeof value === "string" ? stringToStyledText(value) : value
-    this._text.registerOnTextUpdate(this.handleTextUpdate.bind(this))
-    this.handleTextUpdate()
   }
 
   get fg(): RGBA {

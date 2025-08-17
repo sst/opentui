@@ -23,8 +23,6 @@ export class StyledText {
   // TODO: plaintext should not be needed anymore when selection moved to native
   private _plainText: string
 
-  private onTextUpdate?: () => void
-
   constructor(chunks: TextChunk[], length: number, plainText: string) {
     this.chunks = chunks
 
