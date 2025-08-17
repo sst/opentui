@@ -2,6 +2,7 @@
   "name": "@opentui",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/*"
   ]
 }
