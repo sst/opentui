@@ -35,7 +35,7 @@ const solidTransformPlugin: BunPlugin = {
         //     plugins: [["solid-refresh/babel", { "bundler": "esm" }]],
         //   },
         // },
-        plugins: [["solid-refresh/babel", { bundler: "esm" }]],
+        // plugins: [["solid-refresh/babel", { bundler: "esm" }]],
         presets: [
           [
             solid,

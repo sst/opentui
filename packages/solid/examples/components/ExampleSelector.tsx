@@ -1,4 +1,4 @@
-import { measureText } from "@opentui/core";
+import { bold, fg, measureText, t, underline } from "@opentui/core";
 import {
   ASCIIFont,
   Box,
@@ -14,8 +14,8 @@ import {
   useKeyHandler,
 } from "@opentui/solid";
 import { createSignal, Show, onMount, Switch, Match } from "solid-js";
-import { SplitModeDemo } from "./split-mode";
-import InputScene from "./input-demo";
+import { SplitModeDemo } from "./split-mode.tsx";
+import InputScene from "./input-demo.tsx";
 import MouseScene from "./mouse-demo.tsx";
 import { ConsolePosition } from "@opentui/core/src/console";
 
@@ -69,7 +69,6 @@ const ExampleSelector = () => {
         process.exit(0);
     }
   });
-
   return (
     <box style={{ height: "100%", backgroundColor: "#001122", border: false, padding: 1 }}>
       <group alignItems="center">
@@ -82,11 +81,10 @@ const ExampleSelector = () => {
           text={titleText}
         />
       </group>
-      <text
-        style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}
-        content={`Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for console,
-        ctrl+c to quit {selected()}`}
-      />
+      <text fg={"#AAAAAA"} style={{ marginTop: 1, marginLeft: 1, marginRight: 1 }}>
+        Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for console,
+        ctrl+c to quit {selected()}
+      </text>
       <box
         title="Examples"
         style={{
@@ -101,7 +99,7 @@ const ExampleSelector = () => {
           when={inMenu()}
           fallback={
             <box border={false}>
-              <text fg="#00FF00" content="Press Escape to return to menu." />
+              <text fg="#00FF00">Press Escape to return to menu.</text>
               <Switch>
                 <Match when={EXAMPLES.at(selected())?.scene === "split-mode"}>
                   <SplitModeDemo />

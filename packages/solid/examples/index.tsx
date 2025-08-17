@@ -13,21 +13,3 @@ render(() => <App />, {
     sizePercent: 40,
   },
 });
-
-Bun.serve({
-  development: {
-    hmr: true,
-    console: true,
-  },
-
-  routes: {
-    "/": () => {
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: "/index.html",
-        },
-      });
-    },
-  },
-});
