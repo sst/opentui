@@ -70,6 +70,7 @@ export class TextRenderable extends Renderable {
     this.updateTextInfo()
     this.needsUpdate()
     this.syncSelectionToTextBuffer()
+    this.needsUpdate()
   }
 
   get fg(): RGBA {
