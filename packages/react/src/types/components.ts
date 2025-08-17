@@ -15,7 +15,7 @@ type NonStyledProps = "buffered"
 type ContainerProps<T> = T & { children?: React.ReactNode }
 
 type ComponentProps<T extends RenderableOptions, K extends keyof T = NonStyledProps> = T & {
-  style?: Partial<Omit<T, K | NonStyledProps>> & { [key: string]: any }
+  style?: Partial<Omit<T, K | NonStyledProps>>
 }
 
 export type TextProps = ComponentProps<TextOptions, "content">
