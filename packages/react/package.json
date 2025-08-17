@@ -1,0 +1,29 @@
+{
+  "name": "@opentui/react",
+  "types": "src/index.ts",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "version": "0.1.1",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "prettier:write": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react-reconciler": "^0.32.0",
+    "prettier": "3.6.2"
+  },
+  "peerDependencies": {
+    "@opentui/core": "workspace:*",
+    "react": "^19.1.1",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react-reconciler": "^0.32.0"
+  },
+  "prettier": {
+    "semi": false,
+    "printWidth": 120
+  }
+}
