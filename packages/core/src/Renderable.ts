@@ -451,8 +451,8 @@ export abstract class Renderable extends EventEmitter {
     }
 
     this._positionType = options.position ?? "relative"
-    if (this._positionType === "absolute") {
-      node.setPositionType(PositionType.Absolute)
+    if (this._positionType !== "relative") {
+      node.setPositionType(parsePositionType(this._positionType))
     }
 
     // TODO: flatten position properties internally as well
@@ -529,11 +529,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._positionType === positionType) return
 
     this._positionType = positionType
-    if (this._positionType === "relative") {
-      this.layoutNode.yogaNode.setPositionType(PositionType.Absolute)
-    } else {
-      this.layoutNode.yogaNode.setPositionType(PositionType.Absolute)
-    }
+    this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
     this.needsUpdate()
     this._yogaPerformancePositionUpdated = true
   }
