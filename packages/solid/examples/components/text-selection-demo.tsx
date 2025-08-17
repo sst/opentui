@@ -1,6 +1,6 @@
 import { bold, cyan, green, italic, magenta, Selection, yellow } from "@opentui/core";
 import { ConsolePosition } from "@opentui/core/src/console";
-import { render, useRenderer, useSelectionHandler } from "@opentui/solid";
+import { render, useRenderer, useSelectionHandler, type TextStyle } from "@opentui/solid";
 import { createEffect, createSignal, onMount, type Ref } from "solid-js";
 
 const words = ["Hello", "World", "OpenTUI", "SolidJS", "ReactJS", "TypeScript", "JavaScript", "CSS", "HTML", "JSX"];
@@ -21,6 +21,11 @@ export default function TextSelectionDemo() {
   const [selectionStartText, setSelectionStartText] = createSignal("");
   const [selectionMiddleText, setSelectionMiddleText] = createSignal("");
   const [selectionEndText, setSelectionEndText] = createSignal("");
+
+  const section1TextStyle: TextStyle = {
+    fg: "#f0f6fc",
+    zIndex: 21,
+  };
 
   const updateSelectionTexts = (selectedText: string) => {
     const lines = selectedText.split("\n");
@@ -101,9 +106,9 @@ export default function TextSelectionDemo() {
             }}
             title="Document Section 1"
           >
-            <text style={{ fg: "#f0f6fc", zIndex: 21 }}>This is a paragraph in the first box.</text>
-            <text style={{ fg: "#f0f6fc", zIndex: 21 }}>dynamic: {selectedWordText()}</text>
-            <text style={{ fg: "#f0f6fc", zIndex: 21 }}>it contains multiple lines of text</text>
+            <text style={section1TextStyle}>This is a paragraph in the first box.</text>
+            <text style={section1TextStyle}>dynamic: {selectedWordText()}</text>
+            <text style={section1TextStyle}>it contains multiple lines of text</text>
           </box>
           <box
             style={{

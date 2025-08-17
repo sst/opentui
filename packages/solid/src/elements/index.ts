@@ -63,8 +63,10 @@ type ElementProps<
 type ContianerProps = { children?: JSX.Element };
 
 export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable, "title"> & ContianerProps;
+export type BoxStyle = BoxElementProps["style"];
 
 export type GroupElementProps = ElementProps<RenderableOptions, GroupRenderable> & ContianerProps;
+export type GroupStyle = GroupElementProps["style"];
 
 export type InputElementProps = ElementProps<
   InputRenderableOptions,
@@ -76,12 +78,14 @@ export type InputElementProps = ElementProps<
   onChange?: (value: string) => void;
   focused?: boolean;
 };
+export type InputStyle = InputElementProps["style"];
 
 export type TabSelectElementProps = ElementProps<
   TabSelectRenderableOptions,
   TabSelectRenderable,
   "options" | "showScrollArrows" | "showDescription" | "wrapSelection"
 >;
+export type TabSelectStyle = TabSelectElementProps["style"];
 
 type SelectEventCallback = (index: number, option: SelectOption) => void;
 
@@ -94,6 +98,7 @@ export type SelectElementProps = ElementProps<
   onChange?: SelectEventCallback;
   focused?: boolean;
 };
+export type SelectStyle = SelectElementProps["style"];
 
 type TextChildTypes = (string & {}) | number | boolean | null | undefined;
 type TextProps = {
@@ -105,7 +110,10 @@ export type ASCIIFontElementProps = ElementProps<
   ASCIIFontRenderable,
   "text" | "selectable" // NonStyleKeys
 > & {
-  children?: TextChildTypes | Array<TextChildTypes>;
+  // TODO: Needs more work to support children
+  // children?: TextChildTypes | Array<TextChildTypes>;
 };
+export type ASCIIFontStyle = ASCIIFontElementProps["style"];
 
 export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps;
+export type TextStyle = TextElementProps["style"];

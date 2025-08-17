@@ -29,8 +29,8 @@ const EXAMPLES = [
     scene: "text-style-scene",
   },
   {
-    name: "Animation Demo",
-    description: " various ways of styling text",
+    name: "Animation Demo WIP",
+    description: "Keyframs api and split mode demo",
     scene: "split-mode",
   },
 ];
