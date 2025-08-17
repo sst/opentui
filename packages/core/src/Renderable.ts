@@ -525,6 +525,19 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
+  set position(positionType: PositionTypeString) {
+    if (this._positionType === positionType) return
+
+    this._positionType = positionType
+    if (this._positionType === "relative") {
+      this.layoutNode.yogaNode.setPositionType(PositionType.Absolute)
+    } else {
+      this.layoutNode.yogaNode.setPositionType(PositionType.Absolute)
+    }
+    this.needsUpdate()
+    this._yogaPerformancePositionUpdated = true
+  }
+
   public setPosition(position: Position): void {
     this._position = { ...this._position, ...position }
     this.updateYogaPosition(position)
