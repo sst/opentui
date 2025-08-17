@@ -18,6 +18,7 @@ import { SplitModeDemo } from "./split-mode.tsx";
 import InputScene from "./input-demo.tsx";
 import MouseScene from "./mouse-demo.tsx";
 import { ConsolePosition } from "@opentui/core/src/console";
+import TextStyleScene from "./text-style-scene.tsx";
 
 const EXAMPLES = [
   {
@@ -29,6 +30,11 @@ const EXAMPLES = [
     name: "Mouse demo",
     description: "Mouse interaction",
     scene: "mouse-demo",
+  },
+  {
+    name: "Text Style Demo",
+    description: "Showcases various ways of styling text",
+    scene: "text-style-scene",
   },
 ];
 
@@ -99,7 +105,6 @@ const ExampleSelector = () => {
           when={inMenu()}
           fallback={
             <box border={false}>
-              <text fg="#00FF00">Press Escape to return to menu.</text>
               <Switch>
                 <Match when={EXAMPLES.at(selected())?.scene === "split-mode"}>
                   <SplitModeDemo />
@@ -109,6 +114,9 @@ const ExampleSelector = () => {
                 </Match>
                 <Match when={EXAMPLES.at(selected())?.scene === "mouse-demo"}>
                   <MouseScene />
+                </Match>
+                <Match when={EXAMPLES.at(selected())?.scene === "text-style-scene"}>
+                  <TextStyleScene />
                 </Match>
               </Switch>
             </box>

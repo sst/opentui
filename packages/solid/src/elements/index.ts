@@ -59,7 +59,7 @@ type ElementProps<
 > = {
   style?: Omit<T, NonStyleKeys | RenderableNonStyleKeys>;
   ref?: Ref<K>;
-} & T;
+} & Pick<T, NonStyleKeys>;
 
 const createCustomElement = <T extends Record<string, any>>(tagName: string, acceptChildren?: string | true) => {
   return (props: T) => {
@@ -139,7 +139,7 @@ type TextChildTypes = (string & {}) | number | boolean | null | undefined;
 type TextProps = {
   // TODO: dependent on custom universal expression implementation
   // children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes | StyledText | TextChunk>;
-  children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes>;
+  children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes | TextChunk>;
 };
 
 export type ASCIIFontElementProps = ElementProps<

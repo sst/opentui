@@ -32,6 +32,54 @@ const log = (...args: any[]) => {
   console.log("[Reconciler]", ...args);
 };
 
+function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): void {
+  log("[Reconciler] Inserting node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id);
+  if (parent instanceof TextRenderable && node instanceof TextNode) {
+    let chunks = [...parent.content.chunks];
+    let plainText = parent.content.toString();
+    if (anchor && anchor instanceof TextNode) {
+      const anchorIndex = chunks.indexOf(anchor.chunk);
+      const textSplitIndex = chunks.slice(0, anchorIndex).reduce((acc, chunk) => acc + chunk.plainText.length, 0);
+
+      plainText = [plainText.slice(0, textSplitIndex), node.chunk.plainText, plainText.slice(textSplitIndex)].join("");
+      chunks.splice(anchorIndex, 0, node.chunk);
+    } else {
+      chunks.push(node.chunk);
+      plainText += node.chunk.plainText;
+    }
+    parent.content = new StyledText(chunks, parent.content.length + node.chunk.plainText.length, plainText);
+    node.parent = parent;
+  } else if (parent instanceof Renderable && node instanceof Renderable) {
+    if (anchor) {
+      const anchorIndex = parent.getChildren().findIndex((el) => el.id === anchor.id);
+      parent.add(node, anchorIndex);
+    } else {
+      parent.add(node);
+    }
+  } else {
+    throw new Error("Invalid parent or child node");
+  }
+}
+
+function _removeNode(parent: DomNode, node: DomNode): void {
+  log("[Reconciler] Removing node:", node.id, "from parent:", parent.id);
+  if (parent instanceof TextRenderable && node instanceof TextNode) {
+    ChunkToTextNodeMap.delete(node.chunk);
+    const chunks = parent.content.chunks;
+    const index = chunks.indexOf(node.chunk);
+    const plainTextIndex = chunks.slice(0, index).reduce((acc, chunk) => acc + chunk.plainText.length, 0);
+    chunks.splice(index, 1);
+    parent.content = new StyledText(
+      chunks.toSpliced(index, 1),
+      parent.content.length - node.chunk.plainText.length,
+      parent.content.toString().substring(0, plainTextIndex) +
+        parent.content.toString().substring(plainTextIndex + node.chunk.plainText.length),
+    );
+  } else if (parent instanceof Renderable && node instanceof Renderable) {
+    parent.remove(node.id);
+  }
+}
+
 export const {
   render: _render,
   effect,
@@ -73,11 +121,38 @@ export const {
   },
 
   replaceText(textNode: DomNode, value: string): void {
-    // TODO: handle this properly, won't work for now
-    if (textNode instanceof TextNode) {
-      textNode.chunk.text = new TextEncoder().encode(value);
-      textNode.chunk.plainText = value;
-      textNode.parent?.needsUpdate();
+    log("[Reconciler] Replacing text:", value, "in node:", textNode.id);
+    if (textNode instanceof Renderable) return;
+    const newChunk: TextChunk = {
+      __isChunk: true,
+      text: new TextEncoder().encode(value),
+      plainText: value,
+    };
+
+    const parent = textNode.parent;
+    if (!parent) {
+      log("[Reconciler] No parent found for text node:", textNode.id);
+      return;
+    }
+    if (parent instanceof TextRenderable) {
+      const childIndex = parent.content.chunks.indexOf(textNode.chunk);
+      if (childIndex === -1) {
+        log("[Reconciler] Text node not found in parent:", parent.id);
+        return;
+      }
+
+      _removeNode(parent, textNode);
+
+      textNode.chunk = newChunk;
+      ChunkToTextNodeMap.set(newChunk, textNode);
+
+      if (parent.content.chunks.length === 0) {
+        _insertNode(parent, textNode);
+      } else {
+        const prev = parent.content.chunks.at(childIndex);
+        const prevNode = prev ? ChunkToTextNodeMap.get(prev) : undefined;
+        _insertNode(parent, textNode, prevNode);
+      }
     }
   },
 
@@ -167,57 +242,13 @@ export const {
     }
   },
 
-  insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): void {
-    log("[Reconciler] Inserting node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id);
-    if (parent instanceof TextRenderable && node instanceof TextNode) {
-      let chunks = [...parent.content.chunks];
-      let plainText = parent.content.toString();
-      if (anchor && anchor instanceof TextNode) {
-        const anchorIndex = chunks.indexOf(anchor.chunk);
-        const textSplitIndex = chunks.slice(0, anchorIndex).reduce((acc, chunk) => acc + chunk.plainText.length, 0);
-
-        plainText = [plainText.slice(0, textSplitIndex), node.chunk.plainText, plainText.slice(textSplitIndex)].join(
-          "",
-        );
-        chunks.splice(anchorIndex, 0, node.chunk);
-      } else {
-        chunks.push(node.chunk);
-        plainText += node.chunk.plainText;
-      }
-      parent.content = new StyledText(chunks, parent.content.length + node.chunk.plainText.length, plainText);
-    } else if (parent instanceof Renderable && node instanceof Renderable) {
-      if (anchor) {
-        const anchorIndex = parent.getChildren().findIndex((el) => el.id === anchor.id);
-        parent.add(node, anchorIndex);
-      } else {
-        parent.add(node);
-      }
-    } else {
-      throw new Error("Invalid parent or child node");
-    }
-  },
-
   isTextNode(node: DomNode): boolean {
     return node instanceof TextNode;
   },
 
-  removeNode(parent: DomNode, node: DomNode): void {
-    log("[Reconciler] Removing node:", node.id, "from parent:", parent.id);
-    if (parent instanceof TextRenderable && node instanceof TextNode) {
-      const chunks = parent.content.chunks;
-      const index = chunks.indexOf(node.chunk);
-      const plainTextIndex = chunks.slice(0, index).reduce((acc, chunk) => acc + chunk.plainText.length, 0);
-      chunks.splice(index, 1);
-      parent.content = new StyledText(
-        chunks.toSpliced(index, 1),
-        parent.content.length - node.chunk.plainText.length,
-        parent.content.toString().substring(0, plainTextIndex) +
-          parent.content.toString().substring(plainTextIndex + node.chunk.plainText.length),
-      );
-    } else if (parent instanceof Renderable && node instanceof Renderable) {
-      parent.remove(node.id);
-    }
-  },
+  insertNode: _insertNode,
+
+  removeNode: _removeNode,
 
   getParentNode(node: DomNode): DomNode | undefined {
     log("[Reconciler] Getting parent of node:", node.id);
@@ -307,9 +338,29 @@ export const {
   },
 });
 
+// TODO: Support chunk arrays
 const insertStyledText = (parent: any, value: any, current: any, marker: any) => {
   while (typeof current === "function") current = current();
   if (value === current) return current;
+
+  if (current) {
+    if (typeof current === "object" && "__isChunk" in current) {
+      // log("[Reconciler] Removing current:", current);
+      const node = ChunkToTextNodeMap.get(current);
+      if (node) {
+        // log("[Reconciler] Removing chunk:", current.text);
+        _removeNode(parent, node);
+      }
+    } else if (current instanceof StyledText) {
+      // log("[Reconciler] Removing current:", current);
+      for (const chunk of current.chunks) {
+        const chunkNode = ChunkToTextNodeMap.get(chunk);
+        if (!chunkNode) continue;
+        // log("[Reconciler] Removing styled text:", chunk.text);
+        _removeNode(parent, chunkNode);
+      }
+    }
+  }
 
   if (value instanceof StyledText) {
     console.log("[Reconciler] Inserting styled text:", value.toString());
@@ -317,10 +368,10 @@ const insertStyledText = (parent: any, value: any, current: any, marker: any) =>
       // @ts-expect-error: Sending chunk to createTextNode which is not typed but supported
       insertNode(parent, createTextNode(chunk), marker);
     }
-    return;
+    return value;
   } else if (value && typeof value === "object" && "__isChunk" in value) {
     insertNode(parent, createTextNode(value), marker);
-    return;
+    return value;
   }
   return solidUniversalInsert(parent, value, marker, current);
 };
