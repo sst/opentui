@@ -8,6 +8,7 @@ import type {
   SelectRenderableOptions,
   StyledText,
   TabSelectRenderableOptions,
+  TextChunk,
   TextOptions,
 } from "@opentui/core";
 import {
@@ -136,7 +137,9 @@ export const Select = createCustomElement<SelectElementProps>("select");
 
 type TextChildTypes = (string & {}) | number | boolean | null | undefined;
 type TextProps = {
-  children: TextChildTypes | Array<TextChildTypes> | StyledText;
+  // TODO: dependent on custom universal expression implementation
+  // children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes | StyledText | TextChunk>;
+  children: TextChildTypes | StyledText | TextChunk | Array<TextChildTypes>;
 };
 
 export type ASCIIFontElementProps = ElementProps<
@@ -147,5 +150,5 @@ export type ASCIIFontElementProps = ElementProps<
 
 export const ASCIIFont = createCustomElement<ASCIIFontElementProps & TextProps>("ascii_font", "text");
 
-export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable">;
+export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps;
 export const Text = createCustomElement<TextElementProps & TextProps>("text", "content");
