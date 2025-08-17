@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { TextSelectionHelper } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
-import { TextBuffer, type TextChunk } from "../text-buffer"
+import { TextBuffer } from "../text-buffer"
 import { RGBA, type SelectionState } from "../types"
 import { parseColor } from "../utils"
 import type { OptimizedBuffer } from "../buffer"
