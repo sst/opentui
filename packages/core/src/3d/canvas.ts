@@ -1,21 +1,18 @@
 import { GPUCanvasContextMock } from "bun-webgpu"
 import { RGBA } from "../types"
-import { fixPaths, loadTemplate } from "../utils"
 import { SuperSampleType } from "./WGPURenderer"
 import type { OptimizedBuffer } from "../buffer"
 import { toArrayBuffer } from "bun:ffi"
 import { Jimp } from "jimp"
 
 // @ts-ignore
-import shaderPath from "./shaders/supersampling.wgsl" with { type: "file" }
+import shaderTemplate from "./shaders/supersampling.wgsl" with { type: "text" }
 
-const filePaths = fixPaths({
-  shaderPath,
-})
 const WORKGROUP_SIZE = 4
-const SUPERSAMPLING_COMPUTE_SHADER = await loadTemplate(filePaths.shaderPath, {
-  WORKGROUP_SIZE: WORKGROUP_SIZE.toString(),
-})
+const SUPERSAMPLING_COMPUTE_SHADER = shaderTemplate.replace(
+  /\${WORKGROUP_SIZE}/g,
+  WORKGROUP_SIZE.toString()
+)
 
 export enum SuperSampleAlgorithm {
   STANDARD = 0,

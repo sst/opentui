@@ -158,15 +158,3 @@ export function createTextAttributes({
 
   return attributes
 }
-
-export async function loadTemplate(filePath: string, params: Record<string, string>): Promise<string> {
-  const template = await Bun.file(filePath).text()
-  return template.replace(/\${(\w+)}/g, (match, key) => params[key] || match)
-}
-
-export function fixPaths<T extends { [key: string]: string }>(paths: T): T {
-  if (process.env.BUN_PACKER_BUNDLE) {
-    return Object.fromEntries(Object.entries(paths).map(([key, value]) => [key, value.replace("../", "")])) as T
-  }
-  return paths
-}
