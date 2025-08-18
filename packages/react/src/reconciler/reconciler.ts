@@ -24,6 +24,4 @@ export function _render(element: React.ReactNode, root: RootRenderable) {
   )
 
   reconciler.updateContainer(element, container, null, () => {})
-
-  return container
 }

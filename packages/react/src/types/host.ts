@@ -8,5 +8,3 @@ export type Instance = Renderable
 export type TextInstance = TextRenderable
 export type PublicInstance = Instance
 export type HostContext = Record<string, any>
-
-export type RenderableConstructor<T extends Instance = Instance> = new (id: string, props: Record<string, any>) => T
