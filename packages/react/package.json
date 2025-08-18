@@ -1,5 +1,13 @@
 {
   "name": "@opentui/react",
+  "version": "0.1.5",
+  "description": "React renderer for building terminal user interfaces using OpenTUI core",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sst/opentui",
+    "directory": "packages/react"
+  },
   "module": "src/index.ts",
   "type": "module",
   "private": true,
@@ -19,6 +27,9 @@
     }
   },
   "scripts": {
+    "build": "bun run scripts/build.ts",
+    "build:dev": "bun run scripts/build.ts --dev",
+    "publish": "bun run scripts/publish.ts",
     "test": "bun test",
     "prettier:write": "prettier --write ."
   },
@@ -28,11 +39,11 @@
     "prettier": "3.6.2"
   },
   "peerDependencies": {
-    "@opentui/core": "workspace:*",
     "react": ">=19.0.0",
     "typescript": "^5"
   },
   "dependencies": {
+    "@opentui/core": "workspace:*",
     "react-reconciler": "^0.32.0"
   },
   "prettier": {

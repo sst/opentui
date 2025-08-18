@@ -3,7 +3,8 @@
   "description": "OpenTUI is a TypeScript library for building terminal user interfaces (TUIs)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sst/opentui"
+    "url": "https://github.com/sst/opentui",
+    "directory": "packages/core"
   },
   "types": "src/index.ts",
   "module": "src/index.ts",

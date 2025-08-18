@@ -1,11 +1,17 @@
 {
   "name": "@opentui/solid",
+  "version": "0.1.5",
   "description": "SolidJS renderer for OpenTUI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sst/opentui",
+    "directory": "packages/solid"
+  },
   "module": "index.ts",
   "type": "module",
   "private": true,
   "main": "index.ts",
-  "version": "0.1.5",
+  "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
     "prepare-release": "bun scripts/prepare-release.ts",

@@ -33,17 +33,14 @@ if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {
 
 console.log(`\nPreparing release ${version} for all packages...\n`)
 
-// Update @opentui/core package
 const corePackageJsonPath = join(rootDir, "packages", "core", "package.json")
 console.log("Updating @opentui/core...")
 
 try {
   const corePackageJson: PackageJson = JSON.parse(readFileSync(corePackageJsonPath, "utf8"))
   
-  // Update version
   corePackageJson.version = version
   
-  // Update optionalDependencies for native packages
   if (corePackageJson.optionalDependencies) {
     for (const depName in corePackageJson.optionalDependencies) {
       if (depName.startsWith("@opentui/core-")) {
@@ -60,18 +57,29 @@ try {
   process.exit(1)
 }
 
-// Update @opentui/solid package
+const reactPackageJsonPath = join(rootDir, "packages", "react", "package.json")
+console.log("\nUpdating @opentui/react...")
+
+try {
+  const reactPackageJson: PackageJson = JSON.parse(readFileSync(reactPackageJsonPath, "utf8"))
+  
+  reactPackageJson.version = version
+  
+  writeFileSync(reactPackageJsonPath, JSON.stringify(reactPackageJson, null, 2) + "\n")
+  console.log(`  @opentui/react updated to version ${version}`)
+  console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
+} catch (error) {
+  console.error(`  Failed to update @opentui/react: ${error}`)
+  process.exit(1)
+}
+
 const solidPackageJsonPath = join(rootDir, "packages", "solid", "package.json")
 console.log("\nUpdating @opentui/solid...")
 
 try {
   const solidPackageJson: PackageJson = JSON.parse(readFileSync(solidPackageJsonPath, "utf8"))
   
-  // Update version
   solidPackageJson.version = version
-  
-  // Note: We keep @opentui/core as "workspace:*" in source.
-  // The build script will automatically replace it with the current version.
   
   writeFileSync(solidPackageJsonPath, JSON.stringify(solidPackageJson, null, 2) + "\n")
   console.log(`  @opentui/solid updated to version ${version}`)

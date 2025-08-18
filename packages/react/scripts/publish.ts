@@ -16,7 +16,7 @@ const rootDir = resolve(__dirname, "..")
 
 const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
-console.log(`Publishing @opentui/solid@${packageJson.version}...`)
+console.log(`Publishing @opentui/react@${packageJson.version}...`)
 console.log("Make sure you've run the pre-publish validation script first!")
 
 const distDir = join(rootDir, "dist")

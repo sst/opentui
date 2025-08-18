@@ -3,7 +3,6 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
-import solidTransformPlugin from "./solid-plugin"
 
 interface PackageJson {
   name: string
@@ -39,6 +38,7 @@ interface TsconfigBuild {
     moduleResolution?: string
     baseUrl?: string
     paths?: Record<string, string[]>
+    jsxImportSource?: string
   }
   include: string[]
   exclude: string[]
@@ -70,7 +70,7 @@ if (missingRequired.length > 0) {
   process.exit(1)
 }
 
-console.log(`Building @opentui/solid library${isDev ? " (dev mode)" : ""}...`)
+console.log(`Building @opentui/react library${isDev ? " (dev mode)" : ""}...`)
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
@@ -92,7 +92,6 @@ const mainBuildResult = await Bun.build({
   target: "bun",
   outdir: join(rootDir, "dist"),
   external: externalDeps,
-  plugins: [solidTransformPlugin],
   splitting: true,
 })
 
@@ -103,11 +102,10 @@ if (!mainBuildResult.success) {
 
 console.log("Building reconciler entry point...")
 const reconcilerBuildResult = await Bun.build({
-  entrypoints: [join(rootDir, "src/reconciler.ts")],
+  entrypoints: [join(rootDir, "src/reconciler/renderer.ts")],
   target: "bun",
-  outdir: join(rootDir, "dist/src"),
+  outdir: join(rootDir, "dist/src/reconciler"),
   external: externalDeps,
-  plugins: [solidTransformPlugin],
   splitting: true,
 })
 
@@ -129,7 +127,8 @@ const tsconfigBuild: TsconfigBuild = {
     rootDir: ".",
     types: ["bun", "node"],
     skipLibCheck: true,
-    jsx: "preserve",
+    jsx: "react-jsx",
+    jsxImportSource: "@opentui/react",
     moduleResolution: "bundler",
     baseUrl: ".",
     paths: {
@@ -137,7 +136,7 @@ const tsconfigBuild: TsconfigBuild = {
       "@opentui/core/*": ["../core/dist/*"],
     },
   },
-  include: ["index.ts", "src/**/*", "jsx-runtime.d.ts"],
+  include: ["src/**/*", "jsx-runtime.d.ts", "jsx-dev-runtime.d.ts", "jsx-namespace.d.ts"],
   exclude: [
     "**/*.test.ts",
     "**/*.spec.ts", 
@@ -163,39 +162,50 @@ if (tscResult.status !== 0) {
   console.log("TypeScript declarations generated")
 }
 
+// Copy jsx runtime files
 if (existsSync(join(rootDir, "jsx-runtime.d.ts"))) {
   copyFileSync(join(rootDir, "jsx-runtime.d.ts"), join(distDir, "jsx-runtime.d.ts"))
 }
 
-mkdirSync(join(distDir, "scripts"), { recursive: true })
-
-if (existsSync(join(rootDir, "scripts", "solid-plugin.ts"))) {
-  copyFileSync(join(rootDir, "scripts", "solid-plugin.ts"), join(distDir, "scripts", "solid-plugin.ts"));
+if (existsSync(join(rootDir, "jsx-dev-runtime.d.ts"))) {
+  copyFileSync(join(rootDir, "jsx-dev-runtime.d.ts"), join(distDir, "jsx-dev-runtime.d.ts"))
 }
 
-if (existsSync(join(rootDir, "scripts", "preload.ts"))) {
-  copyFileSync(join(rootDir, "scripts", "preload.ts"), join(distDir, "scripts", "preload.ts"));
+if (existsSync(join(rootDir, "jsx-namespace.d.ts"))) {
+  copyFileSync(join(rootDir, "jsx-namespace.d.ts"), join(distDir, "jsx-namespace.d.ts"))
+}
+
+if (existsSync(join(rootDir, "jsx-runtime.js"))) {
+  copyFileSync(join(rootDir, "jsx-runtime.js"), join(distDir, "jsx-runtime.js"))
+}
+
+if (existsSync(join(rootDir, "jsx-dev-runtime.js"))) {
+  copyFileSync(join(rootDir, "jsx-dev-runtime.js"), join(distDir, "jsx-dev-runtime.js"))
 }
 
 const exports = {
   ".": {
-    types: "./index.d.ts",
+    types: "./src/index.d.ts",
     import: "./index.js",
     require: "./index.js",
   },
-  "./reconciler": {
-    types: "./src/reconciler.d.ts",
-    import: "./src/reconciler.js",
-    require: "./src/reconciler.js",
+  "./renderer": {
+    types: "./src/reconciler/renderer.d.ts",
+    import: "./src/reconciler/renderer.js",
+    require: "./src/reconciler/renderer.js",
   },
-  "./preload": {
-    "import": "./scripts/preload.ts"
+  "./jsx-runtime": {
+    types: "./jsx-runtime.d.ts",
+    import: "./jsx-runtime.js",
+    require: "./jsx-runtime.js",
   },
-  "./jsx-runtime": "./jsx-runtime.d.ts",
-  "./jsx-dev-runtime": "./jsx-runtime.d.ts",
-};
+  "./jsx-dev-runtime": {
+    types: "./jsx-dev-runtime.d.ts", 
+    import: "./jsx-dev-runtime.js",
+    require: "./jsx-dev-runtime.js",
+  },
+}
 
-// Process dependencies to replace workspace references with actual versions
 const processedDependencies = { ...packageJson.dependencies }
 if (processedDependencies["@opentui/core"] === "workspace:*") {
   processedDependencies["@opentui/core"] = packageJson.version
@@ -208,7 +218,7 @@ writeFileSync(
       name: packageJson.name,
       module: "index.js",
       main: "index.js",
-      types: "index.d.ts",
+      types: "src/index.d.ts",
       type: packageJson.type,
       version: packageJson.version,
       description: packageJson.description,
@@ -232,7 +242,7 @@ const readmePath = join(rootDir, "README.md")
 if (existsSync(readmePath)) {
   writeFileSync(join(distDir, "README.md"), replaceLinks(readFileSync(readmePath, "utf8")))
 } else {
-  console.warn("Warning: README.md not found in solid package")
+  console.warn("Warning: README.md not found in react package")
 }
 
 if (existsSync(licensePath)) {
