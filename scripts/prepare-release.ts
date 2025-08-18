@@ -88,8 +88,6 @@ Next steps:
 1. Review the changes: git diff
 2. Build the packages: bun run build
 3. Commit the changes: git add -A && git commit -m "Release v${version}" && git push
-4. Publish to npm:
-   - cd packages/core && bun run publish
-   - cd packages/solid && bun run publish
+4. Publish to npm: bun run publish
 5. Push to GitHub: git push
 `)
