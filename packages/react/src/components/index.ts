@@ -6,8 +6,9 @@ import {
   TabSelectRenderable,
   TextRenderable,
 } from "@opentui/core"
+import type { RenderableConstructor } from "../types/extend"
 
-export const components = {
+export const baseComponents = {
   box: BoxRenderable,
   text: TextRenderable,
   group: GroupRenderable,
@@ -15,3 +16,29 @@ export const components = {
   select: SelectRenderable,
   "tab-select": TabSelectRenderable,
 }
+
+type ComponentCatalogue = Record<string, RenderableConstructor>
+
+export const componentCatalogue: ComponentCatalogue = { ...baseComponents }
+
+/**
+ * Extend the component catalogue with new renderable components
+ *
+ * @example
+ * ```tsx
+ * // Extend with an object of components
+ * extend({
+ *   consoleButton: ConsoleButtonRenderable,
+ *   customBox: CustomBoxRenderable
+ * })
+ * ```
+ */
+export function extend<T extends ComponentCatalogue>(objects: T): void {
+  Object.assign(componentCatalogue, objects)
+}
+
+export function getComponentCatalogue(): ComponentCatalogue {
+  return componentCatalogue
+}
+
+export type { ExtendedComponentProps, ExtendedIntrinsicElements, RenderableConstructor } from "../types/extend"

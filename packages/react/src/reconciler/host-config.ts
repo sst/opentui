@@ -2,10 +2,10 @@ import type { Renderable, TextRenderable } from "@opentui/core"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
-import { components } from "../components"
+import { getComponentCatalogue } from "../components"
 import type { Container, HostContext, Instance, Props, PublicInstance, TextInstance, Type } from "../types/host"
-import { setInitialProperties, updateProperties } from "../utils"
 import { getNextId } from "../utils/id"
+import { setInitialProperties, updateProperties } from "../utils/index"
 
 let currentUpdatePriority = NoEventPriority
 
@@ -33,6 +33,7 @@ export const hostConfig: HostConfig<
   // Create instances of opentui components
   createInstance(type: Type, props: Props, rootContainerInstance: Container, hostContext: HostContext) {
     const id = getNextId(type)
+    const components = getComponentCatalogue()
 
     if (!components[type]) {
       throw new Error(`[Reconciler] Unknown component type: ${type}`)
@@ -94,9 +95,10 @@ export const hostConfig: HostConfig<
 
   // Create text instance
   createTextInstance(text: string, rootContainerInstance: Container, hostContext: HostContext) {
+    const components = getComponentCatalogue()
     return new components["text"](getNextId("text"), {
       content: text,
-    })
+    }) as TextInstance
   },
 
   // Schedule timeout
