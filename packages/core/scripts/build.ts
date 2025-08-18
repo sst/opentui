@@ -25,6 +25,7 @@ interface PackageJson {
   types?: string
   type?: string
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
 }
@@ -301,6 +302,7 @@ if (buildLib) {
         bugs: packageJson.bugs,
         exports,
         dependencies: packageJson.dependencies,
+        devDependencies: packageJson.devDependencies,
         optionalDependencies: {
           ...packageJson.optionalDependencies,
           ...optionalDeps,

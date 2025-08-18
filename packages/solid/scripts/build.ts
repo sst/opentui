@@ -76,13 +76,11 @@ const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
 mkdirSync(distDir, { recursive: true })
 
-// Get external dependencies (including @opentui/core and peer dependencies)
 const externalDeps: string[] = [
   ...Object.keys(packageJson.dependencies || {}),
   ...Object.keys(packageJson.peerDependencies || {}),
 ]
 
-// Build main entry point (index.ts)
 if (!packageJson.module) {
   console.error("Error: 'module' field not found in package.json")
   process.exit(1)
@@ -103,7 +101,6 @@ if (!mainBuildResult.success) {
   process.exit(1)
 }
 
-// Build reconciler entry point
 console.log("Building reconciler entry point...")
 const reconcilerBuildResult = await Bun.build({
   entrypoints: [join(rootDir, "src/reconciler.ts")],
@@ -166,14 +163,12 @@ if (tscResult.status !== 0) {
   console.log("TypeScript declarations generated")
 }
 
-// Copy jsx-runtime.d.ts to dist
 if (existsSync(join(rootDir, "jsx-runtime.d.ts"))) {
   copyFileSync(join(rootDir, "jsx-runtime.d.ts"), join(distDir, "jsx-runtime.d.ts"))
 }
 
 mkdirSync(join(distDir, "scripts"), { recursive: true })
 
-// Copy the plugin to dist
 if (existsSync(join(rootDir, "scripts", "solid-plugin.ts"))) {
   copyFileSync(join(rootDir, "scripts", "solid-plugin.ts"), join(distDir, "scripts", "solid-plugin.ts"));
 }
@@ -182,7 +177,6 @@ if (existsSync(join(rootDir, "scripts", "preload.ts"))) {
   copyFileSync(join(rootDir, "scripts", "preload.ts"), join(distDir, "scripts", "preload.ts"));
 }
 
-// Configure exports for multiple entry points
 const exports = {
   ".": {
     types: "./index.d.ts",
@@ -201,7 +195,12 @@ const exports = {
   "./jsx-dev-runtime": "./jsx-runtime.d.ts",
 };
 
-// Create package.json for dist
+// Process dependencies to replace workspace references with actual versions
+const processedDependencies = { ...packageJson.dependencies }
+if (processedDependencies["@opentui/core"] === "workspace:*") {
+  processedDependencies["@opentui/core"] = packageJson.version
+}
+
 writeFileSync(
   join(distDir, "package.json"),
   JSON.stringify(
@@ -220,7 +219,8 @@ writeFileSync(
       repository: packageJson.repository,
       bugs: packageJson.bugs,
       exports,
-      dependencies: packageJson.dependencies,
+      dependencies: processedDependencies,
+      devDependencies: packageJson.devDependencies,
       peerDependencies: packageJson.peerDependencies,
     },
     null,
@@ -228,7 +228,6 @@ writeFileSync(
   ),
 )
 
-// Copy README.md from solid package
 const readmePath = join(rootDir, "README.md")
 if (existsSync(readmePath)) {
   writeFileSync(join(distDir, "README.md"), replaceLinks(readFileSync(readmePath, "utf8")))
@@ -236,7 +235,6 @@ if (existsSync(readmePath)) {
   console.warn("Warning: README.md not found in solid package")
 }
 
-// Copy LICENSE from project root
 if (existsSync(licensePath)) {
   copyFileSync(licensePath, join(distDir, "LICENSE"))
 } else {
