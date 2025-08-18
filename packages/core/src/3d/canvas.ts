@@ -9,10 +9,7 @@ import { Jimp } from "jimp"
 import shaderTemplate from "./shaders/supersampling.wgsl" with { type: "text" }
 
 const WORKGROUP_SIZE = 4
-const SUPERSAMPLING_COMPUTE_SHADER = shaderTemplate.replace(
-  /\${WORKGROUP_SIZE}/g,
-  WORKGROUP_SIZE.toString()
-)
+const SUPERSAMPLING_COMPUTE_SHADER = shaderTemplate.replace(/\${WORKGROUP_SIZE}/g, WORKGROUP_SIZE.toString())
 
 export enum SuperSampleAlgorithm {
   STANDARD = 0,
