@@ -17,8 +17,7 @@
     "build": "bun run build:native && bun run build:lib",
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
-    "publish": "node scripts/publish.mjs",
-    "prepare-release": "node scripts/prepare-release.mjs",
+    "publish": "node scripts/publish.ts",
     "test": "bun test",
     "prettier:write": "prettier --write ."
   },

@@ -14,7 +14,6 @@
   "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
-    "prepare-release": "bun scripts/prepare-release.ts",
     "publish": "bun scripts/publish.ts"
   },
   "exports": {

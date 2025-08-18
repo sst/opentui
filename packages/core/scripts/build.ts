@@ -95,10 +95,14 @@ if (missingRequired.length > 0) {
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries...`)
 
-  const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`], {
-    cwd: join(rootDir, "src", "zig"),
-    stdio: "inherit",
-  })
+  const zigBuild: SpawnSyncReturns<Buffer> = spawnSync(
+    "zig",
+    ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`],
+    {
+      cwd: join(rootDir, "src", "zig"),
+      stdio: "inherit",
+    },
+  )
 
   if (zigBuild.error) {
     console.error("Error: Zig is not installed or not in PATH")

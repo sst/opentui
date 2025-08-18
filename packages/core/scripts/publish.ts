@@ -35,12 +35,12 @@ for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies!).fi
 // Publish all packages (main + native packages)
 Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
   console.log(`\nPublishing ${name}@${version}...`)
-  
+
   const publish: SpawnSyncReturns<Buffer> = spawnSync("npm", ["publish", "--access=public"], {
     cwd: dir,
     stdio: "inherit",
   })
-  
+
   if (publish.status !== 0) {
     console.error(`Failed to publish '${name}@${version}'.`)
     process.exit(1)
