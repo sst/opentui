@@ -3,5 +3,10 @@
   "private": true,
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "scripts": {
+    "build": "cd packages/core && bun run build && cd ../solid && bun run build",
+    "publish": "cd packages/core && bun run publish && cd ../solid && bun run publish",
+    "prepare-release": "bun scripts/prepare-release.ts"
+  }
 }
