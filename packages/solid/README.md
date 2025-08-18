@@ -10,7 +10,7 @@ bun install solid-js @opentui/solid
 
 ## Usage
 
-tsconfig.json:
+1. Add jsx config to tsconfig.json:
 ```json
 {
   "compilerOptions": {
@@ -20,12 +20,12 @@ tsconfig.json:
 }
 ```
 
-bunfig.toml:
+2. Add preload script to bunfig.toml:
 ```toml
 preload = ["@opentui/solid/preload"]
 ```
 
-index.tsx:
+3. Add render function to index.tsx:
 ```tsx
 import { render } from "@opentui/solid";
 
@@ -33,4 +33,4 @@ render(() => <text>Hello, World!</text>);
 ```
 
 
-Run with `bun --conditions=browser index.tsx`.
+4. Run with `bun --conditions=browser index.tsx`.
