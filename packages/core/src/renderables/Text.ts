@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { TextSelectionHelper } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
-import { TextBuffer } from "../text-buffer"
+import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, type SelectionState } from "../types"
 import { parseColor } from "../utils"
 import type { OptimizedBuffer } from "../buffer"
@@ -68,7 +68,6 @@ export class TextRenderable extends Renderable {
   set content(value: StyledText | string) {
     this._text = typeof value === "string" ? stringToStyledText(value) : value
     this.updateTextInfo()
-    this.needsUpdate()
   }
 
   get fg(): RGBA {
