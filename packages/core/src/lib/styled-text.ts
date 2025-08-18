@@ -19,23 +19,19 @@ export interface StyleAttrs {
 
 export class StyledText {
   public readonly chunks: TextChunk[]
-  private _length: number
   // TODO: plaintext should not be needed anymore when selection moved to native
-  private _plainText: string
+  private _plainText: string = ''
 
-  constructor(chunks: TextChunk[], length: number, plainText: string) {
+  constructor(chunks: TextChunk[]) {
     this.chunks = chunks
 
-    this._length = length
-    this._plainText = plainText
+    for (let i = 0; i < chunks.length; i++) {
+      this._plainText += chunks[i].plainText
+    }
   }
 
   toString(): string {
     return this._plainText
-  }
-
-  get length(): number {
-    return this._length
   }
 
   private _chunksToPlainText(): void {
@@ -57,7 +53,6 @@ export class StyledText {
     } else {
       this._chunksToPlainText()
     }
-    this._length = this._plainText.length
   }
 
   remove(chunk: TextChunk): void {
@@ -70,7 +65,6 @@ export class StyledText {
     } else {
       this._chunksToPlainText()
     }
-    this._length = this._plainText.length
   }
 
   replace(chunk: TextChunk, oldChunk: TextChunk): void {
@@ -82,7 +76,6 @@ export class StyledText {
     } else {
       this._chunksToPlainText()
     }
-    this._length = this._plainText.length
   }
 }
 
@@ -93,7 +86,7 @@ export function stringToStyledText(content: string): StyledText {
     text: textEncoder.encode(content),
     plainText: content,
   }
-  return new StyledText([chunk], content.length, content)
+  return new StyledText([chunk])
 }
 
 export type StylableInput = string | number | boolean | TextChunk
@@ -226,7 +219,7 @@ export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): S
     }
   }
 
-  return new StyledText(chunks, length, plainText)
+  return new StyledText(chunks)
 }
 
 /**
@@ -285,5 +278,5 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
     }
   }
 
-  return new StyledText(chunks, length, plainText)
+  return new StyledText(chunks)
 }
