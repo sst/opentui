@@ -48,7 +48,7 @@ const solidTransformPlugin: BunPlugin = {
         ],
       });
       return {
-        contents: transforms.code,
+        contents: transforms?.code ?? "",
         loader: "js",
       };
     });

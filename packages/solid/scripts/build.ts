@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
+import solidTransformPlugin from "./solid-plugin"
 
 interface PackageJson {
   name: string
@@ -88,37 +89,35 @@ if (!packageJson.module) {
 }
 
 console.log("Building main entry point...")
-spawnSync(
-  "bun",
-  [
-    "build",
-    "--target=bun",
-    "--outdir=dist",
-    ...externalDeps.flatMap((dep) => ["--external", dep]),
-    packageJson.module,
-  ],
-  {
-    cwd: rootDir,
-    stdio: "inherit",
-  },
-)
+const mainBuildResult = await Bun.build({
+  entrypoints: [join(rootDir, packageJson.module)],
+  target: "bun",
+  outdir: join(rootDir, "dist"),
+  external: externalDeps,
+  plugins: [solidTransformPlugin],
+  splitting: true,
+})
+
+if (!mainBuildResult.success) {
+  console.error("Build failed for main entry point:", mainBuildResult.logs)
+  process.exit(1)
+}
 
 // Build reconciler entry point
 console.log("Building reconciler entry point...")
-spawnSync(
-  "bun",
-  [
-    "build",
-    "--target=bun",
-    "--outdir=dist/src",
-    ...externalDeps.flatMap((dep) => ["--external", dep]),
-    "src/reconciler.ts",
-  ],
-  {
-    cwd: rootDir,
-    stdio: "inherit",
-  },
-)
+const reconcilerBuildResult = await Bun.build({
+  entrypoints: [join(rootDir, "src/reconciler.ts")],
+  target: "bun",
+  outdir: join(rootDir, "dist/src"),
+  external: externalDeps,
+  plugins: [solidTransformPlugin],
+  splitting: true,
+})
+
+if (!reconcilerBuildResult.success) {
+  console.error("Build failed for reconciler entry point:", reconcilerBuildResult.logs)
+  process.exit(1)
+}
 
 console.log("Generating TypeScript declarations...")
 
