@@ -40,6 +40,7 @@ import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
+import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -80,6 +81,12 @@ const examples: Example[] = [
     description: "Template literals with styled text, colors, and formatting",
     run: styledTextExample.run,
     destroy: styledTextExample.destroy,
+  },
+  {
+    name: "HAST Syntax Highlighting Demo",
+    description: "Convert HAST trees to syntax-highlighted text with efficient chunk generation",
+    run: hastSyntaxHighlightingExample.run,
+    destroy: hastSyntaxHighlightingExample.destroy,
   },
   {
     name: "Layout System Demo",
