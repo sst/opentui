@@ -1,11 +1,14 @@
 /* @refresh skip */
 import {
+    GroupRenderable,
   InputRenderable,
   InputRenderableEvents,
   Renderable,
   SelectRenderable,
   SelectRenderableEvents,
   StyledText,
+  TabSelectRenderable,
+  TabSelectRenderableEvents,
   TextRenderable,
   type TextChunk,
 } from "@opentui/core";
@@ -37,7 +40,15 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
   if (node instanceof TextNode) {
     // Text nodes
     if (!(parent instanceof TextRenderable)) {
-      throw new Error(`Cannot insert text:"${node.chunk.plainText}" unless wrapped with a <text> element.`);
+      console.warn(`Cannot insert text:"${node.chunk.plainText}" unless wrapped with a <text> element.`);
+      const ghostNode = new GroupRenderable(getNextId("ghost-group"), {});
+      // Sets display to contents so that it doesn't affect layout
+      ghostNode.getLayoutNode().yogaNode.setDisplay(2);
+
+      if (parent instanceof Renderable) {
+        parent.add(ghostNode);
+      }
+      return;
     }
     const styledText = parent.content;
 
@@ -178,23 +189,28 @@ export const {
         }
         break;
       case "onChange":
+        let event: string | undefined = undefined;
         if (node instanceof SelectRenderable) {
-          node.on(SelectRenderableEvents.SELECTION_CHANGED, value);
-
-          if (prev) {
-            node.off(SelectRenderableEvents.SELECTION_CHANGED, prev);
-          }
+          event = SelectRenderableEvents.SELECTION_CHANGED;
+        } else if (node instanceof TabSelectRenderable) {
+          event = TabSelectRenderableEvents.SELECTION_CHANGED;
         } else if (node instanceof InputRenderable) {
-          node.on(InputRenderableEvents.CHANGE, value);
+          event = InputRenderableEvents.CHANGE;
+        }
+        if (!event) break;
 
-          if (prev) {
-            node.off(InputRenderableEvents.CHANGE, prev);
-          }
+        if (value) {
+          node.on(event, value);
+        }
+        if (prev) {
+          node.off(event, prev);
         }
         break;
       case "onInput":
         if (node instanceof InputRenderable) {
-          node.on(InputRenderableEvents.INPUT, value);
+          if (value) {
+            node.on(InputRenderableEvents.INPUT, value);
+          }
 
           if (prev) {
             node.off(InputRenderableEvents.INPUT, prev);
@@ -204,7 +220,9 @@ export const {
         break;
       case "onSubmit":
         if (node instanceof InputRenderable) {
-          node.on(InputRenderableEvents.ENTER, value);
+          if (value) {
+            node.on(InputRenderableEvents.ENTER, value);
+          }
 
           if (prev) {
             node.off(InputRenderableEvents.ENTER, prev);
@@ -213,10 +231,20 @@ export const {
         break;
       case "onSelect":
         if (node instanceof SelectRenderable) {
-          node.on(SelectRenderableEvents.ITEM_SELECTED, value);
+          if (value) {
+            node.on(SelectRenderableEvents.ITEM_SELECTED, value);
+          }
 
           if (prev) {
             node.off(SelectRenderableEvents.ITEM_SELECTED, prev);
+          }
+        } else if (node instanceof TabSelectRenderable) {
+          if (value) {
+            node.on(TabSelectRenderableEvents.ITEM_SELECTED, value);
+          }
+
+          if (prev) {
+            node.off(TabSelectRenderableEvents.ITEM_SELECTED, prev);
           }
         }
         break;
