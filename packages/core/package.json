@@ -16,8 +16,6 @@
     "build": "bun run build:native && bun run build:lib",
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
-    "pack": "node scripts/pack.mjs",
-    "pack:verbose": "node scripts/pack.mjs --verbose",
     "publish": "node scripts/publish.mjs",
     "prepare-release": "node scripts/prepare-release.mjs",
     "test": "bun test",

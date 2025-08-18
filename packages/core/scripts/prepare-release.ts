@@ -3,6 +3,12 @@ import { join, resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
 
+interface PackageJson {
+  version: string
+  optionalDependencies?: Record<string, string>
+  [key: string]: any
+}
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
@@ -13,8 +19,8 @@ const version = args[0]
 
 if (!version) {
   console.error("Error: Please provide a version number")
-  console.error("Usage: node scripts/prepare-release.mjs <version>")
-  console.error("Example: node scripts/prepare-release.mjs 0.2.0")
+  console.error("Usage: node scripts/prepare-release.ts <version>")
+  console.error("Example: node scripts/prepare-release.ts 0.2.0")
   process.exit(1)
 }
 
@@ -26,7 +32,7 @@ if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {
 
 console.log(`Updating package.json to version ${version}...`)
 
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"))
+const packageJson: PackageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"))
 
 packageJson.version = version
 

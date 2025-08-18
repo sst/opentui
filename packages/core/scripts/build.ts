@@ -1,4 +1,4 @@
-import { spawnSync, SpawnSyncReturns } from "node:child_process"
+import { spawnSync, type SpawnSyncReturns } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
