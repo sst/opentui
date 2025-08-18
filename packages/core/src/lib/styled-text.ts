@@ -20,7 +20,7 @@ export interface StyleAttrs {
 export class StyledText {
   public readonly chunks: TextChunk[]
   // TODO: plaintext should not be needed anymore when selection moved to native
-  private _plainText: string = ''
+  private _plainText: string = ""
 
   constructor(chunks: TextChunk[]) {
     this.chunks = chunks
