@@ -1,10 +1,14 @@
+import type { TextChunk } from "@opentui/core"
 import {
   InputRenderable,
   InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
+  StyledText,
   TabSelectRenderable,
   TabSelectRenderableEvents,
+  TextRenderable,
+  stringToStyledText,
 } from "@opentui/core"
 import type { Instance, Props, Type } from "../types/host"
 
@@ -15,6 +19,60 @@ function initEventListeners(instance: Instance, eventName: string, listener: any
 
   if (listener) {
     instance.on(eventName, listener)
+  }
+}
+
+function handleTextChildren(textInstance: TextRenderable, children: any) {
+  if (children == null) {
+    textInstance.content = stringToStyledText("")
+    return
+  }
+
+  // Handle array of children
+  if (Array.isArray(children)) {
+    const chunks: TextChunk[] = []
+
+    for (const child of children) {
+      if (typeof child === "string") {
+        // Convert string to TextChunk
+        chunks.push({
+          __isChunk: true,
+          text: new TextEncoder().encode(child),
+          plainText: child,
+        })
+      } else if (child && typeof child === "object" && "__isChunk" in child) {
+        // Already a TextChunk
+        chunks.push(child as TextChunk)
+      } else if (child instanceof StyledText) {
+        // Add all chunks from StyledText
+        chunks.push(...child.chunks)
+      } else if (child != null) {
+        // Convert other types to string and then TextChunk
+        const stringValue = String(child)
+        chunks.push({
+          __isChunk: true,
+          text: new TextEncoder().encode(stringValue),
+          plainText: stringValue,
+        })
+      }
+    }
+
+    textInstance.content = new StyledText(chunks)
+    return
+  }
+
+  // Handle single child
+  if (typeof children === "string") {
+    textInstance.content = stringToStyledText(children)
+  } else if (children && typeof children === "object" && "__isChunk" in children) {
+    // Single TextChunk
+    textInstance.content = new StyledText([children as TextChunk])
+  } else if (children instanceof StyledText) {
+    // Already StyledText
+    textInstance.content = children
+  } else {
+    // Convert to string
+    textInstance.content = stringToStyledText(String(children))
   }
 }
 
@@ -79,6 +137,9 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
       setStyle(instance, propValue, oldPropValue)
       break
     case "children":
+      if (type === "text" && instance instanceof TextRenderable) {
+        handleTextChildren(instance, propValue)
+      }
       // skip
       break
     default:

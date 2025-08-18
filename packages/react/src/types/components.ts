@@ -4,8 +4,10 @@ import type {
   RenderableOptions,
   SelectOption,
   SelectRenderableOptions,
+  StyledText,
   TabSelectOption,
   TabSelectRenderableOptions,
+  TextChunk,
   TextOptions,
 } from "@opentui/core"
 import type React from "react"
@@ -18,17 +20,18 @@ type ComponentProps<T extends RenderableOptions, K extends keyof T = NonStyledPr
   style?: Partial<Omit<T, K | NonStyledProps>>
 }
 
-export type TextProps = ComponentProps<TextOptions, "content">
+type TextChildren = (string & {}) | number | boolean | null | undefined
+export type TextProps = ComponentProps<TextOptions, "content"> & {
+  children?: TextChildren | StyledText | TextChunk | Array<TextChildren | StyledText | TextChunk>
+}
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, "title">
 export type GroupProps = ComponentProps<ContainerProps<RenderableOptions>>
-export type InputProps = ComponentProps<
-  InputRenderableOptions & {
-    focused?: boolean
-    onInput?: (value: string) => void
-    onChange?: (value: string) => void
-    onSubmit?: (value: string) => void
-  }
->
+export type InputProps = ComponentProps<InputRenderableOptions> & {
+  focused?: boolean
+  onInput?: (value: string) => void
+  onChange?: (value: string) => void
+  onSubmit?: (value: string) => void
+}
 export type SelectProps = ComponentProps<SelectRenderableOptions> & {
   focused?: boolean
   onChange?: (index: number, option: SelectOption | null) => void

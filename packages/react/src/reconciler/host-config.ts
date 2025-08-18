@@ -90,6 +90,11 @@ export const hostConfig: HostConfig<
 
   // Should set text content
   shouldSetTextContent(type: Type, props: Props) {
+    // For text components, we want to handle StyledText and TextChunk children specially
+    if (type === "text") {
+      return true
+    }
+
     return false
   },
 
