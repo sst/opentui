@@ -1,9 +1,14 @@
 {
   "name": "@opentui/solid",
+  "description": "SolidJS renderer for OpenTUI",
   "module": "index.ts",
   "type": "module",
   "private": true,
   "main": "index.ts",
+  "version": "0.1.5",
+  "scripts": {
+    "build": "bun scripts/build.ts"
+  },
   "exports": {
     ".": {
       "types": "./index.ts",
@@ -16,18 +21,22 @@
     "./preload": {
       "import": "./scripts/preload.ts"
     },
-    "./jsx-runtime": "./jsx-runtime.d.ts"
+    "./jsx-runtime": "./jsx-runtime.d.ts",
+    "./jsx-dev-runtime": "./jsx-runtime.d.ts"
   },
   "devDependencies": {
+    "@types/babel__core": "^7.20.5",
     "babel-plugin-module-resolver": "^5.0.2",
     "@babel/core": "^7.28.0",
     "@babel/preset-typescript": "^7.27.1",
     "babel-preset-solid": "^1.9.9",
     "@types/bun": "latest"
   },
+  "dependencies": {
+    "@opentui/core": "workspace:*"
+  },
   "peerDependencies": {
     "solid-js": "^1.9.9",
-    "@opentui/core": "workspace:*",
     "typescript": "^5"
   }
 }

@@ -1,7 +1,7 @@
 import { createCliRenderer, type CliRendererConfig } from "@opentui/core";
 import type { JSX } from "./jsx-runtime";
 import { RendererContext } from "./src/elements";
-import { _render, createComponent } from "./src/reconciler";
+import { _render, createComponent } from "@opentui/solid/reconciler";
 
 export * from "./src/elements";
 

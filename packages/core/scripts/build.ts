@@ -1,21 +1,62 @@
-import { spawnSync } from "node:child_process"
+import { spawnSync, type SpawnSyncReturns } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
+import path from "path"
+
+interface Variant {
+  platform: string
+  arch: string
+}
+
+interface PackageJson {
+  name: string
+  version: string
+  license?: string
+  repository?: any
+  description?: string
+  homepage?: string
+  author?: string
+  bugs?: any
+  keywords?: string[]
+  module?: string
+  main?: string
+  types?: string
+  type?: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+}
+
+interface TsconfigBuild {
+  extends: string
+  compilerOptions: {
+    declaration: boolean
+    emitDeclarationOnly: boolean
+    outDir: string
+    noEmit: boolean
+    rootDir: string
+    types: string[]
+    skipLibCheck: boolean
+  }
+  include: string[]
+  exclude: string[]
+}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
-const licensePath = join(rootDir, "LICENSE")
-const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
+const licensePath = path.resolve(__dirname, "../../../LICENSE")
+const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
 const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 
-const variants = [
+const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
   { platform: "darwin", arch: "arm64" },
   { platform: "linux", arch: "x64" },
@@ -29,22 +70,22 @@ if (!buildLib && !buildNative) {
   process.exit(1)
 }
 
-const getZigTarget = (platform, arch) => {
-  const platformMap = { darwin: "macos", win32: "windows", linux: "linux" }
-  const archMap = { x64: "x86_64", arm64: "aarch64" }
+const getZigTarget = (platform: string, arch: string): string => {
+  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
+  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
   return `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
 }
 
-const replaceLinks = (text) => {
+const replaceLinks = (text: string): string => {
   return packageJson.homepage
     ? text.replace(
         /(\[.*?\]\()(\.\/.*?\))/g,
-        (_, p1, p2) => `${p1}${packageJson.homepage}/blob/HEAD/${p2.replace("./", "")}`,
+        (_, p1: string, p2: string) => `${p1}${packageJson.homepage}/blob/HEAD/${p2.replace("./", "")}`,
       )
     : text
 }
 
-const requiredFields = ["name", "version", "license", "repository", "description"]
+const requiredFields: (keyof PackageJson)[] = ["name", "version", "license", "repository", "description"]
 const missingRequired = requiredFields.filter((field) => !packageJson[field])
 if (missingRequired.length > 0) {
   console.error(`Error: Missing required fields in package.json: ${missingRequired.join(", ")}`)
@@ -54,7 +95,7 @@ if (missingRequired.length > 0) {
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries...`)
 
-  const zigBuild = spawnSync("zig", ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`], {
+  const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`], {
     cwd: join(rootDir, "src", "zig"),
     stdio: "inherit",
   })
@@ -78,7 +119,7 @@ if (buildNative) {
     mkdirSync(nativeDir, { recursive: true })
 
     let copiedFiles = 0
-    let libraryFileName = null
+    let libraryFileName: string | null = null
     for (const name of ["libopentui", "opentui"]) {
       for (const ext of [".so", ".dll", ".dylib"]) {
         const src = join(libDir, `${name}${ext}`)
@@ -152,12 +193,17 @@ if (buildLib) {
   rmSync(distDir, { recursive: true, force: true })
   mkdirSync(distDir, { recursive: true })
 
-  const externalDeps = [
+  const externalDeps: string[] = [
     ...Object.keys(packageJson.optionalDependencies || {}),
     ...Object.keys(packageJson.peerDependencies || {}),
   ]
 
   // Build main entry point
+  if (!packageJson.module) {
+    console.error("Error: 'module' field not found in package.json")
+    process.exit(1)
+  }
+
   spawnSync(
     "bun",
     [
@@ -174,7 +220,7 @@ if (buildLib) {
   )
 
   // Build additional entry points
-  const entryPoints = ["src/3d.ts"]
+  const entryPoints: string[] = ["src/3d.ts"]
   for (const entryPoint of entryPoints) {
     spawnSync(
       "bun",
@@ -189,7 +235,7 @@ if (buildLib) {
   console.log("Generating TypeScript declarations...")
 
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
-  const tsconfigBuild = {
+  const tsconfigBuild: TsconfigBuild = {
     extends: "./tsconfig.json",
     compilerOptions: {
       declaration: true,
@@ -206,7 +252,7 @@ if (buildLib) {
 
   writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
 
-  const tscResult = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
+  const tscResult: SpawnSyncReturns<Buffer> = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
     cwd: rootDir,
     stdio: "inherit",
   })
@@ -233,7 +279,7 @@ if (buildLib) {
     },
   }
 
-  const optionalDeps = Object.fromEntries(
+  const optionalDeps: Record<string, string> = Object.fromEntries(
     variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, packageJson.version]),
   )
 
@@ -256,6 +302,7 @@ if (buildLib) {
         bugs: packageJson.bugs,
         exports,
         dependencies: packageJson.dependencies,
+        devDependencies: packageJson.devDependencies,
         optionalDependencies: {
           ...packageJson.optionalDependencies,
           ...optionalDeps,

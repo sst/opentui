@@ -1,14 +1,27 @@
-import { spawnSync } from "node:child_process"
+import { spawnSync, type SpawnSyncReturns } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+interface PackageJson {
+  name: string
+  version: string
+  optionalDependencies?: Record<string, string>
+}
+
+interface VersionMismatch {
+  name: string
+  dir: string
+  expected: string
+  actual: string
+}
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
 
-const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
+const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
 console.log(
   `
@@ -21,7 +34,7 @@ Continue? (y/n)
 `.trim(),
 )
 
-const confirm = spawnSync(
+const confirm: SpawnSyncReturns<Buffer> = spawnSync(
   "node",
   [
     "-e",
@@ -47,7 +60,7 @@ if (confirm.status !== 0) {
 }
 
 try {
-  const versions = JSON.parse(
+  const versions: string[] = JSON.parse(
     spawnSync("npm", ["view", packageJson.name, "versions", "--json"], {}).stdout.toString().trim(),
   )
 
@@ -64,12 +77,12 @@ if (!existsSync(libDir)) {
   process.exit(1)
 }
 
-const mismatches = []
-const packageJsons = {
+const mismatches: VersionMismatch[] = []
+const packageJsons: Record<string, PackageJson> = {
   [libDir]: JSON.parse(readFileSync(join(libDir, "package.json"), "utf8")),
 }
 
-for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies).filter((x) =>
+for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies!).filter((x) =>
   x.startsWith(packageJson.name),
 )) {
   const nativeDir = join(rootDir, "node_modules", pkgName)
@@ -99,7 +112,7 @@ if (mismatches.length > 0) {
 }
 
 if (process.env.NPM_AUTH_TOKEN) {
-  const npmrcPath = join(process.env.HOME, ".npmrc")
+  const npmrcPath = join(process.env.HOME as string, ".npmrc")
   const npmrcContent = `//registry.npmjs.org/:_authToken=${process.env.NPM_AUTH_TOKEN}\n`
 
   if (existsSync(npmrcPath)) {
@@ -114,7 +127,7 @@ if (process.env.NPM_AUTH_TOKEN) {
 
 Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
   try {
-    const versions = JSON.parse(
+    const versions: string[] = JSON.parse(
       spawnSync("npm", ["view", name, "versions", "--json"], {
         cwd: dir,
       })
@@ -129,13 +142,13 @@ Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
     }
   } catch {}
 
-  const npmAuth = spawnSync("npm", ["whoami"], {})
+  const npmAuth: SpawnSyncReturns<Buffer> = spawnSync("npm", ["whoami"], {})
   if (npmAuth.status !== 0) {
     console.error("Error: NPM authentication failed. Please run 'npm login' or ensure NPM_AUTH_TOKEN is set")
     process.exit(1)
   }
 
-  const publish = spawnSync("npm", ["publish", "--access=public"], {
+  const publish: SpawnSyncReturns<Buffer> = spawnSync("npm", ["publish", "--access=public"], {
     cwd: dir,
     stdio: "inherit",
   })
