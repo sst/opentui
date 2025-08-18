@@ -68,9 +68,6 @@ export class TextRenderable extends Renderable {
   set content(value: StyledText | string) {
     this._text = typeof value === "string" ? stringToStyledText(value) : value
     this.updateTextInfo()
-    this.needsUpdate()
-    this.syncSelectionToTextBuffer()
-    this.needsUpdate()
   }
 
   get fg(): RGBA {
