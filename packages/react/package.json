@@ -1,0 +1,42 @@
+{
+  "name": "@opentui/react",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./jsx-runtime": {
+      "import": "./jsx-runtime.js",
+      "types": "./jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "import": "./jsx-dev-runtime.js",
+      "types": "./jsx-dev-runtime.d.ts"
+    }
+  },
+  "scripts": {
+    "test": "bun test",
+    "prettier:write": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react-reconciler": "^0.32.0",
+    "prettier": "3.6.2"
+  },
+  "peerDependencies": {
+    "@opentui/core": "workspace:*",
+    "react": ">=19.0.0",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react-reconciler": "^0.32.0"
+  },
+  "prettier": {
+    "semi": false,
+    "printWidth": 120
+  }
+}
