@@ -1,6 +1,6 @@
 import { bold, fg, italic, t, TextAttributes } from "@opentui/core"
+import { render, useKeyboard, useRenderer } from "@opentui/react"
 import { useCallback, useState } from "react"
-import { Box, Group, Input, render, Text, useKeyboard, useRenderer } from "../src"
 
 export const App = () => {
   const renderer = useRenderer()
@@ -37,43 +37,43 @@ export const App = () => {
   }, [username, password])
 
   return (
-    <Group style={{ padding: 2, flexDirection: "column" }}>
-      <Text
+    <group style={{ padding: 2, flexDirection: "column" }}>
+      <text
         content="OpenTUI with React!"
         style={{
           fg: "#FFFF00",
           attributes: TextAttributes.BOLD | TextAttributes.ITALIC,
         }}
       />
-      <Text content={t`${bold(italic(fg("cyan")(`Styled Text!`)))}`} />
+      <text content={t`${bold(italic(fg("cyan")(`Styled Text!`)))}`} />
 
-      <Box title="Username" style={{ width: 40, height: 3, marginTop: 1 }}>
-        <Input
+      <box title="Username" style={{ width: 40, height: 3, marginTop: 1 }}>
+        <input
           placeholder="Enter your username..."
           onInput={handleUsernameChange}
           onSubmit={handleSubmit}
           focused={focused === "username"}
           style={{ focusedBackgroundColor: "#000000" }}
         />
-      </Box>
+      </box>
 
-      <Box title="Password" style={{ width: 40, height: 3, marginTop: 1, marginBottom: 1 }}>
-        <Input
+      <box title="Password" style={{ width: 40, height: 3, marginTop: 1, marginBottom: 1 }}>
+        <input
           placeholder="Enter your password..."
           onInput={handlePasswordChange}
           onSubmit={handleSubmit}
           focused={focused === "password"}
           style={{ focusedBackgroundColor: "#000000" }}
         />
-      </Box>
+      </box>
 
-      <Text
+      <text
         content={status.toUpperCase()}
         style={{
           fg: status === "idle" ? "#AAAAAA" : status === "success" ? "green" : "red",
         }}
       />
-    </Group>
+    </group>
   )
 }
 

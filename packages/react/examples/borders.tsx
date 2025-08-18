@@ -1,22 +1,22 @@
-import { Box, Group, render, Text } from "../"
+import { render } from "@opentui/react"
 
 export const App = () => {
   return (
     <>
-      <Group flexDirection="row">
-        <Box borderStyle="single">
-          <Text content="Single" />
-        </Box>
-        <Box borderStyle="double">
-          <Text content="Double" />
-        </Box>
-        <Box borderStyle="rounded">
-          <Text content="Rounded" />
-        </Box>
-        <Box borderStyle="heavy">
-          <Text content="Heavy" />
-        </Box>
-      </Group>
+      <group flexDirection="row">
+        <box borderStyle="single">
+          <text content="Single" />
+        </box>
+        <box borderStyle="double">
+          <text content="Double" />
+        </box>
+        <box borderStyle="rounded">
+          <text content="Rounded" />
+        </box>
+        <box borderStyle="heavy">
+          <text content="Heavy" />
+        </box>
+      </group>
     </>
   )
 }

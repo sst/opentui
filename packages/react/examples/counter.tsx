@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Text, render } from "../"
+import { render } from "@opentui/react"
 
 export const App = () => {
   const [counter, setCounter] = useState(0)
@@ -12,7 +12,7 @@ export const App = () => {
     return () => clearInterval(interval)
   }, [])
 
-  return <Text content={`${counter} tests passed...`} fg="#00FF00" />
+  return <text content={`${counter} tests passed...`} fg="#00FF00" />
 }
 
 render(<App />)

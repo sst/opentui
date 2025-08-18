@@ -1,12 +1,7 @@
 import type { Renderable, RootRenderable, TextRenderable } from "@opentui/core"
+import { components } from "../components"
 
-export type Type =
-  | "opentui-text"
-  | "opentui-box"
-  | "opentui-group"
-  | "opentui-input"
-  | "opentui-select"
-  | "opentui-tab-select"
+export type Type = keyof typeof components
 export type Props = Record<string, any>
 export type Container = RootRenderable
 export type Instance = Renderable

@@ -94,7 +94,7 @@ export const hostConfig: HostConfig<
 
   // Create text instance
   createTextInstance(text: string, rootContainerInstance: Container, hostContext: HostContext) {
-    return new components["opentui-text"](getNextId("opentui-text"), {
+    return new components["text"](getNextId("text"), {
       content: text,
     })
   },
