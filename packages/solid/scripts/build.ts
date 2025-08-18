@@ -30,7 +30,7 @@ await Bun.build({
             ],
           });
           return {
-            contents: transforms.code,
+            contents: transforms?.code,
             loader: "js",
           };
         });
