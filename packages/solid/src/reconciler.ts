@@ -1,6 +1,4 @@
 /* @refresh skip */
-import { createRenderer } from "solid-js/universal";
-import { getNextId } from "./utils/id-counter";
 import {
   InputRenderable,
   InputRenderableEvents,
@@ -11,8 +9,9 @@ import {
   TextRenderable,
   type TextChunk,
 } from "@opentui/core";
+import { createRenderer } from "solid-js/universal";
 import { elements, type Element } from "./elements";
-import { onCleanup } from "solid-js";
+import { getNextId } from "./utils/id-counter";
 
 class TextNode {
   id: string;
@@ -225,14 +224,17 @@ export const {
         for (const prop in value) {
           const propVal = value[prop];
           if (prev !== undefined && propVal === prev[prop]) continue;
+          // @ts-expect-error todo validate if prop is actually settable
           node[prop] = propVal;
         }
         break;
       case "text":
       case "content":
+        // @ts-expect-error todo validate if prop is actually settable
         node[name] = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`;
         break;
       default:
+        // @ts-expect-error todo validate if prop is actually settable
         node[name] = value;
     }
   },

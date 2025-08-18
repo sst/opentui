@@ -15,7 +15,8 @@
     },
     "./preload": {
       "import": "./scripts/preload.ts"
-    }
+    },
+    "./jsx-runtime": "./jsx-runtime.d.ts"
   },
   "devDependencies": {
     "babel-plugin-module-resolver": "^5.0.2",

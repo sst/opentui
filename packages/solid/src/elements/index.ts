@@ -34,20 +34,6 @@ export const elements = {
 };
 export type Element = keyof typeof elements;
 
-declare module "solid-js" {
-  namespace JSX {
-    interface IntrinsicElements {
-      ascii_font: ASCIIFontElementProps;
-      box: BoxElementProps;
-      group: GroupElementProps;
-      input: InputElementProps;
-      select: SelectElementProps;
-      tab_select: TabSelectElementProps;
-      text: TextElementProps;
-    }
-  }
-}
-
 type RenderableNonStyleKeys = "buffered";
 
 type ElementProps<
