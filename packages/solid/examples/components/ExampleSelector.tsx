@@ -6,6 +6,7 @@ import InputScene from "./input-demo.tsx";
 import MouseScene from "./mouse-demo.tsx";
 import TextStyleScene from "./text-style-demo.tsx";
 import TextSelectionDemo from "./text-selection-demo.tsx";
+import TabSelectDemo from "./tab-select-demo.tsx";
 
 const EXAMPLES = [
   {
@@ -32,6 +33,11 @@ const EXAMPLES = [
     name: "Animation Demo WIP",
     description: "Keyframs api and split mode demo",
     scene: "split-mode",
+  },
+  {
+    name: "Tab Select Demo",
+    description: "Tab selection demo",
+    scene: "tab-select-demo",
   },
 ];
 
@@ -99,6 +105,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "text-selection-demo"}>
         <TextSelectionDemo />
+      </Match>
+      <Match when={selectedScene() === "tab-select-demo"}>
+        <TabSelectDemo />
       </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", border: false, padding: 1 }}>

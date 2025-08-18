@@ -3,12 +3,13 @@ import { transformAsync } from "@babel/core";
 import ts from "@babel/preset-typescript";
 // @ts-expect-error - Types not important.
 import solid from "babel-preset-solid";
+import { win32 } from "node:path";
 
 await Bun.build({
-  entrypoints: ["./examples/index.tsx"],
+  entrypoints: ["./examples/components/opentui-demo.tsx"],
   target: "bun",
-	conditions: "browser",
-	splitting: true,
+  conditions: "browser",
+  splitting: true,
   plugins: [
     {
       name: "bun-plugin-solid",

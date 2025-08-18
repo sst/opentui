@@ -7,6 +7,7 @@ import type {
   SelectOption,
   SelectRenderableOptions,
   StyledText,
+  TabSelectOption,
   TabSelectRenderableOptions,
   TextChunk,
   TextOptions,
@@ -66,11 +67,16 @@ export type InputElementProps = ElementProps<
 };
 export type InputStyle = InputElementProps["style"];
 
+type TabSelectEventCallback = (index: number, option: TabSelectOption) => void;
 export type TabSelectElementProps = ElementProps<
   TabSelectRenderableOptions,
   TabSelectRenderable,
   "options" | "showScrollArrows" | "showDescription" | "wrapSelection"
->;
+> & {
+  onSelect?: TabSelectEventCallback;
+  onChange?: TabSelectEventCallback;
+  focused?: boolean;
+};
 export type TabSelectStyle = TabSelectElementProps["style"];
 
 type SelectEventCallback = (index: number, option: SelectOption) => void;
