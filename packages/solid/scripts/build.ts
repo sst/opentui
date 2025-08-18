@@ -171,6 +171,17 @@ if (existsSync(join(rootDir, "jsx-runtime.d.ts"))) {
   copyFileSync(join(rootDir, "jsx-runtime.d.ts"), join(distDir, "jsx-runtime.d.ts"))
 }
 
+mkdirSync(join(distDir, "scripts"), { recursive: true })
+
+// Copy the plugin to dist
+if (existsSync(join(rootDir, "scripts", "solid-plugin.ts"))) {
+  copyFileSync(join(rootDir, "scripts", "solid-plugin.ts"), join(distDir, "scripts", "solid-plugin.ts"));
+}
+
+if (existsSync(join(rootDir, "scripts", "preload.ts"))) {
+  copyFileSync(join(rootDir, "scripts", "preload.ts"), join(distDir, "scripts", "preload.ts"));
+}
+
 // Configure exports for multiple entry points
 const exports = {
   ".": {
@@ -183,9 +194,12 @@ const exports = {
     import: "./src/reconciler.js",
     require: "./src/reconciler.js",
   },
+  "./preload": {
+    "import": "./scripts/preload.ts"
+  },
   "./jsx-runtime": "./jsx-runtime.d.ts",
   "./jsx-dev-runtime": "./jsx-runtime.d.ts",
-}
+};
 
 // Create package.json for dist
 writeFileSync(
