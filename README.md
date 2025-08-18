@@ -5,7 +5,9 @@ development and is not ready for production use. It will be the foundational TUI
 [opencode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
 
 This monorepo contains the following packages:
-- [`@opentui/core`](packages/core) - The core library also works completely standalone, providing an imperative API and all the primitives.
+- [`@opentui/core`](packages/core) - The core library works completely standalone, providing an imperative API and all the primitives.
+- [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
+- [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
 
 ## Install
 
@@ -13,7 +15,7 @@ This monorepo contains the following packages:
 bun install @opentui/core
 ```
 
-## Running Examples
+## Running Examples (from the repo root)
 
 ```bash
 bun install
