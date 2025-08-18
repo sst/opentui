@@ -1,3 +1,4 @@
+import { Renderable } from "@opentui/core";
 import {
   ASCIIFontElementProps,
   BoxElementProps,
@@ -9,9 +10,10 @@ import {
 } from "./src/elements/index";
 
 declare namespace JSX {
-  interface ElementChildrenAttribute {
-    children: {};
-  }
+  // Replace Node with Renderable
+  type Element = Renderable | ArrayElement | (string & {}) | number | boolean | null | undefined;
+
+  interface ArrayElement extends Array<Element> {}
 
   interface IntrinsicElements {
     ascii_font: ASCIIFontElementProps;
@@ -21,5 +23,9 @@ declare namespace JSX {
     select: SelectElementProps;
     tab_select: TabSelectElementProps;
     text: TextElementProps;
+  }
+
+  interface ElementChildrenAttribute {
+    children: {};
   }
 }
