@@ -1,5 +1,6 @@
 {
   "name": "@opentui/solid",
+  "description": "SolidJS renderer for OpenTUI",
   "module": "index.ts",
   "type": "module",
   "private": true,

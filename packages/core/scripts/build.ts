@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
+import path from "path"
 
 interface Variant {
   platform: string
@@ -46,7 +47,7 @@ interface TsconfigBuild {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
-const licensePath = join(rootDir, "LICENSE")
+const licensePath = path.resolve(__dirname, "../../../LICENSE")
 const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
 const args = process.argv.slice(2)
