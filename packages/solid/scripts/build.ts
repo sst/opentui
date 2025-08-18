@@ -35,6 +35,9 @@ interface TsconfigBuild {
     types: string[]
     skipLibCheck: boolean
     jsx: string
+    moduleResolution?: string
+    baseUrl?: string
+    paths?: Record<string, string[]>
   }
   include: string[]
   exclude: string[]
@@ -131,9 +134,22 @@ const tsconfigBuild: TsconfigBuild = {
     types: ["bun", "node"],
     skipLibCheck: true,
     jsx: "preserve",
+    moduleResolution: "bundler",
+    baseUrl: ".",
+    paths: {
+      "@opentui/core": ["../core/dist"],
+      "@opentui/core/*": ["../core/dist/*"],
+    },
   },
   include: ["index.ts", "src/**/*", "jsx-runtime.d.ts"],
-  exclude: ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*"],
+  exclude: [
+    "**/*.test.ts",
+    "**/*.spec.ts", 
+    "examples/**/*", 
+    "scripts/**/*",
+    "node_modules/**/*",
+    "../core/**/*",
+  ],
 }
 
 writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
