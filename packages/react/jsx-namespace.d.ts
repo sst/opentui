@@ -1,4 +1,5 @@
-import type { BoxProps, GroupProps, InputProps, SelectProps, TabSelectProps, TextProps } from "./components"
+import type { BoxProps, GroupProps, InputProps, SelectProps, TabSelectProps, TextProps } from "./src/types/components"
+import type { ExtendedIntrinsicElements, OpenTUIComponents } from "./src/types/extend"
 
 export namespace JSX {
   interface Element extends React.ReactElement<any, any> {}
@@ -13,7 +14,7 @@ export namespace JSX {
     children: {}
   }
 
-  interface IntrinsicElements {
+  interface IntrinsicElements extends ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps
     group: GroupProps
     input: InputProps

@@ -24,9 +24,4 @@ export interface OpenTUIComponents {
   [key: string]: RenderableConstructor
 }
 
-// Merge extended components into JSX intrinsic elements
-declare global {
-  namespace JSX {
-    interface IntrinsicElements extends ExtendedIntrinsicElements<OpenTUIComponents> {}
-  }
-}
+// Note: JSX.IntrinsicElements extension is handled in jsx-namespace.d.ts

@@ -35,7 +35,6 @@
     },
     "packages/react": {
       "name": "@opentui/react",
-      "version": "0.1.1",
       "dependencies": {
         "react-reconciler": "^0.32.0",
       },
@@ -46,7 +45,7 @@
       },
       "peerDependencies": {
         "@opentui/core": "workspace:*",
-        "react": "^19.1.1",
+        "react": ">=19.0.0",
         "typescript": "^5",
       },
     },

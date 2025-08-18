@@ -7,15 +7,15 @@
   "exports": {
     ".": {
       "import": "./src/index.ts",
-      "types": "./src/index.d.ts"
+      "types": "./src/index.ts"
     },
     "./jsx-runtime": {
-      "import": "./src/jsx-runtime.ts",
-      "types": "./src/types/jsx-runtime.d.ts"
+      "import": "./jsx-runtime.js",
+      "types": "./jsx-runtime.d.ts"
     },
     "./jsx-dev-runtime": {
-      "import": "./src/jsx-dev-runtime.ts",
-      "types": "./src/types/jsx-dev-runtime.d.ts"
+      "import": "./jsx-dev-runtime.js",
+      "types": "./jsx-dev-runtime.d.ts"
     }
   },
   "scripts": {
