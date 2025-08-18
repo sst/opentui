@@ -185,6 +185,7 @@ const exports = {
     require: "./src/reconciler.js",
   },
   "./jsx-runtime": "./jsx-runtime.d.ts",
+  "./jsx-dev-runtime": "./jsx-runtime.d.ts",
 }
 
 // Create package.json for dist

@@ -21,7 +21,8 @@
     "./preload": {
       "import": "./scripts/preload.ts"
     },
-    "./jsx-runtime": "./jsx-runtime.d.ts"
+    "./jsx-runtime": "./jsx-runtime.d.ts",
+    "./jsx-dev-runtime": "./jsx-runtime.d.ts"
   },
   "devDependencies": {
     "@types/babel__core": "^7.20.5",
