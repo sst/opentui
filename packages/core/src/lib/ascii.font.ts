@@ -1,3 +1,5 @@
+import * as fs from "fs"
+
 import { OptimizedBuffer } from "../buffer"
 import { RGBA } from "../types"
 import tiny from "./fonts/tiny.json"
@@ -22,7 +24,7 @@ type FontSegment = {
   colorIndex: number
 }
 
-type FontDefinition = {
+export type FontDefinition = {
   name: string
   lines: number
   letterspace_size: number
@@ -41,6 +43,22 @@ type ParsedFontDefinition = {
 }
 
 const parsedFonts: Record<string, ParsedFontDefinition> = {}
+
+export function loadFontFromFile(filePath: string): FontDefinition {
+  const fontJson = fs.readFileSync(filePath, "utf-8")
+  const font = JSON.parse(fontJson) as FontDefinition
+  return font
+}
+
+export function registerFont(name: string, font: FontDefinition | string) {
+  if (typeof font === "string") {
+    font = loadFontFromFile(font)
+  }
+  (fonts as any)[name] = font
+  if (parsedFonts[name]) {
+    delete parsedFonts[name]
+  }
+}
 
 function parseColorTags(text: string): FontSegment[] {
   const segments: FontSegment[] = []
@@ -75,9 +93,10 @@ function parseColorTags(text: string): FontSegment[] {
   return segments
 }
 
-function getParsedFont(fontKey: keyof typeof fonts): ParsedFontDefinition {
+function getParsedFont(font: keyof typeof fonts | FontDefinition): ParsedFontDefinition {
+  const fontKey = typeof font === 'string' ? font : font.name;
   if (!parsedFonts[fontKey]) {
-    const fontDef = fonts[fontKey] as FontDefinition
+    const fontDef = typeof font === 'string' ? fonts[font] as FontDefinition : font;
     const parsedChars: Record<string, FontSegment[][]> = {}
 
     for (const [char, lines] of Object.entries(fontDef.chars)) {
@@ -94,7 +113,7 @@ function getParsedFont(fontKey: keyof typeof fonts): ParsedFontDefinition {
   return parsedFonts[fontKey]
 }
 
-export function measureText({ text, font = "tiny" }: { text: string; font?: keyof typeof fonts }): {
+export function measureText({ text, font = "tiny" }: { text: string; font?: keyof typeof fonts | FontDefinition }): {
   width: number
   height: number
 } {
@@ -144,7 +163,7 @@ export function measureText({ text, font = "tiny" }: { text: string; font?: keyo
   }
 }
 
-export function getCharacterPositions(text: string, font: keyof typeof fonts = "tiny"): number[] {
+export function getCharacterPositions(text: string, font: keyof typeof fonts | FontDefinition = "tiny"): number[] {
   const fontDef = getParsedFont(font)
   if (!fontDef) {
     return [0]
@@ -185,7 +204,7 @@ export function getCharacterPositions(text: string, font: keyof typeof fonts = "
   return positions
 }
 
-export function coordinateToCharacterIndex(x: number, text: string, font: keyof typeof fonts = "tiny"): number {
+export function coordinateToCharacterIndex(x: number, text: string, font: keyof typeof fonts | FontDefinition = "tiny"): number {
   const positions = getCharacterPositions(text, font)
 
   if (x < 0) {
@@ -224,7 +243,7 @@ export function renderFontToFrameBuffer(
     y?: number
     fg?: RGBA | RGBA[]
     bg?: RGBA
-    font?: keyof typeof fonts
+    font?: keyof typeof fonts | FontDefinition
   },
 ): { width: number; height: number } {
   const width = buffer.getWidth()

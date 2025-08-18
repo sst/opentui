@@ -4,10 +4,11 @@ import { RGBA, type SelectionState } from "../types"
 import { type fonts, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../lib/ascii.font"
 import { parseColor } from "../utils"
 import { FrameBufferRenderable } from "./FrameBuffer"
+import type { FontDefinition } from "../lib/ascii.font"
 
 export interface ASCIIFontOptions extends RenderableOptions {
   text?: string
-  font?: "tiny" | "block" | "shade" | "slick"
+  font?: keyof typeof fonts | FontDefinition
   fg?: RGBA | RGBA[]
   bg?: RGBA
   selectionBg?: string | RGBA
@@ -18,7 +19,7 @@ export interface ASCIIFontOptions extends RenderableOptions {
 export class ASCIIFontRenderable extends FrameBufferRenderable {
   public selectable: boolean = true
   private _text: string
-  private _font: keyof typeof fonts
+  private _font: keyof typeof fonts | FontDefinition
   private _fg: RGBA[]
   private _bg: RGBA
   private _selectionBg: RGBA | undefined
@@ -68,11 +69,11 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     this.needsUpdate()
   }
 
-  get font(): keyof typeof fonts {
+  get font(): keyof typeof fonts | FontDefinition {
     return this._font
   }
 
-  set font(value: keyof typeof fonts) {
+  set font(value: keyof typeof fonts | FontDefinition) {
     this._font = value
     this.updateDimensions()
     this.selectionHelper.reevaluateSelection(this.width, this.height)
@@ -162,12 +163,12 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     const selectedText = this._text.slice(selection.start, selection.end)
     if (!selectedText) return
 
-    const positions = getCharacterPositions(this._text, this._font)
+    const positions = getCharacterPositions(this._text, this.font)
     const startX = positions[selection.start] || 0
     const endX =
       selection.end < positions.length
         ? positions[selection.end]
-        : measureText({ text: this._text, font: this._font }).width
+        : measureText({ text: this._text, font: this.font }).width
 
     if (this._selectionBg) {
       this.frameBuffer.fillRect(startX, 0, endX - startX, this.height, this._selectionBg)
@@ -180,7 +181,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
         y: 0,
         fg: this._selectionFg ? [this._selectionFg] : this._fg,
         bg: this._selectionBg || this._bg,
-        font: this._font,
+        font: this.font,
       })
     }
   }

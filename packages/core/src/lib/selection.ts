@@ -1,6 +1,6 @@
 import { Renderable } from ".."
 import type { SelectionState } from "../types"
-import { coordinateToCharacterIndex, fonts } from "./ascii.font"
+import { coordinateToCharacterIndex, fonts, type FontDefinition } from "./ascii.font"
 
 export class Selection {
   private _anchor: { x: number; y: number }
@@ -233,7 +233,7 @@ export class ASCIIFontSelectionHelper {
     private getX: () => number,
     private getY: () => number,
     private getText: () => string,
-    private getFont: () => keyof typeof fonts,
+    private getFont: () => keyof typeof fonts | FontDefinition,
   ) {}
 
   hasSelection(): boolean {
