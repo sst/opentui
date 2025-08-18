@@ -1,5 +1,6 @@
 /* @refresh skip */
 import {
+    GroupRenderable,
   InputRenderable,
   InputRenderableEvents,
   Renderable,
@@ -40,12 +41,12 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
     // Text nodes
     if (!(parent instanceof TextRenderable)) {
       console.warn(`Cannot insert text:"${node.chunk.plainText}" unless wrapped with a <text> element.`);
-      const text = new StyledText([node.chunk]);
-      const textNode = new TextRenderable(getNextId("ghost-text"), {
-        content: text,
-      });
+      const ghostNode = new GroupRenderable(getNextId("ghost-group"), {});
+      // Sets display to contents so that it doesn't affect layout
+      ghostNode.getLayoutNode().yogaNode.setDisplay(2);
+
       if (parent instanceof Renderable) {
-        parent.add(textNode);
+        parent.add(ghostNode);
       }
       return;
     }
