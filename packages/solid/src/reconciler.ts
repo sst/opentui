@@ -1,6 +1,5 @@
 /* @refresh skip */
 import {
-    GroupRenderable,
   InputRenderable,
   InputRenderableEvents,
   Renderable,
@@ -16,16 +15,20 @@ import { createRenderer } from "solid-js/universal";
 import { elements, type Element } from "./elements";
 import { getNextId } from "./utils/id-counter";
 
+const GHOST_NODE_TAG = "text-ghost" as const;
+
 class TextNode {
   id: string;
   chunk: TextChunk;
   parent?: Renderable;
+  textParent?: TextRenderable;
 
   constructor(chunk: TextChunk) {
     this.id = getNextId("text-node");
     this.chunk = chunk;
   }
 }
+
 const ChunkToTextNodeMap = new WeakMap<TextChunk, TextNode>();
 
 type DomNode = Renderable | TextNode;
@@ -34,43 +37,106 @@ const log = (...args: any[]) => {
   console.log("[Reconciler]", ...args);
 };
 
+function getOrCreateTextGhostNode(parent: Renderable, anchor?: DomNode | null): TextRenderable {
+  if (anchor instanceof TextNode && anchor.textParent) {
+    // prepend text to anchor
+    return anchor.textParent;
+  }
+  const children = parent.getChildren();
+
+  if (anchor instanceof Renderable) {
+    const anchorIndex = children.findIndex((el) => el.id === anchor.id);
+    const beforeAnchor = children[anchorIndex - 1];
+    if (beforeAnchor instanceof TextRenderable && beforeAnchor.id.startsWith(GHOST_NODE_TAG)) {
+      // append text to previous
+      return beforeAnchor;
+    }
+  }
+
+  const lastChild = children.at(-1);
+  if (lastChild instanceof TextRenderable && lastChild.id.startsWith(GHOST_NODE_TAG)) {
+    // Append text to last child if exists
+    return lastChild;
+  }
+
+  // Create a new ghost node
+  const ghostNode = new TextRenderable(getNextId(GHOST_NODE_TAG), {});
+
+  _insertNode(parent, ghostNode, anchor);
+
+  return ghostNode;
+}
+
+function insertTextNode(parent: DomNode, node: TextNode, anchor?: DomNode | null): void {
+  if (!(parent instanceof Renderable)) {
+    console.warn("Attaching text node to parent text node, impossible");
+    return;
+  }
+  log("Inserting text node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id);
+
+  let textParent: TextRenderable;
+  // get parent text renderable
+  if (!(parent instanceof TextRenderable)) {
+    textParent = getOrCreateTextGhostNode(parent, anchor);
+  } else {
+    textParent = parent;
+  }
+
+  node.textParent = textParent;
+  const styledText = textParent.content;
+
+  if (anchor && anchor instanceof TextNode) {
+    const anchorIndex = styledText.chunks.indexOf(anchor.chunk);
+    if (anchorIndex == -1) {
+      console.log("anchor not found");
+      return;
+    }
+    styledText.insert(node.chunk, anchorIndex);
+  } else {
+    const firstChunk = textParent.content.chunks[0];
+    // Handles the default unlinked chunk
+    if (firstChunk && !ChunkToTextNodeMap.has(firstChunk)) {
+      styledText.replace(node.chunk, firstChunk);
+    } else {
+      styledText.insert(node.chunk);
+    }
+  }
+  textParent.content = styledText;
+  node.parent = parent;
+  return;
+}
+
+function removeTextNode(parent: DomNode, node: TextNode): void {
+  if (!(parent instanceof Renderable)) {
+    // cleanup orphaned node
+    ChunkToTextNodeMap.delete(node.chunk);
+    return;
+  }
+  if (parent === node.textParent && parent instanceof TextRenderable) {
+    ChunkToTextNodeMap.delete(node.chunk);
+    const styledText = parent.content;
+    styledText.remove(node.chunk);
+    parent.content = styledText;
+  } else if (node.textParent) {
+    // check to remove ghost node
+    ChunkToTextNodeMap.delete(node.chunk);
+    const styledText = node.textParent.content;
+    styledText.remove(node.chunk);
+
+    if (styledText.chunks.length > 0) {
+      node.textParent.content = styledText;
+    } else {
+      node.parent?.remove(node.textParent.id);
+      node.textParent.destroyRecursively();
+    }
+  }
+}
+
 function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): void {
   log("Inserting node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id);
 
   if (node instanceof TextNode) {
-    // Text nodes
-    if (!(parent instanceof TextRenderable)) {
-      console.warn(`Cannot insert text:"${node.chunk.plainText}" unless wrapped with a <text> element.`);
-      const ghostNode = new GroupRenderable(getNextId("ghost-group"), {});
-      // Sets display to contents so that it doesn't affect layout
-      ghostNode.getLayoutNode().yogaNode.setDisplay(2);
-
-      if (parent instanceof Renderable) {
-        parent.add(ghostNode);
-      }
-      return;
-    }
-    const styledText = parent.content;
-
-    if (anchor && anchor instanceof TextNode) {
-      const anchorIndex = styledText.chunks.indexOf(anchor.chunk);
-      if (anchorIndex == -1) {
-        console.log("anchor not found");
-        return;
-      }
-      styledText.insert(node.chunk, anchorIndex);
-    } else {
-      const firstChunk = parent.content.chunks[0];
-      // Handles the default unlinked chunk
-      if (firstChunk && !ChunkToTextNodeMap.has(firstChunk)) {
-        styledText.replace(node.chunk, firstChunk);
-      } else {
-        styledText.insert(node.chunk);
-      }
-    }
-    parent.content = styledText;
-    node.parent = parent;
-    return;
+    return insertTextNode(parent, node, anchor);
   }
 
   // Renderable nodes
@@ -79,7 +145,12 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
   }
 
   if (anchor) {
-    const anchorIndex = parent.getChildren().findIndex((el) => el.id === anchor.id);
+    const anchorIndex = parent.getChildren().findIndex((el) => {
+      if (anchor instanceof TextNode) {
+        return el.id === anchor.textParent?.id;
+      }
+      return el.id === anchor.id;
+    });
     parent.add(node, anchorIndex);
   } else {
     parent.add(node);
@@ -88,14 +159,12 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
 
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", node.id, "from parent:", parent.id);
-  if (parent instanceof TextRenderable && node instanceof TextNode) {
-    ChunkToTextNodeMap.delete(node.chunk);
-    const styledText = parent.content;
-    styledText.remove(node.chunk);
-    parent.content = styledText;
-  } else if (parent instanceof Renderable && node instanceof Renderable) {
-    node.destroyRecursively();
+  if (node instanceof TextNode) {
+    return removeTextNode(parent, node);
+  }
+  if (parent instanceof Renderable && node instanceof Renderable) {
     parent.remove(node.id);
+    node.destroyRecursively();
   }
 }
 
@@ -145,15 +214,15 @@ export const {
       plainText: value,
     };
 
-    const parent = textNode.parent;
-    if (!parent) {
+    const textParent = textNode.textParent;
+    if (!textParent) {
       log("No parent found for text node:", textNode.id);
       return;
     }
-    if (parent instanceof TextRenderable) {
-      const styledText = parent.content;
+    if (textParent instanceof TextRenderable) {
+      const styledText = textParent.content;
       styledText.replace(newChunk, textNode.chunk);
-      parent.content = styledText;
+      textParent.content = styledText;
 
       textNode.chunk = newChunk;
       ChunkToTextNodeMap.set(newChunk, textNode);
