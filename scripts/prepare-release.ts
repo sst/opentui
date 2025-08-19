@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "fs"
 import { join, resolve, dirname } from "path"
 import { fileURLToPath } from "url"
+import { execSync } from "child_process"
 import process from "process"
 
 interface PackageJson {
@@ -86,6 +87,15 @@ try {
   console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
 } catch (error) {
   console.error(`  Failed to update @opentui/solid: ${error}`)
+  process.exit(1)
+}
+
+console.log("\nUpdating bun.lock...")
+try {
+  execSync("bun install", { cwd: rootDir, stdio: "inherit" })
+  console.log("  bun.lock updated successfully")
+} catch (error) {
+  console.error(`  Failed to update bun.lock: ${error}`)
   process.exit(1)
 }
 
