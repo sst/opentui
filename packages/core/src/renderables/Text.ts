@@ -142,8 +142,8 @@ export class TextRenderable extends Renderable {
     const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
     if (changed) {
       this.syncSelectionToTextBuffer()
-      this.needsUpdate()
     }
+    this.needsUpdate()
   }
 
   private setupMeasureFunc(): void {
