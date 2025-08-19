@@ -1,5 +1,13 @@
 import type * as React from "react"
-import type { BoxProps, GroupProps, InputProps, SelectProps, TabSelectProps, TextProps } from "./src/types/components"
+import type {
+  AsciiFontProps,
+  BoxProps,
+  GroupProps,
+  InputProps,
+  SelectProps,
+  TabSelectProps,
+  TextProps,
+} from "./src/types/components"
 import type { ExtendedIntrinsicElements, OpenTUIComponents } from "./src/types/extend"
 
 export namespace JSX {
@@ -19,10 +27,11 @@ export namespace JSX {
 
   interface IntrinsicElements extends React.JSX.IntrinsicElements, ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps
+    text: TextProps
     group: GroupProps
     input: InputProps
     select: SelectProps
+    "ascii-font": AsciiFontProps
     "tab-select": TabSelectProps
-    text: TextProps
   }
 }

@@ -1,4 +1,5 @@
 import {
+  ASCIIFontRenderable,
   BoxRenderable,
   GroupRenderable,
   InputRenderable,
@@ -14,6 +15,7 @@ export const baseComponents = {
   group: GroupRenderable,
   input: InputRenderable,
   select: SelectRenderable,
+  "ascii-font": ASCIIFontRenderable,
   "tab-select": TabSelectRenderable,
 }
 

@@ -1,4 +1,6 @@
 import type {
+  ASCIIFontOptions,
+  ASCIIFontRenderable,
   BoxOptions,
   BoxRenderable,
   GroupRenderable,
@@ -52,6 +54,8 @@ export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderab
   onChange?: (index: number, option: SelectOption | null) => void
   onSelect?: (index: number, option: SelectOption | null) => void
 }
+
+export type AsciiFontProps = ComponentProps<ASCIIFontOptions, ASCIIFontRenderable, "text" | "selectable">
 
 export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelectRenderable> & {
   focused?: boolean
