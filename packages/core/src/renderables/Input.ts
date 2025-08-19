@@ -17,6 +17,7 @@ export interface InputRenderableOptions extends RenderableOptions {
   value?: string
 }
 
+// TODO: make this just plain strings instead of an enum (same for other events)
 export enum InputRenderableEvents {
   INPUT = "input",
   CHANGE = "change",
