@@ -8,92 +8,92 @@ import {
   type ParsedKey,
   type SelectionState,
   type TimelineOptions,
-} from "@opentui/core";
-import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js";
+} from "@opentui/core"
+import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
-export const RendererContext = createContext<CliRenderer>();
+export const RendererContext = createContext<CliRenderer>()
 
 export const useRenderer = () => {
-  const renderer = useContext(RendererContext);
+  const renderer = useContext(RendererContext)
 
   if (!renderer) {
-    throw new Error("No renderer found");
+    throw new Error("No renderer found")
   }
 
-  return renderer;
-};
+  return renderer
+}
 
 export const onResize = (callback: (width: number, height: number) => void) => {
-  const renderer = useRenderer();
+  const renderer = useRenderer()
 
   onMount(() => {
-    renderer.on("resize", callback);
-  });
+    renderer.on("resize", callback)
+  })
 
   onCleanup(() => {
-    renderer.off("resize", callback);
-  });
-};
+    renderer.off("resize", callback)
+  })
+}
 
 export const useTerminalDimensions = () => {
-  const renderer = useRenderer();
+  const renderer = useRenderer()
   const [terminalDimensions, setTerminalDimensions] = createSignal<{
-    width: number;
-    height: number;
-  }>({ width: renderer.terminalWidth, height: renderer.terminalHeight });
+    width: number
+    height: number
+  }>({ width: renderer.terminalWidth, height: renderer.terminalHeight })
 
   const callback = (width: number, height: number) => {
-    setTerminalDimensions({ width, height });
-  };
+    setTerminalDimensions({ width, height })
+  }
 
-  onResize(callback);
+  onResize(callback)
 
-  return terminalDimensions;
-};
+  return terminalDimensions
+}
 
 export const useKeyHandler = (callback: (key: ParsedKey) => void) => {
-  const keyHandler = getKeyHandler();
+  const keyHandler = getKeyHandler()
   onMount(() => {
-    keyHandler.on("keypress", callback);
-  });
+    keyHandler.on("keypress", callback)
+  })
 
   onCleanup(() => {
-    keyHandler.off("keypress", callback);
-  });
-};
+    keyHandler.off("keypress", callback)
+  })
+}
 
 export const useSelectionHandler = (callback: (selection: Selection) => void) => {
-  const renderer = useRenderer();
+  const renderer = useRenderer()
 
   onMount(() => {
-    renderer.on("selection", callback);
-  });
+    renderer.on("selection", callback)
+  })
 
   onCleanup(() => {
-    renderer.off("selection", callback);
-  });
-};
+    renderer.off("selection", callback)
+  })
+}
 
 export const createComponentTimeline = (options: TimelineOptions = {}): Timeline => {
-  const renderer = useRenderer();
-  const timeline = new Timeline(options);
+  const renderer = useRenderer()
+  const timeline = new Timeline(options)
 
-  const frameCallback = async (dt: number) => timeline.update(dt);
+  const frameCallback = async (dt: number) => timeline.update(dt)
 
   onMount(() => {
     if (options.autoplay !== false) {
-      timeline.play();
+      timeline.play()
     }
-    renderer.setFrameCallback(frameCallback);
-  });
+    renderer.setFrameCallback(frameCallback)
+  })
 
   onCleanup(() => {
-    renderer.removeFrameCallback(frameCallback);
-    timeline.pause();
-  });
+    renderer.removeFrameCallback(frameCallback)
+    timeline.pause()
+  })
 
-  return timeline;
-};
+  return timeline
+}
 
 export const useTimeline = <T extends Record<string, number>>(
   timeline: Timeline,
@@ -102,9 +102,9 @@ export const useTimeline = <T extends Record<string, number>>(
   options: AnimationOptions & { onUpdate?: (values: JSAnimation & { targets: T[] }) => void },
   startTime: number | string = 0,
 ) => {
-  const [store, setStore] = createSignal<T>(initialValue);
+  const [store, setStore] = createSignal<T>(initialValue)
 
-  const { onUpdate, ...animationOptions } = options;
+  const { onUpdate, ...animationOptions } = options
 
   timeline.add(
     store(),
@@ -112,12 +112,12 @@ export const useTimeline = <T extends Record<string, number>>(
       ...targetValue,
       ...animationOptions,
       onUpdate: (values: JSAnimation) => {
-        setStore({ ...values.targets[0] });
-        onUpdate?.(values);
+        setStore({ ...values.targets[0] })
+        onUpdate?.(values)
       },
     },
     startTime,
-  );
+  )
 
-  return store;
-};
+  return store
+}

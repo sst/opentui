@@ -1,74 +1,74 @@
-import { bold, cyan, green, italic, magenta, Selection, yellow } from "@opentui/core";
-import { ConsolePosition } from "@opentui/core/src/console";
-import { render, useRenderer, useSelectionHandler, type TextStyle } from "@opentui/solid";
-import { createEffect, createSignal, onMount, type Ref } from "solid-js";
+import { bold, cyan, green, italic, magenta, Selection, yellow } from "@opentui/core"
+import { ConsolePosition } from "@opentui/core/src/console"
+import { render, useRenderer, useSelectionHandler, type TextStyle } from "@opentui/solid"
+import { createEffect, createSignal, onMount, type Ref } from "solid-js"
 
-const words = ["Hello", "World", "OpenTUI", "SolidJS", "ReactJS", "TypeScript", "JavaScript", "CSS", "HTML", "JSX"];
+const words = ["Hello", "World", "OpenTUI", "SolidJS", "ReactJS", "TypeScript", "JavaScript", "CSS", "HTML", "JSX"]
 
 export default function TextSelectionDemo() {
-  const renderer = useRenderer();
+  const renderer = useRenderer()
 
-  const [selectedWord, setSelectedWord] = createSignal(0);
+  const [selectedWord, setSelectedWord] = createSignal(0)
 
   onMount(() => {
-    renderer.setBackgroundColor("#0d1117");
+    renderer.setBackgroundColor("#0d1117")
     setInterval(() => {
-      setSelectedWord((w) => (w === words.length - 1 ? 0 : w + 1));
-    }, 1000);
-  });
+      setSelectedWord((w) => (w === words.length - 1 ? 0 : w + 1))
+    }, 1000)
+  })
 
-  const [statusText, setStatusText] = createSignal("No selection - try selecting across different nested elements");
-  const [selectionStartText, setSelectionStartText] = createSignal("");
-  const [selectionMiddleText, setSelectionMiddleText] = createSignal("");
-  const [selectionEndText, setSelectionEndText] = createSignal("");
+  const [statusText, setStatusText] = createSignal("No selection - try selecting across different nested elements")
+  const [selectionStartText, setSelectionStartText] = createSignal("")
+  const [selectionMiddleText, setSelectionMiddleText] = createSignal("")
+  const [selectionEndText, setSelectionEndText] = createSignal("")
 
   const section1TextStyle: TextStyle = {
     fg: "#f0f6fc",
     zIndex: 21,
-  };
+  }
 
   const updateSelectionTexts = (selectedText: string) => {
-    const lines = selectedText.split("\n");
-    const totalLength = selectedText.length;
+    const lines = selectedText.split("\n")
+    const totalLength = selectedText.length
 
     if (lines.length > 1) {
-      setStatusText(`Selected ${lines.length} lines (${totalLength} chars):`);
-      setSelectionStartText(lines[0] || "");
-      setSelectionMiddleText("...");
-      setSelectionEndText(lines[lines.length - 1] || "");
+      setStatusText(`Selected ${lines.length} lines (${totalLength} chars):`)
+      setSelectionStartText(lines[0] || "")
+      setSelectionMiddleText("...")
+      setSelectionEndText(lines[lines.length - 1] || "")
     } else if (selectedText.length > 60) {
-      setStatusText(`Selected ${totalLength} chars:`);
-      setSelectionStartText(selectedText.substring(0, 30));
-      setSelectionMiddleText("...");
-      setSelectionEndText(selectedText.substring(selectedText.length - 30));
+      setStatusText(`Selected ${totalLength} chars:`)
+      setSelectionStartText(selectedText.substring(0, 30))
+      setSelectionMiddleText("...")
+      setSelectionEndText(selectedText.substring(selectedText.length - 30))
     } else {
-      setStatusText(`Selected ${totalLength} chars:`);
-      setSelectionStartText(`"${selectedText}"`);
-      setSelectionMiddleText("");
-      setSelectionEndText("");
+      setStatusText(`Selected ${totalLength} chars:`)
+      setSelectionStartText(`"${selectedText}"`)
+      setSelectionMiddleText("")
+      setSelectionEndText("")
     }
-  };
+  }
 
-  let selectionRef: Selection | null = null;
+  let selectionRef: Selection | null = null
 
   const selectionHandler = (selection: Selection) => {
-    selectionRef = selection;
-    const selectedText = selection.getSelectedText();
+    selectionRef = selection
+    const selectedText = selection.getSelectedText()
 
     if (selectedText) {
-      updateSelectionTexts(selectedText);
+      updateSelectionTexts(selectedText)
     }
-  };
+  }
 
-  useSelectionHandler(selectionHandler);
+  useSelectionHandler(selectionHandler)
 
-  const selectedWordText = () => words[selectedWord()];
+  const selectedWordText = () => words[selectedWord()]
 
   createEffect(() => {
-    selectedWord();
-    if (!selectionRef) return;
-    updateSelectionTexts(selectionRef.getSelectedText());
-  });
+    selectedWord()
+    if (!selectionRef) return
+    updateSelectionTexts(selectionRef.getSelectedText())
+  })
 
   return (
     <>
@@ -213,7 +213,7 @@ export default function TextSelectionDemo() {
         <text style={{ fg: "#7dd3fc", zIndex: 2 }}>{selectionEndText()}</text>
       </box>
     </>
-  );
+  )
 }
 
 if (import.meta.main) {
@@ -223,5 +223,5 @@ if (import.meta.main) {
       maxStoredLogs: 1000,
       sizePercent: 40,
     },
-  });
+  })
 }

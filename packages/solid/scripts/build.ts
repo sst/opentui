@@ -138,14 +138,7 @@ const tsconfigBuild: TsconfigBuild = {
     },
   },
   include: ["index.ts", "src/**/*", "jsx-runtime.d.ts"],
-  exclude: [
-    "**/*.test.ts",
-    "**/*.spec.ts", 
-    "examples/**/*", 
-    "scripts/**/*",
-    "node_modules/**/*",
-    "../core/**/*",
-  ],
+  exclude: ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*", "node_modules/**/*", "../core/**/*"],
 }
 
 writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
@@ -170,11 +163,11 @@ if (existsSync(join(rootDir, "jsx-runtime.d.ts"))) {
 mkdirSync(join(distDir, "scripts"), { recursive: true })
 
 if (existsSync(join(rootDir, "scripts", "solid-plugin.ts"))) {
-  copyFileSync(join(rootDir, "scripts", "solid-plugin.ts"), join(distDir, "scripts", "solid-plugin.ts"));
+  copyFileSync(join(rootDir, "scripts", "solid-plugin.ts"), join(distDir, "scripts", "solid-plugin.ts"))
 }
 
 if (existsSync(join(rootDir, "scripts", "preload.ts"))) {
-  copyFileSync(join(rootDir, "scripts", "preload.ts"), join(distDir, "scripts", "preload.ts"));
+  copyFileSync(join(rootDir, "scripts", "preload.ts"), join(distDir, "scripts", "preload.ts"))
 }
 
 const exports = {
@@ -189,11 +182,11 @@ const exports = {
     require: "./src/reconciler.js",
   },
   "./preload": {
-    "import": "./scripts/preload.ts"
+    import: "./scripts/preload.ts",
   },
   "./jsx-runtime": "./jsx-runtime.d.ts",
   "./jsx-dev-runtime": "./jsx-runtime.d.ts",
-};
+}
 
 // Process dependencies to replace workspace references with actual versions
 const processedDependencies = { ...packageJson.dependencies }
