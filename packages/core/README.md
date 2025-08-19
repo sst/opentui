@@ -3,7 +3,7 @@
 OpenTUI Core is a TypeScript library for building terminal user interfaces (TUIs). It is currently in
 development and is not ready for production use.
 
-[Getting Started](docs/getting-started)
+[Getting Started](docs/getting-started.md)
 
 ## Install
 
