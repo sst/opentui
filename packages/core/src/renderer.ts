@@ -128,7 +128,6 @@ export class CliRenderer extends EventEmitter {
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
   private isDestroyed: boolean = false
-  private isShuttingDown: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -151,6 +150,7 @@ export class CliRenderer extends EventEmitter {
   private backgroundColor: RGBA = RGBA.fromHex("#000000")
   private waitingForPixelResolution: boolean = false
 
+  private shutdownRequested: boolean = false
   private rendering: boolean = false
   private renderingNative: boolean = false
   private renderTimeout: Timer | null = null
@@ -288,7 +288,6 @@ export class CliRenderer extends EventEmitter {
 
     // Handle terminal resize
     this.sigwinchHandler = () => {
-      if (this.isShuttingDown) return
       const width = this.stdout.columns || 80
       const height = this.stdout.rows || 24
       this.handleResize(width, height)
@@ -297,6 +296,7 @@ export class CliRenderer extends EventEmitter {
 
     const handleError = (error: Error) => {
       this.stop()
+      this.destroy()
 
       new Promise((resolve) => {
         setTimeout(() => {
@@ -323,9 +323,9 @@ export class CliRenderer extends EventEmitter {
 
     process.on("uncaughtException", handleError)
     process.on("unhandledRejection", handleError)
-    process.on("exit", (code: number) => {
-      this.stop()
-      this.destroy()
+    process.on("exit", () => {
+      this.shutdownRequested = true
+      this.loop()
     })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
@@ -347,6 +347,15 @@ export class CliRenderer extends EventEmitter {
     global.window.requestAnimationFrame = requestAnimationFrame
 
     this.queryPixelResolution()
+
+    // Prevents output from being written to the terminal, useful for debugging
+    if (process.env.OTUI_NO_NATIVE_RENDER === "true") {
+      this.renderNative = () => {
+        if (this._splitHeight > 0) {
+          this.flushStdoutCache(this._splitHeight)
+        }
+      }
+    }
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
@@ -539,10 +548,6 @@ export class CliRenderer extends EventEmitter {
     this.lib.setUseThread(this.rendererPtr, useThread)
   }
 
-  public setTerminalSize(width: number, height: number): void {
-    this.handleResize(width, height)
-  }
-
   private setupTerminal(): void {
     this.writeOut(ANSI.saveCursorState)
     if (this.stdin.setRawMode) {
@@ -588,6 +593,8 @@ export class CliRenderer extends EventEmitter {
 
     if (this._useAlternateScreen) {
       this.writeOut(ANSI.switchToAlternateScreen)
+    } else {
+      this.writeOut(ANSI.makeRoomForRenderer(this.height - 1))
     }
     this.setCursorPosition(0, 0, false)
   }
@@ -741,7 +748,7 @@ export class CliRenderer extends EventEmitter {
   }
 
   private handleResize(width: number, height: number): void {
-    if (this.isShuttingDown) return
+    if (this.isDestroyed) return
     if (this._splitHeight > 0) {
       this.processResize(width, height)
       return
@@ -910,11 +917,28 @@ export class CliRenderer extends EventEmitter {
   }
 
   public stop(): void {
-    if (this.isShuttingDown) return
-    this._isRunning = false
-    this.isShuttingDown = true
+    if (this.isRunning && !this.isDestroyed) {
+      this._isRunning = false
+      
+
+      if (this.memorySnapshotTimer) {
+        clearInterval(this.memorySnapshotTimer)
+        this.memorySnapshotTimer = null
+      }
+
+      if (this.renderTimeout) {
+        clearTimeout(this.renderTimeout)
+        this.renderTimeout = null
+      }
+    }
+  }
+
+  public destroy(): void {
+    if (this.isDestroyed) return
+    this.isDestroyed = true
 
     this.waitingForPixelResolution = false
+    this.capturedRenderable = undefined
 
     if (this.sigwinchHandler) {
       process.removeListener("SIGWINCH", this.sigwinchHandler)
@@ -923,23 +947,13 @@ export class CliRenderer extends EventEmitter {
 
     this._console.deactivate()
     this.disableStdoutInterception()
-
-    if (this.renderTimeout) {
-      clearTimeout(this.renderTimeout)
-      this.renderTimeout = null
-    }
-
-    if (this.memorySnapshotTimer) {
-      clearInterval(this.memorySnapshotTimer)
-      this.memorySnapshotTimer = null
-    }
+    
+    this.lib.destroyRenderer(this.rendererPtr)
 
     if (this._splitHeight > 0) {
       const consoleEndLine = this._terminalHeight - this._splitHeight
       this.writeOut(ANSI.moveCursor(consoleEndLine, 1))
     }
-
-    this.capturedRenderable = undefined
 
     if (this._useMouse) {
       this.disableMouse()
@@ -949,14 +963,9 @@ export class CliRenderer extends EventEmitter {
 
     if (this._useAlternateScreen) {
       this.writeOut(ANSI.switchToMainScreen)
+    } else {
+      this.writeOut(ANSI.clearRendererSpace(this.height))
     }
-  }
-
-  public destroy(): void {
-    if (this.isDestroyed) return
-
-    this.lib.destroyRenderer(this.rendererPtr)
-    this.isDestroyed = true
   }
 
   private startRenderLoop(): void {
@@ -972,7 +981,7 @@ export class CliRenderer extends EventEmitter {
   }
 
   private async loop(): Promise<void> {
-    if (this.rendering) return
+    if (this.rendering || this.isDestroyed) return
     this.rendering = true
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1025,6 +1034,13 @@ export class CliRenderer extends EventEmitter {
 
     this.renderNative()
 
+    if (this.shutdownRequested) {
+      this.shutdownRequested = false
+      this.rendering = false
+      this.destroy()
+      return
+    }
+
     const overallFrameTime = performance.now() - overallStart
     // TODO: Add animationRequestTime to stats
     this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
@@ -1045,7 +1061,6 @@ export class CliRenderer extends EventEmitter {
   }
 
   public intermediateRender(): void {
-    // if (!this._isRunning) return
     this.immediateRerenderRequested = true
     this.loop()
   }

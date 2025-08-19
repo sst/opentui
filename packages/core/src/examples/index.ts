@@ -367,11 +367,10 @@ class ExampleSelector {
             break
         }
       }
-
       switch (key.raw) {
         case "\u0003":
           this.cleanup()
-          process.exit(0)
+          process.exit()
           break
       }
     })
@@ -452,7 +451,6 @@ class ExampleSelector {
     if (this.selectElement) {
       this.selectElement.blur()
     }
-    this.renderer.stop()
   }
 }
 

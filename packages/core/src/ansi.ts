@@ -29,4 +29,7 @@ export const ANSI = {
   disableAnyEventTracking: "\x1b[?1003l",
   enableSGRMouseMode: "\x1b[?1006h",
   disableSGRMouseMode: "\x1b[?1006l",
+
+  makeRoomForRenderer: (height: number) => "\n".repeat(height) + `\x1b[${height}A`,
+  clearRendererSpace: (height: number) => `\x1b[${height}A\x1b[1G\x1b[J`,
 }
