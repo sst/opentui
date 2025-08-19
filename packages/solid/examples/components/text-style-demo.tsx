@@ -4,7 +4,7 @@ import { createSignal, onCleanup, onMount } from "solid-js";
 export default function TextStyleScene() {
   const [counter, setCounter] = createSignal(0);
 
-  let interval: NodeJS.Timer;
+  let interval: NodeJS.Timeout;
 
   onMount(() => {
     interval = setInterval(() => {
@@ -24,6 +24,10 @@ export default function TextStyleScene() {
       <text>
         And {bold("chunk arrays")} work {fg("#ff8c00")("as welll")}!! {italic(underline(`${counter()}`))}
       </text>
+      You do not need to have a text node {counter()} as a parent when dealing with text {counter()}
+      <box>
+        {counter()} Mix in some {bold("more text")} {counter()}
+      </box>
     </group>
   );
 }
