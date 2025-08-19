@@ -33,8 +33,8 @@ export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void
     rendererPtr.setUseThread(useThread);
 }
 
-export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
-    rendererPtr.destroy();
+export fn destroyRenderer(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
+    rendererPtr.destroy(useAlternateScreen, splitHeight);
 }
 
 export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
@@ -253,6 +253,14 @@ export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
 
 export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
     rendererPtr.dumpStdoutBuffer(timestamp);
+}
+
+export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {
+    rendererPtr.enableMouse(enableMovement);
+}
+
+export fn disableMouse(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.disableMouse();
 }
 
 // ====== TextBuffer exports ======

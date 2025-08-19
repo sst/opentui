@@ -21,7 +21,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     destroyRenderer: {
-      args: ["ptr"],
+      args: ["ptr", "bool", "u32"],
       returns: "void",
     },
     setUseThread: {
@@ -188,6 +188,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
+    enableMouse: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    disableMouse: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // TextBuffer functions
     createTextBuffer: {
@@ -291,7 +299,7 @@ function getOpenTUILib(libPath?: string) {
 
 export interface RenderLib {
   createRenderer: (width: number, height: number) => Pointer | null
-  destroyRenderer: (renderer: Pointer) => void
+  destroyRenderer: (renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
   setRenderOffset: (renderer: Pointer, offset: number) => void
@@ -391,6 +399,8 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  enableMouse: (renderer: Pointer, enableMovement: boolean) => void
+  disableMouse: (renderer: Pointer) => void
 
   // TextBuffer methods
   createTextBuffer: (capacity: number) => TextBuffer
@@ -471,8 +481,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.createRenderer(width, height)
   }
 
-  public destroyRenderer(renderer: Pointer) {
-    this.opentui.symbols.destroyRenderer(renderer)
+  public destroyRenderer(renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) {
+    this.opentui.symbols.destroyRenderer(renderer, useAlternateScreen, splitHeight)
   }
 
   public setUseThread(renderer: Pointer, useThread: boolean) {
@@ -841,6 +851,14 @@ class FFIRenderLib implements RenderLib {
   public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+  }
+
+  public enableMouse(renderer: Pointer, enableMovement: boolean): void {
+    this.opentui.symbols.enableMouse(renderer, enableMovement)
+  }
+
+  public disableMouse(renderer: Pointer): void {
+    this.opentui.symbols.disableMouse(renderer)
   }
 
   // TextBuffer methods

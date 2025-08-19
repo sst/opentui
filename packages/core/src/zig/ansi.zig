@@ -15,6 +15,7 @@ pub const ANSI = struct {
     pub const clearAndHome = "\x1b[H\x1b[2J";
     pub const hideCursor = "\x1b[?25l";
     pub const showCursor = "\x1b[?25h";
+    pub const defaultCursorStyle = "\x1b[0 q";
 
     // Direct writing to any writer - the most efficient option
     pub fn moveToOutput(writer: anytype, x: u32, y: u32) AnsiError!void {
@@ -54,6 +55,27 @@ pub const ANSI = struct {
     pub const resetCursorColor = "\x1b]12;default\x07";
     pub const saveCursorState = "\x1b[s";
     pub const restoreCursorState = "\x1b[u";
+
+    pub const switchToAlternateScreen = "\x1b[?1049h";
+    pub const switchToMainScreen = "\x1b[?1049l";
+
+    pub const enableMouseTracking = "\x1b[?1000h";
+    pub const disableMouseTracking = "\x1b[?1000l";
+    pub const enableButtonEventTracking = "\x1b[?1002h";
+    pub const disableButtonEventTracking = "\x1b[?1002l";
+    pub const enableAnyEventTracking = "\x1b[?1003h";
+    pub const disableAnyEventTracking = "\x1b[?1003l";
+    pub const enableSGRMouseMode = "\x1b[?1006h";
+    pub const disableSGRMouseMode = "\x1b[?1006l";
+
+    pub fn clearRendererSpaceOutput(writer: anytype, height: u32) AnsiError!void {
+        // Clear each line individually from bottom to top
+        // This approach is more compatible across different terminals
+        var i: u32 = height;
+        while (i > 0) : (i -= 1) {
+            std.fmt.format(writer, "\x1b[{d};1H\x1b[2K", .{i}) catch return AnsiError.WriteFailed;
+        }
+    }
 };
 
 pub const TextAttributes = struct {

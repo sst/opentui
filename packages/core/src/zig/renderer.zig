@@ -111,6 +111,9 @@ pub const CliRenderer = struct {
     hitGridWidth: u32,
     hitGridHeight: u32,
 
+    mouseEnabled: bool,
+    mouseMovementEnabled: bool,
+
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
     var outputBufferLen: usize = 0;
@@ -240,6 +243,8 @@ pub const CliRenderer = struct {
             .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
             .hitGridHeight = height,
+            .mouseEnabled = false,
+            .mouseMovementEnabled = false,
         };
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, CLEAR_CHAR);
@@ -248,8 +253,12 @@ pub const CliRenderer = struct {
         return self;
     }
 
-    pub fn destroy(self: *CliRenderer) void {
+    pub fn destroy(self: *CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
         self.renderMutex.lock();
+        while (self.renderInProgress) {
+            self.renderCondition.wait(&self.renderMutex);
+        }
+
         self.shouldTerminate = true;
         self.renderRequested = true;
         self.renderCondition.signal();
@@ -259,7 +268,7 @@ pub const CliRenderer = struct {
             thread.join();
         }
 
-        self.stdoutWriter.flush() catch {};
+        self.performShutdownSequence(useAlternateScreen, splitHeight);
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
@@ -277,6 +286,40 @@ pub const CliRenderer = struct {
         self.allocator.free(self.nextHitGrid);
 
         self.allocator.destroy(self);
+    }
+
+    fn performShutdownSequence(self: *CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
+        const direct = self.stdoutWriter.writer();
+
+        self.disableMouse();
+
+        if (useAlternateScreen) {
+            direct.writeAll(ansi.ANSI.switchToMainScreen) catch {};
+            self.stdoutWriter.flush() catch {};
+        } else {
+            ansi.ANSI.clearRendererSpaceOutput(direct, self.height) catch {};
+        }
+
+        direct.writeAll(ansi.ANSI.reset) catch {};
+        direct.writeAll(ansi.ANSI.resetCursorColor) catch {};
+        direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
+        direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
+
+        if (splitHeight > 0) {
+            const consoleEndLine = self.height - splitHeight;
+            ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
+        } else {
+            ansi.ANSI.moveToOutput(direct, 1, 1) catch {};
+        }
+
+        direct.writeAll(ansi.ANSI.showCursor) catch {};
+
+        // Workaround for Ghostty not showing the cursor after shutdown for some reason
+        self.stdoutWriter.flush() catch {};
+        std.time.sleep(10 * std.time.ns_per_ms);
+        direct.writeAll(ansi.ANSI.showCursor) catch {};
+        self.stdoutWriter.flush() catch {};
+        std.time.sleep(10 * std.time.ns_per_ms);
     }
 
     fn addStatSample(comptime T: type, samples: *std.ArrayList(T), value: T) void {
@@ -389,7 +432,7 @@ pub const CliRenderer = struct {
                 self.renderCondition.wait(&self.renderMutex);
             }
 
-            if (self.shouldTerminate) {
+            if (self.shouldTerminate and !self.renderRequested) {
                 self.renderMutex.unlock();
                 break;
             }
@@ -807,6 +850,41 @@ pub const CliRenderer = struct {
         self.dumpSingleBuffer(self.currentRenderBuffer, "current", timestamp);
         self.dumpSingleBuffer(self.nextRenderBuffer, "next", timestamp);
         self.dumpStdoutBuffer(timestamp);
+    }
+
+    pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
+        self.mouseEnabled = true;
+        self.mouseMovementEnabled = enableMovement;
+
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
+        writer.writeAll(ansi.ANSI.enableSGRMouseMode) catch {};
+        writer.writeAll(ansi.ANSI.enableMouseTracking) catch {};
+        writer.writeAll(ansi.ANSI.enableButtonEventTracking) catch {};
+
+        if (enableMovement) {
+            writer.writeAll(ansi.ANSI.enableAnyEventTracking) catch {};
+        }
+
+        bufferedWriter.flush() catch {};
+    }
+
+    pub fn disableMouse(self: *CliRenderer) void {
+        if (!self.mouseEnabled) return;
+
+        self.mouseEnabled = false;
+        self.mouseMovementEnabled = false;
+
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
+        writer.writeAll(ansi.ANSI.disableAnyEventTracking) catch {};
+        writer.writeAll(ansi.ANSI.disableButtonEventTracking) catch {};
+        writer.writeAll(ansi.ANSI.disableMouseTracking) catch {};
+        writer.writeAll(ansi.ANSI.disableSGRMouseMode) catch {};
+
+        bufferedWriter.flush() catch {};
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

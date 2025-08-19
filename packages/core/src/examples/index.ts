@@ -457,6 +457,7 @@ class ExampleSelector {
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
   targetFps: 60,
+  // useAlternateScreen: false
 })
 
 renderer.setBackgroundColor("#001122")

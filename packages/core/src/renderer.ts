@@ -84,6 +84,12 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
+;['SIGINT', 'SIGTERM', 'SIGQUIT', 'SIGABRT'].forEach((signal) => {
+  process.on(signal, () => {
+    process.exit()
+  })
+})
+
 export async function createCliRenderer(config: CliRendererConfig = {}): Promise<CliRenderer> {
   if (process.argv.includes("--delay-start")) {
     await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -150,7 +156,7 @@ export class CliRenderer extends EventEmitter {
   private backgroundColor: RGBA = RGBA.fromHex("#000000")
   private waitingForPixelResolution: boolean = false
 
-  private shutdownRequested: boolean = false
+  private shutdownRequested: (() => void) | null = null
   private rendering: boolean = false
   private renderingNative: boolean = false
   private renderTimeout: Timer | null = null
@@ -324,10 +330,9 @@ export class CliRenderer extends EventEmitter {
     process.on("uncaughtException", handleError)
     process.on("unhandledRejection", handleError)
     process.on("exit", () => {
-      this.shutdownRequested = true
-      this.loop()
+      this.destroy()
     })
-
+    
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
 
@@ -522,25 +527,13 @@ export class CliRenderer extends EventEmitter {
   }
 
   private enableMouse(): void {
-    this.writeOut(ANSI.enableSGRMouseMode)
-    this.writeOut(ANSI.enableMouseTracking)
-    this.writeOut(ANSI.enableButtonEventTracking)
-
-    if (this.enableMouseMovement) {
-      this.writeOut(ANSI.enableAnyEventTracking)
-    }
+    this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement)
   }
 
   private disableMouse(): void {
-    if (this.enableMouseMovement) {
-      this.writeOut(ANSI.disableAnyEventTracking)
-    }
-    this.writeOut(ANSI.disableButtonEventTracking)
-    this.writeOut(ANSI.disableMouseTracking)
-    this.writeOut(ANSI.disableSGRMouseMode)
-
     this.capturedRenderable = undefined
     this.mouseParser.reset()
+    this.lib.disableMouse(this.rendererPtr)
   }
 
   public set useThread(useThread: boolean) {
@@ -579,7 +572,7 @@ export class CliRenderer extends EventEmitter {
 
       if (this.exitOnCtrlC && str === "\u0003") {
         process.nextTick(() => {
-          process.exit(0)
+          process.exit()
         })
         return
       }
@@ -919,7 +912,6 @@ export class CliRenderer extends EventEmitter {
   public stop(): void {
     if (this.isRunning && !this.isDestroyed) {
       this._isRunning = false
-      
 
       if (this.memorySnapshotTimer) {
         clearInterval(this.memorySnapshotTimer)
@@ -946,26 +938,9 @@ export class CliRenderer extends EventEmitter {
     }
 
     this._console.deactivate()
-    this.disableStdoutInterception()
+    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
     
-    this.lib.destroyRenderer(this.rendererPtr)
-
-    if (this._splitHeight > 0) {
-      const consoleEndLine = this._terminalHeight - this._splitHeight
-      this.writeOut(ANSI.moveCursor(consoleEndLine, 1))
-    }
-
-    if (this._useMouse) {
-      this.disableMouse()
-    }
-    this.writeOut(ANSI.resetCursorColor)
-    this.writeOut(ANSI.showCursor)
-
-    if (this._useAlternateScreen) {
-      this.writeOut(ANSI.switchToMainScreen)
-    } else {
-      this.writeOut(ANSI.clearRendererSpace(this.height))
-    }
+    this.disableStdoutInterception()
   }
 
   private startRenderLoop(): void {
@@ -1033,13 +1008,6 @@ export class CliRenderer extends EventEmitter {
     this._console.renderToBuffer(this.nextRenderBuffer)
 
     this.renderNative()
-
-    if (this.shutdownRequested) {
-      this.shutdownRequested = false
-      this.rendering = false
-      this.destroy()
-      return
-    }
 
     const overallFrameTime = performance.now() - overallStart
     // TODO: Add animationRequestTime to stats

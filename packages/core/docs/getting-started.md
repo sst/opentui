@@ -5,17 +5,20 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 ## Core Concepts
 
 ### Renderer
+
 The `CliRenderer` is the heart of OpenTUI. It manages the terminal output, handles input events, and orchestrates the rendering loop. Think of it as the canvas that draws your interface to the terminal. It can run in a "live" mode, when calling `renderer.start()`, which runs a loop capped at the specified target FPS. It also just works without calling `renderer.start()`, which will only re-render when the renderable tree or layout changes.
 
 ### FrameBuffer (OptimizedBuffer)
+
 The `FrameBuffer` is a low-level rendering surface for custom graphics and complex visual effects. It is a 2D array of cells that can be drawn to using the `setCell`, `setCellWithAlphaBlending`, `drawText`, `fillRect`, and `drawFrameBuffer` methods. It is optimized for performance and memory usage. It allows for transparent cells and alpha blending, down to the viewport framebuffer.
 
 ### Renderables
+
 Renderables are the building blocks of your UI - hierarchical objects that can be positioned, styled, and nested within each other. Each Renderable represents a visual element (like text, boxes, or input fields) and uses the Yoga layout engine for flexible positioning and sizing.
 
 ### Console
-OpenTUI includes a built-in console overlay that captures all `console.log`, `console.info`, `console.warn`, `console.error`, and `console.debug` calls. The console appears as a visual overlay that can be positioned at any edge of the terminal, with scrolling and focus management. It's particularly useful for debugging TUI applications without disrupting the main interface.
 
+OpenTUI includes a built-in console overlay that captures all `console.log`, `console.info`, `console.warn`, `console.error`, and `console.debug` calls. The console appears as a visual overlay that can be positioned at any edge of the terminal, with scrolling and focus management. It's particularly useful for debugging TUI applications without disrupting the main interface.
 
 ## Basic Setup
 
@@ -29,7 +32,7 @@ const greeting = new TextRenderable("greeting", {
   fg: "#00FF00",
   position: "absolute",
   left: 10,
-  top: 5
+  top: 5,
 })
 
 renderer.root.add(greeting)
@@ -47,10 +50,10 @@ const renderer = await createCliRenderer({
     position: ConsolePosition.BOTTOM,
     sizePercent: 30,
     colorInfo: "#00FFFF",
-    colorWarn: "#FFFF00", 
+    colorWarn: "#FFFF00",
     colorError: "#FF0000",
-    startInDebugMode: false
-  }
+    startInDebugMode: false,
+  },
 })
 
 console.log("This appears in the overlay")
@@ -67,10 +70,10 @@ OpenTUI uses the `RGBA` class for consistent color representation throughout the
 ```typescript
 import { RGBA } from "@opentui/core"
 
-const redFromInts = RGBA.fromInts(255, 0, 0, 255)           // RGB integers (0-255)
-const blueFromValues = RGBA.fromValues(0.0, 0.0, 1.0, 1.0)  // Float values (0.0-1.0)
-const greenFromHex = RGBA.fromHex("#00FF00")                // Hex strings
-const transparent = RGBA.fromValues(1.0, 1.0, 1.0, 0.5)     // Semi-transparent white
+const redFromInts = RGBA.fromInts(255, 0, 0, 255) // RGB integers (0-255)
+const blueFromValues = RGBA.fromValues(0.0, 0.0, 1.0, 1.0) // Float values (0.0-1.0)
+const greenFromHex = RGBA.fromHex("#00FF00") // Hex strings
+const transparent = RGBA.fromValues(1.0, 1.0, 1.0, 0.5) // Semi-transparent white
 ```
 
 The `parseColor()` utility function accepts both RGBA objects and color strings (hex, CSS color names, "transparent") for flexible color input throughout the API.
@@ -91,7 +94,7 @@ keyHandler.on("keypress", (key: ParsedKey) => {
   console.log("Shift pressed:", key.shift)
   console.log("Alt pressed:", key.meta)
   console.log("Option pressed:", key.option)
-  
+
   if (key.name === "escape") {
     console.log("Escape pressed!")
   } else if (key.ctrl && key.name === "c") {
@@ -107,6 +110,7 @@ keyHandler.on("keypress", (key: ParsedKey) => {
 OpenTUI provides several primitive components that you can use to build your interfaces:
 
 ### Text
+
 Display styled text content with support for colors, attributes, and text selection.
 
 ```typescript
@@ -118,7 +122,7 @@ const plainText = new TextRenderable("plain-text", {
   attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE, // bitwise OR to combine attributes
   position: "absolute",
   left: 5,
-  top: 2
+  top: 2,
 })
 
 // You can also use the `t` template literal to create more complex styled text:
@@ -126,11 +130,12 @@ const styledTextRenderable = new TextRenderable("styled-text", {
   content: t`${bold("Important Message")} ${fg("#FF0000")(underline("Important Message"))}`,
   position: "absolute",
   left: 5,
-  top: 3
+  top: 3,
 })
 ```
 
 ### Box
+
 A container component with borders, background colors, and layout capabilities. Perfect for creating panels, frames, and organized sections.
 
 ```typescript
@@ -146,11 +151,12 @@ const panel = new BoxRenderable("panel", {
   titleAlignment: "center",
   position: "absolute",
   left: 10,
-  top: 5
+  top: 5,
 })
 ```
 
 ### Input
+
 Text input field with cursor support, placeholder text, and focus states for user interaction.
 Has to be focused to receive input.
 
@@ -163,7 +169,7 @@ const nameInput = new InputRenderable("name-input", {
   focusedBackgroundColor: "#1a1a1a",
   position: "absolute",
   left: 10,
-  top: 8
+  top: 8,
 })
 
 // The change event is currently emitted when pressing return or enter. (this will be fixed in the future)
@@ -174,6 +180,7 @@ nameInput.focus()
 ```
 
 ### Select
+
 A list selection component for choosing from multiple options.
 Has to be focused to receive input. Default keybindings are `up/k` and `down/j` to navigate the list, `enter` to select.
 
@@ -187,11 +194,11 @@ const menu = new SelectRenderable("menu", {
     { name: "New File", description: "Create a new file" },
     { name: "Open File", description: "Open an existing file" },
     { name: "Save", description: "Save current file" },
-    { name: "Exit", description: "Exit the application" }
+    { name: "Exit", description: "Exit the application" },
   ],
   position: "absolute",
   left: 5,
-  top: 3
+  top: 3,
 })
 
 menu.on(SelectRenderableEvents.ITEM_SELECTED, (index, option) => {
@@ -201,6 +208,7 @@ menu.focus()
 ```
 
 ### TabSelect
+
 Horizontal tab-based selection component with descriptions and scroll support.
 Has to be focused to receive input. Default keybindings are `left/[` and `right/]` to navigate the tabs, `enter` to select.
 
@@ -212,12 +220,12 @@ const tabs = new TabSelectRenderable("tabs", {
   options: [
     { name: "Home", description: "Dashboard and overview" },
     { name: "Files", description: "File management" },
-    { name: "Settings", description: "Application settings" }
+    { name: "Settings", description: "Application settings" },
   ],
   tabWidth: 20,
   position: "absolute",
   left: 2,
-  top: 1
+  top: 1,
 })
 
 tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index, option) => {
@@ -228,6 +236,7 @@ tabs.focus()
 ```
 
 ### Group
+
 A container for organizing and laying out child elements without visual styling.
 
 ```typescript
@@ -236,15 +245,16 @@ import { GroupRenderable } from "@opentui/core"
 const layout = new GroupRenderable("layout", {
   flexDirection: "column",
   width: "100%",
-  height: "100%"
+  height: "100%",
 })
 
 layout.add(header)
-layout.add(contentArea) 
+layout.add(contentArea)
 layout.add(footer)
 ```
 
 ### ASCIIFont
+
 Display text using ASCII art fonts with multiple font styles available.
 
 ```typescript
@@ -256,11 +266,12 @@ const title = new ASCIIFontRenderable("title", {
   fg: RGBA.fromInts(255, 255, 255, 255),
   position: "absolute",
   left: 10,
-  top: 2
+  top: 2,
 })
 ```
 
 ### FrameBuffer
+
 A low-level rendering surface for custom graphics and complex visual effects.
 
 ```typescript
@@ -271,7 +282,7 @@ const canvas = new FrameBufferRenderable("canvas", {
   height: 20,
   position: "absolute",
   left: 5,
-  top: 5
+  top: 5,
 })
 
 // Custom rendering in the frame buffer
@@ -291,19 +302,19 @@ const container = new GroupRenderable("container", {
   justifyContent: "space-between",
   alignItems: "center",
   width: "100%",
-  height: 10
+  height: 10,
 })
 
 const leftPanel = new BoxRenderable("left", {
   flexGrow: 1,
   height: 10,
-  backgroundColor: "#444"
+  backgroundColor: "#444",
 })
 
 const rightPanel = new BoxRenderable("right", {
   width: 20,
   height: 10,
-  backgroundColor: "#666"
+  backgroundColor: "#666",
 })
 
 container.add(leftPanel)
