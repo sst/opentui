@@ -74,11 +74,11 @@ const blendColors = tgpu.fn(
   }
 
   const outAlpha = a1 + a2 - a1 * a2
-  if (outAlpha === 0.0) {
+  if (outAlpha === 0) {
     return d.vec4f()
   }
 
-  const rgb = add(color1.xyz.mul(a1), color2.xyz.mul(a2 * (1.0 - a1))).div(outAlpha)
+  const rgb = add(color1.xyz.mul(a1), color2.xyz.mul(a2 * (1 - a1))).div(outAlpha)
 
   return d.vec4f(rgb, outAlpha)
 })
