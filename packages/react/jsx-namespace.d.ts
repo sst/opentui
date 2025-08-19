@@ -1,20 +1,23 @@
+import type * as React from "react"
 import type { BoxProps, GroupProps, InputProps, SelectProps, TabSelectProps, TextProps } from "./src/types/components"
 import type { ExtendedIntrinsicElements, OpenTUIComponents } from "./src/types/extend"
 
 export namespace JSX {
-  interface Element extends React.ReactElement<any, any> {}
+  type Element = React.ReactNode
 
-  interface ElementClass {
-    render: any
+  interface ElementClass extends React.ComponentClass<any> {
+    render(): React.ReactNode
   }
+
   interface ElementAttributesProperty {
     props: {}
   }
+
   interface ElementChildrenAttribute {
     children: {}
   }
 
-  interface IntrinsicElements extends ExtendedIntrinsicElements<OpenTUIComponents> {
+  interface IntrinsicElements extends React.JSX.IntrinsicElements, ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps
     group: GroupProps
     input: InputProps
