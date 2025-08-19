@@ -4,36 +4,21 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 development and is not ready for production use. It will be the foundational TUI framework for both
 [opencode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
 
-## Build
+This monorepo contains the following packages:
+- [`@opentui/core`](packages/core) - The core library works completely standalone, providing an imperative API and all the primitives.
+- [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
+- [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
+
+## Install
 
 ```bash
-bun build:prod
+bun install @opentui/core
 ```
 
-This creates platform-specific libraries in `src/zig/lib/` that are automatically loaded by the TypeScript layer.
-
-## Examples
+## Running Examples (from the repo root)
 
 ```bash
+bun install
+cd packages/core
 bun run src/examples/index.ts
-```
-
-## CLI Renderer
-
-### Renderables
-
-Renderables are hierarchical objects that can be positioned and rendered to buffers:
-
-```typescript
-import { Renderable } from "@opentui/core"
-
-class MyRenderable extends Renderable {
-  protected renderSelf(buffer: OptimizedBuffer): void {
-    buffer.drawText("Custom content", this.x, this.y, RGBA.fromValues(1, 1, 1, 1))
-  }
-}
-
-const obj = new MyRenderable("my-obj", { x: 10, y: 5, zIndex: 1 })
-
-renderer.root.add(obj)
 ```
