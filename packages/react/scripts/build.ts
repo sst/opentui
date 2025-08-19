@@ -137,14 +137,7 @@ const tsconfigBuild: TsconfigBuild = {
     },
   },
   include: ["src/**/*", "jsx-runtime.d.ts", "jsx-dev-runtime.d.ts", "jsx-namespace.d.ts"],
-  exclude: [
-    "**/*.test.ts",
-    "**/*.spec.ts", 
-    "examples/**/*", 
-    "scripts/**/*",
-    "node_modules/**/*",
-    "../core/**/*",
-  ],
+  exclude: ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*", "node_modules/**/*", "../core/**/*"],
 }
 
 writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
@@ -200,7 +193,7 @@ const exports = {
     require: "./jsx-runtime.js",
   },
   "./jsx-dev-runtime": {
-    types: "./jsx-dev-runtime.d.ts", 
+    types: "./jsx-dev-runtime.d.ts",
     import: "./jsx-dev-runtime.js",
     require: "./jsx-dev-runtime.js",
   },
