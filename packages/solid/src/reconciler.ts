@@ -15,6 +15,8 @@ import { createRenderer } from "solid-js/universal";
 import { elements, type Element } from "./elements";
 import { getNextId } from "./utils/id-counter";
 
+const GHOST_NODE_TAG = "text-ghost" as const;
+
 class TextNode {
   id: string;
   chunk: TextChunk;
@@ -52,13 +54,13 @@ function getOrCreateTextGhostNode(parent: Renderable, anchor?: DomNode | null): 
   }
 
   const lastChild = children.at(-1);
-  if (lastChild instanceof TextRenderable && lastChild.id.startsWith("text-ghost")) {
+  if (lastChild instanceof TextRenderable && lastChild.id.startsWith(GHOST_NODE_TAG)) {
     // Append text to last child if exists
     return lastChild;
   }
 
   // Create a new ghost node
-  const ghostNode = new TextRenderable(getNextId("text-ghost"), {});
+  const ghostNode = new TextRenderable(getNextId(GHOST_NODE_TAG), {});
 
   _insertNode(parent, ghostNode, anchor);
 
