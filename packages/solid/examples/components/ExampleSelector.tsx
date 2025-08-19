@@ -1,12 +1,12 @@
-import { measureText, TextRenderable } from "@opentui/core";
-import { useTerminalDimensions, useRenderer, useKeyHandler } from "@opentui/solid";
-import { createSignal, Show, onMount, Switch, Match } from "solid-js";
-import { SplitModeDemo } from "./animation-demo.tsx";
-import InputScene from "./input-demo.tsx";
-import MouseScene from "./mouse-demo.tsx";
-import TextStyleScene from "./text-style-demo.tsx";
-import TextSelectionDemo from "./text-selection-demo.tsx";
-import TabSelectDemo from "./tab-select-demo.tsx";
+import { measureText, TextRenderable } from "@opentui/core"
+import { useTerminalDimensions, useRenderer, useKeyHandler } from "@opentui/solid"
+import { createSignal, Show, onMount, Switch, Match } from "solid-js"
+import { SplitModeDemo } from "./animation-demo.tsx"
+import InputScene from "./input-demo.tsx"
+import MouseScene from "./mouse-demo.tsx"
+import TextStyleScene from "./text-style-demo.tsx"
+import TextSelectionDemo from "./text-selection-demo.tsx"
+import TabSelectDemo from "./tab-select-demo.tsx"
 
 const EXAMPLES = [
   {
@@ -39,55 +39,55 @@ const EXAMPLES = [
     description: "Tab selection demo",
     scene: "tab-select-demo",
   },
-];
+]
 
 const ExampleSelector = () => {
-  const renderer = useRenderer();
+  const renderer = useRenderer()
 
   onMount(() => {
-    renderer.useConsole = true;
+    renderer.useConsole = true
     // renderer.console.show();
-  });
+  })
 
-  const terminalDimensions = useTerminalDimensions();
+  const terminalDimensions = useTerminalDimensions()
 
-  const titleText = "OPENTUI EXAMPLES";
-  const titleFont = "tiny";
-  const { width: titleWidth, height: titleHeight } = measureText({ text: titleText, font: titleFont });
+  const titleText = "OPENTUI EXAMPLES"
+  const titleFont = "tiny"
+  const { width: titleWidth, height: titleHeight } = measureText({ text: titleText, font: titleFont })
 
-  const [selected, setSelected] = createSignal(-1);
+  const [selected, setSelected] = createSignal(-1)
 
   const handleSelect = (idx: number) => {
-    console.log("Selected:", EXAMPLES.at(idx)?.name);
-    setSelected(idx);
-  };
+    console.log("Selected:", EXAMPLES.at(idx)?.name)
+    setSelected(idx)
+  }
 
   useKeyHandler((key) => {
     switch (key.name) {
       case "escape":
-        setSelected(-1);
-        break;
+        setSelected(-1)
+        break
       case "`":
-        renderer.console.toggle();
-        break;
+        renderer.console.toggle()
+        break
       case "t":
-        renderer.toggleDebugOverlay();
-        break;
+        renderer.toggleDebugOverlay()
+        break
       case "g":
         if (key.ctrl) {
-          renderer.dumpHitGrid();
+          renderer.dumpHitGrid()
         }
-        break;
+        break
     }
 
     switch (key.raw) {
       case "\u0003":
-        renderer.stop();
-        process.exit(0);
+        renderer.stop()
+        process.exit(0)
     }
-  });
+  })
 
-  const selectedScene = () => (selected() === -1 ? "menu" : EXAMPLES.at(selected())?.scene);
+  const selectedScene = () => (selected() === -1 ? "menu" : EXAMPLES.at(selected())?.scene)
 
   return (
     <Switch>
@@ -138,7 +138,7 @@ const ExampleSelector = () => {
             <select
               focused
               onSelect={(index) => {
-                handleSelect(index);
+                handleSelect(index)
               }}
               options={EXAMPLES.map((ex, i) => ({
                 name: ex.name,
@@ -161,7 +161,7 @@ const ExampleSelector = () => {
         </box>
       </Match>
     </Switch>
-  );
-};
+  )
+}
 
-export default ExampleSelector;
+export default ExampleSelector

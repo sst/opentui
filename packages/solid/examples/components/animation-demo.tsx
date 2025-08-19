@@ -1,19 +1,19 @@
-import { useTerminalDimensions, useTimeline, createComponentTimeline } from "@opentui/solid";
-import { For } from "solid-js";
+import { useTerminalDimensions, useTimeline, createComponentTimeline } from "@opentui/solid"
+import { For } from "solid-js"
 
 export const SplitModeDemo = () => {
-  const tDims = useTerminalDimensions();
+  const tDims = useTerminalDimensions()
   const systems = [
     { name: "CPU", color: "#6a5acd", y: 6, animKey: "cpu" },
     { name: "MEM", color: "#4682b4", y: 7, animKey: "memory" },
     { name: "NET", color: "#20b2aa", y: 8, animKey: "network" },
     { name: "DSK", color: "#daa520", y: 9, animKey: "disk" },
-  ] as const;
+  ] as const
 
   const timeline = createComponentTimeline({
     duration: 8000,
     loop: false,
-  });
+  })
 
   const animatedSystem = useTimeline(
     timeline,
@@ -24,7 +24,7 @@ export const SplitModeDemo = () => {
       ease: "inOutQuad",
     },
     0,
-  );
+  )
 
   return (
     <group
@@ -81,9 +81,7 @@ export const SplitModeDemo = () => {
               >
                 <box
                   style={{
-                    width: `${Math.round(
-                      animatedSystem()[system.animKey]
-                    )}%`,
+                    width: `${Math.round(animatedSystem()[system.animKey])}%`,
                     height: 1,
                     backgroundColor: system.color,
                     zIndex: 2,
@@ -163,5 +161,5 @@ export const SplitModeDemo = () => {
         )}
       </For>
     </group>
-  );
-};
+  )
+}

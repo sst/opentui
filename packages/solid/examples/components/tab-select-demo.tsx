@@ -1,7 +1,7 @@
-import { createSignal, For, Match, onMount, Switch } from "solid-js";
-import { EventEmitter } from "events";
-import { render, useKeyHandler, useRenderer } from "@opentui/solid";
-import { ConsolePosition } from "@opentui/core/src/console";
+import { createSignal, For, Match, onMount, Switch } from "solid-js"
+import { EventEmitter } from "events"
+import { render, useKeyHandler, useRenderer } from "@opentui/solid"
+import { ConsolePosition } from "@opentui/core/src/console"
 
 const Tab = (props: { title: string; active: boolean; index: number }) => {
   return (
@@ -18,8 +18,8 @@ const Tab = (props: { title: string; active: boolean; index: number }) => {
     >
       <text>{props.title}</text>
     </box>
-  );
-};
+  )
+}
 
 const tabs = [
   { title: "Text & Attributes" },
@@ -28,18 +28,18 @@ const tabs = [
   { title: "Animation" },
   { title: "Titles" },
   { title: "Interactive" },
-];
+]
 
 export default function TabSelectDemo() {
-  const renderer = useRenderer();
-  const [activeTab, setActiveTab] = createSignal(0);
+  const renderer = useRenderer()
+  const [activeTab, setActiveTab] = createSignal(0)
 
   onMount(() => {
-    renderer.useConsole = true;
-    renderer.console.show();
-  });
+    renderer.useConsole = true
+    renderer.console.show()
+  })
 
-  useKeyHandler((key) => {});
+  useKeyHandler((key) => {})
 
   return (
     <group style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -53,7 +53,7 @@ export default function TabSelectDemo() {
         }))}
         showDescription={false}
         onChange={(index) => {
-          setActiveTab(index);
+          setActiveTab(index)
         }}
         focused
       />
@@ -66,7 +66,7 @@ export default function TabSelectDemo() {
         </Match>
       </Switch>
     </group>
-  );
+  )
 }
 
 if (import.meta.main) {
@@ -76,5 +76,5 @@ if (import.meta.main) {
       maxStoredLogs: 1000,
       sizePercent: 40,
     },
-  });
+  })
 }

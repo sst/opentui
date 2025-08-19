@@ -1,20 +1,20 @@
-import { bold, underline, t, fg, bg, italic } from "@opentui/core";
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { bold, underline, t, fg, bg, italic } from "@opentui/core"
+import { createSignal, onCleanup, onMount } from "solid-js"
 
 export default function TextStyleScene() {
-  const [counter, setCounter] = createSignal(0);
+  const [counter, setCounter] = createSignal(0)
 
-  let interval: NodeJS.Timeout;
+  let interval: NodeJS.Timeout
 
   onMount(() => {
     interval = setInterval(() => {
-      setCounter((c) => c + 1);
-    }, 1000);
-  });
+      setCounter((c) => c + 1)
+    }, 1000)
+  })
 
   onCleanup(() => {
-    clearInterval(interval);
-  });
+    clearInterval(interval)
+  })
 
   return (
     <group>
@@ -29,5 +29,5 @@ export default function TextStyleScene() {
         {counter()} Mix in some {bold("more text")} {counter()}
       </box>
     </group>
-  );
+  )
 }
