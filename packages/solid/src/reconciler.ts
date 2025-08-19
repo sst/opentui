@@ -47,7 +47,7 @@ function getOrCreateTextGhostNode(parent: Renderable, anchor?: DomNode | null): 
   if (anchor instanceof Renderable) {
     const anchorIndex = children.findIndex((el) => el.id === anchor.id);
     const beforeAnchor = children[anchorIndex - 1];
-    if (beforeAnchor instanceof TextRenderable) {
+    if (beforeAnchor instanceof TextRenderable && beforeAnchor.id.startsWith(GHOST_NODE_TAG)) {
       // append text to previous
       return beforeAnchor;
     }
