@@ -39,9 +39,9 @@ console.log("Updating @opentui/core...")
 
 try {
   const corePackageJson: PackageJson = JSON.parse(readFileSync(corePackageJsonPath, "utf8"))
-  
+
   corePackageJson.version = version
-  
+
   if (corePackageJson.optionalDependencies) {
     for (const depName in corePackageJson.optionalDependencies) {
       if (depName.startsWith("@opentui/core-")) {
@@ -50,7 +50,7 @@ try {
       }
     }
   }
-  
+
   writeFileSync(corePackageJsonPath, JSON.stringify(corePackageJson, null, 2) + "\n")
   console.log(`  @opentui/core updated to version ${version}`)
 } catch (error) {
@@ -63,9 +63,9 @@ console.log("\nUpdating @opentui/react...")
 
 try {
   const reactPackageJson: PackageJson = JSON.parse(readFileSync(reactPackageJsonPath, "utf8"))
-  
+
   reactPackageJson.version = version
-  
+
   writeFileSync(reactPackageJsonPath, JSON.stringify(reactPackageJson, null, 2) + "\n")
   console.log(`  @opentui/react updated to version ${version}`)
   console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
@@ -79,9 +79,9 @@ console.log("\nUpdating @opentui/solid...")
 
 try {
   const solidPackageJson: PackageJson = JSON.parse(readFileSync(solidPackageJsonPath, "utf8"))
-  
+
   solidPackageJson.version = version
-  
+
   writeFileSync(solidPackageJsonPath, JSON.stringify(solidPackageJson, null, 2) + "\n")
   console.log(`  @opentui/solid updated to version ${version}`)
   console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)

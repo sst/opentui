@@ -18,22 +18,16 @@
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
     "publish": "node scripts/publish.ts",
-    "test": "bun test",
-    "prettier:write": "prettier --write ."
+    "test": "bun test"
   },
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
     "@types/three": "^0.177.0",
-    "commander": "^13.1.0",
-    "prettier": "3.6.2"
+    "commander": "^13.1.0"
   },
   "peerDependencies": {
     "typescript": "^5"
-  },
-  "prettier": {
-    "semi": false,
-    "printWidth": 120
   },
   "dependencies": {
     "jimp": "1.6.0",

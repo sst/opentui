@@ -84,7 +84,7 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-;['SIGINT', 'SIGTERM', 'SIGQUIT', 'SIGABRT'].forEach((signal) => {
+;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
   process.on(signal, () => {
     process.exit()
   })
@@ -332,7 +332,7 @@ export class CliRenderer extends EventEmitter {
     process.on("exit", () => {
       this.destroy()
     })
-    
+
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
 
@@ -939,7 +939,7 @@ export class CliRenderer extends EventEmitter {
 
     this._console.deactivate()
     this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
-    
+
     this.disableStdoutInterception()
   }
 

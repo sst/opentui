@@ -30,13 +30,11 @@
     "build": "bun run scripts/build.ts",
     "build:dev": "bun run scripts/build.ts --dev",
     "publish": "bun run scripts/publish.ts",
-    "test": "bun test",
-    "prettier:write": "prettier --write ."
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/react-reconciler": "^0.32.0",
-    "prettier": "3.6.2"
+    "@types/react-reconciler": "^0.32.0"
   },
   "peerDependencies": {
     "react": ">=19.0.0",
@@ -45,9 +43,5 @@
   "dependencies": {
     "@opentui/core": "workspace:*",
     "react-reconciler": "^0.32.0"
-  },
-  "prettier": {
-    "semi": false,
-    "printWidth": 120
   }
 }

@@ -37,14 +37,14 @@ const PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "core", "dist"),
   },
   {
-    name: "@opentui/react", 
+    name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),
     requiresCore: true,
   },
   {
     name: "@opentui/solid",
-    rootDir: join(rootDir, "packages", "solid"), 
+    rootDir: join(rootDir, "packages", "solid"),
     distDir: join(rootDir, "packages", "solid", "dist"),
     requiresCore: true,
   },
@@ -86,9 +86,7 @@ function verifyNpmAuth(): void {
 function checkVersionExists(packageName: string, version: string): boolean {
   try {
     const versions: string[] = JSON.parse(
-      spawnSync("npm", ["view", packageName, "versions", "--json"], {})
-        .stdout.toString()
-        .trim(),
+      spawnSync("npm", ["view", packageName, "versions", "--json"], {}).stdout.toString().trim(),
     )
     return Array.isArray(versions) ? versions.includes(version) : versions === version
   } catch {
@@ -159,9 +157,7 @@ function validatePackage(config: PackageConfig): void {
           process.exit(1)
         }
 
-        const nativePackageJson: PackageJson = JSON.parse(
-          readFileSync(join(nativeDir, "package.json"), "utf8"),
-        )
+        const nativePackageJson: PackageJson = JSON.parse(readFileSync(join(nativeDir, "package.json"), "utf8"))
 
         if (nativePackageJson.version !== packageJson.version) {
           mismatches.push({
@@ -208,7 +204,8 @@ function validatePackage(config: PackageConfig): void {
 }
 
 function getUserConfirmation(): void {
-  console.log(`
+  console.log(
+    `
 Pre-publish checklist:
 
 1. [OK] Version fields in package.json files have been updated
@@ -217,7 +214,8 @@ Pre-publish checklist:
 4. [OK] All validation checks have passed
 
 Continue with publishing? (y/n)
-`.trim())
+`.trim(),
+  )
 
   const confirm: SpawnSyncReturns<Buffer> = spawnSync(
     "node",
@@ -247,7 +245,7 @@ Continue with publishing? (y/n)
 
 function main(): void {
   console.log("OpenTUI Pre-Publish Validation")
-  console.log("=" .repeat(50))
+  console.log("=".repeat(50))
 
   // Setup NPM authentication once
   console.log("\nINFO: Setting up NPM authentication...")
@@ -261,14 +259,14 @@ function main(): void {
   }
 
   // Get user confirmation
-  console.log("\n" + "=" .repeat(50))
+  console.log("\n" + "=".repeat(50))
   console.log("SUCCESS: All validation checks passed!")
   getUserConfirmation()
 
   console.log("\nSUCCESS: Pre-publish validation complete! Ready to publish.")
   console.log("\nNext steps:")
   console.log("  • Run: bun run publish:core")
-  console.log("  • Run: bun run publish:react") 
+  console.log("  • Run: bun run publish:react")
   console.log("  • Run: bun run publish:solid")
 }
 
