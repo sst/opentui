@@ -34,48 +34,75 @@ export class StyledText {
     return this._plainText
   }
 
-  private _chunksToPlainText(): void {
-    this._plainText = ""
-    for (const chunk of this.chunks) {
-      this._plainText += chunk.plainText
-    }
+  private static _createInstance(chunks: TextChunk[], plainText: string): StyledText {
+    const newInstance = Object.create(StyledText.prototype)
+    newInstance.chunks = chunks
+    newInstance._plainText = plainText
+    return newInstance
   }
 
-  insert(chunk: TextChunk, index?: number): void {
+  private static _chunksToPlainText(chunks: TextChunk[]): string {
+    let plainText = ""
+    for (const chunk of chunks) {
+      plainText += chunk.plainText
+    }
+    return plainText
+  }
+
+  insert(chunk: TextChunk, index?: number): StyledText {
     const originalLength = this.chunks.length
+    let newChunks: TextChunk[]
+    let newPlainText: string
+
     if (index === undefined) {
-      this.chunks.push(chunk)
+      newChunks = [...this.chunks, chunk]
+      newPlainText = this._plainText + chunk.plainText
+    } else if (index === originalLength) {
+      newChunks = [...this.chunks, chunk]
+      newPlainText = this._plainText + chunk.plainText
     } else {
-      this.chunks.splice(index, 0, chunk)
+      newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index)]
+      newPlainText = StyledText._chunksToPlainText(newChunks)
     }
-    if (index === undefined || index === originalLength) {
-      this._plainText += chunk.plainText
-    } else {
-      this._chunksToPlainText()
-    }
+
+    return StyledText._createInstance(newChunks, newPlainText)
   }
 
-  remove(chunk: TextChunk): void {
+  remove(chunk: TextChunk): StyledText {
     const originalLength = this.chunks.length
     const index = this.chunks.indexOf(chunk)
-    if (index === -1) return
-    this.chunks.splice(index, 1)
+    if (index === -1) return this
+
+    let newChunks: TextChunk[]
+    let newPlainText: string
+
     if (index === originalLength - 1) {
-      this._plainText = this._plainText.slice(0, this._plainText.length - chunk.plainText.length)
+      newChunks = this.chunks.slice(0, -1)
+      newPlainText = this._plainText.slice(0, this._plainText.length - chunk.plainText.length)
     } else {
-      this._chunksToPlainText()
+      newChunks = [...this.chunks.slice(0, index), ...this.chunks.slice(index + 1)]
+      newPlainText = StyledText._chunksToPlainText(newChunks)
     }
+
+    return StyledText._createInstance(newChunks, newPlainText)
   }
 
-  replace(chunk: TextChunk, oldChunk: TextChunk): void {
+  replace(chunk: TextChunk, oldChunk: TextChunk): StyledText {
     const index = this.chunks.indexOf(oldChunk)
-    if (index === -1) return
-    this.chunks.splice(index, 1, chunk)
+    if (index === -1) return this
+
+    let newChunks: TextChunk[]
+    let newPlainText: string
+
     if (index === this.chunks.length - 1) {
-      this._plainText = this._plainText.slice(0, this._plainText.length - oldChunk.plainText.length) + chunk.plainText
+      newChunks = [...this.chunks.slice(0, -1), chunk]
+      newPlainText = this._plainText.slice(0, this._plainText.length - oldChunk.plainText.length) + chunk.plainText
     } else {
-      this._chunksToPlainText()
+      newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index + 1)]
+      newPlainText = StyledText._chunksToPlainText(newChunks)
     }
+
+    return StyledText._createInstance(newChunks, newPlainText)
   }
 }
 
