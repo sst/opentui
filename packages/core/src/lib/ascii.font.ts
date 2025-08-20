@@ -10,11 +10,12 @@ import slick from "./fonts/slick.json"
  * Font definitions plugged from cfonts - https://github.com/dominikwilkowski/cfonts
  */
 
+// Export built-in fonts for convenience
 export const fonts = {
-  tiny,
-  block,
-  shade,
-  slick,
+  tiny: tiny as FontDefinition,
+  block: block as FontDefinition,
+  shade: shade as FontDefinition,
+  slick: slick as FontDefinition,
 }
 
 type FontSegment = {
@@ -22,7 +23,7 @@ type FontSegment = {
   colorIndex: number
 }
 
-type FontDefinition = {
+export type FontDefinition = {
   name: string
   lines: number
   letterspace_size: number
@@ -40,7 +41,7 @@ type ParsedFontDefinition = {
   chars: Record<string, FontSegment[][]>
 }
 
-const parsedFonts: Record<string, ParsedFontDefinition> = {}
+const parsedFonts: Map<FontDefinition, ParsedFontDefinition> = new Map()
 
 function parseColorTags(text: string): FontSegment[] {
   const segments: FontSegment[] = []
@@ -75,34 +76,29 @@ function parseColorTags(text: string): FontSegment[] {
   return segments
 }
 
-function getParsedFont(fontKey: keyof typeof fonts): ParsedFontDefinition {
-  if (!parsedFonts[fontKey]) {
-    const fontDef = fonts[fontKey] as FontDefinition
+function getParsedFont(fontDef: FontDefinition): ParsedFontDefinition {
+  if (!parsedFonts.has(fontDef)) {
     const parsedChars: Record<string, FontSegment[][]> = {}
 
     for (const [char, lines] of Object.entries(fontDef.chars)) {
       parsedChars[char] = lines.map((line) => parseColorTags(line))
     }
 
-    parsedFonts[fontKey] = {
+    parsedFonts.set(fontDef, {
       ...fontDef,
       colors: fontDef.colors || 1,
       chars: parsedChars,
-    }
+    })
   }
 
-  return parsedFonts[fontKey]
+  return parsedFonts.get(fontDef)!
 }
 
-export function measureText({ text, font = "tiny" }: { text: string; font?: keyof typeof fonts }): {
+export function measureText({ text, font = fonts.tiny }: { text: string; font?: FontDefinition }): {
   width: number
   height: number
 } {
   const fontDef = getParsedFont(font)
-  if (!fontDef) {
-    console.warn(`Font '${font}' not found`)
-    return { width: 0, height: 0 }
-  }
 
   let currentX = 0
 
@@ -144,11 +140,8 @@ export function measureText({ text, font = "tiny" }: { text: string; font?: keyo
   }
 }
 
-export function getCharacterPositions(text: string, font: keyof typeof fonts = "tiny"): number[] {
+export function getCharacterPositions(text: string, font: FontDefinition = fonts.tiny): number[] {
   const fontDef = getParsedFont(font)
-  if (!fontDef) {
-    return [0]
-  }
 
   const positions: number[] = [0]
   let currentX = 0
@@ -185,7 +178,7 @@ export function getCharacterPositions(text: string, font: keyof typeof fonts = "
   return positions
 }
 
-export function coordinateToCharacterIndex(x: number, text: string, font: keyof typeof fonts = "tiny"): number {
+export function coordinateToCharacterIndex(x: number, text: string, font: FontDefinition = fonts.tiny): number {
   const positions = getCharacterPositions(text, font)
 
   if (x < 0) {
@@ -217,24 +210,20 @@ export function renderFontToFrameBuffer(
     y = 0,
     fg = [RGBA.fromInts(255, 255, 255, 255)],
     bg = RGBA.fromInts(0, 0, 0, 255),
-    font = "tiny",
+    font = fonts.tiny,
   }: {
     text: string
     x?: number
     y?: number
     fg?: RGBA | RGBA[]
     bg?: RGBA
-    font?: keyof typeof fonts
+    font?: FontDefinition
   },
 ): { width: number; height: number } {
   const width = buffer.getWidth()
   const height = buffer.getHeight()
 
   const fontDef = getParsedFont(font)
-  if (!fontDef) {
-    console.warn(`Font '${font}' not found`)
-    return { width: 0, height: 0 }
-  }
 
   const colors = Array.isArray(fg) ? fg : [fg]
 

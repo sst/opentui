@@ -1,13 +1,13 @@
 import type { RenderableOptions } from "../Renderable"
 import { ASCIIFontSelectionHelper } from "../lib/selection"
 import { RGBA, type SelectionState } from "../types"
-import { type fonts, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../lib/ascii.font"
+import { fonts, type FontDefinition, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../lib/ascii.font"
 import { parseColor } from "../utils"
 import { FrameBufferRenderable } from "./FrameBuffer"
 
 export interface ASCIIFontOptions extends RenderableOptions {
   text?: string
-  font?: "tiny" | "block" | "shade" | "slick"
+  font?: FontDefinition
   fg?: RGBA | RGBA[]
   bg?: RGBA
   selectionBg?: string | RGBA
@@ -18,7 +18,7 @@ export interface ASCIIFontOptions extends RenderableOptions {
 export class ASCIIFontRenderable extends FrameBufferRenderable {
   public selectable: boolean = true
   private _text: string
-  private _font: keyof typeof fonts
+  private _font: FontDefinition
   private _fg: RGBA[]
   private _bg: RGBA
   private _selectionBg: RGBA | undefined
@@ -27,7 +27,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
   private selectionHelper: ASCIIFontSelectionHelper
 
   constructor(id: string, options: ASCIIFontOptions) {
-    const font = options.font || "tiny"
+    const font = options.font || fonts.tiny
     const text = options.text || ""
     const measurements = measureText({ text: text, font })
 
@@ -68,11 +68,11 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     this.needsUpdate()
   }
 
-  get font(): keyof typeof fonts {
+  get font(): FontDefinition {
     return this._font
   }
 
-  set font(value: keyof typeof fonts) {
+  set font(value: FontDefinition) {
     this._font = value
     this.updateDimensions()
     this.selectionHelper.reevaluateSelection(this.width, this.height)
