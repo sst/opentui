@@ -149,39 +149,37 @@ export class TextRenderable extends Renderable {
   }
 
   private setupMeasureFunc(): void {
-    if (this._width === "auto") {
-      const measureFunc = (
-        width: number,
-        widthMode: MeasureMode,
-        height: number,
-        heightMode: MeasureMode,
-      ): { width: number; height: number } => {
-        const maxLineWidth = Math.max(...this._lineInfo.lineWidths, 0)
-        const numLines = this._lineInfo.lineStarts.length || 1
+    const measureFunc = (
+      width: number,
+      widthMode: MeasureMode,
+      height: number,
+      heightMode: MeasureMode,
+    ): { width: number; height: number } => {
+      const maxLineWidth = Math.max(...this._lineInfo.lineWidths, 0)
+      const numLines = this._lineInfo.lineStarts.length || 1
 
-        let measuredWidth = maxLineWidth
-        let measuredHeight = numLines
+      let measuredWidth = maxLineWidth
+      let measuredHeight = numLines
 
-        if (widthMode === MeasureMode.Exactly) {
-          measuredWidth = width
-        } else if (widthMode === MeasureMode.AtMost) {
-          measuredWidth = Math.min(maxLineWidth, width)
-        }
-
-        if (heightMode === MeasureMode.Exactly) {
-          measuredHeight = height
-        } else if (heightMode === MeasureMode.AtMost) {
-          measuredHeight = Math.min(numLines, height)
-        }
-
-        return {
-          width: Math.max(1, measuredWidth),
-          height: Math.max(1, measuredHeight),
-        }
+      if (widthMode === MeasureMode.Exactly) {
+        measuredWidth = width
+      } else if (widthMode === MeasureMode.AtMost) {
+        measuredWidth = Math.min(maxLineWidth, width)
       }
 
-      this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
+      if (heightMode === MeasureMode.Exactly) {
+        measuredHeight = height
+      } else if (heightMode === MeasureMode.AtMost) {
+        measuredHeight = Math.min(numLines, height)
+      }
+
+      return {
+        width: Math.max(1, measuredWidth),
+        height: Math.max(1, measuredHeight),
+      }
     }
+
+    this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
   }
 
   shouldStartSelection(x: number, y: number): boolean {

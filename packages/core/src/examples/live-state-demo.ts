@@ -16,6 +16,7 @@ import {
   blue,
   fg,
 } from "../index"
+import type { BoxOptions } from "../renderables/Box"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let titleText: TextRenderable | null = null
@@ -36,39 +37,21 @@ class LiveButton extends BoxRenderable {
   private originalBg: RGBA
   private hoverBg: RGBA
   private pressBg: RGBA
-  private action: string
   private label: string
 
-  constructor(
-    id: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    color: RGBA,
-    label: string,
-    action: string,
-  ) {
-    super(id, {
-      position: "absolute",
-      left: x,
-      top: y,
-      width,
-      height,
-      zIndex: 100,
-      backgroundColor: color,
-    })
+  constructor(id: string, options: BoxOptions & { label: string }) {
+    super(id, { zIndex: 100, ...options })
 
-    this.action = action
-    this.label = label
-    this.originalBg = color
+    this.label = options.label
+    const base = this.backgroundColor
+    this.originalBg = base
     this.hoverBg = RGBA.fromValues(
-      Math.min(1.0, color.r * 1.4),
-      Math.min(1.0, color.g * 1.4),
-      Math.min(1.0, color.b * 1.4),
-      color.a,
+      Math.min(1.0, base.r * 1.4),
+      Math.min(1.0, base.g * 1.4),
+      Math.min(1.0, base.b * 1.4),
+      base.a,
     )
-    this.pressBg = RGBA.fromValues(color.r * 0.6, color.g * 0.6, color.b * 0.6, color.a)
+    this.pressBg = RGBA.fromValues(base.r * 0.6, base.g * 0.6, base.b * 0.6, base.a)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -99,7 +82,6 @@ class LiveButton extends BoxRenderable {
     switch (event.type) {
       case "down":
         this.isPressed = true
-        this.executeAction()
         this.needsUpdate()
         event.preventDefault()
         break
@@ -121,69 +103,6 @@ class LiveButton extends BoxRenderable {
         this.needsUpdate()
         break
     }
-  }
-
-  private executeAction(): void {
-    if (!currentRenderer) return
-
-    switch (this.action) {
-      case "request-live":
-        currentRenderer.requestLive()
-        updateStatusText("Manually requested live")
-        break
-
-      case "drop-live":
-        currentRenderer.dropLive()
-        updateStatusText("Manually dropped live")
-        break
-
-      case "add-renderable":
-        addDemoRenderable(currentRenderer)
-        break
-
-      case "remove-renderable":
-        removeDemoRenderable(currentRenderer)
-        break
-
-      case "set-live-true":
-        if (demoRenderable) {
-          demoRenderable.live = true
-          updateStatusText("Set demo renderable live = true")
-        } else {
-          updateStatusText("No demo renderable to set live!")
-        }
-        break
-
-      case "set-live-false":
-        if (demoRenderable) {
-          demoRenderable.live = false
-          updateStatusText("Set demo renderable live = false")
-        } else {
-          updateStatusText("No demo renderable to set live!")
-        }
-        break
-
-      case "set-visible-true":
-        if (demoRenderable) {
-          demoRenderable.visible = true
-          updateStatusText("Set demo renderable visible = true")
-        } else {
-          updateStatusText("No demo renderable to set visible!")
-        }
-        break
-
-      case "set-visible-false":
-        if (demoRenderable) {
-          demoRenderable.visible = false
-          updateStatusText("Set demo renderable visible = false")
-        } else {
-          updateStatusText("No demo renderable to set visible!")
-        }
-        break
-    }
-
-    updateRendererState(currentRenderer)
-    updateRenderableState()
   }
 }
 
@@ -325,92 +244,158 @@ export function run(renderer: CliRenderer): void {
 
   // Renderer control buttons
   liveButtons = [
-    new LiveButton(
-      "request-live-btn",
-      2,
-      startY,
-      buttonWidth,
-      buttonHeight,
-      rendererColor,
-      "REQUEST LIVE",
-      "request-live",
-    ),
-    new LiveButton(
-      "drop-live-btn",
-      2 + spacing,
-      startY,
-      buttonWidth,
-      buttonHeight,
-      rendererColor,
-      "DROP LIVE",
-      "drop-live",
-    ),
+    new LiveButton("request-live-btn", {
+      position: "absolute",
+      left: 2,
+      top: startY,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: rendererColor,
+      label: "REQUEST LIVE",
+      onMouseDown: () => {
+        if (!currentRenderer) return
+        currentRenderer.requestLive()
+        updateStatusText("Manually requested live")
+        updateRendererState(currentRenderer)
+        updateRenderableState()
+      },
+    }),
+    new LiveButton("drop-live-btn", {
+      position: "absolute",
+      left: 2 + spacing,
+      top: startY,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: rendererColor,
+      label: "DROP LIVE",
+      onMouseDown: () => {
+        if (!currentRenderer) return
+        currentRenderer.dropLive()
+        updateStatusText("Manually dropped live")
+        updateRendererState(currentRenderer)
+        updateRenderableState()
+      },
+    }),
 
     // Renderable management buttons
-    new LiveButton(
-      "add-renderable-btn",
-      2,
-      startY + 5,
-      buttonWidth,
-      buttonHeight,
-      renderableColor,
-      "ADD RENDERABLE",
-      "add-renderable",
-    ),
-    new LiveButton(
-      "remove-renderable-btn",
-      2 + spacing,
-      startY + 5,
-      buttonWidth,
-      buttonHeight,
-      renderableColor,
-      "REMOVE RENDERABLE",
-      "remove-renderable",
-    ),
+    new LiveButton("add-renderable-btn", {
+      position: "absolute",
+      left: 2,
+      top: startY + 5,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: renderableColor,
+      label: "ADD RENDERABLE",
+      onMouseDown: () => {
+        if (!currentRenderer) return
+        addDemoRenderable(currentRenderer)
+        updateRendererState(currentRenderer)
+        updateRenderableState()
+      },
+    }),
+    new LiveButton("remove-renderable-btn", {
+      position: "absolute",
+      left: 2 + spacing,
+      top: startY + 5,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: renderableColor,
+      label: "REMOVE RENDERABLE",
+      onMouseDown: () => {
+        if (!currentRenderer) return
+        removeDemoRenderable(currentRenderer)
+        updateRendererState(currentRenderer)
+        updateRenderableState()
+      },
+    }),
 
     // Live state buttons
-    new LiveButton(
-      "set-live-true-btn",
-      2,
-      startY + 10,
-      buttonWidth,
-      buttonHeight,
-      liveColor,
-      "LIVE = TRUE",
-      "set-live-true",
-    ),
-    new LiveButton(
-      "set-live-false-btn",
-      2 + spacing,
-      startY + 10,
-      buttonWidth,
-      buttonHeight,
-      liveColor,
-      "LIVE = FALSE",
-      "set-live-false",
-    ),
+    new LiveButton("set-live-true-btn", {
+      position: "absolute",
+      left: 2,
+      top: startY + 10,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: liveColor,
+      label: "LIVE = TRUE",
+      onMouseDown: () => {
+        if (demoRenderable) {
+          demoRenderable.live = true
+          updateStatusText("Set demo renderable live = true")
+        } else {
+          updateStatusText("No demo renderable to set live!")
+        }
+        if (currentRenderer) {
+          updateRendererState(currentRenderer)
+        }
+        updateRenderableState()
+      },
+    }),
+    new LiveButton("set-live-false-btn", {
+      position: "absolute",
+      left: 2 + spacing,
+      top: startY + 10,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: liveColor,
+      label: "LIVE = FALSE",
+      onMouseDown: () => {
+        if (demoRenderable) {
+          demoRenderable.live = false
+          updateStatusText("Set demo renderable live = false")
+        } else {
+          updateStatusText("No demo renderable to set live!")
+        }
+        if (currentRenderer) {
+          updateRendererState(currentRenderer)
+        }
+        updateRenderableState()
+      },
+    }),
 
     // Visibility state buttons
-    new LiveButton(
-      "set-visible-true-btn",
-      2,
-      startY + 15,
-      buttonWidth,
-      buttonHeight,
-      visibilityColor,
-      "VISIBLE = TRUE",
-      "set-visible-true",
-    ),
-    new LiveButton(
-      "set-visible-false-btn",
-      2 + spacing,
-      startY + 15,
-      buttonWidth,
-      buttonHeight,
-      visibilityColor,
-      "VISIBLE = FALSE",
-      "set-visible-false",
-    ),
+    new LiveButton("set-visible-true-btn", {
+      position: "absolute",
+      left: 2,
+      top: startY + 15,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: visibilityColor,
+      label: "VISIBLE = TRUE",
+      onMouseDown: () => {
+        if (demoRenderable) {
+          demoRenderable.visible = true
+          updateStatusText("Set demo renderable visible = true")
+        } else {
+          updateStatusText("No demo renderable to set visible!")
+        }
+        if (currentRenderer) {
+          updateRendererState(currentRenderer)
+        }
+        updateRenderableState()
+      },
+    }),
+    new LiveButton("set-visible-false-btn", {
+      position: "absolute",
+      left: 2 + spacing,
+      top: startY + 15,
+      width: buttonWidth,
+      height: buttonHeight,
+      backgroundColor: visibilityColor,
+      label: "VISIBLE = FALSE",
+      onMouseDown: () => {
+        if (demoRenderable) {
+          demoRenderable.visible = false
+          updateStatusText("Set demo renderable visible = false")
+        } else {
+          updateStatusText("No demo renderable to set visible!")
+        }
+        if (currentRenderer) {
+          updateRendererState(currentRenderer)
+        }
+        updateRenderableState()
+      },
+    }),
   ]
 
   for (const button of liveButtons) {
