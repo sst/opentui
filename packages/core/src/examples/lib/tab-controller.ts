@@ -83,10 +83,8 @@ export class TabControllerRenderable extends Renderable {
 
   public addTab(tabObject: TabObject): Tab {
     const tabGroup = new GroupRenderable(`${this.id}-tab-${this.tabs.length}`, {
-      position: {
-        left: 0,
-        top: this.tabBarHeight,
-      },
+      left: 0,
+      top: this.tabBarHeight,
       zIndex: this.zIndex + 50,
       visible: false,
       width: "100%",

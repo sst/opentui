@@ -1,5 +1,5 @@
 import { ANSI } from "./ansi"
-import { Renderable, RootRenderable } from "./Renderable"
+import { Renderable, RootRenderable, type RootContext } from "./Renderable"
 import {
   type ColorInput,
   type CursorStyle,
@@ -125,6 +125,14 @@ export enum CliRenderEvents {
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
 }
 
+enum RendererControlState {
+  IDLE = "idle",
+  AUTO_STARTED = "auto_started",
+  EXPLICIT_STARTED = "explicit_started",
+  EXPLICIT_PAUSED = "explicit_paused",
+  EXPLICIT_STOPPED = "explicit_stopped",
+}
+
 let animationFrameId = 0
 
 export class CliRenderer extends EventEmitter {
@@ -156,7 +164,6 @@ export class CliRenderer extends EventEmitter {
   private backgroundColor: RGBA = RGBA.fromHex("#000000")
   private waitingForPixelResolution: boolean = false
 
-  private shutdownRequested: (() => void) | null = null
   private rendering: boolean = false
   private renderingNative: boolean = false
   private renderTimeout: Timer | null = null
@@ -167,6 +174,9 @@ export class CliRenderer extends EventEmitter {
   private targetFrameTime: number = 0
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
+
+  private liveRequestCounter: number = 0
+  private controlState: RendererControlState = RendererControlState.IDLE
 
   private frameCallbacks: ((deltaTime: number) => Promise<void>)[] = []
   private renderStats: {
@@ -281,7 +291,16 @@ export class CliRenderer extends EventEmitter {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
 
-    this.root = new RootRenderable(this.width, this.height, this.renderContext)
+    const rootContext: RootContext = {
+      requestLive: () => {
+        this.requestLive()
+      },
+      dropLive: () => {
+        this.dropLive()
+      },
+    }
+
+    this.root = new RootRenderable(this.width, this.height, this.renderContext, rootContext)
 
     this.setupTerminal()
     this.takeMemorySnapshot()
@@ -432,6 +451,14 @@ export class CliRenderer extends EventEmitter {
 
   public get experimental_splitHeight(): number {
     return this._splitHeight
+  }
+
+  public get liveRequestCount(): number {
+    return this.liveRequestCounter
+  }
+
+  public get currentControlState(): string {
+    return this.controlState
   }
 
   public set experimental_splitHeight(splitHeight: number) {
@@ -669,6 +696,7 @@ export class CliRenderer extends EventEmitter {
       if (this.capturedRenderable && mouseEvent.type === "up") {
         const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
         this.capturedRenderable.processMouseEvent(event)
+        this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
         if (maybeRenderable) {
           const event = new MouseEvent(maybeRenderable, {
             ...mouseEvent,
@@ -683,7 +711,7 @@ export class CliRenderer extends EventEmitter {
       }
 
       if (maybeRenderable) {
-        if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
+        if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
           this.capturedRenderable = maybeRenderable
         } else {
           this.capturedRenderable = undefined
@@ -760,6 +788,7 @@ export class CliRenderer extends EventEmitter {
 
   private queryPixelResolution() {
     this.waitingForPixelResolution = true
+    // TODO: should move to native, injecting the request in the next frame if running
     this.writeOut(ANSI.queryPixelSize)
   }
 
@@ -893,7 +922,30 @@ export class CliRenderer extends EventEmitter {
     this.frameCallbacks = []
   }
 
+  public requestLive(): void {
+    this.liveRequestCounter++
+
+    if (this.controlState === RendererControlState.IDLE && this.liveRequestCounter > 0) {
+      this.controlState = RendererControlState.AUTO_STARTED
+      this.internalStart()
+    }
+  }
+
+  public dropLive(): void {
+    this.liveRequestCounter = Math.max(0, this.liveRequestCounter - 1)
+
+    if (this.controlState === RendererControlState.AUTO_STARTED && this.liveRequestCounter === 0) {
+      this.controlState = RendererControlState.IDLE
+      this.internalPause()
+    }
+  }
+
   public start(): void {
+    this.controlState = RendererControlState.EXPLICIT_STARTED
+    this.internalStart()
+  }
+
+  private internalStart(): void {
     if (!this._isRunning && !this.isDestroyed) {
       this._isRunning = true
 
@@ -906,10 +958,20 @@ export class CliRenderer extends EventEmitter {
   }
 
   public pause(): void {
+    this.controlState = RendererControlState.EXPLICIT_PAUSED
+    this.internalPause()
+  }
+
+  private internalPause(): void {
     this._isRunning = false
   }
 
   public stop(): void {
+    this.controlState = RendererControlState.EXPLICIT_STOPPED
+    this.internalStop()
+  }
+
+  private internalStop(): void {
     if (this.isRunning && !this.isDestroyed) {
       this._isRunning = false
 

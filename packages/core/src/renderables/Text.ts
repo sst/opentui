@@ -41,9 +41,8 @@ export class TextRenderable extends Renderable {
       () => this._lineInfo,
     )
 
-    if (options.content) {
-      this._text = typeof options.content === "string" ? stringToStyledText(options.content) : options.content
-    }
+    const content = options.content ?? ""
+    this._text = typeof content === "string" ? stringToStyledText(content) : content
     this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
     this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
     this._defaultAttributes = options.attributes ?? 0
@@ -57,8 +56,8 @@ export class TextRenderable extends Renderable {
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
 
-    this.updateTextInfo()
     this.setupMeasureFunc()
+    this.updateTextInfo()
   }
 
   get content(): StyledText {
@@ -130,24 +129,27 @@ export class TextRenderable extends Renderable {
     this._lineInfo.lineWidths = lineInfo.lineWidths
 
     const numLines = this._lineInfo.lineStarts.length
-    if (this._height === "auto") {
-      this.height = numLines
+    if (this._positionType === "absolute" && this._height === "auto") {
+      this._heightValue = numLines
+      this.layoutNode.yogaNode.markDirty()
     }
 
     const maxLineWidth = Math.max(...this._lineInfo.lineWidths)
     if (this._positionType === "absolute" && this._width === "auto") {
-      this.width = maxLineWidth
+      this._widthValue = maxLineWidth
+      this.layoutNode.yogaNode.markDirty()
     }
 
     const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
     if (changed) {
       this.syncSelectionToTextBuffer()
     }
+
     this.needsUpdate()
   }
 
   private setupMeasureFunc(): void {
-    if (this._positionType === "relative" && this._width === "auto") {
+    if (this._width === "auto") {
       const measureFunc = (
         width: number,
         widthMode: MeasureMode,

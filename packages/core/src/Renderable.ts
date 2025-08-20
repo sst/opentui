@@ -1,6 +1,6 @@
 import { OptimizedBuffer, type RenderContext, type MouseEvent, type SelectionState } from "."
 import { EventEmitter } from "events"
-import Yoga, { FlexDirection, Direction, PositionType, Edge, Align, Justify, type Config, Display } from "yoga-layout"
+import Yoga, { FlexDirection, Direction, Edge, type Config, Display } from "yoga-layout"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
@@ -25,6 +25,11 @@ export enum LayoutEvents {
 export enum RenderableEvents {
   FOCUSED = "focused",
   BLURRED = "blurred",
+}
+
+export interface RootContext {
+  requestLive(): void
+  dropLive(): void
 }
 
 export interface Position {
@@ -69,6 +74,7 @@ export interface RenderableOptions extends Partial<LayoutOptions> {
   zIndex?: number
   visible?: boolean
   buffered?: boolean
+  live?: boolean
 }
 
 let renderableNumber = 1
@@ -122,6 +128,10 @@ export function isPositionType(value: any): value is number | "auto" | `${number
   return isValidPercentage(value)
 }
 
+export function isPostionTypeType(value: any): value is PositionTypeString {
+  return value === "relative" || value === "absolute"
+}
+
 export function isDimensionType(value: any): value is number | "auto" | `${number}%` {
   return isPositionType(value)
 }
@@ -156,8 +166,8 @@ export abstract class Renderable extends EventEmitter {
   private _y: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
-  private _widthValue: number = 0
-  private _heightValue: number = 0
+  protected _widthValue: number = 0
+  protected _heightValue: number = 0
   private _zIndex: number
   protected _visible: boolean
   public selectable: boolean = false
@@ -169,6 +179,8 @@ export abstract class Renderable extends EventEmitter {
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
+  private _live: boolean = false
+  protected _liveCount: number = 0
 
   protected layoutNode: TrackedNode
   protected _positionType: PositionTypeString = "relative"
@@ -206,6 +218,8 @@ export abstract class Renderable extends EventEmitter {
     this._zIndex = options.zIndex ?? 0
     this._visible = options.visible !== false
     this.buffered = options.buffered ?? false
+    this._live = options.live ?? false
+    this._liveCount = this._live && this._visible ? 1 : 0
 
     this.layoutNode = createTrackedNode({ renderable: this } as any)
     this.layoutNode.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
@@ -221,8 +235,20 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set visible(value: boolean) {
+    if (this._visible === value) return
+
+    const wasVisible = this._visible
     this._visible = value
     this.layoutNode.yogaNode.setDisplay(value ? Display.Flex : Display.None)
+
+    if (this._live) {
+      if (!wasVisible && value) {
+        this.propagateLiveCount(1)
+      } else if (wasVisible && !value) {
+        this.propagateLiveCount(-1)
+      }
+    }
+
     if (this._focused) {
       this.blur()
     }
@@ -279,6 +305,30 @@ export abstract class Renderable extends EventEmitter {
 
   public get focused(): boolean {
     return this._focused
+  }
+
+  public get live(): boolean {
+    return this._live
+  }
+
+  public get liveCount(): number {
+    return this._liveCount
+  }
+
+  public set live(value: boolean) {
+    if (this._live === value) return
+
+    this._live = value
+
+    if (this._visible) {
+      const delta = value ? 1 : -1
+      this.propagateLiveCount(delta)
+    }
+  }
+
+  protected propagateLiveCount(delta: number): void {
+    this._liveCount += delta
+    this.parent?.propagateLiveCount(delta)
   }
 
   public handleKeyPress?(key: ParsedKey | string): boolean
@@ -450,7 +500,7 @@ export abstract class Renderable extends EventEmitter {
       this.layoutNode.setHeight(options.height)
     }
 
-    this._positionType = options.position ?? "relative"
+    this._positionType = options.position === "absolute" ? "absolute" : "relative"
     if (this._positionType !== "relative") {
       node.setPositionType(parsePositionType(this._positionType))
     }
@@ -526,7 +576,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   set position(positionType: PositionTypeString) {
-    if (this._positionType === positionType) return
+    if (!isPostionTypeType(positionType) || this._positionType === positionType) return
 
     this._positionType = positionType
     this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
@@ -835,6 +885,10 @@ export abstract class Renderable extends EventEmitter {
     this.needsZIndexSort = true
     this.renderableMap.set(obj.id, obj)
 
+    if (obj._liveCount > 0) {
+      this.propagateLiveCount(obj._liveCount)
+    }
+
     this.requestLayout()
 
     this.emit("child:added", obj)
@@ -877,6 +931,10 @@ export abstract class Renderable extends EventEmitter {
     if (this.renderableMap.has(id)) {
       const obj = this.renderableMap.get(id)
       if (obj) {
+        if (obj._liveCount > 0) {
+          this.propagateLiveCount(-obj._liveCount)
+        }
+
         const childLayoutNode = obj.getLayoutNode()
         this.layoutNode.removeChild(childLayoutNode)
         this.requestLayout()
@@ -983,10 +1041,12 @@ export abstract class Renderable extends EventEmitter {
 
 export class RootRenderable extends Renderable {
   private yogaConfig: Config
+  private rootContext: RootContext
 
-  constructor(width: number, height: number, ctx: RenderContext) {
+  constructor(width: number, height: number, ctx: RenderContext, rootContext: RootContext) {
     super("__root__", { zIndex: 0, visible: true, width, height, enableLayout: true })
     this.ctx = ctx
+    this.rootContext = rootContext
 
     this.yogaConfig = Yoga.Config.create()
     this.yogaConfig.setUseWebDefaults(false)
@@ -1008,14 +1068,25 @@ export class RootRenderable extends Renderable {
     this.needsUpdate()
   }
 
+  protected propagateLiveCount(delta: number): void {
+    const oldCount = this._liveCount
+    this._liveCount += delta
+
+    if (oldCount === 0 && this._liveCount > 0) {
+      this.rootContext.requestLive()
+    } else if (oldCount > 0 && this._liveCount === 0) {
+      this.rootContext.dropLive()
+    }
+  }
+
   public calculateLayout(): void {
     this.layoutNode.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     this.emit(LayoutEvents.LAYOUT_CHANGED)
   }
 
   public resize(width: number, height: number): void {
-    this.layoutNode.setWidth(width)
-    this.layoutNode.setHeight(height)
+    this.width = width
+    this.height = height
 
     this.emit(LayoutEvents.RESIZED, { width, height })
   }

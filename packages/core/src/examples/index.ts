@@ -41,6 +41,7 @@ import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
+import * as liveStateExample from "./live-state-demo"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -87,6 +88,12 @@ const examples: Example[] = [
     description: "Convert HAST trees to syntax-highlighted text with efficient chunk generation",
     run: hastSyntaxHighlightingExample.run,
     destroy: hastSyntaxHighlightingExample.destroy,
+  },
+  {
+    name: "Live State Management Demo",
+    description: "Test automatic renderer lifecycle management with live renderables",
+    run: liveStateExample.run,
+    destroy: liveStateExample.destroy,
   },
   {
     name: "Layout System Demo",
