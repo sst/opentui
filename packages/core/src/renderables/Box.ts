@@ -1,6 +1,6 @@
 import { type RenderableOptions, Renderable } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
-import { RGBA } from "../types"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import {
   type BorderStyle,
   type BorderSides,
@@ -9,8 +9,6 @@ import {
   getBorderSides,
   borderCharsToArray,
 } from "../lib"
-import { parseColor } from "../utils"
-import type { ColorInput } from "../types"
 import { Edge } from "yoga-layout"
 
 export interface BoxOptions extends RenderableOptions {

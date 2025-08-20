@@ -1,14 +1,7 @@
 import { ANSI } from "./ansi"
 import { Renderable, RootRenderable, type RootContext } from "./Renderable"
-import {
-  type ColorInput,
-  type CursorStyle,
-  DebugOverlayCorner,
-  type RenderContext,
-  RGBA,
-  type SelectionState,
-} from "./types"
-import { parseColor } from "./utils"
+import { type CursorStyle, DebugOverlayCorner, type RenderContext, type SelectionState } from "./types"
+import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
 import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"

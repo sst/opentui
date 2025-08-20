@@ -9,7 +9,7 @@ import {
   FrameBufferRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { RGBA } from "../types"
+import { RGBA } from "../lib"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
   Scene as ThreeScene,

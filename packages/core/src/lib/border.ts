@@ -1,6 +1,4 @@
-import type { OptimizedBuffer } from "../buffer"
-import type { ColorInput } from "../types"
-import { parseColor } from "../utils"
+import type { ColorInput } from "./RGBA"
 
 export interface BorderCharacters {
   topLeft: string
