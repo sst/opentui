@@ -23,7 +23,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/three": "^0.177.0",
+    "@types/three": "0.177.0",
     "commander": "^13.1.0"
   },
   "peerDependencies": {
