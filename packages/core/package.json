@@ -31,7 +31,9 @@
   },
   "dependencies": {
     "jimp": "1.6.0",
-    "yoga-layout": "3.2.1"
+    "yoga-layout": "3.2.1",
+    "typegpu": "^0.7.1",
+    "unplugin-typegpu": "^0.2.2"
   },
   "optionalDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
