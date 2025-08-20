@@ -8,7 +8,7 @@ import type {
   TabSelectProps,
   TextProps,
 } from "./src/types/components"
-import type { ExtendedIntrinsicElements, OpenTUIComponents } from "./src/types/extend"
+import type { ExtendedIntrinsicElements, OpenTUIComponents } from "./src/types/components"
 
 export namespace JSX {
   type Element = React.ReactNode
