@@ -389,23 +389,58 @@ canvas.frameBuffer.drawText('Hello', 2, 2, RGBA.fromHex('#ffffff'));
 
 ### ASCIIFontRenderable
 
-Renders text using ASCII art fonts.
+Renders text using ASCII art fonts. Supports both built-in fonts and custom fonts loaded from JSON files.
 
 ```typescript
-import { ASCIIFontRenderable } from '@opentui/core';
+import { ASCIIFontRenderable, fonts, type FontDefinition } from '@opentui/core';
 
+// Using built-in font
 const asciiText = new ASCIIFontRenderable('myAsciiText', {
   text: 'HELLO',
-  fontName: 'block',
+  font: fonts.block,
   fg: '#ffffff'
+});
+
+// Using custom font from JSON file
+import customFont from './my-custom-font.json';
+
+const customText = new ASCIIFontRenderable('customText', {
+  text: 'CUSTOM',
+  font: customFont as FontDefinition,
+  fg: '#00ff00'
 });
 ```
 
 **ASCIIFontRenderable Options:**
 - `text`: Text to render
-- `fontName`: Font name ('block', 'slick', 'tiny', 'shade')
-- `fg`: Foreground color
-- `bg`: Background color
+- `font`: FontDefinition object (use `fonts.tiny`, `fonts.block`, `fonts.slick`, `fonts.shade` for built-in, or import custom JSON)
+- `fg`: Foreground color (string or RGBA or array for multi-color support)
+- `bg`: Background color (string or RGBA)
+- `selectable`: Enable text selection (boolean)
+- `selectionBg`: Selection background color
+- `selectionFg`: Selection foreground color
+
+**Built-in Fonts:**
+- `fonts.tiny`: Small 2-line font
+- `fonts.block`: Bold block letters
+- `fonts.shade`: Shaded 3D effect
+- `fonts.slick`: Slick stylized font
+
+**Custom Fonts:**
+Custom fonts must be cfont-compatible JSON files with the following structure:
+```json
+{
+  "name": "myfont",
+  "lines": 3,
+  "letterspace_size": 1,
+  "letterspace": [" ", " ", " "],
+  "chars": {
+    "A": ["▄▀█", "█▀█", "█ █"],
+    "B": ["█▄▄", "█▄█", "█▄█"],
+    // ... more characters
+  }
+}
+```
 
 ### Input
 

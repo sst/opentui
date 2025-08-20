@@ -1,7 +1,7 @@
 import type { RenderableOptions } from "../Renderable"
 import { ASCIIFontSelectionHelper } from "../lib/selection"
 import { RGBA, type SelectionState } from "../types"
-import { fonts, type FontDefinition, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../lib/ascii.font"
+import { fonts, type FontDefinition, measureText, renderFontToFrameBuffer, getCharacterPositions, validateFontDefinition } from "../lib/ascii.font"
 import { parseColor } from "../utils"
 import { FrameBufferRenderable } from "./FrameBuffer"
 
@@ -29,6 +29,18 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
   constructor(id: string, options: ASCIIFontOptions) {
     const font = options.font || fonts.tiny
     const text = options.text || ""
+    
+    // Validate font if provided
+    if (options.font) {
+      try {
+        validateFontDefinition(options.font)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`Invalid font provided to ASCIIFontRenderable: ${message}`)
+        throw new Error(`Invalid font: ${message}`)
+      }
+    }
+    
     const measurements = measureText({ text: text, font })
 
     super(id, {

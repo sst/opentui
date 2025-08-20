@@ -32,6 +32,62 @@ export type FontDefinition = {
   chars: Record<string, string[]>
 }
 
+/**
+ * Validates a FontDefinition object
+ * @param font - Object to validate
+ * @returns true if valid, throws error if invalid
+ */
+export function validateFontDefinition(font: any): font is FontDefinition {
+  if (!font || typeof font !== 'object') {
+    throw new Error('Font definition must be an object')
+  }
+
+  if (typeof font.name !== 'string') {
+    throw new Error('Font definition must have a "name" property of type string')
+  }
+
+  if (typeof font.lines !== 'number' || font.lines < 1) {
+    throw new Error('Font definition must have a "lines" property with a positive number')
+  }
+
+  if (typeof font.letterspace_size !== 'number' || font.letterspace_size < 0) {
+    throw new Error('Font definition must have a "letterspace_size" property with a non-negative number')
+  }
+
+  if (!Array.isArray(font.letterspace)) {
+    throw new Error('Font definition must have a "letterspace" property as an array')
+  }
+
+  if (font.letterspace.length !== font.lines) {
+    throw new Error(`Font definition letterspace array length (${font.letterspace.length}) must match lines (${font.lines})`)
+  }
+
+  if (font.colors !== undefined && (typeof font.colors !== 'number' || font.colors < 1)) {
+    throw new Error('Font definition "colors" property must be a positive number if provided')
+  }
+
+  if (!font.chars || typeof font.chars !== 'object') {
+    throw new Error('Font definition must have a "chars" property as an object')
+  }
+
+  // Validate that each character has the correct number of lines
+  for (const [char, lines] of Object.entries(font.chars)) {
+    if (!Array.isArray(lines)) {
+      throw new Error(`Character "${char}" must be an array of strings`)
+    }
+    if (lines.length !== font.lines) {
+      throw new Error(`Character "${char}" has ${lines.length} lines but font defines ${font.lines} lines`)
+    }
+    for (let i = 0; i < lines.length; i++) {
+      if (typeof lines[i] !== 'string') {
+        throw new Error(`Character "${char}" line ${i + 1} must be a string`)
+      }
+    }
+  }
+
+  return true
+}
+
 type ParsedFontDefinition = {
   name: string
   lines: number
@@ -77,6 +133,15 @@ function parseColorTags(text: string): FontSegment[] {
 }
 
 function getParsedFont(fontDef: FontDefinition): ParsedFontDefinition {
+  // Validate font definition on first use
+  try {
+    validateFontDefinition(fontDef)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Invalid font definition: ${message}`)
+    throw error
+  }
+
   if (!parsedFonts.has(fontDef)) {
     const parsedChars: Record<string, FontSegment[][]> = {}
 
