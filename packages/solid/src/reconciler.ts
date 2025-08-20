@@ -83,7 +83,7 @@ function insertTextNode(parent: DomNode, node: TextNode, anchor?: DomNode | null
   }
 
   node.textParent = textParent
-  const styledText = textParent.content
+  let styledText = textParent.content
 
   if (anchor && anchor instanceof TextNode) {
     const anchorIndex = styledText.chunks.indexOf(anchor.chunk)
@@ -91,14 +91,14 @@ function insertTextNode(parent: DomNode, node: TextNode, anchor?: DomNode | null
       console.log("anchor not found")
       return
     }
-    styledText.insert(node.chunk, anchorIndex)
+    styledText = styledText.insert(node.chunk, anchorIndex)
   } else {
     const firstChunk = textParent.content.chunks[0]
     // Handles the default unlinked chunk
     if (firstChunk && !ChunkToTextNodeMap.has(firstChunk)) {
-      styledText.replace(node.chunk, firstChunk)
+      styledText = styledText.replace(node.chunk, firstChunk)
     } else {
-      styledText.insert(node.chunk)
+      styledText = styledText.insert(node.chunk)
     }
   }
   textParent.content = styledText
@@ -114,14 +114,12 @@ function removeTextNode(parent: DomNode, node: TextNode): void {
   }
   if (parent === node.textParent && parent instanceof TextRenderable) {
     ChunkToTextNodeMap.delete(node.chunk)
-    const styledText = parent.content
-    styledText.remove(node.chunk)
-    parent.content = styledText
+    parent.content = parent.content.remove(node.chunk)
   } else if (node.textParent) {
     // check to remove ghost node
     ChunkToTextNodeMap.delete(node.chunk)
-    const styledText = node.textParent.content
-    styledText.remove(node.chunk)
+    let styledText = node.textParent.content
+    styledText = styledText.remove(node.chunk)
 
     if (styledText.chunks.length > 0) {
       node.textParent.content = styledText
