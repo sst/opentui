@@ -1,27 +1,39 @@
-import type { Renderable } from "@opentui/core"
+import type { ASCIIFontRenderable, BoxRenderable, Renderable, TextRenderable } from "@opentui/core"
 import type React from "react"
+import type { NonStyledProps, ReactProps } from "./components"
 
-// Base type for any renderable constructor
-export type RenderableConstructor<T extends Renderable = Renderable> = new (id: string, options: any) => T
+export type RenderableConstructor<TRenderable extends Renderable = Renderable> = new (
+  id: string,
+  options: any,
+) => TRenderable
 
-// Extract the options type from a renderable constructor
-type ExtractRenderableOptions<T> = T extends new (id: string, options: infer O) => any ? O : never
+type ExtractRenderableOptions<TConstructor> = TConstructor extends new (id: string, options: infer TOptions) => any
+  ? TOptions
+  : never
 
-// Convert renderable options to component props (similar to existing ComponentProps)
-export type ExtendedComponentProps<T extends RenderableConstructor> = ExtractRenderableOptions<T> & {
-  children?: React.ReactNode
-  style?: Partial<ExtractRenderableOptions<T>>
-}
+type GetNonStyledProperties<TConstructor> =
+  TConstructor extends RenderableConstructor<TextRenderable>
+    ? NonStyledProps | "content"
+    : TConstructor extends RenderableConstructor<BoxRenderable>
+      ? NonStyledProps | "title"
+      : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
+        ? NonStyledProps | "text" | "selectable"
+        : NonStyledProps
 
-// Helper type to create JSX element properties from a component catalogue
-export type ExtendedIntrinsicElements<T extends Record<string, RenderableConstructor>> = {
-  [K in keyof T]: ExtendedComponentProps<T[K]>
+export type ExtendedComponentProps<TConstructor extends RenderableConstructor> =
+  ExtractRenderableOptions<TConstructor> & {
+    children?: React.ReactNode
+    style?: Partial<Omit<ExtractRenderableOptions<TConstructor>, GetNonStyledProperties<TConstructor>>>
+  } & ReactProps<TConstructor>
+
+export type ExtendedIntrinsicElements<TComponentCatalogue extends Record<string, RenderableConstructor>> = {
+  [TComponentName in keyof TComponentCatalogue]: ExtendedComponentProps<TComponentCatalogue[TComponentName]>
 }
 
 // Global augmentation interface for extended components
 // This will be augmented by user code using module augmentation
 export interface OpenTUIComponents {
-  [key: string]: RenderableConstructor
+  [componentName: string]: RenderableConstructor
 }
 
 // Note: JSX.IntrinsicElements extension is handled in jsx-namespace.d.ts

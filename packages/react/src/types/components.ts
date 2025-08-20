@@ -20,20 +20,25 @@ import type {
 } from "@opentui/core"
 import type React from "react"
 
-type NonStyledProps = "buffered"
+export type NonStyledProps = "buffered" | "live" | "enableLayout" | "selectable"
 
-type ReactProps<R> = {
+export type ReactProps<TRenderable = unknown> = {
   key?: React.Key
-  ref?: React.Ref<R>
+  ref?: React.Ref<TRenderable>
 }
 
-type ContainerProps<T> = T & { children?: React.ReactNode }
+type ContainerProps<TOptions> = TOptions & { children?: React.ReactNode }
 
-type ComponentProps<T extends RenderableOptions, R = null, K extends keyof T = NonStyledProps> = T & {
-  style?: Partial<Omit<T, K | NonStyledProps>>
-} & ReactProps<R>
+type ComponentProps<
+  TOptions extends RenderableOptions,
+  TRenderable = unknown,
+  TExcludedProps extends keyof TOptions = never,
+> = TOptions & {
+  style?: Partial<Omit<TOptions, TExcludedProps | NonStyledProps>>
+} & ReactProps<TRenderable>
 
 type TextChildren = (string & {}) | number | boolean | null | undefined
+
 export type TextProps = ComponentProps<TextOptions, TextRenderable, "content"> & {
   children?: TextChildren | StyledText | TextChunk | Array<TextChildren | StyledText | TextChunk>
 }
