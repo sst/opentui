@@ -218,9 +218,7 @@ export const {
       return
     }
     if (textParent instanceof TextRenderable) {
-      const styledText = textParent.content
-      styledText.replace(newChunk, textNode.chunk)
-      textParent.content = styledText
+      textParent.content = textParent.content.replace(newChunk, textNode.chunk)
 
       textNode.chunk = newChunk
       ChunkToTextNodeMap.set(newChunk, textNode)
