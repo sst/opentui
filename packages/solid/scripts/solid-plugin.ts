@@ -8,7 +8,7 @@ import { type BunPlugin } from "bun"
 const solidTransformPlugin: BunPlugin = {
   name: "bun-plugin-solid",
   setup: (build) => {
-    build.onLoad({ filter: /.solid-js\/dist\/server\.js$/ }, async (args) => {
+    build.onLoad({ filter: /solid-js\/dist\/server\.js$/ }, async (args) => {
       const { readFile } = await import("node:fs/promises")
       const path = args.path.replace("server.js", "solid.js")
       const file = Bun.file(path);
