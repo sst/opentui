@@ -523,6 +523,7 @@ export class CliRenderer extends EventEmitter {
     this.stdout.write = this.realStdoutWrite
   }
 
+  // TODO: Move this to native
   private flushStdoutCache(space: number, force: boolean = false): boolean {
     if (capture.size === 0 && !force) return false
 
@@ -981,6 +982,8 @@ export class CliRenderer extends EventEmitter {
   }
 
   public destroy(): void {
+    this.stdin.setRawMode(false)
+
     if (this.isDestroyed) return
     this.isDestroyed = true
 
@@ -993,9 +996,8 @@ export class CliRenderer extends EventEmitter {
     }
 
     this._console.deactivate()
-    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
-
     this.disableStdoutInterception()
+    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
   }
 
   private startRenderLoop(): void {

@@ -296,21 +296,19 @@ pub const CliRenderer = struct {
         if (useAlternateScreen) {
             direct.writeAll(ansi.ANSI.switchToMainScreen) catch {};
             self.stdoutWriter.flush() catch {};
-        } else {
+        } else if (splitHeight == 0) {
             ansi.ANSI.clearRendererSpaceOutput(direct, self.height) catch {};
+            ansi.ANSI.moveToOutput(direct, 1, 1) catch {};
+        } else if (splitHeight > 0) {
+            // Currently still handled in typescript
+            // const consoleEndLine = self.height - splitHeight;
+            // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
         }
 
         direct.writeAll(ansi.ANSI.reset) catch {};
         direct.writeAll(ansi.ANSI.resetCursorColor) catch {};
         direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
         direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
-
-        if (splitHeight > 0) {
-            const consoleEndLine = self.height - splitHeight;
-            ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
-        } else {
-            ansi.ANSI.moveToOutput(direct, 1, 1) catch {};
-        }
 
         direct.writeAll(ansi.ANSI.showCursor) catch {};
 
