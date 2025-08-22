@@ -35,4 +35,4 @@ import { render } from "@opentui/solid"
 render(() => <text>Hello, World!</text>)
 ```
 
-4. Run with `bun --conditions=browser index.tsx`.
+4. Run with `bun index.tsx`.

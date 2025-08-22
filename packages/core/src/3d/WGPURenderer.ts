@@ -1,10 +1,10 @@
 import { PerspectiveCamera, OrthographicCamera, Color, NoToneMapping, LinearSRGBColorSpace, Scene } from "three"
 import { WebGPURenderer } from "three/webgpu"
 import type { OptimizedBuffer } from "../buffer"
-import { RGBA } from "../types"
+import { RGBA } from "../lib/RGBA"
 import { createWebGPUDevice, setupGlobals } from "bun-webgpu"
 import { CLICanvas, SuperSampleAlgorithm } from "./canvas"
-import { CliRenderEvents, type CliRenderer } from ".."
+import { CliRenderEvents, type CliRenderer } from "../renderer"
 
 export enum SuperSampleType {
   NONE = "none",

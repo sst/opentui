@@ -31,6 +31,7 @@ export const SplitModeDemo = () => {
       style={{
         zIndex: 5,
       }}
+      live
     >
       <box
         title="SYSTEM MONITOR"

@@ -1,8 +1,8 @@
 import type { RenderableOptions } from "../Renderable"
 import { ASCIIFontSelectionHelper } from "../lib/selection"
-import { RGBA, type SelectionState } from "../types"
+import { RGBA, parseColor } from "../lib/RGBA"
+import type { SelectionState } from "../types"
 import { fonts, type FontDefinition, measureText, renderFontToFrameBuffer, getCharacterPositions, validateFontDefinition } from "../lib/ascii.font"
-import { parseColor } from "../utils"
 import { FrameBufferRenderable } from "./FrameBuffer"
 
 export interface ASCIIFontOptions extends RenderableOptions {

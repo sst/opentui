@@ -1,7 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
-import { parseColor } from "../utils"
-import type { RGBA, ColorInput } from "../types"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import type { ParsedKey } from "../lib/parse.keypress"
 
 export interface TabSelectOption {

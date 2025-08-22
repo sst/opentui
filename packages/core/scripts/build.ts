@@ -208,14 +208,18 @@ if (buildLib) {
     process.exit(1)
   }
 
+  const entryPoints: string[] = [packageJson.module, "src/3d.ts"]
+
   spawnSync(
     "bun",
     [
       "build",
       "--target=bun",
+      "--splitting",
       "--outdir=dist",
+      "--sourcemap",
       ...externalDeps.flatMap((dep) => ["--external", dep]),
-      packageJson.module,
+      ...entryPoints,
     ],
     {
       cwd: rootDir,
@@ -223,17 +227,36 @@ if (buildLib) {
     },
   )
 
-  // Build additional entry points
-  const entryPoints: string[] = ["src/3d.ts"]
-  for (const entryPoint of entryPoints) {
-    spawnSync(
-      "bun",
-      ["build", "--target=bun", "--outdir=dist", ...externalDeps.flatMap((dep) => ["--external", dep]), entryPoint],
-      {
-        cwd: rootDir,
-        stdio: "inherit",
-      },
-    )
+  // Post-process to fix Bun's duplicate export issue
+  // See: https://github.com/oven-sh/bun/issues/5344
+  // and: https://github.com/oven-sh/bun/issues/10631
+  console.log("Post-processing bundled files to fix duplicate exports...")
+  const bundledFiles = ["dist/index.js", "dist/3d.js"]
+  for (const filePath of bundledFiles) {
+    const fullPath = join(rootDir, filePath)
+    if (existsSync(fullPath)) {
+      let content = readFileSync(fullPath, "utf8")
+      const helperExportPattern = /^export\s*\{([^}]*(?:__toESM|__commonJS|__export|__require)[^}]*)\};\s*$/gm
+
+      let modified = false
+      content = content.replace(helperExportPattern, (match, exports) => {
+        const exportsList = exports.split(",").map((e: string) => e.trim())
+        const helpers = ["__toESM", "__commonJS", "__export", "__require"]
+        const nonHelpers = exportsList.filter((e: string) => !helpers.includes(e))
+
+        if (nonHelpers.length > 0) {
+          modified = true
+          const helperExports = exportsList.filter((e: string) => helpers.includes(e))
+          return `export { ${helperExports.join(", ")} };`
+        }
+        return match
+      })
+
+      if (modified) {
+        writeFileSync(fullPath, content)
+        console.log(`  Fixed duplicate exports in ${filePath}`)
+      }
+    }
   }
 
   console.log("Generating TypeScript declarations...")

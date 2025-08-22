@@ -3,8 +3,7 @@ import { OptimizedBuffer } from "../../buffer"
 import { GroupRenderable } from "../../renderables"
 import { TabSelectRenderable, TabSelectRenderableEvents } from "../../renderables/TabSelect"
 import type { CliRenderer, TabSelectOption } from "../../index"
-import type { ColorInput } from "../../types"
-import { parseColor } from "../../utils"
+import { parseColor, type ColorInput } from "../../lib/RGBA"
 
 export interface TabObject {
   title: string
@@ -83,10 +82,8 @@ export class TabControllerRenderable extends Renderable {
 
   public addTab(tabObject: TabObject): Tab {
     const tabGroup = new GroupRenderable(`${this.id}-tab-${this.tabs.length}`, {
-      position: {
-        left: 0,
-        top: this.tabBarHeight,
-      },
+      left: 0,
+      top: this.tabBarHeight,
       zIndex: this.zIndex + 50,
       visible: false,
       width: "100%",

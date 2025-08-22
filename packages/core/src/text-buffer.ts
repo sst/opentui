@@ -1,5 +1,5 @@
 import type { StyledText } from "./lib/styled-text"
-import { RGBA } from "./types"
+import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 
