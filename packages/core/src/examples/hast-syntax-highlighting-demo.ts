@@ -8,7 +8,7 @@ import {
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
-import { parseColor } from "../utils"
+import { parseColor } from "../lib/RGBA"
 import { hastToStyledText, SyntaxStyle, type HASTElement } from "../lib/hast-styled-text"
 
 const exampleHAST: HASTElement = (await import("./assets/hast-example.json", { with: { type: "json" } })) as HASTElement

@@ -1,5 +1,5 @@
 import { OptimizedBuffer } from "../buffer"
-import { RGBA } from "../types"
+import { RGBA } from "./RGBA"
 import tiny from "./fonts/tiny.json"
 import block from "./fonts/block.json"
 import shade from "./fonts/shade.json"

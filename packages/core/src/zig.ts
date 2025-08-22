@@ -1,7 +1,7 @@
 import { dlopen, toArrayBuffer, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import type { CursorStyle, DebugOverlayCorner } from "./types"
-import { RGBA } from "./types"
+import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 

@@ -2,8 +2,7 @@ import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font"
 import type { ParsedKey } from "../lib/parse.keypress"
-import type { ColorInput, RGBA } from "../types"
-import { parseColor } from "../utils"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 
 export interface SelectOption {
   name: string

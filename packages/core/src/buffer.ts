@@ -1,5 +1,5 @@
 import type { TextBuffer } from "./text-buffer"
-import { RGBA } from "./types"
+import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type BorderStyle, type BorderSides, type BorderCharacters, BorderCharArrays, borderCharsToArray } from "./lib"

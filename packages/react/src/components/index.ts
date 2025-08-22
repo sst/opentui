@@ -7,7 +7,7 @@ import {
   TabSelectRenderable,
   TextRenderable,
 } from "@opentui/core"
-import type { RenderableConstructor } from "../types/extend"
+import type { RenderableConstructor } from "../types/components"
 
 export const baseComponents = {
   box: BoxRenderable,
@@ -43,4 +43,4 @@ export function getComponentCatalogue(): ComponentCatalogue {
   return componentCatalogue
 }
 
-export type { ExtendedComponentProps, ExtendedIntrinsicElements, RenderableConstructor } from "../types/extend"
+export type { ExtendedComponentProps, ExtendedIntrinsicElements, RenderableConstructor } from "../types/components"
