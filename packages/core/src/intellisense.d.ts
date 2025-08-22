@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-/// <reference path="./types/index.d.ts" />
+import * as Types from './types/index.d.ts';
 
 declare module '@opentui/core' {
   // Re-export all types
