@@ -354,6 +354,10 @@ export class TabSelectRenderable extends Renderable {
     }
   }
 
+  public get showUnderline(): boolean {
+    return this._showUnderline
+  }
+
   public set showUnderline(show: boolean) {
     if (this._showUnderline !== show) {
       this._showUnderline = show

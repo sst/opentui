@@ -20,6 +20,7 @@ let keyboardHandler: ((key: any) => void) | null = null
 let parentContainer: GroupRenderable | null = null
 let keyLegendDisplay: TextRenderable | null = null
 let statusDisplay: TextRenderable | null = null
+let lastSelectedItem: TabSelectOption | null = null
 
 const tabOptions: TabSelectOption[] = [
   { name: "Home", description: "Welcome to the home page", value: "home" },
@@ -39,10 +40,10 @@ const tabOptions: TabSelectOption[] = [
 function updateDisplays() {
   if (!tabSelect || !parentContainer) return
 
-  const underlineStatus = tabSelect.getShowUnderline() ? "on" : "off"
-  const description = tabSelect.getShowDescription() ? "on" : "off"
-  const scrollArrows = tabSelect.getShowScrollArrows() ? "on" : "off"
-  const wrap = tabSelect.getWrapSelection() ? "on" : "off"
+  const underlineStatus = tabSelect.showUnderline ? "on" : "off"
+  const description = tabSelect.showDescription ? "on" : "off"
+  const scrollArrows = tabSelect.showScrollArrows ? "on" : "off"
+  const wrap = tabSelect.wrapSelection ? "on" : "off"
 
   const keyLegendText = t`${bold(fg("#FFFFFF")("Key Controls:"))}
 ←/→ or [/]: Navigate tabs
@@ -57,15 +58,20 @@ W: Toggle wrap selection`
     keyLegendDisplay.content = keyLegendText
   }
 
-  const currentSelection = tabSelect.getSelectedOption()
-  const selectionText = currentSelection
-    ? `Selected: ${currentSelection.name} (${currentSelection.value}) - Index: ${tabSelect.getSelectedIndex()}`
-    : "No selection"
+  const currentHighlighted = tabSelect.getSelectedOption()
+  const highlightedText = currentHighlighted
+    ? `Highlighted: ${currentHighlighted.name} (${currentHighlighted.value}) - Index: ${tabSelect.getSelectedIndex()}`
+    : "No highlighted item"
+
+  const selectedText = lastSelectedItem
+    ? `Last Selected: ${lastSelectedItem.name} (${lastSelectedItem.value})`
+    : "No item selected yet (press Enter to select)"
 
   const focusText = tabSelect.focused ? "Tab selector is FOCUSED" : "Tab selector is BLURRED"
   const focusColor = tabSelect.focused ? "#00FF00" : "#FF0000"
 
-  const statusText = t`${fg("#00FF00")(selectionText)}
+  const statusText = t`${fg("#00FF00")(highlightedText)}
+${fg("#FFFF00")(selectedText)}
 
 ${fg(focusColor)(focusText)}
 
@@ -138,6 +144,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
 
   tabSelect.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabSelectOption) => {
+    lastSelectedItem = option
     updateDisplays()
   })
 
@@ -159,16 +166,16 @@ export function run(rendererInstance: CliRenderer): void {
         tabSelect?.focus()
       }
     } else if (key.name === "u") {
-      tabSelect?.setShowUnderline(!tabSelect.getShowUnderline())
+      tabSelect!.showUnderline = !tabSelect!.showUnderline
       updateDisplays()
     } else if (key.name === "p") {
-      tabSelect?.setShowDescription(!tabSelect.getShowDescription())
+      tabSelect!.showDescription = !tabSelect!.showDescription
       updateDisplays()
     } else if (key.name === "s") {
-      tabSelect?.setShowScrollArrows(!tabSelect.getShowScrollArrows())
+      tabSelect!.showScrollArrows = !tabSelect!.showScrollArrows
       updateDisplays()
     } else if (key.name === "w") {
-      tabSelect?.setWrapSelection(!tabSelect.getWrapSelection())
+      tabSelect!.wrapSelection = !tabSelect!.wrapSelection
       updateDisplays()
     }
   }
@@ -196,6 +203,7 @@ export function destroy(rendererInstance: CliRenderer): void {
 
   keyLegendDisplay = null
   statusDisplay = null
+  lastSelectedItem = null
   renderer = null
 }
 
