@@ -48,49 +48,49 @@ function calculateDynamicHeight(showUnderline: boolean, showDescription: boolean
 export class TabSelectRenderable extends Renderable {
   protected focusable: boolean = true
 
-  private options: TabSelectOption[] = []
+  private _options: TabSelectOption[] = []
   private selectedIndex: number = 0
   private scrollOffset: number = 0
-  private tabWidth: number
+  private _tabWidth: number
   private maxVisibleTabs: number
 
-  private backgroundColor: RGBA
-  private textColor: RGBA
-  private focusedBackgroundColor: RGBA
-  private focusedTextColor: RGBA
-  private selectedBackgroundColor: RGBA
-  private selectedTextColor: RGBA
-  private selectedDescriptionColor: RGBA
-  private showScrollArrows: boolean
-  private showDescription: boolean
-  private showUnderline: boolean
-  private wrapSelection: boolean
+  private _backgroundColor: RGBA
+  private _textColor: RGBA
+  private _focusedBackgroundColor: RGBA
+  private _focusedTextColor: RGBA
+  private _selectedBackgroundColor: RGBA
+  private _selectedTextColor: RGBA
+  private _selectedDescriptionColor: RGBA
+  private _showScrollArrows: boolean
+  private _showDescription: boolean
+  private _showUnderline: boolean
+  private _wrapSelection: boolean
 
   constructor(id: string, options: TabSelectRenderableOptions) {
     const calculatedHeight = calculateDynamicHeight(options.showUnderline ?? true, options.showDescription ?? true)
 
     super(id, { ...options, height: calculatedHeight, buffered: true })
 
-    this.backgroundColor = parseColor(options.backgroundColor || "transparent")
-    this.textColor = parseColor(options.textColor || "#FFFFFF")
-    this.focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
-    this.focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
-    this.options = options.options || []
-    this.tabWidth = options.tabWidth || 20
-    this.showDescription = options.showDescription ?? true
-    this.showUnderline = options.showUnderline ?? true
-    this.showScrollArrows = options.showScrollArrows ?? true
-    this.wrapSelection = options.wrapSelection ?? false
+    this._backgroundColor = parseColor(options.backgroundColor || "transparent")
+    this._textColor = parseColor(options.textColor || "#FFFFFF")
+    this._focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
+    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
+    this._options = options.options || []
+    this._tabWidth = options.tabWidth || 20
+    this._showDescription = options.showDescription ?? true
+    this._showUnderline = options.showUnderline ?? true
+    this._showScrollArrows = options.showScrollArrows ?? true
+    this._wrapSelection = options.wrapSelection ?? false
 
-    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this.tabWidth))
+    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this._tabWidth))
 
-    this.selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
-    this.selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
-    this.selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
+    this._selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
+    this._selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
+    this._selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
   }
 
   private calculateDynamicHeight(): number {
-    return calculateDynamicHeight(this.showUnderline, this.showDescription)
+    return calculateDynamicHeight(this._showUnderline, this._showDescription)
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -102,10 +102,10 @@ export class TabSelectRenderable extends Renderable {
   }
 
   private refreshFrameBuffer(): void {
-    if (!this.frameBuffer || this.options.length === 0) return
+    if (!this.frameBuffer || this._options.length === 0) return
 
     // Use focused colors if focused
-    const bgColor = this._focused ? this.focusedBackgroundColor : this.backgroundColor
+    const bgColor = this._focused ? this._focusedBackgroundColor : this._backgroundColor
     this.frameBuffer.clear(bgColor)
 
     const contentX = 0
@@ -113,46 +113,46 @@ export class TabSelectRenderable extends Renderable {
     const contentWidth = this.width
     const contentHeight = this.height
 
-    const visibleOptions = this.options.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleTabs)
+    const visibleOptions = this._options.slice(this.scrollOffset, this.scrollOffset + this.maxVisibleTabs)
 
     // Render tab names
     for (let i = 0; i < visibleOptions.length; i++) {
       const actualIndex = this.scrollOffset + i
       const option = visibleOptions[i]
       const isSelected = actualIndex === this.selectedIndex
-      const tabX = contentX + i * this.tabWidth
+      const tabX = contentX + i * this._tabWidth
 
       if (tabX >= contentX + contentWidth) break
 
-      const actualTabWidth = Math.min(this.tabWidth, contentWidth - i * this.tabWidth)
+      const actualTabWidth = Math.min(this._tabWidth, contentWidth - i * this._tabWidth)
 
       if (isSelected) {
-        this.frameBuffer.fillRect(tabX, contentY, actualTabWidth, 1, this.selectedBackgroundColor)
+        this.frameBuffer.fillRect(tabX, contentY, actualTabWidth, 1, this._selectedBackgroundColor)
       }
 
-      const baseTextColor = this._focused ? this.focusedTextColor : this.textColor
-      const nameColor = isSelected ? this.selectedTextColor : baseTextColor
+      const baseTextColor = this._focused ? this._focusedTextColor : this._textColor
+      const nameColor = isSelected ? this._selectedTextColor : baseTextColor
       const nameContent = this.truncateText(option.name, actualTabWidth - 2)
       this.frameBuffer.drawText(nameContent, tabX + 1, contentY, nameColor)
 
-      if (isSelected && this.showUnderline && contentHeight >= 2) {
+      if (isSelected && this._showUnderline && contentHeight >= 2) {
         const underlineY = contentY + 1
-        const underlineBg = isSelected ? this.selectedBackgroundColor : bgColor
+        const underlineBg = isSelected ? this._selectedBackgroundColor : bgColor
         this.frameBuffer.drawText("▬".repeat(actualTabWidth), tabX, underlineY, nameColor, underlineBg)
       }
     }
 
-    if (this.showDescription && contentHeight >= (this.showUnderline ? 3 : 2)) {
+    if (this._showDescription && contentHeight >= (this._showUnderline ? 3 : 2)) {
       const selectedOption = this.getSelectedOption()
       if (selectedOption) {
-        const descriptionY = contentY + (this.showUnderline ? 2 : 1)
-        const descColor = this.selectedDescriptionColor
+        const descriptionY = contentY + (this._showUnderline ? 2 : 1)
+        const descColor = this._selectedDescriptionColor
         const descContent = this.truncateText(selectedOption.description, contentWidth - 2)
         this.frameBuffer.drawText(descContent, contentX + 1, descriptionY, descColor)
       }
     }
 
-    if (this.showScrollArrows && this.options.length > this.maxVisibleTabs) {
+    if (this._showScrollArrows && this._options.length > this.maxVisibleTabs) {
       this.renderScrollArrowsToFrameBuffer(contentX, contentY, contentWidth, contentHeight)
     }
   }
@@ -171,7 +171,7 @@ export class TabSelectRenderable extends Renderable {
     if (!this.frameBuffer) return
 
     const hasMoreLeft = this.scrollOffset > 0
-    const hasMoreRight = this.scrollOffset + this.maxVisibleTabs < this.options.length
+    const hasMoreRight = this.scrollOffset + this.maxVisibleTabs < this._options.length
 
     if (hasMoreLeft) {
       this.frameBuffer.drawText("‹", contentX, contentY, parseColor("#AAAAAA"))
@@ -183,14 +183,14 @@ export class TabSelectRenderable extends Renderable {
   }
 
   public setOptions(options: TabSelectOption[]): void {
-    this.options = options
+    this._options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
     this.needsUpdate()
   }
 
   public getSelectedOption(): TabSelectOption | null {
-    return this.options[this.selectedIndex] || null
+    return this._options[this.selectedIndex] || null
   }
 
   public getSelectedIndex(): number {
@@ -200,8 +200,8 @@ export class TabSelectRenderable extends Renderable {
   public moveLeft(): void {
     if (this.selectedIndex > 0) {
       this.selectedIndex--
-    } else if (this.wrapSelection && this.options.length > 0) {
-      this.selectedIndex = this.options.length - 1
+    } else if (this._wrapSelection && this._options.length > 0) {
+      this.selectedIndex = this._options.length - 1
     } else {
       return
     }
@@ -212,9 +212,9 @@ export class TabSelectRenderable extends Renderable {
   }
 
   public moveRight(): void {
-    if (this.selectedIndex < this.options.length - 1) {
+    if (this.selectedIndex < this._options.length - 1) {
       this.selectedIndex++
-    } else if (this.wrapSelection && this.options.length > 0) {
+    } else if (this._wrapSelection && this._options.length > 0) {
       this.selectedIndex = 0
     } else {
       return
@@ -233,7 +233,7 @@ export class TabSelectRenderable extends Renderable {
   }
 
   public setSelectedIndex(index: number): void {
-    if (index >= 0 && index < this.options.length) {
+    if (index >= 0 && index < this._options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
       this.needsUpdate()
@@ -245,7 +245,7 @@ export class TabSelectRenderable extends Renderable {
     const halfVisible = Math.floor(this.maxVisibleTabs / 2)
     const newScrollOffset = Math.max(
       0,
-      Math.min(this.selectedIndex - halfVisible, this.options.length - this.maxVisibleTabs),
+      Math.min(this.selectedIndex - halfVisible, this._options.length - this.maxVisibleTabs),
     )
 
     if (newScrollOffset !== this.scrollOffset) {
@@ -255,23 +255,23 @@ export class TabSelectRenderable extends Renderable {
   }
 
   protected onResize(width: number, height: number): void {
-    this.maxVisibleTabs = Math.max(1, Math.floor(width / this.tabWidth))
+    this.maxVisibleTabs = Math.max(1, Math.floor(width / this._tabWidth))
     this.updateScrollOffset()
     this.needsUpdate()
   }
 
   public setTabWidth(tabWidth: number): void {
-    if (this.tabWidth === tabWidth) return
+    if (this._tabWidth === tabWidth) return
 
-    this.tabWidth = tabWidth
-    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this.tabWidth))
+    this._tabWidth = tabWidth
+    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this._tabWidth))
 
     this.updateScrollOffset()
     this.needsUpdate()
   }
 
   public getTabWidth(): number {
-    return this.tabWidth
+    return this._tabWidth
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
@@ -295,46 +295,104 @@ export class TabSelectRenderable extends Renderable {
     return false
   }
 
-  public setShowDescription(show: boolean): void {
-    if (this.showDescription !== show) {
-      this.showDescription = show
+  public get options(): TabSelectOption[] {
+    return this._options
+  }
+
+  public set options(options: TabSelectOption[]) {
+    this._options = options
+    this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
+    this.updateScrollOffset()
+    this.needsUpdate()
+  }
+
+  public set backgroundColor(color: ColorInput) {
+    this._backgroundColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public set textColor(color: ColorInput) {
+    this._textColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public set focusedBackgroundColor(color: ColorInput) {
+    this._focusedBackgroundColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public set focusedTextColor(color: ColorInput) {
+    this._focusedTextColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public set selectedBackgroundColor(color: ColorInput) {
+    this._selectedBackgroundColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public set selectedTextColor(color: ColorInput) {
+    this._selectedTextColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public set selectedDescriptionColor(color: ColorInput) {
+    this._selectedDescriptionColor = parseColor(color)
+    this.needsUpdate()
+  }
+
+  public get showDescription(): boolean {
+    return this._showDescription
+  }
+
+  public set showDescription(show: boolean) {
+    if (this._showDescription !== show) {
+      this._showDescription = show
       const newHeight = this.calculateDynamicHeight()
       this.height = newHeight
-    }
-  }
-
-  public getShowDescription(): boolean {
-    return this.showDescription
-  }
-
-  public setShowUnderline(show: boolean): void {
-    if (this.showUnderline !== show) {
-      this.showUnderline = show
-      const newHeight = this.calculateDynamicHeight()
-      this.height = newHeight
-    }
-  }
-
-  public getShowUnderline(): boolean {
-    return this.showUnderline
-  }
-
-  public setShowScrollArrows(show: boolean): void {
-    if (this.showScrollArrows !== show) {
-      this.showScrollArrows = show
       this.needsUpdate()
     }
   }
 
-  public getShowScrollArrows(): boolean {
-    return this.showScrollArrows
+  public set showUnderline(show: boolean) {
+    if (this._showUnderline !== show) {
+      this._showUnderline = show
+      const newHeight = this.calculateDynamicHeight()
+      this.height = newHeight
+      this.needsUpdate()
+    }
   }
 
-  public setWrapSelection(wrap: boolean): void {
-    this.wrapSelection = wrap
+  public get showScrollArrows(): boolean {
+    return this._showScrollArrows
   }
 
-  public getWrapSelection(): boolean {
-    return this.wrapSelection
+  public set showScrollArrows(show: boolean) {
+    if (this._showScrollArrows !== show) {
+      this._showScrollArrows = show
+      this.needsUpdate()
+    }
+  }
+
+  public get wrapSelection(): boolean {
+    return this._wrapSelection
+  }
+
+  public set wrapSelection(wrap: boolean) {
+    this._wrapSelection = wrap
+  }
+
+  public get tabWidth(): number {
+    return this._tabWidth
+  }
+
+  public set tabWidth(tabWidth: number) {
+    if (this._tabWidth === tabWidth) return
+
+    this._tabWidth = tabWidth
+    this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this._tabWidth))
+
+    this.updateScrollOffset()
+    this.needsUpdate()
   }
 }
