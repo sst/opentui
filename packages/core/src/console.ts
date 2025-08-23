@@ -2,6 +2,7 @@ import type { CliRenderer, ColorInput } from "."
 import { EventEmitter } from "events"
 import { OptimizedBuffer } from "./buffer"
 import { parseColor, RGBA } from "./lib/RGBA"
+import { Console } from "node:console"
 import util from "node:util"
 import fs from "node:fs"
 import path from "node:path"
@@ -50,7 +51,7 @@ const mockStdout = new CapturedWritableStream("stdout", capture)
 const mockStderr = new CapturedWritableStream("stderr", capture)
 
 if (process.env.SKIP_CONSOLE_CACHE !== "true") {
-  global.console = new console.Console({
+  global.console = new Console({
     stdout: mockStdout,
     stderr: mockStderr,
     colorMode: true,
