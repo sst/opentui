@@ -3,8 +3,7 @@ import { OptimizedBuffer } from "../../buffer"
 import { GroupRenderable } from "../../renderables"
 import { TabSelectRenderable, TabSelectRenderableEvents } from "../../renderables/TabSelect"
 import type { CliRenderer, TabSelectOption } from "../../index"
-import type { ColorInput } from "../../types"
-import { parseColor } from "../../utils"
+import { parseColor, type ColorInput } from "../../lib/RGBA"
 
 export interface TabObject {
   title: string

@@ -1,6 +1,6 @@
 import type { TextChunk } from "../text-buffer"
-import type { ColorInput } from "../types"
-import { createTextAttributes, parseColor } from "../utils"
+import { createTextAttributes } from "../utils"
+import { parseColor, type ColorInput } from "./RGBA"
 
 export type Color = ColorInput
 const textEncoder = new TextEncoder()

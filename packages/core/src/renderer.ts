@@ -1,14 +1,7 @@
 import { ANSI } from "./ansi"
 import { Renderable, RootRenderable, type RootContext } from "./Renderable"
-import {
-  type ColorInput,
-  type CursorStyle,
-  DebugOverlayCorner,
-  type RenderContext,
-  RGBA,
-  type SelectionState,
-} from "./types"
-import { parseColor } from "./utils"
+import { type CursorStyle, DebugOverlayCorner, type RenderContext, type SelectionState } from "./types"
+import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
 import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
@@ -530,6 +523,7 @@ export class CliRenderer extends EventEmitter {
     this.stdout.write = this.realStdoutWrite
   }
 
+  // TODO: Move this to native
   private flushStdoutCache(space: number, force: boolean = false): boolean {
     if (capture.size === 0 && !force) return false
 
@@ -988,6 +982,8 @@ export class CliRenderer extends EventEmitter {
   }
 
   public destroy(): void {
+    this.stdin.setRawMode(false)
+
     if (this.isDestroyed) return
     this.isDestroyed = true
 
@@ -1000,9 +996,8 @@ export class CliRenderer extends EventEmitter {
     }
 
     this._console.deactivate()
-    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
-
     this.disableStdoutInterception()
+    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
   }
 
   private startRenderLoop(): void {

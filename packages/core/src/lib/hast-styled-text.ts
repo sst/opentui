@@ -1,5 +1,5 @@
 import type { TextChunk } from "../text-buffer"
-import type { RGBA } from "../types"
+import { RGBA } from "./RGBA"
 import { createTextAttributes } from "../utils"
 import { StyledText } from "./styled-text"
 

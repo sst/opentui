@@ -2,8 +2,7 @@ import { CliRenderer } from ".."
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { ParsedKey } from "../lib/parse.keypress"
-import type { ColorInput, RGBA } from "../types"
-import { parseColor } from "../utils"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 
 export interface InputRenderableOptions extends RenderableOptions {
   backgroundColor?: ColorInput
