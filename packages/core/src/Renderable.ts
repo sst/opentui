@@ -90,8 +90,6 @@ export interface RenderableOptions extends Partial<LayoutOptions> {
   onKeyDown?: (key: ParsedKey) => void
 }
 
-let renderableNumber = 1
-
 function validateOptions(id: string, options: RenderableOptions): void {
   if (typeof options.width === "number") {
     if (options.width < 0) {
@@ -170,6 +168,7 @@ export function isSizeType(value: any): value is number | `${number}%` | undefin
 }
 
 export abstract class Renderable extends EventEmitter {
+  private static renderableNumber = 1
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
   public readonly id: string
@@ -216,7 +215,7 @@ export abstract class Renderable extends EventEmitter {
   constructor(id: string, options: RenderableOptions) {
     super()
     this.id = id
-    this.num = renderableNumber++
+    this.num = Renderable.renderableNumber++
     Renderable.renderablesByNumber.set(this.num, this)
 
     validateOptions(id, options)

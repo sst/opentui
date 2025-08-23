@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"
 import { parseKeypress } from "./parse.keypress"
+import { singleton } from "../singleton"
 
 export class KeyHandler extends EventEmitter {
   constructor() {
@@ -26,7 +27,7 @@ let keyHandler: KeyHandler | null = null
 
 export function getKeyHandler(): KeyHandler {
   if (!keyHandler) {
-    keyHandler = new KeyHandler()
+    keyHandler = singleton('KeyHandler', () => new KeyHandler())
   }
   return keyHandler
 }

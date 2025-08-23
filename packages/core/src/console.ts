@@ -2,10 +2,12 @@ import type { CliRenderer, ColorInput } from "."
 import { EventEmitter } from "events"
 import { OptimizedBuffer } from "./buffer"
 import { parseColor, RGBA } from "./lib/RGBA"
+import { Console } from "node:console"
 import util from "node:util"
 import fs from "node:fs"
 import path from "node:path"
 import { Capture, CapturedWritableStream } from "./lib/output.capture"
+import { singleton } from "./singleton"
 
 interface CallerInfo {
   functionName: string
@@ -45,22 +47,27 @@ enum LogLevel {
   DEBUG = "DEBUG",
 }
 
-export const capture = new Capture()
-const mockStdout = new CapturedWritableStream("stdout", capture)
-const mockStderr = new CapturedWritableStream("stderr", capture)
+export const { capture } = singleton('ConsoleCapture', () => {
+  const capture = new Capture()
+  const mockStdout = new CapturedWritableStream("stdout", capture)
+  const mockStderr = new CapturedWritableStream("stderr", capture)
+  
+  if (process.env.SKIP_CONSOLE_CACHE !== "true") {
+    global.console = new Console({
+      stdout: mockStdout,
+      stderr: mockStderr,
+      colorMode: true,
+      inspectOptions: {
+        compact: false,
+        breakLength: 80,
+        depth: 2,
+      },
+    })
+  }
 
-if (process.env.SKIP_CONSOLE_CACHE !== "true") {
-  global.console = new console.Console({
-    stdout: mockStdout,
-    stderr: mockStderr,
-    colorMode: true,
-    inspectOptions: {
-      compact: false,
-      breakLength: 80,
-      depth: 2,
-    },
-  })
-}
+  return { capture };
+})
+
 
 class TerminalConsoleCache extends EventEmitter {
   private originalConsole: {
@@ -168,9 +175,12 @@ class TerminalConsoleCache extends EventEmitter {
   }
 }
 
-const terminalConsoleCache = new TerminalConsoleCache()
-process.on("exit", () => {
-  terminalConsoleCache.destroy()
+const terminalConsoleCache = singleton('TerminalConsoleCache', () => {
+  const terminalConsoleCache = new TerminalConsoleCache()
+  process.on("exit", () => {
+      terminalConsoleCache.destroy()
+  })
+  return terminalConsoleCache
 })
 
 export enum ConsolePosition {
