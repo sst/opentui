@@ -9,6 +9,7 @@ import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
+import { singleton } from "./singleton"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -77,9 +78,11 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
-  process.on(signal, () => {
-    process.exit()
+singleton('ProcessExitSignals', () => {
+  ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
+    process.on(signal, () => {
+      process.exit()
+    })
   })
 })
 
@@ -126,9 +129,8 @@ enum RendererControlState {
   EXPLICIT_STOPPED = "explicit_stopped",
 }
 
-let animationFrameId = 0
-
 export class CliRenderer extends EventEmitter {
+  private static animationFrameId = 0;
   private lib: RenderLib
   public rendererPtr: Pointer
   private stdin: NodeJS.ReadStream
@@ -349,7 +351,7 @@ export class CliRenderer extends EventEmitter {
     this.useConsole = config.useConsole ?? true
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
-      const id = animationFrameId++
+      const id = CliRenderer.animationFrameId++
       this.animationRequest.set(id, callback)
       return id
     }

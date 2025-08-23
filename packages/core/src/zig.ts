@@ -1100,7 +1100,10 @@ let opentuiLibPath: string | undefined
 let opentuiLib: RenderLib | undefined
 
 export function setRenderLibPath(libPath: string) {
-  opentuiLibPath = libPath
+  if (opentuiLibPath !== libPath) {
+    opentuiLibPath = libPath
+    opentuiLib = undefined
+  }
 }
 
 export function resolveRenderLib(): RenderLib {

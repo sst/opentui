@@ -4,8 +4,6 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type BorderStyle, type BorderSides, type BorderCharacters, BorderCharArrays, borderCharsToArray } from "./lib"
 
-let fbIdCounter = 0
-
 function isRGBAWithAlpha(color: RGBA): boolean {
   return color.a < 1.0
 }
@@ -71,6 +69,7 @@ function blendColors(overlay: RGBA, text: RGBA): RGBA {
 }
 
 export class OptimizedBuffer {
+  private static fbIdCounter = 0
   public id: string
   public lib: RenderLib
   private bufferPtr: Pointer
@@ -102,7 +101,7 @@ export class OptimizedBuffer {
     height: number,
     options: { respectAlpha?: boolean },
   ) {
-    this.id = `fb_${fbIdCounter++}`
+    this.id = `fb_${OptimizedBuffer.fbIdCounter++}`
     this.lib = lib
     this.respectAlpha = options.respectAlpha || false
     this.width = width

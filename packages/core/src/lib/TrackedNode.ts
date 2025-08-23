@@ -8,9 +8,8 @@ interface NodeMetadata {
   [key: string]: any
 }
 
-let idCounter = 0
-
 class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
+  private static idCounter = 0
   id: number
   yogaNode: YogaNode
   metadata: T
@@ -25,7 +24,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
 
   constructor(yogaNode: YogaNode, metadata: T = {} as T) {
     super()
-    this.id = idCounter++
+    this.id = TrackedNode.idCounter++
     this.yogaNode = yogaNode
     this.metadata = metadata
     this.parent = null
