@@ -1,0 +1,93 @@
+<script setup lang="ts">
+import { bold, fg, italic, t, TextAttributes, getKeyHandler, type ParsedKey } from "@opentui/core"
+import { ref, onMounted, onUnmounted, computed } from "vue"
+
+const username = ref("")
+const password = ref("")
+const focused = ref<"username" | "password">("username")
+const status = ref<"idle" | "invalid" | "success">("idle")
+
+const handleKeyPress = (key: ParsedKey) => {
+  if (key.name === "tab") {
+    focused.value = focused.value === "username" ? "password" : "username"
+  }
+
+  if (key.ctrl && key.name === "k") {
+    console.log("Ctrl+K pressed - would toggle debug overlay")
+  }
+}
+
+const handleUsernameChange = (value: string) => {
+  username.value = value
+}
+
+const handlePasswordChange = (value: string) => {
+  password.value = value
+}
+
+const handleSubmit = () => {
+  if (username.value === "admin" && password.value === "secret") {
+    status.value = "success"
+  } else {
+    status.value = "invalid"
+  }
+}
+
+onMounted(() => {
+  getKeyHandler().on("keypress", handleKeyPress)
+})
+
+onUnmounted(() => {
+  getKeyHandler().off("keypress", handleKeyPress)
+})
+
+const groupStyles = { padding: 2, flexDirection: "column" }
+const titleTextStyles = {
+  fg: "#FFFF00",
+  attributes: TextAttributes.BOLD | TextAttributes.ITALIC,
+}
+const boxStyles = { width: 40, height: 3, marginTop: 1 }
+const passwordBoxStyles = { ...boxStyles, marginBottom: 1 }
+const inputStyles = { focusedBackgroundColor: "#000000" }
+
+const statusColor = computed(() => {
+  switch (status.value) {
+    case "idle":
+      return "#AAAAAA"
+    case "success":
+      return "green"
+    case "invalid":
+      return "red"
+    default:
+      return "#AAAAAA"
+  }
+})
+
+const styledText = computed(() => {
+  return t`${bold(italic(fg("cyan")(`Styled Text!`)))}`
+})
+</script>
+
+<template>
+  <text content="OpenTUI with Vue!" :style="titleTextStyles" />
+  <text :content="styledText" />
+  <box title="Username" :style="boxStyles">
+    <input
+      placeholder="Enter your username..."
+      :onInput="handleUsernameChange"
+      :onSubmit="handleSubmit"
+      :focused="focused === 'username'"
+      :style="inputStyles"
+    />
+  </box>
+  <box title="Password" :style="passwordBoxStyles">
+    <input
+      placeholder="Enter your password..."
+      :onInput="handlePasswordChange"
+      :onSubmit="handleSubmit"
+      :focused="focused === 'password'"
+      :style="inputStyles"
+    />
+  </box>
+  <text :content="status.toUpperCase()" :style="{ fg: statusColor }" />
+</template>
