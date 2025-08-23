@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { getKeyHandler, InputRenderable, RGBA, type BoxOptions, type ParsedKey } from "@opentui/core"
-import { onMounted, onUnmounted, ref } from "vue"
+import { getKeyHandler, RGBA, type BoxOptions, type ParsedKey } from "@opentui/core"
+import { onUnmounted, ref } from "vue"
 
 const count = ref(0)
-
-const inputRef = ref<InputRenderable | null>(null)
 
 function handleKeyPress(key: ParsedKey): void {
   switch (key.name) {

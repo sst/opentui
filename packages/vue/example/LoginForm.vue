@@ -41,7 +41,6 @@ onUnmounted(() => {
   getKeyHandler().off("keypress", handleKeyPress)
 })
 
-const groupStyles = { padding: 2, flexDirection: "column" }
 const titleTextStyles = {
   fg: "#FFFF00",
   attributes: TextAttributes.BOLD | TextAttributes.ITALIC,

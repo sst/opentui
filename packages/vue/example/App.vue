@@ -3,7 +3,7 @@ import ASCII from "./ASCII.vue"
 import LoginForm from "./LoginForm.vue"
 import Counter from "./Counter.vue"
 import StyledText from "./dist/Styled-Text.vue"
-import { onMounted, onUnmounted, ref } from "vue"
+import { ref } from "vue"
 import { getKeyHandler } from "@opentui/core"
 
 const exampleOptions = [
