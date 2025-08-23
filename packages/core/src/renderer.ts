@@ -1037,7 +1037,7 @@ export class CliRenderer extends EventEmitter {
     this.renderStats.fps = this.currentFps
     const overallStart = performance.now()
 
-    const frameRequests = this.animationRequest.values()
+    const frameRequests = Array.from(this.animationRequest.values())
     this.animationRequest.clear()
     const animationRequestStart = performance.now()
     frameRequests.forEach((callback) => callback(deltaTime))
