@@ -580,8 +580,8 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "single",
         borderColor: "#FFFFFF",
-        customBorderChars: blockBorders,
       })
+      blockBox.customBorderChars = blockBorders
       tabGroup.add(blockBox)
       const blockLabel = new TextRenderable("block-label", {
         content: "Block Border",
