@@ -29,7 +29,8 @@ export class BoxRenderable extends Renderable {
   protected _borderStyle: BorderStyle
   protected _borderColor: RGBA
   protected _focusedBorderColor: RGBA
-  protected customBorderChars?: Uint32Array
+  private _customBorderCharsObj: BorderCharacters | undefined
+  protected _customBorderChars?: Uint32Array
   protected borderSides: BorderSidesConfig
   public shouldFill: boolean
   protected _title?: string
@@ -43,13 +44,24 @@ export class BoxRenderable extends Renderable {
     this._borderStyle = options.borderStyle || "single"
     this._borderColor = parseColor(options.borderColor || "#FFFFFF")
     this._focusedBorderColor = parseColor(options.focusedBorderColor || "#00AAFF")
-    this.customBorderChars = options.customBorderChars ? borderCharsToArray(options.customBorderChars) : undefined
+    this._customBorderCharsObj = options.customBorderChars
+    this._customBorderChars = this._customBorderCharsObj ? borderCharsToArray(this._customBorderCharsObj) : undefined
     this.borderSides = getBorderSides(this._border)
     this.shouldFill = options.shouldFill ?? true
     this._title = options.title
     this._titleAlignment = options.titleAlignment || "left"
 
     this.applyYogaBorders()
+  }
+
+  public get customBorderChars(): BorderCharacters | undefined {
+    return this._customBorderCharsObj
+  }
+
+  public set customBorderChars(value: BorderCharacters | undefined) {
+    this._customBorderCharsObj = value
+    this._customBorderChars = value ? borderCharsToArray(value) : undefined
+    this.needsUpdate()
   }
 
   public get backgroundColor(): RGBA {
@@ -86,7 +98,7 @@ export class BoxRenderable extends Renderable {
   public set borderStyle(value: BorderStyle) {
     if (this._borderStyle !== value) {
       this._borderStyle = value
-      this.customBorderChars = undefined
+      this._customBorderChars = undefined
       this.needsUpdate()
     }
   }
@@ -148,7 +160,7 @@ export class BoxRenderable extends Renderable {
       width: this.width,
       height: this.height,
       borderStyle: this._borderStyle,
-      customBorderChars: this.customBorderChars,
+      customBorderChars: this._customBorderChars,
       border: this._border,
       borderColor: currentBorderColor,
       backgroundColor: this._backgroundColor,
