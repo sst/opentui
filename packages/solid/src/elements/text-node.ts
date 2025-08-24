@@ -1,7 +1,8 @@
-import { Renderable, TextRenderable, type TextChunk } from "@opentui/core"
-import { getNextId } from "../utils/id-counter"
+import { Renderable, TextRenderable, type TextChunk, type TextOptions } from "@opentui/core"
 import type { DomNode } from "../reconciler"
+import { getNextId } from "../utils/id-counter"
 import { log } from "../utils/log"
+import { insertRenderable } from "./core-node"
 
 const GHOST_NODE_TAG = "text-ghost" as const
 
@@ -14,7 +15,7 @@ export class TextNode {
   id: string
   chunk: TextChunk
   parent?: Renderable
-  textParent?: TextRenderable
+  textParent?: TextRenderable | GhostTextRenderable
 
   constructor(chunk: TextChunk) {
     this.id = getNextId("text-node")
@@ -98,7 +99,9 @@ export class TextNode {
     if (parent === this.textParent && parent instanceof TextRenderable) {
       ChunkToTextNodeMap.delete(this.chunk)
       parent.content = parent.content.remove(this.chunk)
-    } else if (this.textParent) {
+      return
+    }
+    if (this.textParent) {
       ChunkToTextNodeMap.delete(this.chunk)
       let styledText = this.textParent.content
       styledText = styledText.remove(this.chunk)
@@ -128,30 +131,30 @@ export class TextNode {
     if (anchor instanceof Renderable) {
       const anchorIndex = children.findIndex((el) => el.id === anchor.id)
       const beforeAnchor = children[anchorIndex - 1]
-      if (beforeAnchor instanceof TextRenderable && beforeAnchor.id.startsWith(GHOST_NODE_TAG)) {
+      if (beforeAnchor instanceof GhostTextRenderable) {
         return beforeAnchor
       }
     }
 
     const lastChild = children.at(-1)
-    if (lastChild instanceof TextRenderable && lastChild.id.startsWith(GHOST_NODE_TAG)) {
+    if (lastChild instanceof GhostTextRenderable) {
       return lastChild
     }
 
-    const ghostNode = new TextRenderable(getNextId(GHOST_NODE_TAG), {})
+    const ghostNode = new GhostTextRenderable(getNextId(GHOST_NODE_TAG), {})
 
-    if (anchor) {
-      const anchorIndex = children.findIndex((el) => {
-        if (anchor instanceof TextNode) {
-          return el.id === anchor.textParent?.id
-        }
-        return el.id === anchor.id
-      })
-      parent.add(ghostNode, anchorIndex)
-    } else {
-      parent.add(ghostNode)
-    }
+    insertRenderable(parent, ghostNode, anchor)
 
     return ghostNode
+  }
+}
+
+class GhostTextRenderable extends TextRenderable {
+  constructor(id: string, options: TextOptions) {
+    super(id, options)
+  }
+
+  static isGhostNode(node: DomNode) {
+    return node instanceof GhostTextRenderable
   }
 }
