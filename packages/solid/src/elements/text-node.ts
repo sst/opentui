@@ -51,7 +51,7 @@ export class TextNode {
    * @param parent The parent DOM node.
    * @param anchor The anchor node for positioning.
    */
-  insert(parent: DomNode, anchor?: DomNode | null): void {
+  insert(parent: DomNode, anchor?: DomNode): void {
     if (!(parent instanceof Renderable)) {
       log("Attaching text node to parent text node, impossible")
       return
@@ -121,7 +121,7 @@ export class TextNode {
    * @returns The text renderable ghost node.
    * @private
    */
-  private getOrCreateTextGhostNode(parent: Renderable, anchor?: DomNode | null): TextRenderable {
+  private getOrCreateTextGhostNode(parent: Renderable, anchor?: DomNode): TextRenderable {
     if (anchor instanceof TextNode && anchor.textParent) {
       return anchor.textParent
     }
