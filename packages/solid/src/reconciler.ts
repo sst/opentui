@@ -19,7 +19,7 @@ import { log } from "./utils/log"
 
 export type DomNode = Renderable | TextNode
 
-function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): void {
+function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   log("Inserting node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id)
 
   if (node instanceof TextNode) {
