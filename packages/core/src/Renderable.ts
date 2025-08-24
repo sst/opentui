@@ -206,12 +206,6 @@ export abstract class Renderable extends EventEmitter {
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
 
-  // This is a workaround for yoga-layout performance issues (wasm call overhead)
-  // when setting the position of an element. Absolute elements do not need a full layout update.
-  // But when other attributes change and update the layout, it should update the layout node position.
-  // TODO: Use a bun ffi wrapper for a native yoga build instead of wasm.
-  private _yogaPerformancePositionUpdated: boolean = false
-
   constructor(id: string, options: RenderableOptions) {
     super()
     this.id = id
@@ -269,7 +263,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._focused) {
       this.blur()
     }
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public hasSelection(): boolean {
@@ -434,7 +428,7 @@ export abstract class Renderable extends EventEmitter {
     if (isDimensionType(value)) {
       this._width = value
       this.layoutNode.setWidth(value)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -446,7 +440,7 @@ export abstract class Renderable extends EventEmitter {
     if (isDimensionType(value)) {
       this._height = value
       this.layoutNode.setHeight(value)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -599,7 +593,6 @@ export abstract class Renderable extends EventEmitter {
     this._positionType = positionType
     this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
     this.needsUpdate()
-    this._yogaPerformancePositionUpdated = true
   }
 
   public setPosition(position: Position): void {
@@ -611,105 +604,94 @@ export abstract class Renderable extends EventEmitter {
     const node = this.layoutNode.yogaNode
     const { top, right, bottom, left } = position
 
-    if (this._positionType === "relative") {
-      if (isPositionType(top)) {
-        if (top === "auto") {
-          node.setPositionAuto(Edge.Top)
-        } else {
-          node.setPosition(Edge.Top, top)
-        }
+    if (isPositionType(top)) {
+      if (top === "auto") {
+        node.setPositionAuto(Edge.Top)
+      } else {
+        node.setPosition(Edge.Top, top)
       }
-      if (isPositionType(right)) {
-        if (right === "auto") {
-          node.setPositionAuto(Edge.Right)
-        } else {
-          node.setPosition(Edge.Right, right)
-        }
-      }
-      if (isPositionType(bottom)) {
-        if (bottom === "auto") {
-          node.setPositionAuto(Edge.Bottom)
-        } else {
-          node.setPosition(Edge.Bottom, bottom)
-        }
-      }
-      if (isPositionType(left)) {
-        if (left === "auto") {
-          node.setPositionAuto(Edge.Left)
-        } else {
-          node.setPosition(Edge.Left, left)
-        }
-      }
-      this.requestLayout()
-    } else {
-      if (typeof top === "number" && this._positionType === "absolute") {
-        this._y = top
-      }
-      if (typeof left === "number" && this._positionType === "absolute") {
-        this._x = left
-      }
-      this.needsUpdate()
-      this._yogaPerformancePositionUpdated = false
     }
+    if (isPositionType(right)) {
+      if (right === "auto") {
+        node.setPositionAuto(Edge.Right)
+      } else {
+        node.setPosition(Edge.Right, right)
+      }
+    }
+    if (isPositionType(bottom)) {
+      if (bottom === "auto") {
+        node.setPositionAuto(Edge.Bottom)
+      } else {
+        node.setPosition(Edge.Bottom, bottom)
+      }
+    }
+    if (isPositionType(left)) {
+      if (left === "auto") {
+        node.setPositionAuto(Edge.Left)
+      } else {
+        node.setPosition(Edge.Left, left)
+      }
+    }
+    this.needsUpdate()
   }
 
   public set flexGrow(grow: number) {
     this.layoutNode.yogaNode.setFlexGrow(grow)
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set flexShrink(shrink: number) {
     this.layoutNode.yogaNode.setFlexShrink(shrink)
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set flexDirection(direction: FlexDirectionString) {
     this.layoutNode.yogaNode.setFlexDirection(parseFlexDirection(direction))
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set alignItems(alignItems: AlignString) {
     this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set justifyContent(justifyContent: JustifyString) {
     this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set flexBasis(basis: number | "auto" | undefined) {
     if (isFlexBasisType(basis)) {
       this.layoutNode.yogaNode.setFlexBasis(basis)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set minWidth(minWidth: number | `${number}%` | undefined) {
     if (isSizeType(minWidth)) {
       this.layoutNode.yogaNode.setMinWidth(minWidth)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set maxWidth(maxWidth: number | `${number}%` | undefined) {
     if (isSizeType(maxWidth)) {
       this.layoutNode.yogaNode.setMaxWidth(maxWidth)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set minHeight(minHeight: number | `${number}%` | undefined) {
     if (isSizeType(minHeight)) {
       this.layoutNode.yogaNode.setMinHeight(minHeight)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
     if (isSizeType(maxHeight)) {
       this.layoutNode.yogaNode.setMaxHeight(maxHeight)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -720,35 +702,35 @@ export abstract class Renderable extends EventEmitter {
       node.setMargin(Edge.Right, margin)
       node.setMargin(Edge.Bottom, margin)
       node.setMargin(Edge.Left, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Top, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Right, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Bottom, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Left, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -759,35 +741,35 @@ export abstract class Renderable extends EventEmitter {
       node.setPadding(Edge.Right, padding)
       node.setPadding(Edge.Bottom, padding)
       node.setPadding(Edge.Left, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingTop(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Top, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingRight(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Right, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingBottom(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Bottom, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -798,10 +780,8 @@ export abstract class Renderable extends EventEmitter {
   public updateFromLayout(): void {
     const layout = this.layoutNode.yogaNode.getComputedLayout()
 
-    if (this._positionType === "relative" || this._yogaPerformancePositionUpdated) {
-      this._x = layout.left
-      this._y = layout.top
-    }
+    this._x = layout.left
+    this._y = layout.top
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
@@ -859,20 +839,6 @@ export abstract class Renderable extends EventEmitter {
     // Override in subclasses for additional resize logic
   }
 
-  protected requestLayout(): void {
-    if (!this._yogaPerformancePositionUpdated) {
-      const layout = this.layoutNode.yogaNode.getComputedLayout()
-
-      if (layout.left !== this._x || layout.top !== this._y) {
-        this.layoutNode.yogaNode.setPosition(Edge.Left, this._x)
-        this.layoutNode.yogaNode.setPosition(Edge.Top, this._y)
-      }
-      this._yogaPerformancePositionUpdated = true
-    }
-
-    this.needsUpdate()
-  }
-
   private replaceParent(obj: Renderable) {
     if (obj.parent) {
       obj.parent.remove(obj.id)
@@ -907,7 +873,7 @@ export abstract class Renderable extends EventEmitter {
       this.propagateLiveCount(obj._liveCount)
     }
 
-    this.requestLayout()
+    this.needsUpdate()
 
     this.emit("child:added", obj)
 
@@ -955,7 +921,7 @@ export abstract class Renderable extends EventEmitter {
 
         const childLayoutNode = obj.getLayoutNode()
         this.layoutNode.removeChild(childLayoutNode)
-        this.requestLayout()
+        this.needsUpdate()
 
         obj.parent = null
         obj.propagateContext(null)
@@ -1150,7 +1116,7 @@ export class RootRenderable extends Renderable {
     this.calculateLayout()
   }
 
-  public requestLayout(): void {
+  public needsUpdate(): void {
     this.needsUpdate()
   }
 
