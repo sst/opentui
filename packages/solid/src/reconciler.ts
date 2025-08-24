@@ -13,7 +13,7 @@ import {
 } from "@opentui/core"
 import { createRenderer } from "solid-js/universal"
 import { elements, type Element } from "./elements"
-import { insertTextNode, removeTextNode, TextNode } from "./elements/text-node"
+import { TextNode } from "./elements/text-node"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 
@@ -23,7 +23,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
   log("Inserting node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id)
 
   if (node instanceof TextNode) {
-    return insertTextNode(parent, node, anchor)
+    return node.insert(parent, anchor)
   }
 
   // Renderable nodes
@@ -47,7 +47,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): v
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", node.id, "from parent:", parent.id)
   if (node instanceof TextNode) {
-    return removeTextNode(parent, node)
+    return node.remove(parent)
   }
   if (parent instanceof Renderable && node instanceof Renderable) {
     parent.remove(node.id)
