@@ -47,11 +47,11 @@ enum LogLevel {
   DEBUG = "DEBUG",
 }
 
-export const { capture } = singleton('ConsoleCapture', () => {
+export const { capture } = singleton("ConsoleCapture", () => {
   const capture = new Capture()
   const mockStdout = new CapturedWritableStream("stdout", capture)
   const mockStderr = new CapturedWritableStream("stderr", capture)
-  
+
   if (process.env.SKIP_CONSOLE_CACHE !== "true") {
     global.console = new Console({
       stdout: mockStdout,
@@ -65,9 +65,8 @@ export const { capture } = singleton('ConsoleCapture', () => {
     })
   }
 
-  return { capture };
+  return { capture }
 })
-
 
 class TerminalConsoleCache extends EventEmitter {
   private originalConsole: {
@@ -175,10 +174,10 @@ class TerminalConsoleCache extends EventEmitter {
   }
 }
 
-const terminalConsoleCache = singleton('TerminalConsoleCache', () => {
+const terminalConsoleCache = singleton("TerminalConsoleCache", () => {
   const terminalConsoleCache = new TerminalConsoleCache()
   process.on("exit", () => {
-      terminalConsoleCache.destroy()
+    terminalConsoleCache.destroy()
   })
   return terminalConsoleCache
 })

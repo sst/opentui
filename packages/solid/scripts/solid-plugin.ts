@@ -11,14 +11,14 @@ const solidTransformPlugin: BunPlugin = {
     build.onLoad({ filter: /\/node_modules\/solid-js\/dist\/server\.js$/ }, async (args) => {
       const { readFile } = await import("node:fs/promises")
       const path = args.path.replace("server.js", "solid.js")
-      const file = Bun.file(path);
-      const code = await file.text();
+      const file = Bun.file(path)
+      const code = await file.text()
       return { contents: code, loader: "js" }
     })
     build.onLoad({ filter: /\.(js|ts)x$/ }, async (args) => {
       const { readFile } = await import("node:fs/promises")
-      const file = Bun.file(args.path);
-      const code = await file.text();
+      const file = Bun.file(args.path)
+      const code = await file.text()
       const transforms = await transformAsync(code, {
         filename: args.path,
         // env: {

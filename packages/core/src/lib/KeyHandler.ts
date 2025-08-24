@@ -27,7 +27,7 @@ let keyHandler: KeyHandler | null = null
 
 export function getKeyHandler(): KeyHandler {
   if (!keyHandler) {
-    keyHandler = singleton('KeyHandler', () => new KeyHandler())
+    keyHandler = singleton("KeyHandler", () => new KeyHandler())
   }
   return keyHandler
 }
