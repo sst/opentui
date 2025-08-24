@@ -136,6 +136,29 @@ function MyComponent() {
 }
 ```
 
+#### `useTerminalDimensions()`
+
+Get current terminal dimensions and automatically update when the terminal is resized.
+
+```tsx
+import { useTerminalDimensions } from "@opentui/react"
+
+function MyComponent() {
+  const { width, height } = useTerminalDimensions()
+
+  return (
+    <group>
+      <text>Terminal dimensions: {width}x{height}</text>
+      <box style={{ width: Math.floor(width / 2), height: Math.floor(height / 3) }}>
+        <text>Half-width, third-height box</text>
+      </box>
+    </group>
+  )
+}
+```
+
+**Returns:** An object with `width` and `height` properties representing the current terminal dimensions.
+
 ## Components
 
 ### Text Component
