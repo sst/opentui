@@ -78,8 +78,8 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-singleton('ProcessExitSignals', () => {
-  ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
+singleton("ProcessExitSignals", () => {
+  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
     process.on(signal, () => {
       process.exit()
     })
@@ -130,7 +130,7 @@ enum RendererControlState {
 }
 
 export class CliRenderer extends EventEmitter {
-  private static animationFrameId = 0;
+  private static animationFrameId = 0
   private lib: RenderLib
   public rendererPtr: Pointer
   private stdin: NodeJS.ReadStream
