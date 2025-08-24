@@ -1,8 +1,7 @@
 import { Renderable, TextRenderable, type TextChunk, type TextOptions } from "@opentui/core"
-import type { DomNode } from "../reconciler"
+import { type DomNode, insertNode as insertRenderable } from "../reconciler"
 import { getNextId } from "../utils/id-counter"
 import { log } from "../utils/log"
-import { insertRenderable } from "./core-node"
 
 const GHOST_NODE_TAG = "text-ghost" as const
 
