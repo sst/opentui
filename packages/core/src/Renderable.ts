@@ -1116,10 +1116,6 @@ export class RootRenderable extends Renderable {
     this.calculateLayout()
   }
 
-  public needsUpdate(): void {
-    this.needsUpdate()
-  }
-
   protected propagateLiveCount(delta: number): void {
     const oldCount = this._liveCount
     this._liveCount += delta
