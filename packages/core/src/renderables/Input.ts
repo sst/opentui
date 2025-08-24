@@ -294,6 +294,16 @@ export class InputRenderable extends Renderable {
     this.needsUpdate()
   }
 
+  public updateFromLayout(): void {
+    super.updateFromLayout()
+    this.updateCursorPosition()
+  }
+
+  protected onResize(width: number, height: number): void {
+    super.onResize(width, height)
+    this.updateCursorPosition()
+  }
+
   protected destroySelf(): void {
     if (this._focused) {
       CliRenderer.setCursorPosition(0, 0, false)
