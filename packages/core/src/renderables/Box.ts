@@ -176,6 +176,6 @@ export class BoxRenderable extends Renderable {
     node.setBorder(Edge.Right, this.borderSides.right ? 1 : 0)
     node.setBorder(Edge.Top, this.borderSides.top ? 1 : 0)
     node.setBorder(Edge.Bottom, this.borderSides.bottom ? 1 : 0)
-    this.requestLayout()
+    this.needsUpdate()
   }
 }
