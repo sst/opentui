@@ -211,11 +211,18 @@ export class TextRenderable extends Renderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
-      const clipRect = {
-        x: this.x,
-        y: this.y,
-        width: this.width,
-        height: this.height,
+      const selfRect = { x: this.x, y: this.y, width: this.width, height: this.height }
+      const parentClip = this.ctx?.getClipRect ? this.ctx.getClipRect() : null
+      let clipRect = selfRect
+      if (parentClip) {
+        const ix1 = Math.max(selfRect.x, parentClip.x)
+        const iy1 = Math.max(selfRect.y, parentClip.y)
+        const ix2 = Math.min(selfRect.x + selfRect.width, parentClip.x + parentClip.width)
+        const iy2 = Math.min(selfRect.y + selfRect.height, parentClip.y + parentClip.height)
+        const iw = Math.max(0, ix2 - ix1)
+        const ih = Math.max(0, iy2 - iy1)
+        if (iw <= 0 || ih <= 0) return
+        clipRect = { x: ix1, y: iy1, width: iw, height: ih }
       }
 
       buffer.drawTextBuffer(this.textBuffer, this.x, this.y, clipRect)

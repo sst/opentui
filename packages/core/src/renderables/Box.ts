@@ -163,6 +163,23 @@ export class BoxRenderable extends Renderable {
   protected renderSelf(buffer: OptimizedBuffer): void {
     const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
 
+    // Compute clip intersection if parent has an active clip rect
+    const clip = this.ctx?.getClipRect ? this.ctx.getClipRect() : null
+    let clipRect: { x: number; y: number; width: number; height: number } | undefined
+    if (clip) {
+      const ix1 = Math.max(this.x, clip.x)
+      const iy1 = Math.max(this.y, clip.y)
+      const ix2 = Math.min(this.x + this.width, clip.x + clip.width)
+      const iy2 = Math.min(this.y + this.height, clip.y + clip.height)
+      const iw = Math.max(0, ix2 - ix1)
+      const ih = Math.max(0, iy2 - iy1)
+      if (iw > 0 && ih > 0) {
+        clipRect = { x: ix1, y: iy1, width: iw, height: ih }
+      } else {
+        return
+      }
+    }
+
     buffer.drawBox({
       x: this.x,
       y: this.y,
@@ -176,6 +193,7 @@ export class BoxRenderable extends Renderable {
       shouldFill: this.shouldFill,
       title: this._title,
       titleAlignment: this._titleAlignment,
+      clipRect,
     })
   }
 
