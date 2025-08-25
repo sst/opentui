@@ -38,7 +38,6 @@ function createText(value: string | number | boolean | TextChunk): OpenTUINode {
 
 export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
   createElement(type: string) {
-    console.log(`createElement: type="${type}"`)
     const RenderableClass = elements[type as Element]
     if (!RenderableClass) throw new Error(`${type} is not a valid element`)
 
@@ -53,11 +52,11 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
       console.log(`insert: SKIPPING null element.`)
       return
     }
-    console.log(`insert: el.id="${el.id}" into parent.id="${parent.id}" at anchor.id="${anchor?.id || "null"}"`)
     insertNode(parent, el, anchor)
   },
 
   patchProp(el, key, prevValue, nextValue) {
+    console.log(el.id, key, nextValue)
     if (el instanceof TextNode) {
       return
     }
