@@ -281,68 +281,50 @@ export class InputRenderable extends Renderable {
   }
 
   public set backgroundColor(value: ColorInput) {
-    let _value = value ?? this._defaultOptions.backgroundColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._backgroundColor !== newColor) {
-        this._backgroundColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
+    if (this._backgroundColor !== newColor) {
+      this._backgroundColor = newColor
+      this.needsUpdate()
     }
   }
 
   public set textColor(value: ColorInput) {
-    let _value = value ?? this._defaultOptions.textColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._textColor !== newColor) {
-        this._textColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.textColor)
+    if (this._textColor !== newColor) {
+      this._textColor = newColor
+      this.needsUpdate()
     }
   }
 
   public set focusedBackgroundColor(value: ColorInput) {
-    let _value = value ?? this._defaultOptions.focusedBackgroundColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._focusedBackgroundColor !== newColor) {
-        this._focusedBackgroundColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.focusedBackgroundColor)
+    if (this._focusedBackgroundColor !== newColor) {
+      this._focusedBackgroundColor = newColor
+      this.needsUpdate()
     }
   }
 
   public set focusedTextColor(value: ColorInput) {
-    let _value = value ?? this._defaultOptions.focusedTextColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._focusedTextColor !== newColor) {
-        this._focusedTextColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.focusedTextColor)
+    if (this._focusedTextColor !== newColor) {
+      this._focusedTextColor = newColor
+      this.needsUpdate()
     }
   }
 
   public set placeholderColor(value: ColorInput) {
-    let _value = value ?? this._defaultOptions.placeholderColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._placeholderColor !== newColor) {
-        this._placeholderColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.placeholderColor)
+    if (this._placeholderColor !== newColor) {
+      this._placeholderColor = newColor
+      this.needsUpdate()
     }
   }
 
   public set cursorColor(value: ColorInput) {
-    let _value = value ?? this._defaultOptions.cursorColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._cursorColor !== newColor) {
-        this._cursorColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.cursorColor)
+    if (this._cursorColor !== newColor) {
+      this._cursorColor = newColor
+      this.needsUpdate()
     }
   }
 

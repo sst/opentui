@@ -79,13 +79,10 @@ export class BoxRenderable extends Renderable {
   }
 
   public set backgroundColor(value: RGBA | string | undefined) {
-    let _value = value ?? this._defaultOptions.backgroundColor
-    if (_value) {
-      const newColor = parseColor(_value)
-      if (this._backgroundColor !== newColor) {
-        this._backgroundColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
+    if (this._backgroundColor !== newColor) {
+      this._backgroundColor = newColor
+      this.needsUpdate()
     }
   }
 
@@ -120,8 +117,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set borderColor(value: RGBA | string) {
-    let _value = value ?? this._defaultOptions.borderColor
-    const newColor = parseColor(_value)
+    const newColor = parseColor(value ?? this._defaultOptions.borderColor)
     if (this._borderColor !== newColor) {
       this._borderColor = newColor
       this.needsUpdate()
@@ -133,8 +129,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set focusedBorderColor(value: RGBA | string) {
-    let _value = value ?? this._defaultOptions.focusedBorderColor
-    const newColor = parseColor(_value)
+    const newColor = parseColor(value ?? this._defaultOptions.focusedBorderColor)
     if (this._focusedBorderColor !== newColor) {
       this._focusedBorderColor = newColor
       if (this._focused) {
