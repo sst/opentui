@@ -40,7 +40,7 @@ class LiveButton extends BoxRenderable {
   private label: string
 
   constructor(id: string, options: BoxOptions & { label: string }) {
-    super(id, { zIndex: 100, ...options })
+    super(id, { zIndex: 100, border: true, ...options })
 
     this.label = options.label
     const base = this.backgroundColor

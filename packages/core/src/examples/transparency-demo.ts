@@ -34,6 +34,7 @@ class DraggableTransparentBox extends BoxRenderable {
       position: "absolute",
       left: x,
       top: y,
+      border: true,
     })
     this.alphaPercentage = Math.round(bg.a * 100)
   }

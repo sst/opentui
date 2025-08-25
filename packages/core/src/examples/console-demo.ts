@@ -57,6 +57,7 @@ class ConsoleButton extends BoxRenderable {
       borderStyle: "rounded",
       title: label,
       titleAlignment: "center",
+      border: true,
     })
 
     this.logType = logType
