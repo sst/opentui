@@ -286,7 +286,6 @@ class TimelineExample {
         height: 1,
         backgroundColor: "#FFE66D",
         zIndex: 2,
-        border: false,
       })
       this.parentContainer.add(newMainProgressBox)
     }
@@ -303,7 +302,6 @@ class TimelineExample {
         height: 1,
         backgroundColor: "#FF6B6B",
         zIndex: 2,
-        border: false,
       })
       this.parentContainer.add(newSub1ProgressBox)
     }
@@ -320,7 +318,6 @@ class TimelineExample {
         height: 1,
         backgroundColor: "#4ECDC4",
         zIndex: 2,
-        border: false,
       })
       this.parentContainer.add(newSub2ProgressBox)
     }

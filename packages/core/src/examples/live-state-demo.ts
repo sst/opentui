@@ -157,6 +157,7 @@ function addDemoRenderable(renderer: CliRenderer): void {
     borderStyle: "double",
     title: "Demo Renderable",
     titleAlignment: "center",
+    border: true,
   })
 
   renderer.root.add(demoRenderable)

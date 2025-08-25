@@ -69,6 +69,7 @@ class SplitModeAnimations {
       borderColor: "#4a4a6a",
       title: "◆ SYSTEM MONITOR ◆",
       titleAlignment: "center",
+      border: true,
     })
     this.container.add(statusPanel)
 
@@ -99,7 +100,6 @@ class SplitModeAnimations {
         height: 1,
         backgroundColor: "#333333",
         zIndex: 1,
-        border: false,
       })
       this.container.add(bgBar)
 
@@ -111,7 +111,6 @@ class SplitModeAnimations {
         height: 1,
         backgroundColor: system.color,
         zIndex: 2,
-        border: false,
       })
       this.container.add(progressBar)
       this.systemLoadingBars.push(progressBar)
@@ -129,6 +128,7 @@ class SplitModeAnimations {
       borderColor: "#8a4a8a",
       title: "◇ REAL-TIME STATS ◇",
       titleAlignment: "center",
+      border: true,
     })
     this.container.add(statsPanel)
 
@@ -158,7 +158,6 @@ class SplitModeAnimations {
         height: 1,
         backgroundColor: color,
         zIndex: 3,
-        border: false,
       })
       this.container.add(orb)
       this.movingOrbs.push(orb)
@@ -175,7 +174,6 @@ class SplitModeAnimations {
         height: 1,
         backgroundColor: color,
         zIndex: 3,
-        border: false,
       })
       this.container.add(pulse)
       this.pulsingElements.push(pulse)

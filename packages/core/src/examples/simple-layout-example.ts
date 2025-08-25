@@ -222,6 +222,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     backgroundColor: "#3b82f6",
     borderStyle: "single",
     alignItems: "center",
+    border: true,
   })
 
   headerText = new TextRenderable("header-text", {
@@ -253,6 +254,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
   sidebarText = new TextRenderable("sidebar-text", {
@@ -275,6 +277,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
   mainContentText = new TextRenderable("main-content-text", {
@@ -297,6 +300,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
   rightSidebarText = new TextRenderable("right-sidebar-text", {
@@ -319,6 +323,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
   footerText = new TextRenderable("footer-text", {
@@ -343,6 +348,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
   moveableText = new TextRenderable("moveable-text", {
@@ -367,6 +373,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
   absolutePositionedText = new TextRenderable("absolute-positioned-text", {

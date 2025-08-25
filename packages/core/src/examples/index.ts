@@ -318,6 +318,7 @@ class ExampleSelector {
       titleAlignment: "center",
       backgroundColor: "transparent",
       shouldFill: false,
+      border: true,
     })
 
     this.selectElement = new SelectRenderable("example-selector", {

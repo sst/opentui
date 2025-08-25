@@ -132,6 +132,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     borderColor: "#FFFFFF",
     title: "Shader Cube Demo",
     titleAlignment: "center",
+    border: true,
   })
   parentContainer.add(backgroundBox)
 

@@ -42,6 +42,7 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#50565d",
     title: "Text Selection Demo",
     titleAlignment: "center",
+    border: true,
   })
   renderer.root.add(mainContainer)
 
@@ -62,6 +63,7 @@ export function run(renderer: CliRenderer): void {
     title: "Document Section 1",
     flexDirection: "column",
     padding: 1,
+    border: true,
   })
   leftGroup.add(box1)
 
@@ -98,6 +100,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 25,
     borderColor: "#a371f7",
     borderStyle: "double",
+    border: true,
   })
   leftGroup.add(nestedBox)
 
@@ -132,6 +135,7 @@ export function run(renderer: CliRenderer): void {
     borderStyle: "rounded",
     flexDirection: "column",
     padding: 1,
+    border: true,
   })
   rightGroup.add(box2)
 
@@ -178,6 +182,7 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#2ea043",
     title: "README",
     borderStyle: "single",
+    border: true,
   })
   renderer.root.add(floatingBox)
 
@@ -215,6 +220,7 @@ ${green("✓")} Styled text support`,
     title: "Selection Status",
     titleAlignment: "left",
     padding: 1,
+    border: true,
   })
   renderer.root.add(statusBox)
 
