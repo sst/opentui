@@ -1,8 +1,8 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import { Renderable, type RenderableOptions } from "../Renderable"
 
 export interface SelectOption {
   name: string
@@ -58,20 +58,38 @@ export class SelectRenderable extends Renderable {
   private fontHeight: number
   private _fastScrollStep: number
 
+  protected _defaultOptions = {
+    backgroundColor: "transparent",
+    textColor: "#FFFFFF",
+    focusedBackgroundColor: "#1a1a1a",
+    focusedTextColor: "#FFFFFF",
+    selectedBackgroundColor: "#334455",
+    selectedTextColor: "#FFFF00",
+    descriptionColor: "#888888",
+    selectedDescriptionColor: "#CCCCCC",
+    showScrollIndicator: false,
+    wrapSelection: false,
+    showDescription: true,
+    itemSpacing: 0,
+    fastScrollStep: 5,
+  } satisfies Partial<SelectRenderableOptions>
+
   constructor(id: string, options: SelectRenderableOptions) {
     super(id, { ...options, buffered: true })
 
-    this._backgroundColor = parseColor(options.backgroundColor || "transparent")
-    this._textColor = parseColor(options.textColor || "#FFFFFF")
-    this._focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
-    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
+    this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
+    this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)
+    this._focusedBackgroundColor = parseColor(
+      options.focusedBackgroundColor || this._defaultOptions.focusedBackgroundColor,
+    )
+    this._focusedTextColor = parseColor(options.focusedTextColor || this._defaultOptions.focusedTextColor)
     this._options = options.options || []
 
-    this._showScrollIndicator = options.showScrollIndicator ?? false
-    this._wrapSelection = options.wrapSelection ?? false
-    this._showDescription = options.showDescription ?? true
+    this._showScrollIndicator = options.showScrollIndicator ?? this._defaultOptions.showScrollIndicator
+    this._wrapSelection = options.wrapSelection ?? this._defaultOptions.wrapSelection
+    this._showDescription = options.showDescription ?? this._defaultOptions.showDescription
     this._font = options.font
-    this._itemSpacing = options.itemSpacing || 0
+    this._itemSpacing = options.itemSpacing || this._defaultOptions.itemSpacing
 
     this.fontHeight = this._font ? measureText({ text: "A", font: this._font }).height : 1
     this.linesPerItem = this._showDescription
@@ -85,11 +103,15 @@ export class SelectRenderable extends Renderable {
 
     this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
 
-    this._selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
-    this._selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
-    this._descriptionColor = parseColor(options.descriptionColor || "#888888")
-    this._selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
-    this._fastScrollStep = options.fastScrollStep || 5
+    this._selectedBackgroundColor = parseColor(
+      options.selectedBackgroundColor || this._defaultOptions.selectedBackgroundColor,
+    )
+    this._selectedTextColor = parseColor(options.selectedTextColor || this._defaultOptions.selectedTextColor)
+    this._descriptionColor = parseColor(options.descriptionColor || this._defaultOptions.descriptionColor)
+    this._selectedDescriptionColor = parseColor(
+      options.selectedDescriptionColor || this._defaultOptions.selectedDescriptionColor,
+    )
+    this._fastScrollStep = options.fastScrollStep || this._defaultOptions.fastScrollStep
 
     this.needsUpdate() // Initial render needed
   }
@@ -328,44 +350,68 @@ export class SelectRenderable extends Renderable {
     this._wrapSelection = wrap
   }
 
-  public set backgroundColor(color: ColorInput) {
-    this._backgroundColor = parseColor(color)
-    this.needsUpdate()
+  public set backgroundColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
+    if (this._backgroundColor !== newColor) {
+      this._backgroundColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set textColor(color: ColorInput) {
-    this._textColor = parseColor(color)
-    this.needsUpdate()
+  public set textColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.textColor)
+    if (this._textColor !== newColor) {
+      this._textColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set focusedBackgroundColor(color: ColorInput) {
-    this._focusedBackgroundColor = parseColor(color)
-    this.needsUpdate()
+  public set focusedBackgroundColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.focusedBackgroundColor)
+    if (this._focusedBackgroundColor !== newColor) {
+      this._focusedBackgroundColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set focusedTextColor(color: ColorInput) {
-    this._focusedTextColor = parseColor(color)
-    this.needsUpdate()
+  public set focusedTextColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.focusedTextColor)
+    if (this._focusedTextColor !== newColor) {
+      this._focusedTextColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set selectedBackgroundColor(color: ColorInput) {
-    this._selectedBackgroundColor = parseColor(color)
-    this.needsUpdate()
+  public set selectedBackgroundColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.selectedBackgroundColor)
+    if (this._selectedBackgroundColor !== newColor) {
+      this._selectedBackgroundColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set selectedTextColor(color: ColorInput) {
-    this._selectedTextColor = parseColor(color)
-    this.needsUpdate()
+  public set selectedTextColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.selectedTextColor)
+    if (this._selectedTextColor !== newColor) {
+      this._selectedTextColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set descriptionColor(color: ColorInput) {
-    this._descriptionColor = parseColor(color)
-    this.needsUpdate()
+  public set descriptionColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.descriptionColor)
+    if (this._descriptionColor !== newColor) {
+      this._descriptionColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set selectedDescriptionColor(color: ColorInput) {
-    this._selectedDescriptionColor = parseColor(color)
-    this.needsUpdate()
+  public set selectedDescriptionColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.selectedDescriptionColor)
+    if (this._selectedDescriptionColor !== newColor) {
+      this._selectedDescriptionColor = newColor
+      this.needsUpdate()
+    }
   }
 
   public set font(font: keyof typeof fonts) {
