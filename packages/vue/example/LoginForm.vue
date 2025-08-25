@@ -11,10 +11,6 @@ const handleKeyPress = (key: ParsedKey) => {
   if (key.name === "tab") {
     focused.value = focused.value === "username" ? "password" : "username"
   }
-
-  if (key.ctrl && key.name === "k") {
-    console.log("Ctrl+K pressed - would toggle debug overlay")
-  }
 }
 
 const handleUsernameChange = (value: string) => {

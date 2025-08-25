@@ -1,4 +1,4 @@
-import { _render } from ".."
+import { render } from "@opentui/vue"
 import App from "./App.vue"
 
-_render(App)
+render(App)

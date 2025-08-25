@@ -1,146 +1,86 @@
-// types/opentui.d.ts
-import { DefineComponent } from "vue"
-import {
-  ASCIIFontRenderable,
-  BoxRenderable,
-  GroupRenderable,
-  InputRenderable,
-  SelectRenderable,
-  TabSelectRenderable,
-  TextRenderable,
-  type TextChunk,
-  type StyledText,
-  type SelectOption,
-  type Event,
+export {}
+
+import type { DefineComponent } from "vue"
+import type {
+  ASCIIFontOptions,
+  BoxOptions,
+  InputRenderableOptions,
+  RenderableOptions,
+  SelectOption,
+  SelectRenderableOptions,
+  StyledText,
+  TabSelectOption,
+  TabSelectRenderableOptions,
+  TextChunk,
+  TextOptions,
 } from "@opentui/core"
 
-import "opentui/core"
+type NonStyledProps = "buffered" | "live" | "enableLayout" | "selectable"
+
+type ContainerProps<TOptions> = TOptions
+
+type VueComponentProps<TOptions, TNonStyled extends keyof TOptions> = TOptions & {
+  style?: Partial<Omit<TOptions, TNonStyled>>
+}
+
+export type TextProps = VueComponentProps<TextOptions, NonStyledProps | "content"> & {
+  children?:
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | StyledText
+    | TextChunk
+    | Array<string | number | boolean | null | undefined | StyledText | TextChunk>
+}
+
+export type BoxProps = VueComponentProps<ContainerProps<BoxOptions>, NonStyledProps | "title">
+
+export type GroupProps = VueComponentProps<ContainerProps<RenderableOptions>, NonStyledProps>
+
+export type InputProps = VueComponentProps<InputRenderableOptions, NonStyledProps> & {
+  focused?: boolean
+  onInput?: (value: string) => void
+  onChange?: (value: string) => void
+  onSubmit?: (value: string) => void
+}
+
+export type SelectProps = VueComponentProps<SelectRenderableOptions, NonStyledProps> & {
+  focused?: boolean
+  onChange?: (index: number, option: SelectOption | null) => void
+  onSelect?: (index: number, option: SelectOption | null) => void
+}
+
+export type AsciiFontProps = VueComponentProps<ASCIIFontOptions, NonStyledProps | "text">
+
+export type TabSelectProps = VueComponentProps<TabSelectRenderableOptions, NonStyledProps> & {
+  focused?: boolean
+  onChange?: (index: number, option: TabSelectOption | null) => void
+  onSelect?: (index: number, option: TabSelectOption | null) => void
+}
 
 declare module "@vue/runtime-core" {
   export interface GlobalComponents {
-    // Define your custom OpenTUI elements
-    "ascii-font": DefineComponent<{
-      text?: string
-      font?: "block" | "shade" | "slick" | "tiny"
-      style?: Record<string, any>
-    }>
-
-    box: DefineComponent<{
-      title?: string
-      borderStyle?: "single" | "double" | "rounded" | "heavy"
-      backgroundColor?: string
-      padding?: number
-      margin?: number
-      alignItems?: "flex-start" | "center" | "flex-end"
-      justifyContent?: "flex-start" | "center" | "flex-end" | "space-between"
-      flexDirection?: "row" | "column"
-      height?: number
-      width?: number
-      style?: Record<string, any>
-    }>
-
-    group: DefineComponent<{
-      flexDirection?: "row" | "column"
-      alignItems?: "flex-start" | "center" | "flex-end"
-      justifyContent?: "flex-start" | "center" | "flex-end" | "space-between"
-      style?: Record<string, any>
-    }>
-
-    input: DefineComponent<{
-      placeholder?: string
-      focused?: boolean
-      onInput?: (value: string) => void
-      onChange?: (value: string) => void
-      onSubmit?: (value: string) => void
-      style?: Record<string, any>
-    }>
-
-    select: DefineComponent<{
-      options?: SelectOption[]
-      focused?: boolean
-      showScrollIndicator?: boolean
-      onChange?: (event: Event, option: SelectOption | null) => void
-      style?: Record<string, any>
-    }>
-
-    "tab-select": DefineComponent<{
-      options?: SelectOption[]
-      focused?: boolean
-      onChange?: (event: Event, option: SelectOption | null) => void
-      style?: Record<string, any>
-    }>
-
-    text: DefineComponent<{
-      content?: string | StyledText | TextChunk
-      fg?: string
-      attributes?: number
-      style?: Record<string, any>
-    }>
+    "ascii-font": DefineComponent<AsciiFontProps>
+    box: DefineComponent<BoxProps>
+    group: DefineComponent<GroupProps>
+    input: DefineComponent<InputProps>
+    select: DefineComponent<SelectProps>
+    "tab-select": DefineComponent<TabSelectProps>
+    text: DefineComponent<TextProps>
   }
 }
 
-// // Also declare them as intrinsic elements for JSX/TSX support
+// Augment for JSX/TSX support in Vue
 declare module "@vue/runtime-dom" {
   export interface IntrinsicElementAttributes {
-    "ascii-font": {
-      text?: string
-      font?: "block" | "shade" | "slick" | "tiny"
-      style?: Record<string, any>
-    }
-
-    box: {
-      title?: string
-      borderStyle?: "single" | "double" | "rounded" | "heavy"
-      backgroundColor?: string
-      padding?: number
-      margin?: number
-      alignItems?: "flex-start" | "center" | "flex-end"
-      justifyContent?: "flex-start" | "center" | "flex-end" | "space-between"
-      flexDirection?: "row" | "column"
-      height?: number
-      width?: number
-      style?: Record<string, any>
-    }
-
-    group: {
-      flexDirection?: "row" | "column"
-      alignItems?: "flex-start" | "center" | "flex-end"
-      justifyContent?: "flex-start" | "center" | "flex-end" | "space-between"
-      style?: Record<string, any>
-    }
-
-    input: {
-      placeholder?: string
-      focused?: boolean
-      onInput?: (value: string) => void
-      onChange?: (value: string) => void
-      onSubmit?: (value: string) => void
-      style?: Record<string, any>
-    }
-
-    select: {
-      options?: SelectOption[]
-      focused?: boolean
-      showScrollIndicator?: boolean
-      onChange?: (event: Event, option: SelectOption | null) => void
-      style?: Record<string, any>
-    }
-
-    "tab-select": {
-      options?: SelectOption[]
-      focused?: boolean
-      onChange?: (event: Event, option: SelectOption | null) => void
-      style?: Record<string, any>
-    }
-
-    text: {
-      content?: string | StyledText | TextChunk
-      fg?: string
-      attributes?: number
-      style?: Record<string, any>
-    }
+    "ascii-font": AsciiFontProps
+    box: BoxProps
+    group: GroupProps
+    input: InputProps
+    select: SelectProps
+    "tab-select": TabSelectProps
+    text: TextProps
   }
 }
-
-// Make sure to export the module
-export {}

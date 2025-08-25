@@ -22,7 +22,6 @@ import {
   TextRenderable,
 } from "@opentui/core"
 import type { JSX, Ref } from "solid-js"
-// export * from "./hooks"
 
 export const elements = {
   "ascii-font": ASCIIFontRenderable,
@@ -101,10 +100,7 @@ export type ASCIIFontElementProps = ElementProps<
   ASCIIFontOptions,
   ASCIIFontRenderable,
   "text" | "selectable" // NonStyleKeys
-> & {
-  // TODO: Needs more work to support children
-  // children?: TextChildTypes | Array<TextChildTypes>;
-}
+>
 export type ASCIIFontStyle = ASCIIFontElementProps["style"]
 
 export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps

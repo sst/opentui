@@ -12,6 +12,12 @@
   "private": true,
   "main": "index.ts",
   "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    }
+  },
   "scripts": {
     "build": "bun scripts/build.ts",
     "publish": "bun scripts/publish.ts"
