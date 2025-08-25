@@ -148,7 +148,9 @@ function MyComponent() {
 
   return (
     <group>
-      <text>Terminal dimensions: {width}x{height}</text>
+      <text>
+        Terminal dimensions: {width}x{height}
+      </text>
       <box style={{ width: Math.floor(width / 2), height: Math.floor(height / 3) }}>
         <text>Half-width, third-height box</text>
       </box>
