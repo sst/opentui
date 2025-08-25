@@ -1,15 +1,15 @@
+import { Edge } from "yoga-layout"
 import { type RenderableOptions, Renderable } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import {
-  type BorderStyle,
-  type BorderSides,
   type BorderCharacters,
+  type BorderSides,
   type BorderSidesConfig,
-  getBorderSides,
+  type BorderStyle,
   borderCharsToArray,
+  getBorderSides,
 } from "../lib"
-import { Edge } from "yoga-layout"
+import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
 
 export interface BoxOptions extends RenderableOptions {
   backgroundColor?: string | RGBA
@@ -36,20 +36,30 @@ export class BoxRenderable extends Renderable {
   protected _title?: string
   protected _titleAlignment: "left" | "center" | "right"
 
+  protected _defaultOptions = {
+    backgroundColor: "transparent",
+    borderStyle: "single",
+    border: false,
+    borderColor: "#FFFFFF",
+    shouldFill: true,
+    titleAlignment: "left",
+    focusedBorderColor: "#00AAFF",
+  } satisfies Partial<BoxOptions>
+
   constructor(id: string, options: BoxOptions) {
     super(id, options)
 
-    this._backgroundColor = parseColor(options.backgroundColor || "transparent")
-    this._border = options.border ?? true
-    this._borderStyle = options.borderStyle || "single"
-    this._borderColor = parseColor(options.borderColor || "#FFFFFF")
-    this._focusedBorderColor = parseColor(options.focusedBorderColor || "#00AAFF")
+    this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
+    this._border = options.border ?? this._defaultOptions.border
+    this._borderStyle = options.borderStyle || this._defaultOptions.borderStyle
+    this._borderColor = parseColor(options.borderColor || this._defaultOptions.borderColor)
+    this._focusedBorderColor = parseColor(options.focusedBorderColor || this._defaultOptions.focusedBorderColor)
     this._customBorderCharsObj = options.customBorderChars
     this._customBorderChars = this._customBorderCharsObj ? borderCharsToArray(this._customBorderCharsObj) : undefined
     this.borderSides = getBorderSides(this._border)
-    this.shouldFill = options.shouldFill ?? true
+    this.shouldFill = options.shouldFill ?? this._defaultOptions.shouldFill
     this._title = options.title
-    this._titleAlignment = options.titleAlignment || "left"
+    this._titleAlignment = options.titleAlignment || this._defaultOptions.titleAlignment
 
     this.applyYogaBorders()
   }
@@ -69,12 +79,10 @@ export class BoxRenderable extends Renderable {
   }
 
   public set backgroundColor(value: RGBA | string | undefined) {
-    if (value) {
-      const newColor = parseColor(value)
-      if (this._backgroundColor !== newColor) {
-        this._backgroundColor = newColor
-        this.needsUpdate()
-      }
+    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
+    if (this._backgroundColor !== newColor) {
+      this._backgroundColor = newColor
+      this.needsUpdate()
     }
   }
 
@@ -96,8 +104,9 @@ export class BoxRenderable extends Renderable {
   }
 
   public set borderStyle(value: BorderStyle) {
-    if (this._borderStyle !== value) {
-      this._borderStyle = value
+    let _value = value ?? this._defaultOptions.borderStyle
+    if (this._borderStyle !== _value) {
+      this._borderStyle = _value
       this._customBorderChars = undefined
       this.needsUpdate()
     }
@@ -108,7 +117,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set borderColor(value: RGBA | string) {
-    const newColor = parseColor(value)
+    const newColor = parseColor(value ?? this._defaultOptions.borderColor)
     if (this._borderColor !== newColor) {
       this._borderColor = newColor
       this.needsUpdate()
@@ -120,7 +129,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set focusedBorderColor(value: RGBA | string) {
-    const newColor = parseColor(value)
+    const newColor = parseColor(value ?? this._defaultOptions.focusedBorderColor)
     if (this._focusedBorderColor !== newColor) {
       this._focusedBorderColor = newColor
       if (this._focused) {

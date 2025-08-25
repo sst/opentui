@@ -226,6 +226,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "single",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(box1)
 
@@ -250,6 +251,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 1,
         borderStyle: "double",
         borderColor: "#FFFF00",
+        border: true,
       })
       tabGroup.add(box2)
 
@@ -367,6 +369,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "single",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(singleBox)
       const singleLabel = new TextRenderable("single-label", {
@@ -390,6 +393,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "double",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(doubleBox)
       const doubleLabel = new TextRenderable("double-label", {
@@ -413,6 +417,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "rounded",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(roundedBox)
       const roundedLabel = new TextRenderable("rounded-label", {
@@ -471,6 +476,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "single",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(partialAnimated)
       const partialAnimatedLabel = new TextRenderable("partial-animated-label", {
@@ -557,6 +563,7 @@ export function run(renderer: CliRenderer): void {
         borderStyle: "single",
         borderColor: "#FFFFFF",
         customBorderChars: asciiBorders,
+        border: true,
       })
       tabGroup.add(asciiBox)
       const asciiLabel = new TextRenderable("ascii-label", {
@@ -580,6 +587,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "single",
         borderColor: "#FFFFFF",
+        border: true,
       })
       blockBox.customBorderChars = blockBorders
       tabGroup.add(blockBox)
@@ -605,6 +613,7 @@ export function run(renderer: CliRenderer): void {
         borderStyle: "single",
         borderColor: "#FFFFFF",
         customBorderChars: starBorders,
+        border: true,
       })
       tabGroup.add(starBox)
       const starLabel = new TextRenderable("star-label", {
@@ -686,6 +695,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "rounded",
         borderColor: "#FF00FF",
+        border: true,
       })
       tabGroup.add(animatedBox)
 
@@ -699,6 +709,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "double",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(colorBox)
 
@@ -779,6 +790,7 @@ export function run(renderer: CliRenderer): void {
         borderColor: "#FFFFFF",
         title: "Left Aligned",
         titleAlignment: "left",
+        border: true,
       })
       tabGroup.add(titledLeft)
 
@@ -794,6 +806,7 @@ export function run(renderer: CliRenderer): void {
         borderColor: "#FFFFFF",
         title: "Centered Title",
         titleAlignment: "center",
+        border: true,
       })
       tabGroup.add(titledCenter)
 
@@ -809,6 +822,7 @@ export function run(renderer: CliRenderer): void {
         borderColor: "#FFFFFF",
         title: "Right Aligned",
         titleAlignment: "right",
+        border: true,
       })
       tabGroup.add(titledRight)
     },
@@ -846,6 +860,7 @@ export function run(renderer: CliRenderer): void {
         zIndex: 0,
         borderStyle: "double",
         borderColor: "#FFFFFF",
+        border: true,
       })
       tabGroup.add(interactiveBorder)
 

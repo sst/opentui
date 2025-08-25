@@ -10,7 +10,7 @@ const InputScene = () => {
   const [nameValue, setNameValue] = createSignal("")
 
   return (
-    <box height={4}>
+    <box height={4} border>
       <text>Name: {nameValue()}</text>
       <input focused onInput={(value) => setNameValue(value)} />
     </box>

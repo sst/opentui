@@ -52,6 +52,7 @@ export function ExtendExample() {
     <consoleButton
       label="Another Button"
       style={{
+        border: true,
         backgroundColor: "green",
       }}
     />

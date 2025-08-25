@@ -36,6 +36,7 @@ export function run(rendererInstance: CliRenderer): void {
     backgroundColor: "#0D1117",
     title: "HAST to Styled Text Demo",
     titleAlignment: "center",
+    border: true,
   })
   parentContainer.add(titleBox)
 
@@ -52,6 +53,7 @@ export function run(rendererInstance: CliRenderer): void {
     title: "TypeScript Code",
     titleAlignment: "left",
     paddingLeft: 1,
+    border: true,
   })
   parentContainer.add(codeBox)
 

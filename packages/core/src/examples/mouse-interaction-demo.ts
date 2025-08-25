@@ -61,6 +61,7 @@ class DraggableBox extends BoxRenderable {
       borderStyle: "rounded",
       title: label,
       titleAlignment: "center",
+      border: true,
     })
     this.baseWidth = width
     this.baseHeight = height

@@ -64,6 +64,7 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#FF44FF",
     title: "Parent A (z=100)",
     titleAlignment: "center",
+    border: true,
   })
   parentGroupA.add(boxA1)
 
@@ -88,6 +89,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 5,
     borderStyle: "single",
     borderColor: "#FF88FF",
+    border: true,
   })
   parentGroupA.add(boxA2)
 
@@ -114,6 +116,7 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#44FF44",
     title: "Parent B (z=50)",
     titleAlignment: "center",
+    border: true,
   })
   parentGroupB.add(boxB1)
 
@@ -138,6 +141,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 15,
     borderStyle: "single",
     borderColor: "#88FF88",
+    border: true,
   })
   parentGroupB.add(boxB2)
 
@@ -164,6 +168,7 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#FFFF44",
     title: "Parent C (z=20)",
     titleAlignment: "center",
+    border: true,
   })
   parentGroupC.add(boxC1)
 
@@ -188,6 +193,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 25,
     borderStyle: "single",
     borderColor: "#FFFF88",
+    border: true,
   })
   parentGroupC.add(boxC2)
 

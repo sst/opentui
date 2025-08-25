@@ -53,6 +53,7 @@ export function run(renderer: CliRenderer): void {
     flexDirection: "row",
     alignItems: "stretch",
     justifyContent: "space-between",
+    border: true,
   })
   parentContainerA.add(parentBoxA)
 
@@ -68,6 +69,7 @@ export function run(renderer: CliRenderer): void {
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 8,
+    border: true,
   })
   parentBoxA.add(childA1)
 
@@ -83,6 +85,7 @@ export function run(renderer: CliRenderer): void {
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 8,
+    border: true,
   })
   parentBoxA.add(childA2)
 
@@ -98,6 +101,7 @@ export function run(renderer: CliRenderer): void {
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 8,
+    border: true,
   })
   parentBoxA.add(childA3)
 
@@ -124,6 +128,7 @@ export function run(renderer: CliRenderer): void {
     padding: 1,
     flexDirection: "column",
     justifyContent: "space-between",
+    border: true,
   })
   parentContainerB.add(parentBoxB)
 
@@ -171,6 +176,7 @@ export function run(renderer: CliRenderer): void {
     titleAlignment: "center",
     padding: 1,
     flexDirection: "column",
+    border: true,
   })
   staticContainer.add(staticBox)
 

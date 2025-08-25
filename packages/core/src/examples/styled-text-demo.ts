@@ -89,6 +89,7 @@ ${bgYellow(fg("black")(" NOTICE "))} System update available`
     borderStyle: "single",
     title: "COMPLEX REAL-TIME DASHBOARD",
     titleAlignment: "center",
+    border: true,
   })
   parentContainer.add(dashboardBox)
 
