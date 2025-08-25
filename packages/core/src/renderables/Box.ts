@@ -39,7 +39,7 @@ export class BoxRenderable extends Renderable {
   protected _defaultOptions = {
     backgroundColor: "transparent",
     borderStyle: "single",
-    border: true,
+    border: false,
     borderColor: "#FFFFFF",
     shouldFill: true,
     titleAlignment: "left",
