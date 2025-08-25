@@ -1,3 +1,5 @@
 export const log = (...args: any[]) => {
-  console.log("[Reconciler]", ...args)
+  if (process.env.DEBUG) {
+    console.log("[Reconciler]", ...args)
+  }
 }
