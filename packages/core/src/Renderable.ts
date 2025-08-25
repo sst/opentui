@@ -958,7 +958,24 @@ export abstract class Renderable extends EventEmitter {
     }
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      // Apply clip cropping if a clip rect is active
+      const clip = this.ctx?.getClipRect ? this.ctx.getClipRect() : null
+      if (!clip) {
+        buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      } else {
+        const interX1 = Math.max(this.x, clip.x)
+        const interY1 = Math.max(this.y, clip.y)
+        const interX2 = Math.min(this.x + this.width, clip.x + clip.width)
+        const interY2 = Math.min(this.y + this.height, clip.y + clip.height)
+
+        const interW = Math.max(0, interX2 - interX1)
+        const interH = Math.max(0, interY2 - interY1)
+        if (interW > 0 && interH > 0) {
+          const srcX = interX1 - this.x
+          const srcY = interY1 - this.y
+          buffer.drawFrameBuffer(interX1, interY1, this.frameBuffer, srcX, srcY, interW, interH)
+        }
+      }
     }
   }
 

@@ -164,7 +164,24 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawBox: {
-      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
+      args: [
+        "ptr",
+        "i32",
+        "i32",
+        "u32",
+        "u32",
+        "ptr",
+        "u32",
+        "ptr",
+        "ptr",
+        "ptr",
+        "u32",
+        "i32",
+        "i32",
+        "u32",
+        "u32",
+        "bool",
+      ],
       returns: "void",
     },
 
@@ -731,10 +748,16 @@ class FFIRenderLib implements RenderLib {
     borderColor: RGBA,
     backgroundColor: RGBA,
     title: string | null,
+    clipRect?: { x: number; y: number; width: number; height: number },
   ): void {
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
+    const hasClip = !!clipRect
+    const clipX = clipRect?.x ?? 0
+    const clipY = clipRect?.y ?? 0
+    const clipW = clipRect?.width ?? 0
+    const clipH = clipRect?.height ?? 0
 
     this.opentui.symbols.bufferDrawBox(
       buffer,
@@ -748,6 +771,11 @@ class FFIRenderLib implements RenderLib {
       backgroundColor.buffer,
       titlePtr,
       titleLen,
+      clipX,
+      clipY,
+      clipW,
+      clipH,
+      hasClip,
     )
   }
 

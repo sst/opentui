@@ -323,11 +323,10 @@ export class ASCIIFontSelectionHelper {
       }
     }
 
-    if (startCharIndex < endCharIndex && startCharIndex >= 0 && endCharIndex <= text.length) {
-      this.localSelection = { start: startCharIndex, end: endCharIndex }
-    } else {
-      this.localSelection = null
-    }
+    this.localSelection =
+      startCharIndex < endCharIndex && startCharIndex >= 0 && endCharIndex <= text.length
+        ? { start: startCharIndex, end: endCharIndex }
+        : null
 
     return (
       (this.localSelection !== null) !== (previousSelection !== null) ||

@@ -213,6 +213,33 @@ export class CliRenderer extends EventEmitter {
     needsUpdate: () => {
       this.needsUpdate()
     },
+    getClipRect: () => null,
+    requestSelectionUpdate: () => {
+      if (this.selectionState?.isSelecting) {
+        this.notifySelectablesOfSelectionChange()
+      }
+    },
+    moveSelectionBy: (dx: number, dy: number) => {
+      if (this.selectionState?.isSelecting) {
+        const nx1 = this.selectionState.anchor.x + (dx | 0)
+        const ny1 = this.selectionState.anchor.y + (dy | 0)
+        const nx2 = this.selectionState.focus.x + (dx | 0)
+        const ny2 = this.selectionState.focus.y + (dy | 0)
+        this.selectionState.anchor = { x: nx1, y: ny1 }
+        this.selectionState.focus = { x: nx2, y: ny2 }
+        this.notifySelectablesOfSelectionChange()
+        this.needsUpdate()
+      }
+    },
+    moveSelectionFocusBy: (dx: number, dy: number) => {
+      if (this.selectionState?.isSelecting) {
+        const nx2 = this.selectionState.focus.x + (dx | 0)
+        const ny2 = this.selectionState.focus.y + (dy | 0)
+        this.selectionState.focus = { x: nx2, y: ny2 }
+        this.notifySelectablesOfSelectionChange()
+        this.needsUpdate()
+      }
+    },
   }
 
   private enableMouseMovement: boolean = false
@@ -634,6 +661,10 @@ export class CliRenderer extends EventEmitter {
           const event = new MouseEvent(maybeRenderable, mouseEvent)
           maybeRenderable.processMouseEvent(event)
         }
+        // If user is selecting and content shifts due to scroll, re-evaluate selection mapping
+        if (this.selectionState?.isSelecting) {
+          this.notifySelectablesOfSelectionChange()
+        }
         return true
       }
 
@@ -654,12 +685,26 @@ export class CliRenderer extends EventEmitter {
       }
 
       if (mouseEvent.type === "drag" && this.selectionState?.isSelecting) {
+        // Update selection while dragging
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        // Also propagate the drag event to the hovered renderable so containers
+        // (e.g. scroll viewports) can react during selection (auto-scroll, etc.)
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, mouseEvent)
+          maybeRenderable.processMouseEvent(event)
+        }
         return true
       }
 
       if (mouseEvent.type === "up" && this.selectionState?.isSelecting) {
         this.finishSelection()
+        // Notify current hovered renderable to end any drag-related behavior
+        if (maybeRenderable) {
+          const dragEnd = new MouseEvent(maybeRenderable, { ...mouseEvent, type: "drag-end" as any })
+          maybeRenderable.processMouseEvent(dragEnd)
+          const upEvt = new MouseEvent(maybeRenderable, mouseEvent)
+          maybeRenderable.processMouseEvent(upEvt)
+        }
         return true
       }
 

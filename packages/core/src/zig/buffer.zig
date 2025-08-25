@@ -577,11 +577,12 @@ pub const OptimizedBuffer = struct {
         shouldFill: bool,
         title: ?[]const u8,
         titleAlignment: u8, // 0=left, 1=center, 2=right
+        clip_rect: ?ClipRect,
     ) !void {
-        const startX = @max(0, x);
-        const startY = @max(0, y);
-        const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
-        const endY = @min(@as(i32, @intCast(self.height)) - 1, y + @as(i32, @intCast(height)) - 1);
+        var startX = @max(0, x);
+        var startY = @max(0, y);
+        var endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
+        var endY = @min(@as(i32, @intCast(self.height)) - 1, y + @as(i32, @intCast(height)) - 1);
 
         if (startX > endX or startY > endY) return;
 
@@ -589,6 +590,17 @@ pub const OptimizedBuffer = struct {
         const isAtActualRight = endX == x + @as(i32, @intCast(width)) - 1;
         const isAtActualTop = startY == y;
         const isAtActualBottom = endY == y + @as(i32, @intCast(height)) - 1;
+
+        // Apply clip rect if provided
+        if (clip_rect) |clip| {
+            const clipEndX: i32 = clip.x + @as(i32, @intCast(clip.width)) - 1;
+            const clipEndY: i32 = clip.y + @as(i32, @intCast(clip.height)) - 1;
+            startX = @max(startX, clip.x);
+            startY = @max(startY, clip.y);
+            endX = @min(endX, clipEndX);
+            endY = @min(endY, clipEndY);
+            if (startX > endX or startY > endY) return;
+        }
 
         var shouldDrawTitle = false;
         var titleX: i32 = startX;
