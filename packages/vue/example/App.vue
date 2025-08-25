@@ -4,9 +4,8 @@ import LoginForm from "./LoginForm.vue"
 import Counter from "./Counter.vue"
 import StyledText from "./Styled-Text.vue"
 import TabSelect from "./TabSelect.vue"
-import { onMounted, ref } from "vue"
+import { ref } from "vue"
 import { getKeyHandler } from "@opentui/core"
-import { useCliRenderer } from "@opentui/vue"
 const exampleOptions = [
   { name: "ASCII", description: "Assci text example", value: "ascii" },
   { name: "Counter", description: "Counter example", value: "counter" },
@@ -18,12 +17,6 @@ const exampleOptions = [
 type ExampleOption = (typeof exampleOptions)[number]
 
 const selectedExample = ref<null | ExampleOption>(null)
-
-const renderer = useCliRenderer()
-
-onMounted(() => {
-  renderer.console.show()
-})
 
 const onSelectExample = (i: number) => {
   const selectedOption = exampleOptions[i]
