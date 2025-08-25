@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "noEmit": false,
+    "rootDir": ".",
+    "types": ["bun", "node"],
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@opentui/core": ["../core/dist"],
+      "@opentui/core/*": ["../core/dist/*"]
+    }
+  },
+  "include": ["src/**/*", "jsx-runtime.d.ts", "jsx-dev-runtime.d.ts", "jsx-namespace.d.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*", "node_modules/**/*", "../core/**/*"]
+}
