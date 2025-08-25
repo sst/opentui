@@ -3,19 +3,27 @@ import ASCII from "./ASCII.vue"
 import LoginForm from "./LoginForm.vue"
 import Counter from "./Counter.vue"
 import StyledText from "./Styled-Text.vue"
-import { ref } from "vue"
+import TabSelect from "./TabSelect.vue"
+import { onMounted, ref } from "vue"
 import { getKeyHandler } from "@opentui/core"
-
+import { useCliRenderer } from "@opentui/vue"
 const exampleOptions = [
   { name: "ASCII", description: "Assci text example", value: "ascii" },
   { name: "Counter", description: "Counter example", value: "counter" },
   { name: "Login Form", description: "A simple login form example", value: "login" },
   { name: "Styled Text", description: "Text with various styles applied", value: "styledText" },
+  { name: "Tab Select", description: "Tabs", value: "tabSelect" },
 ]
 
 type ExampleOption = (typeof exampleOptions)[number]
 
 const selectedExample = ref<null | ExampleOption>(null)
+
+const renderer = useCliRenderer()
+
+onMounted(() => {
+  renderer.console.show()
+})
 
 const onSelectExample = (i: number) => {
   const selectedOption = exampleOptions[i]
@@ -38,10 +46,11 @@ const selectStyles = { flexGrow: 1 }
   <Counter v-else-if="selectedExample?.value === 'counter'" />
   <LoginForm v-else-if="selectedExample?.value === 'login'" />
   <StyledText v-else-if="selectedExample?.value === 'styledText'" />
+  <TabSelect v-else-if="selectedExample?.value === 'tabSelect'" />
   <boxRenderable v-else :style="boxStyles">
     <selectRenderable
       :style="selectStyles"
-      focused
+      :focused="true"
       showScrollIndicator
       :options="exampleOptions"
       :onSelect="onSelectExample"
