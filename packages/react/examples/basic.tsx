@@ -47,7 +47,7 @@ export const App = () => {
       />
       <text content={t`${bold(italic(fg("cyan")(`Styled Text!`)))}`} />
 
-      <box title="Username" style={{ width: 40, height: 3, marginTop: 1 }}>
+      <box title="Username" style={{ border: true, width: 40, height: 3, marginTop: 1 }}>
         <input
           placeholder="Enter your username..."
           onInput={handleUsernameChange}
@@ -57,7 +57,7 @@ export const App = () => {
         />
       </box>
 
-      <box title="Password" style={{ width: 40, height: 3, marginTop: 1, marginBottom: 1 }}>
+      <box title="Password" style={{ border: true, width: 40, height: 3, marginTop: 1, marginBottom: 1 }}>
         <input
           placeholder="Enter your password..."
           onInput={handlePasswordChange}

@@ -4,16 +4,16 @@ export const App = () => {
   return (
     <>
       <group flexDirection="row">
-        <box borderStyle="single">
+        <box border borderStyle="single">
           <text content="Single" />
         </box>
-        <box borderStyle="double">
+        <box border borderStyle="double">
           <text content="Double" />
         </box>
-        <box borderStyle="rounded">
+        <box border borderStyle="rounded">
           <text content="Rounded" />
         </box>
-        <box borderStyle="heavy">
+        <box border borderStyle="heavy">
           <text content="Heavy" />
         </box>
       </group>

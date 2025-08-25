@@ -83,6 +83,7 @@ export default function TextSelectionDemo() {
           zIndex: 1,
           borderColor: "#50565d",
           titleAlignment: "center",
+          border: true,
         }}
         title="Text Selection Demo"
       >
@@ -103,6 +104,7 @@ export default function TextSelectionDemo() {
               borderColor: "#58a6ff",
               flexDirection: "column",
               padding: 1,
+              border: true,
             }}
             title="Document Section 1"
           >
@@ -120,6 +122,7 @@ export default function TextSelectionDemo() {
               zIndex: 25,
               borderColor: "#a371f7",
               borderStyle: "double",
+              border: true,
             }}
           >
             <text style={{ width: 27, height: 1, zIndex: 26, selectionBg: "#4a5568", selectionFg: "#ffffff" }}>
@@ -147,6 +150,7 @@ export default function TextSelectionDemo() {
               borderStyle: "rounded",
               flexDirection: "column",
               padding: 1,
+              border: true,
             }}
             title="Code Example"
           >
@@ -179,6 +183,7 @@ export default function TextSelectionDemo() {
           zIndex: 30,
           borderColor: "#2ea043",
           borderStyle: "single",
+          border: true,
         }}
         title="README"
       >
@@ -204,6 +209,7 @@ export default function TextSelectionDemo() {
           borderColor: "#50565d",
           titleAlignment: "left",
           padding: 1,
+          border: true,
         }}
         title="Selection Status"
       >
