@@ -60,9 +60,9 @@ export type GetNonStyledProperties<TConstructor> =
       ? NonStyledProps | "title"
       : TConstructor extends RenderableConstructor<ScrollBoxRenderable>
         ? NonStyledProps | "title" | "content"
-      : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
-        ? NonStyledProps | "text" | "selectable"
-        : NonStyledProps
+        : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
+          ? NonStyledProps | "text" | "selectable"
+          : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -88,8 +88,6 @@ export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
 }
 
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
-
-// removed legacy scroll-box and scroll-view
 
 export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, ScrollBoxRenderable> & {
   focused?: boolean
