@@ -23,7 +23,7 @@ type VueComponentProps<TOptions, TNonStyled extends keyof TOptions> = TOptions &
   style?: Partial<Omit<TOptions, TNonStyled>>
 }
 
-export type TextProps = VueComponentProps<TextOptions, NonStyledProps | "content"> & {
+export type TextProps = Omit<VueComponentProps<TextOptions, NonStyledProps | "content">, "content"> & {
   children?:
     | string
     | number
@@ -31,8 +31,8 @@ export type TextProps = VueComponentProps<TextOptions, NonStyledProps | "content
     | null
     | undefined
     | StyledText
-    | TextChunk
-    | Array<string | number | boolean | null | undefined | StyledText | TextChunk>
+    | Array<string | number | boolean | null | undefined | StyledText>
+  content?: string | StyledText | TextChunk
 }
 
 export type BoxProps = VueComponentProps<ContainerProps<BoxOptions>, NonStyledProps | "title">
@@ -62,25 +62,25 @@ export type TabSelectProps = VueComponentProps<TabSelectRenderableOptions, NonSt
 
 declare module "@vue/runtime-core" {
   export interface GlobalComponents {
-    "ascii-font": DefineComponent<AsciiFontProps>
-    box: DefineComponent<BoxProps>
-    group: DefineComponent<GroupProps>
-    input: DefineComponent<InputProps>
-    select: DefineComponent<SelectProps>
-    "tab-select": DefineComponent<TabSelectProps>
-    text: DefineComponent<TextProps>
+    asciiFontRenderable: DefineComponent<AsciiFontProps>
+    boxRenderable: DefineComponent<BoxProps>
+    groupRenderable: DefineComponent<GroupProps>
+    inputRenderable: DefineComponent<InputProps>
+    selectRenderable: DefineComponent<SelectProps>
+    tabSelectRenderable: DefineComponent<TabSelectProps>
+    textRenderable: DefineComponent<TextProps>
   }
 }
 
 // Augment for JSX/TSX support in Vue
 declare module "@vue/runtime-dom" {
   export interface IntrinsicElementAttributes {
-    "ascii-font": AsciiFontProps
-    box: BoxProps
-    group: GroupProps
-    input: InputProps
-    select: SelectProps
-    "tab-select": TabSelectProps
-    text: TextProps
+    asciiFontRenderable: AsciiFontProps
+    boxRenderable: BoxProps
+    groupRenderable: GroupProps
+    inputRenderable: InputProps
+    selectRenderable: SelectProps
+    tabSelectRenderable: TabSelectProps
+    textRenderable: TextProps
   }
 }

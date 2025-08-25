@@ -11,14 +11,16 @@ const exampleOptions = [
   { name: "Counter", description: "Counter example", value: "counter" },
   { name: "Login Form", description: "A simple login form example", value: "login" },
   { name: "Styled Text", description: "Text with various styles applied", value: "styledText" },
-] as const
+]
 
 type ExampleOption = (typeof exampleOptions)[number]
 
 const selectedExample = ref<null | ExampleOption>(null)
 
-const onSelectExample = (_, option: ExampleOption | null) => {
-  selectedExample.value = option
+const onSelectExample = (i: number) => {
+  const selectedOption = exampleOptions[i]
+  if (!selectedOption) return
+  selectedExample.value = selectedOption
 }
 
 getKeyHandler().on("keypress", (key) => {
@@ -36,14 +38,14 @@ const selectStyles = { flexGrow: 1 }
   <Counter v-else-if="selectedExample?.value === 'counter'" />
   <LoginForm v-else-if="selectedExample?.value === 'login'" />
   <StyledText v-else-if="selectedExample?.value === 'styledText'" />
-  <box v-else :style="boxStyles">
-    <select
+  <boxRenderable v-else :style="boxStyles">
+    <selectRenderable
       :style="selectStyles"
-      focused="true"
+      focused
       showScrollIndicator
       :options="exampleOptions"
       :onSelect="onSelectExample"
       :value="selectedExample"
-    ></select>
-  </box>
+    ></selectRenderable>
+  </boxRenderable>
 </template>

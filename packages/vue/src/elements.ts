@@ -24,13 +24,13 @@ import {
 import type { JSX, Ref } from "solid-js"
 
 export const elements = {
-  "ascii-font": ASCIIFontRenderable,
-  box: BoxRenderable,
-  group: GroupRenderable,
-  input: InputRenderable,
-  select: SelectRenderable,
-  "tab-select": TabSelectRenderable,
-  text: TextRenderable,
+  asciiFontRenderable: ASCIIFontRenderable,
+  boxRenderable: BoxRenderable,
+  groupRenderable: GroupRenderable,
+  inputRenderable: InputRenderable,
+  selectRenderable: SelectRenderable,
+  tabSelectRenderable: TabSelectRenderable,
+  textRenderable: TextRenderable,
 }
 export type Element = keyof typeof elements
 

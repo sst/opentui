@@ -64,25 +64,25 @@ const styledText = computed(() => {
 </script>
 
 <template>
-  <text content="OpenTUI with Vue!" :style="titleTextStyles" />
-  <text :content="styledText" />
-  <box title="Username" :style="boxStyles">
-    <input
+  <textRenderable content="OpenTUI with Vue!" :style="titleTextStyles" />
+  <textRenderable :content="styledText" />
+  <boxRenderable title="Username" :style="boxStyles">
+    <inputRenderable
       placeholder="Enter your username..."
       :onInput="handleUsernameChange"
       :onSubmit="handleSubmit"
       :focused="focused === 'username'"
       :style="inputStyles"
     />
-  </box>
-  <box title="Password" :style="passwordBoxStyles">
-    <input
+  </boxRenderable>
+  <boxRenderable title="Password" :style="passwordBoxStyles">
+    <inputRenderable
       placeholder="Enter your password..."
       :onInput="handlePasswordChange"
       :onSubmit="handleSubmit"
       :focused="focused === 'password'"
       :style="inputStyles"
     />
-  </box>
-  <text :content="status.toUpperCase()" :style="{ fg: statusColor }" />
+  </boxRenderable>
+  <textRenderable :content="status.toUpperCase()" :style="{ fg: statusColor }" />
 </template>

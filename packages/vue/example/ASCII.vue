@@ -47,17 +47,17 @@ const selectRef = ref<SelectRenderable | null>(null)
 </script>
 
 <template>
-  <group :style="groupStyles">
-    <box :style="boxStyles">
-      <select
+  <groupRenderable :style="groupStyles">
+    <boxRenderable :style="boxStyles">
+      <selectRenderable
         ref="selectRef"
         focused="true"
         showScrollIndicator
         :onChange="handleFontChange"
         :options="selectOptions"
         :style="selectStyles"
-      ></select>
-    </box>
-    <ascii-font :style="{ width: dimensions.width, height: dimensions.height }" :text="text" :font="font" />
-  </group>
+      ></selectRenderable>
+    </boxRenderable>
+    <asciiFontRenderable :style="{ width: dimensions.width, height: dimensions.height }" :text="text" :font="font" />
+  </groupRenderable>
 </template>
