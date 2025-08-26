@@ -264,11 +264,6 @@ if (buildLib) {
     console.log("TypeScript declarations generated")
   }
 
-  if (isCi) {
-    console.log("CI mode detected, skipping post-build steps")
-    process.exit(0)
-  }
-
   // Configure exports for multiple entry points
   const exports = {
     ".": {

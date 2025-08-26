@@ -117,11 +117,6 @@ if (tscResult.status !== 0) {
   console.log("TypeScript declarations generated")
 }
 
-if (isCi) {
-  console.log("CI mode detected, skipping post-build steps")
-  process.exit(0)
-}
-
 if (existsSync(join(rootDir, "jsx-runtime.d.ts"))) {
   copyFileSync(join(rootDir, "jsx-runtime.d.ts"), join(distDir, "jsx-runtime.d.ts"))
 }
