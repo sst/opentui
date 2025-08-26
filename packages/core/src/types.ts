@@ -24,6 +24,10 @@ export interface RenderContext {
   width: () => number
   height: () => number
   needsUpdate: () => void
+  getClipRect?: () => { x: number; y: number; width: number; height: number } | null
+  requestSelectionUpdate?: () => void
+  moveSelectionBy?: (dx: number, dy: number) => void
+  moveSelectionFocusBy?: (dx: number, dy: number) => void
 }
 
 export interface SelectionState {

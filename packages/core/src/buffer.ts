@@ -584,6 +584,7 @@ export class OptimizedBuffer {
     shouldFill?: boolean
     title?: string
     titleAlignment?: "left" | "center" | "right"
+    clipRect?: { x: number; y: number; width: number; height: number }
   }): void {
     const style = options.borderStyle || "single"
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
@@ -601,6 +602,7 @@ export class OptimizedBuffer {
       options.borderColor,
       options.backgroundColor,
       options.title ?? null,
+      options.clipRect,
     )
   }
 }

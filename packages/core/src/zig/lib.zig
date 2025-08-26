@@ -199,6 +199,11 @@ export fn bufferDrawBox(
     backgroundColor: [*]const f32,
     title: ?[*]const u8,
     titleLen: u32,
+    clipX: i32,
+    clipY: i32,
+    clipWidth: u32,
+    clipHeight: u32,
+    hasClipRect: bool,
 ) void {
     const borderSides = buffer.BorderSides{
         .top = (packedOptions & 0b1000) != 0,
@@ -212,6 +217,8 @@ export fn bufferDrawBox(
 
     const titleSlice = if (title) |t| t[0..titleLen] else null;
 
+    const clip_rect = if (hasClipRect) buffer.ClipRect{ .x = clipX, .y = clipY, .width = clipWidth, .height = clipHeight } else null;
+
     bufferPtr.drawBox(
         x,
         y,
@@ -224,6 +231,7 @@ export fn bufferDrawBox(
         shouldFill,
         titleSlice,
         titleAlignment,
+        clip_rect,
     ) catch {};
 }
 

@@ -15,6 +15,7 @@ import type {
 import {
   ASCIIFontRenderable,
   BoxRenderable,
+  ScrollBoxRenderable,
   GroupRenderable,
   InputRenderable,
   SelectRenderable,
@@ -27,6 +28,7 @@ export * from "./hooks"
 export const elements = {
   ascii_font: ASCIIFontRenderable,
   box: BoxRenderable,
+  scroll_box: ScrollBoxRenderable,
   group: GroupRenderable,
   input: InputRenderable,
   select: SelectRenderable,
@@ -109,3 +111,10 @@ export type ASCIIFontStyle = ASCIIFontElementProps["style"]
 
 export type TextElementProps = ElementProps<TextOptions, TextRenderable, "content" | "selectable"> & TextProps
 export type TextStyle = TextElementProps["style"]
+
+export type ScrollBoxElementProps = ElementProps<
+  import("@opentui/core").ScrollBoxOptions,
+  ScrollBoxRenderable,
+  "title"
+> & ContainerProps
+export type ScrollBoxStyle = ScrollBoxElementProps["style"]
