@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { measureText, SelectRenderable } from "@opentui/core"
+import { measureText } from "@opentui/core"
 import { ref, computed } from "vue"
 
 const text = "ASCII"
@@ -42,16 +42,13 @@ const selectOptions = [
 const groupStyles = { paddingLeft: 1, paddingRight: 1 }
 const boxStyles = { height: 8, marginBottom: 1 }
 const selectStyles = { flexGrow: 1 }
-
-const selectRef = ref<SelectRenderable | null>(null)
 </script>
 
 <template>
   <groupRenderable :style="groupStyles">
     <boxRenderable :style="boxStyles">
       <selectRenderable
-        ref="selectRef"
-        focused="true"
+        :focused="true"
         showScrollIndicator
         :onChange="handleFontChange"
         :options="selectOptions"

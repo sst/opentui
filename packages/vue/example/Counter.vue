@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { getKeyHandler, RGBA, TextRenderable, type BoxOptions, type ParsedKey } from "@opentui/core"
-import { onUnmounted, ref, type VNodeRef } from "vue"
+import { getKeyHandler, RGBA, type ParsedKey } from "@opentui/core"
+import { computed, onUnmounted, ref } from "vue"
 
 const count = ref(0)
 
@@ -28,21 +28,16 @@ onUnmounted(() => {
   getKeyHandler().off("keypress", handleKeyPress)
 })
 
-const boxStyles: BoxOptions = {
-  backgroundColor: RGBA.fromHex("#f0f000"),
-  padding: 1,
-  borderColor: RGBA.fromHex("#0000ff"),
-}
 const textStyles = { fg: RGBA.fromHex("#0000ff") }
 
-const textRef = ref<TextRenderable | null>(null)
+const countText = computed(() => `Count: ${count.value}`)
 </script>
 
 <template>
-  <box title="Counter" :style="{ backgroundColor: '#00ff00' }">
-    <textRenderable :ref="textRef" :style="textStyles">Count: {{ count }}</textRenderable>
+  <boxRenderable title="Counter" :style="{ backgroundColor: '#00ff00' }">
+    <textRenderable :content="countText" :style="textStyles" />
     <textRenderable :style="textStyles">Press Up/Down to increment/decrement, R to reset</textRenderable>
     <textRenderable :style="textStyles">Press + or = to increment, - to decrement</textRenderable>
     <textRenderable :style="{ fg: '#ff00ff' }">Press R to reset</textRenderable>
-  </box>
+  </boxRenderable>
 </template>

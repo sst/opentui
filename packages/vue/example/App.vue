@@ -6,6 +6,7 @@ import StyledText from "./Styled-Text.vue"
 import TabSelect from "./TabSelect.vue"
 import { ref } from "vue"
 import { getKeyHandler } from "@opentui/core"
+
 const exampleOptions = [
   { name: "ASCII", description: "Assci text example", value: "ascii" },
   { name: "Counter", description: "Counter example", value: "counter" },
