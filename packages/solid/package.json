@@ -33,14 +33,14 @@
   },
   "devDependencies": {
     "@types/babel__core": "7.20.5",
-    "babel-plugin-module-resolver": "5.0.2",
-    "@babel/core": "7.28.0",
-    "@babel/preset-typescript": "7.27.1",
-    "babel-preset-solid": "1.9.9",
     "@types/bun": "latest"
   },
   "dependencies": {
-    "@opentui/core": "workspace:*"
+    "@opentui/core": "workspace:*",
+    "babel-plugin-module-resolver": "5.0.2",
+    "@babel/core": "7.28.0",
+    "@babel/preset-typescript": "7.27.1",
+    "babel-preset-solid": "1.9.9"
   },
   "peerDependencies": {
     "solid-js": "1.9.9",
