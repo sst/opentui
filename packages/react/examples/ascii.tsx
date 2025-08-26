@@ -1,10 +1,11 @@
-import { measureText } from "@opentui/core"
+import { measureText, fonts } from "@opentui/core"
 import { render } from "@opentui/react"
 import { useState } from "react"
 
 export const App = () => {
   const text = "ASCII"
-  const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
+  const [fontName, setFontName] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
+  const font = fonts[fontName]
 
   const { width, height } = measureText({
     text,
@@ -22,7 +23,7 @@ export const App = () => {
       >
         <select
           focused
-          onChange={(_, option) => setFont(option?.value)}
+          onChange={(_, option) => setFontName(option?.value)}
           showScrollIndicator
           options={[
             {

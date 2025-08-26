@@ -10,11 +10,12 @@ import slick from "./fonts/slick.json"
  * Font definitions plugged from cfonts - https://github.com/dominikwilkowski/cfonts
  */
 
+// Export built-in fonts for convenience
 export const fonts = {
-  tiny,
-  block,
-  shade,
-  slick,
+  tiny: tiny as FontDefinition,
+  block: block as FontDefinition,
+  shade: shade as FontDefinition,
+  slick: slick as FontDefinition,
 }
 
 type FontSegment = {
@@ -22,13 +23,69 @@ type FontSegment = {
   colorIndex: number
 }
 
-type FontDefinition = {
+export type FontDefinition = {
   name: string
   lines: number
   letterspace_size: number
   letterspace: string[]
   colors?: number
   chars: Record<string, string[]>
+}
+
+/**
+ * Validates a FontDefinition object
+ * @param font - Object to validate
+ * @returns true if valid, throws error if invalid
+ */
+export function validateFontDefinition(font: any): font is FontDefinition {
+  if (!font || typeof font !== 'object') {
+    throw new Error('Font definition must be an object')
+  }
+
+  if (typeof font.name !== 'string') {
+    throw new Error('Font definition must have a "name" property of type string')
+  }
+
+  if (typeof font.lines !== 'number' || font.lines < 1) {
+    throw new Error('Font definition must have a "lines" property with a positive number')
+  }
+
+  if (typeof font.letterspace_size !== 'number' || font.letterspace_size < 0) {
+    throw new Error('Font definition must have a "letterspace_size" property with a non-negative number')
+  }
+
+  if (!Array.isArray(font.letterspace)) {
+    throw new Error('Font definition must have a "letterspace" property as an array')
+  }
+
+  if (font.letterspace.length !== font.lines) {
+    throw new Error(`Font definition letterspace array length (${font.letterspace.length}) must match lines (${font.lines})`)
+  }
+
+  if (font.colors !== undefined && (typeof font.colors !== 'number' || font.colors < 1)) {
+    throw new Error('Font definition "colors" property must be a positive number if provided')
+  }
+
+  if (!font.chars || typeof font.chars !== 'object') {
+    throw new Error('Font definition must have a "chars" property as an object')
+  }
+
+  // Validate that each character has the correct number of lines
+  for (const [char, lines] of Object.entries(font.chars)) {
+    if (!Array.isArray(lines)) {
+      throw new Error(`Character "${char}" must be an array of strings`)
+    }
+    if (lines.length !== font.lines) {
+      throw new Error(`Character "${char}" has ${lines.length} lines but font defines ${font.lines} lines`)
+    }
+    for (let i = 0; i < lines.length; i++) {
+      if (typeof lines[i] !== 'string') {
+        throw new Error(`Character "${char}" line ${i + 1} must be a string`)
+      }
+    }
+  }
+
+  return true
 }
 
 type ParsedFontDefinition = {
@@ -40,11 +97,11 @@ type ParsedFontDefinition = {
   chars: Record<string, FontSegment[][]>
 }
 
-const parsedFonts: Record<string, ParsedFontDefinition> = {}
+const parsedFonts: Map<FontDefinition, ParsedFontDefinition> = new Map()
 
 function parseColorTags(text: string): FontSegment[] {
   const segments: FontSegment[] = []
-  let currentIndex = 0
+  let _currentIndex = 0
 
   const colorTagRegex = /<c(\d+)>(.*?)<\/c\d+>/g
   let lastIndex = 0
@@ -75,34 +132,38 @@ function parseColorTags(text: string): FontSegment[] {
   return segments
 }
 
-function getParsedFont(fontKey: keyof typeof fonts): ParsedFontDefinition {
-  if (!parsedFonts[fontKey]) {
-    const fontDef = fonts[fontKey] as FontDefinition
+function getParsedFont(fontDef: FontDefinition): ParsedFontDefinition {
+  // Validate font definition on first use
+  try {
+    validateFontDefinition(fontDef)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`Invalid font definition: ${message}`)
+    throw error
+  }
+
+  if (!parsedFonts.has(fontDef)) {
     const parsedChars: Record<string, FontSegment[][]> = {}
 
     for (const [char, lines] of Object.entries(fontDef.chars)) {
       parsedChars[char] = lines.map((line) => parseColorTags(line))
     }
 
-    parsedFonts[fontKey] = {
+    parsedFonts.set(fontDef, {
       ...fontDef,
       colors: fontDef.colors || 1,
       chars: parsedChars,
-    }
+    })
   }
 
-  return parsedFonts[fontKey]
+  return parsedFonts.get(fontDef)!
 }
 
-export function measureText({ text, font = "tiny" }: { text: string; font?: keyof typeof fonts }): {
+export function measureText({ text, font = fonts.tiny }: { text: string; font?: FontDefinition }): {
   width: number
   height: number
 } {
   const fontDef = getParsedFont(font)
-  if (!fontDef) {
-    console.warn(`Font '${font}' not found`)
-    return { width: 0, height: 0 }
-  }
 
   let currentX = 0
 
@@ -144,11 +205,8 @@ export function measureText({ text, font = "tiny" }: { text: string; font?: keyo
   }
 }
 
-export function getCharacterPositions(text: string, font: keyof typeof fonts = "tiny"): number[] {
+export function getCharacterPositions(text: string, font: FontDefinition = fonts.tiny): number[] {
   const fontDef = getParsedFont(font)
-  if (!fontDef) {
-    return [0]
-  }
 
   const positions: number[] = [0]
   let currentX = 0
@@ -185,7 +243,7 @@ export function getCharacterPositions(text: string, font: keyof typeof fonts = "
   return positions
 }
 
-export function coordinateToCharacterIndex(x: number, text: string, font: keyof typeof fonts = "tiny"): number {
+export function coordinateToCharacterIndex(x: number, text: string, font: FontDefinition = fonts.tiny): number {
   const positions = getCharacterPositions(text, font)
 
   if (x < 0) {
@@ -217,24 +275,20 @@ export function renderFontToFrameBuffer(
     y = 0,
     fg = [RGBA.fromInts(255, 255, 255, 255)],
     bg = RGBA.fromInts(0, 0, 0, 255),
-    font = "tiny",
+    font = fonts.tiny,
   }: {
     text: string
     x?: number
     y?: number
     fg?: RGBA | RGBA[]
     bg?: RGBA
-    font?: keyof typeof fonts
+    font?: FontDefinition
   },
 ): { width: number; height: number } {
   const width = buffer.getWidth()
   const height = buffer.getHeight()
 
   const fontDef = getParsedFont(font)
-  if (!fontDef) {
-    console.warn(`Font '${font}' not found`)
-    return { width: 0, height: 0 }
-  }
 
   const colors = Array.isArray(fg) ? fg : [fg]
 
