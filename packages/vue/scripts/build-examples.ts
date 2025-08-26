@@ -5,7 +5,7 @@ const result = await Bun.build({
   outdir: "./example/dist",
   target: "bun",
   format: "esm",
-  splitting: false,
+  // splitting: false,
   plugins: [
     pluginVue3({
       isProduction: false,
