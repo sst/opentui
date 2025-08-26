@@ -25,25 +25,6 @@ interface PackageJson {
   peerDependencies?: Record<string, string>
 }
 
-interface TsconfigBuild {
-  extends: string
-  compilerOptions: {
-    declaration: boolean
-    emitDeclarationOnly: boolean
-    outDir: string
-    noEmit: boolean
-    rootDir: string
-    types: string[]
-    skipLibCheck: boolean
-    jsx: string
-    moduleResolution?: string
-    baseUrl?: string
-    paths?: Record<string, string[]>
-  }
-  include: string[]
-  exclude: string[]
-}
-
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
@@ -53,6 +34,7 @@ const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.
 
 const args = process.argv.slice(2)
 const isDev = args.includes("--dev")
+const isCi = args.includes("--ci")
 
 const replaceLinks = (text: string): string => {
   return packageJson.homepage
@@ -119,38 +101,17 @@ if (!reconcilerBuildResult.success) {
 console.log("Generating TypeScript declarations...")
 
 const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
-const tsconfigBuild: TsconfigBuild = {
-  extends: "./tsconfig.json",
-  compilerOptions: {
-    declaration: true,
-    emitDeclarationOnly: true,
-    outDir: "./dist",
-    noEmit: false,
-    rootDir: ".",
-    types: ["bun", "node"],
-    skipLibCheck: true,
-    jsx: "preserve",
-    moduleResolution: "bundler",
-    baseUrl: ".",
-    paths: {
-      "@opentui/core": ["../core/dist"],
-      "@opentui/core/*": ["../core/dist/*"],
-    },
-  },
-  include: ["index.ts", "src/**/*", "jsx-runtime.d.ts"],
-  exclude: ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*", "node_modules/**/*", "../core/**/*"],
-}
-
-writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
 
 const tscResult: SpawnSyncReturns<Buffer> = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
   cwd: rootDir,
   stdio: "inherit",
 })
 
-rmSync(tsconfigBuildPath, { force: true })
-
 if (tscResult.status !== 0) {
+  if (isCi) {
+    console.error("Error: TypeScript declaration generation failed")
+    process.exit(1)
+  }
   console.warn("Warning: TypeScript declaration generation failed")
 } else {
   console.log("TypeScript declarations generated")
