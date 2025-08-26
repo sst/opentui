@@ -129,7 +129,7 @@ export class TextRenderable extends Renderable {
     this._lineInfo.lineWidths = lineInfo.lineWidths
 
     const numLines = this._lineInfo.lineStarts.length
-    if (this._positionType === "absolute" && this._height === "auto") {
+    if (this._height === "auto") {
       this._heightValue = numLines
       this.layoutNode.yogaNode.markDirty()
     }
