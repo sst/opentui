@@ -211,21 +211,10 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
 
   setText(node, text) {
     if (node instanceof TextNode) {
-      const newChunk: TextChunk = {
-        __isChunk: true,
-        text: new TextEncoder().encode(text),
-        plainText: text,
-      }
-
       const textParent = node.textParent
       if (textParent instanceof TextRenderable) {
-        const styledText = textParent.content
-        styledText.replace(newChunk, node.chunk)
-        textParent.content = styledText
-
-        ChunkToTextNodeMap.delete(node.chunk)
-        node.chunk = newChunk
-        ChunkToTextNodeMap.set(newChunk, node)
+        textParent.content = text
+        textParent.needsUpdate()
       }
     }
   },

@@ -29,13 +29,11 @@ onUnmounted(() => {
 })
 
 const textStyles = { fg: RGBA.fromHex("#0000ff") }
-
-const countText = computed(() => `Count: ${count.value}`)
 </script>
 
 <template>
   <boxRenderable title="Counter" :style="{ backgroundColor: '#00ff00' }">
-    <textRenderable :content="countText" :style="textStyles" />
+    <textRenderable :style="textStyles">Count : {{ count }}</textRenderable>
     <textRenderable :style="textStyles">Press Up/Down to increment/decrement, R to reset</textRenderable>
     <textRenderable :style="textStyles">Press + or = to increment, - to decrement</textRenderable>
     <textRenderable :style="{ fg: '#ff00ff' }">Press R to reset</textRenderable>
