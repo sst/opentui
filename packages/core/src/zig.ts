@@ -1167,7 +1167,6 @@ class FFIRenderLib implements RenderLib {
       bracketed_paste: capsBuffer[offset++] !== 0,
       hyperlinks: capsBuffer[offset++] !== 0,
     }
-    console.log(capabilities)
 
     return capabilities
   }

@@ -80,8 +80,8 @@ export class OptimizedBuffer {
     bg: Float32Array
     attributes: Uint8Array
   }
-  private width: number
-  private height: number
+  private _width: number
+  private _height: number
   public respectAlpha: boolean = false
   private useFFI: boolean = true
 
@@ -105,8 +105,8 @@ export class OptimizedBuffer {
     this.id = `fb_${OptimizedBuffer.fbIdCounter++}`
     this.lib = lib
     this.respectAlpha = options.respectAlpha || false
-    this.width = width
-    this.height = height
+    this._width = width
+    this._height = height
     this.bufferPtr = ptr
     this.buffer = buffer
   }
@@ -132,15 +132,15 @@ export class OptimizedBuffer {
   }
 
   private coordsToIndex(x: number, y: number): number {
-    return y * this.width + x
+    return y * this._width + x
   }
 
-  public getWidth(): number {
-    return this.width
+  public get width(): number {
+    return this._width
   }
 
-  public getHeight(): number {
-    return this.height
+  public get height(): number {
+    return this._height
   }
 
   public setRespectAlpha(respectAlpha: boolean): void {
@@ -160,7 +160,7 @@ export class OptimizedBuffer {
     this.buffer.char.fill(clearChar.charCodeAt(0))
     this.buffer.attributes.fill(0)
 
-    for (let i = 0; i < this.width * this.height; i++) {
+    for (let i = 0; i < this._width * this._height; i++) {
       const index = i * 4
 
       this.buffer.fg[index] = 1.0
@@ -176,7 +176,7 @@ export class OptimizedBuffer {
   }
 
   public setCell(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes: number = 0): void {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return
+    if (x < 0 || x >= this._width || y < 0 || y >= this._height) return
 
     const index = this.coordsToIndex(x, y)
     const colorIndex = index * 4
@@ -199,7 +199,7 @@ export class OptimizedBuffer {
   }
 
   public get(x: number, y: number): { char: number; fg: RGBA; bg: RGBA; attributes: number } | null {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return null
+    if (x < 0 || x >= this._width || y < 0 || y >= this._height) return null
 
     const index = this.coordsToIndex(x, y)
     const colorIndex = index * 4
@@ -235,7 +235,7 @@ export class OptimizedBuffer {
     bg: RGBA,
     attributes: number = 0,
   ): void {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return
+    if (x < 0 || x >= this._width || y < 0 || y >= this._height) return
 
     const hasBgAlpha = isRGBAWithAlpha(bg)
     const hasFgAlpha = isRGBAWithAlpha(fg)
@@ -321,8 +321,8 @@ export class OptimizedBuffer {
   public fillRectLocal(x: number, y: number, width: number, height: number, bg: RGBA): void {
     const startX = Math.max(0, x)
     const startY = Math.max(0, y)
-    const endX = Math.min(this.getWidth() - 1, x + width - 1)
-    const endY = Math.min(this.getHeight() - 1, y + height - 1)
+    const endX = Math.min(this.width - 1, x + width - 1)
+    const endY = Math.min(this.height - 1, y + height - 1)
 
     if (startX > endX || startY > endY) return
 
@@ -371,6 +371,8 @@ export class OptimizedBuffer {
     this.drawFrameBufferFFI(destX, destY, frameBuffer, sourceX, sourceY, sourceWidth, sourceHeight)
   }
 
+  // TODO: REMOVE -- ffi only
+  // @deprecated
   public drawFrameBufferLocal(
     destX: number,
     destY: number,
@@ -382,19 +384,19 @@ export class OptimizedBuffer {
   ): void {
     const srcX = sourceX ?? 0
     const srcY = sourceY ?? 0
-    const srcWidth = sourceWidth ?? frameBuffer.getWidth()
-    const srcHeight = sourceHeight ?? frameBuffer.getHeight()
+    const srcWidth = sourceWidth ?? frameBuffer.width
+    const srcHeight = sourceHeight ?? frameBuffer.height
 
-    if (srcX >= frameBuffer.getWidth() || srcY >= frameBuffer.getHeight()) return
+    if (srcX >= frameBuffer.width || srcY >= frameBuffer.height) return
     if (srcWidth === 0 || srcHeight === 0) return
 
-    const clampedSrcWidth = Math.min(srcWidth, frameBuffer.getWidth() - srcX)
-    const clampedSrcHeight = Math.min(srcHeight, frameBuffer.getHeight() - srcY)
+    const clampedSrcWidth = Math.min(srcWidth, frameBuffer.width - srcX)
+    const clampedSrcHeight = Math.min(srcHeight, frameBuffer.height - srcY)
 
     const startDestX = Math.max(0, destX)
     const startDestY = Math.max(0, destY)
-    const endDestX = Math.min(this.width - 1, destX + clampedSrcWidth - 1)
-    const endDestY = Math.min(this.height - 1, destY + clampedSrcHeight - 1)
+    const endDestX = Math.min(this._width - 1, destX + clampedSrcWidth - 1)
+    const endDestY = Math.min(this._height - 1, destY + clampedSrcHeight - 1)
 
     if (!frameBuffer.respectAlpha) {
       for (let dY = startDestY; dY <= endDestY; dY++) {
@@ -404,7 +406,7 @@ export class OptimizedBuffer {
           const sX = srcX + relativeDestX
           const sY = srcY + relativeDestY
 
-          if (sX >= frameBuffer.getWidth() || sY >= frameBuffer.getHeight()) continue
+          if (sX >= frameBuffer.width || sY >= frameBuffer.height) continue
 
           const destIndex = this.coordsToIndex(dX, dY)
           const srcIndex = frameBuffer.coordsToIndex(sX, sY)
@@ -439,7 +441,7 @@ export class OptimizedBuffer {
         const sX = srcX + relativeDestX
         const sY = srcY + relativeDestY
 
-        if (sX >= frameBuffer.getWidth() || sY >= frameBuffer.getHeight()) continue
+        if (sX >= frameBuffer.width || sY >= frameBuffer.height) continue
 
         const srcIndex = frameBuffer.coordsToIndex(sX, sY)
         const srcColorIndex = srcIndex * 4
@@ -542,10 +544,10 @@ export class OptimizedBuffer {
   }
 
   public resize(width: number, height: number): void {
-    if (this.width === width && this.height === height) return
+    if (this._width === width && this._height === height) return
 
-    this.width = width
-    this.height = height
+    this._width = width
+    this._height = height
 
     this.buffer = this.lib.bufferResize(this.bufferPtr, width, height)
   }

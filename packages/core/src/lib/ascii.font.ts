@@ -227,8 +227,8 @@ export function renderFontToFrameBuffer(
     font?: keyof typeof fonts
   },
 ): { width: number; height: number } {
-  const width = buffer.getWidth()
-  const height = buffer.getHeight()
+  const width = buffer.width
+  const height = buffer.height
 
   const fontDef = getParsedFont(font)
   if (!fontDef) {

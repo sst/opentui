@@ -41,6 +41,7 @@ import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
+import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
@@ -60,12 +61,6 @@ const examples: Example[] = [
     description: "Interactive mouse trails and clickable cells demonstration",
     run: mouseInteractionExample.run,
     destroy: mouseInteractionExample.destroy,
-  },
-  {
-    name: "Full Unicode Demo",
-    description: "Draggable boxes and background filled with complex graphemes",
-    run: fullUnicodeExample.run,
-    destroy: fullUnicodeExample.destroy,
   },
   {
     name: "Text Selection Demo",
@@ -230,6 +225,18 @@ const examples: Example[] = [
     destroy: inputExample.destroy,
   },
   {
+    name: "VNode Composition Demo",
+    description: "Declarative Group(Group(Box(children))) composition",
+    run: vnodeCompositionDemo.run,
+    destroy: vnodeCompositionDemo.destroy,
+  },
+  {
+    name: "Full Unicode Demo",
+    description: "Draggable boxes and background filled with complex graphemes",
+    run: fullUnicodeExample.run,
+    destroy: fullUnicodeExample.destroy,
+  },
+  {
     name: "Split Mode Demo (Experimental)",
     description: "Renderer confined to bottom area with normal terminal output above",
     run: splitModeExample.run,
@@ -360,7 +367,7 @@ class ExampleSelector {
 
   private handleResize(width: number, height: number): void {
     if (this.title) {
-      const titleWidth = this.title.frameBuffer.getWidth()
+      const titleWidth = this.title.frameBuffer.width
       const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
       this.title.x = centerX
     }
@@ -391,6 +398,11 @@ class ExampleSelector {
         case "\u0003":
           this.cleanup()
           process.exit()
+          break
+      }
+      switch (key.name) {
+        case "c":
+          console.log("Capabilities:", this.renderer.capabilities)
           break
       }
     })
@@ -480,11 +492,6 @@ const renderer = await createCliRenderer({
   targetFps: 60,
   useAlternateScreen: false,
 })
-
-// Get and log terminal capabilities
-const lib = resolveRenderLib()
-const capabilities = lib.getTerminalCapabilities(renderer.rendererPtr)
-console.log("Terminal capabilities:", capabilities)
 
 renderer.setBackgroundColor("#001122")
 new ExampleSelector(renderer)

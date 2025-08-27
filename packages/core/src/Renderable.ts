@@ -197,6 +197,8 @@ export abstract class Renderable extends EventEmitter {
   protected _positionType: PositionTypeString = "relative"
   protected _position: Position = {}
 
+  private _childHostOverride: Renderable | null = null
+
   private renderableMap: Map<string, Renderable> = new Map()
   private renderableArray: Renderable[] = []
   private needsZIndexSort: boolean = false
@@ -350,6 +352,32 @@ export abstract class Renderable extends EventEmitter {
     return this._dirty
   }
 
+  public get childHost(): Renderable {
+    return this._childHostOverride || this
+  }
+
+  public set childHost(host: Renderable | null) {
+    this._childHostOverride = host
+  }
+
+  public findDescendantById(id: string): Renderable | undefined {
+    for (const child of this.renderableArray) {
+      if (child.id === id) return child
+      const found = child.findDescendantById(id)
+      if (found) return found
+    }
+    return undefined
+  }
+
+  public setChildHostById(id: string): boolean {
+    const found = this.findDescendantById(id)
+    if (found) {
+      this._childHostOverride = found
+      return true
+    }
+    return false
+  }
+
   private markClean(): void {
     this._dirty = false
   }
@@ -457,6 +485,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public requestZIndexSort(): void {
+    if (this.childHost !== this) {
+      this.childHost.requestZIndexSort()
+      return
+    }
     this.needsZIndexSort = true
   }
 
@@ -847,6 +879,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public add(obj: Renderable, index?: number): number {
+    if (this.childHost !== this) {
+      const insertedIndex = this.childHost.add(obj, index)
+      return insertedIndex
+    }
     if (this.renderableMap.has(obj.id)) {
       console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
       this.remove(obj.id)
@@ -872,12 +908,14 @@ export abstract class Renderable extends EventEmitter {
 
     this.needsUpdate()
 
-    this.emit("child:added", obj)
-
     return insertedIndex
   }
 
   insertBefore(obj: Renderable, anchor?: Renderable): number {
+    if (this.childHost !== this) {
+      const idx = this.childHost.insertBefore(obj, anchor)
+      return idx
+    }
     if (!anchor) {
       return this.add(obj)
     }
@@ -894,11 +932,17 @@ export abstract class Renderable extends EventEmitter {
     return this.add(obj, anchorIndex)
   }
 
+  // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
+    if (this.childHost !== this) return this.childHost.getRenderable(id)
     return this.renderableMap.get(id)
   }
 
   public remove(id: string): void {
+    if (this.childHost !== this) {
+      this.childHost.remove(id)
+      return
+    }
     if (!id) {
       return
     }
@@ -922,7 +966,6 @@ export abstract class Renderable extends EventEmitter {
       if (index !== -1) {
         this.renderableArray.splice(index, 1)
       }
-      this.emit("child:removed", id)
     }
   }
 
@@ -932,6 +975,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public getChildren(): Renderable[] {
+    if (this.childHost !== this) return this.childHost.getChildren()
     return [...this.renderableArray]
   }
 
@@ -941,7 +985,10 @@ export abstract class Renderable extends EventEmitter {
     this.beforeRender()
     this.updateFromLayout()
 
-    const renderBuffer = this.buffered && this.frameBuffer ? this.frameBuffer : buffer
+    let renderBuffer = buffer
+    if (this.buffered && this.frameBuffer) {
+      renderBuffer = this.frameBuffer
+    }
 
     this.renderSelf(renderBuffer, deltaTime)
     this.markClean()
