@@ -41,3 +41,5 @@ const obj = new TextRenderable("my-obj", { content: "Hello, world!" })
 
 renderer.root.add(obj)
 ```
+
+Test
