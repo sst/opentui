@@ -1,4 +1,4 @@
-import { Renderable, TextRenderable, type TextChunk, type TextOptions } from "@opentui/core"
+import { Renderable, TextRenderable, type RenderContext, type TextChunk, type TextOptions } from "@opentui/core"
 import { type DomNode, insertNode as insertRenderable } from "../reconciler"
 import { getNextId } from "../utils/id-counter"
 import { log } from "../utils/log"
@@ -140,7 +140,9 @@ export class TextNode {
       return lastChild
     }
 
-    const ghostNode = new GhostTextRenderable(getNextId(GHOST_NODE_TAG), {})
+    const ghostNode = new GhostTextRenderable(parent.ctx, {
+      id: getNextId(GHOST_NODE_TAG),
+    })
 
     insertRenderable(parent, ghostNode, anchor)
 
@@ -149,8 +151,8 @@ export class TextNode {
 }
 
 class GhostTextRenderable extends TextRenderable {
-  constructor(id: string, options: TextOptions) {
-    super(id, options)
+  constructor(ctx: RenderContext, options: TextOptions) {
+    super(ctx, options)
   }
 
   static isGhostNode(node: DomNode) {

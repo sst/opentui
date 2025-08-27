@@ -52,7 +52,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  headerBox = new BoxRenderable("header-box", {
+  headerBox = new BoxRenderable(renderer, {
+    id: "header-box",
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -64,7 +65,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  header = new TextRenderable("header", {
+  header = new TextRenderable(renderer, {
+    id: "header",
     content: "INPUT & SELECT LAYOUT DEMO",
     fg: "#ffffff",
     bg: "transparent",
@@ -75,7 +77,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   headerBox.add(header)
 
-  selectContainerBox = new BoxRenderable("select-container-box", {
+  selectContainerBox = new BoxRenderable(renderer, {
+    id: "select-container-box",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -88,7 +91,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  selectContainer = new GroupRenderable("select-container", {
+  selectContainer = new GroupRenderable(renderer, {
+    id: "select-container",
     zIndex: 1,
     width: "auto",
     height: "auto",
@@ -99,7 +103,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   selectContainerBox.add(selectContainer)
 
-  leftSelectBox = new BoxRenderable("color-select-box", {
+  leftSelectBox = new BoxRenderable(renderer, {
+    id: "color-select-box",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -115,7 +120,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  leftSelect = new SelectRenderable("color-select", {
+  leftSelect = new SelectRenderable(renderer, {
+    id: "color-select",
     zIndex: 1,
     width: "auto",
     height: "auto",
@@ -138,7 +144,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   leftSelectBox.add(leftSelect)
 
-  rightSelectBox = new BoxRenderable("size-select-box", {
+  rightSelectBox = new BoxRenderable(renderer, {
+    id: "size-select-box",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -154,7 +161,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  rightSelect = new SelectRenderable("size-select", {
+  rightSelect = new SelectRenderable(renderer, {
+    id: "size-select",
     zIndex: 1,
     width: "auto",
     height: "auto",
@@ -177,7 +185,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   rightSelectBox.add(rightSelect)
 
-  inputContainerBox = new BoxRenderable("input-container-box", {
+  inputContainerBox = new BoxRenderable(renderer, {
+    id: "input-container-box",
     zIndex: 0,
     width: "auto",
     height: 7,
@@ -189,7 +198,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  inputContainer = new GroupRenderable("input-container", {
+  inputContainer = new GroupRenderable(renderer, {
+    id: "input-container",
     zIndex: 1,
     width: "auto",
     height: "auto",
@@ -200,7 +210,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   inputContainerBox.add(inputContainer)
 
-  inputLabel = new TextRenderable("input-label", {
+  inputLabel = new TextRenderable(renderer, {
+    id: "input-label",
     content: "Enter your text:",
     fg: "#f1f5f9",
     bg: "#0f172a",
@@ -209,7 +220,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexShrink: 0,
   })
 
-  textInputBox = new BoxRenderable("text-input-box", {
+  textInputBox = new BoxRenderable(renderer, {
+    id: "text-input-box",
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -223,7 +235,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  textInput = new InputRenderable("text-input", {
+  textInput = new InputRenderable(renderer, {
+    id: "text-input",
     zIndex: 1,
     width: "auto",
     height: 1,
@@ -241,7 +254,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   textInputBox.add(textInput)
 
-  footerBox = new BoxRenderable("footer-box", {
+  footerBox = new BoxRenderable(renderer, {
+    id: "footer-box",
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -253,7 +267,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  footer = new TextRenderable("footer", {
+  footer = new TextRenderable(renderer, {
+    id: "footer",
     content: "TAB: focus next | SHIFT+TAB: focus prev | ARROWS/JK: navigate | ESC: quit",
     fg: "#dbeafe",
     bg: "transparent",

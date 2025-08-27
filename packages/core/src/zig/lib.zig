@@ -5,9 +5,14 @@ const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
+const gp = @import("grapheme.zig");
+const text_buffer = @import("text-buffer.zig");
+const terminal = @import("terminal.zig");
+const gwidth = @import("gwidth.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
+pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
 fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
@@ -23,7 +28,9 @@ export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
         return null;
     }
 
-    return renderer.CliRenderer.create(allocator, width, height) catch |err| {
+    const pool = gp.initGlobalPool(allocator);
+
+    return renderer.CliRenderer.create(allocator, width, height, pool) catch |err| {
         log.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -73,14 +80,18 @@ export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
     rendererPtr.render(force);
 }
 
-export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool) ?*buffer.OptimizedBuffer {
+export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8) ?*buffer.OptimizedBuffer {
     if (width == 0 or height == 0) {
         log.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
+    const pool = gp.initGlobalPool(allocator);
+    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     return buffer.OptimizedBuffer.init(allocator, width, height, .{
         .respectAlpha = respectAlpha,
+        .pool = pool,
+        .width_method = wMethod,
     }) catch |err| {
         log.err("Failed to create optimized buffer: {}", .{err});
         return null;
@@ -104,21 +115,30 @@ export fn drawFrameBuffer(targetPtr: *buffer.OptimizedBuffer, destX: i32, destY:
     targetPtr.drawFrameBuffer(destX, destY, frameBuffer, srcX, srcY, srcWidth, srcHeight);
 }
 
-export fn setCursorPosition(x: i32, y: i32, visible: bool) void {
-    renderer.setCursorPositionGlobal(x, y, visible);
+export fn setCursorPosition(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, visible: bool) void {
+    rendererPtr.terminal.setCursorPosition(@intCast(@max(1, x)), @intCast(@max(1, y)), visible);
 }
 
-export fn setCursorStyle(stylePtr: [*]const u8, styleLen: usize, blinking: bool) void {
+export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *terminal.Capabilities) void {
+    capsPtr.* = rendererPtr.getTerminalCapabilities();
+}
+
+export fn processCapabilityResponse(rendererPtr: *renderer.CliRenderer, responsePtr: [*]const u8, responseLen: usize) void {
+    const response = responsePtr[0..responseLen];
+    rendererPtr.processCapabilityResponse(response);
+}
+
+export fn setCursorStyle(rendererPtr: *renderer.CliRenderer, stylePtr: [*]const u8, styleLen: usize, blinking: bool) void {
     const style = stylePtr[0..styleLen];
-    renderer.setCursorStyleGlobal(style, blinking);
+    const cursorStyle = std.meta.stringToEnum(terminal.CursorStyle, style) orelse .block;
+    rendererPtr.terminal.setCursorStyle(cursorStyle, blinking);
 }
 
-export fn setCursorColor(color: [*]const f32) void {
-    renderer.setCursorColorGlobal(f32PtrToRGBA(color));
+export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
+    rendererPtr.terminal.setCursorColor(f32PtrToRGBA(color));
 }
 
 export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, corner: u8) void {
-    // Convert the u8 value to the proper enum value
     const cornerEnum: renderer.DebugOverlayCorner = switch (corner) {
         0 => .topLeft,
         1 => .topRight,
@@ -263,11 +283,22 @@ export fn disableMouse(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableMouse();
 }
 
-// ====== TextBuffer exports ======
-const text_buffer = @import("text-buffer.zig");
+export fn enableKittyKeyboard(rendererPtr: *renderer.CliRenderer, flags: u8) void {
+    rendererPtr.enableKittyKeyboard(flags);
+}
 
-export fn createTextBuffer(length: u32) ?*text_buffer.TextBuffer {
-    const tb = text_buffer.TextBuffer.init(allocator, length) catch return null;
+export fn disableKittyKeyboard(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.disableKittyKeyboard();
+}
+
+export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool) void {
+    rendererPtr.setupTerminal(useAlternateScreen);
+}
+
+export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffer {
+    const pool = gp.initGlobalPool(allocator);
+    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const tb = text_buffer.TextBuffer.init(allocator, length, pool, wMethod) catch return null;
     return tb;
 }
 

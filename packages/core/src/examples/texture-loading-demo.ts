@@ -42,13 +42,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable("texture-loading-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "texture-loading-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const framebufferRenderable = new FrameBufferRenderable("main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "main",
     width: WIDTH,
     height: HEIGHT,
     zIndex: 10,
@@ -96,14 +98,16 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   engine.setActiveCamera(cameraNode)
 
-  const titleText = new TextRenderable("demo-title", {
+  const titleText = new TextRenderable(renderer, {
+    id: "demo-title",
     content: "Texture Loading Demo",
     fg: "#FFFFFF",
     zIndex: 20,
   })
   parentContainer.add(titleText)
 
-  const statusText = new TextRenderable("status", {
+  const statusText = new TextRenderable(renderer, {
+    id: "status",
     content: "Loading texture...",
     position: "absolute",
     left: 0,
@@ -113,7 +117,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(statusText)
 
-  const controlsText = new TextRenderable("controls", {
+  const controlsText = new TextRenderable(renderer, {
+    id: "controls",
     content: "WASD: Move | QE: Rotate | ZX: Zoom | R: Reset | Space: Toggle rotation | Escape: Return",
     position: "absolute",
     left: 0,

@@ -68,13 +68,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable("planck-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "planck-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const framebufferRenderable = new FrameBufferRenderable("planck-main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "planck-main",
     width: initialTermWidth,
     height: initialTermHeight,
     zIndex: 10,
@@ -170,7 +172,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   scene.add(groundMesh)
 
   // Create UI elements
-  const instructionsText = new TextRenderable("planck-instructions", {
+  const instructionsText = new TextRenderable(renderer, {
+    id: "planck-instructions",
     content: "Planck.js 2D Demo - Falling Crates (Instanced Sprites)",
     position: "absolute",
     left: 1,
@@ -180,7 +183,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(instructionsText)
 
-  const controlsText = new TextRenderable("planck-controls", {
+  const controlsText = new TextRenderable(renderer, {
+    id: "planck-controls",
     content: "Press: [Space] spawn crate, [E] explode crate, [R] reset, [T] toggle debug, [C] clear crates",
     position: "absolute",
     left: 1,
@@ -190,7 +194,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(controlsText)
 
-  const statsText = new TextRenderable("planck-stats", {
+  const statsText = new TextRenderable(renderer, {
+    id: "planck-stats",
     content: "",
     position: "absolute",
     left: 1,

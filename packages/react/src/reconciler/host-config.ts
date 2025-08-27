@@ -39,7 +39,7 @@ export const hostConfig: HostConfig<
       throw new Error(`[Reconciler] Unknown component type: ${type}`)
     }
 
-    return new components[type](id, {})
+    return new components[type](rootContainerInstance.ctx, {})
   },
 
   // Append a child to a parent
@@ -101,7 +101,8 @@ export const hostConfig: HostConfig<
   // Create text instance
   createTextInstance(text: string, rootContainerInstance: Container, hostContext: HostContext) {
     const components = getComponentCatalogue()
-    return new components["text"](getNextId("text"), {
+    return new components["text"](rootContainerInstance.ctx, {
+      id: getNextId("text"),
       content: text,
     }) as TextInstance
   },

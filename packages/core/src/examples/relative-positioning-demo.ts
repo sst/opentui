@@ -10,7 +10,8 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#001122")
 
-  const rootContainer = new GroupRenderable("root-container", {
+  const rootContainer = new GroupRenderable(renderer, {
+    id: "root-container",
     position: "relative",
     left: 0,
     top: 0,
@@ -19,7 +20,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(rootContainer)
 
-  const title = new TextRenderable("main-title", {
+  const title = new TextRenderable(renderer, {
+    id: "main-title",
     content: "Relative Positioning Demo - Child positions are relative to parent",
     position: "absolute",
     left: 5,
@@ -30,7 +32,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(title)
 
-  const parentContainerA = new GroupRenderable("parent-container-a", {
+  const parentContainerA = new GroupRenderable(renderer, {
+    id: "parent-container-a",
     position: "absolute",
     left: 10,
     top: 5,
@@ -39,7 +42,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(parentContainerA)
 
-  const parentBoxA = new BoxRenderable("parent-box-a", {
+  const parentBoxA = new BoxRenderable(renderer, {
+    id: "parent-box-a",
     left: 0,
     top: 0,
     width: 40,
@@ -57,7 +61,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainerA.add(parentBoxA)
 
-  const childA1 = new BoxRenderable("child-a1", {
+  const childA1 = new BoxRenderable(renderer, {
+    id: "child-a1",
     width: "auto",
     height: "auto",
     backgroundColor: "#440066",
@@ -73,7 +78,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentBoxA.add(childA1)
 
-  const childA2 = new BoxRenderable("child-a2", {
+  const childA2 = new BoxRenderable(renderer, {
+    id: "child-a2",
     width: "auto",
     height: "auto",
     backgroundColor: "#660044",
@@ -89,7 +95,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentBoxA.add(childA2)
 
-  const childA3 = new BoxRenderable("child-a3", {
+  const childA3 = new BoxRenderable(renderer, {
+    id: "child-a3",
     width: "auto",
     height: "auto",
     backgroundColor: "#440044",
@@ -105,7 +112,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentBoxA.add(childA3)
 
-  const parentContainerB = new GroupRenderable("parent-container-b", {
+  const parentContainerB = new GroupRenderable(renderer, {
+    id: "parent-container-b",
     position: "absolute",
     left: 50,
     top: 8,
@@ -114,7 +122,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(parentContainerB)
 
-  const parentBoxB = new BoxRenderable("parent-box-b", {
+  const parentBoxB = new BoxRenderable(renderer, {
+    id: "parent-box-b",
     left: 0,
     top: 0,
     width: 40,
@@ -132,7 +141,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainerB.add(parentBoxB)
 
-  const parentLabelB = new TextRenderable("parent-label-b", {
+  const parentLabelB = new TextRenderable(renderer, {
+    id: "parent-label-b",
     content: "Parent B Position: (50, 8)",
     fg: "#44FF44",
     attributes: TextAttributes.BOLD,
@@ -140,21 +150,24 @@ export function run(renderer: CliRenderer): void {
   })
   parentBoxB.add(parentLabelB)
 
-  const childB1 = new TextRenderable("child-b1", {
+  const childB1 = new TextRenderable(renderer, {
+    id: "child-b1",
     content: "Child at (1,3) - relative to parent",
     fg: "#88FF88",
     zIndex: 2,
   })
   parentBoxB.add(childB1)
 
-  const childB2 = new TextRenderable("child-b2", {
+  const childB2 = new TextRenderable(renderer, {
+    id: "child-b2",
     content: "Child at (1,5) - relative to parent",
     fg: "#88FF88",
     zIndex: 2,
   })
   parentBoxB.add(childB2)
 
-  const staticContainer = new GroupRenderable("static-container", {
+  const staticContainer = new GroupRenderable(renderer, {
+    id: "static-container",
     position: "absolute",
     left: 5,
     top: 20,
@@ -163,7 +176,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(staticContainer)
 
-  const staticBox = new BoxRenderable("static-box", {
+  const staticBox = new BoxRenderable(renderer, {
+    id: "static-box",
     left: 0,
     top: 0,
     width: 40,
@@ -180,21 +194,24 @@ export function run(renderer: CliRenderer): void {
   })
   staticContainer.add(staticBox)
 
-  const staticChild1 = new TextRenderable("static-child1", {
+  const staticChild1 = new TextRenderable(renderer, {
+    id: "static-child1",
     content: "Static child at (2,2) - never moves",
     fg: "#FFFF88",
     zIndex: 2,
   })
   staticBox.add(staticChild1)
 
-  const staticChild2 = new TextRenderable("static-child2", {
+  const staticChild2 = new TextRenderable(renderer, {
+    id: "static-child2",
     content: "Static child at (2,4) - never moves",
     fg: "#FFFF88",
     zIndex: 2,
   })
   staticBox.add(staticChild2)
 
-  const explanation1 = new TextRenderable("explanation1", {
+  const explanation1 = new TextRenderable(renderer, {
+    id: "explanation1",
     content: "Key Concept: Parent A uses flex layout - children are arranged in a row",
     position: "absolute",
     left: 5,
@@ -205,7 +222,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(explanation1)
 
-  const explanation2 = new TextRenderable("explanation2", {
+  const explanation2 = new TextRenderable(renderer, {
+    id: "explanation2",
     content: "When parent moves, children move with it while maintaining flex layout",
     position: "absolute",
     left: 5,
@@ -215,7 +233,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(explanation2)
 
-  const explanation3 = new TextRenderable("explanation3", {
+  const explanation3 = new TextRenderable(renderer, {
+    id: "explanation3",
     content: "Flex children automatically fit parent width and grow/shrink as needed",
     position: "absolute",
     left: 5,
@@ -225,7 +244,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(explanation3)
 
-  const controls = new TextRenderable("controls", {
+  const controls = new TextRenderable(renderer, {
+    id: "controls",
     content: "Controls: +/- to change animation speed",
     position: "absolute",
     left: 5,
@@ -236,7 +256,8 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(controls)
 
-  const speedDisplay = new TextRenderable("speed-display", {
+  const speedDisplay = new TextRenderable(renderer, {
+    id: "speed-display",
     content: `Animation Speed: ${animationSpeed}ms (min: 500, max: 8000)`,
     position: "absolute",
     left: 5,

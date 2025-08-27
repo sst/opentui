@@ -90,7 +90,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   ]
 
   // Create parent container for all UI elements
-  const parentContainer = new GroupRenderable("shader-cube-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "shader-cube-container",
     zIndex: 10,
     visible: true,
   })
@@ -120,7 +121,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   ]
 
   // Box in the background to show alpha channel works
-  const backgroundBox = new BoxRenderable("shader-cube-box", {
+  const backgroundBox = new BoxRenderable(renderer, {
+    id: "shader-cube-box",
     position: "absolute",
     left: 5,
     top: 5,
@@ -136,7 +138,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(backgroundBox)
 
-  const framebufferRenderable = new FrameBufferRenderable("shader-cube-main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "shader-cube-main",
     width: WIDTH,
     height: HEIGHT,
     zIndex: 10,
@@ -273,7 +276,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   // Create UI elements
   let uiLine = 0
-  const lightVizText = new TextRenderable("shader-light-viz", {
+  const lightVizText = new TextRenderable(renderer, {
+    id: "shader-light-viz",
     content: "Light Visualization: ON (V to toggle)",
     position: "absolute",
     left: 0,
@@ -283,7 +287,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(lightVizText)
 
-  const lightColorText = new TextRenderable("shader-light-color", {
+  const lightColorText = new TextRenderable(renderer, {
+    id: "shader-light-color",
     content: "Point Light: Warm (C to change)",
     position: "absolute",
     left: 0,
@@ -293,7 +298,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(lightColorText)
 
-  const customLightsText = new TextRenderable("shader-custom-lights", {
+  const customLightsText = new TextRenderable(renderer, {
+    id: "shader-custom-lights",
     content: "Custom Lights: ON (L to toggle)",
     position: "absolute",
     left: 0,
@@ -303,7 +309,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(customLightsText)
 
-  const materialToggleText = new TextRenderable("shader-material-toggle", {
+  const materialToggleText = new TextRenderable(renderer, {
+    id: "shader-material-toggle",
     content: "Material: Auto-cycling (M to toggle, N to change)",
     position: "absolute",
     left: 0,
@@ -313,7 +320,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(materialToggleText)
 
-  const textureEffectsText = new TextRenderable("shader-texture-effects", {
+  const textureEffectsText = new TextRenderable(renderer, {
+    id: "shader-texture-effects",
     content: "Texture Effects: P-Specular [OFF] | B-Normal [OFF] | I-Emissive [OFF]",
     position: "absolute",
     left: 0,
@@ -323,7 +331,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(textureEffectsText)
 
-  const filterStatusText = new TextRenderable("shader-filter-status", {
+  const filterStatusText = new TextRenderable(renderer, {
+    id: "shader-filter-status",
     content: `Filter: ${filterFunctions[currentFilterIndex].name} (,/. to cycle)`,
     position: "absolute",
     left: 0,
@@ -333,7 +342,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(filterStatusText)
 
-  const param1StatusText = new TextRenderable("shader-param1-status", {
+  const param1StatusText = new TextRenderable(renderer, {
+    id: "shader-param1-status",
     content: ``,
     position: "absolute",
     left: 0,
@@ -344,7 +354,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   param1StatusText.visible = false
   parentContainer.add(param1StatusText)
 
-  const param2StatusText = new TextRenderable("shader-param2-status", {
+  const param2StatusText = new TextRenderable(renderer, {
+    id: "shader-param2-status",
     content: ``,
     position: "absolute",
     left: 0,
@@ -355,7 +366,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   param2StatusText.visible = false
   parentContainer.add(param2StatusText)
 
-  const controlsText = new TextRenderable("shader-controls", {
+  const controlsText = new TextRenderable(renderer, {
+    id: "shader-controls",
     content:
       "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | ,/. Filter | [/]{/} Param Adjust",
     position: "absolute",

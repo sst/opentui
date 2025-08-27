@@ -3,6 +3,7 @@ import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
+import type { RenderContext } from "../types"
 
 export interface SelectOption {
   name: string
@@ -74,8 +75,8 @@ export class SelectRenderable extends Renderable {
     fastScrollStep: 5,
   } satisfies Partial<SelectRenderableOptions>
 
-  constructor(id: string, options: SelectRenderableOptions) {
-    super(id, { ...options, buffered: true })
+  constructor(ctx: RenderContext, options: SelectRenderableOptions) {
+    super(ctx, { ...options, buffered: true })
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)

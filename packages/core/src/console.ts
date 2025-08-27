@@ -561,7 +561,7 @@ export class TerminalConsole extends EventEmitter {
       terminalConsoleCache.setCachingEnabled(false)
 
       if (!this.frameBuffer) {
-        this.frameBuffer = OptimizedBuffer.create(this.consoleWidth, this.consoleHeight, {
+        this.frameBuffer = OptimizedBuffer.create(this.consoleWidth, this.consoleHeight, this.renderer.widthMethod, {
           respectAlpha: this.backgroundColor.a < 1,
         })
       }

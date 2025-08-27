@@ -1,4 +1,16 @@
-import { BoxRenderable, OptimizedBuffer, RGBA, MouseEvent, t, bold, underline, fg, CliRenderer } from "@opentui/core"
+import {
+  BoxRenderable,
+  OptimizedBuffer,
+  RGBA,
+  MouseEvent,
+  t,
+  bold,
+  underline,
+  fg,
+  type RenderContext,
+} from "@opentui/core"
+import { useContext } from "solid-js"
+import { RendererContext } from "../../src/elements/hooks"
 
 let nextZIndex = 101
 class DraggableTransparentBox extends BoxRenderable {
@@ -16,8 +28,8 @@ class DraggableTransparentBox extends BoxRenderable {
     this.screenSizeY = 52
   }
 
-  constructor(id: string, x: number, y: number, width: number, height: number, bg: RGBA, zIndex: number) {
-    super(id, {
+  constructor(ctx: RenderContext, x: number, y: number, width: number, height: number, bg: RGBA, zIndex: number) {
+    super(ctx, {
       width,
       height,
       zIndex,
@@ -86,8 +98,8 @@ class DraggableTransparentBox extends BoxRenderable {
           this.x = event.x - this.dragOffsetX
           this.y = event.y - this.dragOffsetY
 
-          this.x = Math.max(0, Math.min(this.x, (this.ctx?.width() || 80) - this.width))
-          this.y = Math.max(4, Math.min(this.y, (this.ctx?.height() || 24) - this.height))
+          this.x = Math.max(0, Math.min(this.x, this._ctx.width - this.width))
+          this.y = Math.max(4, Math.min(this.y, this._ctx.height - this.height))
 
           event.preventDefault()
         }
@@ -97,8 +109,12 @@ class DraggableTransparentBox extends BoxRenderable {
 }
 
 export default function MouseDraggableScene() {
+  const solidRenderer = useContext(RendererContext)
+  if (!solidRenderer) {
+    throw new Error("No renderer found")
+  }
   const alphaBox50 = new DraggableTransparentBox(
-    "alpha-box-50",
+    solidRenderer,
     15,
     5,
     25,

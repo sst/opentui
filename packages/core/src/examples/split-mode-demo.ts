@@ -45,7 +45,8 @@ class SplitModeAnimations {
       loop: true,
     })
 
-    this.container = new GroupRenderable("animation-container", {
+    this.container = new GroupRenderable(renderer, {
+      id: "animation-container",
       zIndex: 5,
       visible: true,
     })
@@ -57,7 +58,8 @@ class SplitModeAnimations {
   }
 
   private setupUI(): void {
-    const statusPanel = new BoxRenderable("status-panel", {
+    const statusPanel = new BoxRenderable(this.renderer, {
+      id: "status-panel",
       position: "absolute",
       left: 2,
       top: 5,
@@ -82,7 +84,8 @@ class SplitModeAnimations {
     ]
 
     systems.forEach((system, index) => {
-      const label = new TextRenderable(`${system.name.toLowerCase()}-label`, {
+      const label = new TextRenderable(this.renderer, {
+        id: `${system.name.toLowerCase()}-label`,
         content: `${system.name}:`,
         position: "absolute",
         left: 4,
@@ -92,7 +95,8 @@ class SplitModeAnimations {
       })
       this.container.add(label)
 
-      const bgBar = new BoxRenderable(`${system.name.toLowerCase()}-bg`, {
+      const bgBar = new BoxRenderable(this.renderer, {
+        id: `${system.name.toLowerCase()}-bg`,
         position: "absolute",
         left: 9,
         top: system.y,
@@ -103,7 +107,8 @@ class SplitModeAnimations {
       })
       this.container.add(bgBar)
 
-      const progressBar = new BoxRenderable(`${system.name.toLowerCase()}-progress`, {
+      const progressBar = new BoxRenderable(this.renderer, {
+        id: `${system.name.toLowerCase()}-progress`,
         position: "absolute",
         left: 9,
         top: system.y,
@@ -116,7 +121,8 @@ class SplitModeAnimations {
       this.systemLoadingBars.push(progressBar)
     })
 
-    const statsPanel = new BoxRenderable("stats-panel", {
+    const statsPanel = new BoxRenderable(this.renderer, {
+      id: "stats-panel",
       position: "absolute",
       left: 2,
       top: 14,
@@ -135,7 +141,8 @@ class SplitModeAnimations {
     this.statusCounters = []
     const counterLabels = ["PACKETS", "CONNECTIONS", "PROCESSES", "UPTIME"]
     counterLabels.forEach((label, index) => {
-      const counter = new TextRenderable(`counter-${index}`, {
+      const counter = new TextRenderable(this.renderer, {
+        id: `counter-${index}`,
         content: `${label}: 0`,
         position: "absolute",
         left: 4 + index * 15,
@@ -150,7 +157,8 @@ class SplitModeAnimations {
     this.movingOrbs = []
     const orbColors = ["#ff6b9d", "#4ecdc4", "#ffe66d"]
     orbColors.forEach((color, index) => {
-      const orb = new BoxRenderable(`orb-${index}`, {
+      const orb = new BoxRenderable(this.renderer, {
+        id: `orb-${index}`,
         position: "absolute",
         left: 2,
         top: 2,
@@ -166,7 +174,8 @@ class SplitModeAnimations {
     this.pulsingElements = []
     const pulseColors = ["#ff8a80", "#80cbc4", "#fff176"]
     pulseColors.forEach((color, index) => {
-      const pulse = new BoxRenderable(`pulse-${index}`, {
+      const pulse = new BoxRenderable(this.renderer, {
+        id: `pulse-${index}`,
         position: "absolute",
         left: this.renderer.width - 8 + index * 2,
         top: 1,
@@ -312,7 +321,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   animationSystem = new SplitModeAnimations(rendererInstance)
 
-  text = new TextRenderable("demo-text", {
+  text = new TextRenderable(rendererInstance, {
+    id: "demo-text",
     position: "absolute",
     left: 2,
     top: 0,
@@ -322,7 +332,8 @@ export function run(rendererInstance: CliRenderer): void {
     content: t`${bold(fg("#00ffff")("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆"))}`,
   })
 
-  instructionsText = new TextRenderable("split-mode-instructions", {
+  instructionsText = new TextRenderable(rendererInstance, {
+    id: "split-mode-instructions",
     position: "absolute",
     left: 2,
     top: 19,

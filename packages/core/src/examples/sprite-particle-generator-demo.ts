@@ -52,12 +52,14 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable("particle-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "particle-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
-  const framebufferRenderable = new FrameBufferRenderable("particle-main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "particle-main",
     width: initialTermWidth,
     height: initialTermHeight,
     zIndex: 10,
@@ -82,7 +84,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   scene.add(pCamera)
   engine.setActiveCamera(pCamera)
 
-  instructionsText = new TextRenderable("particle-instructions", {
+  instructionsText = new TextRenderable(renderer, {
+    id: "particle-instructions",
     content:
       "'g'(burst), 'a'(auto), 's'(stop), 'x'(clear), '1'(3D Static), '2'(2D Static), '3'(3D Animated), '4'(Custom), '5'(2D Animated)",
     position: "absolute",
@@ -93,7 +96,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(instructionsText)
 
-  particleCountText = new TextRenderable("particle-count", {
+  particleCountText = new TextRenderable(renderer, {
+    id: "particle-count",
     content: "Particles: 0",
     position: "absolute",
     left: 1,
@@ -103,7 +107,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(particleCountText)
 
-  configInfoText = new TextRenderable("particle-config-info", {
+  configInfoText = new TextRenderable(renderer, {
+    id: "particle-config-info",
     content: "Mode: 3D Static | Auto-spawning",
     position: "absolute",
     left: 1,

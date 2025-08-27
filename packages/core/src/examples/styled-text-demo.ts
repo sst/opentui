@@ -17,7 +17,6 @@ import { BoxRenderable } from "../renderables/Box"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
 
-let renderer: CliRenderer | null = null
 let parentContainer: GroupRenderable | null = null
 let counter = 0
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
@@ -29,11 +28,12 @@ let dashboardBox: BoxRenderable | null = null
 let complexDisplay: TextRenderable | null = null
 
 export function run(rendererInstance: CliRenderer): void {
-  renderer = rendererInstance
+  const renderer = rendererInstance
   renderer.start()
   renderer.setBackgroundColor("#001122")
 
-  parentContainer = new GroupRenderable("styled-text-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "styled-text-container",
     zIndex: 15,
     visible: true,
   })
@@ -48,7 +48,8 @@ With a ${bold(blue("window"))},
 And a ${blue("corvette")}
 And everything is blue`
 
-  const houseDisplay = new TextRenderable("house-text", {
+  const houseDisplay = new TextRenderable(renderer, {
+    id: "house-text",
     content: houseText,
     width: 30,
     height: 6,
@@ -65,7 +66,8 @@ ${bold(green("SUCCESS:"))} Data loaded
 ${bold(fg("#FFA500")("WARNING:"))} Low memory
 ${bgYellow(fg("black")(" NOTICE "))} System update available`
 
-  const statusDisplay = new TextRenderable("status-text", {
+  const statusDisplay = new TextRenderable(renderer, {
+    id: "status-text",
     content: statusText,
     width: 50,
     height: 6,
@@ -77,7 +79,8 @@ ${bgYellow(fg("black")(" NOTICE "))} System update available`
   parentContainer.add(statusDisplay)
 
   // Example 3 - Original dynamic text (updates every second)
-  dashboardBox = new BoxRenderable("dashboard-box", {
+  dashboardBox = new BoxRenderable(renderer, {
+    id: "dashboard-box",
     width: 72,
     height: 21,
     position: "absolute",
@@ -111,7 +114,8 @@ ${fg("#2ECC71")("Status:")} ${bold(fg("#E74C3C")("●"))} ${green("ALL SYSTEMS G
 
 ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit")}`
 
-  complexDisplay = new TextRenderable("complex-template", {
+  complexDisplay = new TextRenderable(renderer, {
+    id: "complex-template",
     content: initialText,
     left: 1,
     top: 1,
@@ -133,7 +137,8 @@ ${underline("Dynamic:")} ${bold(fg("#FF6B6B")(Math.sin(counter * 0.1) > 0 ? "UP"
       if (dynamicDisplay) {
         dynamicDisplay.content = dynamicText
       } else {
-        const newDynamicDisplay = new TextRenderable("dynamic-text", {
+        const newDynamicDisplay = new TextRenderable(renderer, {
+          id: "dynamic-text",
           content: dynamicText,
           width: 40,
           height: 4,
@@ -209,7 +214,8 @@ ${underline("Features demonstrated:")}
 • Dynamic updates with ${green("controllable frequency")}
 • Complex templates with ${red("many variables")}`
 
-  const instructionsDisplay = new TextRenderable("instructions", {
+  const instructionsDisplay = new TextRenderable(renderer, {
+    id: "instructions",
     content: instructionsText,
     width: 60,
     height: 12,
@@ -228,7 +234,8 @@ Boolean: ${red(true)}
 Float: ${blue((3.14159).toFixed(2))}
 Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
 
-  const typesDisplay = new TextRenderable("types-text", {
+  const typesDisplay = new TextRenderable(renderer, {
+    id: "types-text",
     content: typesText,
     width: 30,
     height: 6,
@@ -264,7 +271,6 @@ export function destroy(rendererInstance: CliRenderer): void {
   startTime = Date.now()
   dashboardBox = null
   complexDisplay = null
-  renderer = null
 }
 
 if (import.meta.main) {

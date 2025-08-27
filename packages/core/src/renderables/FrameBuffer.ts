@@ -1,5 +1,6 @@
 import { type RenderableOptions, Renderable } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
+import type { RenderContext } from "../types"
 
 export interface FrameBufferOptions extends RenderableOptions {
   width: number
@@ -11,10 +12,10 @@ export class FrameBufferRenderable extends Renderable {
   public frameBuffer: OptimizedBuffer
   protected respectAlpha: boolean
 
-  constructor(id: string, options: FrameBufferOptions) {
-    super(id, options)
+  constructor(ctx: RenderContext, options: FrameBufferOptions) {
+    super(ctx, options)
     this.respectAlpha = options.respectAlpha || false
-    this.frameBuffer = OptimizedBuffer.create(options.width, options.height, {
+    this.frameBuffer = OptimizedBuffer.create(options.width, options.height, this._ctx.widthMethod, {
       respectAlpha: this.respectAlpha,
     })
   }

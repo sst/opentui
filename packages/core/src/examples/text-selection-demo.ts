@@ -31,7 +31,8 @@ let allTextRenderables: (TextRenderable | TextRenderable)[] = []
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
 
-  mainContainer = new BoxRenderable("mainContainer", {
+  mainContainer = new BoxRenderable(renderer, {
+    id: "mainContainer",
     position: "absolute",
     left: 1,
     top: 1,
@@ -46,7 +47,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(mainContainer)
 
-  leftGroup = new GroupRenderable("leftGroup", {
+  leftGroup = new GroupRenderable(renderer, {
+    id: "leftGroup",
     position: "absolute",
     left: 2,
     top: 2,
@@ -54,7 +56,8 @@ export function run(renderer: CliRenderer): void {
   })
   mainContainer.add(leftGroup)
 
-  const box1 = new BoxRenderable("box1", {
+  const box1 = new BoxRenderable(renderer, {
+    id: "box1",
     width: 45,
     height: 7,
     backgroundColor: "#1e2936",
@@ -67,7 +70,8 @@ export function run(renderer: CliRenderer): void {
   })
   leftGroup.add(box1)
 
-  const text1 = new TextRenderable("text1", {
+  const text1 = new TextRenderable(renderer, {
+    id: "text1",
     content: "This is a paragraph in the first box.",
     zIndex: 21,
     fg: "#f0f6fc",
@@ -75,7 +79,8 @@ export function run(renderer: CliRenderer): void {
   box1.add(text1)
   allTextRenderables.push(text1)
 
-  const text2 = new TextRenderable("text2", {
+  const text2 = new TextRenderable(renderer, {
+    id: "text2",
     content: "It contains multiple lines of text",
     zIndex: 21,
     fg: "#f0f6fc",
@@ -83,7 +88,8 @@ export function run(renderer: CliRenderer): void {
   box1.add(text2)
   allTextRenderables.push(text2)
 
-  const text3 = new TextRenderable("text3", {
+  const text3 = new TextRenderable(renderer, {
+    id: "text3",
     content: "that can be selected independently.",
     zIndex: 21,
     fg: "#f0f6fc",
@@ -91,7 +97,8 @@ export function run(renderer: CliRenderer): void {
   box1.add(text3)
   allTextRenderables.push(text3)
 
-  const nestedBox = new BoxRenderable("nestedBox", {
+  const nestedBox = new BoxRenderable(renderer, {
+    id: "nestedBox",
     left: 2,
     top: 1,
     width: 31,
@@ -104,7 +111,8 @@ export function run(renderer: CliRenderer): void {
   })
   leftGroup.add(nestedBox)
 
-  const nestedText = new TextRenderable("nestedText", {
+  const nestedText = new TextRenderable(renderer, {
+    id: "nestedText",
     content: t`${yellow("Important:")} ${bold(cyan("Nested content"))} ${italic(green("with styles"))}`,
     width: 27,
     height: 1,
@@ -115,7 +123,8 @@ export function run(renderer: CliRenderer): void {
   nestedBox.add(nestedText)
   allTextRenderables.push(nestedText)
 
-  rightGroup = new GroupRenderable("rightGroup", {
+  rightGroup = new GroupRenderable(renderer, {
+    id: "rightGroup",
     position: "absolute",
     left: 48,
     top: 2,
@@ -123,7 +132,8 @@ export function run(renderer: CliRenderer): void {
   })
   mainContainer.add(rightGroup)
 
-  const box2 = new BoxRenderable("box2", {
+  const box2 = new BoxRenderable(renderer, {
+    id: "box2",
     left: 2,
     top: 0,
     width: 35,
@@ -139,7 +149,8 @@ export function run(renderer: CliRenderer): void {
   })
   rightGroup.add(box2)
 
-  const codeText1 = new TextRenderable("codeText1", {
+  const codeText1 = new TextRenderable(renderer, {
+    id: "codeText1",
     content: t`${magenta("function")} ${cyan("handleSelection")}() {`,
     zIndex: 21,
     selectionBg: "#4a5568",
@@ -147,7 +158,8 @@ export function run(renderer: CliRenderer): void {
   box2.add(codeText1)
   allTextRenderables.push(codeText1)
 
-  const codeText2 = new TextRenderable("codeText2", {
+  const codeText2 = new TextRenderable(renderer, {
+    id: "codeText2",
     content: t`  ${magenta("const")} selected = ${cyan("getSelectedText")}()`,
     zIndex: 21,
     selectionBg: "#4a5568",
@@ -155,7 +167,8 @@ export function run(renderer: CliRenderer): void {
   box2.add(codeText2)
   allTextRenderables.push(codeText2)
 
-  const codeText3 = new TextRenderable("codeText3", {
+  const codeText3 = new TextRenderable(renderer, {
+    id: "codeText3",
     content: t`  ${yellow("console")}.${green("log")}(selected)`,
     zIndex: 21,
     selectionBg: "#4a5568",
@@ -163,7 +176,8 @@ export function run(renderer: CliRenderer): void {
   box2.add(codeText3)
   allTextRenderables.push(codeText3)
 
-  const codeText4 = new TextRenderable("codeText4", {
+  const codeText4 = new TextRenderable(renderer, {
+    id: "codeText4",
     content: "}",
     zIndex: 21,
     fg: "#e6edf3",
@@ -171,7 +185,8 @@ export function run(renderer: CliRenderer): void {
   box2.add(codeText4)
   allTextRenderables.push(codeText4)
 
-  floatingBox = new BoxRenderable("floatingBox", {
+  floatingBox = new BoxRenderable(renderer, {
+    id: "floatingBox",
     position: "absolute",
     left: 90,
     top: 11,
@@ -186,7 +201,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(floatingBox)
 
-  const multilineText = new TextRenderable("multilineText", {
+  const multilineText = new TextRenderable(renderer, {
+    id: "multilineText",
     content: t`${bold(cyan("Selection Demo"))}
 ${green("✓")} Cross-renderable selection
 ${green("✓")} Nested groups and boxes
@@ -198,7 +214,8 @@ ${green("✓")} Styled text support`,
   floatingBox.add(multilineText)
   allTextRenderables.push(multilineText)
 
-  const instructions = new TextRenderable("instructions", {
+  const instructions = new TextRenderable(renderer, {
+    id: "instructions",
     content: "Click and drag to select text across any elements. Press 'C' to clear selection.",
     left: 2,
     top: 17,
@@ -208,7 +225,8 @@ ${green("✓")} Styled text support`,
   mainContainer.add(instructions)
   allTextRenderables.push(instructions)
 
-  statusBox = new BoxRenderable("statusBox", {
+  statusBox = new BoxRenderable(renderer, {
+    id: "statusBox",
     position: "absolute",
     left: 1,
     top: 24,
@@ -224,35 +242,40 @@ ${green("✓")} Styled text support`,
   })
   renderer.root.add(statusBox)
 
-  statusText = new TextRenderable("statusText", {
+  statusText = new TextRenderable(renderer, {
+    id: "statusText",
     content: "No selection - try selecting across different nested elements",
     zIndex: 2,
     fg: "#f0f6fc",
   })
   statusBox.add(statusText)
 
-  selectionStartText = new TextRenderable("selectionStartText", {
+  selectionStartText = new TextRenderable(renderer, {
+    id: "selectionStartText",
     content: "",
     zIndex: 2,
     fg: "#7dd3fc",
   })
   statusBox.add(selectionStartText)
 
-  selectionMiddleText = new TextRenderable("selectionMiddleText", {
+  selectionMiddleText = new TextRenderable(renderer, {
+    id: "selectionMiddleText",
     content: "",
     zIndex: 2,
     fg: "#94a3b8",
   })
   statusBox.add(selectionMiddleText)
 
-  selectionEndText = new TextRenderable("selectionEndText", {
+  selectionEndText = new TextRenderable(renderer, {
+    id: "selectionEndText",
     content: "",
     zIndex: 2,
     fg: "#7dd3fc",
   })
   statusBox.add(selectionEndText)
 
-  debugText = new TextRenderable("debugText", {
+  debugText = new TextRenderable(renderer, {
+    id: "debugText",
     content: "",
     zIndex: 2,
     fg: "#e6edf3",

@@ -9,6 +9,7 @@ import {
   BoxRenderable,
   type MouseEvent,
   OptimizedBuffer,
+  type RenderContext,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -34,6 +35,7 @@ class ConsoleButton extends BoxRenderable {
   private lastClickTime = 0
 
   constructor(
+    ctx: RenderContext,
     id: string,
     x: number,
     y: number,
@@ -45,7 +47,8 @@ class ConsoleButton extends BoxRenderable {
   ) {
     const borderColor = RGBA.fromValues(color.r * 1.3, color.g * 1.3, color.b * 1.3, 1.0)
 
-    super(id, {
+    super(ctx, {
+      id,
       position: "absolute",
       left: x,
       top: y,
@@ -183,7 +186,8 @@ export function run(renderer: CliRenderer): void {
   const backgroundColor = RGBA.fromInts(18, 22, 35, 255)
   renderer.setBackgroundColor(backgroundColor)
 
-  titleText = new TextRenderable("console_demo_title", {
+  titleText = new TextRenderable(renderer, {
+    id: "console_demo_title",
     content: "Console Logging Demo",
     position: "absolute",
     left: 2,
@@ -194,7 +198,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(titleText)
 
-  instructionsText = new TextRenderable("console_demo_instructions", {
+  instructionsText = new TextRenderable(renderer, {
+    id: "console_demo_instructions",
     content:
       "Click buttons to trigger different console log levels • Press ` to toggle console • Escape: return to menu",
     position: "absolute",
@@ -205,7 +210,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(instructionsText)
 
-  statusText = new TextRenderable("console_demo_status", {
+  statusText = new TextRenderable(renderer, {
+    id: "console_demo_status",
     content: "Click any button to start logging...",
     position: "absolute",
     left: 2,
@@ -228,18 +234,49 @@ export function run(renderer: CliRenderer): void {
   const spacing = 18
 
   consoleButtons = [
-    new ConsoleButton("log-btn", 2, startY, buttonWidth, buttonHeight, logColor, "LOG", "log"),
-    new ConsoleButton("info-btn", 2 + spacing, startY, buttonWidth, buttonHeight, infoColor, "INFO", "info"),
-    new ConsoleButton("warn-btn", 2 + spacing * 2, startY, buttonWidth, buttonHeight, warnColor, "WARN", "warn"),
-    new ConsoleButton("error-btn", 2 + spacing * 3, startY, buttonWidth, buttonHeight, errorColor, "ERROR", "error"),
-    new ConsoleButton("debug-btn", 2 + spacing * 4, startY, buttonWidth, buttonHeight, debugColor, "DEBUG", "debug"),
+    new ConsoleButton(renderer, "log-btn", 2, startY, buttonWidth, buttonHeight, logColor, "LOG", "log"),
+    new ConsoleButton(renderer, "info-btn", 2 + spacing, startY, buttonWidth, buttonHeight, infoColor, "INFO", "info"),
+    new ConsoleButton(
+      renderer,
+      "warn-btn",
+      2 + spacing * 2,
+      startY,
+      buttonWidth,
+      buttonHeight,
+      warnColor,
+      "WARN",
+      "warn",
+    ),
+    new ConsoleButton(
+      renderer,
+      "error-btn",
+      2 + spacing * 3,
+      startY,
+      buttonWidth,
+      buttonHeight,
+      errorColor,
+      "ERROR",
+      "error",
+    ),
+    new ConsoleButton(
+      renderer,
+      "debug-btn",
+      2 + spacing * 4,
+      startY,
+      buttonWidth,
+      buttonHeight,
+      debugColor,
+      "DEBUG",
+      "debug",
+    ),
   ]
 
   for (const button of consoleButtons) {
     renderer.root.add(button)
   }
 
-  const decorText1 = new TextRenderable("decor1", {
+  const decorText1 = new TextRenderable(renderer, {
+    id: "decor1",
     content: "✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦ ✧ ✦",
     position: "absolute",
     left: 2,
@@ -249,7 +286,8 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(decorText1)
 
-  const decorText2 = new TextRenderable("decor2", {
+  const decorText2 = new TextRenderable(renderer, {
+    id: "decor2",
     content: "Console will appear at the bottom. Use Ctrl+P/Ctrl+O to change position, +/- to resize.",
     position: "absolute",
     left: 2,

@@ -51,13 +51,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable("phong-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "phong-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const framebufferRenderable = new FrameBufferRenderable("phong-main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "phong-main",
     width: WIDTH,
     height: HEIGHT,
     zIndex: 10,
@@ -152,7 +154,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   engine.setActiveCamera(camera)
   sceneRoot.add(camera)
 
-  const titleText = new TextRenderable("phong-title", {
+  const titleText = new TextRenderable(renderer, {
+    id: "phong-title",
     content: "WebGPU Phong Lights Demo",
     position: "absolute",
     fg: "#FFFFFF",
@@ -160,7 +163,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(titleText)
 
-  const statusText = new TextRenderable("phong-status", {
+  const statusText = new TextRenderable(renderer, {
+    id: "phong-status",
     content: "Ready.",
     position: "absolute",
     top: 1,
@@ -169,7 +173,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(statusText)
 
-  const controlsText = new TextRenderable("phong-controls", {
+  const controlsText = new TextRenderable(renderer, {
+    id: "phong-controls",
     content: "WASD: Move | QE: Rotate | ZX: Zoom | R: Reset | U: Super Sample",
     position: "absolute",
     top: HEIGHT - 2,

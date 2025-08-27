@@ -215,7 +215,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  header = new BoxRenderable("header", {
+  header = new BoxRenderable(renderer, {
+    id: "header",
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -225,7 +226,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  headerText = new TextRenderable("header-text", {
+  headerText = new TextRenderable(renderer, {
+    id: "header-text",
     content: "LAYOUT DEMO",
     fg: "#ffffff",
     bg: "transparent",
@@ -234,7 +236,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   header.add(headerText)
 
-  contentArea = new GroupRenderable("content-area", {
+  contentArea = new GroupRenderable(renderer, {
+    id: "content-area",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -243,7 +246,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexShrink: 1,
   })
 
-  sidebar = new BoxRenderable("sidebar", {
+  sidebar = new BoxRenderable(renderer, {
+    id: "sidebar",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -257,7 +261,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  sidebarText = new TextRenderable("sidebar-text", {
+  sidebarText = new TextRenderable(renderer, {
+    id: "sidebar-text",
     content: "SIDEBAR",
     fg: "#ffffff",
     bg: "transparent",
@@ -266,7 +271,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   sidebar.add(sidebarText)
 
-  mainContent = new BoxRenderable("main-content", {
+  mainContent = new BoxRenderable(renderer, {
+    id: "main-content",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -280,7 +286,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  mainContentText = new TextRenderable("main-content-text", {
+  mainContentText = new TextRenderable(renderer, {
+    id: "main-content-text",
     content: "MAIN CONTENT",
     fg: "#1e293b",
     bg: "transparent",
@@ -289,7 +296,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   mainContent.add(mainContentText)
 
-  rightSidebar = new BoxRenderable("right-sidebar", {
+  rightSidebar = new BoxRenderable(renderer, {
+    id: "right-sidebar",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -303,7 +311,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  rightSidebarText = new TextRenderable("right-sidebar-text", {
+  rightSidebarText = new TextRenderable(renderer, {
+    id: "right-sidebar-text",
     content: "RIGHT",
     fg: "#ffffff",
     bg: "transparent",
@@ -312,7 +321,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   rightSidebar.add(rightSidebarText)
 
-  footer = new BoxRenderable("footer", {
+  footer = new BoxRenderable(renderer, {
+    id: "footer",
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -326,7 +336,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  footerText = new TextRenderable("footer-text", {
+  footerText = new TextRenderable(renderer, {
+    id: "footer-text",
     content: "",
     fg: "#ffffff",
     bg: "transparent",
@@ -335,7 +346,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   footer.add(footerText)
 
-  moveableElement = new BoxRenderable("moveable", {
+  moveableElement = new BoxRenderable(renderer, {
+    id: "moveable",
     zIndex: 100,
     width: 8,
     height: 3,
@@ -351,7 +363,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  moveableText = new TextRenderable("moveable-text", {
+  moveableText = new TextRenderable(renderer, {
+    id: "moveable-text",
     content: "MOVE",
     fg: "#ffffff",
     bg: "transparent",
@@ -360,7 +373,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   moveableElement.add(moveableText)
 
-  absolutePositionedBox = new BoxRenderable("absolute-positioned-box", {
+  absolutePositionedBox = new BoxRenderable(renderer, {
+    id: "absolute-positioned-box",
     zIndex: 150,
     width: 20,
     height: 3,
@@ -376,7 +390,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  absolutePositionedText = new TextRenderable("absolute-positioned-text", {
+  absolutePositionedText = new TextRenderable(renderer, {
+    id: "absolute-positioned-text",
     content: "BOTTOM RIGHT",
     fg: "#ffffff",
     bg: "transparent",

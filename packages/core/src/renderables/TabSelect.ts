@@ -2,6 +2,7 @@ import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import type { ParsedKey } from "../lib/parse.keypress"
+import type { RenderContext } from "../types"
 
 export interface TabSelectOption {
   name: string
@@ -66,10 +67,10 @@ export class TabSelectRenderable extends Renderable {
   private _showUnderline: boolean
   private _wrapSelection: boolean
 
-  constructor(id: string, options: TabSelectRenderableOptions) {
+  constructor(ctx: RenderContext, options: TabSelectRenderableOptions) {
     const calculatedHeight = calculateDynamicHeight(options.showUnderline ?? true, options.showDescription ?? true)
 
-    super(id, { ...options, height: calculatedHeight, buffered: true })
+    super(ctx, { ...options, height: calculatedHeight, buffered: true })
 
     this._backgroundColor = parseColor(options.backgroundColor || "transparent")
     this._textColor = parseColor(options.textColor || "#FFFFFF")

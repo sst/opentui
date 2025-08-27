@@ -3,6 +3,7 @@ import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type BorderStyle, type BorderSides, type BorderCharacters, BorderCharArrays, borderCharsToArray } from "./lib"
+import { type WidthMethod } from "./types"
 
 function isRGBAWithAlpha(color: RGBA): boolean {
   return color.a < 1.0
@@ -110,10 +111,15 @@ export class OptimizedBuffer {
     this.buffer = buffer
   }
 
-  static create(width: number, height: number, options: { respectAlpha?: boolean } = {}): OptimizedBuffer {
+  static create(
+    width: number,
+    height: number,
+    widthMethod: WidthMethod,
+    options: { respectAlpha?: boolean } = {},
+  ): OptimizedBuffer {
     const lib = resolveRenderLib()
     const respectAlpha = options.respectAlpha || false
-    return lib.createOptimizedBuffer(width, height, respectAlpha)
+    return lib.createOptimizedBuffer(width, height, widthMethod, respectAlpha)
   }
 
   public get buffers(): {
