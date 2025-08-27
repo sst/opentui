@@ -52,6 +52,10 @@ pub const ANSI = struct {
         std.fmt.format(writer, "\x1b]12;#{x:0>2}{x:0>2}{x:0>2}\x07", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
+    pub fn explicitWidthOutput(writer: anytype, width: u32, text: []const u8) AnsiError!void {
+        std.fmt.format(writer, "\x1b]66;w={d};{s}\x1b\\", .{ width, text }) catch return AnsiError.WriteFailed;
+    }
+
     pub const resetCursorColor = "\x1b]12;default\x07";
     pub const saveCursorState = "\x1b[s";
     pub const restoreCursorState = "\x1b[u";
@@ -67,6 +71,54 @@ pub const ANSI = struct {
     pub const disableAnyEventTracking = "\x1b[?1003l";
     pub const enableSGRMouseMode = "\x1b[?1006h";
     pub const disableSGRMouseMode = "\x1b[?1006l";
+    pub const mouseSetPixels = "\x1b[?1002;1003;1004;1016h";
+
+    // Terminal capability queries
+    pub const primaryDeviceAttrs = "\x1b[c";
+    pub const tertiaryDeviceAttrs = "\x1b[=c";
+    pub const deviceStatusReport = "\x1b[5n";
+    pub const xtversion = "\x1b[>0q";
+    pub const decrqmFocus = "\x1b[?1004$p";
+    pub const decrqmSgrPixels = "\x1b[?1016$p";
+    pub const decrqmBracketedPaste = "\x1b[?2004$p";
+    pub const decrqmSync = "\x1b[?2026$p";
+    pub const decrqmUnicode = "\x1b[?2027$p";
+    pub const decrqmColorScheme = "\x1b[?2031$p";
+    pub const csiUQuery = "\x1b[?u";
+    pub const kittyGraphicsQuery = "\x1b_Gi=1,a=q\x1b\\";
+    pub const sixelGeometryQuery = "\x1b[?2;1;0S";
+    pub const cursorPositionRequest = "\x1b[6n";
+    pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";
+    pub const scaledTextQuery = "\x1b]66;s=2; \x1b\\";
+
+    // Focus tracking
+    pub const focusSet = "\x1b[?1004h";
+    pub const focusReset = "\x1b[?1004l";
+
+    // Sync
+    pub const syncSet = "\x1b[?2026h";
+    pub const syncReset = "\x1b[?2026l";
+
+    // Unicode
+    pub const unicodeSet = "\x1b[?2027h";
+    pub const unicodeReset = "\x1b[?2027l";
+
+    // Bracketed paste
+    pub const bracketedPasteSet = "\x1b[?2004h";
+    pub const bracketedPasteReset = "\x1b[?2004l";
+
+    // Color scheme
+    pub const colorSchemeRequest = "\x1b[?996n";
+    pub const colorSchemeSet = "\x1b[?2031h";
+    pub const colorSchemeReset = "\x1b[?2031l";
+
+    // Key encoding
+    pub const csiUPush = "\x1b[>{d}u";
+    pub const csiUPop = "\x1b[<u";
+
+    // Movement and erase
+    pub const reverseIndex = "\x1bM";
+    pub const eraseBelowCursor = "\x1b[J";
 
     pub fn clearRendererSpaceOutput(writer: anytype, height: u32) AnsiError!void {
         // Clear each line individually from bottom to top
@@ -74,6 +126,16 @@ pub const ANSI = struct {
         var i: u32 = height;
         while (i > 0) : (i -= 1) {
             std.fmt.format(writer, "\x1b[{d};1H\x1b[2K", .{i}) catch return AnsiError.WriteFailed;
+        }
+    }
+
+    pub fn makeRoomForRendererOutput(writer: anytype, height: u32) AnsiError!void {
+        if (height > 1) {
+            var i: u32 = 0;
+            while (i < height - 1) : (i += 1) {
+                writer.writeByte('\n') catch return AnsiError.WriteFailed;
+            }
+            std.fmt.format(writer, "\x1b[{d}A", .{height - 1}) catch return AnsiError.WriteFailed;
         }
     }
 };

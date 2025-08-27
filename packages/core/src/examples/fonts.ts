@@ -39,13 +39,15 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#000028")
 
-  parentContainer = new GroupRenderable("fonts-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "fonts-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  buffer = new FrameBufferRenderable("ascii-demo", {
+  buffer = new FrameBufferRenderable(renderer, {
+    id: "ascii-demo",
     width: renderer.terminalWidth,
     height: contentHeight,
     position: "absolute",
@@ -192,7 +194,8 @@ export function run(rendererInstance: CliRenderer): void {
     font: "slick",
   })
 
-  const scrollInstructions = new TextRenderable("scroll-instructions", {
+  const scrollInstructions = new TextRenderable(renderer, {
+    id: "scroll-instructions",
     content: "USE J/K OR ARROW KEYS TO SCROLL",
     position: "absolute",
     left: renderer.terminalWidth - 32,

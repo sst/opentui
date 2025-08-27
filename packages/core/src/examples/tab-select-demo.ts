@@ -86,13 +86,15 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  parentContainer = new GroupRenderable("tab-select-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "tab-select-container",
     zIndex: 10,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  tabSelect = new TabSelectRenderable("main-tabs", {
+  tabSelect = new TabSelectRenderable(renderer, {
+    id: "main-tabs",
     position: "absolute",
     left: 5,
     top: 2,
@@ -115,7 +117,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   renderer.root.add(tabSelect)
 
-  keyLegendDisplay = new TextRenderable("key-legend", {
+  keyLegendDisplay = new TextRenderable(renderer, {
+    id: "key-legend",
     content: t``,
     width: 40,
     height: 10,
@@ -128,7 +131,8 @@ export function run(rendererInstance: CliRenderer): void {
   parentContainer.add(keyLegendDisplay)
 
   // Create status display
-  statusDisplay = new TextRenderable("status-display", {
+  statusDisplay = new TextRenderable(renderer, {
+    id: "status-display",
     content: t``,
     width: 80,
     height: 6,

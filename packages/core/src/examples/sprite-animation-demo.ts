@@ -48,13 +48,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable("sprite-animation-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "sprite-animation-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const framebufferRenderable = new FrameBufferRenderable("main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "main",
     width: initialTermWidth,
     height: initialTermHeight,
     zIndex: 10,
@@ -114,7 +116,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   let isPerspectiveActive = true
   engine.setActiveCamera(pCamera)
 
-  const cameraModeText = new TextRenderable("cameraModeText", {
+  const cameraModeText = new TextRenderable(renderer, {
+    id: "cameraModeText",
     content: `Camera: Perspective (Press 'c' to switch)`,
     position: "absolute",
     left: 1,
@@ -374,7 +377,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
     await engine.drawScene(scene, framebuffer, deltaTime)
   })
 
-  const instructionsText = new TextRenderable("instructions", {
+  const instructionsText = new TextRenderable(renderer, {
+    id: "instructions",
     content:
       "Controls: c=camera, e=explode, r=restore, p=stress test, x=explode random, t=debug, u=supersample, `=console, ESC=back",
     position: "absolute",

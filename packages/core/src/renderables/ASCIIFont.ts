@@ -3,7 +3,7 @@ import { ASCIIFontSelectionHelper } from "../lib/selection"
 import { type fonts, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../lib/ascii.font"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { FrameBufferRenderable } from "./FrameBuffer"
-import type { SelectionState } from "../types"
+import type { RenderContext, SelectionState } from "../types"
 
 export interface ASCIIFontOptions extends RenderableOptions {
   text?: string
@@ -26,12 +26,12 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
 
   private selectionHelper: ASCIIFontSelectionHelper
 
-  constructor(id: string, options: ASCIIFontOptions) {
+  constructor(ctx: RenderContext, options: ASCIIFontOptions) {
     const font = options.font || "tiny"
     const text = options.text || ""
     const measurements = measureText({ text: text, font })
 
-    super(id, {
+    super(ctx, {
       ...options,
       width: measurements.width || 1,
       height: measurements.height || 1,

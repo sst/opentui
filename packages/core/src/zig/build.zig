@@ -115,6 +115,16 @@ fn buildTargetFromQuery(
         .optimize = optimize,
         .link_libc = false,
     });
+
+    const zg_dep = b.dependency("zg", .{
+        // .cjk = false,
+        .optimize = optimize,
+        .target = target,
+    });
+    module.addImport("code_point", zg_dep.module("code_point"));
+    module.addImport("Graphemes", zg_dep.module("Graphemes"));
+    module.addImport("DisplayWidth", zg_dep.module("DisplayWidth"));
+
     target_output = b.addLibrary(.{
         .name = LIB_NAME,
         .root_module = module,

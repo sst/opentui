@@ -41,7 +41,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable("fractal-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "fractal-container",
     zIndex: 10,
     visible: true,
   })
@@ -130,14 +131,16 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   engine.setActiveCamera(cameraNode)
 
-  const titleText = new TextRenderable("fractal_title", {
+  const titleText = new TextRenderable(renderer, {
+    id: "fractal_title",
     content: "Shader by @XorDev",
     fg: "#FFFFFF",
     zIndex: 25,
   })
   parentContainer.add(titleText)
 
-  const controlsText = new TextRenderable("fractal_controls", {
+  const controlsText = new TextRenderable(renderer, {
+    id: "fractal_controls",
     content: "Space: Pause/Resume | R: Reset | P: Screenshot | +/-: Speed | Escape: Back to menu",
     position: "absolute",
     top: HEIGHT - 2,
@@ -146,7 +149,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(controlsText)
 
-  const statusText = new TextRenderable("fractal_status", {
+  const statusText = new TextRenderable(renderer, {
+    id: "fractal_status",
     content: "Speed: 1.0x",
     position: "absolute",
     top: 1,

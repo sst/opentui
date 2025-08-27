@@ -2,18 +2,19 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const buf = @import("buffer.zig");
+const gp = @import("grapheme.zig");
+const Terminal = @import("terminal.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
 pub const TextAttributes = ansi.TextAttributes;
+pub const CursorStyle = Terminal.CursorStyle;
 
 const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
-const DEFAULT_CURSOR_X = 1;
-const DEFAULT_CURSOR_Y = 1;
+
 const COLOR_EPSILON_DEFAULT: f32 = 0.00001;
-const RUN_BUFFER_SIZE = 1024;
 const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2MB
 
 pub const RendererError = error{
@@ -30,12 +31,6 @@ fn rgbaComponentToU8(component: f32) u8 {
     return @intFromFloat(@round(clamped * 255.0));
 }
 
-pub const CursorStyle = enum {
-    block,
-    line,
-    underline,
-};
-
 pub const DebugOverlayCorner = enum {
     topLeft,
     topRight,
@@ -43,23 +38,15 @@ pub const DebugOverlayCorner = enum {
     bottomRight,
 };
 
-var globalCursor = struct {
-    x: u32 = DEFAULT_CURSOR_X,
-    y: u32 = DEFAULT_CURSOR_Y,
-    visible: bool = true,
-    style: CursorStyle = .block,
-    blinking: bool = false,
-    color: RGBA = .{ 1.0, 1.0, 1.0, 1.0 },
-    mutex: std.Thread.Mutex = .{},
-}{};
-
 pub const CliRenderer = struct {
     width: u32,
     height: u32,
     currentRenderBuffer: *OptimizedBuffer,
     nextRenderBuffer: *OptimizedBuffer,
+    pool: *gp.GraphemePool,
     backgroundColor: RGBA,
     renderOffset: u32,
+    terminal: Terminal,
 
     renderStats: struct {
         lastFrameTime: f64,
@@ -142,41 +129,11 @@ pub const CliRenderer = struct {
         }
     };
 
-    fn codepointDisplayWidth(cp: u32) u2 {
-        // Treat NULL and control characters as width 0 (render as space)
-        if (cp == 0) return 0;
-        if (cp < 32) return 0;
-        // Basic control DEL
-        if (cp == 0x7F) return 0;
-
-        // Simple combining diacriticals range (partial; keeps minimal set)
-        if ((cp >= 0x0300 and cp <= 0x036F) or (cp >= 0x1AB0 and cp <= 0x1AFF) or (cp >= 0x1DC0 and cp <= 0x1DFF) or (cp >= 0x20D0 and cp <= 0x20FF) or (cp >= 0xFE20 and cp <= 0xFE2F)) {
-            return 0;
-        }
-
-        // Emoji and common East Asian Wide blocks (coarse coverage sufficient for terminals)
-        if ((cp >= 0x1100 and cp <= 0x115F) or // Hangul Jamo init
-            (cp == 0x2329 or cp == 0x232A) or // angle brackets
-            (cp >= 0x2E80 and cp <= 0xA4CF) or // CJK ... Yi
-            (cp >= 0xAC00 and cp <= 0xD7A3) or // Hangul syllables
-            (cp >= 0xF900 and cp <= 0xFAFF) or // CJK compatibility ideographs
-            (cp >= 0xFE10 and cp <= 0xFE19) or // vertical forms
-            (cp >= 0xFE30 and cp <= 0xFE6F) or // CJK forms
-            (cp >= 0xFF00 and cp <= 0xFF60) or // fullwidth forms
-            (cp >= 0xFFE0 and cp <= 0xFFE6) or // fullwidth signs
-            (cp >= 0x1F300 and cp <= 0x1FAFF)) // emoji blocks (broad)
-        {
-            return 2;
-        }
-
-        return 1;
-    }
-
-    pub fn create(allocator: Allocator, width: u32, height: u32) !*CliRenderer {
+    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
 
-        const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{});
-        const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{});
+        const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode });
+        const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode });
 
         const stdout = std.io.getStdOut();
         const stdoutWriter = std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };
@@ -209,8 +166,10 @@ pub const CliRenderer = struct {
             .height = height,
             .currentRenderBuffer = currentBuffer,
             .nextRenderBuffer = nextBuffer,
+            .pool = pool,
             .backgroundColor = .{ 0.0, 0.0, 0.0, 1.0 },
             .renderOffset = 0,
+            .terminal = Terminal.init(.{}),
 
             .renderStats = .{
                 .lastFrameTime = 0,
@@ -288,13 +247,35 @@ pub const CliRenderer = struct {
         self.allocator.destroy(self);
     }
 
+    pub fn setupTerminal(self: *CliRenderer, useAlternateScreen: bool) void {
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
+        writer.writeAll(ansi.ANSI.saveCursorState) catch {};
+
+        self.terminal.queryTerminalSend(writer.any()) catch {
+            // If capability detection fails, continue with defaults
+        };
+
+        if (useAlternateScreen) {
+            self.terminal.enterAltScreen(writer.any()) catch {};
+        } else {
+            ansi.ANSI.makeRoomForRendererOutput(writer, self.height) catch {};
+        }
+
+        self.terminal.setCursorPosition(1, 1, false);
+
+        bufferedWriter.flush() catch {};
+    }
+
     fn performShutdownSequence(self: *CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
         const direct = self.stdoutWriter.writer();
 
         self.disableMouse();
 
+        self.terminal.resetState(direct.any()) catch {};
+
         if (useAlternateScreen) {
-            direct.writeAll(ansi.ANSI.switchToMainScreen) catch {};
             self.stdoutWriter.flush() catch {};
         } else if (splitHeight == 0) {
             ansi.ANSI.clearRendererSpaceOutput(direct, self.height) catch {};
@@ -308,9 +289,8 @@ pub const CliRenderer = struct {
         direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
         direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
 
-        direct.writeAll(ansi.ANSI.showCursor) catch {};
-
         // Workaround for Ghostty not showing the cursor after shutdown for some reason
+        direct.writeAll(ansi.ANSI.showCursor) catch {};
         self.stdoutWriter.flush() catch {};
         std.time.sleep(10 * std.time.ns_per_ms);
         direct.writeAll(ansi.ANSI.showCursor) catch {};
@@ -407,10 +387,8 @@ pub const CliRenderer = struct {
             self.hitGridHeight = height;
         }
 
-        globalCursor.mutex.lock();
-        globalCursor.x = @min(globalCursor.x, width);
-        globalCursor.y = @min(globalCursor.y, height);
-        globalCursor.mutex.unlock();
+        const cursor = self.terminal.getCursorPosition();
+        self.terminal.setCursorPosition(@min(cursor.x, width), @min(cursor.y, height), cursor.visible);
     }
 
     pub fn setBackgroundColor(self: *CliRenderer, rgba: RGBA) void {
@@ -535,19 +513,13 @@ pub const CliRenderer = struct {
         var currentAttributes: i16 = -1;
         var utf8Buf: [4]u8 = undefined;
 
-        var runBuffer: [RUN_BUFFER_SIZE]u8 = undefined;
-        var runBufferLen: usize = 0;
-
         const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
 
             var runStart: i64 = -1;
-            var runStartVisualCol: i64 = -1;
             var runLength: u32 = 0;
-            runBufferLen = 0;
-            var currentVisualCol: u32 = 0;
 
             for (0..self.width) |ux| {
                 const x = @as(u32, @intCast(ux));
@@ -565,20 +537,10 @@ pub const CliRenderer = struct {
                         buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon))
                     {
                         if (runLength > 0) {
-                            const startCol: u32 = @intCast(runStartVisualCol + 1);
-                            ansi.ANSI.moveToOutput(writer, startCol, @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
-
-                            writer.writeAll(runBuffer[0..runBufferLen]) catch {};
                             writer.writeAll(ansi.ANSI.reset) catch {};
-
                             runStart = -1;
-                            runStartVisualCol = -1;
                             runLength = 0;
-                            runBufferLen = 0;
                         }
-                        const nextChar = nextCell.?.char;
-                        const w = codepointDisplayWidth(nextChar);
-                        currentVisualCol += if (w == 0) 1 else w;
                         continue;
                     }
                 }
@@ -591,23 +553,17 @@ pub const CliRenderer = struct {
 
                 if (!sameAttributes or runStart == -1) {
                     if (runLength > 0) {
-                        const startCol: u32 = @intCast(runStartVisualCol + 1);
-                        ansi.ANSI.moveToOutput(writer, startCol, @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
-
-                        writer.writeAll(runBuffer[0..runBufferLen]) catch {};
                         writer.writeAll(ansi.ANSI.reset) catch {};
-                        runBufferLen = 0;
                     }
 
                     runStart = @intCast(x);
-                    runStartVisualCol = @intCast(currentVisualCol);
                     runLength = 0;
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
                     currentAttributes = @intCast(cell.attributes);
 
-                    ansi.ANSI.moveToOutput(writer, @as(u32, @intCast(currentVisualCol + 1)), y + 1 + self.renderOffset) catch {};
+                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
                     const fgR = rgbaComponentToU8(cell.fg[0]);
                     const fgG = rgbaComponentToU8(cell.fg[1]);
@@ -623,81 +579,89 @@ pub const CliRenderer = struct {
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
 
-                var outChar: u32 = cell.char;
-                const w = codepointDisplayWidth(outChar);
-                if (w == 0) {
-                    outChar = ' ';
-                }
-                const len = std.unicode.utf8Encode(@intCast(outChar), &utf8Buf) catch 1;
-                if (runBufferLen + len <= runBuffer.len) {
-                    @memcpy(runBuffer[runBufferLen..][0..len], utf8Buf[0..len]);
-                    runBufferLen += len;
+                // Handle grapheme characters
+                if (gp.isGraphemeChar(cell.char)) {
+                    const gid: u32 = gp.graphemeIdFromChar(cell.char);
+                    const bytes = self.pool.get(gid) catch {
+                        std.debug.panic("Fatal: no grapheme bytes in pool for gid {d}", .{gid});
+                    };
+                    if (bytes.len > 0) {
+                        const capabilities = self.terminal.getCapabilities();
+                        if (capabilities.explicit_width) {
+                            const graphemeWidth = gp.charRightExtent(cell.char) + 1;
+                            ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
+                        } else {
+                            writer.writeAll(bytes) catch {};
+                        }
+                    }
+                } else if (gp.isContinuationChar(cell.char)) {
+                    // Write a space for continuation cells to clear any previous content
+                    writer.writeByte(' ') catch {};
+                } else {
+                    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
+                    writer.writeAll(utf8Buf[0..len]) catch {};
                 }
                 runLength += 1;
 
-                self.currentRenderBuffer.set(x, y, nextCell.?);
+                // Update the current buffer with the new cell
+                self.currentRenderBuffer.setRaw(x, y, nextCell.?);
 
-                cellsUpdated += 1;
-                currentVisualCol += if (w == 0) 1 else w;
-
-                // append an extra space if previous char was double-width next is a narrow glyph
-                const prevWidth = codepointDisplayWidth(currentCell.?.char);
-                if (prevWidth == 2 and (w == 0 or w == 1)) {
-                    if (runBufferLen + 1 <= runBuffer.len) {
-                        runBuffer[runBufferLen] = ' ';
-                        runBufferLen += 1;
-                        currentVisualCol += 1;
+                // If this is a grapheme start, also update all continuation cells
+                if (gp.isGraphemeChar(nextCell.?.char)) {
+                    const rightExtent = gp.charRightExtent(nextCell.?.char);
+                    var k: u32 = 1;
+                    while (k <= rightExtent and x + k < self.width) : (k += 1) {
+                        if (self.nextRenderBuffer.get(x + k, y)) |contCell| {
+                            self.currentRenderBuffer.setRaw(x + k, y, contCell);
+                        }
                     }
                 }
-            }
 
-            if (runLength > 0) {
-                const startCol: u32 = @intCast(runStartVisualCol + 1);
-                ansi.ANSI.moveToOutput(writer, startCol, @as(u32, @intCast(y + 1 + self.renderOffset))) catch {};
-                writer.writeAll(runBuffer[0..runBufferLen]) catch {};
-                writer.writeAll(ansi.ANSI.reset) catch {};
+                cellsUpdated += 1;
             }
         }
 
         writer.writeAll(ansi.ANSI.reset) catch {};
 
-        globalCursor.mutex.lock();
-        if (globalCursor.visible) {
+        const cursorPos = self.terminal.getCursorPosition();
+        const cursorStyle = self.terminal.getCursorStyle();
+        const cursorColor = self.terminal.getCursorColor();
+
+        if (cursorPos.visible) {
             var cursorStyleCode: []const u8 = undefined;
 
-            switch (globalCursor.style) {
+            switch (cursorStyle.style) {
                 .block => {
-                    cursorStyleCode = if (globalCursor.blinking)
+                    cursorStyleCode = if (cursorStyle.blinking)
                         ansi.ANSI.cursorBlockBlink
                     else
                         ansi.ANSI.cursorBlock;
                 },
                 .line => {
-                    cursorStyleCode = if (globalCursor.blinking)
+                    cursorStyleCode = if (cursorStyle.blinking)
                         ansi.ANSI.cursorLineBlink
                     else
                         ansi.ANSI.cursorLine;
                 },
                 .underline => {
-                    cursorStyleCode = if (globalCursor.blinking)
+                    cursorStyleCode = if (cursorStyle.blinking)
                         ansi.ANSI.cursorUnderlineBlink
                     else
                         ansi.ANSI.cursorUnderline;
                 },
             }
 
-            const cursorR = rgbaComponentToU8(globalCursor.color[0]);
-            const cursorG = rgbaComponentToU8(globalCursor.color[1]);
-            const cursorB = rgbaComponentToU8(globalCursor.color[2]);
+            const cursorR = rgbaComponentToU8(cursorColor[0]);
+            const cursorG = rgbaComponentToU8(cursorColor[1]);
+            const cursorB = rgbaComponentToU8(cursorColor[2]);
 
             ansi.ANSI.cursorColorOutputWriter(writer, cursorR, cursorG, cursorB) catch {};
             writer.writeAll(cursorStyleCode) catch {};
-            ansi.ANSI.moveToOutput(writer, globalCursor.x, globalCursor.y + self.renderOffset) catch {};
+            ansi.ANSI.moveToOutput(writer, cursorPos.x, cursorPos.y + self.renderOffset) catch {};
             writer.writeAll(ansi.ANSI.showCursor) catch {};
         } else {
             writer.writeAll(ansi.ANSI.hideCursor) catch {};
         }
-        globalCursor.mutex.unlock();
 
         const renderEndTime = std.time.microTimestamp();
         const renderTime = @as(f64, @floatFromInt(renderEndTime - renderStartTime));
@@ -798,9 +762,17 @@ pub const CliRenderer = struct {
             for (0..self.width) |x| {
                 const cell = buffer.get(@intCast(x), @intCast(y));
                 if (cell) |c| {
-                    var utf8Buf: [4]u8 = undefined;
-                    const len = std.unicode.utf8Encode(@intCast(c.char), &utf8Buf) catch 1;
-                    writer.writeAll(utf8Buf[0..len]) catch return;
+                    if (gp.isContinuationChar(c.char)) {
+                        // skip
+                    } else if (gp.isGraphemeChar(c.char)) {
+                        const gid: u32 = gp.graphemeIdFromChar(c.char);
+                        const bytes = self.pool.get(gid) catch &[_]u8{};
+                        if (bytes.len > 0) writer.writeAll(bytes) catch return;
+                    } else {
+                        var utf8Buf: [4]u8 = undefined;
+                        const len = std.unicode.utf8Encode(@intCast(c.char), &utf8Buf) catch 1;
+                        writer.writeAll(utf8Buf[0..len]) catch return;
+                    }
                 } else {
                     writer.writeByte(' ') catch return;
                 }
@@ -855,13 +827,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        writer.writeAll(ansi.ANSI.enableSGRMouseMode) catch {};
-        writer.writeAll(ansi.ANSI.enableMouseTracking) catch {};
-        writer.writeAll(ansi.ANSI.enableButtonEventTracking) catch {};
-
-        if (enableMovement) {
-            writer.writeAll(ansi.ANSI.enableAnyEventTracking) catch {};
-        }
+        self.terminal.setMouseMode(writer.any(), true) catch {};
 
         bufferedWriter.flush() catch {};
     }
@@ -875,12 +841,47 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        writer.writeAll(ansi.ANSI.disableAnyEventTracking) catch {};
-        writer.writeAll(ansi.ANSI.disableButtonEventTracking) catch {};
-        writer.writeAll(ansi.ANSI.disableMouseTracking) catch {};
-        writer.writeAll(ansi.ANSI.disableSGRMouseMode) catch {};
+        self.terminal.setMouseMode(writer.any(), false) catch {};
 
         bufferedWriter.flush() catch {};
+    }
+
+    pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
+        self.terminal.setKittyKeyboard(writer.any(), true, flags) catch {};
+        bufferedWriter.flush() catch {};
+    }
+
+    pub fn disableKittyKeyboard(self: *CliRenderer) void {
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
+        self.terminal.setKittyKeyboard(writer.any(), false, 0) catch {};
+        bufferedWriter.flush() catch {};
+    }
+
+    pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
+        return self.terminal.getCapabilities();
+    }
+
+    pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
+        self.terminal.processCapabilityResponse(response);
+        const writer = self.stdoutWriter.writer();
+        self.terminal.enableDetectedFeatures(writer.any()) catch {};
+    }
+
+    pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
+        self.terminal.setCursorPosition(x, y, visible);
+    }
+
+    pub fn setCursorStyle(self: *CliRenderer, style: Terminal.CursorStyle, blinking: bool) void {
+        self.terminal.setCursorStyle(style, blinking);
+    }
+
+    pub fn setCursorColor(self: *CliRenderer, color: [4]f32) void {
+        self.terminal.setCursorColor(color);
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {
@@ -1000,26 +1001,3 @@ pub const CliRenderer = struct {
         row += 1;
     }
 };
-
-pub fn setCursorPositionGlobal(x: i32, y: i32, visible: bool) void {
-    globalCursor.mutex.lock();
-    globalCursor.x = @intCast(@max(1, x));
-    globalCursor.y = @intCast(@max(1, y));
-    globalCursor.visible = visible;
-    globalCursor.mutex.unlock();
-}
-
-pub fn setCursorStyleGlobal(styleStr: []const u8, blinking: bool) void {
-    if (styleStr.len == 0) return;
-
-    globalCursor.mutex.lock();
-    globalCursor.style = std.meta.stringToEnum(CursorStyle, styleStr) orelse .block;
-    globalCursor.blinking = blinking;
-    globalCursor.mutex.unlock();
-}
-
-pub fn setCursorColorGlobal(color: RGBA) void {
-    globalCursor.mutex.lock();
-    globalCursor.color = color;
-    globalCursor.mutex.unlock();
-}

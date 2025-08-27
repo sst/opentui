@@ -1,6 +1,6 @@
 import { dlopen, toArrayBuffer, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
-import type { CursorStyle, DebugOverlayCorner } from "./types"
+import { type CursorStyle, type DebugOverlayCorner, type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
@@ -58,7 +58,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createOptimizedBuffer: {
-      args: ["u32", "u32", "bool"],
+      args: ["u32", "u32", "bool", "u8"],
       returns: "ptr",
     },
     destroyOptimizedBuffer: {
@@ -129,17 +129,17 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
-    // Global cursor functions
+    // Cursor functions (now renderer-scoped)
     setCursorPosition: {
-      args: ["i32", "i32", "bool"],
+      args: ["ptr", "i32", "i32", "bool"],
       returns: "void",
     },
     setCursorStyle: {
-      args: ["ptr", "u32", "bool"],
+      args: ["ptr", "ptr", "u32", "bool"],
       returns: "void",
     },
     setCursorColor: {
-      args: ["ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
 
@@ -196,10 +196,22 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    enableKittyKeyboard: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
+    disableKittyKeyboard: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    setupTerminal: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
 
     // TextBuffer functions
     createTextBuffer: {
-      args: ["u32"],
+      args: ["u32", "u8"],
       returns: "ptr",
     },
     destroyTextBuffer: {
@@ -294,6 +306,16 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
       returns: "void",
     },
+
+    // Terminal capability functions
+    getTerminalCapabilities: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    processCapabilityResponse: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
   })
 }
 
@@ -308,7 +330,12 @@ export interface RenderLib {
   render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
-  createOptimizedBuffer: (width: number, height: number, respectAlpha?: boolean) => OptimizedBuffer
+  createOptimizedBuffer: (
+    width: number,
+    height: number,
+    widthMethod: WidthMethod,
+    respectAlpha?: boolean,
+  ) => OptimizedBuffer
   destroyOptimizedBuffer: (bufferPtr: Pointer) => void
   drawFrameBuffer: (
     targetBufferPtr: Pointer,
@@ -389,9 +416,9 @@ export interface RenderLib {
     attributes: Uint8Array
   }
   resizeRenderer: (renderer: Pointer, width: number, height: number) => void
-  setCursorPosition: (x: number, y: number, visible: boolean) => void
-  setCursorStyle: (style: CursorStyle, blinking: boolean) => void
-  setCursorColor: (color: RGBA) => void
+  setCursorPosition: (renderer: Pointer, x: number, y: number, visible: boolean) => void
+  setCursorStyle: (renderer: Pointer, style: CursorStyle, blinking: boolean) => void
+  setCursorColor: (renderer: Pointer, color: RGBA) => void
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
@@ -401,9 +428,12 @@ export interface RenderLib {
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
+  enableKittyKeyboard: (renderer: Pointer, flags: number) => void
+  disableKittyKeyboard: (renderer: Pointer) => void
+  setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
 
   // TextBuffer methods
-  createTextBuffer: (capacity: number) => TextBuffer
+  createTextBuffer: (capacity: number, widthMethod: WidthMethod) => TextBuffer
   destroyTextBuffer: (buffer: Pointer) => void
   textBufferGetCharPtr: (buffer: Pointer) => Pointer
   textBufferGetFgPtr: (buffer: Pointer) => Pointer
@@ -467,6 +497,9 @@ export interface RenderLib {
     y: number,
     clipRect?: { x: number; y: number; width: number; height: number },
   ) => void
+
+  getTerminalCapabilities: (renderer: Pointer) => any
+  processCapabilityResponse: (renderer: Pointer, response: string) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -770,29 +803,35 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.resizeRenderer(renderer, width, height)
   }
 
-  public setCursorPosition(x: number, y: number, visible: boolean) {
-    this.opentui.symbols.setCursorPosition(x, y, visible)
+  public setCursorPosition(renderer: Pointer, x: number, y: number, visible: boolean) {
+    this.opentui.symbols.setCursorPosition(renderer, x, y, visible)
   }
 
-  public setCursorStyle(style: CursorStyle, blinking: boolean) {
+  public setCursorStyle(renderer: Pointer, style: CursorStyle, blinking: boolean) {
     const stylePtr = this.encoder.encode(style)
-    this.opentui.symbols.setCursorStyle(stylePtr, style.length, blinking)
+    this.opentui.symbols.setCursorStyle(renderer, stylePtr, style.length, blinking)
   }
 
-  public setCursorColor(color: RGBA) {
-    this.opentui.symbols.setCursorColor(color.buffer)
+  public setCursorColor(renderer: Pointer, color: RGBA) {
+    this.opentui.symbols.setCursorColor(renderer, color.buffer)
   }
 
   public render(renderer: Pointer, force: boolean) {
     this.opentui.symbols.render(renderer, force)
   }
 
-  public createOptimizedBuffer(width: number, height: number, respectAlpha: boolean = false): OptimizedBuffer {
+  public createOptimizedBuffer(
+    width: number,
+    height: number,
+    widthMethod: WidthMethod,
+    respectAlpha: boolean = false,
+  ): OptimizedBuffer {
     if (Number.isNaN(width) || Number.isNaN(height)) {
       console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
     }
 
-    const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha)
+    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
+    const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha, widthMethodCode)
     if (!bufferPtr) {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
@@ -861,9 +900,22 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.disableMouse(renderer)
   }
 
+  public enableKittyKeyboard(renderer: Pointer, flags: number): void {
+    this.opentui.symbols.enableKittyKeyboard(renderer, flags)
+  }
+
+  public disableKittyKeyboard(renderer: Pointer): void {
+    this.opentui.symbols.disableKittyKeyboard(renderer)
+  }
+
+  public setupTerminal(renderer: Pointer, useAlternateScreen: boolean): void {
+    this.opentui.symbols.setupTerminal(renderer, useAlternateScreen)
+  }
+
   // TextBuffer methods
-  public createTextBuffer(capacity: number): TextBuffer {
-    const bufferPtr = this.opentui.symbols.createTextBuffer(capacity)
+  public createTextBuffer(capacity: number, widthMethod: WidthMethod): TextBuffer {
+    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
+    const bufferPtr = this.opentui.symbols.createTextBuffer(capacity, widthMethodCode)
     if (!bufferPtr) {
       throw new Error(`Failed to create TextBuffer with capacity ${capacity}`)
     }
@@ -1093,6 +1145,36 @@ class FFIRenderLib implements RenderLib {
       clipHeight,
       hasClipRect,
     )
+  }
+
+  public getTerminalCapabilities(renderer: Pointer): any {
+    const capsBuffer = new Uint8Array(64)
+    this.opentui.symbols.getTerminalCapabilities(renderer, capsBuffer)
+
+    let offset = 0
+    const capabilities = {
+      kitty_keyboard: capsBuffer[offset++] !== 0,
+      kitty_graphics: capsBuffer[offset++] !== 0,
+      rgb: capsBuffer[offset++] !== 0,
+      unicode: capsBuffer[offset++] === 0 ? "wcwidth" : "unicode",
+      sgr_pixels: capsBuffer[offset++] !== 0,
+      color_scheme_updates: capsBuffer[offset++] !== 0,
+      explicit_width: capsBuffer[offset++] !== 0,
+      scaled_text: capsBuffer[offset++] !== 0,
+      sixel: capsBuffer[offset++] !== 0,
+      focus_tracking: capsBuffer[offset++] !== 0,
+      sync: capsBuffer[offset++] !== 0,
+      bracketed_paste: capsBuffer[offset++] !== 0,
+      hyperlinks: capsBuffer[offset++] !== 0,
+    }
+    console.log(capabilities)
+
+    return capabilities
+  }
+
+  public processCapabilityResponse(renderer: Pointer, response: string): void {
+    const responseBytes = this.encoder.encode(response)
+    this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
   }
 }
 

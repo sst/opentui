@@ -3,7 +3,7 @@ import { TextSelectionHelper } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
-import type { SelectionState } from "../types"
+import { type SelectionState, type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 
@@ -31,8 +31,8 @@ export class TextRenderable extends Renderable {
   private _plainText: string = ""
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
-  constructor(id: string, options: TextOptions) {
-    super(id, options)
+  constructor(ctx: RenderContext, options: TextOptions) {
+    super(ctx, options)
 
     this.selectionHelper = new TextSelectionHelper(
       () => this.x,
@@ -50,7 +50,7 @@ export class TextRenderable extends Renderable {
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
     this.selectable = options.selectable ?? true
 
-    this.textBuffer = TextBuffer.create(64)
+    this.textBuffer = TextBuffer.create(64, this._ctx.widthMethod)
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)

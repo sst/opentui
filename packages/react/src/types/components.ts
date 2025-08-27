@@ -8,6 +8,7 @@ import type {
   InputRenderableOptions,
   Renderable,
   RenderableOptions,
+  RenderContext,
   SelectOption,
   SelectRenderable,
   SelectRenderableOptions,
@@ -36,17 +37,20 @@ export type ReactProps<TRenderable = unknown> = {
 
 /** Base type for any renderable constructor */
 export type RenderableConstructor<TRenderable extends Renderable = Renderable> = new (
-  id: string,
+  ctx: RenderContext,
   options: any,
 ) => TRenderable
 
 /** Extract the options type from a renderable constructor */
-type ExtractRenderableOptions<TConstructor> = TConstructor extends new (id: string, options: infer TOptions) => any
+type ExtractRenderableOptions<TConstructor> = TConstructor extends new (
+  ctx: RenderContext,
+  options: infer TOptions,
+) => any
   ? TOptions
   : never
 
 /** Extract the renderable type from a constructor */
-type ExtractRenderable<TConstructor> = TConstructor extends new (id: string, options: any) => infer TRenderable
+type ExtractRenderable<TConstructor> = TConstructor extends new (ctx: RenderContext, options: any) => infer TRenderable
   ? TRenderable
   : never
 

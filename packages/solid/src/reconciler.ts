@@ -12,10 +12,11 @@ import {
   type TextChunk,
 } from "@opentui/core"
 import { createRenderer } from "solid-js/universal"
-import { elements, type Element } from "./elements"
+import { elements, RendererContext, type Element } from "./elements"
 import { TextNode } from "./elements/text-node"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
+import { useContext } from "solid-js"
 
 export type DomNode = Renderable | TextNode
 
@@ -72,7 +73,11 @@ export const {
   createElement(tagName: string): DomNode {
     log("Creating element:", tagName)
     const id = getNextId(tagName)
-    const element = new elements[tagName as Element](id, {})
+    const solidRenderer = useContext(RendererContext)
+    if (!solidRenderer) {
+      throw new Error("No renderer found")
+    }
+    const element = new elements[tagName as Element](solidRenderer, { id })
     log("Element created with id:", id)
     return element
   },

@@ -1,3 +1,5 @@
+import type { RGBA } from "./lib/RGBA"
+
 export const TextAttributes = {
   NONE: 0,
   BOLD: 1 << 0, // 1
@@ -19,11 +21,20 @@ export enum DebugOverlayCorner {
   bottomRight = 3,
 }
 
+export type WidthMethod = "wcwidth" | "unicode"
+
 export interface RenderContext {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
-  width: () => number
-  height: () => number
+  width: number
+  height: number
   needsUpdate: () => void
+  setCursorPosition: (x: number, y: number, visible: boolean) => void
+  setCursorStyle: (style: CursorStyle, blinking: boolean) => void
+  setCursorColor: (color: RGBA) => void
+  widthMethod: WidthMethod
+  capabilities: any | null
+  requestLive: () => void
+  dropLive: () => void
 }
 
 export interface SelectionState {

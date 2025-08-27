@@ -1,8 +1,8 @@
-import { CliRenderer } from ".."
 import { OptimizedBuffer } from "../buffer"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
+import type { RenderContext } from "../types"
 
 export interface InputRenderableOptions extends RenderableOptions {
   backgroundColor?: ColorInput
@@ -50,8 +50,8 @@ export class InputRenderable extends Renderable {
     value: "",
   } satisfies Partial<InputRenderableOptions>
 
-  constructor(id: string, options: InputRenderableOptions) {
-    super(id, { ...options, buffered: true })
+  constructor(ctx: RenderContext, options: InputRenderableOptions) {
+    super(ctx, { ...options, buffered: true })
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)
@@ -91,20 +91,21 @@ export class InputRenderable extends Renderable {
       const absoluteCursorX = this.x + contentX + cursorDisplayX + 1
       const absoluteCursorY = this.y + contentY + 1
 
-      CliRenderer.setCursorPosition(absoluteCursorX, absoluteCursorY, true)
-      CliRenderer.setCursorColor(this._cursorColor)
+      this._ctx.setCursorPosition(absoluteCursorX, absoluteCursorY, true)
+      this._ctx.setCursorColor(this._cursorColor)
     }
   }
 
   public focus(): void {
     super.focus()
-    CliRenderer.setCursorStyle("block", true, this._cursorColor)
+    this._ctx.setCursorStyle("block", true)
+    this._ctx.setCursorColor(this._cursorColor)
     this.updateCursorPosition()
   }
 
   public blur(): void {
     super.blur()
-    CliRenderer.setCursorPosition(0, 0, false)
+    this._ctx.setCursorPosition(0, 0, false)
 
     if (this._value !== this._lastCommittedValue) {
       this._lastCommittedValue = this._value
@@ -338,10 +339,13 @@ export class InputRenderable extends Renderable {
     this.updateCursorPosition()
   }
 
-  protected destroySelf(): void {
+  protected onRemove(): void {
     if (this._focused) {
-      CliRenderer.setCursorPosition(0, 0, false)
+      this._ctx.setCursorPosition(0, 0, false)
     }
+  }
+
+  protected destroySelf(): void {
     super.destroySelf()
   }
 }

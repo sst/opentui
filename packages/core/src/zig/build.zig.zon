@@ -1,0 +1,16 @@
+.{
+    .name = .opentui,
+    .version = "0.1.11",
+    .fingerprint = 0x5445027d063f5083,
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{
+        .zg = .{
+            .url = "https://codeberg.org/atman/zg/archive/v0.14.1.tar.gz",
+            .hash = "zg-0.14.1-oGqU3IQ_tALZIiBN026_NTaPJqU-Upm8P_C7QED2Rzm8",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+}

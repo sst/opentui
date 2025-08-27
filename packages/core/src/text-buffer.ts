@@ -2,6 +2,7 @@ import type { StyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
+import { type WidthMethod } from "./types"
 
 export interface TextChunk {
   __isChunk: true
@@ -42,9 +43,9 @@ export class TextBuffer {
     this._capacity = capacity
   }
 
-  static create(capacity: number = 256): TextBuffer {
+  static create(capacity: number = 256, widthMethod: WidthMethod): TextBuffer {
     const lib = resolveRenderLib()
-    return lib.createTextBuffer(capacity)
+    return lib.createTextBuffer(capacity, widthMethod)
   }
 
   private syncBuffersAfterResize(): void {

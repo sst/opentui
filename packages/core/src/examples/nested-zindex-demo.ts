@@ -10,13 +10,15 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#001122")
 
-  const parentContainer = new GroupRenderable("parent-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "parent-container",
     zIndex: 10,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const title = new TextRenderable("main-title", {
+  const title = new TextRenderable(renderer, {
+    id: "main-title",
     content: "Nested Render Objects & Z-Index Demo",
     position: "absolute",
     left: 10,
@@ -28,7 +30,8 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(title)
 
   // Parent group with high z-index
-  const parentGroupA = new GroupRenderable("parent-group-a", {
+  const parentGroupA = new GroupRenderable(renderer, {
+    id: "parent-group-a",
     position: "absolute",
     zIndex: 100,
     visible: true,
@@ -36,7 +39,8 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(parentGroupA)
 
   // Parent group with medium z-index
-  const parentGroupB = new GroupRenderable("parent-group-b", {
+  const parentGroupB = new GroupRenderable(renderer, {
+    id: "parent-group-b",
     position: "absolute",
     zIndex: 50,
     visible: true,
@@ -44,7 +48,8 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(parentGroupB)
 
   // Parent group with low z-index
-  const parentGroupC = new GroupRenderable("parent-group-c", {
+  const parentGroupC = new GroupRenderable(renderer, {
+    id: "parent-group-c",
     position: "absolute",
     zIndex: 20,
     visible: true,
@@ -52,7 +57,8 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(parentGroupC)
 
   // Group A - High Z-Index Parent (z=100)
-  const boxA1 = new BoxRenderable("box-a1", {
+  const boxA1 = new BoxRenderable(renderer, {
+    id: "box-a1",
     position: "absolute",
     left: 15,
     top: 8,
@@ -68,7 +74,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupA.add(boxA1)
 
-  const textA1 = new TextRenderable("text-a1", {
+  const textA1 = new TextRenderable(renderer, {
+    id: "text-a1",
     content: "Child A1 (z=10)",
     position: "absolute",
     left: 17,
@@ -79,7 +86,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupA.add(textA1)
 
-  const boxA2 = new BoxRenderable("box-a2", {
+  const boxA2 = new BoxRenderable(renderer, {
+    id: "box-a2",
     position: "absolute",
     left: 20,
     top: 11,
@@ -93,7 +101,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupA.add(boxA2)
 
-  const textA2 = new TextRenderable("text-a2", {
+  const textA2 = new TextRenderable(renderer, {
+    id: "text-a2",
     content: "Child A2 (z=5)",
     position: "absolute",
     left: 22,
@@ -104,7 +113,8 @@ export function run(renderer: CliRenderer): void {
   parentGroupA.add(textA2)
 
   // Group B - Medium Z-Index Parent (z=50)
-  const boxB1 = new BoxRenderable("box-b1", {
+  const boxB1 = new BoxRenderable(renderer, {
+    id: "box-b1",
     position: "absolute",
     left: 30,
     top: 12,
@@ -120,7 +130,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupB.add(boxB1)
 
-  const textB1 = new TextRenderable("text-b1", {
+  const textB1 = new TextRenderable(renderer, {
+    id: "text-b1",
     content: "Child B1 (z=20)",
     position: "absolute",
     left: 32,
@@ -131,7 +142,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupB.add(textB1)
 
-  const boxB2 = new BoxRenderable("box-b2", {
+  const boxB2 = new BoxRenderable(renderer, {
+    id: "box-b2",
     position: "absolute",
     left: 35,
     top: 15,
@@ -145,7 +157,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupB.add(boxB2)
 
-  const textB2 = new TextRenderable("text-b2", {
+  const textB2 = new TextRenderable(renderer, {
+    id: "text-b2",
     content: "Child B2 (z=15)",
     position: "absolute",
     left: 37,
@@ -156,7 +169,8 @@ export function run(renderer: CliRenderer): void {
   parentGroupB.add(textB2)
 
   // Group C - Low Z-Index Parent (z=20)
-  const boxC1 = new BoxRenderable("box-c1", {
+  const boxC1 = new BoxRenderable(renderer, {
+    id: "box-c1",
     position: "absolute",
     left: 45,
     top: 16,
@@ -172,7 +186,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupC.add(boxC1)
 
-  const textC1 = new TextRenderable("text-c1", {
+  const textC1 = new TextRenderable(renderer, {
+    id: "text-c1",
     content: "Child C1 (z=30)",
     position: "absolute",
     left: 47,
@@ -183,7 +198,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupC.add(textC1)
 
-  const boxC2 = new BoxRenderable("box-c2", {
+  const boxC2 = new BoxRenderable(renderer, {
+    id: "box-c2",
     position: "absolute",
     left: 50,
     top: 19,
@@ -197,7 +213,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupC.add(boxC2)
 
-  const textC2 = new TextRenderable("text-c2", {
+  const textC2 = new TextRenderable(renderer, {
+    id: "text-c2",
     content: "Child C2 (z=25)",
     position: "absolute",
     left: 52,
@@ -207,7 +224,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentGroupC.add(textC2)
 
-  const explanation1 = new TextRenderable("explanation1", {
+  const explanation1 = new TextRenderable(renderer, {
+    id: "explanation1",
     content: "Key Concept: Parent z-index determines group layering, child z-index determines order within group",
     position: "absolute",
     left: 10,
@@ -217,7 +235,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainer.add(explanation1)
 
-  const explanation2 = new TextRenderable("explanation2", {
+  const explanation2 = new TextRenderable(renderer, {
+    id: "explanation2",
     content: "Even if Child C1 has z=30, it renders behind Parent A & B because Parent C has z=20",
     position: "absolute",
     left: 10,
@@ -227,7 +246,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainer.add(explanation2)
 
-  const phaseIndicator = new TextRenderable("phase-indicator", {
+  const phaseIndicator = new TextRenderable(renderer, {
+    id: "phase-indicator",
     content: "Animation Phase: 1/4",
     position: "absolute",
     left: 10,
@@ -238,7 +258,8 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainer.add(phaseIndicator)
 
-  const zIndexDisplay = new TextRenderable("zindex-display", {
+  const zIndexDisplay = new TextRenderable(renderer, {
+    id: "zindex-display",
     content: "Current Z-Indices - A:100, B:50, C:20",
     position: "absolute",
     left: 10,

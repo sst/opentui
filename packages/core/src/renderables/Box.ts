@@ -10,6 +10,7 @@ import {
   getBorderSides,
 } from "../lib"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
+import type { RenderContext } from "../types"
 
 export interface BoxOptions extends RenderableOptions {
   backgroundColor?: string | RGBA
@@ -46,8 +47,8 @@ export class BoxRenderable extends Renderable {
     focusedBorderColor: "#00AAFF",
   } satisfies Partial<BoxOptions>
 
-  constructor(id: string, options: BoxOptions) {
-    super(id, options)
+  constructor(ctx: RenderContext, options: BoxOptions) {
+    super(ctx, options)
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._border = options.border ?? this._defaultOptions.border

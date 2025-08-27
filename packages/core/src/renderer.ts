@@ -1,6 +1,12 @@
 import { ANSI } from "./ansi"
-import { Renderable, RootRenderable, type RootContext } from "./Renderable"
-import { type CursorStyle, DebugOverlayCorner, type RenderContext, type SelectionState } from "./types"
+import { Renderable, RootRenderable } from "./Renderable"
+import {
+  type CursorStyle,
+  DebugOverlayCorner,
+  type RenderContext,
+  type SelectionState,
+  type WidthMethod,
+} from "./types"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
 import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
@@ -114,7 +120,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
-  return new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
+  const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
+  await renderer.setupTerminal()
+  return renderer
 }
 
 export enum CliRenderEvents {
@@ -129,7 +137,7 @@ enum RendererControlState {
   EXPLICIT_STOPPED = "explicit_stopped",
 }
 
-export class CliRenderer extends EventEmitter {
+export class CliRenderer extends EventEmitter implements RenderContext {
   private static animationFrameId = 0
   private lib: RenderLib
   public rendererPtr: Pointer
@@ -198,23 +206,6 @@ export class CliRenderer extends EventEmitter {
   private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
   private resizeDebounceDelay: number = 100
 
-  private renderContext: RenderContext = {
-    addToHitGrid: (x, y, width, height, id) => {
-      if (id !== this.capturedRenderable?.num) {
-        this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
-      }
-    },
-    width: () => {
-      return this.width
-    },
-    height: () => {
-      return this.height
-    },
-    needsUpdate: () => {
-      this.needsUpdate()
-    },
-  }
-
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
   private _useAlternateScreen: boolean = true
@@ -231,6 +222,7 @@ export class CliRenderer extends EventEmitter {
 
   private _terminalWidth: number = 0
   private _terminalHeight: number = 0
+  private _terminalIsSetup: boolean = false
 
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
   private captureCallback: () => void = () => {
@@ -242,6 +234,7 @@ export class CliRenderer extends EventEmitter {
   private _useConsole: boolean = true
   private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: (() => void) | null = null
+  private _capabilities: any | null = null
 
   constructor(
     lib: RenderLib,
@@ -286,18 +279,8 @@ export class CliRenderer extends EventEmitter {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
 
-    const rootContext: RootContext = {
-      requestLive: () => {
-        this.requestLive()
-      },
-      dropLive: () => {
-        this.dropLive()
-      },
-    }
+    this.root = new RootRenderable(this)
 
-    this.root = new RootRenderable(this.width, this.height, this.renderContext, rootContext)
-
-    this.setupTerminal()
     this.takeMemorySnapshot()
 
     if (this.memorySnapshotInterval > 0) {
@@ -365,8 +348,6 @@ export class CliRenderer extends EventEmitter {
     }
     global.window.requestAnimationFrame = requestAnimationFrame
 
-    this.queryPixelResolution()
-
     // Prevents output from being written to the terminal, useful for debugging
     if (process.env.OTUI_NO_NATIVE_RENDER === "true") {
       this.renderNative = () => {
@@ -375,6 +356,17 @@ export class CliRenderer extends EventEmitter {
         }
       }
     }
+  }
+
+  public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
+    if (id !== this.capturedRenderable?.num) {
+      this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
+    }
+  }
+
+  public get widthMethod(): WidthMethod {
+    const caps = this.capabilities
+    return caps?.unicode === "unicode" ? "unicode" : "wcwidth"
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
@@ -454,6 +446,10 @@ export class CliRenderer extends EventEmitter {
 
   public get currentControlState(): string {
     return this.controlState
+  }
+
+  public get capabilities(): any | null {
+    return this._capabilities
   }
 
   public set experimental_splitHeight(splitHeight: number) {
@@ -559,18 +555,47 @@ export class CliRenderer extends EventEmitter {
     this.lib.disableMouse(this.rendererPtr)
   }
 
+  public enableKittyKeyboard(flags: number = 0b00001): void {
+    this.lib.enableKittyKeyboard(this.rendererPtr, flags)
+  }
+
+  public disableKittyKeyboard(): void {
+    this.lib.disableKittyKeyboard(this.rendererPtr)
+  }
+
   public set useThread(useThread: boolean) {
     this._useThread = useThread
     this.lib.setUseThread(this.rendererPtr, useThread)
   }
 
-  private setupTerminal(): void {
-    this.writeOut(ANSI.saveCursorState)
+  // TODO:All input management may move to native when zig finally has async io support again,
+  // without rolling a full event loop
+  public async setupTerminal(): Promise<void> {
+    if (this._terminalIsSetup) return
+    this._terminalIsSetup = true
+
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
+
+    await new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.stdin.off("data", capListener)
+        resolve(true)
+      }, 100)
+      const capListener = (str: string) => {
+        clearTimeout(timeout)
+        this.lib.processCapabilityResponse(this.rendererPtr, str)
+        this.stdin.off("data", capListener)
+        resolve(true)
+      }
+      this.stdin.on("data", capListener)
+      this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
+    })
+
+    this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
     if (this._useMouse) {
       this.enableMouse()
@@ -607,12 +632,7 @@ export class CliRenderer extends EventEmitter {
       this.emit("key", data)
     })
 
-    if (this._useAlternateScreen) {
-      this.writeOut(ANSI.switchToAlternateScreen)
-    } else {
-      this.writeOut(ANSI.makeRoomForRenderer(this.height - 1))
-    }
-    this.setCursorPosition(0, 0, false)
+    this.queryPixelResolution()
   }
 
   private handleMouseData(data: Buffer): boolean {
@@ -704,6 +724,9 @@ export class CliRenderer extends EventEmitter {
         this.lastOverRenderable = this.capturedRenderable
         this.lastOverRenderableNum = this.capturedRenderable.num
         this.capturedRenderable = undefined
+        // Dropping the renderable needs to push another frame when the renderer is not live
+        // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
+        this.needsUpdate()
       }
 
       if (maybeRenderable) {
@@ -864,34 +887,42 @@ export class CliRenderer extends EventEmitter {
     this.lib.dumpStdoutBuffer(this.rendererPtr, timestamp)
   }
 
-  public static setCursorPosition(x: number, y: number, visible: boolean = true): void {
+  public static setCursorPosition(renderer: CliRenderer, x: number, y: number, visible: boolean = true): void {
     const lib = resolveRenderLib()
-    lib.setCursorPosition(x, y, visible)
+    lib.setCursorPosition(renderer.rendererPtr, x, y, visible)
   }
 
-  public static setCursorStyle(style: CursorStyle, blinking: boolean = false, color?: RGBA): void {
+  public static setCursorStyle(
+    renderer: CliRenderer,
+    style: CursorStyle,
+    blinking: boolean = false,
+    color?: RGBA,
+  ): void {
     const lib = resolveRenderLib()
-    lib.setCursorStyle(style, blinking)
+    lib.setCursorStyle(renderer.rendererPtr, style, blinking)
     if (color) {
-      lib.setCursorColor(color)
+      lib.setCursorColor(renderer.rendererPtr, color)
     }
   }
 
-  public static setCursorColor(color: RGBA): void {
+  public static setCursorColor(renderer: CliRenderer, color: RGBA): void {
     const lib = resolveRenderLib()
-    lib.setCursorColor(color)
+    lib.setCursorColor(renderer.rendererPtr, color)
   }
 
   public setCursorPosition(x: number, y: number, visible: boolean = true): void {
-    CliRenderer.setCursorPosition(x, y, visible)
+    this.lib.setCursorPosition(this.rendererPtr, x, y, visible)
   }
 
   public setCursorStyle(style: CursorStyle, blinking: boolean = false, color?: RGBA): void {
-    CliRenderer.setCursorStyle(style, blinking, color)
+    this.lib.setCursorStyle(this.rendererPtr, style, blinking)
+    if (color) {
+      this.lib.setCursorColor(this.rendererPtr, color)
+    }
   }
 
   public setCursorColor(color: RGBA): void {
-    CliRenderer.setCursorColor(color)
+    this.lib.setCursorColor(this.rendererPtr, color)
   }
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
@@ -1107,6 +1138,7 @@ export class CliRenderer extends EventEmitter {
 
     this.renderingNative = true
     this.lib.render(this.rendererPtr, force)
+    // this.dumpStdoutBuffer(Date.now())
     this.renderingNative = false
   }
 

@@ -22,14 +22,16 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#0D1117")
 
-  parentContainer = new GroupRenderable("parent-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "parent-container",
     zIndex: 10,
     visible: true,
     padding: 1,
   })
   renderer.root.add(parentContainer)
 
-  const titleBox = new BoxRenderable("title-box", {
+  const titleBox = new BoxRenderable(renderer, {
+    id: "title-box",
     height: 3,
     borderStyle: "double",
     borderColor: "#4ECDC4",
@@ -40,13 +42,15 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(titleBox)
 
-  const instructionsText = new TextRenderable("instructions", {
+  const instructionsText = new TextRenderable(renderer, {
+    id: "instructions",
     content: "ESC to return | R to re-transform | Demonstrating HAST tree conversion to syntax-highlighted text",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
 
-  const codeBox = new BoxRenderable("code-box", {
+  const codeBox = new BoxRenderable(renderer, {
+    id: "code-box",
     borderStyle: "single",
     borderColor: "#6BCF7F",
     backgroundColor: "#0D1117",
@@ -75,7 +79,8 @@ export function run(rendererInstance: CliRenderer): void {
   const transformEnd = performance.now()
   const transformTime = (transformEnd - transformStart).toFixed(2)
 
-  const codeDisplay = new TextRenderable("code-display", {
+  const codeDisplay = new TextRenderable(renderer, {
+    id: "code-display",
     content: styledText,
     bg: "#0D1117",
     selectable: true,
@@ -84,7 +89,8 @@ export function run(rendererInstance: CliRenderer): void {
   })
   codeBox.add(codeDisplay)
 
-  const timingText = new TextRenderable("timing-display", {
+  const timingText = new TextRenderable(renderer, {
+    id: "timing-display",
     content: `HAST transformation time: ${transformTime}ms (Cache: ${syntaxStyle.getCacheSize()} entries) (Press 'R' to re-transform)`,
     fg: "#A8E6CF",
   })

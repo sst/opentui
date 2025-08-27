@@ -28,11 +28,6 @@ export enum RenderableEvents {
   BLURRED = "blurred",
 }
 
-export interface RootContext {
-  requestLive(): void
-  dropLive(): void
-}
-
 export interface Position {
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
@@ -70,6 +65,7 @@ export interface LayoutOptions {
 }
 
 export interface RenderableOptions extends Partial<LayoutOptions> {
+  id?: string
   width?: number | "auto" | `${number}%`
   height?: number | "auto" | `${number}%`
   zIndex?: number
@@ -173,7 +169,7 @@ export abstract class Renderable extends EventEmitter {
 
   public readonly id: string
   public readonly num: number
-  protected ctx: RenderContext | null = null
+  protected _ctx: RenderContext
   private _x: number = 0
   private _y: number = 0
   protected _width: number | "auto" | `${number}%`
@@ -206,13 +202,14 @@ export abstract class Renderable extends EventEmitter {
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
 
-  constructor(id: string, options: RenderableOptions) {
+  constructor(ctx: RenderContext, options: RenderableOptions) {
     super()
-    this.id = id
     this.num = Renderable.renderableNumber++
+    this.id = options.id ?? `renderable-${this.num}`
+    this._ctx = ctx
     Renderable.renderablesByNumber.set(this.num, this)
 
-    validateOptions(id, options)
+    validateOptions(this.id, options)
 
     this._width = options.width ?? "auto"
     this._height = options.height ?? "auto"
@@ -239,6 +236,10 @@ export abstract class Renderable extends EventEmitter {
     if (this.buffered) {
       this.createFrameBuffer()
     }
+  }
+
+  public get ctx(): RenderContext {
+    return this._ctx
   }
 
   public get visible(): boolean {
@@ -355,7 +356,7 @@ export abstract class Renderable extends EventEmitter {
 
   public needsUpdate() {
     this._dirty = true
-    this.ctx?.needsUpdate()
+    this._ctx.needsUpdate()
   }
 
   public get x(): number {
@@ -826,9 +827,8 @@ export abstract class Renderable extends EventEmitter {
     }
 
     try {
-      this.frameBuffer = OptimizedBuffer.create(w, h, {
-        respectAlpha: true,
-      })
+      const widthMethod = this._ctx.widthMethod
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
@@ -844,9 +844,6 @@ export abstract class Renderable extends EventEmitter {
       obj.parent.remove(obj.id)
     }
     obj.parent = this
-    if (this.ctx) {
-      obj.propagateContext(this.ctx)
-    }
   }
 
   public add(obj: Renderable, index?: number): number {
@@ -897,13 +894,6 @@ export abstract class Renderable extends EventEmitter {
     return this.add(obj, anchorIndex)
   }
 
-  public propagateContext(ctx: RenderContext | null): void {
-    this.ctx = ctx
-    for (const child of this.renderableArray) {
-      child.propagateContext(ctx)
-    }
-  }
-
   public getRenderable(id: string): Renderable | undefined {
     return this.renderableMap.get(id)
   }
@@ -923,8 +913,8 @@ export abstract class Renderable extends EventEmitter {
         this.layoutNode.removeChild(childLayoutNode)
         this.needsUpdate()
 
+        obj.onRemove()
         obj.parent = null
-        obj.propagateContext(null)
       }
       this.renderableMap.delete(id)
 
@@ -934,6 +924,11 @@ export abstract class Renderable extends EventEmitter {
       }
       this.emit("child:removed", id)
     }
+  }
+
+  protected onRemove(): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom removal logic
   }
 
   public getChildren(): Renderable[] {
@@ -950,7 +945,7 @@ export abstract class Renderable extends EventEmitter {
 
     this.renderSelf(renderBuffer, deltaTime)
     this.markClean()
-    this.ctx?.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
 
     for (const child of this.renderableArray) {
@@ -1093,12 +1088,9 @@ export abstract class Renderable extends EventEmitter {
 
 export class RootRenderable extends Renderable {
   private yogaConfig: Config
-  private rootContext: RootContext
 
-  constructor(width: number, height: number, ctx: RenderContext, rootContext: RootContext) {
-    super("__root__", { zIndex: 0, visible: true, width, height, enableLayout: true })
-    this.ctx = ctx
-    this.rootContext = rootContext
+  constructor(ctx: RenderContext) {
+    super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
 
     this.yogaConfig = Yoga.Config.create()
     this.yogaConfig.setUseWebDefaults(false)
@@ -1109,8 +1101,8 @@ export class RootRenderable extends Renderable {
     }
 
     this.layoutNode = createTrackedNode({}, this.yogaConfig)
-    this.layoutNode.setWidth(width)
-    this.layoutNode.setHeight(height)
+    this.layoutNode.setWidth(ctx.width)
+    this.layoutNode.setHeight(ctx.height)
     this.layoutNode.yogaNode.setFlexDirection(FlexDirection.Column)
 
     this.calculateLayout()
@@ -1121,9 +1113,9 @@ export class RootRenderable extends Renderable {
     this._liveCount += delta
 
     if (oldCount === 0 && this._liveCount > 0) {
-      this.rootContext.requestLive()
+      this._ctx.requestLive()
     } else if (oldCount > 0 && this._liveCount === 0) {
-      this.rootContext.dropLive()
+      this._ctx.dropLive()
     }
   }
 

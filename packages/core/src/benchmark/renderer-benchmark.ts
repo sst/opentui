@@ -88,7 +88,8 @@ const renderer = await createCliRenderer({
 const WIDTH = renderer.terminalWidth
 const HEIGHT = renderer.terminalHeight
 
-const fbRenderable = new FrameBufferRenderable("main", {
+const fbRenderable = new FrameBufferRenderable(renderer, {
+  id: "main",
   width: WIDTH,
   height: HEIGHT,
   zIndex: 10,
@@ -158,19 +159,22 @@ engine.setActiveCamera(cameraNode)
 
 const TEST_CUBE_COUNT = 300
 
-const uiContainer = new GroupRenderable("ui-container", {
+const uiContainer = new GroupRenderable(renderer, {
+  id: "ui-container",
   zIndex: 15,
   visible: true,
 })
 renderer.root.add(uiContainer)
 
-const benchmarkStatus = new TextRenderable("benchmark", {
+const benchmarkStatus = new TextRenderable(renderer, {
+  id: "benchmark",
   content: "Initializing benchmark...",
   zIndex: 20,
 })
 uiContainer.add(benchmarkStatus)
 
-const cubeCountStatus = new TextRenderable("cube-count", {
+const cubeCountStatus = new TextRenderable(renderer, {
+  id: "cube-count",
   content: `Test cubes outside view: ${TEST_CUBE_COUNT}`,
   position: "absolute",
   left: 0,
@@ -180,7 +184,8 @@ const cubeCountStatus = new TextRenderable("cube-count", {
 uiContainer.add(cubeCountStatus)
 
 if (options.debug) {
-  const debugStatus = new TextRenderable("debug", {
+  const debugStatus = new TextRenderable(renderer, {
+    id: "debug",
     content: `Culling: ${options.culling !== false ? "ON" : "OFF"}`,
     position: "absolute",
     left: 0,
@@ -536,7 +541,8 @@ function getScenarioName(scenario: BenchmarkScenario): string {
 }
 
 function displayBenchmarkResults(): void {
-  const resultsBox = new BoxRenderable("results-box", {
+  const resultsBox = new BoxRenderable(renderer, {
+    id: "results-box",
     position: "absolute",
     left: Math.floor(WIDTH / 6),
     top: Math.floor(HEIGHT / 6),
@@ -547,7 +553,8 @@ function displayBenchmarkResults(): void {
   })
   uiContainer.add(resultsBox)
 
-  const resultsTitle = new TextRenderable("results-title", {
+  const resultsTitle = new TextRenderable(renderer, {
+    id: "results-title",
     position: "absolute",
     left: Math.floor(WIDTH / 6) + 2,
     top: Math.floor(HEIGHT / 6) + 1,
@@ -558,7 +565,8 @@ function displayBenchmarkResults(): void {
   let y = Math.floor(HEIGHT / 6) + 3
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
-    const resultHeader = new TextRenderable(`result-header-${i}`, {
+    const resultHeader = new TextRenderable(renderer, {
+      id: `result-header-${i}`,
       position: "absolute",
       left: Math.floor(WIDTH / 6) + 2,
       top: y++,
@@ -573,7 +581,8 @@ function displayBenchmarkResults(): void {
       `  • Standard Deviation: ${result.stdDev.toFixed(2)}ms`,
     ]
     for (let j = 0; j < statLines.length; j++) {
-      const statText = new TextRenderable(`result-stat-${i}-${j}`, {
+      const statText = new TextRenderable(renderer, {
+        id: `result-stat-${i}-${j}`,
         position: "absolute",
         left: Math.floor(WIDTH / 6) + 2,
         top: y + j,
@@ -612,7 +621,8 @@ function displayBenchmarkResults(): void {
         `    (min: ${(minAB / 1024 / 1024).toFixed(2)}MB, max: ${(maxAB / 1024 / 1024).toFixed(2)}MB, median: ${(medianAB / 1024 / 1024).toFixed(2)}MB)`,
       ]
       for (let j = 0; j < memStatLines.length; j++) {
-        const memStatText = new TextRenderable(`result-mem-stat-${i}-${j}`, {
+        const memStatText = new TextRenderable(renderer, {
+          id: `result-mem-stat-${i}-${j}`,
           position: "absolute",
           left: Math.floor(WIDTH / 6) + 2,
           top: y + j,
@@ -626,7 +636,8 @@ function displayBenchmarkResults(): void {
     y++
   }
   if (results.length > 1) {
-    const comparisonTitle = new TextRenderable("results-comparison", {
+    const comparisonTitle = new TextRenderable(renderer, {
+      id: "results-comparison",
       position: "absolute",
       left: Math.floor(WIDTH / 6) + 2,
       top: y++,
@@ -641,7 +652,8 @@ function displayBenchmarkResults(): void {
       const ratio = currentPerf / basePerf
       const percent = ((ratio - 1) * 100).toFixed(1)
       const compareText = `  • ${results[i].name}: ${ratio > 1 ? "+" : ""}${percent}% frame time vs. baseline`
-      const compareTextObj = new TextRenderable(`result-compare-${i}`, {
+      const compareTextObj = new TextRenderable(renderer, {
+        id: `result-compare-${i}`,
         position: "absolute",
         left: Math.floor(WIDTH / 6) + 2,
         top: y++,
@@ -652,7 +664,8 @@ function displayBenchmarkResults(): void {
     }
   }
 
-  const resultsFooter = new TextRenderable("results-footer", {
+  const resultsFooter = new TextRenderable(renderer, {
+    id: "results-footer",
     position: "absolute",
     left: Math.floor(WIDTH / 6) + 2,
     top: Math.floor((HEIGHT * 5) / 6) - 2,
