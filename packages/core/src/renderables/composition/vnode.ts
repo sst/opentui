@@ -2,7 +2,7 @@ import { Renderable, type RenderableOptions } from "../../Renderable"
 import type { RenderContext } from "../../types"
 import { BoxRenderable, GroupRenderable, TextRenderable, type BoxOptions, type TextOptions } from "../.."
 
-export type VChild = VNode | Renderable | VChild[] | null | undefined | false
+export type VChild = VNode | Renderable | null | undefined | false
 
 export interface VNode<P = any> {
   type: Component<P>
@@ -23,20 +23,22 @@ function isRenderableConstructor(value: any): value is RenderableConstructor<any
   return typeof value === "function" && value.prototype && Renderable.prototype.isPrototypeOf(value.prototype)
 }
 
-function flattenChildren(children: VChild[]): VChild[] {
+function ensureFlatAndFilter(children: VChild[] | undefined): VChild[] {
+  if (!children || children.length === 0) return []
   const result: VChild[] = []
   for (const child of children) {
     if (Array.isArray(child)) {
-      result.push(...flattenChildren(child))
-    } else if (child !== null && child !== undefined && child !== false) {
+      throw new TypeError("VNode children must be flat. Spread nested arrays with ...children.")
+    }
+    if (child !== null && child !== undefined && child !== false) {
       result.push(child)
     }
   }
   return result
 }
 
-export function h<P>(type: Component<P>, props?: P, ...children: VChild[]): VNode<P> {
-  return { type, props, children: flattenChildren(children) }
+export function h<P>(type: Component<P>, props?: P, children?: VChild[]): VNode<P> {
+  return { type, props, children: ensureFlatAndFilter(children) }
 }
 
 export function instantiate(ctx: RenderContext, node: VChild): Renderable {
@@ -48,7 +50,7 @@ export function instantiate(ctx: RenderContext, node: VChild): Renderable {
 
   const vnode = node as VNode
   const { type, props } = vnode
-  const children = flattenChildren(vnode.children || [])
+  const children = ensureFlatAndFilter(vnode.children || [])
   const hostId = (vnode as any).__hostId as string | undefined
 
   if (isRenderableConstructor(type)) {
@@ -83,16 +85,16 @@ export function mountInto(parent: Renderable, node: VChild): Renderable {
 }
 
 // Shorthands for core renderables
-export function Group(props?: RenderableOptions, ...children: VChild[]): VNode<RenderableOptions> {
-  return h(GroupRenderable, props || {}, ...children)
+export function Group(props?: RenderableOptions, children?: VChild[]): VNode<RenderableOptions> {
+  return h(GroupRenderable, props || {}, children)
 }
 
-export function Box(props?: BoxOptions, ...children: VChild[]): VNode<BoxOptions> {
-  return h(BoxRenderable, props || {}, ...children)
+export function Box(props?: BoxOptions, children?: VChild[]): VNode<BoxOptions> {
+  return h(BoxRenderable, props || {}, children)
 }
 
-export function Text(props?: TextOptions & { content?: any }, ...children: VChild[]): VNode<TextOptions> {
-  return h(TextRenderable as unknown as RenderableConstructor<any>, props || {}, ...children)
+export function Text(props?: TextOptions & { content?: any }, children?: VChild[]): VNode<TextOptions> {
+  return h(TextRenderable as unknown as RenderableConstructor<any>, props || {}, children)
 }
 
 // Mark a vnode tree so that, when instantiated, its root will route child ops
