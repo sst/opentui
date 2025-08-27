@@ -1,4 +1,6 @@
-import { OptimizedBuffer, type RenderContext, type MouseEvent, type SelectionState } from "."
+import { OptimizedBuffer } from "./buffer"
+import type { RenderContext, SelectionState } from "./types"
+import type { MouseEvent } from "./renderer"
 import { EventEmitter } from "events"
 import Yoga, { FlexDirection, Direction, Edge, type Config, Display } from "yoga-layout"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
