@@ -27,7 +27,15 @@ import type React from "react"
 // ============================================================================
 
 /** Properties that should not be included in the style prop */
-export type NonStyledProps = "buffered" | "live" | "enableLayout" | "selectable"
+export type NonStyledProps =
+  | "id"
+  | "buffered"
+  | "live"
+  | "enableLayout"
+  | "selectable"
+  | "renderAfter"
+  | "renderBefore"
+  | `on${string}`
 
 /** React-specific props for all components */
 export type ReactProps<TRenderable = unknown> = {
@@ -62,7 +70,9 @@ export type GetNonStyledProperties<TConstructor> =
       ? NonStyledProps | "title"
       : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
         ? NonStyledProps | "text" | "selectable"
-        : NonStyledProps
+        : TConstructor extends RenderableConstructor<InputRenderable>
+          ? NonStyledProps | "placeholder" | "value"
+          : NonStyledProps
 
 // ============================================================================
 // Component Props System

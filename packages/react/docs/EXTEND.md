@@ -7,14 +7,14 @@ The `extend` function allows you to add custom renderable components to the Open
 ### Extending Components
 
 ```tsx
-import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions } from "@opentui/core"
+import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
 import { extend, render } from "@opentui/react"
 
 class ConsoleButton extends BoxRenderable {
   public label: string = "Button"
 
-  constructor(id: string, options: BoxOptions & { label: string }) {
-    super(id, options)
+  constructor(ctx: RenderContext, options: BoxOptions & { label: string }) {
+    super(ctx, options)
     // Custom initialization
 
     this.height = 3

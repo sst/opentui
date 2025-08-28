@@ -1,12 +1,12 @@
-import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions } from "@opentui/core"
+import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
 import { extend, render } from "@opentui/react"
 
 // Custom renderable that extends BoxRenderable
 class ConsoleButtonRenderable extends BoxRenderable {
   private _label: string = "Button"
 
-  constructor(id: string, options: BoxOptions & { label?: string }) {
-    super(id, options)
+  constructor(ctx: RenderContext, options: BoxOptions & { label?: string }) {
+    super(ctx, options)
 
     if (options.label) {
       this._label = options.label
