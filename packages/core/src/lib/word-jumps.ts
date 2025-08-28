@@ -1,4 +1,4 @@
-const PUNCTUATION = new Set(Array.from(",./\\;:'\"`~!@#$%^&*()-_=+[]{}<>?|?"))
+const PUNCTUATION = new Set(Array.from(",./\\;:'\"`~!@#$%^&*()-_=+[]{}<>?|"))
 
 const isWhitespace = (ch: string) => ch === " " || ch === "\t"
 const isNewline = (ch: string) => ch === "\n" || ch === "\r"
