@@ -71,7 +71,7 @@ describe("word-jumping", () => {
       const caret = text.indexOf("|")
       const cleanText = text.replace("|", "")
       const result = nextWordEndCrossLines(cleanText, caret)
-      expect(cleanText.slice(0, result) + "|" + cleanText.slice(result)).toMatchInlineSnapshot(`"hello_world|_case"`)
+      expect(cleanText.slice(0, result) + "|" + cleanText.slice(result)).toMatchInlineSnapshot(`"hello_world_case|"`)
     })
 
     test("handles end of text", () => {
@@ -164,7 +164,7 @@ describe("word-jumping", () => {
       const caret = text.indexOf("|")
       const cleanText = text.replace("|", "")
       const result = previousWordStartCrossLines(cleanText, caret)
-      expect(cleanText.slice(0, result) + "|" + cleanText.slice(result)).toMatchInlineSnapshot(`"hello_world_|case"`)
+      expect(cleanText.slice(0, result) + "|" + cleanText.slice(result)).toMatchInlineSnapshot(`"|hello_world_case"`)
     })
 
     test("handles beginning of text", () => {
