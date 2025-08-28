@@ -1,11 +1,9 @@
-import { OptimizedBuffer } from "./buffer"
-import type { RenderContext, SelectionState } from "./types"
-import type { MouseEvent } from "./renderer"
 import { EventEmitter } from "events"
-import Yoga, { FlexDirection, Direction, Edge, type Config, Display } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, Gutter, type Config } from "yoga-layout"
+import { OptimizedBuffer } from "./buffer"
+import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
-import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
 import {
   parseAlign,
@@ -17,6 +15,8 @@ import {
   type JustifyString,
   type PositionTypeString,
 } from "./lib/yoga.options"
+import type { MouseEvent } from "./renderer"
+import type { RenderContext, SelectionState } from "./types"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -44,6 +44,9 @@ export interface LayoutOptions {
   alignItems?: AlignString
   justifyContent?: JustifyString
   flexBasis?: number | "auto" | undefined
+  gap?: number | `${number}%`
+  rowGap?: number | `${number}%`
+  columnGap?: number | `${number}%`
   position?: PositionTypeString
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
@@ -156,6 +159,16 @@ export function isFlexBasisType(value: any): value is number | "auto" | undefine
 }
 
 export function isSizeType(value: any): value is number | `${number}%` | undefined {
+  if (value === undefined) {
+    return true
+  }
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  return isValidPercentage(value)
+}
+
+export function isGapType(value: any): value is number | undefined {
   if (value === undefined) {
     return true
   }
@@ -576,6 +589,23 @@ export abstract class Renderable extends EventEmitter {
     }
 
     this.setupMarginAndPadding(options)
+    this.setupGap(options)
+  }
+
+  private setupGap(options: RenderableOptions): void {
+    const node = this.layoutNode.yogaNode
+
+    if (isGapType(options.gap)) {
+      node.setGap(Gutter.All, options.gap)
+    }
+
+    if (isGapType(options.rowGap)) {
+      node.setGap(Gutter.Row, options.rowGap)
+    }
+
+    if (isGapType(options.columnGap)) {
+      node.setGap(Gutter.Column, options.columnGap)
+    }
   }
 
   private setupMarginAndPadding(options: RenderableOptions): void {
@@ -804,6 +834,27 @@ export abstract class Renderable extends EventEmitter {
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
+      this.needsUpdate()
+    }
+  }
+
+  public set gap(gap: number | `${number}%` | undefined) {
+    if (isGapType(gap)) {
+      this.layoutNode.yogaNode.setGap(Gutter.All, gap)
+      this.needsUpdate()
+    }
+  }
+
+  public set rowGap(rowGap: number | `${number}%` | undefined) {
+    if (isGapType(rowGap)) {
+      this.layoutNode.yogaNode.setGap(Gutter.Row, rowGap)
+      this.needsUpdate()
+    }
+  }
+
+  public set columnGap(columnGap: number | `${number}%` | undefined) {
+    if (isGapType(columnGap)) {
+      this.layoutNode.yogaNode.setGap(Gutter.Column, columnGap)
       this.needsUpdate()
     }
   }

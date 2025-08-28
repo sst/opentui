@@ -11,7 +11,7 @@ export interface SelectOption {
   value?: any
 }
 
-export interface SelectRenderableOptions extends RenderableOptions {
+export interface SelectRenderableOptions extends Omit<RenderableOptions, "gap" | "rowGap" | "columnGap"> {
   backgroundColor?: ColorInput
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
