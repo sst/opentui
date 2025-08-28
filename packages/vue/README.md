@@ -1,35 +1,30 @@
 # @opentui/vue
 
-## How to run examples locally
+Vue.js support for [OpenTUI](https://github.com/sst/opentui).
+
+## Run examples locally
 
 ```bash
 bun install
-```
-
-```bash
 bun run start:example
 ```
 
 ## Setup Guide
 
-# @opentui/vue
-
-Vue.js support for OpenTUI.
-
-# 1. Create a project folder and initialize it
+### 1. Create a project folder and initialize it
 
 ```bash
 mkdir my-tui-app && cd my-tui-app
 bun init -y
 ```
 
-# 2. Add dependencies
+### 2. Add dependencies
 
 ```bash
 bun add vue @opentui/core @opentui/vue
 ```
 
-# 3. Create type defincation for vue files
+### 3. Create type definition for vue files
 
 create env.d.ts file at root of project
 
@@ -42,7 +37,7 @@ declare module "*.vue" {
 }
 ```
 
-# 3. Create your main application component App.vue.
+### 4. Create your main application component App.vue.
 
 ```jsx
 <!-- App.vue -->
@@ -56,7 +51,7 @@ declare module "*.vue" {
 </template>
 ```
 
-# 4 Create the entry point index.ts.
+### 5. Create the entry point index.ts.
 
 ```ts
 // index.ts
@@ -67,7 +62,7 @@ import App from "./App.vue"
 render(createApp(App))
 ```
 
-# 5 Create a build script build.ts.
+### 6. Create a build script build.ts.
 
 ```bash
 bun add -D bun-plugin-vue3
@@ -93,21 +88,21 @@ if (!result.success) {
 }
 ```
 
-# 6 Build and run your application.
+### 7. Build and run your application.
 
-## Build the app
+#### Build the app
 
 ```bash
 bun run build.ts
 ```
 
-## Run the output
+#### Run the output
 
 ```bash
 bun run dist/index.js
 ```
 
-# Note
+## Note
 
 Important Note on <textRenderable>
 

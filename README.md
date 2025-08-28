@@ -4,11 +4,18 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 development and is not ready for production use. It will be the foundational TUI framework for both
 [opencode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
 
+Quick start with [bun](https://bun.sh) and [create-tui](https://github.com/msmps/create-tui):
+
+```bash
+bun create tui
+```
+
 This monorepo contains the following packages:
 
 - [`@opentui/core`](packages/core) - The core library works completely standalone, providing an imperative API and all the primitives.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
+- [`@opentui/vue`](packages/vue) - The Vue reconciler for OpenTUI.
 
 ## Install
 

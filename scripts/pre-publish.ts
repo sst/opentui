@@ -48,6 +48,12 @@ const PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "solid", "dist"),
     requiresCore: true,
   },
+  {
+    name: "@opentui/vue",
+    rootDir: join(rootDir, "packages", "vue"),
+    distDir: join(rootDir, "packages", "vue", "dist"),
+    requiresCore: true,
+  },
 ]
 
 function setupNpmAuth(): void {
@@ -265,9 +271,7 @@ function main(): void {
 
   console.log("\nSUCCESS: Pre-publish validation complete! Ready to publish.")
   console.log("\nNext steps:")
-  console.log("  • Run: bun run publish:core")
-  console.log("  • Run: bun run publish:react")
-  console.log("  • Run: bun run publish:solid")
+  console.log("  • Run: bun run publish")
 }
 
 main()

@@ -1,6 +1,6 @@
 # @opentui/solid
 
-Solid.js support for OpenTUI.
+Solid.js support for [OpenTUI](https://github.com/sst/opentui).
 
 ## Installation
 

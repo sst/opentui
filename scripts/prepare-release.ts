@@ -90,6 +90,22 @@ try {
   process.exit(1)
 }
 
+const vuePackageJsonPath = join(rootDir, "packages", "vue", "package.json")
+console.log("\nUpdating @opentui/vue...")
+
+try {
+  const vuePackageJson: PackageJson = JSON.parse(readFileSync(vuePackageJsonPath, "utf8"))
+
+  vuePackageJson.version = version
+
+  writeFileSync(vuePackageJsonPath, JSON.stringify(vuePackageJson, null, 2) + "\n")
+  console.log(`  @opentui/vue updated to version ${version}`)
+  console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
+} catch (error) {
+  console.error(`  Failed to update @opentui/vue: ${error}`)
+  process.exit(1)
+}
+
 console.log("\nUpdating bun.lock...")
 try {
   execSync("bun install", { cwd: rootDir, stdio: "inherit" })
