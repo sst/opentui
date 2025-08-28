@@ -1,5 +1,5 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, Gutter, type Config } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Config } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
 import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
