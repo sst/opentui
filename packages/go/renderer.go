@@ -2,8 +2,12 @@ package opentui
 
 /*
 #include "opentui.h"
+#include <stdlib.h>
 */
 import "C"
+import (
+	"unsafe"
+)
 
 // Renderer wraps the CliRenderer from the C library.
 // It provides high-level access to terminal rendering functionality.
@@ -228,6 +232,93 @@ func (r *Renderer) DumpStdoutBuffer(timestamp int64) error {
 		return newError("renderer is closed")
 	}
 	C.dumpStdoutBuffer(r.ptr, C.int64_t(timestamp))
+	return nil
+}
+
+// GetTerminalCapabilities returns the current terminal capabilities.
+func (r *Renderer) GetTerminalCapabilities() (*Capabilities, error) {
+	if r.ptr == nil {
+		return nil, newError("renderer is closed")
+	}
+	
+	var caps C.Capabilities
+	C.getTerminalCapabilities(r.ptr, &caps)
+	
+	return &Capabilities{
+		SupportsTruecolor:       bool(caps.supports_truecolor),
+		SupportsMouse:          bool(caps.supports_mouse),
+		SupportsKittyKeyboard:  bool(caps.supports_kitty_keyboard),
+		SupportsAlternateScreen: bool(caps.supports_alternate_screen),
+	}, nil
+}
+
+// ProcessCapabilityResponse processes a terminal capability response.
+func (r *Renderer) ProcessCapabilityResponse(response []byte) error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	if len(response) == 0 {
+		return nil
+	}
+	
+	responsePtr, responseLen := sliceToC(response)
+	C.processCapabilityResponse(r.ptr, (*C.uint8_t)(responsePtr), C.size_t(responseLen))
+	return nil
+}
+
+// EnableKittyKeyboard enables the Kitty keyboard protocol with the specified flags.
+func (r *Renderer) EnableKittyKeyboard(flags uint8) error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	C.enableKittyKeyboard(r.ptr, C.uint8_t(flags))
+	return nil
+}
+
+// DisableKittyKeyboard disables the Kitty keyboard protocol.
+func (r *Renderer) DisableKittyKeyboard() error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	C.disableKittyKeyboard(r.ptr)
+	return nil
+}
+
+// SetupTerminal sets up the terminal with optional alternate screen buffer.
+func (r *Renderer) SetupTerminal(useAlternateScreen bool) error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	C.setupTerminal(r.ptr, C.bool(useAlternateScreen))
+	return nil
+}
+
+// SetCursorPosition sets the cursor position and visibility.
+func (r *Renderer) SetCursorPosition(x, y int32, visible bool) error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	C.setCursorPosition(r.ptr, C.int32_t(x), C.int32_t(y), C.bool(visible))
+	return nil
+}
+
+// SetCursorStyle sets the cursor style and blinking state.
+func (r *Renderer) SetCursorStyle(style CursorStyle, blinking bool) error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	cStyle := C.CString(string(style))
+	defer C.free(unsafe.Pointer(cStyle))
+	C.setCursorStyle(r.ptr, (*C.uint8_t)(unsafe.Pointer(cStyle)), C.size_t(len(style)), C.bool(blinking))
+	return nil
+}
+
+// SetCursorColor sets the cursor color.
+func (r *Renderer) SetCursorColor(color RGBA) error {
+	if r.ptr == nil {
+		return newError("renderer is closed")
+	}
+	C.setCursorColor(r.ptr, color.toCFloat())
 	return nil
 }
 

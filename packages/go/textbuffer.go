@@ -16,12 +16,13 @@ type TextBuffer struct {
 }
 
 // NewTextBuffer creates a new text buffer with the specified initial capacity.
-func NewTextBuffer(length uint32) *TextBuffer {
+// The widthMethod parameter controls how text width is calculated (use WidthMethodUnicode for full Unicode support).
+func NewTextBuffer(length uint32, widthMethod uint8) *TextBuffer {
 	if length == 0 {
 		length = 1024 // Default capacity
 	}
 	
-	ptr := C.createTextBuffer(C.uint32_t(length))
+	ptr := C.createTextBuffer(C.uint32_t(length), C.uint8_t(widthMethod))
 	if ptr == nil {
 		return nil
 	}

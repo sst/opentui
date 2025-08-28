@@ -205,3 +205,11 @@ const (
 	ModAlt     uint8 = 1 << 2
 	ModSuper   uint8 = 1 << 3
 )
+
+// Capabilities represents terminal capabilities
+type Capabilities struct {
+	SupportsTruecolor       bool // Terminal supports 24-bit color
+	SupportsMouse          bool // Terminal supports mouse events
+	SupportsKittyKeyboard  bool // Terminal supports Kitty keyboard protocol
+	SupportsAlternateScreen bool // Terminal supports alternate screen buffer
+}

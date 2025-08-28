@@ -127,7 +127,7 @@ func TestRendererInvalidDimensions(t *testing.T) {
 
 func TestBuffer(t *testing.T) {
 	// Test buffer creation
-	buffer := NewBuffer(40, 20, true)
+	buffer := NewBuffer(40, 20, true, WidthMethodUnicode)
 	if buffer == nil {
 		t.Skip("Skipping buffer test - OpenTUI library not available")
 	}
@@ -205,13 +205,13 @@ func TestBuffer(t *testing.T) {
 
 func TestBufferInvalidDimensions(t *testing.T) {
 	// Test creation with invalid dimensions
-	buffer := NewBuffer(0, 20, false)
+	buffer := NewBuffer(0, 20, false, WidthMethodUnicode)
 	if buffer != nil {
 		defer buffer.Close()
 		t.Error("NewBuffer should return nil for zero width")
 	}
 	
-	buffer = NewBuffer(40, 0, false)
+	buffer = NewBuffer(40, 0, false, WidthMethodUnicode)
 	if buffer != nil {
 		defer buffer.Close()
 		t.Error("NewBuffer should return nil for zero height")
@@ -220,7 +220,7 @@ func TestBufferInvalidDimensions(t *testing.T) {
 
 func TestTextBuffer(t *testing.T) {
 	// Test text buffer creation
-	textBuffer := NewTextBuffer(100)
+	textBuffer := NewTextBuffer(100, WidthMethodUnicode)
 	if textBuffer == nil {
 		t.Skip("Skipping text buffer test - OpenTUI library not available")
 	}
@@ -312,11 +312,22 @@ func TestTextBuffer(t *testing.T) {
 }
 
 func TestGlobalCursorFunctions(t *testing.T) {
-	// Test that global cursor functions don't panic
+	// Test that cursor functions don't panic
 	// We can't easily test their effects, but we can ensure they don't crash
-	SetCursorPosition(10, 5, true)
-	SetCursorStyle(CursorBlock, false)
-	SetCursorColor(Green)
+	renderer := NewRenderer(80, 24)
+	if renderer == nil {
+		t.Skip("Skipping cursor test - OpenTUI library not available")
+	}
+	defer renderer.Close()
+	
+	SetCursorPosition(renderer, 10, 5, true)
+	SetCursorStyle(renderer, CursorBlock, false)
+	SetCursorColor(renderer, Green)
+	
+	// Also test renderer methods
+	renderer.SetCursorPosition(15, 10, true)
+	renderer.SetCursorStyle(CursorUnderline, true)
+	renderer.SetCursorColor(Red)
 	
 	// If we get here without panicking, the test passes
 }

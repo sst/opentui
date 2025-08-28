@@ -84,21 +84,30 @@ const (
 	DebugBottomRight
 )
 
-// SetCursorPosition sets the global cursor position and visibility.
-func SetCursorPosition(x, y int32, visible bool) {
-	C.setCursorPosition(C.int32_t(x), C.int32_t(y), C.bool(visible))
+// SetCursorPosition sets the cursor position and visibility for a specific renderer.
+func SetCursorPosition(renderer *Renderer, x, y int32, visible bool) {
+	if renderer == nil || renderer.ptr == nil {
+		return
+	}
+	C.setCursorPosition(renderer.ptr, C.int32_t(x), C.int32_t(y), C.bool(visible))
 }
 
-// SetCursorStyle sets the global cursor style and blinking state.
-func SetCursorStyle(style CursorStyle, blinking bool) {
+// SetCursorStyle sets the cursor style and blinking state for a specific renderer.
+func SetCursorStyle(renderer *Renderer, style CursorStyle, blinking bool) {
+	if renderer == nil || renderer.ptr == nil {
+		return
+	}
 	cStyle := C.CString(string(style))
 	defer C.free(unsafe.Pointer(cStyle))
-	C.setCursorStyle((*C.uint8_t)(unsafe.Pointer(cStyle)), C.size_t(len(style)), C.bool(blinking))
+	C.setCursorStyle(renderer.ptr, (*C.uint8_t)(unsafe.Pointer(cStyle)), C.size_t(len(style)), C.bool(blinking))
 }
 
-// SetCursorColor sets the global cursor color.
-func SetCursorColor(color RGBA) {
-	C.setCursorColor(color.toCFloat())
+// SetCursorColor sets the cursor color for a specific renderer.
+func SetCursorColor(renderer *Renderer, color RGBA) {
+	if renderer == nil || renderer.ptr == nil {
+		return
+	}
+	C.setCursorColor(renderer.ptr, color.toCFloat())
 }
 
 // stringToC converts a Go string to C string parameters

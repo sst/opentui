@@ -77,7 +77,7 @@ renderer.Resize(newWidth, newHeight)
 A 2D array of terminal cells for efficient rendering.
 
 ```go
-buffer := opentui.NewBuffer(80, 24, false)
+buffer := opentui.NewBuffer(80, 24, false, opentui.WidthMethodUnicode)
 defer buffer.Close()
 
 // Drawing operations
@@ -99,7 +99,7 @@ buffer.DrawBox(5, 5, 30, 10, options, opentui.White, opentui.Gray)
 Efficient handling of styled text with line tracking.
 
 ```go
-textBuffer := opentui.NewTextBuffer(1024)
+textBuffer := opentui.NewTextBuffer(1024, opentui.WidthMethodUnicode)
 defer textBuffer.Close()
 
 // Write styled text

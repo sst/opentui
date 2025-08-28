@@ -16,14 +16,21 @@ type Buffer struct {
 	managed bool // true if buffer is managed by renderer
 }
 
+// WidthMethod constants for Unicode width calculation
+const (
+	WidthMethodWCWidth = 0 // Use wcwidth for width calculation
+	WidthMethodUnicode = 1 // Use Unicode standard width calculation
+)
+
 // NewBuffer creates a new buffer with the specified dimensions.
 // If respectAlpha is true, the buffer will handle alpha blending.
-func NewBuffer(width, height uint32, respectAlpha bool) *Buffer {
+// The widthMethod parameter controls how text width is calculated (use WidthMethodUnicode for full Unicode support).
+func NewBuffer(width, height uint32, respectAlpha bool, widthMethod uint8) *Buffer {
 	if width == 0 || height == 0 {
 		return nil
 	}
 	
-	ptr := C.createOptimizedBuffer(C.uint32_t(width), C.uint32_t(height), C.bool(respectAlpha))
+	ptr := C.createOptimizedBuffer(C.uint32_t(width), C.uint32_t(height), C.bool(respectAlpha), C.uint8_t(widthMethod))
 	if ptr == nil {
 		return nil
 	}

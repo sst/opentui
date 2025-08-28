@@ -14,6 +14,14 @@ typedef struct CliRenderer CliRenderer;
 typedef struct OptimizedBuffer OptimizedBuffer;
 typedef struct TextBuffer TextBuffer;
 
+// Terminal capabilities structure
+typedef struct {
+    bool supports_truecolor;
+    bool supports_mouse;
+    bool supports_kitty_keyboard;
+    bool supports_alternate_screen;
+} Capabilities;
+
 // RGBA color type - array of 4 floats [r, g, b, a]
 typedef float RGBA[4];
 
@@ -33,7 +41,7 @@ void enableMouse(CliRenderer* renderer, bool enableMovement);
 void disableMouse(CliRenderer* renderer);
 
 // Buffer management functions
-OptimizedBuffer* createOptimizedBuffer(uint32_t width, uint32_t height, bool respectAlpha);
+OptimizedBuffer* createOptimizedBuffer(uint32_t width, uint32_t height, bool respectAlpha, uint8_t widthMethod);
 void destroyOptimizedBuffer(OptimizedBuffer* buffer);
 void destroyFrameBuffer(OptimizedBuffer* frameBuffer);
 uint32_t getBufferWidth(OptimizedBuffer* buffer);
@@ -56,10 +64,14 @@ void bufferDrawBox(OptimizedBuffer* buffer, int32_t x, int32_t y, uint32_t width
 void bufferResize(OptimizedBuffer* buffer, uint32_t width, uint32_t height);
 void drawFrameBuffer(OptimizedBuffer* target, int32_t destX, int32_t destY, OptimizedBuffer* frameBuffer, uint32_t sourceX, uint32_t sourceY, uint32_t sourceWidth, uint32_t sourceHeight);
 
-// Cursor functions
-void setCursorPosition(int32_t x, int32_t y, bool visible);
-void setCursorStyle(const uint8_t* style, size_t styleLen, bool blinking);
-void setCursorColor(const float* color);
+// Cursor functions  
+void setCursorPosition(CliRenderer* renderer, int32_t x, int32_t y, bool visible);
+void setCursorStyle(CliRenderer* renderer, const uint8_t* style, size_t styleLen, bool blinking);
+void setCursorColor(CliRenderer* renderer, const float* color);
+
+// Terminal capability functions
+void getTerminalCapabilities(CliRenderer* renderer, Capabilities* caps);
+void processCapabilityResponse(CliRenderer* renderer, const uint8_t* response, size_t responseLen);
 
 // Debug and utility functions
 void setDebugOverlay(CliRenderer* renderer, bool enabled, uint8_t corner);
@@ -70,8 +82,13 @@ void dumpHitGrid(CliRenderer* renderer);
 void dumpBuffers(CliRenderer* renderer, int64_t timestamp);
 void dumpStdoutBuffer(CliRenderer* renderer, int64_t timestamp);
 
+// Keyboard and terminal setup functions
+void enableKittyKeyboard(CliRenderer* renderer, uint8_t flags);
+void disableKittyKeyboard(CliRenderer* renderer);
+void setupTerminal(CliRenderer* renderer, bool useAlternateScreen);
+
 // TextBuffer functions
-TextBuffer* createTextBuffer(uint32_t length);
+TextBuffer* createTextBuffer(uint32_t length, uint8_t widthMethod);
 void destroyTextBuffer(TextBuffer* textBuffer);
 uint32_t* textBufferGetCharPtr(TextBuffer* textBuffer);
 float* textBufferGetFgPtr(TextBuffer* textBuffer);
