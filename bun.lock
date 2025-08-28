@@ -83,6 +83,10 @@
         "typescript": "^5",
         "vue": "^3.5.18",
       },
+      "peerDependencies": {
+        "typescript": "^5",
+        "vue": "^3.5.18",
+      },
     },
   },
   "packages": {
