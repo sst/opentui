@@ -1,11 +1,9 @@
-import { OptimizedBuffer } from "./buffer"
-import type { RenderContext, SelectionState } from "./types"
-import type { MouseEvent } from "./renderer"
 import { EventEmitter } from "events"
-import Yoga, { FlexDirection, Direction, Edge, type Config, Display } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Config } from "yoga-layout"
+import { OptimizedBuffer } from "./buffer"
+import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
-import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
 import {
   parseAlign,
@@ -17,6 +15,8 @@ import {
   type JustifyString,
   type PositionTypeString,
 } from "./lib/yoga.options"
+import type { MouseEvent } from "./renderer"
+import type { RenderContext, SelectionState } from "./types"
 import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
 
 export enum LayoutEvents {
@@ -109,7 +109,7 @@ function validateOptions(id: string, options: RenderableOptions<Renderable>): vo
   }
 }
 
-function isValidPercentage(value: any): value is `${number}%` {
+export function isValidPercentage(value: any): value is `${number}%` {
   if (typeof value === "string" && value.endsWith("%")) {
     const numPart = value.slice(0, -1)
     const num = parseFloat(numPart)

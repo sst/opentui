@@ -1,5 +1,5 @@
-import { Edge } from "yoga-layout"
-import { type RenderableOptions, Renderable } from "../Renderable"
+import { Edge, Gutter } from "yoga-layout"
+import { type RenderableOptions, Renderable, isValidPercentage } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
 import {
   type BorderCharacters,
@@ -22,6 +22,19 @@ export interface BoxOptions extends RenderableOptions<BoxRenderable> {
   title?: string
   titleAlignment?: "left" | "center" | "right"
   focusedBorderColor?: ColorInput
+  gap?: number | `${number}%`
+  rowGap?: number | `${number}%`
+  columnGap?: number | `${number}%`
+}
+
+function isGapType(value: any): value is number | undefined {
+  if (value === undefined) {
+    return true
+  }
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return true
+  }
+  return isValidPercentage(value)
 }
 
 export class BoxRenderable extends Renderable {
@@ -63,6 +76,12 @@ export class BoxRenderable extends Renderable {
     this._titleAlignment = options.titleAlignment || this._defaultOptions.titleAlignment
 
     this.applyYogaBorders()
+
+    const hasInitialGapProps =
+      options.gap !== undefined || options.rowGap !== undefined || options.columnGap !== undefined
+    if (hasInitialGapProps) {
+      this.applyYogaGap(options)
+    }
   }
 
   public get customBorderChars(): BorderCharacters | undefined {
@@ -187,5 +206,42 @@ export class BoxRenderable extends Renderable {
     node.setBorder(Edge.Top, this.borderSides.top ? 1 : 0)
     node.setBorder(Edge.Bottom, this.borderSides.bottom ? 1 : 0)
     this.needsUpdate()
+  }
+
+  private applyYogaGap(options: BoxOptions): void {
+    const node = this.layoutNode.yogaNode
+
+    if (isGapType(options.gap)) {
+      node.setGap(Gutter.All, options.gap)
+    }
+
+    if (isGapType(options.rowGap)) {
+      node.setGap(Gutter.Row, options.rowGap)
+    }
+
+    if (isGapType(options.columnGap)) {
+      node.setGap(Gutter.Column, options.columnGap)
+    }
+  }
+
+  public set gap(gap: number | `${number}%` | undefined) {
+    if (isGapType(gap)) {
+      this.layoutNode.yogaNode.setGap(Gutter.All, gap)
+      this.needsUpdate()
+    }
+  }
+
+  public set rowGap(rowGap: number | `${number}%` | undefined) {
+    if (isGapType(rowGap)) {
+      this.layoutNode.yogaNode.setGap(Gutter.Row, rowGap)
+      this.needsUpdate()
+    }
+  }
+
+  public set columnGap(columnGap: number | `${number}%` | undefined) {
+    if (isGapType(columnGap)) {
+      this.layoutNode.yogaNode.setGap(Gutter.Column, columnGap)
+      this.needsUpdate()
+    }
   }
 }
