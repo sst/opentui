@@ -106,3 +106,25 @@ bun run build.ts
 ```bash
 bun run dist/index.js
 ```
+
+# Note
+
+Important Note on <textRenderable>
+
+The <textRenderable> component only accepts plain text as a direct child. For styled text or text chunks, you must use the content prop.
+
+Code snippet
+
+<script setup lang="ts">
+import { blue, bold, t, underline, type TextChunk } from "@opentui/core"
+
+const styledText = t`This is ${underline(blue("styled"))} text.`
+const textChunk: TextChunk = bold(`This is a text chunk.`)
+</script>
+
+<template>
+  <textRenderable :content="styledText" />
+  <textRenderable :content="textChunk" />
+
+<textRenderable>This is plain text.</textRenderable>
+</template>
