@@ -7,7 +7,7 @@ import { type SelectionState, type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 
-export interface TextOptions extends RenderableOptions {
+export interface TextOptions extends RenderableOptions<TextRenderable> {
   content?: StyledText | string
   fg?: string | RGBA
   bg?: string | RGBA

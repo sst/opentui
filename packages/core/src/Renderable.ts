@@ -17,6 +17,7 @@ import {
   type JustifyString,
   type PositionTypeString,
 } from "./lib/yoga.options"
+import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -66,7 +67,7 @@ export interface LayoutOptions {
   enableLayout?: boolean
 }
 
-export interface RenderableOptions extends Partial<LayoutOptions> {
+export interface RenderableOptions<T extends Renderable = Renderable> extends Partial<LayoutOptions> {
   id?: string
   width?: number | "auto" | `${number}%`
   height?: number | "auto" | `${number}%`
@@ -75,20 +76,27 @@ export interface RenderableOptions extends Partial<LayoutOptions> {
   buffered?: boolean
   live?: boolean
 
-  onMouseDown?: (event: MouseEvent) => void
-  onMouseUp?: (event: MouseEvent) => void
-  onMouseMove?: (event: MouseEvent) => void
-  onMouseDrag?: (event: MouseEvent) => void
-  onMouseDragEnd?: (event: MouseEvent) => void
-  onMouseDrop?: (event: MouseEvent) => void
-  onMouseOver?: (event: MouseEvent) => void
-  onMouseOut?: (event: MouseEvent) => void
-  onMouseScroll?: (event: MouseEvent) => void
+  // hooks for custom render logic
+  renderBefore?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
+  renderAfter?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
+
+  // catch all
+  onMouse?: (this: T, event: MouseEvent) => void
+
+  onMouseDown?: (this: T, event: MouseEvent) => void
+  onMouseUp?: (this: T, event: MouseEvent) => void
+  onMouseMove?: (this: T, event: MouseEvent) => void
+  onMouseDrag?: (this: T, event: MouseEvent) => void
+  onMouseDragEnd?: (this: T, event: MouseEvent) => void
+  onMouseDrop?: (this: T, event: MouseEvent) => void
+  onMouseOver?: (this: T, event: MouseEvent) => void
+  onMouseOut?: (this: T, event: MouseEvent) => void
+  onMouseScroll?: (this: T, event: MouseEvent) => void
 
   onKeyDown?: (key: ParsedKey) => void
 }
 
-function validateOptions(id: string, options: RenderableOptions): void {
+function validateOptions(id: string, options: RenderableOptions<Renderable>): void {
   if (typeof options.width === "number") {
     if (options.width < 0) {
       throw new TypeError(`Invalid width for Renderable ${id}: ${options.width}`)
@@ -192,6 +200,7 @@ export abstract class Renderable extends EventEmitter {
   private _live: boolean = false
   protected _liveCount: number = 0
 
+  private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
   private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
 
@@ -206,7 +215,10 @@ export abstract class Renderable extends EventEmitter {
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
 
-  constructor(ctx: RenderContext, options: RenderableOptions) {
+  public renderBefore?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
+  public renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
+
+  constructor(ctx: RenderContext, options: RenderableOptions<any>) {
     super()
     this.num = Renderable.renderableNumber++
     this.id = options.id ?? `renderable-${this.num}`
@@ -214,6 +226,9 @@ export abstract class Renderable extends EventEmitter {
     Renderable.renderablesByNumber.set(this.num, this)
 
     validateOptions(this.id, options)
+
+    this.renderBefore = options.renderBefore
+    this.renderAfter = options.renderAfter
 
     this._width = options.width ?? "auto"
     this._height = options.height ?? "auto"
@@ -290,6 +305,11 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public focus(): void {
+    if (this.childHost !== this) {
+      this.childHost.focus()
+      return
+    }
+
     if (this._focused || !this.focusable) return
 
     this._focused = true
@@ -307,6 +327,11 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public blur(): void {
+    if (this.childHost !== this) {
+      this.childHost.blur()
+      return
+    }
+
     if (!this._focused || !this.focusable) return
 
     this._focused = false
@@ -486,11 +511,7 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
-  public requestZIndexSort(): void {
-    if (this.childHost !== this) {
-      this.childHost.requestZIndexSort()
-      return
-    }
+  private requestZIndexSort(): void {
     this.needsZIndexSort = true
   }
 
@@ -501,7 +522,7 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
-  private setupYogaProperties(options: RenderableOptions): void {
+  private setupYogaProperties(options: RenderableOptions<Renderable>): void {
     const node = this.layoutNode.yogaNode
 
     if (isFlexBasisType(options.flexBasis)) {
@@ -578,7 +599,7 @@ export abstract class Renderable extends EventEmitter {
     this.setupMarginAndPadding(options)
   }
 
-  private setupMarginAndPadding(options: RenderableOptions): void {
+  private setupMarginAndPadding(options: RenderableOptions<Renderable>): void {
     const node = this.layoutNode.yogaNode
 
     if (isMarginType(options.margin)) {
@@ -880,11 +901,13 @@ export abstract class Renderable extends EventEmitter {
     obj.parent = this
   }
 
-  public add(obj: Renderable, index?: number): number {
+  public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
     if (this.childHost !== this) {
-      const insertedIndex = this.childHost.add(obj, index)
-      return insertedIndex
+      return this.childHost.add(obj, index)
     }
+
+    obj = ensureRenderable(this._ctx, obj)
+
     if (this.renderableMap.has(obj.id)) {
       console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
       this.remove(obj.id)
@@ -913,11 +936,14 @@ export abstract class Renderable extends EventEmitter {
     return insertedIndex
   }
 
-  insertBefore(obj: Renderable, anchor?: Renderable): number {
+  insertBefore(obj: Renderable | VNode<any, any[]>, anchor?: Renderable): number {
     if (this.childHost !== this) {
       const idx = this.childHost.insertBefore(obj, anchor)
       return idx
     }
+
+    obj = ensureRenderable(this._ctx, obj)
+
     if (!anchor) {
       return this.add(obj)
     }
@@ -992,7 +1018,16 @@ export abstract class Renderable extends EventEmitter {
       renderBuffer = this.frameBuffer
     }
 
+    if (this.renderBefore) {
+      this.renderBefore.call(this, renderBuffer, deltaTime)
+    }
+
     this.renderSelf(renderBuffer, deltaTime)
+
+    if (this.renderAfter) {
+      this.renderAfter.call(this, renderBuffer, deltaTime)
+    }
+
     this.markClean()
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
@@ -1055,7 +1090,8 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public processMouseEvent(event: MouseEvent): void {
-    this._mouseListeners[event.type]?.(event)
+    this._mouseListener?.call(this, event)
+    this._mouseListeners[event.type]?.call(this, event)
     this.onMouseEvent(event)
 
     if (this.parent && !event.defaultPrevented) {
@@ -1066,6 +1102,11 @@ export abstract class Renderable extends EventEmitter {
   protected onMouseEvent(event: MouseEvent): void {
     // Default implementation: do nothing
     // Override this method to provide custom event handling
+  }
+
+  public set onMouse(handler: ((event: MouseEvent) => void) | undefined) {
+    if (handler) this._mouseListener = handler
+    else this._mouseListener = null
   }
 
   public set onMouseDown(handler: ((event: MouseEvent) => void) | undefined) {
@@ -1121,17 +1162,18 @@ export abstract class Renderable extends EventEmitter {
     return this._keyListeners["down"]
   }
 
-  private applyEventOptions(options: RenderableOptions): void {
-    if (options.onMouseDown) this.onMouseDown = options.onMouseDown
-    if (options.onMouseUp) this.onMouseUp = options.onMouseUp
-    if (options.onMouseMove) this.onMouseMove = options.onMouseMove
-    if (options.onMouseDrag) this.onMouseDrag = options.onMouseDrag
-    if (options.onMouseDragEnd) this.onMouseDragEnd = options.onMouseDragEnd
-    if (options.onMouseDrop) this.onMouseDrop = options.onMouseDrop
-    if (options.onMouseOver) this.onMouseOver = options.onMouseOver
-    if (options.onMouseOut) this.onMouseOut = options.onMouseOut
-    if (options.onMouseScroll) this.onMouseScroll = options.onMouseScroll
-    if (options.onKeyDown) this.onKeyDown = options.onKeyDown
+  private applyEventOptions(options: RenderableOptions<Renderable>): void {
+    this.onMouse = options.onMouse
+    this.onMouseDown = options.onMouseDown
+    this.onMouseUp = options.onMouseUp
+    this.onMouseMove = options.onMouseMove
+    this.onMouseDrag = options.onMouseDrag
+    this.onMouseDragEnd = options.onMouseDragEnd
+    this.onMouseDrop = options.onMouseDrop
+    this.onMouseOver = options.onMouseOver
+    this.onMouseOut = options.onMouseOut
+    this.onMouseScroll = options.onMouseScroll
+    this.onKeyDown = options.onKeyDown
   }
 }
 

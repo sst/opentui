@@ -2,7 +2,7 @@ import { type RenderableOptions, Renderable } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { RenderContext } from "../types"
 
-export interface FrameBufferOptions extends RenderableOptions {
+export interface FrameBufferOptions extends RenderableOptions<FrameBufferRenderable> {
   width: number
   height: number
   respectAlpha?: boolean

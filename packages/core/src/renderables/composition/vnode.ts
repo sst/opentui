@@ -1,44 +1,187 @@
 import { Renderable, type RenderableOptions } from "../../Renderable"
 import type { RenderContext } from "../../types"
-import { BoxRenderable, GroupRenderable, TextRenderable, type BoxOptions, type TextOptions } from "../.."
 
-export type VChild = VNode | Renderable | null | undefined | false
+export type VChild = VNode | Renderable | VChild[] | null | undefined | false
 
-export interface VNode<P = any> {
-  type: Component<P>
-  props?: P
-  children?: VChild[]
-  __hostId?: string
+export interface PendingCall {
+  method: string
+  args: any[]
+  isProperty?: boolean
 }
 
-export interface RenderableConstructor<P extends RenderableOptions = RenderableOptions> {
+export interface VNode<P = any, C = VChild[]> {
+  __isVNode: true
+  type: Construct<P>
+  props?: P
+  children?: C
+  __delegateMap?: Record<string, string>
+  __pendingCalls?: PendingCall[]
+}
+
+// Type that represents a VNode with Renderable methods available for chaining
+export type ProxiedVNode<TCtor extends RenderableConstructor<any>> = VNode<
+  TCtor extends RenderableConstructor<infer P> ? P : any
+> & {
+  [K in keyof InstanceType<TCtor>]: InstanceType<TCtor>[K] extends (...args: infer Args) => any
+    ? (...args: Args) => ProxiedVNode<TCtor>
+    : InstanceType<TCtor>[K]
+}
+
+export interface RenderableConstructor<P extends RenderableOptions<any> = RenderableOptions<any>> {
   new (ctx: RenderContext, options: P): Renderable
 }
 
-export type FunctionComponent<P = any> = (props: P, children?: VChild[]) => VNode
+export type FunctionalConstruct<P = any> = (props: P, children?: VChild[]) => VNode
 
-export type Component<P = any> = RenderableConstructor<P extends RenderableOptions ? P : never> | FunctionComponent<P>
+export type Construct<P = any> =
+  | RenderableConstructor<P extends RenderableOptions<any> ? P : never>
+  | FunctionalConstruct<P>
 
-function isRenderableConstructor(value: any): value is RenderableConstructor<any> {
+function isRenderableConstructor<P extends RenderableOptions<any> = RenderableOptions<any>>(
+  value: any,
+): value is RenderableConstructor<P> {
   return typeof value === "function" && value.prototype && Renderable.prototype.isPrototypeOf(value.prototype)
 }
 
-function ensureFlatAndFilter(children: VChild[] | undefined): VChild[] {
-  if (!children || children.length === 0) return []
+function flattenChildren(children: VChild[]): VChild[] {
   const result: VChild[] = []
   for (const child of children) {
     if (Array.isArray(child)) {
-      throw new TypeError("VNode children must be flat. Spread nested arrays with ...children.")
-    }
-    if (child !== null && child !== undefined && child !== false) {
+      result.push(...flattenChildren(child))
+    } else if (child !== null && child !== undefined && child !== false) {
       result.push(child)
     }
   }
   return result
 }
 
-export function h<P>(type: Component<P>, props?: P, children?: VChild[]): VNode<P> {
-  return { type, props, children: ensureFlatAndFilter(children) }
+// Overloads for proper typing
+export function h<TCtor extends RenderableConstructor<any>>(
+  type: TCtor,
+  props?: TCtor extends RenderableConstructor<infer P> ? P : never,
+  ...children: VChild[]
+): ProxiedVNode<TCtor>
+export function h<P>(type: FunctionalConstruct<P>, props?: P, ...children: VChild[]): VNode<P>
+export function h<P>(type: Construct<P>, props?: P, ...children: VChild[]): VNode<P> | ProxiedVNode<any>
+export function h<P>(type: Construct<P>, props?: P, ...children: VChild[]): any {
+  if (typeof type !== "function") {
+    throw new TypeError("h() received an invalid vnode type")
+  }
+
+  const vnode: VNode<P> = {
+    __isVNode: true,
+    type,
+    props,
+    children: flattenChildren(children),
+    __pendingCalls: [],
+  }
+
+  if (isRenderableConstructor(type)) {
+    return new Proxy(vnode, {
+      get(target, prop, receiver) {
+        // Return VNode properties directly
+        if (prop in target) {
+          return Reflect.get(target, prop, receiver)
+        }
+
+        if (typeof prop === "string") {
+          const prototype = type.prototype
+          const hasMethod =
+            prototype &&
+            (typeof prototype[prop] === "function" ||
+              Object.getOwnPropertyDescriptor(prototype, prop) ||
+              Object.getOwnPropertyDescriptor(Object.getPrototypeOf(prototype), prop))
+
+          if (hasMethod) {
+            return (...args: any[]) => {
+              target.__pendingCalls = target.__pendingCalls || []
+              target.__pendingCalls.push({ method: prop, args })
+              return target
+            }
+          }
+        }
+
+        return Reflect.get(target, prop, receiver)
+      },
+
+      set(target, prop, value, receiver) {
+        if (typeof prop === "string" && isRenderableConstructor(type)) {
+          const prototype = type.prototype
+          const descriptor =
+            Object.getOwnPropertyDescriptor(prototype, prop) ||
+            Object.getOwnPropertyDescriptor(Object.getPrototypeOf(prototype), prop)
+
+          if (descriptor && descriptor.set) {
+            target.__pendingCalls = target.__pendingCalls || []
+            target.__pendingCalls.push({ method: prop, args: [value], isProperty: true })
+            return true
+          }
+        }
+
+        return Reflect.set(target, prop, value, receiver)
+      },
+    })
+  }
+
+  return vnode
+}
+
+export function isVNode(node: any): node is VNode {
+  return node && node.__isVNode
+}
+
+export function ensureRenderable(ctx: RenderContext, node: Renderable | VNode<any, any[]>): Renderable {
+  if (node instanceof Renderable) return node
+  return instantiate(ctx, node)
+}
+
+export function wrapWithDelegates<T extends InstanceType<RenderableConstructor>>(
+  instance: T,
+  delegateMap: Record<string, string> | undefined,
+): T {
+  if (!delegateMap || Object.keys(delegateMap).length === 0) return instance
+
+  const descendantCache = new Map<string, Renderable | undefined>()
+
+  const getDescendant = (id: string): Renderable | undefined => {
+    if (descendantCache.has(id)) {
+      const cached = descendantCache.get(id)
+      if (cached !== undefined) {
+        return cached
+      }
+    }
+    const descendant = (instance as Renderable).findDescendantById(id)
+    if (descendant) {
+      descendantCache.set(id, descendant)
+    }
+    return descendant
+  }
+
+  const proxy = new Proxy(instance as any, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string" && delegateMap[prop]) {
+        const host = getDescendant(delegateMap[prop])
+        if (host) {
+          const value = (host as any)[prop]
+          if (typeof value === "function") {
+            return value.bind(host)
+          }
+          return value
+        }
+      }
+      return Reflect.get(target, prop, receiver)
+    },
+    set(target, prop, value, receiver) {
+      if (typeof prop === "string" && delegateMap[prop]) {
+        const host = getDescendant(delegateMap[prop])
+        if (host) {
+          return Reflect.set(host as any, prop, value)
+        }
+      }
+      return Reflect.set(target, prop, value, receiver)
+    },
+  })
+  return proxy
 }
 
 export function instantiate(ctx: RenderContext, node: VChild): Renderable {
@@ -50,11 +193,12 @@ export function instantiate(ctx: RenderContext, node: VChild): Renderable {
 
   const vnode = node as VNode
   const { type, props } = vnode
-  const children = ensureFlatAndFilter(vnode.children || [])
-  const hostId = (vnode as any).__hostId as string | undefined
+  const children = flattenChildren(vnode.children || [])
+  const delegateMap = (vnode as any).__delegateMap as Record<string, string> | undefined
 
   if (isRenderableConstructor(type)) {
     const instance = new type(ctx, (props || {}) as any)
+
     for (const child of children) {
       if (child instanceof Renderable) {
         instance.add(child)
@@ -63,48 +207,49 @@ export function instantiate(ctx: RenderContext, node: VChild): Renderable {
         instance.add(mounted)
       }
     }
-    if (hostId) {
-      instance.setChildHostById(hostId)
+
+    const delegatedInstance = wrapWithDelegates(instance, delegateMap)
+
+    const pendingCalls = (vnode as any).__pendingCalls as PendingCall[] | undefined
+    if (pendingCalls) {
+      for (const call of pendingCalls) {
+        if (call.isProperty) {
+          ;(delegatedInstance as any)[call.method] = call.args[0]
+        } else {
+          ;(delegatedInstance as any)[call.method].apply(delegatedInstance, call.args)
+        }
+      }
     }
-    return instance
+
+    return delegatedInstance
   }
 
-  // Function component: resolve to a concrete vnode and mount it
-  const resolved = (type as FunctionComponent<any>)(props || ({} as any), children)
+  // Functional construct: resolve to a concrete vnode and mount it
+  const resolved = (type as FunctionalConstruct)(props || ({} as any), children)
   const inst = instantiate(ctx, resolved)
-  if (hostId) {
-    inst.setChildHostById(hostId)
-  }
-  return inst
+
+  return wrapWithDelegates(inst, delegateMap)
 }
 
-export function mountInto(parent: Renderable, node: VChild): Renderable {
-  const instance = instantiate(parent.ctx, node)
-  parent.add(instance)
-  return instance
-}
+// Controlled delegation that routes selected properties/methods
+// to a descendant renderable identified by id.
+export type DelegateMap<T> = Partial<Record<keyof T, string>>
 
-// Shorthands for core renderables
-export function Group(props?: RenderableOptions, children?: VChild[]): VNode<RenderableOptions> {
-  return h(GroupRenderable, props || {}, children)
-}
-
-export function Box(props?: BoxOptions, children?: VChild[]): VNode<BoxOptions> {
-  return h(BoxRenderable, props || {}, children)
-}
-
-export function Text(props?: TextOptions & { content?: any }, children?: VChild[]): VNode<TextOptions> {
-  return h(TextRenderable as unknown as RenderableConstructor<any>, props || {}, children)
-}
-
-// Mark a vnode tree so that, when instantiated, its root will route child ops
-// to the descendant with the given id.
-export function hostOverride(hostId: string, vnode: VChild): VChild {
+export function delegate<TCtor extends RenderableConstructor<any>, K extends keyof InstanceType<TCtor>>(
+  mapping: Partial<Record<K, string>>,
+  vnode: ProxiedVNode<TCtor>,
+): ProxiedVNode<TCtor>
+export function delegate<TCtor extends RenderableConstructor<any>, K extends keyof InstanceType<TCtor>>(
+  mapping: Partial<Record<K, string>>,
+  vnode: VNode<any> & { type: TCtor },
+): VNode
+export function delegate(mapping: Record<string, string>, vnode: VNode<any>): VNode
+export function delegate(mapping: Record<string, string>, renderable: Renderable): Renderable
+export function delegate(mapping: any, vnode: VNode<any> | Renderable): VNode | Renderable {
   if (vnode instanceof Renderable) {
-    vnode.setChildHostById(hostId)
-    return vnode
+    return wrapWithDelegates(vnode, mapping)
   }
   if (!vnode || typeof vnode !== "object") return vnode
-  ;(vnode as VNode).__hostId = hostId
+  vnode.__delegateMap = { ...(vnode.__delegateMap || {}), ...mapping }
   return vnode
 }

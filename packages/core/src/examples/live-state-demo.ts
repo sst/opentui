@@ -8,14 +8,14 @@ import {
   TextRenderable,
   BoxRenderable,
   type MouseEvent,
-  OptimizedBuffer,
   t,
   bold,
   red,
   green,
   blue,
   fg,
-  type RenderContext,
+  parseColor,
+  Box,
 } from "../index"
 import type { BoxOptions } from "../renderables/Box"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -25,86 +25,54 @@ let instructionsText: TextRenderable | null = null
 let statusText: TextRenderable | null = null
 let rendererStateText: TextRenderable | null = null
 let renderableStateText: TextRenderable | null = null
-let liveButtons: LiveButton[] = []
+let liveButtons: ReturnType<typeof LiveButton>[] = []
 let demoRenderable: BoxRenderable | null = null
 let currentRenderer: CliRenderer | null = null
 let frameCounter = 0
 let animationCounter = 0
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
 
-class LiveButton extends BoxRenderable {
-  private isHovered = false
-  private isPressed = false
-  private originalBg: RGBA
-  private hoverBg: RGBA
-  private pressBg: RGBA
-  private label: string
+function LiveButton(options: BoxOptions & { label: string }) {
+  const base = parseColor(options.backgroundColor ?? "transparent")
+  const hoverBg = RGBA.fromValues(
+    Math.min(1.0, base.r * 1.4),
+    Math.min(1.0, base.g * 1.4),
+    Math.min(1.0, base.b * 1.4),
+    base.a,
+  )
+  const pressBg = RGBA.fromValues(base.r * 0.6, base.g * 0.6, base.b * 0.6, base.a)
 
-  constructor(ctx: RenderContext, options: BoxOptions & { label: string }) {
-    super(ctx, { zIndex: 100, border: true, ...options })
+  return Box({
+    ...options,
+    renderAfter(buffer, deltaTime) {
+      const textColor = RGBA.fromValues(1, 1, 1, 1)
+      const centerY = this.y + Math.floor(this.height / 2)
+      const startX = this.x + Math.floor((this.width - options.label.length) / 2)
 
-    this.label = options.label
-    const base = this.backgroundColor
-    this.originalBg = base
-    this.hoverBg = RGBA.fromValues(
-      Math.min(1.0, base.r * 1.4),
-      Math.min(1.0, base.g * 1.4),
-      Math.min(1.0, base.b * 1.4),
-      base.a,
-    )
-    this.pressBg = RGBA.fromValues(base.r * 0.6, base.g * 0.6, base.b * 0.6, base.a)
-  }
+      buffer.drawText(options.label, startX, centerY, textColor)
+    },
+    onMouse(event: MouseEvent) {
+      switch (event.type) {
+        case "down":
+          this.backgroundColor = pressBg
+          event.preventDefault()
+          break
 
-  protected renderSelf(buffer: OptimizedBuffer): void {
-    if (this.isPressed) {
-      this.backgroundColor = this.pressBg
-    } else if (this.isHovered) {
-      this.backgroundColor = this.hoverBg
-    } else {
-      this.backgroundColor = this.originalBg
-    }
+        case "up":
+          this.backgroundColor = base
+          event.preventDefault()
+          break
 
-    super.renderSelf(buffer)
+        case "over":
+          this.backgroundColor = hoverBg
+          break
 
-    // Render text centered within the button
-    const textColor = RGBA.fromValues(1, 1, 1, 1) // White text
-    const centerY = this.y + Math.floor(this.height / 2)
-    const startX = this.x + Math.floor((this.width - this.label.length) / 2)
-
-    for (let i = 0; i < this.label.length; i++) {
-      const x = startX + i
-      if (x >= this.x && x < this.x + this.width) {
-        buffer.setCell(x, centerY, this.label[i], textColor, this.backgroundColor)
+        case "out":
+          this.backgroundColor = base
+          break
       }
-    }
-  }
-
-  protected onMouseEvent(event: MouseEvent): void {
-    switch (event.type) {
-      case "down":
-        this.isPressed = true
-        this.needsUpdate()
-        event.preventDefault()
-        break
-
-      case "up":
-        this.isPressed = false
-        this.needsUpdate()
-        event.preventDefault()
-        break
-
-      case "over":
-        this.isHovered = true
-        this.needsUpdate()
-        break
-
-      case "out":
-        this.isHovered = false
-        this.isPressed = false
-        this.needsUpdate()
-        break
-    }
-  }
+    },
+  })
 }
 
 function updateStatusText(message: string): void {
@@ -122,7 +90,6 @@ function updateRendererState(renderer: CliRenderer): void {
 
     const liveIndicators = ["▘", "▝", "▗", "▖"]
     const liveIndicator = liveCount > 0 ? liveIndicators[animationCounter % liveIndicators.length] : " "
-
     const styledContent = t`${bold("Renderer State:")} ${running ? green(bold("RUNNING")) : red(bold("STOPPED"))} | ${bold("Live Requests:")} ${liveCount > 0 ? green(bold(liveCount.toString())) : fg("#666")(liveCount.toString())} ${liveCount > 0 ? fg("#00FFFF")(liveIndicator) : ""} | ${bold("Control State:")} ${controlState === "live" ? green(bold(controlState.toUpperCase())) : blue(bold(controlState.toUpperCase()))} | ${bold("Frame:")} ${fg("#888")(frameCounter.toString())}`
 
     rendererStateText.content = styledContent
@@ -252,7 +219,7 @@ export function run(renderer: CliRenderer): void {
 
   // Renderer control buttons
   liveButtons = [
-    new LiveButton(renderer, {
+    LiveButton({
       id: "request-live-btn",
       position: "absolute",
       left: 2,
@@ -269,7 +236,7 @@ export function run(renderer: CliRenderer): void {
         updateRenderableState()
       },
     }),
-    new LiveButton(renderer, {
+    LiveButton({
       id: "drop-live-btn",
       position: "absolute",
       left: 2 + spacing,
@@ -288,7 +255,7 @@ export function run(renderer: CliRenderer): void {
     }),
 
     // Renderable management buttons
-    new LiveButton(renderer, {
+    LiveButton({
       id: "add-renderable-btn",
       position: "absolute",
       left: 2,
@@ -304,7 +271,7 @@ export function run(renderer: CliRenderer): void {
         updateRenderableState()
       },
     }),
-    new LiveButton(renderer, {
+    LiveButton({
       id: "remove-renderable-btn",
       position: "absolute",
       left: 2 + spacing,
@@ -322,7 +289,7 @@ export function run(renderer: CliRenderer): void {
     }),
 
     // Live state buttons
-    new LiveButton(renderer, {
+    LiveButton({
       id: "set-live-true-btn",
       position: "absolute",
       left: 2,
@@ -344,7 +311,7 @@ export function run(renderer: CliRenderer): void {
         updateRenderableState()
       },
     }),
-    new LiveButton(renderer, {
+    LiveButton({
       id: "set-live-false-btn",
       position: "absolute",
       left: 2 + spacing,
@@ -368,7 +335,7 @@ export function run(renderer: CliRenderer): void {
     }),
 
     // Visibility state buttons
-    new LiveButton(renderer, {
+    LiveButton({
       id: "set-visible-true-btn",
       position: "absolute",
       left: 2,
@@ -390,7 +357,7 @@ export function run(renderer: CliRenderer): void {
         updateRenderableState()
       },
     }),
-    new LiveButton(renderer, {
+    LiveButton({
       id: "set-visible-false-btn",
       position: "absolute",
       left: 2 + spacing,
@@ -518,10 +485,10 @@ export function destroy(renderer: CliRenderer): void {
     renderableStateText = null
   }
 
-  for (const button of liveButtons) {
-    renderer.root.remove(button.id)
-  }
-  liveButtons = []
+  // for (const button of liveButtons) {
+  //   renderer.root.remove(button.id)
+  // }
+  // liveButtons = []
 
   if (demoRenderable) {
     renderer.root.remove(demoRenderable.id)

@@ -10,6 +10,8 @@ import slick from "./fonts/slick.json"
  * Font definitions plugged from cfonts - https://github.com/dominikwilkowski/cfonts
  */
 
+export type ASCIIFontName = "tiny" | "block" | "shade" | "slick"
+
 export const fonts = {
   tiny,
   block,

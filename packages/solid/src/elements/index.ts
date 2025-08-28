@@ -38,7 +38,7 @@ export type Element = keyof typeof elements
 type RenderableNonStyleKeys = "buffered"
 
 type ElementProps<
-  T extends RenderableOptions,
+  T extends RenderableOptions<K>,
   K extends Renderable = Renderable,
   NonStyleKeys extends keyof T = RenderableNonStyleKeys,
 > = {

@@ -1,10 +1,10 @@
-import { measureText } from "@opentui/core"
+import { measureText, type ASCIIFontName } from "@opentui/core"
 import { render } from "@opentui/react"
 import { useState } from "react"
 
 export const App = () => {
   const text = "ASCII"
-  const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
+  const [font, setFont] = useState<ASCIIFontName>("tiny")
 
   const { width, height } = measureText({
     text,

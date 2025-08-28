@@ -4,7 +4,7 @@ import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
 
-export interface InputRenderableOptions extends RenderableOptions {
+export interface InputRenderableOptions extends RenderableOptions<InputRenderable> {
   backgroundColor?: ColorInput
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput

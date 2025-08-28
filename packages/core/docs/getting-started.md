@@ -16,6 +16,10 @@ The `FrameBuffer` is a low-level rendering surface for custom graphics and compl
 
 Renderables are the building blocks of your UI - hierarchical objects that can be positioned, styled, and nested within each other. Each Renderable represents a visual element (like text, boxes, or input fields) and uses the Yoga layout engine for flexible positioning and sizing.
 
+### Constructs (Components)
+
+Constructs look just like React or Solid components, but are not render functions. You can think of them as constructors, a way to create new renderables by composing existing ones. They provide a more declarative way to build your UI. See a comparison on [this page](./renderables-vs-constructs.md).
+
 ### Console
 
 OpenTUI includes a built-in console overlay that captures all `console.log`, `console.info`, `console.warn`, `console.error`, and `console.debug` calls. The console appears as a visual overlay that can be positioned at any edge of the terminal, with scrolling and focus management. It's particularly useful for debugging TUI applications without disrupting the main interface.
@@ -23,11 +27,24 @@ OpenTUI includes a built-in console overlay that captures all `console.log`, `co
 ## Basic Setup
 
 ```typescript
-import { createCliRenderer, TextRenderable } from "@opentui/core"
+import { createCliRenderer, TextRenderable, Text } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const greeting = new TextRenderable("greeting", {
+// Raw Renderable
+const greeting = new TextRenderable(renderer, {
+  id: "greeting",
+  content: "Hello, OpenTUI!",
+  fg: "#00FF00",
+  position: "absolute",
+  left: 10,
+  top: 5,
+})
+
+renderer.root.add(greeting)
+
+// Construct/Component (VNode)
+const greeting2 = Text({
   content: "Hello, OpenTUI!",
   fg: "#00FF00",
   position: "absolute",
@@ -116,7 +133,8 @@ Display styled text content with support for colors, attributes, and text select
 ```typescript
 import { TextRenderable, TextAttributes, t, bold, underline, fg } from "@opentui/core"
 
-const plainText = new TextRenderable("plain-text", {
+const plainText = new TextRenderable(renderer, {
+  id: "plain-text",
   content: "Important Message",
   fg: "#FFFF00",
   attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE, // bitwise OR to combine attributes
@@ -126,7 +144,8 @@ const plainText = new TextRenderable("plain-text", {
 })
 
 // You can also use the `t` template literal to create more complex styled text:
-const styledTextRenderable = new TextRenderable("styled-text", {
+const styledTextRenderable = new TextRenderable(renderer, {
+  id: "styled-text",
   content: t`${bold("Important Message")} ${fg("#FF0000")(underline("Important Message"))}`,
   position: "absolute",
   left: 5,
@@ -141,7 +160,8 @@ A container component with borders, background colors, and layout capabilities. 
 ```typescript
 import { BoxRenderable } from "@opentui/core"
 
-const panel = new BoxRenderable("panel", {
+const panel = new BoxRenderable(renderer, {
+  id: "panel",
   width: 30,
   height: 10,
   backgroundColor: "#333366",
@@ -163,7 +183,8 @@ Has to be focused to receive input.
 ```typescript
 import { InputRenderable, InputRenderableEvents } from "@opentui/core"
 
-const nameInput = new InputRenderable("name-input", {
+const nameInput = new InputRenderable(renderer, {
+  id: "name-input",
   width: 25,
   placeholder: "Enter your name...",
   focusedBackgroundColor: "#1a1a1a",
@@ -187,7 +208,8 @@ Has to be focused to receive input. Default keybindings are `up/k` and `down/j` 
 ```typescript
 import { SelectRenderable, SelectRenderableEvents } from "@opentui/core"
 
-const menu = new SelectRenderable("menu", {
+const menu = new SelectRenderable(renderer, {
+  id: "menu",
   width: 30,
   height: 8,
   options: [
@@ -215,7 +237,8 @@ Has to be focused to receive input. Default keybindings are `left/[` and `right/
 ```typescript
 import { TabSelectRenderable, TabSelectRenderableEvents } from "@opentui/core"
 
-const tabs = new TabSelectRenderable("tabs", {
+const tabs = new TabSelectRenderable(renderer, {
+  id: "tabs",
   width: 60,
   options: [
     { name: "Home", description: "Dashboard and overview" },
@@ -242,7 +265,8 @@ A container for organizing and laying out child elements without visual styling.
 ```typescript
 import { GroupRenderable } from "@opentui/core"
 
-const layout = new GroupRenderable("layout", {
+const layout = new GroupRenderable(renderer, {
+  id: "layout",
   flexDirection: "column",
   width: "100%",
   height: "100%",
@@ -260,7 +284,8 @@ Display text using ASCII art fonts with multiple font styles available.
 ```typescript
 import { ASCIIFontRenderable, RGBA } from "@opentui/core"
 
-const title = new ASCIIFontRenderable("title", {
+const title = new ASCIIFontRenderable(renderer, {
+  id: "title",
   text: "OPENTUI",
   font: "tiny",
   fg: RGBA.fromInts(255, 255, 255, 255),
@@ -277,7 +302,8 @@ A low-level rendering surface for custom graphics and complex visual effects.
 ```typescript
 import { FrameBufferRenderable, RGBA } from "@opentui/core"
 
-const canvas = new FrameBufferRenderable("canvas", {
+const canvas = new FrameBufferRenderable(renderer, {
+  id: "canvas",
   width: 50,
   height: 20,
   position: "absolute",
@@ -297,7 +323,8 @@ OpenTUI uses the Yoga layout engine, providing CSS Flexbox-like capabilities for
 ```typescript
 import { GroupRenderable, BoxRenderable } from "@opentui/core"
 
-const container = new GroupRenderable("container", {
+const container = new GroupRenderable(renderer, {
+  id: "container",
   flexDirection: "row",
   justifyContent: "space-between",
   alignItems: "center",
@@ -305,13 +332,15 @@ const container = new GroupRenderable("container", {
   height: 10,
 })
 
-const leftPanel = new BoxRenderable("left", {
+const leftPanel = new BoxRenderable(renderer, {
+  id: "left",
   flexGrow: 1,
   height: 10,
   backgroundColor: "#444",
 })
 
-const rightPanel = new BoxRenderable("right", {
+const rightPanel = new BoxRenderable(renderer, {
+  id: "right",
   width: 20,
   height: 10,
   backgroundColor: "#666",
