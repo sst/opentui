@@ -1,6 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const buffer = @import("buffer.zig");
+const Graphemes = @import("Graphemes");
+const DisplayWidth = @import("DisplayWidth");
+const gp = @import("grapheme.zig");
+const gwidth = @import("gwidth.zig");
 
 pub const RGBA = buffer.RGBA;
 pub const TextSelection = buffer.TextSelection;
@@ -35,11 +39,22 @@ pub const TextBuffer = struct {
     line_widths: std.ArrayList(u32),
     current_line_width: u32,
 
-    pub fn init(allocator: Allocator, length: u32) TextBufferError!*TextBuffer {
+    pool: *gp.GraphemePool,
+    graphemes_data: Graphemes,
+    display_width: DisplayWidth,
+    grapheme_tracker: gp.GraphemeTracker,
+    width_method: gwidth.WidthMethod,
+
+    pub fn init(allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod) TextBufferError!*TextBuffer {
         if (length == 0) return TextBufferError.InvalidDimensions;
 
         const self = allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
         errdefer allocator.destroy(self);
+
+        const graph = Graphemes.init(allocator) catch return TextBufferError.OutOfMemory;
+        errdefer graph.deinit(allocator);
+        const dw = DisplayWidth.initWithGraphemes(allocator, graph) catch return TextBufferError.OutOfMemory;
+        errdefer dw.deinit(allocator);
 
         self.* = .{
             .char = allocator.alloc(u32, length) catch return TextBufferError.OutOfMemory,
@@ -56,6 +71,11 @@ pub const TextBuffer = struct {
             .line_starts = std.ArrayList(u32).init(allocator),
             .line_widths = std.ArrayList(u32).init(allocator),
             .current_line_width = 0,
+            .pool = pool,
+            .graphemes_data = graph,
+            .display_width = dw,
+            .grapheme_tracker = gp.GraphemeTracker.init(allocator, pool),
+            .width_method = width_method,
         };
 
         @memset(self.char, ' ');
@@ -69,6 +89,9 @@ pub const TextBuffer = struct {
     }
 
     pub fn deinit(self: *TextBuffer) void {
+        self.grapheme_tracker.deinit();
+        self.display_width.deinit(self.allocator);
+        self.graphemes_data.deinit(self.allocator);
         self.allocator.free(self.char);
         self.allocator.free(self.fg);
         self.allocator.free(self.bg);
@@ -104,17 +127,38 @@ pub const TextBuffer = struct {
 
     pub fn setCell(self: *TextBuffer, index: u32, char: u32, fg: RGBA, bg: RGBA, attr: u16) TextBufferError!void {
         if (index >= self.length) return TextBufferError.InvalidIndex;
+        // If we are setting a grapheme start, expand continuations and track pool usage
+        if (gp.isGraphemeChar(char)) {
+            const right = gp.charRightExtent(char);
+            // write start
+            self.char[index] = char;
+            self.fg[index] = fg;
+            self.bg[index] = bg;
+            self.attributes[index] = attr;
 
-        self.char[index] = char;
-        self.fg[index] = fg;
-        self.bg[index] = bg;
-        self.attributes[index] = attr;
+            const gid: u32 = gp.graphemeIdFromChar(char);
+            self.grapheme_tracker.add(gid);
+
+            var k: u32 = 1;
+            while (k <= right and (index + k) < self.length) : (k += 1) {
+                const cont = gp.packContinuation(k, right - k, gid);
+                self.char[index + k] = cont;
+                self.fg[index + k] = fg;
+                self.bg[index + k] = bg;
+                self.attributes[index + k] = attr;
+            }
+        } else {
+            self.char[index] = char;
+            self.fg[index] = fg;
+            self.bg[index] = bg;
+            self.attributes[index] = attr;
+        }
     }
 
     /// Concatenate another TextBuffer to create a new combined buffer
     pub fn concat(self: *const TextBuffer, other: *const TextBuffer) TextBufferError!*TextBuffer {
         const newLength = self.cursor + other.cursor;
-        const result = try init(self.allocator, newLength);
+        const result = try init(self.allocator, newLength, self.pool, self.width_method);
 
         @memcpy(result.char[0..self.cursor], self.char[0..self.cursor]);
         @memcpy(result.fg[0..self.cursor], self.fg[0..self.cursor]);
@@ -150,6 +194,7 @@ pub const TextBuffer = struct {
     }
 
     pub fn reset(self: *TextBuffer) void {
+        self.grapheme_tracker.clear();
         self.cursor = 0;
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
@@ -208,8 +253,8 @@ pub const TextBuffer = struct {
     }
 
     /// Write a UTF-8 encoded text chunk with styling to the buffer at the current cursor position
-    /// This advances the cursor by the number of codepoints written and auto-resizes if needed
-    /// Returns flags: bit 0 = resized during write, bits 1-31 = number of codepoints written
+    /// This advances the cursor by the number of cells written (including continuation cells) and auto-resizes if needed
+    /// Returns flags: bit 0 = resized during write, bits 1-31 = number of cells written
     pub fn writeChunk(self: *TextBuffer, textBytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
         var attrValue: u16 = 0;
 
@@ -230,33 +275,63 @@ pub const TextBuffer = struct {
             attrValue |= @as(u16, self.default_attributes orelse 0);
         }
 
-        var utf8_it = std.unicode.Utf8Iterator{ .bytes = textBytes, .i = 0 };
-        var codepointCount: u32 = 0;
+        var iter = self.graphemes_data.iterator(textBytes);
+        var cellCount: u32 = 0;
         var wasResized: bool = false;
 
-        while (utf8_it.nextCodepoint()) |codepoint| {
-            if (self.cursor >= self.length) {
-                const newCapacity = self.length + 256;
-                try self.resize(newCapacity);
+        while (iter.next()) |gc| {
+            const bytes = gc.bytes(textBytes);
+
+            var required: u32 = 0;
+            var encoded_char: u32 = 0;
+            var is_newline: bool = false;
+
+            if (bytes.len == 1 and bytes[0] == '\n') {
+                required = 1;
+                is_newline = true;
+                encoded_char = '\n';
+            } else {
+                const width_u16: u16 = gwidth.gwidth(bytes, self.width_method, &self.display_width);
+                if (width_u16 == 0) {
+                    // zero-width/control cluster: skip for now
+                    std.debug.panic("zero-width/control cluster: {s}\n", .{bytes});
+                    continue;
+                }
+                const width: u32 = @intCast(width_u16);
+                required = width;
+
+                if (bytes.len == 1 and width == 1 and bytes[0] >= 32) {
+                    encoded_char = @as(u32, bytes[0]);
+                } else {
+                    const gid = self.pool.alloc(bytes) catch return TextBufferError.OutOfMemory;
+                    encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, width);
+                }
+            }
+
+            if (self.cursor + required > self.length) {
+                const needed: u32 = self.cursor + required - self.length;
+                const grow_by: u32 = if (needed > 256) needed else 256;
+                try self.resize(self.length + grow_by);
                 wasResized = true;
             }
 
-            try self.setCell(self.cursor, codepoint, useFg, useBg, attrValue);
+            try self.setCell(self.cursor, encoded_char, useFg, useBg, attrValue);
 
-            if (codepoint == '\n') {
+            if (is_newline) {
                 self.line_widths.append(self.current_line_width) catch {};
                 self.line_starts.append(self.cursor + 1) catch {};
                 self.current_line_width = 0;
+                self.cursor += 1;
+                cellCount += 1;
             } else {
-                self.current_line_width += 1;
+                self.cursor += required;
+                self.current_line_width += required;
+                cellCount += required;
             }
-
-            self.cursor += 1;
-            codepointCount += 1;
         }
 
         const resizeFlag: u32 = if (wasResized) 1 else 0;
-        return (codepointCount << 1) | resizeFlag;
+        return (cellCount << 1) | resizeFlag;
     }
 
     pub fn finalizeLineInfo(self: *TextBuffer) void {

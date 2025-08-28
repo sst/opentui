@@ -90,13 +90,15 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  const parentContainer = new GroupRenderable("parent-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "parent-container",
     zIndex: 10,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  selectElement = new SelectRenderable("demo-select", {
+  selectElement = new SelectRenderable(renderer, {
+    id: "demo-select",
     position: "absolute",
     left: 5,
     top: 2,
@@ -120,7 +122,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   renderer.root.add(selectElement)
 
-  keyLegendDisplay = new TextRenderable("key-legend", {
+  keyLegendDisplay = new TextRenderable(renderer, {
+    id: "key-legend",
     content: t``,
     width: 40,
     height: 9,
@@ -132,7 +135,8 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(keyLegendDisplay)
 
-  statusDisplay = new TextRenderable("status-display", {
+  statusDisplay = new TextRenderable(renderer, {
+    id: "status-display",
     content: t``,
     width: 80,
     height: 8,

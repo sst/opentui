@@ -29,6 +29,8 @@ let footer: BoxRenderable | null = null
 let footerText: TextRenderable | null = null
 let moveableElement: BoxRenderable | null = null
 let moveableText: TextRenderable | null = null
+let absolutePositionedBox: BoxRenderable | null = null
+let absolutePositionedText: TextRenderable | null = null
 let currentDemoIndex = 0
 let autoAdvanceTimeout: Timer | null = null
 let autoplayEnabled = true
@@ -213,16 +215,19 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  header = new BoxRenderable("header", {
+  header = new BoxRenderable(renderer, {
+    id: "header",
     zIndex: 0,
     width: "auto",
     height: 3,
     backgroundColor: "#3b82f6",
     borderStyle: "single",
     alignItems: "center",
+    border: true,
   })
 
-  headerText = new TextRenderable("header-text", {
+  headerText = new TextRenderable(renderer, {
+    id: "header-text",
     content: "LAYOUT DEMO",
     fg: "#ffffff",
     bg: "transparent",
@@ -231,7 +236,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   header.add(headerText)
 
-  contentArea = new GroupRenderable("content-area", {
+  contentArea = new GroupRenderable(renderer, {
+    id: "content-area",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -240,7 +246,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexShrink: 1,
   })
 
-  sidebar = new BoxRenderable("sidebar", {
+  sidebar = new BoxRenderable(renderer, {
+    id: "sidebar",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -251,9 +258,11 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
-  sidebarText = new TextRenderable("sidebar-text", {
+  sidebarText = new TextRenderable(renderer, {
+    id: "sidebar-text",
     content: "SIDEBAR",
     fg: "#ffffff",
     bg: "transparent",
@@ -262,7 +271,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   sidebar.add(sidebarText)
 
-  mainContent = new BoxRenderable("main-content", {
+  mainContent = new BoxRenderable(renderer, {
+    id: "main-content",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -273,9 +283,11 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
-  mainContentText = new TextRenderable("main-content-text", {
+  mainContentText = new TextRenderable(renderer, {
+    id: "main-content-text",
     content: "MAIN CONTENT",
     fg: "#1e293b",
     bg: "transparent",
@@ -284,7 +296,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   mainContent.add(mainContentText)
 
-  rightSidebar = new BoxRenderable("right-sidebar", {
+  rightSidebar = new BoxRenderable(renderer, {
+    id: "right-sidebar",
     zIndex: 0,
     width: "auto",
     height: "auto",
@@ -295,9 +308,11 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
-  rightSidebarText = new TextRenderable("right-sidebar-text", {
+  rightSidebarText = new TextRenderable(renderer, {
+    id: "right-sidebar-text",
     content: "RIGHT",
     fg: "#ffffff",
     bg: "transparent",
@@ -306,7 +321,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   rightSidebar.add(rightSidebarText)
 
-  footer = new BoxRenderable("footer", {
+  footer = new BoxRenderable(renderer, {
+    id: "footer",
     zIndex: 0,
     width: "auto",
     height: 3,
@@ -317,9 +333,11 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
-  footerText = new TextRenderable("footer-text", {
+  footerText = new TextRenderable(renderer, {
+    id: "footer-text",
     content: "",
     fg: "#ffffff",
     bg: "transparent",
@@ -328,7 +346,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   footer.add(footerText)
 
-  moveableElement = new BoxRenderable("moveable", {
+  moveableElement = new BoxRenderable(renderer, {
+    id: "moveable",
     zIndex: 100,
     width: 8,
     height: 3,
@@ -341,9 +360,11 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    border: true,
   })
 
-  moveableText = new TextRenderable("moveable-text", {
+  moveableText = new TextRenderable(renderer, {
+    id: "moveable-text",
     content: "MOVE",
     fg: "#ffffff",
     bg: "transparent",
@@ -351,6 +372,33 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   })
 
   moveableElement.add(moveableText)
+
+  absolutePositionedBox = new BoxRenderable(renderer, {
+    id: "absolute-positioned-box",
+    zIndex: 150,
+    width: 20,
+    height: 3,
+    backgroundColor: "#22c55e",
+    borderStyle: "single",
+    borderColor: "#16a34a",
+    position: "absolute",
+    bottom: 1,
+    right: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    border: true,
+  })
+
+  absolutePositionedText = new TextRenderable(renderer, {
+    id: "absolute-positioned-text",
+    content: "BOTTOM RIGHT",
+    fg: "#ffffff",
+    bg: "transparent",
+    zIndex: 151,
+  })
+
+  absolutePositionedBox.add(absolutePositionedText)
 
   // Add all elements to contentArea in the correct order: left, center, right
   contentArea.add(sidebar)
@@ -364,6 +412,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer.root.add(contentArea)
   renderer.root.add(footer)
   renderer.root.add(moveableElement)
+  renderer.root.add(absolutePositionedBox)
 
   centerMoveableElement()
   updateFooterText()
@@ -515,6 +564,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   if (contentArea) rendererInstance.root.remove(contentArea.id)
   if (footer) rendererInstance.root.remove(footer.id)
   if (moveableElement) rendererInstance.root.remove(moveableElement.id)
+  if (absolutePositionedBox) rendererInstance.root.remove(absolutePositionedBox.id)
 
   header = null
   headerText = null
@@ -529,6 +579,8 @@ export function destroy(rendererInstance: CliRenderer): void {
   footerText = null
   moveableElement = null
   moveableText = null
+  absolutePositionedBox = null
+  absolutePositionedText = null
   renderer = null
   currentDemoIndex = 0
   moveableElementVisible = true

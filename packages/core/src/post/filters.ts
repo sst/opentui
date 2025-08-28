@@ -4,8 +4,8 @@ import type { OptimizedBuffer } from "../buffer"
  * Applies a scanline effect by darkening every nth row.
  */
 export function applyScanlines(buffer: OptimizedBuffer, strength: number = 0.8, step: number = 2): void {
-  const width = buffer.getWidth()
-  const height = buffer.getHeight()
+  const width = buffer.width
+  const height = buffer.height
   const bg = buffer.buffers.bg
 
   for (let y = 0; y < height; y += step) {
@@ -23,7 +23,7 @@ export function applyScanlines(buffer: OptimizedBuffer, strength: number = 0.8, 
  * Converts the buffer colors to grayscale.
  */
 export function applyGrayscale(buffer: OptimizedBuffer): void {
-  const size = buffer.getWidth() * buffer.getHeight()
+  const size = buffer.width * buffer.height
   const fg = buffer.buffers.fg
   const bg = buffer.buffers.bg
 
@@ -54,7 +54,7 @@ export function applyGrayscale(buffer: OptimizedBuffer): void {
  * Applies a sepia tone to the buffer.
  */
 export function applySepia(buffer: OptimizedBuffer): void {
-  const size = buffer.getWidth() * buffer.getHeight()
+  const size = buffer.width * buffer.height
   const fg = buffer.buffers.fg
   const bg = buffer.buffers.bg
 
@@ -89,7 +89,7 @@ export function applySepia(buffer: OptimizedBuffer): void {
  * Inverts the colors in the buffer.
  */
 export function applyInvert(buffer: OptimizedBuffer): void {
-  const size = buffer.getWidth() * buffer.getHeight()
+  const size = buffer.width * buffer.height
   const fg = buffer.buffers.fg
   const bg = buffer.buffers.bg
 
@@ -109,7 +109,7 @@ export function applyInvert(buffer: OptimizedBuffer): void {
  * Adds random noise to the buffer colors.
  */
 export function applyNoise(buffer: OptimizedBuffer, strength: number = 0.1): void {
-  const size = buffer.getWidth() * buffer.getHeight()
+  const size = buffer.width * buffer.height
   const fg = buffer.buffers.fg
   const bg = buffer.buffers.bg
 
@@ -131,8 +131,8 @@ export function applyNoise(buffer: OptimizedBuffer, strength: number = 0.1): voi
  * Applies a simplified chromatic aberration effect.
  */
 export function applyChromaticAberration(buffer: OptimizedBuffer, strength: number = 1): void {
-  const width = buffer.getWidth()
-  const height = buffer.getHeight()
+  const width = buffer.width
+  const height = buffer.height
   const srcFg = Float32Array.from(buffer.buffers.fg) // Copy original fg data
   const destFg = buffer.buffers.fg
   const centerX = width / 2
@@ -164,8 +164,8 @@ export function applyChromaticAberration(buffer: OptimizedBuffer, strength: numb
  * Converts the buffer to ASCII art based on background brightness.
  */
 export function applyAsciiArt(buffer: OptimizedBuffer, ramp: string = " .:-=+*#%@"): void {
-  const width = buffer.getWidth()
-  const height = buffer.getHeight()
+  const width = buffer.width
+  const height = buffer.height
   const chars = buffer.buffers.char
   const bg = buffer.buffers.bg
   const rampLength = ramp.length
@@ -215,8 +215,8 @@ export class DistortionEffect {
    * Applies the animated distortion/glitch effect to the buffer.
    */
   public apply(buffer: OptimizedBuffer, deltaTime: number): void {
-    const width = buffer.getWidth()
-    const height = buffer.getHeight()
+    const width = buffer.width
+    const height = buffer.height
     const buf = buffer.buffers
     // Note: Using internal timer based on deltaTime is more reliable than Date.now()
 
@@ -481,8 +481,8 @@ export class VignetteEffect {
    * Applies the vignette effect using precomputed base attenuation and current strength.
    */
   public apply(buffer: OptimizedBuffer): void {
-    const width = buffer.getWidth()
-    const height = buffer.getHeight()
+    const width = buffer.width
+    const height = buffer.height
     const buf = buffer.buffers
     const size = width * height
 
@@ -530,7 +530,7 @@ export class BrightnessEffect {
    * Applies the brightness adjustment to the buffer.
    */
   public apply(buffer: OptimizedBuffer): void {
-    const size = buffer.getWidth() * buffer.getHeight()
+    const size = buffer.width * buffer.height
     const fg = buffer.buffers.fg
     const bg = buffer.buffers.bg
     const factor = this._brightness
@@ -583,8 +583,8 @@ export class BlurEffect {
     const radius = this._radius
     if (radius <= 0) return // No blur if radius is 0 or less
 
-    const width = buffer.getWidth()
-    const height = buffer.getHeight()
+    const width = buffer.width
+    const height = buffer.height
     const buf = buffer.buffers // Get the full buffer object
     const srcFg = buf.fg
     const srcBg = buf.bg
@@ -820,8 +820,8 @@ export class BloomEffect {
 
     if (strength <= 0 || radius <= 0) return // No bloom if strength or radius is non-positive
 
-    const width = buffer.getWidth()
-    const height = buffer.getHeight()
+    const width = buffer.width
+    const height = buffer.height
     // Operate directly on the buffer's data for bloom, but need a source copy temporarily
     const srcFg = Float32Array.from(buffer.buffers.fg)
     const srcBg = Float32Array.from(buffer.buffers.bg)

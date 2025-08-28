@@ -17,6 +17,7 @@ export const App = () => {
         style={{
           height: 8,
           marginBottom: 1,
+          border: true,
         }}
       >
         <select

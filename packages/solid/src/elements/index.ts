@@ -47,12 +47,12 @@ type ElementProps<
 } & T
 // } & Pick<T, NonStyleKeys>;
 
-type ContianerProps = { children?: JSX.Element }
+type ContainerProps = { children?: JSX.Element }
 
-export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable, "title"> & ContianerProps
+export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable, "title"> & ContainerProps
 export type BoxStyle = BoxElementProps["style"]
 
-export type GroupElementProps = ElementProps<RenderableOptions, GroupRenderable> & ContianerProps
+export type GroupElementProps = ElementProps<RenderableOptions, GroupRenderable> & ContainerProps
 export type GroupStyle = GroupElementProps["style"]
 
 export type InputElementProps = ElementProps<

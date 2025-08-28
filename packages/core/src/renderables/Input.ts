@@ -1,8 +1,8 @@
-import { CliRenderer } from ".."
-import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import { Renderable, type RenderableOptions } from "../Renderable"
+import type { RenderContext } from "../types"
 
 export interface InputRenderableOptions extends RenderableOptions {
   backgroundColor?: ColorInput
@@ -38,21 +38,37 @@ export class InputRenderable extends Renderable {
   private _maxLength: number
   private _lastCommittedValue: string = ""
 
-  constructor(id: string, options: InputRenderableOptions) {
-    super(id, { ...options, buffered: true })
+  protected _defaultOptions = {
+    backgroundColor: "transparent",
+    textColor: "#FFFFFF",
+    focusedBackgroundColor: "#1a1a1a",
+    focusedTextColor: "#FFFFFF",
+    placeholder: "",
+    placeholderColor: "#666666",
+    cursorColor: "#FFFFFF",
+    maxLength: 1000,
+    value: "",
+  } satisfies Partial<InputRenderableOptions>
 
-    this._backgroundColor = parseColor(options.backgroundColor || "transparent")
-    this._textColor = parseColor(options.textColor || "#FFFFFF")
-    this._focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
-    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
-    this._placeholder = options.placeholder || ""
-    this._value = options.value || ""
+  constructor(ctx: RenderContext, options: InputRenderableOptions) {
+    super(ctx, { ...options, buffered: true })
+
+    this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
+    this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)
+    this._focusedBackgroundColor = parseColor(
+      options.focusedBackgroundColor || options.backgroundColor || this._defaultOptions.focusedBackgroundColor,
+    )
+    this._focusedTextColor = parseColor(
+      options.focusedTextColor || options.textColor || this._defaultOptions.focusedTextColor,
+    )
+    this._placeholder = options.placeholder || this._defaultOptions.placeholder
+    this._value = options.value || this._defaultOptions.value
     this._lastCommittedValue = this._value
     this._cursorPosition = this._value.length
-    this._maxLength = options.maxLength || 1000
+    this._maxLength = options.maxLength || this._defaultOptions.maxLength
 
-    this._placeholderColor = parseColor(options.placeholderColor || "#666666")
-    this._cursorColor = parseColor(options.cursorColor || "#FFFFFF")
+    this._placeholderColor = parseColor(options.placeholderColor || this._defaultOptions.placeholderColor)
+    this._cursorColor = parseColor(options.cursorColor || this._defaultOptions.cursorColor)
   }
 
   private updateCursorPosition(): void {
@@ -75,20 +91,21 @@ export class InputRenderable extends Renderable {
       const absoluteCursorX = this.x + contentX + cursorDisplayX + 1
       const absoluteCursorY = this.y + contentY + 1
 
-      CliRenderer.setCursorPosition(absoluteCursorX, absoluteCursorY, true)
-      CliRenderer.setCursorColor(this._cursorColor)
+      this._ctx.setCursorPosition(absoluteCursorX, absoluteCursorY, true)
+      this._ctx.setCursorColor(this._cursorColor)
     }
   }
 
   public focus(): void {
     super.focus()
-    CliRenderer.setCursorStyle("block", true, this._cursorColor)
+    this._ctx.setCursorStyle("block", true)
+    this._ctx.setCursorColor(this._cursorColor)
     this.updateCursorPosition()
   }
 
   public blur(): void {
     super.blur()
-    CliRenderer.setCursorPosition(0, 0, false)
+    this._ctx.setCursorPosition(0, 0, false)
 
     if (this._value !== this._lastCommittedValue) {
       this._lastCommittedValue = this._value
@@ -264,40 +281,71 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  public set backgroundColor(color: ColorInput) {
-    this._backgroundColor = parseColor(color)
-    this.needsUpdate()
+  public set backgroundColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
+    if (this._backgroundColor !== newColor) {
+      this._backgroundColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set textColor(color: ColorInput) {
-    this._textColor = parseColor(color)
-    this.needsUpdate()
+  public set textColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.textColor)
+    if (this._textColor !== newColor) {
+      this._textColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set focusedBackgroundColor(color: ColorInput) {
-    this._focusedBackgroundColor = parseColor(color)
-    this.needsUpdate()
+  public set focusedBackgroundColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.focusedBackgroundColor)
+    if (this._focusedBackgroundColor !== newColor) {
+      this._focusedBackgroundColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set focusedTextColor(color: ColorInput) {
-    this._focusedTextColor = parseColor(color)
-    this.needsUpdate()
+  public set focusedTextColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.focusedTextColor)
+    if (this._focusedTextColor !== newColor) {
+      this._focusedTextColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set placeholderColor(color: ColorInput) {
-    this._placeholderColor = parseColor(color)
-    this.needsUpdate()
+  public set placeholderColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.placeholderColor)
+    if (this._placeholderColor !== newColor) {
+      this._placeholderColor = newColor
+      this.needsUpdate()
+    }
   }
 
-  public set cursorColor(color: ColorInput) {
-    this._cursorColor = parseColor(color)
-    this.needsUpdate()
+  public set cursorColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._defaultOptions.cursorColor)
+    if (this._cursorColor !== newColor) {
+      this._cursorColor = newColor
+      this.needsUpdate()
+    }
+  }
+
+  public updateFromLayout(): void {
+    super.updateFromLayout()
+    this.updateCursorPosition()
+  }
+
+  protected onResize(width: number, height: number): void {
+    super.onResize(width, height)
+    this.updateCursorPosition()
+  }
+
+  protected onRemove(): void {
+    if (this._focused) {
+      this._ctx.setCursorPosition(0, 0, false)
+    }
   }
 
   protected destroySelf(): void {
-    if (this._focused) {
-      CliRenderer.setCursorPosition(0, 0, false)
-    }
     super.destroySelf()
   }
 }

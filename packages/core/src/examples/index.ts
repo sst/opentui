@@ -12,6 +12,7 @@ import {
   type SelectOption,
   type ParsedKey,
 } from "../index"
+import { resolveRenderLib } from "../zig"
 import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
@@ -40,8 +41,10 @@ import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
+import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
+import * as fullUnicodeExample from "./full-unicode-demo"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -222,6 +225,18 @@ const examples: Example[] = [
     destroy: inputExample.destroy,
   },
   {
+    name: "VNode Composition Demo",
+    description: "Declarative Group(Group(Box(children))) composition",
+    run: vnodeCompositionDemo.run,
+    destroy: vnodeCompositionDemo.destroy,
+  },
+  {
+    name: "Full Unicode Demo",
+    description: "Draggable boxes and background filled with complex graphemes",
+    run: fullUnicodeExample.run,
+    destroy: fullUnicodeExample.destroy,
+  },
+  {
     name: "Split Mode Demo (Experimental)",
     description: "Renderer confined to bottom area with normal terminal output above",
     run: splitModeExample.run,
@@ -258,7 +273,8 @@ class ExampleSelector {
     const { width: titleWidth, height: titleHeight } = measureText({ text: titleText, font: titleFont })
     const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
 
-    this.title = new FrameBufferRenderable("title", {
+    this.title = new FrameBufferRenderable(renderer, {
+      id: "title",
       width: titleWidth,
       height: titleHeight,
       position: "absolute",
@@ -284,7 +300,8 @@ class ExampleSelector {
 
     this.createTitle(width, height)
 
-    this.instructions = new TextRenderable("instructions", {
+    this.instructions = new TextRenderable(renderer, {
+      id: "instructions",
       position: "absolute",
       left: 2,
       top: 4,
@@ -305,7 +322,8 @@ class ExampleSelector {
       value: example,
     }))
 
-    this.selectBox = new BoxRenderable("example-selector-box", {
+    this.selectBox = new BoxRenderable(renderer, {
+      id: "example-selector-box",
       position: "absolute",
       left: 1,
       top: 6,
@@ -318,9 +336,11 @@ class ExampleSelector {
       titleAlignment: "center",
       backgroundColor: "transparent",
       shouldFill: false,
+      border: true,
     })
 
-    this.selectElement = new SelectRenderable("example-selector", {
+    this.selectElement = new SelectRenderable(renderer, {
+      id: "example-selector",
       width: width - 4,
       height: height - 10,
       options: selectOptions,
@@ -347,7 +367,7 @@ class ExampleSelector {
 
   private handleResize(width: number, height: number): void {
     if (this.title) {
-      const titleWidth = this.title.frameBuffer.getWidth()
+      const titleWidth = this.title.frameBuffer.width
       const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
       this.title.x = centerX
     }
@@ -380,6 +400,11 @@ class ExampleSelector {
           process.exit()
           break
       }
+      switch (key.name) {
+        case "c":
+          console.log("Capabilities:", this.renderer.capabilities)
+          break
+      }
     })
     setupCommonDemoKeys(this.renderer)
   }
@@ -393,7 +418,8 @@ class ExampleSelector {
       selected.run(this.renderer)
     } else {
       if (!this.notImplementedText) {
-        this.notImplementedText = new TextRenderable("not-implemented", {
+        this.notImplementedText = new TextRenderable(renderer, {
+          id: "not-implemented",
           position: "absolute",
           left: 10,
           top: 10,
@@ -464,7 +490,7 @@ class ExampleSelector {
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
   targetFps: 60,
-  // useAlternateScreen: false
+  useAlternateScreen: false,
 })
 
 renderer.setBackgroundColor("#001122")

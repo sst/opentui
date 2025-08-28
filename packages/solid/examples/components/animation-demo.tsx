@@ -76,7 +76,6 @@ export const SplitModeDemo = () => {
                   height: 1,
                   backgroundColor: "#333333",
                   zIndex: 1,
-                  border: false,
                   flexGrow: 1,
                 }}
               >
@@ -86,7 +85,6 @@ export const SplitModeDemo = () => {
                     height: 1,
                     backgroundColor: system.color,
                     zIndex: 2,
-                    border: false,
                   }}
                 />
               </box>
@@ -139,7 +137,6 @@ export const SplitModeDemo = () => {
               height: 1,
               backgroundColor: color,
               zIndex: 3,
-              border: false,
             }}
           />
         )}
@@ -156,7 +153,6 @@ export const SplitModeDemo = () => {
               height: 1,
               backgroundColor: color,
               zIndex: 3,
-              border: false,
             }}
           />
         )}

@@ -17,7 +17,8 @@ let allFontRenderables: ASCIIFontRenderable[] = []
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
 
-  mainContainer = new BoxRenderable("mainContainer", {
+  mainContainer = new BoxRenderable(renderer, {
+    id: "mainContainer",
     position: "absolute",
     left: 1,
     top: 1,
@@ -28,10 +29,12 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#50565d",
     title: "ASCII Font Selection Demo",
     titleAlignment: "center",
+    border: true,
   })
   renderer.root.add(mainContainer)
 
-  fontGroup = new GroupRenderable("fontGroup", {
+  fontGroup = new GroupRenderable(renderer, {
+    id: "fontGroup",
     position: "absolute",
     left: 2,
     top: 2,
@@ -39,7 +42,8 @@ export function run(renderer: CliRenderer): void {
   })
   mainContainer.add(fontGroup)
 
-  const tinyFont = new ASCIIFontRenderable("tinyFont", {
+  const tinyFont = new ASCIIFontRenderable(renderer, {
+    id: "tinyFont",
     text: "TINY FONT DEMO",
     font: "tiny",
     fg: RGBA.fromInts(255, 255, 0, 255),
@@ -51,7 +55,8 @@ export function run(renderer: CliRenderer): void {
   fontGroup.add(tinyFont)
   allFontRenderables.push(tinyFont)
 
-  const blockFont = new ASCIIFontRenderable("blockFont", {
+  const blockFont = new ASCIIFontRenderable(renderer, {
+    id: "blockFont",
     text: "opentui",
     font: "block",
     fg: [RGBA.fromInts(255, 100, 100, 255), RGBA.fromInts(100, 255, 100, 255)],
@@ -63,7 +68,8 @@ export function run(renderer: CliRenderer): void {
   fontGroup.add(blockFont)
   allFontRenderables.push(blockFont)
 
-  const shadeFont = new ASCIIFontRenderable("shadeFont", {
+  const shadeFont = new ASCIIFontRenderable(renderer, {
+    id: "shadeFont",
     text: "SHADE",
     font: "shade",
     fg: [RGBA.fromInts(255, 200, 100, 255), RGBA.fromInts(100, 150, 200, 255)],
@@ -75,7 +81,8 @@ export function run(renderer: CliRenderer): void {
   fontGroup.add(shadeFont)
   allFontRenderables.push(shadeFont)
 
-  const slickFont = new ASCIIFontRenderable("slickFont", {
+  const slickFont = new ASCIIFontRenderable(renderer, {
+    id: "slickFont",
     text: "SLICK",
     font: "slick",
     fg: [RGBA.fromInts(100, 255, 100, 255), RGBA.fromInts(255, 100, 255, 255)],
@@ -87,7 +94,8 @@ export function run(renderer: CliRenderer): void {
   fontGroup.add(slickFont)
   allFontRenderables.push(slickFont)
 
-  const instructions = new TextRenderable("ascii-font-instructions", {
+  const instructions = new TextRenderable(renderer, {
+    id: "ascii-font-instructions",
     content: "Click and drag to select text across any ASCII font elements. Press 'C' to clear selection.",
     left: 2,
     top: 26,
@@ -96,7 +104,8 @@ export function run(renderer: CliRenderer): void {
   })
   mainContainer.add(instructions)
 
-  statusBox = new BoxRenderable("statusBox", {
+  statusBox = new BoxRenderable(renderer, {
+    id: "statusBox",
     position: "absolute",
     left: 1,
     top: 32,
@@ -106,16 +115,19 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#50565d",
     title: "Selection Status",
     titleAlignment: "left",
+    border: true,
   })
   renderer.root.add(statusBox)
 
-  statusText = new TextRenderable("statusText", {
+  statusText = new TextRenderable(renderer, {
+    id: "statusText",
     content: "No selection - try selecting across different ASCII fonts",
     fg: "#f0f6fc",
   })
   statusBox.add(statusText)
 
-  selectionStartText = new TextRenderable("selectionStartText", {
+  selectionStartText = new TextRenderable(renderer, {
+    id: "selectionStartText",
     content: "",
     left: 3,
     zIndex: 2,
@@ -123,7 +135,8 @@ export function run(renderer: CliRenderer): void {
   })
   statusBox.add(selectionStartText)
 
-  selectionMiddleText = new TextRenderable("selectionMiddleText", {
+  selectionMiddleText = new TextRenderable(renderer, {
+    id: "selectionMiddleText",
     content: "",
     left: 3,
     zIndex: 2,
@@ -131,7 +144,8 @@ export function run(renderer: CliRenderer): void {
   })
   statusBox.add(selectionMiddleText)
 
-  selectionEndText = new TextRenderable("selectionEndText", {
+  selectionEndText = new TextRenderable(renderer, {
+    id: "selectionEndText",
     content: "",
     left: 3,
     zIndex: 2,
@@ -139,7 +153,8 @@ export function run(renderer: CliRenderer): void {
   })
   statusBox.add(selectionEndText)
 
-  debugText = new TextRenderable("debugText", {
+  debugText = new TextRenderable(renderer, {
+    id: "debugText",
     content: "",
     left: 3,
     zIndex: 2,

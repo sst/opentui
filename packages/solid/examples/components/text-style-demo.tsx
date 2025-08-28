@@ -25,7 +25,7 @@ export default function TextStyleScene() {
         And {bold("chunk arrays")} work {fg("#ff8c00")("as welll")}!! {italic(underline(`${counter()}`))}
       </text>
       You do not need to have a text node {counter()} as a parent when dealing with text {counter()}
-      <box>
+      <box border>
         {counter()} Mix in some {bold("more text")} {counter()}
       </box>
     </group>

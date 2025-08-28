@@ -143,14 +143,16 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  const parentContainer = new GroupRenderable("parent-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "parent-container",
     zIndex: 10,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
   // Create input elements
-  nameInput = new InputRenderable("name-input", {
+  nameInput = new InputRenderable(renderer, {
+    id: "name-input",
     position: "absolute",
     left: 5,
     top: 2,
@@ -166,7 +168,8 @@ export function run(rendererInstance: CliRenderer): void {
     maxLength: 50,
   })
 
-  emailInput = new InputRenderable("email-input", {
+  emailInput = new InputRenderable(renderer, {
+    id: "email-input",
     position: "absolute",
     left: 5,
     top: 6,
@@ -182,7 +185,8 @@ export function run(rendererInstance: CliRenderer): void {
     maxLength: 100,
   })
 
-  passwordInput = new InputRenderable("password-input", {
+  passwordInput = new InputRenderable(renderer, {
+    id: "password-input",
     position: "absolute",
     left: 5,
     top: 10,
@@ -198,7 +202,8 @@ export function run(rendererInstance: CliRenderer): void {
     maxLength: 50,
   })
 
-  commentInput = new InputRenderable("comment-input", {
+  commentInput = new InputRenderable(renderer, {
+    id: "comment-input",
     position: "absolute",
     left: 5,
     top: 14,
@@ -221,7 +226,8 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.root.add(passwordInput)
   renderer.root.add(commentInput)
 
-  keyLegendDisplay = new TextRenderable("key-legend", {
+  keyLegendDisplay = new TextRenderable(renderer, {
+    id: "key-legend",
     content: t``,
     width: 50,
     height: 12,
@@ -233,7 +239,8 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(keyLegendDisplay)
 
-  statusDisplay = new TextRenderable("status-display", {
+  statusDisplay = new TextRenderable(renderer, {
+    id: "status-display",
     content: t``,
     width: 80,
     height: 18,

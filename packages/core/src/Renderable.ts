@@ -1,4 +1,6 @@
-import { OptimizedBuffer, type RenderContext, type MouseEvent, type SelectionState } from "."
+import { OptimizedBuffer } from "./buffer"
+import type { RenderContext, SelectionState } from "./types"
+import type { MouseEvent } from "./renderer"
 import { EventEmitter } from "events"
 import Yoga, { FlexDirection, Direction, Edge, type Config, Display } from "yoga-layout"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
@@ -26,11 +28,6 @@ export enum LayoutEvents {
 export enum RenderableEvents {
   FOCUSED = "focused",
   BLURRED = "blurred",
-}
-
-export interface RootContext {
-  requestLive(): void
-  dropLive(): void
 }
 
 export interface Position {
@@ -70,6 +67,7 @@ export interface LayoutOptions {
 }
 
 export interface RenderableOptions extends Partial<LayoutOptions> {
+  id?: string
   width?: number | "auto" | `${number}%`
   height?: number | "auto" | `${number}%`
   zIndex?: number
@@ -89,8 +87,6 @@ export interface RenderableOptions extends Partial<LayoutOptions> {
 
   onKeyDown?: (key: ParsedKey) => void
 }
-
-let renderableNumber = 1
 
 function validateOptions(id: string, options: RenderableOptions): void {
   if (typeof options.width === "number") {
@@ -170,11 +166,12 @@ export function isSizeType(value: any): value is number | `${number}%` | undefin
 }
 
 export abstract class Renderable extends EventEmitter {
+  private static renderableNumber = 1
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
   public readonly id: string
   public readonly num: number
-  protected ctx: RenderContext | null = null
+  protected _ctx: RenderContext
   private _x: number = 0
   private _y: number = 0
   protected _width: number | "auto" | `${number}%`
@@ -202,24 +199,21 @@ export abstract class Renderable extends EventEmitter {
   protected _positionType: PositionTypeString = "relative"
   protected _position: Position = {}
 
+  private _childHostOverride: Renderable | null = null
+
   private renderableMap: Map<string, Renderable> = new Map()
   private renderableArray: Renderable[] = []
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
 
-  // This is a workaround for yoga-layout performance issues (wasm call overhead)
-  // when setting the position of an element. Absolute elements do not need a full layout update.
-  // But when other attributes change and update the layout, it should update the layout node position.
-  // TODO: Use a bun ffi wrapper for a native yoga build instead of wasm.
-  private _yogaPerformancePositionUpdated: boolean = false
-
-  constructor(id: string, options: RenderableOptions) {
+  constructor(ctx: RenderContext, options: RenderableOptions) {
     super()
-    this.id = id
-    this.num = renderableNumber++
+    this.num = Renderable.renderableNumber++
+    this.id = options.id ?? `renderable-${this.num}`
+    this._ctx = ctx
     Renderable.renderablesByNumber.set(this.num, this)
 
-    validateOptions(id, options)
+    validateOptions(this.id, options)
 
     this._width = options.width ?? "auto"
     this._height = options.height ?? "auto"
@@ -248,6 +242,10 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
+  public get ctx(): RenderContext {
+    return this._ctx
+  }
+
   public get visible(): boolean {
     return this._visible
   }
@@ -270,7 +268,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._focused) {
       this.blur()
     }
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public hasSelection(): boolean {
@@ -356,13 +354,39 @@ export abstract class Renderable extends EventEmitter {
     return this._dirty
   }
 
+  public get childHost(): Renderable {
+    return this._childHostOverride || this
+  }
+
+  public set childHost(host: Renderable | null) {
+    this._childHostOverride = host
+  }
+
+  public findDescendantById(id: string): Renderable | undefined {
+    for (const child of this.renderableArray) {
+      if (child.id === id) return child
+      const found = child.findDescendantById(id)
+      if (found) return found
+    }
+    return undefined
+  }
+
+  public setChildHostById(id: string): boolean {
+    const found = this.findDescendantById(id)
+    if (found) {
+      this._childHostOverride = found
+      return true
+    }
+    return false
+  }
+
   private markClean(): void {
     this._dirty = false
   }
 
   public needsUpdate() {
     this._dirty = true
-    this.ctx?.needsUpdate()
+    this._ctx.needsUpdate()
   }
 
   public get x(): number {
@@ -435,7 +459,7 @@ export abstract class Renderable extends EventEmitter {
     if (isDimensionType(value)) {
       this._width = value
       this.layoutNode.setWidth(value)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -447,7 +471,7 @@ export abstract class Renderable extends EventEmitter {
     if (isDimensionType(value)) {
       this._height = value
       this.layoutNode.setHeight(value)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -463,6 +487,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public requestZIndexSort(): void {
+    if (this.childHost !== this) {
+      this.childHost.requestZIndexSort()
+      return
+    }
     this.needsZIndexSort = true
   }
 
@@ -600,7 +628,6 @@ export abstract class Renderable extends EventEmitter {
     this._positionType = positionType
     this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
     this.needsUpdate()
-    this._yogaPerformancePositionUpdated = true
   }
 
   public setPosition(position: Position): void {
@@ -612,105 +639,94 @@ export abstract class Renderable extends EventEmitter {
     const node = this.layoutNode.yogaNode
     const { top, right, bottom, left } = position
 
-    if (this._positionType === "relative") {
-      if (isPositionType(top)) {
-        if (top === "auto") {
-          node.setPositionAuto(Edge.Top)
-        } else {
-          node.setPosition(Edge.Top, top)
-        }
+    if (isPositionType(top)) {
+      if (top === "auto") {
+        node.setPositionAuto(Edge.Top)
+      } else {
+        node.setPosition(Edge.Top, top)
       }
-      if (isPositionType(right)) {
-        if (right === "auto") {
-          node.setPositionAuto(Edge.Right)
-        } else {
-          node.setPosition(Edge.Right, right)
-        }
-      }
-      if (isPositionType(bottom)) {
-        if (bottom === "auto") {
-          node.setPositionAuto(Edge.Bottom)
-        } else {
-          node.setPosition(Edge.Bottom, bottom)
-        }
-      }
-      if (isPositionType(left)) {
-        if (left === "auto") {
-          node.setPositionAuto(Edge.Left)
-        } else {
-          node.setPosition(Edge.Left, left)
-        }
-      }
-      this.requestLayout()
-    } else {
-      if (typeof top === "number" && this._positionType === "absolute") {
-        this._y = top
-      }
-      if (typeof left === "number" && this._positionType === "absolute") {
-        this._x = left
-      }
-      this.needsUpdate()
-      this._yogaPerformancePositionUpdated = false
     }
+    if (isPositionType(right)) {
+      if (right === "auto") {
+        node.setPositionAuto(Edge.Right)
+      } else {
+        node.setPosition(Edge.Right, right)
+      }
+    }
+    if (isPositionType(bottom)) {
+      if (bottom === "auto") {
+        node.setPositionAuto(Edge.Bottom)
+      } else {
+        node.setPosition(Edge.Bottom, bottom)
+      }
+    }
+    if (isPositionType(left)) {
+      if (left === "auto") {
+        node.setPositionAuto(Edge.Left)
+      } else {
+        node.setPosition(Edge.Left, left)
+      }
+    }
+    this.needsUpdate()
   }
 
   public set flexGrow(grow: number) {
     this.layoutNode.yogaNode.setFlexGrow(grow)
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set flexShrink(shrink: number) {
     this.layoutNode.yogaNode.setFlexShrink(shrink)
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set flexDirection(direction: FlexDirectionString) {
     this.layoutNode.yogaNode.setFlexDirection(parseFlexDirection(direction))
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set alignItems(alignItems: AlignString) {
     this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set justifyContent(justifyContent: JustifyString) {
     this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
-    this.requestLayout()
+    this.needsUpdate()
   }
 
   public set flexBasis(basis: number | "auto" | undefined) {
     if (isFlexBasisType(basis)) {
       this.layoutNode.yogaNode.setFlexBasis(basis)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set minWidth(minWidth: number | `${number}%` | undefined) {
     if (isSizeType(minWidth)) {
       this.layoutNode.yogaNode.setMinWidth(minWidth)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set maxWidth(maxWidth: number | `${number}%` | undefined) {
     if (isSizeType(maxWidth)) {
       this.layoutNode.yogaNode.setMaxWidth(maxWidth)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set minHeight(minHeight: number | `${number}%` | undefined) {
     if (isSizeType(minHeight)) {
       this.layoutNode.yogaNode.setMinHeight(minHeight)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
     if (isSizeType(maxHeight)) {
       this.layoutNode.yogaNode.setMaxHeight(maxHeight)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -721,35 +737,35 @@ export abstract class Renderable extends EventEmitter {
       node.setMargin(Edge.Right, margin)
       node.setMargin(Edge.Bottom, margin)
       node.setMargin(Edge.Left, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Top, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Right, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Bottom, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Left, margin)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -760,35 +776,35 @@ export abstract class Renderable extends EventEmitter {
       node.setPadding(Edge.Right, padding)
       node.setPadding(Edge.Bottom, padding)
       node.setPadding(Edge.Left, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingTop(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Top, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingRight(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Right, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingBottom(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Bottom, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
-      this.requestLayout()
+      this.needsUpdate()
     }
   }
 
@@ -799,10 +815,8 @@ export abstract class Renderable extends EventEmitter {
   public updateFromLayout(): void {
     const layout = this.layoutNode.yogaNode.getComputedLayout()
 
-    if (this._positionType === "relative" || this._yogaPerformancePositionUpdated) {
-      this._x = layout.left
-      this._y = layout.top
-    }
+    this._x = layout.left
+    this._y = layout.top
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
@@ -847,9 +861,8 @@ export abstract class Renderable extends EventEmitter {
     }
 
     try {
-      this.frameBuffer = OptimizedBuffer.create(w, h, {
-        respectAlpha: true,
-      })
+      const widthMethod = this._ctx.widthMethod
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
@@ -860,31 +873,18 @@ export abstract class Renderable extends EventEmitter {
     // Override in subclasses for additional resize logic
   }
 
-  protected requestLayout(): void {
-    if (!this._yogaPerformancePositionUpdated) {
-      const layout = this.layoutNode.yogaNode.getComputedLayout()
-
-      if (layout.left !== this._x || layout.top !== this._y) {
-        this.layoutNode.yogaNode.setPosition(Edge.Left, this._x)
-        this.layoutNode.yogaNode.setPosition(Edge.Top, this._y)
-      }
-      this._yogaPerformancePositionUpdated = true
-    }
-
-    this.needsUpdate()
-  }
-
   private replaceParent(obj: Renderable) {
     if (obj.parent) {
       obj.parent.remove(obj.id)
     }
     obj.parent = this
-    if (this.ctx) {
-      obj.propagateContext(this.ctx)
-    }
   }
 
   public add(obj: Renderable, index?: number): number {
+    if (this.childHost !== this) {
+      const insertedIndex = this.childHost.add(obj, index)
+      return insertedIndex
+    }
     if (this.renderableMap.has(obj.id)) {
       console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
       this.remove(obj.id)
@@ -908,14 +908,16 @@ export abstract class Renderable extends EventEmitter {
       this.propagateLiveCount(obj._liveCount)
     }
 
-    this.requestLayout()
-
-    this.emit("child:added", obj)
+    this.needsUpdate()
 
     return insertedIndex
   }
 
   insertBefore(obj: Renderable, anchor?: Renderable): number {
+    if (this.childHost !== this) {
+      const idx = this.childHost.insertBefore(obj, anchor)
+      return idx
+    }
     if (!anchor) {
       return this.add(obj)
     }
@@ -932,18 +934,17 @@ export abstract class Renderable extends EventEmitter {
     return this.add(obj, anchorIndex)
   }
 
-  public propagateContext(ctx: RenderContext | null): void {
-    this.ctx = ctx
-    for (const child of this.renderableArray) {
-      child.propagateContext(ctx)
-    }
-  }
-
+  // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
+    if (this.childHost !== this) return this.childHost.getRenderable(id)
     return this.renderableMap.get(id)
   }
 
   public remove(id: string): void {
+    if (this.childHost !== this) {
+      this.childHost.remove(id)
+      return
+    }
     if (!id) {
       return
     }
@@ -956,10 +957,10 @@ export abstract class Renderable extends EventEmitter {
 
         const childLayoutNode = obj.getLayoutNode()
         this.layoutNode.removeChild(childLayoutNode)
-        this.requestLayout()
+        this.needsUpdate()
 
+        obj.onRemove()
         obj.parent = null
-        obj.propagateContext(null)
       }
       this.renderableMap.delete(id)
 
@@ -967,11 +968,16 @@ export abstract class Renderable extends EventEmitter {
       if (index !== -1) {
         this.renderableArray.splice(index, 1)
       }
-      this.emit("child:removed", id)
     }
   }
 
+  protected onRemove(): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom removal logic
+  }
+
   public getChildren(): Renderable[] {
+    if (this.childHost !== this) return this.childHost.getChildren()
     return [...this.renderableArray]
   }
 
@@ -981,11 +987,14 @@ export abstract class Renderable extends EventEmitter {
     this.beforeRender()
     this.updateFromLayout()
 
-    const renderBuffer = this.buffered && this.frameBuffer ? this.frameBuffer : buffer
+    let renderBuffer = buffer
+    if (this.buffered && this.frameBuffer) {
+      renderBuffer = this.frameBuffer
+    }
 
     this.renderSelf(renderBuffer, deltaTime)
     this.markClean()
-    this.ctx?.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
 
     for (const child of this.renderableArray) {
@@ -1128,12 +1137,9 @@ export abstract class Renderable extends EventEmitter {
 
 export class RootRenderable extends Renderable {
   private yogaConfig: Config
-  private rootContext: RootContext
 
-  constructor(width: number, height: number, ctx: RenderContext, rootContext: RootContext) {
-    super("__root__", { zIndex: 0, visible: true, width, height, enableLayout: true })
-    this.ctx = ctx
-    this.rootContext = rootContext
+  constructor(ctx: RenderContext) {
+    super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
 
     this.yogaConfig = Yoga.Config.create()
     this.yogaConfig.setUseWebDefaults(false)
@@ -1144,15 +1150,11 @@ export class RootRenderable extends Renderable {
     }
 
     this.layoutNode = createTrackedNode({}, this.yogaConfig)
-    this.layoutNode.setWidth(width)
-    this.layoutNode.setHeight(height)
+    this.layoutNode.setWidth(ctx.width)
+    this.layoutNode.setHeight(ctx.height)
     this.layoutNode.yogaNode.setFlexDirection(FlexDirection.Column)
 
     this.calculateLayout()
-  }
-
-  public requestLayout(): void {
-    this.needsUpdate()
   }
 
   protected propagateLiveCount(delta: number): void {
@@ -1160,9 +1162,9 @@ export class RootRenderable extends Renderable {
     this._liveCount += delta
 
     if (oldCount === 0 && this._liveCount > 0) {
-      this.rootContext.requestLive()
+      this._ctx.requestLive()
     } else if (oldCount > 0 && this._liveCount === 0) {
-      this.rootContext.dropLive()
+      this._ctx.dropLive()
     }
   }
 

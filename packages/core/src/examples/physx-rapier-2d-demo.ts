@@ -82,13 +82,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable("rapier-container", {
+  const parentContainer = new GroupRenderable(renderer, {
+    id: "rapier-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const framebufferRenderable = new FrameBufferRenderable("rapier-main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "rapier-main",
     width: initialTermWidth,
     height: initialTermHeight,
     zIndex: 10,
@@ -194,7 +196,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   scene.add(groundMesh)
 
   // Create UI elements
-  const instructionsText = new TextRenderable("rapier-instructions", {
+  const instructionsText = new TextRenderable(renderer, {
+    id: "rapier-instructions",
     content: "Rapier.js 2D Demo - Falling Crates (Instanced Sprites)",
     position: "absolute",
     left: 1,
@@ -204,7 +207,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(instructionsText)
 
-  const controlsText = new TextRenderable("rapier-controls", {
+  const controlsText = new TextRenderable(renderer, {
+    id: "rapier-controls",
     content: "Press: [Space] spawn crate, [E] explode crate, [R] reset, [T] toggle debug, [C] clear crates",
     position: "absolute",
     left: 1,
@@ -214,7 +218,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(controlsText)
 
-  const statsText = new TextRenderable("rapier-stats", {
+  const statsText = new TextRenderable(renderer, {
+    id: "rapier-stats",
     content: "",
     position: "absolute",
     left: 1,

@@ -25,13 +25,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const TERM_WIDTH = renderer.terminalWidth
   const TERM_HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable("static-sprite-container", {
+  parentContainer = new GroupRenderable(renderer, {
+    id: "static-sprite-container",
     zIndex: 15,
     visible: true,
   })
   renderer.root.add(parentContainer)
 
-  const framebufferRenderable = new FrameBufferRenderable("main", {
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "main",
     width: TERM_WIDTH,
     height: TERM_HEIGHT,
     zIndex: 10,
@@ -64,7 +66,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   scene.add(camera)
   engine.setActiveCamera(camera)
 
-  const titleText = new TextRenderable("demo-title", {
+  const titleText = new TextRenderable(renderer, {
+    id: "demo-title",
     content: "Static THREE.Sprite Demo",
     position: "absolute",
     left: 1,
@@ -74,7 +77,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   parentContainer.add(titleText)
 
-  const statusText = new TextRenderable("status", {
+  const statusText = new TextRenderable(renderer, {
+    id: "status",
     content: "Loading sprite texture...",
     position: "absolute",
     left: 1,

@@ -30,21 +30,6 @@ interface PackageJson {
   peerDependencies?: Record<string, string>
 }
 
-interface TsconfigBuild {
-  extends: string
-  compilerOptions: {
-    declaration: boolean
-    emitDeclarationOnly: boolean
-    outDir: string
-    noEmit: boolean
-    rootDir: string
-    types: string[]
-    skipLibCheck: boolean
-  }
-  include: string[]
-  exclude: string[]
-}
-
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
@@ -55,6 +40,7 @@ const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
+const isCi = args.includes("--ci")
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -262,31 +248,17 @@ if (buildLib) {
   console.log("Generating TypeScript declarations...")
 
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
-  const tsconfigBuild: TsconfigBuild = {
-    extends: "./tsconfig.json",
-    compilerOptions: {
-      declaration: true,
-      emitDeclarationOnly: true,
-      outDir: "./dist",
-      noEmit: false,
-      rootDir: "./src",
-      types: ["bun", "node", "three"],
-      skipLibCheck: true,
-    },
-    include: ["src/**/*"],
-    exclude: ["**/*.test.ts", "**/*.spec.ts", "src/examples/**/*", "src/benchmark/**/*", "src/zig/**/*"],
-  }
-
-  writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
 
   const tscResult: SpawnSyncReturns<Buffer> = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
     cwd: rootDir,
     stdio: "inherit",
   })
 
-  rmSync(tsconfigBuildPath, { force: true })
-
   if (tscResult.status !== 0) {
+    if (isCi) {
+      console.error("Error: TypeScript declaration generation failed")
+      process.exit(1)
+    }
     console.warn("Warning: TypeScript declaration generation failed")
   } else {
     console.log("TypeScript declarations generated")

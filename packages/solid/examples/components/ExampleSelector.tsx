@@ -110,7 +110,7 @@ const ExampleSelector = () => {
         <TabSelectDemo />
       </Match>
       <Match when={selected() === -1}>
-        <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", border: false, padding: 1 }}>
+        <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>
           <group alignItems="center">
             <ascii_font
               style={{
@@ -128,6 +128,7 @@ const ExampleSelector = () => {
           <box
             title="Examples"
             style={{
+              border: true,
               flexGrow: 1,
               marginTop: 1,
               borderStyle: "single",
