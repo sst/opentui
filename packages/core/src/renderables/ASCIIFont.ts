@@ -1,13 +1,19 @@
 import type { RenderableOptions } from "../Renderable"
 import { ASCIIFontSelectionHelper } from "../lib/selection"
-import { type fonts, measureText, renderFontToFrameBuffer, getCharacterPositions } from "../lib/ascii.font"
+import {
+  type fonts,
+  measureText,
+  renderFontToFrameBuffer,
+  getCharacterPositions,
+  type ASCIIFontName,
+} from "../lib/ascii.font"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { FrameBufferRenderable } from "./FrameBuffer"
+import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer"
 import type { RenderContext, SelectionState } from "../types"
 
-export interface ASCIIFontOptions extends RenderableOptions {
+export interface ASCIIFontOptions extends RenderableOptions<ASCIIFontRenderable> {
   text?: string
-  font?: "tiny" | "block" | "shade" | "slick"
+  font?: ASCIIFontName
   fg?: RGBA | RGBA[]
   bg?: RGBA
   selectionBg?: string | RGBA
@@ -36,7 +42,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
       width: measurements.width || 1,
       height: measurements.height || 1,
       respectAlpha: true,
-    })
+    } as FrameBufferOptions)
 
     this._text = text
     this._font = font

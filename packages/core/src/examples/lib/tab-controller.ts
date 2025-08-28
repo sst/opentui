@@ -20,7 +20,7 @@ interface Tab {
   initialized: boolean
 }
 
-export interface TabControllerOptions extends RenderableOptions {
+export interface TabControllerOptions extends RenderableOptions<TabControllerRenderable> {
   backgroundColor?: ColorInput
   textColor?: ColorInput
   tabBarHeight?: number
@@ -49,11 +49,12 @@ export class TabControllerRenderable extends Renderable {
     private renderer: CliRenderer,
     options: TabControllerOptions,
   ) {
-    super(id, { ...options, buffered: options.backgroundColor ? true : false })
+    super(renderer, { ...options, id, buffered: options.backgroundColor ? true : false })
 
     this.tabBarHeight = options.tabBarHeight || 4
 
-    this.tabSelectElement = new TabSelectRenderable(`${id}-tabs`, {
+    this.tabSelectElement = new TabSelectRenderable(renderer, {
+      id: `${id}-tabs`,
       width: "100%",
       height: this.tabBarHeight,
       options: [],
@@ -81,7 +82,8 @@ export class TabControllerRenderable extends Renderable {
   }
 
   public addTab(tabObject: TabObject): Tab {
-    const tabGroup = new GroupRenderable(`${this.id}-tab-${this.tabs.length}`, {
+    const tabGroup = new GroupRenderable(this.ctx, {
+      id: `${this.id}-tab-${this.tabs.length}`,
       left: 0,
       top: this.tabBarHeight,
       zIndex: this.zIndex + 50,
