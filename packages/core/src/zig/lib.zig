@@ -153,6 +153,13 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.clearTerminal();
 }
 
+export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
+    const title = titlePtr[0..titleLen];
+    var bufferedWriter = &rendererPtr.stdoutWriter;
+    const writer = bufferedWriter.writer();
+    rendererPtr.terminal.setTerminalTitle(writer.any(), title);
+}
+
 // Buffer functions
 export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const f32) void {
     bufferPtr.clear(f32PtrToRGBA(bg), null) catch {};

@@ -121,6 +121,13 @@ pub const ANSI = struct {
     pub const reverseIndex = "\x1bM";
     pub const eraseBelowCursor = "\x1b[J";
 
+    // OSC 0 - Set window title
+    pub const setTerminalTitle = "\x1b]0;{s}\x07";
+
+    pub fn setTerminalTitleOutput(writer: anytype, title: []const u8) AnsiError!void {
+        std.fmt.format(writer, setTerminalTitle, .{title}) catch return AnsiError.WriteFailed;
+    }
+
     pub fn clearRendererSpaceOutput(writer: anytype, height: u32) AnsiError!void {
         // Clear each line individually from bottom to top
         // This approach is more compatible across different terminals
