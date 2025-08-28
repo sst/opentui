@@ -56,7 +56,8 @@ pub const ANSI = struct {
         std.fmt.format(writer, "\x1b]66;w={d};{s}\x1b\\", .{ width, text }) catch return AnsiError.WriteFailed;
     }
 
-    pub const resetCursorColor = "\x1b]12;default\x07";
+    pub const resetCursorColor = "\x1b]112\x07";
+    pub const resetCursorColorFallback = "\x1b]12;default\x07";
     pub const saveCursorState = "\x1b[s";
     pub const restoreCursorState = "\x1b[u";
 

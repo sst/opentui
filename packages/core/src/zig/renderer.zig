@@ -285,6 +285,7 @@ pub const CliRenderer = struct {
             // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
         }
 
+        direct.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
         direct.writeAll(ansi.ANSI.resetCursorColor) catch {};
         direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
         direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
