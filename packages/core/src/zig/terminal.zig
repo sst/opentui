@@ -131,7 +131,8 @@ pub fn exitAltScreen(self: *Terminal, tty: AnyWriter) !void {
 pub fn queryTerminalSend(self: *Terminal, tty: AnyWriter) !void {
     self.checkEnvironmentOverrides();
 
-    try tty.writeAll(ansi.ANSI.decrqmSgrPixels ++
+    try tty.writeAll(ansi.ANSI.hideCursor ++
+        ansi.ANSI.decrqmSgrPixels ++
         ansi.ANSI.decrqmUnicode ++
         ansi.ANSI.decrqmColorScheme ++
         ansi.ANSI.decrqmFocus ++
@@ -152,8 +153,9 @@ pub fn queryTerminalSend(self: *Terminal, tty: AnyWriter) !void {
         ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery ++
         ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.primaryDeviceAttrs ++
-        ansi.ANSI.sixelGeometryQuery);
+        ansi.ANSI.primaryDeviceAttrs
+            // ++ ansi.ANSI.sixelGeometryQuery
+    );
 }
 
 pub fn enableDetectedFeatures(self: *Terminal, tty: AnyWriter) !void {

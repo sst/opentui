@@ -6,6 +6,10 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA, parseColor } from "../lib"
 import type { Renderable } from "../Renderable"
 
+const textColor = parseColor("#FFFFFF")
+const bgColor = parseColor("#333333")
+const transparent = parseColor("transparent")
+
 // This is NOT react and not reactive, it's just a declarative way to compose renderables
 // and mount them into a parent container.
 function MyRenderable(props: any, children: VNode[] = []) {
@@ -52,7 +56,7 @@ function VNodeButton(
   props: {
     title: string
     onClick: () => void
-    borderColor?: string | RGBA
+    borderColor?: RGBA
   },
   children: VNode[] = [],
 ) {
@@ -77,8 +81,9 @@ function VNodeButton(
 class MyRoot {
   width: number
 
-  constructor(private readonly props: { title: string; borderColor?: string | RGBA }) {
+  constructor(private readonly props: { title: string; borderColor?: RGBA }) {
     this.width = Math.max(props.title.length + 4, 12)
+    Object.assign(this, props)
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number, renderable: Renderable) {
@@ -87,7 +92,7 @@ class MyRoot {
 }
 
 function ButtonWithClassRender(
-  props: { title: string; onClick: () => void; borderColor?: string | RGBA },
+  props: { title: string; onClick: () => void; borderColor?: RGBA; marginLeft?: number },
   children: VNode[] = [],
 ) {
   return Generic(
@@ -216,21 +221,26 @@ export function run(renderer: CliRenderer) {
     VNodeButton({
       title: "Animated VNode",
       onClick: () => console.log("vnode 1 clicked"),
-      borderColor: "blue",
+      borderColor: RGBA.fromInts(0, 0, 255, 255),
     }),
   )
   renderer.root.add(
     VNodeButton({
       title: "Same VNode, different props",
       onClick: () => console.log("vnode 2 clicked"),
-      borderColor: "magenta",
+      borderColor: RGBA.fromInts(255, 0, 255, 255),
     }),
   )
 
   //
   // Add button with class render function
   renderer.root.add(
-    ButtonWithClassRender({ title: "ClassRender", onClick: () => console.log("clicked"), borderColor: "blue" }),
+    ButtonWithClassRender({
+      marginLeft: 1,
+      title: "ClassRender",
+      onClick: () => console.log("clicked"),
+      borderColor: RGBA.fromInts(0, 0, 255, 255),
+    }),
   )
 }
 
@@ -250,7 +260,7 @@ if (import.meta.main) {
 }
 
 function demoRenderFn(
-  props: { title: string; borderColor?: string | RGBA },
+  props: { title: string; borderColor?: RGBA },
   buffer: OptimizedBuffer,
   deltaTime: number,
   renderable: Renderable,
@@ -260,17 +270,12 @@ function demoRenderFn(
   const width = renderable.width
   const height = renderable.height
 
-  const borderColor = parseColor((props.borderColor as string) || "#FFFF00")
-  const textColor = parseColor("#FFFFFF")
-  const bgColor = parseColor("#333333")
-  const transparent = parseColor("transparent")
+  const borderColor = props.borderColor ?? RGBA.fromInts(255, 255, 0, 255)
 
   // Draw a simple animated button with pulsing border
-  // Use absolute time for smooth animation without drift
   const timeInSeconds = Date.now() / 1000
   const pulse = Math.sin(timeInSeconds * 4) * 0.5 + 0.5 // Fast pulsing, 0-1 oscillation
 
-  // More dramatic color changes - pulse between 0.1 and 1.0 for high contrast
   const pulsingBorderColor = RGBA.fromValues(
     borderColor.r * (0.1 + pulse * 0.9),
     borderColor.g * (0.1 + pulse * 0.9),
@@ -278,11 +283,9 @@ function demoRenderFn(
     borderColor.a,
   )
 
-  // Also pulse the background with a different phase and frequency
   const bgPulse = Math.sin(timeInSeconds * 2 + Math.PI / 2) * 0.4 + 0.6 // Different frequency and phase
   const pulsingBgColor = RGBA.fromValues(bgColor.r * bgPulse, bgColor.g * bgPulse, bgColor.b * bgPulse, bgColor.a)
 
-  // Fill background
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {
       const isTop = row === 0
@@ -292,22 +295,19 @@ function demoRenderFn(
       const isBorder = isTop || isBottom || isLeft || isRight
 
       if (isBorder) {
-        // Animate the border character too for extra visual effect
-        const borderChars = ["█", "▓", "▒", "░"]
-        const charIndex = Math.floor(pulse * borderChars.length) % borderChars.length
-        buffer.setCell(x + col, y + row, borderChars[charIndex], pulsingBorderColor, transparent)
+        buffer.setCell(x + col, y + row, "█", pulsingBorderColor, pulsingBgColor)
       } else {
         buffer.setCell(x + col, y + row, " ", textColor, pulsingBgColor)
       }
     }
   }
 
-  // Draw title with animated color
   const titlePulse = Math.sin(timeInSeconds * 6) * 0.5 + 0.5 // Even faster text pulse
+  const textScale = 0.3 + titlePulse * 0.7
   const pulsingTextColor = RGBA.fromValues(
-    textColor.r * (0.3 + titlePulse * 0.7),
-    textColor.g * (0.3 + titlePulse * 0.7),
-    textColor.b,
+    textColor.r * textScale,
+    textColor.g * textScale,
+    textColor.b * textScale,
     textColor.a,
   )
 

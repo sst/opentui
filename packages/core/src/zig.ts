@@ -1189,7 +1189,18 @@ export function setRenderLibPath(libPath: string) {
 
 export function resolveRenderLib(): RenderLib {
   if (!opentuiLib) {
-    opentuiLib = new FFIRenderLib(opentuiLibPath)
+    try {
+      opentuiLib = new FFIRenderLib(opentuiLibPath)
+    } catch (error) {
+      throw new Error(
+        `Failed to initialize OpenTUI render library: ${error instanceof Error ? error.message : "Unknown error"}`,
+      )
+    }
   }
   return opentuiLib
 }
+
+// Try eager loading
+try {
+  opentuiLib = new FFIRenderLib(opentuiLibPath)
+} catch (error) {}
