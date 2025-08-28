@@ -589,7 +589,12 @@ export abstract class Renderable extends EventEmitter {
     }
 
     this.setupMarginAndPadding(options)
-    this.setupGap(options)
+
+    const hasInitialGapProps =
+      options.gap !== undefined || options.rowGap !== undefined || options.columnGap !== undefined
+    if (hasInitialGapProps) {
+      this.setupGap(options)
+    }
   }
 
   private setupGap(options: RenderableOptions): void {
