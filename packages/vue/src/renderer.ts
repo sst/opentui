@@ -15,6 +15,7 @@ import { getNextId } from "./utils"
 import { type OpenTUINode, type OpenTUIElement, TextNode, WhiteSpaceNode, ChunkToTextNodeMap } from "./nodes"
 import { elements, type Element } from "./elements"
 import { insertNode, removeNode } from "./noOps"
+import { getCurrentCliRenderer } from "./cli-renderer-ref"
 
 function createText(value: string | number | boolean | TextChunk): OpenTUINode {
   const plainText = typeof value === "object" ? (value as TextChunk).plainText : String(value)
@@ -42,7 +43,7 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
     if (!RenderableClass) throw new Error(`${type} is not a valid element`)
 
     const id = getNextId(type)
-    return new RenderableClass(id, {})
+    return new RenderableClass(getCurrentCliRenderer(), { id })
   },
 
   createText,
@@ -204,7 +205,7 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
     } else if (node instanceof Renderable) {
       const children = node.getChildren()
       children.forEach((child) => node.remove(child.id))
-      const textChild = new TextRenderable(getNextId("text"), { content: text })
+      const textChild = new TextRenderable(getCurrentCliRenderer(), { id: getNextId("text"), content: text })
       node.add(textChild)
     }
   },

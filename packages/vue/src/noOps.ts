@@ -24,7 +24,7 @@ function getOrCreateTextGhostNode(parent: Renderable, anchor?: OpenTUINode | nul
     return lastChild
   }
 
-  const ghostNode = new TextRenderable(getNextId(GHOST_NODE_TAG), {})
+  const ghostNode = new TextRenderable(parent.ctx, { id: getNextId(GHOST_NODE_TAG) })
   insertNode(parent, ghostNode, anchor)
   return ghostNode
 }
