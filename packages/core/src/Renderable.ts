@@ -44,9 +44,6 @@ export interface LayoutOptions {
   alignItems?: AlignString
   justifyContent?: JustifyString
   flexBasis?: number | "auto" | undefined
-  gap?: number | `${number}%`
-  rowGap?: number | `${number}%`
-  columnGap?: number | `${number}%`
   position?: PositionTypeString
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
@@ -104,7 +101,7 @@ function validateOptions(id: string, options: RenderableOptions): void {
   }
 }
 
-function isValidPercentage(value: any): value is `${number}%` {
+export function isValidPercentage(value: any): value is `${number}%` {
   if (typeof value === "string" && value.endsWith("%")) {
     const numPart = value.slice(0, -1)
     const num = parseFloat(numPart)
@@ -159,16 +156,6 @@ export function isFlexBasisType(value: any): value is number | "auto" | undefine
 }
 
 export function isSizeType(value: any): value is number | `${number}%` | undefined {
-  if (value === undefined) {
-    return true
-  }
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return true
-  }
-  return isValidPercentage(value)
-}
-
-export function isGapType(value: any): value is number | undefined {
   if (value === undefined) {
     return true
   }
@@ -589,28 +576,6 @@ export abstract class Renderable extends EventEmitter {
     }
 
     this.setupMarginAndPadding(options)
-
-    const hasInitialGapProps =
-      options.gap !== undefined || options.rowGap !== undefined || options.columnGap !== undefined
-    if (hasInitialGapProps) {
-      this.setupGap(options)
-    }
-  }
-
-  private setupGap(options: RenderableOptions): void {
-    const node = this.layoutNode.yogaNode
-
-    if (isGapType(options.gap)) {
-      node.setGap(Gutter.All, options.gap)
-    }
-
-    if (isGapType(options.rowGap)) {
-      node.setGap(Gutter.Row, options.rowGap)
-    }
-
-    if (isGapType(options.columnGap)) {
-      node.setGap(Gutter.Column, options.columnGap)
-    }
   }
 
   private setupMarginAndPadding(options: RenderableOptions): void {
@@ -839,27 +804,6 @@ export abstract class Renderable extends EventEmitter {
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
-      this.needsUpdate()
-    }
-  }
-
-  public set gap(gap: number | `${number}%` | undefined) {
-    if (isGapType(gap)) {
-      this.layoutNode.yogaNode.setGap(Gutter.All, gap)
-      this.needsUpdate()
-    }
-  }
-
-  public set rowGap(rowGap: number | `${number}%` | undefined) {
-    if (isGapType(rowGap)) {
-      this.layoutNode.yogaNode.setGap(Gutter.Row, rowGap)
-      this.needsUpdate()
-    }
-  }
-
-  public set columnGap(columnGap: number | `${number}%` | undefined) {
-    if (isGapType(columnGap)) {
-      this.layoutNode.yogaNode.setGap(Gutter.Column, columnGap)
       this.needsUpdate()
     }
   }

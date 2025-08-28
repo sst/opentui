@@ -10,7 +10,7 @@ export interface TabSelectOption {
   value?: any
 }
 
-export interface TabSelectRenderableOptions extends Omit<RenderableOptions, "height" | "gap" | "rowGap" | "columnGap"> {
+export interface TabSelectRenderableOptions extends Omit<RenderableOptions, "height"> {
   height?: number
   options?: TabSelectOption[]
   tabWidth?: number

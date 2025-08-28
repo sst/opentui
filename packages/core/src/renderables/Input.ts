@@ -4,7 +4,7 @@ import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
 
-export interface InputRenderableOptions extends Omit<RenderableOptions, "gap" | "rowGap" | "columnGap"> {
+export interface InputRenderableOptions extends RenderableOptions {
   backgroundColor?: ColorInput
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
