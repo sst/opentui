@@ -875,6 +875,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.clearTerminal(this.rendererPtr)
   }
 
+  public setTerminalTitle(title: string): void {
+    this.lib.setTerminalTitle(this.rendererPtr, title)
+  }
+
   public dumpHitGrid(): void {
     this.lib.dumpHitGrid(this.rendererPtr)
   }
