@@ -16,17 +16,32 @@ This monorepo contains the following packages:
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
 - [`@opentui/vue`](packages/vue) - The Vue reconciler for OpenTUI.
+- [`@opentui/go`](packages/go) - Go bindings for OpenTUI
 
 ## Install
 
+### TypeScript/JavaScript
 ```bash
 bun install @opentui/core
 ```
 
+### Go
+```bash
+go get github.com/sst/opentui/packages/go
+```
+
 ## Running Examples (from the repo root)
 
+### TypeScript Examples
 ```bash
 bun install
 cd packages/core
 bun run src/examples/index.ts
+```
+
+### Go Examples
+```bash
+# Basic example
+cd packages/go/examples/basic
+go run .
 ```
