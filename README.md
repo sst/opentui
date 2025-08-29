@@ -21,11 +21,13 @@ This monorepo contains the following packages:
 ## Install
 
 ### TypeScript/JavaScript
+
 ```bash
 bun install @opentui/core
 ```
 
 ### Go
+
 ```bash
 go get github.com/sst/opentui/packages/go
 ```
@@ -33,6 +35,7 @@ go get github.com/sst/opentui/packages/go
 ## Running Examples (from the repo root)
 
 ### TypeScript Examples
+
 ```bash
 bun install
 cd packages/core
@@ -40,6 +43,7 @@ bun run src/examples/index.ts
 ```
 
 ### Go Examples
+
 ```bash
 # Basic example
 cd packages/go/examples/basic
