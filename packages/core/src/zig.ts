@@ -154,6 +154,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    setTerminalTitle: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
 
     bufferDrawSuperSampleBuffer: {
       args: ["ptr", "u32", "u32", "ptr", "usize", "u8", "u32"],
@@ -421,6 +425,7 @@ export interface RenderLib {
   setCursorColor: (renderer: Pointer, color: RGBA) => void
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
+  setTerminalTitle: (renderer: Pointer, title: string) => void
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
   dumpHitGrid: (renderer: Pointer) => void
@@ -868,6 +873,11 @@ class FFIRenderLib implements RenderLib {
 
   public clearTerminal(renderer: Pointer) {
     this.opentui.symbols.clearTerminal(renderer)
+  }
+
+  public setTerminalTitle(renderer: Pointer, title: string) {
+    const titleBytes = this.encoder.encode(title)
+    this.opentui.symbols.setTerminalTitle(renderer, titleBytes, titleBytes.length)
   }
 
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
