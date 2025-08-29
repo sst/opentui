@@ -18,7 +18,7 @@ function App() {
     <box>
       <text fg="#00FF00">Hello, Terminal!</text>
       <box title="Welcome" padding={2}>
-        <text>Welcome to OpenTUI with React!"</text>
+        <text>Welcome to OpenTUI with React!</text>
       </box>
     </box>
   )
