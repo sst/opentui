@@ -117,7 +117,7 @@ pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
         self.state.color_scheme_updates = false;
     }
 
-    try self.setTerminalTitle(tty, "");
+    self.setTerminalTitle(tty, "");
 }
 
 pub fn enterAltScreen(self: *Terminal, tty: AnyWriter) !void {
