@@ -318,6 +318,12 @@ export function run(renderer: CliRenderer): void {
     engine.update(deltaTime)
   })
 
+  const mainGroup = new BoxRenderable(renderer, {
+    id: "mouse-demo-main-group",
+    zIndex: 10,
+  })
+  renderer.root.add(mainGroup)
+
   titleText = new TextRenderable(renderer, {
     id: "mouse_demo_title",
     content: "Mouse Interaction Demo with Draggable Objects",
@@ -329,7 +335,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
   })
-  renderer.root.add(titleText)
+  mainGroup.add(titleText)
 
   instructionsText = new TextRenderable(renderer, {
     id: "mouse_demo_instructions",
@@ -344,10 +350,10 @@ Scroll on boxes: shows direction • Escape: menu`,
     fg: RGBA.fromInts(176, 196, 222),
     zIndex: 1000,
   })
-  renderer.root.add(instructionsText)
+  mainGroup.add(instructionsText)
 
   demoContainer = new MouseInteractionFrameBuffer("mouse-demo-buffer", renderer)
-  renderer.root.add(demoContainer)
+  mainGroup.add(demoContainer)
 
   draggableBoxes = [
     DraggableBox({
@@ -389,33 +395,13 @@ Scroll on boxes: shows direction • Escape: menu`,
   ]
 
   for (const box of draggableBoxes) {
-    renderer.root.add(box)
+    mainGroup.add(box)
   }
 }
 
 export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
-
-  if (demoContainer) {
-    demoContainer.clearState()
-    renderer.root.remove("mouse-demo-buffer")
-    demoContainer = null
-  }
-
-  if (titleText) {
-    renderer.root.remove("mouse_demo_title")
-    titleText = null
-  }
-
-  if (instructionsText) {
-    renderer.root.remove("mouse_demo_instructions")
-    instructionsText = null
-  }
-
-  for (const box of draggableBoxes) {
-    renderer.root.remove(box.id)
-  }
-  draggableBoxes = []
+  renderer.root.getRenderable("mouse-demo-main-group")?.destroyRecursively()
 }
 
 if (import.meta.main) {

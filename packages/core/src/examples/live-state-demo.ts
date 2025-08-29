@@ -20,6 +20,7 @@ import {
 import type { BoxOptions } from "../renderables/Box"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
+let mainGroup: BoxRenderable | null = null
 let titleText: TextRenderable | null = null
 let instructionsText: TextRenderable | null = null
 let statusText: TextRenderable | null = null
@@ -129,7 +130,7 @@ function addDemoRenderable(renderer: CliRenderer): void {
     border: true,
   })
 
-  renderer.root.add(demoRenderable)
+  renderer.root.getRenderable("live-demo-main-group")?.add(demoRenderable)
   updateStatusText("Added demo renderable")
 }
 
@@ -139,13 +140,20 @@ function removeDemoRenderable(renderer: CliRenderer): void {
     return
   }
 
-  renderer.root.remove(demoRenderable.id)
+  renderer.root.getRenderable("live-demo-main-group")?.remove(demoRenderable.id)
   demoRenderable = null
   updateStatusText("Removed demo renderable")
 }
 
 export function run(renderer: CliRenderer): void {
   currentRenderer = renderer
+
+  mainGroup = new BoxRenderable(renderer, {
+    id: "live-demo-main-group",
+    zIndex: 10,
+  })
+  renderer.root.add(mainGroup)
+
   const backgroundColor = RGBA.fromInts(25, 30, 45, 255)
   renderer.setBackgroundColor(backgroundColor)
 
@@ -159,7 +167,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
   })
-  renderer.root.add(titleText)
+  mainGroup.add(titleText)
 
   instructionsText = new TextRenderable(renderer, {
     id: "live_demo_instructions",
@@ -170,7 +178,7 @@ export function run(renderer: CliRenderer): void {
     fg: RGBA.fromInts(176, 196, 222),
     zIndex: 1000,
   })
-  renderer.root.add(instructionsText)
+  mainGroup.add(instructionsText)
 
   statusText = new TextRenderable(renderer, {
     id: "live_demo_status",
@@ -182,7 +190,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.ITALIC,
     zIndex: 1000,
   })
-  renderer.root.add(statusText)
+  mainGroup.add(statusText)
 
   rendererStateText = new TextRenderable(renderer, {
     id: "renderer_state",
@@ -193,7 +201,7 @@ export function run(renderer: CliRenderer): void {
     fg: RGBA.fromInts(255, 255, 100),
     zIndex: 1000,
   })
-  renderer.root.add(rendererStateText)
+  mainGroup.add(rendererStateText)
 
   renderableStateText = new TextRenderable(renderer, {
     id: "renderable_state",
@@ -204,7 +212,7 @@ export function run(renderer: CliRenderer): void {
     fg: RGBA.fromInts(255, 255, 100),
     zIndex: 1000,
   })
-  renderer.root.add(renderableStateText)
+  mainGroup.add(renderableStateText)
 
   // Button colors
   const rendererColor = RGBA.fromInts(100, 140, 180, 255) // Blue - darker for better contrast
@@ -382,7 +390,7 @@ export function run(renderer: CliRenderer): void {
   ]
 
   for (const button of liveButtons) {
-    renderer.root.add(button)
+    mainGroup.add(button)
   }
 
   // Add section labels
@@ -396,7 +404,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.BOLD,
     zIndex: 500,
   })
-  renderer.root.add(rendererLabel)
+  mainGroup.add(rendererLabel)
 
   const renderableLabel = new TextRenderable(renderer, {
     id: "renderable_label",
@@ -408,7 +416,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.BOLD,
     zIndex: 500,
   })
-  renderer.root.add(renderableLabel)
+  mainGroup.add(renderableLabel)
 
   const liveLabel = new TextRenderable(renderer, {
     id: "live_label",
@@ -420,7 +428,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.BOLD,
     zIndex: 500,
   })
-  renderer.root.add(liveLabel)
+  mainGroup.add(liveLabel)
 
   const visibilityLabel = new TextRenderable(renderer, {
     id: "visibility_label",
@@ -432,7 +440,7 @@ export function run(renderer: CliRenderer): void {
     attributes: TextAttributes.BOLD,
     zIndex: 500,
   })
-  renderer.root.add(visibilityLabel)
+  mainGroup.add(visibilityLabel)
 
   frameCallback = async (deltaTime) => {
     frameCounter++
@@ -460,45 +468,7 @@ export function destroy(renderer: CliRenderer): void {
   frameCounter = 0
   animationCounter = 0
 
-  if (titleText) {
-    renderer.root.remove("live_demo_title")
-    titleText = null
-  }
-
-  if (instructionsText) {
-    renderer.root.remove("live_demo_instructions")
-    instructionsText = null
-  }
-
-  if (statusText) {
-    renderer.root.remove("live_demo_status")
-    statusText = null
-  }
-
-  if (rendererStateText) {
-    renderer.root.remove("renderer_state")
-    rendererStateText = null
-  }
-
-  if (renderableStateText) {
-    renderer.root.remove("renderable_state")
-    renderableStateText = null
-  }
-
-  // for (const button of liveButtons) {
-  //   renderer.root.remove(button.id)
-  // }
-  // liveButtons = []
-
-  if (demoRenderable) {
-    renderer.root.remove(demoRenderable.id)
-    demoRenderable = null
-  }
-
-  renderer.root.remove("renderer_label")
-  renderer.root.remove("renderable_label")
-  renderer.root.remove("live_label")
-  renderer.root.remove("visibility_label")
+  renderer.root.getRenderable("live-demo-main-group")?.destroyRecursively()
 }
 
 if (import.meta.main) {
