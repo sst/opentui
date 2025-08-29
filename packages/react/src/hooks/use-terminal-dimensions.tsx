@@ -9,8 +9,8 @@ export const useTerminalDimensions = () => {
     width: number
     height: number
   }>({
-    width: renderer.terminalWidth,
-    height: renderer.terminalHeight,
+    width: renderer.width,
+    height: renderer.height,
   })
 
   const cb = (width: number, height: number) => {
