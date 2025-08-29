@@ -29,7 +29,7 @@ const solidTransformPlugin: BunPlugin = {
           [
             solid,
             {
-              moduleName: "@opentui/solid/reconciler",
+              moduleName: "@opentui/solid",
               generate: "universal",
             },
           ],
