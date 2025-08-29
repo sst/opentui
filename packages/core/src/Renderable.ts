@@ -469,19 +469,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public get x(): number {
-    switch (this._positionType) {
-      case "absolute":
-        if (!this._anchor) {
-          return this._x
-        }
-        return this.getAnchorPointX()
-      case "relative":
-        return this._x + this.getAnchorPointX()
-      case "static":
-        return this._x
-      default:
-        throw new Error("Invalid position type")
+    if (this.parent && this._positionType === "relative") {
+      return this.parent.x + this._x
     }
+    return this._x
   }
 
   public set x(value: number) {
@@ -489,19 +480,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public get y(): number {
-    switch (this._positionType) {
-      case "absolute":
-        if (!this._anchor) {
-          return this._y
-        }
-        return this.getAnchorPointY()
-      case "relative":
-        return this._y + this.getAnchorPointY()
-      case "static":
-        return this._y
-      default:
-        throw new Error("Invalid position type")
+    if (this.parent && this._positionType === "relative") {
+      return this.parent.y + this._y
     }
+    return this._y
   }
 
   public set y(value: number) {
