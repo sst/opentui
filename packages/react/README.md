@@ -518,7 +518,7 @@ For optimal TypeScript support, configure your `tsconfig.json`:
 ```json
 {
   "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext",
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
