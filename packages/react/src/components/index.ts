@@ -1,7 +1,6 @@
 import {
   ASCIIFontRenderable,
   BoxRenderable,
-  GroupRenderable,
   InputRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -12,7 +11,6 @@ import type { RenderableConstructor } from "../types/components"
 export const baseComponents = {
   box: BoxRenderable,
   text: TextRenderable,
-  group: GroupRenderable,
   input: InputRenderable,
   select: SelectRenderable,
   "ascii-font": ASCIIFontRenderable,

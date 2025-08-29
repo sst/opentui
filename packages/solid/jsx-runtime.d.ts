@@ -2,7 +2,6 @@ import { Renderable } from "@opentui/core"
 import {
   ASCIIFontElementProps,
   BoxElementProps,
-  GroupElementProps,
   InputElementProps,
   SelectElementProps,
   TabSelectElementProps,
@@ -18,7 +17,6 @@ declare namespace JSX {
   interface IntrinsicElements {
     ascii_font: ASCIIFontElementProps
     box: BoxElementProps
-    group: GroupElementProps
     input: InputElementProps
     select: SelectElementProps
     tab_select: TabSelectElementProps

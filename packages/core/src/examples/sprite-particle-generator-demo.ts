@@ -5,7 +5,7 @@ import {
   createCliRenderer,
   OptimizedBuffer,
   RGBA,
-  GroupRenderable,
+  BoxRenderable,
   TextRenderable,
   FrameBufferRenderable,
 } from "../index"
@@ -42,7 +42,7 @@ let configs: Record<string, { name: string; params: ParticleEffectParameters }> 
 let inputListener: ((key: Buffer) => void) | null = null
 let resizeListener: ((width: number, height: number) => void) | null = null
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 let instructionsText: TextRenderable | null = null
 let particleCountText: TextRenderable | null = null
 let configInfoText: TextRenderable | null = null
@@ -52,10 +52,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "particle-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
   const framebufferRenderable = new FrameBufferRenderable(renderer, {

@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, BoxRenderable, GroupRenderable, TextRenderable, RGBA } from ".."
+import { CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, RGBA } from ".."
 import { ASCIIFontRenderable } from "../renderables/ASCIIFont"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
-let fontGroup: GroupRenderable | null = null
+let fontGroup: BoxRenderable | null = null
 let statusBox: BoxRenderable | null = null
 let statusText: TextRenderable | null = null
 let selectionStartText: TextRenderable | null = null
@@ -33,7 +33,7 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(mainContainer)
 
-  fontGroup = new GroupRenderable(renderer, {
+  fontGroup = new BoxRenderable(renderer, {
     id: "fontGroup",
     position: "absolute",
     left: 2,

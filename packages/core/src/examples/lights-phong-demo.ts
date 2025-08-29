@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, FrameBufferRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
@@ -33,7 +33,7 @@ interface PhongDemoState {
   light4: ThreePointLight
   normalMapTexture: DataTexture | null
   alphaTexture: DataTexture | null
-  parentContainer: GroupRenderable
+  parentContainer: BoxRenderable
   titleText: TextRenderable
   statusText: TextRenderable
   controlsText: TextRenderable
@@ -51,10 +51,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "phong-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

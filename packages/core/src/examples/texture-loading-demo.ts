@@ -5,7 +5,7 @@ import {
   createCliRenderer,
   OptimizedBuffer,
   RGBA,
-  GroupRenderable,
+  BoxRenderable,
   TextRenderable,
   FrameBufferRenderable,
 } from "../index"
@@ -35,17 +35,16 @@ let framebuffer: OptimizedBuffer | null = null
 let keyListener: ((key: string) => void) | null = null
 let resizeListener: ((width: number, height: number) => void) | null = null
 let stdinHandler: ((key: Buffer) => void) | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 
 export async function run(renderer: CliRenderer): Promise<void> {
   renderer.start()
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "texture-loading-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

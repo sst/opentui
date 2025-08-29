@@ -1,13 +1,6 @@
 #!/usr/bin/env bun
 
-import {
-  createCliRenderer,
-  RGBA,
-  GroupRenderable,
-  TextRenderable,
-  BoxRenderable,
-  FrameBufferRenderable,
-} from "../index"
+import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
 import { ThreeCliRenderer } from "../3d/WGPURenderer"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
@@ -159,10 +152,9 @@ engine.setActiveCamera(cameraNode)
 
 const TEST_CUBE_COUNT = 300
 
-const uiContainer = new GroupRenderable(renderer, {
+const uiContainer = new BoxRenderable(renderer, {
   id: "ui-container",
   zIndex: 15,
-  visible: true,
 })
 renderer.root.add(uiContainer)
 

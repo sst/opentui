@@ -65,6 +65,12 @@ export class BoxRenderable extends Renderable {
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._border = options.border ?? this._defaultOptions.border
+    if (
+      !options.border &&
+      (options.borderStyle || options.borderColor || options.focusedBorderColor || options.customBorderChars)
+    ) {
+      this._border = true
+    }
     this._borderStyle = options.borderStyle || this._defaultOptions.borderStyle
     this._borderColor = parseColor(options.borderColor || this._defaultOptions.borderColor)
     this._focusedBorderColor = parseColor(options.focusedBorderColor || this._defaultOptions.focusedBorderColor)

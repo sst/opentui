@@ -14,11 +14,11 @@ export const App = () => {
   }, [])
 
   return (
-    <group>
+    <box>
       <text>Simple text works! {counter}</text>
       <text>{underline(bold(`Chunk also works! ${counter}`))}</text>
       <text>{t`${bold(red("Bold Red"))} and ${blue("Blue Text")} ${counter}`}</text>
-    </group>
+    </box>
   )
 }
 

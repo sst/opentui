@@ -5,7 +5,6 @@ import {
   createCliRenderer,
   TextRenderable,
   BoxRenderable,
-  GroupRenderable,
   t,
   green,
   bold,
@@ -18,8 +17,8 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
 let floatingBox: BoxRenderable | null = null
-let leftGroup: GroupRenderable | null = null
-let rightGroup: GroupRenderable | null = null
+let leftGroup: BoxRenderable | null = null
+let rightGroup: BoxRenderable | null = null
 let statusBox: BoxRenderable | null = null
 let statusText: TextRenderable | null = null
 let selectionStartText: TextRenderable | null = null
@@ -47,7 +46,7 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(mainContainer)
 
-  leftGroup = new GroupRenderable(renderer, {
+  leftGroup = new BoxRenderable(renderer, {
     id: "leftGroup",
     position: "absolute",
     left: 2,
@@ -123,7 +122,7 @@ export function run(renderer: CliRenderer): void {
   nestedBox.add(nestedText)
   allTextRenderables.push(nestedText)
 
-  rightGroup = new GroupRenderable(renderer, {
+  rightGroup = new BoxRenderable(renderer, {
     id: "rightGroup",
     position: "absolute",
     left: 48,

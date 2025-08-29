@@ -226,7 +226,7 @@ const examples: Example[] = [
   },
   {
     name: "VNode Composition Demo",
-    description: "Declarative Group(Group(Box(children))) composition",
+    description: "Declarative Box(Box(Box(children))) composition",
     run: vnodeCompositionDemo.run,
     destroy: vnodeCompositionDemo.destroy,
   },

@@ -1,11 +1,4 @@
-import {
-  CliRenderer,
-  createCliRenderer,
-  TextRenderable,
-  BoxRenderable,
-  type ParsedKey,
-  GroupRenderable,
-} from "../index"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type ParsedKey } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { parseColor } from "../lib/RGBA"
@@ -15,17 +8,16 @@ const exampleHAST: HASTElement = (await import("./assets/hast-example.json", { w
 
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 
 export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.start()
   renderer.setBackgroundColor("#0D1117")
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "parent-container",
     zIndex: 10,
-    visible: true,
     padding: 1,
   })
   renderer.root.add(parentContainer)

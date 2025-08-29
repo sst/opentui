@@ -1,13 +1,4 @@
-import {
-  createCliRenderer,
-  TextRenderable,
-  t,
-  type CliRenderer,
-  BoxRenderable,
-  GroupRenderable,
-  bold,
-  fg,
-} from "../index"
+import { createCliRenderer, TextRenderable, t, type CliRenderer, BoxRenderable, bold, fg } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
@@ -22,7 +13,7 @@ let testOutputInterval = 100
 class SplitModeAnimations {
   private timeline: Timeline
   private renderer: CliRenderer
-  private container: GroupRenderable
+  private container: BoxRenderable
 
   private systemLoadingBars: BoxRenderable[] = []
   private movingOrbs: BoxRenderable[] = []
@@ -45,10 +36,9 @@ class SplitModeAnimations {
       loop: true,
     })
 
-    this.container = new GroupRenderable(renderer, {
+    this.container = new BoxRenderable(renderer, {
       id: "animation-container",
       zIndex: 5,
-      visible: true,
     })
     this.renderer.root.add(this.container)
 

@@ -1,4 +1,4 @@
-import { TextAttributes, createCliRenderer, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
+import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
 
@@ -10,13 +10,12 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#001122")
 
-  const rootContainer = new GroupRenderable(renderer, {
+  const rootContainer = new BoxRenderable(renderer, {
     id: "root-container",
     position: "relative",
     left: 0,
     top: 0,
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(rootContainer)
 
@@ -32,13 +31,12 @@ export function run(renderer: CliRenderer): void {
   })
   rootContainer.add(title)
 
-  const parentContainerA = new GroupRenderable(renderer, {
+  const parentContainerA = new BoxRenderable(renderer, {
     id: "parent-container-a",
     position: "absolute",
     left: 10,
     top: 5,
     zIndex: 50,
-    visible: true,
   })
   rootContainer.add(parentContainerA)
 
@@ -112,13 +110,12 @@ export function run(renderer: CliRenderer): void {
   })
   parentBoxA.add(childA3)
 
-  const parentContainerB = new GroupRenderable(renderer, {
+  const parentContainerB = new BoxRenderable(renderer, {
     id: "parent-container-b",
     position: "absolute",
     left: 50,
     top: 8,
     zIndex: 50,
-    visible: true,
   })
   rootContainer.add(parentContainerB)
 
@@ -166,13 +163,12 @@ export function run(renderer: CliRenderer): void {
   })
   parentBoxB.add(childB2)
 
-  const staticContainer = new GroupRenderable(renderer, {
+  const staticContainer = new BoxRenderable(renderer, {
     id: "static-container",
     position: "absolute",
     left: 5,
     top: 20,
     zIndex: 50,
-    visible: true,
   })
   rootContainer.add(staticContainer)
 

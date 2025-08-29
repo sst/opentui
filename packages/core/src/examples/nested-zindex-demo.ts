@@ -1,4 +1,4 @@
-import { TextAttributes, createCliRenderer, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
+import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
 
@@ -10,10 +10,9 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#001122")
 
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "parent-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 
@@ -30,7 +29,7 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(title)
 
   // Parent group with high z-index
-  const parentGroupA = new GroupRenderable(renderer, {
+  const parentGroupA = new BoxRenderable(renderer, {
     id: "parent-group-a",
     position: "absolute",
     zIndex: 100,
@@ -39,7 +38,7 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(parentGroupA)
 
   // Parent group with medium z-index
-  const parentGroupB = new GroupRenderable(renderer, {
+  const parentGroupB = new BoxRenderable(renderer, {
     id: "parent-group-b",
     position: "absolute",
     zIndex: 50,
@@ -48,7 +47,7 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(parentGroupB)
 
   // Parent group with low z-index
-  const parentGroupC = new GroupRenderable(renderer, {
+  const parentGroupC = new BoxRenderable(renderer, {
     id: "parent-group-c",
     position: "absolute",
     zIndex: 20,

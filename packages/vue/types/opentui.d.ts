@@ -37,8 +37,6 @@ export type TextProps = Omit<VueComponentProps<TextOptions, NonStyledProps | "co
 
 export type BoxProps = VueComponentProps<ContainerProps<BoxOptions>, NonStyledProps | "title">
 
-export type GroupProps = VueComponentProps<ContainerProps<RenderableOptions>, NonStyledProps>
-
 export type InputProps = VueComponentProps<InputRenderableOptions, NonStyledProps> & {
   focused?: boolean
   onInput?: (value: string) => void
@@ -64,7 +62,6 @@ declare module "@vue/runtime-core" {
   export interface GlobalComponents {
     asciiFontRenderable: DefineComponent<AsciiFontProps>
     boxRenderable: DefineComponent<BoxProps>
-    groupRenderable: DefineComponent<GroupProps>
     inputRenderable: DefineComponent<InputProps>
     selectRenderable: DefineComponent<SelectProps>
     tabSelectRenderable: DefineComponent<TabSelectProps>
@@ -77,7 +74,6 @@ declare module "@vue/runtime-dom" {
   export interface IntrinsicElementAttributes {
     asciiFontRenderable: AsciiFontProps
     boxRenderable: BoxProps
-    groupRenderable: GroupProps
     inputRenderable: InputProps
     selectRenderable: SelectProps
     tabSelectRenderable: TabSelectProps

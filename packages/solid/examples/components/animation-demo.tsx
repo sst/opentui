@@ -27,7 +27,7 @@ export const SplitModeDemo = () => {
   )
 
   return (
-    <group
+    <box
       style={{
         zIndex: 5,
       }}
@@ -53,7 +53,7 @@ export const SplitModeDemo = () => {
         {/* <DummComponent /> */}
         <For each={systems}>
           {(system) => (
-            <group
+            <box
               style={{
                 flexDirection: "row",
                 height: 1,
@@ -88,7 +88,7 @@ export const SplitModeDemo = () => {
                   }}
                 />
               </box>
-            </group>
+            </box>
           )}
         </For>
       </box>
@@ -157,6 +157,6 @@ export const SplitModeDemo = () => {
           />
         )}
       </For>
-    </group>
+    </box>
   )
 }

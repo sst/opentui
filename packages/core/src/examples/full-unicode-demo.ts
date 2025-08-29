@@ -2,7 +2,6 @@ import {
   createCliRenderer,
   RGBA,
   FrameBufferRenderable,
-  GroupRenderable,
   TextRenderable,
   t,
   blue,
@@ -12,6 +11,7 @@ import {
   type MouseEvent,
   type CliRenderer,
   type RenderContext,
+  BoxRenderable,
 } from "../index"
 
 const GRAPHEME_LINES: string[] = [
@@ -143,7 +143,7 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor(RGBA.fromInts(0, 17, 34, 255))
 
-  const rootGroup = new GroupRenderable(renderer, { id: "full-unicode-root", zIndex: 1 })
+  const rootGroup = new BoxRenderable(renderer, { id: "full-unicode-root", zIndex: 1 })
   renderer.root.add(rootGroup)
 
   const bg = new GraphemeBackground(renderer, "grapheme-bg", renderer.terminalWidth, renderer.terminalHeight)

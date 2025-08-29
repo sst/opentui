@@ -111,7 +111,7 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>
-          <group alignItems="center">
+          <box alignItems="center">
             <ascii_font
               style={{
                 width: titleWidth,
@@ -120,7 +120,7 @@ const ExampleSelector = () => {
               }}
               text={titleText}
             />
-          </group>
+          </box>
           <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
             Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for
             console, ctrl+c to quit {selected()} {terminalDimensions().height}

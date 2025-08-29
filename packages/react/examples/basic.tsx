@@ -37,7 +37,7 @@ export const App = () => {
   }, [username, password])
 
   return (
-    <group style={{ padding: 2, flexDirection: "column" }}>
+    <box style={{ padding: 2, flexDirection: "column" }}>
       <text
         content="OpenTUI with React!"
         style={{
@@ -73,7 +73,7 @@ export const App = () => {
           fg: status === "idle" ? "#AAAAAA" : status === "success" ? "green" : "red",
         }}
       />
-    </group>
+    </box>
   )
 }
 

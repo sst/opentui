@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import { CliRenderer, createCliRenderer, RGBA, TextRenderable, FrameBufferRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import { ThreeCliRenderer } from "../3d"
@@ -18,17 +18,16 @@ let accumulatedTime = 0
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
 let keyHandler: ((key: Buffer) => void) | null = null
 let resizeHandler: ((newWidth: number, newHeight: number) => void) | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 
 export async function run(renderer: CliRenderer): Promise<void> {
   renderer.start()
   const TERM_WIDTH = renderer.terminalWidth
   const TERM_HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "static-sprite-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

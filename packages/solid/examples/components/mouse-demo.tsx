@@ -127,9 +127,9 @@ export default function MouseDraggableScene() {
 ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch how transparency layers blend")}`
 
   return (
-    <group zIndex={10} marginTop={1}>
+    <box zIndex={10} marginTop={1}>
       <text>{headerText}</text>
       {alphaBox50}
-    </group>
+    </box>
   )
 }

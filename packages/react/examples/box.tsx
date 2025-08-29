@@ -3,7 +3,7 @@ import { render } from "@opentui/react"
 export const App = () => {
   return (
     <>
-      <group flexDirection="column">
+      <box flexDirection="column">
         <text attributes={1} content="Box Examples" />
         <box border>
           <text content="1. Standard Box" />
@@ -31,7 +31,7 @@ export const App = () => {
             <text content="8. Nested Box" />
           </box>
         </box>
-      </group>
+      </box>
     </>
   )
 }
