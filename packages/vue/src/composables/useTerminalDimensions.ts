@@ -7,8 +7,8 @@ export const useTerminalDimensions = () => {
   const renderer = useCliRenderer()
 
   const dimensions = ref({
-    width: renderer.terminalWidth,
-    height: renderer.terminalHeight,
+    width: renderer.width,
+    height: renderer.height,
   })
 
   const onResize = (width: number, height: number) => {
