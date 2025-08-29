@@ -1,4 +1,4 @@
-import { Renderable, TextRenderable, type TextChunk } from "@opentui/core"
+import { Renderable, TextRenderable, RootRenderable, type TextChunk } from "@opentui/core"
 import { getNextId } from "./utils"
 import type { elements } from "./elements"
 import { getCurrentCliRenderer } from "./cli-renderer-ref"
@@ -25,4 +25,4 @@ export class WhiteSpaceNode extends Renderable {
 
 export type OpenTUINode = Renderable | TextNode
 type ElementConstructor = (typeof elements)[keyof typeof elements]
-export type OpenTUIElement = InstanceType<ElementConstructor>
+export type OpenTUIElement = InstanceType<ElementConstructor> | RootRenderable

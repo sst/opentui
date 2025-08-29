@@ -220,7 +220,7 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
     }
   },
 
-  parentNode: (node) => node.parent!,
+  parentNode: (node) => node.parent! as OpenTUIElement,
 
   nextSibling(node) {
     const parent = node.parent
