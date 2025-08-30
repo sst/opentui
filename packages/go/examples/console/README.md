@@ -15,11 +15,13 @@ This demo recreates the OpenTUI console logging demo from TypeScript, showcasing
 ## Controls
 
 ### Keyboard Controls
+
 - **1-5**: Trigger buttons (LOG, INFO, WARN, ERROR, DEBUG)
 - **q/Q**: Quit demo
 - **ESC**: Exit
 
 ### Mouse Controls (if supported)
+
 - **Click**: Click on buttons to trigger them
 - **Hover**: Buttons change color on hover
 
@@ -36,6 +38,7 @@ go build .
 ## Implementation Highlights
 
 ### ConsoleButton Struct
+
 ```go
 type ConsoleButton struct {
     ID           string
@@ -43,13 +46,13 @@ type ConsoleButton struct {
     Width, Height uint32
     Label        string
     LogType      string
-    
+
     // Colors for different states
     OriginalBg   opentui.RGBA
-    HoverBg      opentui.RGBA  
+    HoverBg      opentui.RGBA
     PressBg      opentui.RGBA
     BorderColor  opentui.RGBA
-    
+
     // State tracking
     IsHovered    bool
     IsPressed    bool
@@ -59,12 +62,15 @@ type ConsoleButton struct {
 ```
 
 ### Visual Effects
+
 - **Sparkle Animation**: ✦ symbols appear briefly when buttons are clicked
 - **Color States**: Buttons change color based on hover/press state
 - **Alpha Blending**: Smooth color transitions and transparency effects
 
 ### Console Logging
+
 Each button type produces different log output:
+
 - **LOG**: Regular console.log output
 - **INFO**: Informational messages
 - **WARN**: Warning messages with additional context
@@ -72,7 +78,9 @@ Each button type produces different log output:
 - **DEBUG**: Debug information with variables
 
 ### Input Handling
+
 The demo supports multiple input modes:
+
 1. **Raw Terminal Input**: Direct key reading for responsive controls
 2. **Simple Line Input**: Fallback mode for terminals without raw input support
 3. **Mouse Events**: ANSI mouse tracking (where supported)
@@ -80,11 +88,13 @@ The demo supports multiple input modes:
 ## Terminal Compatibility
 
 Works best in terminals that support:
+
 - ANSI escape sequences
 - Mouse tracking (optional)
 - 24-bit color (optional, fallback to 8-bit)
 
 Tested terminals:
+
 - ✅ macOS Terminal.app
 - ✅ iTerm2
 - ✅ VSCode Terminal

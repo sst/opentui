@@ -40,7 +40,7 @@ export const useTerminalDimensions = () => {
   const [terminalDimensions, setTerminalDimensions] = createSignal<{
     width: number
     height: number
-  }>({ width: renderer.terminalWidth, height: renderer.terminalHeight })
+  }>({ width: renderer.width, height: renderer.height })
 
   const callback = (width: number, height: number) => {
     setTerminalDimensions({ width, height })

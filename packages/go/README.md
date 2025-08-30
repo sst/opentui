@@ -5,7 +5,7 @@ Go bindings for [OpenTUI](https://github.com/sst/opentui), a high-performance te
 ## Features
 
 - **High Performance**: Direct bindings to optimized Zig code
-- **Memory Safe**: Automatic resource management with Go finalizers  
+- **Memory Safe**: Automatic resource management with Go finalizers
 - **Cross-Platform**: Support for Linux, macOS, and Windows
 - **Full Feature Set**: Complete API coverage including mouse support
 - **Idiomatic Go**: Proper error handling and Go conventions
@@ -29,7 +29,7 @@ package main
 
 import (
     "time"
-    
+
     "github.com/sst/opentui/packages/go"
 )
 
@@ -37,12 +37,12 @@ func main() {
     // Create renderer
     renderer := opentui.NewRenderer(80, 24)
     defer renderer.Close()
-    
+
     // Get buffer and draw
     buffer, _ := renderer.GetNextBuffer()
     buffer.Clear(opentui.NewRGB(0.1, 0.1, 0.3))
     buffer.DrawText("Hello, OpenTUI!", 10, 5, opentui.White, nil, 0)
-    
+
     // Render to terminal
     renderer.Render(true)
     time.Sleep(2 * time.Second)
@@ -54,6 +54,7 @@ func main() {
 ### Core Types
 
 #### Renderer
+
 The main rendering engine that manages terminal output.
 
 ```go
@@ -74,6 +75,7 @@ renderer.Resize(newWidth, newHeight)
 ```
 
 #### Buffer
+
 A 2D array of terminal cells for efficient rendering.
 
 ```go
@@ -96,6 +98,7 @@ buffer.DrawBox(5, 5, 30, 10, options, opentui.White, opentui.Gray)
 ```
 
 #### TextBuffer
+
 Efficient handling of styled text with line tracking.
 
 ```go
@@ -118,6 +121,7 @@ lines, err := textBuffer.GetLineInfo()
 ### Colors and Styling
 
 #### RGBA Colors
+
 ```go
 // Predefined colors
 opentui.Black, opentui.White, opentui.Red, opentui.Green, opentui.Blue
@@ -129,6 +133,7 @@ rgb := opentui.NewRGB(0.2, 0.8, 0.4)          // Green (alpha = 1.0)
 ```
 
 #### Text Attributes
+
 ```go
 opentui.AttrBold      // Bold text
 opentui.AttrItalic    // Italic text
@@ -160,6 +165,7 @@ opentui.SetCursorColor(opentui.Green)
 ### Advanced Features
 
 #### Direct Buffer Access
+
 For performance-critical operations, you can access buffer arrays directly:
 
 ```go
@@ -179,6 +185,7 @@ directAccess.SetCell(x, y, opentui.Cell{
 ```
 
 #### Hit Testing
+
 For mouse interaction support:
 
 ```go
@@ -195,10 +202,12 @@ if hitID == 42 {
 ## Examples
 
 See the `examples/` directory for complete working examples:
+
 - `basic/` - Simple "Hello World" example
 - `console/` - Interactive console demo with mouse support
 
 To run examples:
+
 ```bash
 cd examples/basic && go run .
 cd examples/console && go run .
