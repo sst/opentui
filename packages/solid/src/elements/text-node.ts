@@ -11,7 +11,6 @@ export const isTextChunk = (node: any): node is TextChunk => {
   return typeof node === "object" && "__isChunk" in node
 }
 
-
 /**
  * Represents a text node in the SolidJS reconciler.
  */

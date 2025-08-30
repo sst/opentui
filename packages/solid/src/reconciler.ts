@@ -35,7 +35,15 @@ const logId = (node?: DomNode): string | undefined => {
 }
 
 function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
-  log("Inserting node:", logId(node), "into parent:", logId(parent), "with anchor:", logId(anchor), node instanceof TextNode)
+  log(
+    "Inserting node:",
+    logId(node),
+    "into parent:",
+    logId(parent),
+    "with anchor:",
+    logId(anchor),
+    node instanceof TextNode,
+  )
 
   if (node instanceof StyledText) {
     log("Inserting styled text:", node.toString())
