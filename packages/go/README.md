@@ -12,6 +12,20 @@ Go bindings for [OpenTUI](https://github.com/sst/opentui), a high-performance te
 
 ## Installation
 
+### 1. Install OpenTUI System Dependencies
+
+First, install OpenTUI headers and libraries system-wide:
+
+```bash
+curl -L https://github.com/sst/opentui/releases/latest/download/install.sh | sh
+```
+
+This downloads the latest compiled libraries and headers for your platform and installs them to standard system locations.
+
+### 2. Install Go Package
+
+Then use in your Go projects:
+
 ```bash
 go get github.com/sst/opentui/packages/go
 ```
@@ -20,7 +34,7 @@ go get github.com/sst/opentui/packages/go
 
 - Go 1.21 or later
 - CGO enabled
-- C compiler (gcc, clang, or MSVC)
+- pkg-config (usually pre-installed on most systems)
 
 ## Quick Start
 
@@ -222,8 +236,11 @@ To build with a custom OpenTUI library:
 cd ../../core/src/zig
 zig build -Doptimize=ReleaseFast
 
-# Copy library to appropriate system location or set CGO_LDFLAGS
-# Then test Go bindings
+# Install locally instead of using releases
+sudo cp lib/$(uname -m)-$(uname -s | tr '[:upper:]' '[:lower:]')/libopentui.* /usr/local/lib/
+sudo cp ../../go/opentui.h /usr/local/include/
+
+# Test Go bindings
 cd ../../go
 go test
 ```

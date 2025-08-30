@@ -28,6 +28,14 @@ bun install @opentui/core
 
 ### Go
 
+First install OpenTUI system-wide:
+
+```bash
+curl -L https://github.com/sst/opentui/releases/latest/download/install.sh | sh
+```
+
+Then use in your Go projects:
+
 ```bash
 go get github.com/sst/opentui/packages/go
 ```
