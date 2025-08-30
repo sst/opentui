@@ -2,7 +2,7 @@ import { CliRenderer, createCliRenderer, type CliRendererConfig } from "@opentui
 import { renderer } from "./src/renderer"
 import { setCurrentCliRenderer } from "./src/cli-renderer-ref"
 import type { InjectionKey } from "vue"
-export * from "./src/composables/useCliRenderer"
+export * from "./src/composables/index"
 
 export const cliRendererKey: InjectionKey<CliRenderer> = Symbol("cliRenderer")
 

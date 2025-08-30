@@ -6,6 +6,7 @@ const result = await Bun.build({
   target: "bun",
   format: "esm",
   // splitting: false,
+  external: ["*"],
   plugins: [
     pluginVue3({
       isProduction: false,
