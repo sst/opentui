@@ -215,7 +215,7 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
       const textParent = node.textParent
       if (textParent instanceof TextRenderable) {
         textParent.content = text
-        textParent.needsUpdate()
+        textParent.requestRender()
       }
     }
   },

@@ -32,7 +32,7 @@ class ConsoleButtonRenderable extends BoxRenderable {
 
   set label(value: string) {
     this._label = value
-    this.needsUpdate()
+    this.requestRender()
   }
 }
 
