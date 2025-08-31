@@ -31,6 +31,16 @@ export class TextRenderable extends Renderable {
   private _plainText: string = ""
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
+  protected _defaultOptions = {
+    content: "",
+    fg: RGBA.fromValues(1, 1, 1, 1),
+    bg: RGBA.fromValues(0, 0, 0, 0),
+    selectionBg: undefined,
+    selectionFg: undefined,
+    selectable: true,
+    attributes: 0,
+  } satisfies Partial<TextOptions>
+
   constructor(ctx: RenderContext, options: TextOptions) {
     super(ctx, options)
 
@@ -41,14 +51,14 @@ export class TextRenderable extends Renderable {
       () => this._lineInfo,
     )
 
-    const content = options.content ?? ""
+    const content = options.content ?? this._defaultOptions.content
     this._text = typeof content === "string" ? stringToStyledText(content) : content
-    this._defaultFg = options.fg ? parseColor(options.fg) : RGBA.fromValues(1, 1, 1, 1)
-    this._defaultBg = options.bg ? parseColor(options.bg) : RGBA.fromValues(0, 0, 0, 0)
-    this._defaultAttributes = options.attributes ?? 0
-    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
-    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
-    this.selectable = options.selectable ?? true
+    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
+    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+    this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
+    this.selectable = options.selectable ?? this._defaultOptions.selectable
 
     this.textBuffer = TextBuffer.create(64, this._ctx.widthMethod)
 
@@ -74,9 +84,36 @@ export class TextRenderable extends Renderable {
   }
 
   set fg(value: RGBA | string | undefined) {
-    if (value) {
-      this._defaultFg = parseColor(value)
+    const newColor = parseColor(value ?? this._defaultOptions.fg)
+    if (this._defaultFg !== newColor) {
+      this._defaultFg = newColor
       this.textBuffer.setDefaultFg(this._defaultFg)
+      this.requestRender()
+    }
+  }
+
+  get selectionBg(): RGBA | undefined {
+    return this._selectionBg
+  }
+
+  set selectionBg(value: RGBA | string | undefined) {
+    const newColor = value ? parseColor(value) : this._defaultOptions.selectionBg
+    if (this._selectionBg !== newColor) {
+      this._selectionBg = newColor
+      this.syncSelectionToTextBuffer()
+      this.requestRender()
+    }
+  }
+
+  get selectionFg(): RGBA | undefined {
+    return this._selectionFg
+  }
+
+  set selectionFg(value: RGBA | string | undefined) {
+    const newColor = value ? parseColor(value) : this._defaultOptions.selectionFg
+    if (this._selectionFg !== newColor) {
+      this._selectionFg = newColor
+      this.syncSelectionToTextBuffer()
       this.requestRender()
     }
   }
@@ -86,8 +123,9 @@ export class TextRenderable extends Renderable {
   }
 
   set bg(value: RGBA | string | undefined) {
-    if (value) {
-      this._defaultBg = parseColor(value)
+    const newColor = parseColor(value ?? this._defaultOptions.bg)
+    if (this._defaultBg !== newColor) {
+      this._defaultBg = newColor
       this.textBuffer.setDefaultBg(this._defaultBg)
       this.requestRender()
     }
@@ -98,9 +136,11 @@ export class TextRenderable extends Renderable {
   }
 
   set attributes(value: number) {
-    this._defaultAttributes = value
-    this.textBuffer.setDefaultAttributes(this._defaultAttributes)
-    this.requestRender()
+    if (this._defaultAttributes !== value) {
+      this._defaultAttributes = value
+      this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+      this.requestRender()
+    }
   }
 
   protected onResize(width: number, height: number): void {
