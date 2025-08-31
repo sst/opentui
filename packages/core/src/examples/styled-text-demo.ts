@@ -244,7 +244,7 @@ Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
   })
   parentContainer.add(typesDisplay)
 
-  renderer.needsUpdate()
+  renderer.requestRender()
 }
 
 export function destroy(rendererInstance: CliRenderer): void {

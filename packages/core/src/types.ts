@@ -27,7 +27,7 @@ export interface RenderContext {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
   width: number
   height: number
-  needsUpdate: () => void
+  requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
   setCursorStyle: (style: CursorStyle, blinking: boolean) => void
   setCursorColor: (color: RGBA) => void

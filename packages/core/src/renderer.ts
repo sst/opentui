@@ -227,7 +227,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
   private captureCallback: () => void = () => {
     if (this._splitHeight > 0) {
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -373,7 +373,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
-  public needsUpdate() {
+  public requestRender() {
     if (!this.updateScheduled && !this._isRunning) {
       this.updateScheduled = true
       process.nextTick(() => {
@@ -498,7 +498,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
     this.emit("resize", this.width, this.height)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   private interceptStdoutWrite = (chunk: any, encoding?: any, callback?: any): boolean => {
@@ -506,7 +506,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     capture.write("stdout", text)
     if (this._splitHeight > 0) {
-      this.needsUpdate()
+      this.requestRender()
     }
 
     if (typeof callback === "function") {
@@ -726,7 +726,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.capturedRenderable = undefined
         // Dropping the renderable needs to push another frame when the renderer is not live
         // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
-        this.needsUpdate()
+        this.requestRender()
       }
 
       if (maybeRenderable) {
@@ -846,7 +846,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
     this.emit("resize", this.width, this.height)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public setBackgroundColor(color: ColorInput): void {
@@ -854,21 +854,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setBackgroundColor(this.rendererPtr, parsedColor as RGBA)
     this.backgroundColor = parsedColor as RGBA
     this.nextRenderBuffer.clear(parsedColor as RGBA)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public toggleDebugOverlay(): void {
     this.debugOverlay.enabled = !this.debugOverlay.enabled
     this.lib.setDebugOverlay(this.rendererPtr, this.debugOverlay.enabled, this.debugOverlay.corner)
     this.emit(CliRenderEvents.DEBUG_OVERLAY_TOGGLE, this.debugOverlay.enabled)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public configureDebugOverlay(options: { enabled?: boolean; corner?: DebugOverlayCorner }): void {
     this.debugOverlay.enabled = options.enabled ?? this.debugOverlay.enabled
     this.debugOverlay.corner = options.corner ?? this.debugOverlay.corner
     this.lib.setDebugOverlay(this.rendererPtr, this.debugOverlay.enabled, this.debugOverlay.corner)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public clearTerminal(): void {

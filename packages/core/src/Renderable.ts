@@ -411,7 +411,7 @@ export abstract class Renderable extends EventEmitter {
 
   public requestRender() {
     this._dirty = true
-    this._ctx.needsUpdate()
+    this._ctx.requestRender()
   }
 
   public get x(): number {

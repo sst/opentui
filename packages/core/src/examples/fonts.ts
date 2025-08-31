@@ -14,7 +14,7 @@ function updateScrollPosition(): void {
   const maxScroll = Math.max(0, contentHeight - renderer.terminalHeight)
   scrollY = Math.max(0, Math.min(scrollY, maxScroll))
   buffer.y = -scrollY
-  renderer.needsUpdate()
+  renderer.requestRender()
 }
 
 function handleKeyPress(key: string): void {

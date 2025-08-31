@@ -257,7 +257,7 @@ export class TerminalConsole extends EventEmitter {
 
   private markNeedsUpdate(): void {
     this._needsFrameBufferUpdate = true
-    this.renderer.needsUpdate()
+    this.renderer.requestRender()
   }
 
   private _rgbaInfo: RGBA
@@ -539,7 +539,7 @@ export class TerminalConsole extends EventEmitter {
       this.show()
     }
     if (!this.renderer.isRunning) {
-      this.renderer.needsUpdate()
+      this.renderer.requestRender()
     }
   }
 
