@@ -33,8 +33,8 @@ export class TextRenderable extends Renderable {
 
   protected _defaultOptions = {
     content: "",
-    fg: "#FFFFFF",
-    bg: "#000000",
+    fg: RGBA.fromValues(1, 1, 1, 1),
+    bg: RGBA.fromValues(0, 0, 0, 0),
     selectionBg: undefined,
     selectionFg: undefined,
     selectable: true,
