@@ -12,7 +12,7 @@ import {
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
 import type { RenderContext } from "../types"
 
-export interface BoxOptions extends RenderableOptions<BoxRenderable> {
+export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA
   borderStyle?: BorderStyle
   border?: boolean | BorderSides[]
