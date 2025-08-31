@@ -8,6 +8,7 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   BoxRenderable,
+  ASCIIFontRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -96,7 +97,7 @@ export function run(renderer: CliRenderer): void {
     }
   }
 
-  const boxObj = new FrameBufferRenderable(renderer, {
+  const boxObj = new BoxRenderable(renderer, {
     id: "moving-box",
     width: 20,
     height: 10,
@@ -104,9 +105,52 @@ export function run(renderer: CliRenderer): void {
     left: 10,
     top: 10,
     zIndex: 1,
+    buffered: true,
+    // TODO: This color is not visible, investigate
+    backgroundColor: RGBA.fromInts(0, 120, 120, 255),
   })
+
+  const boxWrapper = new BoxRenderable(renderer, {
+    id: "moving-box-wrapper",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: RGBA.fromInts(0, 120, 120, 255),
+  })
+
+  boxObj.add(boxWrapper);
+
+  boxWrapper.add(new ASCIIFontRenderable(renderer, {
+    id: "moving-box-ascii",
+    text: 'ASCII',
+    width: 20,
+    height: 10,
+    position: 'absolute',
+    left: 2,
+    top: 5,
+    right:0,
+    bottom:0,
+  }))
+
+  const boxFrame = new FrameBufferRenderable(renderer, {
+    id: "moving-box-buffer",
+    width: 20,
+    height: 10,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right:0,
+    bottom:0,
+    zIndex: 1,
+    respectAlpha: true,
+  })
+
+  boxObj.add(boxFrame)
+
   renderer.root.add(boxObj)
-  const boxBuffer = boxObj.frameBuffer
+  const boxBuffer = boxFrame.frameBuffer
 
   const boxColor = RGBA.fromInts(80, 30, 100, 128)
   boxBuffer.fillRect(0, 0, 20, 10, boxColor)

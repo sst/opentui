@@ -345,11 +345,18 @@ pub const OptimizedBuffer = struct {
             const blendedBgRgb = if (hasBgAlpha) blendColors(overlayCell.bg, destCell.bg) else overlayCell.bg;
 
             const charIsDefaultSpace = overlayCell.char == DEFAULT_SPACE_CHAR;
+            const charIsEmpty = overlayCell.char == 0;
             const destNotZero = destCell.char != 0;
             const destNotDefaultSpace = destCell.char != DEFAULT_SPACE_CHAR;
             const destWidthIsOne = gp.encodedCharWidth(destCell.char) == 1;
 
-            const preserveChar = (charIsDefaultSpace and
+            const bgInvisible = overlayCell.bg[3] == 0.0;
+            const fgInvisible = (overlayCell.fg[3] == 0.0 or charIsDefaultSpace or charIsEmpty);
+
+            if (bgInvisible and fgInvisible) return destCell;
+
+            const preserveChar = (fgInvisible and
+                hasBgAlpha and
                 destNotZero and
                 destNotDefaultSpace and
                 destWidthIsOne);
@@ -442,6 +449,7 @@ pub const OptimizedBuffer = struct {
             while (fillY <= endY) : (fillY += 1) {
                 var fillX = startX;
                 while (fillX <= endX) : (fillX += 1) {
+                    if (bg[3] == 0.0) continue;
                     try self.setCellWithAlphaBlending(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
                 }
             }
@@ -594,7 +602,7 @@ pub const OptimizedBuffer = struct {
                 const srcBg = frameBuffer.buffer.bg[srcIndex];
                 const srcAttr = frameBuffer.buffer.attributes[srcIndex];
 
-                if (srcBg[3] == 0.0 and srcFg[3] == 0.0) continue;
+                if (srcBg[3] == 0.0 and (srcFg[3] == 0.0 or srcChar == 0 or srcChar == DEFAULT_SPACE_CHAR)) continue;
 
                 if (graphemeAware) {
                     if (gp.isContinuationChar(srcChar)) {
