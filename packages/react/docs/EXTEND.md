@@ -91,7 +91,7 @@ Returns the current extended component catalogue (used internally by reconciler)
 
 1. **Declare types with module augmentation**: This provides full IntelliSense and type checking
 
-2. **Call `needsUpdate()`**: Don't forget to call `needsUpdate()` when properties change to trigger re-rendering
+2. **Call `requestRender()`**: Don't forget to call `requestRender()` when properties change to trigger re-rendering
 
 3. **Extend from appropriate base classes**: Use `BoxRenderable` for containers, `TextRenderable` for text, etc.
 
