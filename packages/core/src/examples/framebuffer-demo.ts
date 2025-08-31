@@ -117,7 +117,8 @@ export function run(renderer: CliRenderer): void {
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: RGBA.fromInts(0, 120, 120, 255),
+    backgroundColor: RGBA.fromInts(0, 120, 120, 150),
+    zIndex: 2,
   })
 
   boxObj.add(boxWrapper);
@@ -132,6 +133,7 @@ export function run(renderer: CliRenderer): void {
     top: 5,
     right:0,
     bottom:0,
+    zIndex: 2,
   }))
 
   const boxFrame = new FrameBufferRenderable(renderer, {
