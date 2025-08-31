@@ -191,10 +191,10 @@ export abstract class Renderable extends EventEmitter {
   public readonly id: string
   public readonly num: number
   protected _ctx: RenderContext
-  private _translateX: number = 0
-  private _translateY: number = 0
-  private _x: number = 0
-  private _y: number = 0
+  protected _translateX: number = 0
+  protected _translateY: number = 0
+  protected _x: number = 0
+  protected _y: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
   protected _widthValue: number = 0
@@ -433,6 +433,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set translateX(value: number) {
+    if (this._translateX === value) return
     this._translateX = value
     this.requestRender()
   }
@@ -442,6 +443,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public set translateY(value: number) {
+    if (this._translateY === value) return
     this._translateY = value
     this.requestRender()
   }
