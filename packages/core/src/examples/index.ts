@@ -24,6 +24,7 @@ import * as opentuiDemo from "./opentui-demo"
 import * as nestedZIndexDemo from "./nested-zindex-demo"
 import * as relativePositioningDemo from "./relative-positioning-demo"
 import * as transparencyDemo from "./transparency-demo"
+import * as scrollExample from "./scroll-example"
 import * as shaderCubeExample from "./shader-cube-demo"
 import * as spriteAnimationExample from "./sprite-animation-demo"
 import * as spriteParticleExample from "./sprite-particle-generator-demo"
@@ -169,6 +170,12 @@ const examples: Example[] = [
     description: "Loading and displaying textures",
     run: textureLoadingExample.run,
     destroy: textureLoadingExample.destroy,
+  },
+  {
+    name: "ScrollBox Demo",
+    description: "Scrollable container with customization",
+    run: scrollExample.run,
+    destroy: scrollExample.destroy,
   },
   {
     name: "Shader Cube",
