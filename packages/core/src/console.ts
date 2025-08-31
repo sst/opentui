@@ -47,7 +47,7 @@ enum LogLevel {
   DEBUG = "DEBUG",
 }
 
-export const capture = singleton("ConsoleCapture", () => new Capture())
+export const capture = new Capture()
 
 class TerminalConsoleCache extends EventEmitter {
   private _cachedLogs: [Date, LogLevel, any[], CallerInfo | null][] = []
