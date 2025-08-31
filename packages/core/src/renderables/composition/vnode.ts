@@ -184,12 +184,11 @@ export function wrapWithDelegates<T extends InstanceType<RenderableConstructor>>
   return proxy
 }
 
-export type InstantiateFn<NodeType extends VNode | Renderable> =
-  Renderable & { __node?: NodeType }
+export type InstantiateFn<NodeType extends VNode | Renderable> = Renderable & { __node?: NodeType }
 
 export function instantiate<NodeType extends VNode | Renderable>(
   ctx: RenderContext,
-  node: NodeType
+  node: NodeType,
 ): InstantiateFn<NodeType> {
   if (node instanceof Renderable) return node
 
@@ -237,40 +236,31 @@ export function instantiate<NodeType extends VNode | Renderable>(
   return wrapWithDelegates(inst, delegateMap) as InstantiateFn<NodeType>
 }
 
-export type DelegateMap<T> = Partial<Record<keyof T, string>>;
+export type DelegateMap<T> = Partial<Record<keyof T, string>>
 
 export type ValidateShape<Given, AllowedKeys> = {
-  [K in keyof Given]: K extends keyof AllowedKeys ? NonNullable<Given[K]> : never;
-};
+  [K in keyof Given]: K extends keyof AllowedKeys ? NonNullable<Given[K]> : never
+}
 
-type InferNode<T> = T extends InstantiateFn<infer U> ? U : never;
+type InferNode<T> = T extends InstantiateFn<infer U> ? U : never
 
 export function delegate<
   Factory extends InstantiateFn<any>,
   InnerNode extends InferNode<Factory>,
   TargetMap extends Record<keyof InnerNode, string>,
-  const Mapping extends Partial<TargetMap>
->(
-  mapping: ValidateShape<Mapping, TargetMap>,
-  vnode: Factory,
-): Renderable;
+  const Mapping extends Partial<TargetMap>,
+>(mapping: ValidateShape<Mapping, TargetMap>, vnode: Factory): Renderable
 
 export function delegate<
   ConstructorType extends RenderableConstructor<any>,
   TargetMap extends Record<keyof InstanceType<ConstructorType>, string>,
-  const Mapping extends Partial<TargetMap>
->(
-  mapping: ValidateShape<Mapping, TargetMap>,
-  vnode: ProxiedVNode<ConstructorType>,
-): ProxiedVNode<ConstructorType>;
+  const Mapping extends Partial<TargetMap>,
+>(mapping: ValidateShape<Mapping, TargetMap>, vnode: ProxiedVNode<ConstructorType>): ProxiedVNode<ConstructorType>
 
 export function delegate<
   ConstructorType extends RenderableConstructor<any>,
-  const Mapping extends DelegateMap<InstanceType<ConstructorType>>
->(
-  mapping: ValidateShape<Mapping, string>,
-  vnode: VNode & { type: ConstructorType },
-): VNode;
+  const Mapping extends DelegateMap<InstanceType<ConstructorType>>,
+>(mapping: ValidateShape<Mapping, string>, vnode: VNode & { type: ConstructorType }): VNode
 
 /**
  * Controlled delegation that routes selected properties/methods
@@ -281,9 +271,9 @@ export function delegate<NodeType extends VNode | Renderable | InstantiateFn<any
   vnode: NodeType,
 ): VNode | Renderable {
   if (vnode instanceof Renderable) {
-    return wrapWithDelegates(vnode, mapping);
+    return wrapWithDelegates(vnode, mapping)
   }
-  if (!vnode || typeof vnode !== "object") return vnode;
-  vnode.__delegateMap = { ...(vnode.__delegateMap || {}), ...mapping };
-  return vnode;
+  if (!vnode || typeof vnode !== "object") return vnode
+  vnode.__delegateMap = { ...(vnode.__delegateMap || {}), ...mapping }
+  return vnode
 }
