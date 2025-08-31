@@ -235,17 +235,27 @@ export function instantiate(ctx: RenderContext, node: VChild): Renderable {
 // to a descendant renderable identified by id.
 export type DelegateMap<T> = Partial<Record<keyof T, string>>
 
-export function delegate<TCtor extends RenderableConstructor<any>, K extends keyof InstanceType<TCtor>>(
-  mapping: Partial<Record<K, string>>,
+type ValidateShape<T, K> = {
+  [P in keyof T]: P extends K ? K : never
+}
+
+export function delegate<TCtor extends RenderableConstructor<any>, const TMap extends DelegateMap<InstanceType<TCtor>>>(
+  mapping: TMap & ValidateShape<TMap, string>,
   vnode: ProxiedVNode<TCtor>,
 ): ProxiedVNode<TCtor>
-export function delegate<TCtor extends RenderableConstructor<any>, K extends keyof InstanceType<TCtor>>(
-  mapping: Partial<Record<K, string>>,
-  vnode: VNode<any> & { type: TCtor },
+
+export function delegate<TCtor extends RenderableConstructor<any>, const TMap extends DelegateMap<InstanceType<TCtor>>>(
+  mapping: TMap & ValidateShape<TMap, string>,
+  vnode: VNode & { type: TCtor },
 ): VNode
-export function delegate(mapping: Record<string, string>, vnode: VNode<any>): VNode
-export function delegate(mapping: Record<string, string>, renderable: Renderable): Renderable
-export function delegate(mapping: any, vnode: VNode<any> | Renderable): VNode | Renderable {
+
+export function delegate(mapping: Record<string, string>, vnode: VNode): VNode
+export function delegate(mapping: Record<string, string>, vnode: Renderable): Renderable
+
+export function delegate(
+  mapping: Record<string, string>,
+  vnode: VNode | Renderable,
+): VNode | Renderable {
   if (vnode instanceof Renderable) {
     return wrapWithDelegates(vnode, mapping)
   }
