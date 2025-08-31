@@ -123,3 +123,73 @@ const textChunk: TextChunk = bold(`This is a text chunk.`)
 
 <textRenderable>This is plain text.</textRenderable>
 </template>
+
+## Composables
+
+@opentui/vue provides a set of composables to interact with the terminal and respond to events.
+
+### useCliRenderer
+
+This composable returns the underlying CliRenderer instance from @opentui/core.
+
+```ts
+import { useCliRenderer } from "@opentui/vue"
+
+const renderer = useCliRenderer()
+```
+
+### useKeyboard
+
+Listen to keypress events in your components.
+
+```jsx
+<script setup lang="ts">
+import { ref } from "vue"
+import { useKeyboard } from "@opentui/vue"
+import type { ParsedKey } from "@opentui/core"
+
+const lastKey = ref("")
+
+useKeyboard((key: ParsedKey) => {
+  lastKey.value = key.name
+})
+</script>
+
+<template>
+  <textRenderable>
+    Last key pressed: {{ lastKey }}
+  </textRenderable>
+</template>
+```
+
+### useOnResize
+
+Execute a callback function whenever the terminal window is resized.
+
+```vue
+<script setup lang="ts">
+import { useOnResize } from "@opentui/vue"
+
+useOnResize((width, height) => {
+  console.log(`Terminal resized to ${width}x${height}`)
+})
+</script>
+```
+
+### useTerminalDimensions
+
+Get the current terminal dimensions as a reactive object. The dimensions will automatically update when the terminal is resized.
+
+```jsx
+<script setup lang="ts">
+import { useTerminalDimensions } from "@opentui/vue"
+
+const dimensions = useTerminalDimensions()
+</script>
+
+<template>
+  <textRenderable>
+    Width: {{ dimensions.width }}, Height: {{ dimensions.height }}
+  </textRenderable>
+</template>
+```
