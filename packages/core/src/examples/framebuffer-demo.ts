@@ -97,6 +97,53 @@ export function run(renderer: CliRenderer): void {
     }
   }
 
+
+  const nestedBox = new BoxRenderable(renderer, {
+    id: "nested-box",
+    width: 20,
+    height: 10,
+    position: "absolute",
+    left: 4,
+    top: 4,
+    buffered: true,
+  })
+
+  const inset0 = {
+    position: "absolute" as const,
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  }
+
+  nestedBox.add(new BoxRenderable(renderer, {
+    ...inset0,
+    border: true,
+    title: 'Nested example',
+    backgroundColor: RGBA.fromInts(120, 0, 120, 120),
+  }));
+
+
+  const nestedInnerBox = new BoxRenderable(renderer, {
+    id: "nested-inner-box",
+    width: 10,
+    height: 4,
+    position: "absolute",
+    left: 5,
+    top: 3,
+    buffered: true,
+  })
+
+  nestedInnerBox.add(new BoxRenderable(renderer, {
+    ...inset0,
+    border: true,
+    title: 'Inner',
+    backgroundColor: RGBA.fromInts(0, 255, 0, 10),
+  }));
+
+  nestedBox.add(nestedInnerBox);
+  renderer.root.add(nestedBox);
+
   const boxObj = new BoxRenderable(renderer, {
     id: "moving-box",
     width: 20,
