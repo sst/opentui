@@ -4,11 +4,11 @@ import type {
   BoxProps,
   ExtendedIntrinsicElements,
   InputProps,
+  OpenTUIComponents,
   SelectProps,
   TabSelectProps,
   TextProps,
 } from "./src/types/elements"
-import type { OpenTUIComponents } from "@opentui/solid"
 
 declare namespace JSX {
   // Replace Node with Renderable
