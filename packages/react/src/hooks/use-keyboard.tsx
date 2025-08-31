@@ -13,5 +13,5 @@ export const useKeyboard = (handler: (key: ParsedKey) => void) => {
     return () => {
       keyHandler?.off("keypress", stableHandler)
     }
-  }, [])
+  }, [keyHandler, stableHandler])
 }
