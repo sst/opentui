@@ -1,7 +1,6 @@
 import {
   ASCIIFontRenderable,
   BoxRenderable,
-  GroupRenderable,
   InputRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -11,7 +10,6 @@ import {
 export const elements = {
   asciiFontRenderable: ASCIIFontRenderable,
   boxRenderable: BoxRenderable,
-  groupRenderable: GroupRenderable,
   inputRenderable: InputRenderable,
   selectRenderable: SelectRenderable,
   tabSelectRenderable: TabSelectRenderable,

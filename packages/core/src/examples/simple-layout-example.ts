@@ -1,11 +1,4 @@
-import {
-  CliRenderer,
-  GroupRenderable,
-  BoxRenderable,
-  TextRenderable,
-  createCliRenderer,
-  type ParsedKey,
-} from "../index"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type ParsedKey } from "../index"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -18,7 +11,7 @@ interface LayoutDemo {
 let renderer: CliRenderer | null = null
 let header: BoxRenderable | null = null
 let headerText: TextRenderable | null = null
-let contentArea: GroupRenderable | null = null
+let contentArea: BoxRenderable | null = null
 let sidebar: BoxRenderable | null = null
 let sidebarText: TextRenderable | null = null
 let mainContent: BoxRenderable | null = null
@@ -236,7 +229,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
 
   header.add(headerText)
 
-  contentArea = new GroupRenderable(renderer, {
+  contentArea = new BoxRenderable(renderer, {
     id: "content-area",
     zIndex: 0,
     width: "auto",

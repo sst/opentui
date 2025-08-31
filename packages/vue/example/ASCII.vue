@@ -45,7 +45,7 @@ const selectStyles = { flexGrow: 1 }
 </script>
 
 <template>
-  <groupRenderable :style="groupStyles">
+  <boxRenderable :style="groupStyles">
     <boxRenderable :style="boxStyles">
       <selectRenderable
         :focused="true"
@@ -56,5 +56,5 @@ const selectStyles = { flexGrow: 1 }
       ></selectRenderable>
     </boxRenderable>
     <asciiFontRenderable :style="{ width: dimensions.width, height: dimensions.height }" :text="text" :font="font" />
-  </groupRenderable>
+  </boxRenderable>
 </template>

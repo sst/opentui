@@ -3,7 +3,7 @@ import {
   TabSelectRenderable,
   TabSelectRenderableEvents,
   RenderableEvents,
-  GroupRenderable,
+  BoxRenderable,
   type TabSelectOption,
   type CliRenderer,
   t,
@@ -17,7 +17,7 @@ import { getKeyHandler } from "../lib/KeyHandler"
 let tabSelect: TabSelectRenderable | null = null
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: any) => void) | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 let keyLegendDisplay: TextRenderable | null = null
 let statusDisplay: TextRenderable | null = null
 let lastSelectedItem: TabSelectOption | null = null
@@ -86,10 +86,9 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "tab-select-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

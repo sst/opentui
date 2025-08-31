@@ -15,7 +15,6 @@ import type {
 import {
   ASCIIFontRenderable,
   BoxRenderable,
-  GroupRenderable,
   InputRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -27,7 +26,6 @@ export * from "./hooks"
 export const elements = {
   ascii_font: ASCIIFontRenderable,
   box: BoxRenderable,
-  group: GroupRenderable,
   input: InputRenderable,
   select: SelectRenderable,
   tab_select: TabSelectRenderable,
@@ -51,9 +49,6 @@ type ContainerProps = { children?: JSX.Element }
 
 export type BoxElementProps = ElementProps<BoxOptions, BoxRenderable, "title"> & ContainerProps
 export type BoxStyle = BoxElementProps["style"]
-
-export type GroupElementProps = ElementProps<RenderableOptions, GroupRenderable> & ContainerProps
-export type GroupStyle = GroupElementProps["style"]
 
 export type InputElementProps = ElementProps<
   InputRenderableOptions,

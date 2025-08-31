@@ -22,7 +22,7 @@ const description = computed(
 </script>
 
 <template>
-  <groupRenderable :style="{ flexDirection: 'column', flexGrow: 1 }">
+  <boxRenderable :style="{ flexDirection: 'column', flexGrow: 1 }">
     <tabSelectRenderable
       :height="2"
       width="100%"
@@ -34,5 +34,5 @@ const description = computed(
     <boxRenderable :style="{ paddingTop: 1 }">
       <textRenderable :content="description" />
     </boxRenderable>
-  </groupRenderable>
+  </boxRenderable>
 </template>

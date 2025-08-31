@@ -184,7 +184,12 @@ export function wrapWithDelegates<T extends InstanceType<RenderableConstructor>>
   return proxy
 }
 
-export function instantiate(ctx: RenderContext, node: VChild): Renderable {
+export type InstantiateFn<NodeType extends VNode | Renderable> = Renderable & { __node?: NodeType }
+
+export function instantiate<NodeType extends VNode | Renderable>(
+  ctx: RenderContext,
+  node: NodeType,
+): InstantiateFn<NodeType> {
   if (node instanceof Renderable) return node
 
   if (!node || typeof node !== "object") {
@@ -203,7 +208,7 @@ export function instantiate(ctx: RenderContext, node: VChild): Renderable {
       if (child instanceof Renderable) {
         instance.add(child)
       } else {
-        const mounted = instantiate(ctx, child)
+        const mounted = instantiate(ctx, child as NodeType)
         instance.add(mounted)
       }
     }
@@ -228,24 +233,43 @@ export function instantiate(ctx: RenderContext, node: VChild): Renderable {
   const resolved = (type as FunctionalConstruct)(props || ({} as any), children)
   const inst = instantiate(ctx, resolved)
 
-  return wrapWithDelegates(inst, delegateMap)
+  return wrapWithDelegates(inst, delegateMap) as InstantiateFn<NodeType>
 }
 
-// Controlled delegation that routes selected properties/methods
-// to a descendant renderable identified by id.
 export type DelegateMap<T> = Partial<Record<keyof T, string>>
 
-export function delegate<TCtor extends RenderableConstructor<any>, K extends keyof InstanceType<TCtor>>(
-  mapping: Partial<Record<K, string>>,
-  vnode: ProxiedVNode<TCtor>,
-): ProxiedVNode<TCtor>
-export function delegate<TCtor extends RenderableConstructor<any>, K extends keyof InstanceType<TCtor>>(
-  mapping: Partial<Record<K, string>>,
-  vnode: VNode<any> & { type: TCtor },
-): VNode
-export function delegate(mapping: Record<string, string>, vnode: VNode<any>): VNode
-export function delegate(mapping: Record<string, string>, renderable: Renderable): Renderable
-export function delegate(mapping: any, vnode: VNode<any> | Renderable): VNode | Renderable {
+export type ValidateShape<Given, AllowedKeys> = {
+  [K in keyof Given]: K extends keyof AllowedKeys ? NonNullable<Given[K]> : never
+}
+
+type InferNode<T> = T extends InstantiateFn<infer U> ? U : never
+
+export function delegate<
+  Factory extends InstantiateFn<any>,
+  InnerNode extends InferNode<Factory>,
+  TargetMap extends Record<keyof InnerNode, string>,
+  const Mapping extends Partial<TargetMap>,
+>(mapping: ValidateShape<Mapping, TargetMap>, vnode: Factory): Renderable
+
+export function delegate<
+  ConstructorType extends RenderableConstructor<any>,
+  TargetMap extends Record<keyof InstanceType<ConstructorType>, string>,
+  const Mapping extends Partial<TargetMap>,
+>(mapping: ValidateShape<Mapping, TargetMap>, vnode: ProxiedVNode<ConstructorType>): ProxiedVNode<ConstructorType>
+
+export function delegate<
+  ConstructorType extends RenderableConstructor<any>,
+  const Mapping extends DelegateMap<InstanceType<ConstructorType>>,
+>(mapping: ValidateShape<Mapping, string>, vnode: VNode & { type: ConstructorType }): VNode
+
+/**
+ * Controlled delegation that routes selected properties/methods
+ * to a descendant renderable identified by ID.
+ */
+export function delegate<NodeType extends VNode | Renderable | InstantiateFn<any>>(
+  mapping: Record<string, string>,
+  vnode: NodeType,
+): VNode | Renderable {
   if (vnode instanceof Renderable) {
     return wrapWithDelegates(vnode, mapping)
   }

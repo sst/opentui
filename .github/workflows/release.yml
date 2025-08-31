@@ -1,0 +1,91 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-zig:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+          - os: macos-13
+            target: x86_64-macos
+          - os: macos-latest
+            target: aarch64-macos
+          - os: windows-latest
+            target: x86_64-windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Build Zig library
+        run: |
+          cd packages/core/src/zig
+          zig build -Doptimize=ReleaseFast
+
+      - name: Upload library artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-${{ matrix.target }}
+          path: packages/core/src/zig/lib/
+
+  release:
+    needs: build-zig
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+
+          # Copy header file and install script
+          cp packages/go/opentui.h release-assets/
+          cp install.sh release-assets/
+          cp opentui.pc.in release-assets/
+
+          # Copy libraries with proper naming
+          for target in x86_64-linux x86_64-macos aarch64-macos x86_64-windows; do
+            if [ -d "artifacts/library-$target" ]; then
+              case $target in
+                *-linux)
+                  find artifacts/library-$target -name "*.so" -exec cp {} release-assets/libopentui-$target.so \;
+                  ;;
+                *-macos)  
+                  find artifacts/library-$target -name "*.dylib" -exec cp {} release-assets/libopentui-$target.dylib \;
+                  ;;
+                *-windows)
+                  find artifacts/library-$target -name "*.dll" -exec cp {} release-assets/opentui-$target.dll \;
+                  ;;
+              esac
+            fi
+          done
+
+          ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

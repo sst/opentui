@@ -116,6 +116,8 @@ pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
         try tty.writeAll(ansi.ANSI.colorSchemeReset);
         self.state.color_scheme_updates = false;
     }
+
+    self.setTerminalTitle(tty, "");
 }
 
 pub fn enterAltScreen(self: *Terminal, tty: AnyWriter) !void {
@@ -389,4 +391,10 @@ pub fn getCursorStyle(self: *Terminal) struct { style: CursorStyle, blinking: bo
 
 pub fn getCursorColor(self: *Terminal) [4]f32 {
     return self.state.cursor.color;
+}
+
+pub fn setTerminalTitle(_: *Terminal, tty: AnyWriter, title: []const u8) void {
+    // For Windows, we might need to use different approach, but ANSI sequences work in Windows Terminal, ConPTY, etc.
+    // For other platforms, ANSI OSC sequences work reliably
+    ansi.ANSI.setTerminalTitleOutput(tty, title) catch {};
 }

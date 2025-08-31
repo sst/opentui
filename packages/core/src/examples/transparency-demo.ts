@@ -2,7 +2,6 @@ import {
   TextAttributes,
   createCliRenderer,
   RGBA,
-  GroupRenderable,
   TextRenderable,
   BoxRenderable,
   OptimizedBuffer,
@@ -40,11 +39,9 @@ class DraggableTransparentBox extends BoxRenderable {
       height,
       zIndex,
       backgroundColor: bg,
-      titleAlignment: "center",
       position: "absolute",
       left: x,
       top: y,
-      border: true,
     })
     this.alphaPercentage = Math.round(bg.a * 100)
   }
@@ -78,11 +75,11 @@ class DraggableTransparentBox extends BoxRenderable {
 
       case "drag":
         if (this.isDragging) {
-          this.x = event.x - this.dragOffsetX
-          this.y = event.y - this.dragOffsetY
+          const newX = event.x - this.dragOffsetX
+          const newY = event.y - this.dragOffsetY
 
-          this.x = Math.max(0, Math.min(this.x, this._ctx.width - this.width))
-          this.y = Math.max(4, Math.min(this.y, this._ctx.height - this.height))
+          this.x = Math.max(0, Math.min(newX, this._ctx.width - this.width))
+          this.y = Math.max(4, Math.min(newY, this._ctx.height - this.height))
 
           event.preventDefault()
         }
@@ -95,10 +92,9 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#0A0E14")
 
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "parent-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

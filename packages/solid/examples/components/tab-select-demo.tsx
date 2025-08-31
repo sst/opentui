@@ -42,7 +42,7 @@ export default function TabSelectDemo() {
   useKeyHandler((key) => {})
 
   return (
-    <group style={{ flexDirection: "column", flexGrow: 1 }}>
+    <box style={{ flexDirection: "column", flexGrow: 1 }}>
       <tab_select
         height={2}
         width="100%"
@@ -65,7 +65,7 @@ export default function TabSelectDemo() {
           <text>Tab 2/6 - Use Left/Right arrows to navigate | Press Ctrl+C to exit | D: toggle debug</text>
         </Match>
       </Switch>
-    </group>
+    </box>
   )
 }
 

@@ -1,4 +1,4 @@
-import { CliRenderer, createCliRenderer, FrameBufferRenderable, RGBA, GroupRenderable, TextRenderable } from "../index"
+import { BoxRenderable, CliRenderer, createCliRenderer, FrameBufferRenderable, RGBA, TextRenderable } from "../index"
 import { renderFontToFrameBuffer } from "../lib/ascii.font"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -6,7 +6,7 @@ let scrollY = 0
 let contentHeight = 56
 let buffer: FrameBufferRenderable | null = null
 let renderer: CliRenderer | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 
 function updateScrollPosition(): void {
   if (!buffer || !renderer) return
@@ -14,7 +14,7 @@ function updateScrollPosition(): void {
   const maxScroll = Math.max(0, contentHeight - renderer.terminalHeight)
   scrollY = Math.max(0, Math.min(scrollY, maxScroll))
   buffer.y = -scrollY
-  renderer.needsUpdate()
+  renderer.requestRender()
 }
 
 function handleKeyPress(key: string): void {
@@ -39,7 +39,7 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#000028")
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "fonts-container",
     zIndex: 15,
     visible: true,

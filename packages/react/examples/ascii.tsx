@@ -12,7 +12,7 @@ export const App = () => {
   })
 
   return (
-    <group style={{ paddingLeft: 1, paddingRight: 1 }}>
+    <box style={{ paddingLeft: 1, paddingRight: 1 }}>
       <box
         style={{
           height: 8,
@@ -51,7 +51,7 @@ export const App = () => {
       </box>
 
       <ascii-font style={{ width, height }} text={text} font={font} />
-    </group>
+    </box>
   )
 }
 

@@ -3,7 +3,6 @@ import type {
   ASCIIFontRenderable,
   BoxOptions,
   BoxRenderable,
-  GroupRenderable,
   InputRenderable,
   InputRenderableOptions,
   Renderable,
@@ -98,8 +97,6 @@ export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
 }
 
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
-
-export type GroupProps = ComponentProps<ContainerProps<RenderableOptions>, GroupRenderable>
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
   focused?: boolean

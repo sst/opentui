@@ -7,6 +7,10 @@ const GHOST_NODE_TAG = "text-ghost" as const
 
 const ChunkToTextNodeMap = new WeakMap<TextChunk, TextNode>()
 
+export const isTextChunk = (node: any): node is TextChunk => {
+  return typeof node === "object" && "__isChunk" in node
+}
+
 /**
  * Represents a text node in the SolidJS reconciler.
  */
@@ -83,6 +87,9 @@ export class TextNode {
       }
     }
     textParent.content = styledText
+    // Solid creates empty text nodes to cleanup a child array. This
+    // handles such cases.
+    textParent.visible = styledText.toString() !== ""
     this.parent = parent
   }
 

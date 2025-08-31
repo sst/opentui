@@ -2,7 +2,6 @@ import type * as React from "react"
 import type {
   AsciiFontProps,
   BoxProps,
-  GroupProps,
   InputProps,
   SelectProps,
   TabSelectProps,
@@ -28,7 +27,6 @@ export namespace JSX {
   interface IntrinsicElements extends React.JSX.IntrinsicElements, ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps
     text: TextProps
-    group: GroupProps
     input: InputProps
     select: SelectProps
     "ascii-font": AsciiFontProps

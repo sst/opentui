@@ -1,6 +1,6 @@
 import { Renderable, type RenderableOptions, RenderableEvents } from "../../Renderable"
 import { OptimizedBuffer } from "../../buffer"
-import { GroupRenderable } from "../../renderables"
+import { BoxRenderable } from "../../renderables"
 import { TabSelectRenderable, TabSelectRenderableEvents } from "../../renderables/TabSelect"
 import type { CliRenderer, TabSelectOption } from "../../index"
 import { parseColor, type ColorInput } from "../../lib/RGBA"
@@ -82,7 +82,7 @@ export class TabControllerRenderable extends Renderable {
   }
 
   public addTab(tabObject: TabObject): Tab {
-    const tabGroup = new GroupRenderable(this.ctx, {
+    const tabGroup = new BoxRenderable(this.ctx, {
       id: `${this.id}-tab-${this.tabs.length}`,
       left: 0,
       top: this.tabBarHeight,

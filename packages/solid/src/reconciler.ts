@@ -13,15 +13,50 @@ import {
 } from "@opentui/core"
 import { createRenderer } from "solid-js/universal"
 import { elements, RendererContext, type Element } from "./elements"
-import { TextNode } from "./elements/text-node"
+import { TextNode, isTextChunk } from "./elements/text-node"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 import { useContext } from "solid-js"
 
-export type DomNode = Renderable | TextNode
+export type DomNode = Renderable | TextNode | TextChunk
+
+/**
+ * Gets the id of a node, or content if it's a text chunk.
+ * Intended for use in logging.
+ * @param node The node to get the id of.
+ * @returns Log-friendly id of the node.
+ */
+const logId = (node?: DomNode): string | undefined => {
+  if (!node) return undefined
+  if (isTextChunk(node)) {
+    return node.plainText
+  }
+  return node.id
+}
 
 function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
-  log("Inserting node:", node.id, "into parent:", parent.id, "with anchor:", anchor?.id)
+  log(
+    "Inserting node:",
+    logId(node),
+    "into parent:",
+    logId(parent),
+    "with anchor:",
+    logId(anchor),
+    node instanceof TextNode,
+  )
+
+  if (node instanceof StyledText) {
+    log("Inserting styled text:", node.toString())
+    for (const chunk of node.chunks) {
+      _insertNode(parent, _createTextNode(chunk), anchor)
+      return
+    }
+  }
+
+  if (isTextChunk(node)) {
+    _insertNode(parent, _createTextNode(node), anchor)
+    return
+  }
 
   if (node instanceof TextNode) {
     return node.insert(parent, anchor)
@@ -33,6 +68,11 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   }
 
   if (anchor) {
+    if (isTextChunk(anchor)) {
+      console.warn("Cannot add non text node with text chunk anchor")
+      return
+    }
+
     const anchorIndex = parent.getChildren().findIndex((el) => {
       if (anchor instanceof TextNode) {
         return el.id === anchor.textParent?.id
@@ -46,7 +86,19 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 }
 
 function _removeNode(parent: DomNode, node: DomNode): void {
-  log("Removing node:", node.id, "from parent:", parent.id)
+  log("Removing node:", logId(node), "from parent:", logId(parent))
+  if (isTextChunk(node)) {
+    const textNode = TextNode.getTextNodeFromChunk(node)
+    if (textNode) {
+      _removeNode(parent, textNode)
+    }
+  } else if (node instanceof StyledText) {
+    for (const chunk of node.chunks) {
+      const textNode = TextNode.getTextNodeFromChunk(chunk)
+      if (!textNode) continue
+      _removeNode(parent, textNode)
+    }
+  }
   if (node instanceof TextNode) {
     return node.remove(parent)
   }
@@ -54,6 +106,20 @@ function _removeNode(parent: DomNode, node: DomNode): void {
     parent.remove(node.id)
     node.destroyRecursively()
   }
+}
+
+function _createTextNode(value?: string | number | boolean | TextChunk): TextNode {
+  log("Creating text node:", value)
+  const chunk: TextChunk =
+    value && isTextChunk(value)
+      ? value
+      : {
+          __isChunk: true,
+          text: new TextEncoder().encode(`${value}`),
+          plainText: `${value}`,
+        }
+  const textNode = new TextNode(chunk)
+  return textNode
 }
 
 export const {
@@ -64,7 +130,7 @@ export const {
   createElement,
   createTextNode,
   insertNode,
-  insert: solidUniversalInsert,
+  insert,
   spread,
   setProp,
   mergeProps,
@@ -82,23 +148,15 @@ export const {
     return element
   },
 
-  createTextNode(value: string | number | boolean | TextChunk): DomNode {
-    log("Creating text node:", value)
-    const chunk: TextChunk =
-      typeof value === "object" && "__isChunk" in value
-        ? value
-        : {
-            __isChunk: true,
-            text: new TextEncoder().encode(`${value}`),
-            plainText: `${value}`,
-          }
-    const textNode = new TextNode(chunk)
-    return textNode
-  },
+  createTextNode: _createTextNode,
 
-  replaceText(textNode: DomNode, value: string): void {
-    log("Replacing text:", value, "in node:", textNode.id)
+  replaceText(textNode: TextNode, value: string): void {
+    log("Replacing text:", value, "in node:", logId(textNode))
     if (textNode instanceof Renderable) return
+    if (isTextChunk(textNode)) {
+      console.warn("Cannot replace text on text chunk", logId(textNode))
+      return
+    }
     const newChunk: TextChunk = {
       __isChunk: true,
       text: new TextEncoder().encode(value),
@@ -109,9 +167,9 @@ export const {
 
   setProperty(node: DomNode, name: string, value: any, prev: any): void {
     // log("Setting property:", name, "on node:", node.id);
-    if (node instanceof TextNode) {
+    if (node instanceof TextNode || isTextChunk(node)) {
       // TODO: implement <b> and <i> tags property setters here
-      console.warn("Cannot set property on text node:", node.id)
+      console.warn("Cannot set property on text node:", logId(node))
       return
     }
 
@@ -222,21 +280,27 @@ export const {
 
   removeNode: _removeNode,
 
-  getParentNode(node: DomNode): DomNode | undefined {
-    log("Getting parent of node:", node.id)
+  getParentNode(childNode: DomNode): DomNode | undefined {
+    log("Getting parent of node:", logId(childNode))
+    let node = childNode as Renderable | TextNode
+    if (isTextChunk(childNode)) {
+      const parentTextNode = TextNode.getTextNodeFromChunk(childNode)
+      if (!parentTextNode) return undefined
+      node = parentTextNode
+    }
     const parent = node.parent
 
     if (!parent) {
-      log("No parent found for node:", node.id)
+      log("No parent found for node:", logId(node))
       return undefined
     }
 
-    log("Parent found:", parent.id, "for node:", node.id)
+    log("Parent found:", logId(parent), "for node:", logId(node))
     return parent
   },
 
   getFirstChild(node: DomNode): DomNode | undefined {
-    log("Getting first child of node:", node.id)
+    log("Getting first child of node:", logId(node))
     if (node instanceof TextRenderable) {
       const chunk = node.content.chunks[0]
       if (chunk) {
@@ -245,25 +309,30 @@ export const {
         return undefined
       }
     }
-    if (node instanceof TextNode) {
+    if (node instanceof TextNode || isTextChunk(node)) {
       return undefined
     }
     const firstChild = node.getChildren()[0]
 
     if (!firstChild) {
-      log("No first child found for node:", node.id)
+      log("No first child found for node:", logId(node))
       return undefined
     }
 
-    log("First child found:", firstChild.id, "for node:", node.id)
+    log("First child found:", logId(firstChild), "for node:", logId(node))
     return firstChild
   },
 
   getNextSibling(node: DomNode): DomNode | undefined {
-    log("Getting next sibling of node:", node.id)
+    log("Getting next sibling of node:", logId(node))
+    if (isTextChunk(node)) {
+      // unreachable
+      console.warn("Cannot get next sibling of text chunk")
+      return undefined
+    }
     const parent = node.parent
     if (!parent) {
-      log("No parent found for node:", node.id)
+      log("No parent found for node:", logId(node))
       return undefined
     }
 
@@ -273,20 +342,20 @@ export const {
         const index = siblings.indexOf(node.chunk)
 
         if (index === -1 || index === siblings.length - 1) {
-          log("No next sibling found for node:", node.id)
+          log("No next sibling found for node:", logId(node))
           return undefined
         }
 
         const nextSibling = siblings[index + 1]
 
         if (!nextSibling) {
-          log("Next sibling is null for node:", node.id)
+          log("Next sibling is null for node:", logId(node))
           return undefined
         }
 
         return TextNode.getTextNodeFromChunk(nextSibling)
       }
-      console.warn("Text parent is not a text node:", node.id)
+      console.warn("Text parent is not a text node:", logId(node))
       return undefined
     }
 
@@ -294,62 +363,18 @@ export const {
     const index = siblings.indexOf(node)
 
     if (index === -1 || index === siblings.length - 1) {
-      log("No next sibling found for node:", node.id)
+      log("No next sibling found for node:", logId(node))
       return undefined
     }
 
     const nextSibling = siblings[index + 1]
 
     if (!nextSibling) {
-      log("Next sibling is null for node:", node.id)
+      log("Next sibling is null for node:", logId(node))
       return undefined
     }
 
-    log("Next sibling found:", nextSibling.id, "for node:", node.id)
+    log("Next sibling found:", logId(nextSibling), "for node:", logId(node))
     return nextSibling
   },
 })
-
-const insertStyledText = (parent: any, value: any, current: any, marker: any) => {
-  while (typeof current === "function") current = current()
-  if (value === current) return current
-
-  if (current) {
-    if (typeof current === "object" && "__isChunk" in current) {
-      // log("[Reconciler] Removing current:", current);
-      const node = TextNode.getTextNodeFromChunk(current)
-      if (node) {
-        // log("[Reconciler] Removing chunk:", current.text);
-        _removeNode(parent, node)
-      }
-    } else if (current instanceof StyledText) {
-      // log("[Reconciler] Removing current:", current);
-      for (const chunk of current.chunks) {
-        const chunkNode = TextNode.getTextNodeFromChunk(chunk)
-        if (!chunkNode) continue
-        // log("[Reconciler] Removing styled text:", chunk.text);
-        _removeNode(parent, chunkNode)
-      }
-    }
-  }
-
-  if (value instanceof StyledText) {
-    log("Inserting styled text:", value.toString())
-    for (const chunk of value.chunks) {
-      // @ts-expect-error: Sending chunk to createTextNode which is not typed but supported
-      insertNode(parent, createTextNode(chunk), marker)
-    }
-    return value
-  } else if (value && typeof value === "object" && "__isChunk" in value) {
-    insertNode(parent, createTextNode(value), marker)
-    return value
-  }
-  return solidUniversalInsert(parent, value, marker, current)
-}
-
-export const insert: typeof solidUniversalInsert = (parent, accessor, marker, initial) => {
-  if (marker !== undefined && !initial) initial = []
-  if (typeof accessor !== "function") return insertStyledText(parent, accessor, initial, marker)
-  // @ts-expect-error: Copied from js implementation, not typed
-  effect((current) => insertStyledText(parent, accessor(), current, marker), initial)
-}

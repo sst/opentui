@@ -1,7 +1,6 @@
 import {
   ASCIIFontRenderable,
   BoxRenderable,
-  GroupRenderable,
   InputRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -22,10 +21,6 @@ import { h, type VNode, type VChild, type ProxiedVNode } from "./vnode"
 
 export function Generic(props?: VRenderableOptions, ...children: VChild[]) {
   return h(VRenderable, props || {}, ...children)
-}
-
-export function Group(props?: RenderableOptions<any>, ...children: VChild[]) {
-  return h(GroupRenderable, props || {}, ...children)
 }
 
 export function Box(props?: BoxOptions, ...children: VChild[]) {

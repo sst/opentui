@@ -258,25 +258,6 @@ tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index, option) => {
 tabs.focus()
 ```
 
-### Group
-
-A container for organizing and laying out child elements without visual styling.
-
-```typescript
-import { GroupRenderable } from "@opentui/core"
-
-const layout = new GroupRenderable(renderer, {
-  id: "layout",
-  flexDirection: "column",
-  width: "100%",
-  height: "100%",
-})
-
-layout.add(header)
-layout.add(contentArea)
-layout.add(footer)
-```
-
 ### ASCIIFont
 
 Display text using ASCII art fonts with multiple font styles available.

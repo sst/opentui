@@ -1,11 +1,4 @@
-import {
-  CliRenderer,
-  GroupRenderable,
-  BoxRenderable,
-  TextRenderable,
-  createCliRenderer,
-  type ParsedKey,
-} from "../index"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type ParsedKey } from "../index"
 import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
 import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select"
 import { getKeyHandler } from "../lib/KeyHandler"
@@ -14,13 +7,13 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 let renderer: CliRenderer | null = null
 let header: TextRenderable | null = null
 let headerBox: BoxRenderable | null = null
-let selectContainer: GroupRenderable | null = null
+let selectContainer: BoxRenderable | null = null
 let selectContainerBox: BoxRenderable | null = null
 let leftSelect: SelectRenderable | null = null
 let leftSelectBox: BoxRenderable | null = null
 let rightSelect: SelectRenderable | null = null
 let rightSelectBox: BoxRenderable | null = null
-let inputContainer: GroupRenderable | null = null
+let inputContainer: BoxRenderable | null = null
 let inputContainerBox: BoxRenderable | null = null
 let inputLabel: TextRenderable | null = null
 let textInput: InputRenderable | null = null
@@ -91,7 +84,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  selectContainer = new GroupRenderable(renderer, {
+  selectContainer = new BoxRenderable(renderer, {
     id: "select-container",
     zIndex: 1,
     width: "auto",
@@ -198,7 +191,7 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
     border: true,
   })
 
-  inputContainer = new GroupRenderable(renderer, {
+  inputContainer = new BoxRenderable(renderer, {
     id: "input-container",
     zIndex: 1,
     width: "auto",

@@ -27,7 +27,7 @@ export class FrameBufferRenderable extends Renderable {
 
     this.frameBuffer.resize(width, height)
     super.onResize(width, height)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

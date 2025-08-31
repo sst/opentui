@@ -3,7 +3,6 @@ import {
   rgbToHex,
   hsvToRgb,
   createCliRenderer,
-  GroupRenderable,
   TextRenderable,
   BoxRenderable,
   parseColor,
@@ -142,7 +141,7 @@ export function run(renderer: CliRenderer): void {
         tabGroup.add(gradientPixel)
       }
     },
-    update: (deltaMs: number, tabGroup: GroupRenderable) => {
+    update: (deltaMs: number, tabGroup: BoxRenderable) => {
       // Animate the rotating color wheel
       const time = Date.now() / 1000
       const rotationSpeed = 45 // degrees per second
@@ -303,7 +302,7 @@ export function run(renderer: CliRenderer): void {
       })
       tabGroup.add(cursorInfo)
     },
-    update: (deltaMs: number, tabGroup: GroupRenderable) => {
+    update: (deltaMs: number, tabGroup: BoxRenderable) => {
       // Update cursor position (make it move in a small circle)
       const cursorTime = Date.now() / 1000
       const cursorX = 15 + Math.floor(3 * Math.cos(cursorTime))
@@ -663,7 +662,7 @@ export function run(renderer: CliRenderer): void {
       })
       tabGroup.add(starLabel)
     },
-    update: (deltaMs: number, tabGroup: GroupRenderable) => {
+    update: (deltaMs: number, tabGroup: BoxRenderable) => {
       // Animate partial borders
       const time = Date.now() / 1000
       const phase = Math.floor(time % 8)
@@ -765,7 +764,7 @@ export function run(renderer: CliRenderer): void {
       })
       tabGroup.add(colorBoxTitle)
     },
-    update: (deltaMs: number, tabGroup: GroupRenderable) => {
+    update: (deltaMs: number, tabGroup: BoxRenderable) => {
       // Animate moving elements
       const deltaTime = Math.min(deltaMs / 1000, 0.1)
       animPosition += animSpeed * animDirection * deltaTime
@@ -990,7 +989,7 @@ export function run(renderer: CliRenderer): void {
       })
       tabGroup.add(borderState)
     },
-    update: (deltaMs: number, tabGroup: GroupRenderable) => {
+    update: (deltaMs: number, tabGroup: BoxRenderable) => {
       // Update interactive border state
       const interactiveBorder = tabGroup.getRenderable("interactive-border") as BoxRenderable
       if (interactiveBorder) {

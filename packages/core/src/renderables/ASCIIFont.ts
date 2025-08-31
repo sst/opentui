@@ -71,7 +71,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     this.updateDimensions()
     this.selectionHelper.reevaluateSelection(this.width, this.height)
     this.renderFontToBuffer()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   get font(): keyof typeof fonts {
@@ -83,7 +83,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     this.updateDimensions()
     this.selectionHelper.reevaluateSelection(this.width, this.height)
     this.renderFontToBuffer()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   get fg(): RGBA[] {
@@ -97,7 +97,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
       this._fg = [typeof value === "string" ? parseColor(value) : value]
     }
     this.renderFontToBuffer()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   get bg(): RGBA {
@@ -107,7 +107,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
   set bg(value: RGBA | string) {
     this._bg = typeof value === "string" ? parseColor(value) : value
     this.renderFontToBuffer()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   private updateDimensions(): void {
@@ -124,7 +124,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
     if (changed) {
       this.renderFontToBuffer()
-      this.needsUpdate()
+      this.requestRender()
     }
     return this.selectionHelper.hasSelection()
   }

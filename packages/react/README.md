@@ -15,12 +15,12 @@ import { render } from "@opentui/react"
 
 function App() {
   return (
-    <group>
+    <box>
       <text fg="#00FF00">Hello, Terminal!</text>
       <box title="Welcome" padding={2}>
-        <text>Welcome to OpenTUI with React!"</text>
+        <text>Welcome to OpenTUI with React!</text>
       </box>
-    </group>
+    </box>
   )
 }
 
@@ -35,7 +35,6 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 
 - **`<text>`** - Display text with styling
 - **`<box>`** - Container with borders and layout
-- **`<group>`** - Layout container for organizing components
 - **`<input>`** - Text input field
 - **`<select>`** - Selection dropdown
 - **`<tab-select>`** - Tab-based selection
@@ -147,14 +146,14 @@ function MyComponent() {
   const { width, height } = useTerminalDimensions()
 
   return (
-    <group>
+    <box>
       <text>
         Terminal dimensions: {width}x{height}
       </text>
       <box style={{ width: Math.floor(width / 2), height: Math.floor(height / 3) }}>
         <text>Half-width, third-height box</text>
       </box>
-    </group>
+    </box>
   )
 }
 ```
@@ -172,7 +171,7 @@ import { bold, fg, t } from "@opentui/core"
 
 function TextExample() {
   return (
-    <group>
+    <box>
       {/* Simple text */}
       <text>Hello World</text>
 
@@ -181,7 +180,7 @@ function TextExample() {
 
       {/* Template literals */}
       <text>{t`${bold("Bold")} and ${fg("blue")("Blue")}`}</text>
-    </group>
+    </box>
   )
 }
 ```
@@ -193,7 +192,7 @@ Container with borders and layout capabilities.
 ```tsx
 function BoxExample() {
   return (
-    <group flexDirection="column">
+    <box flexDirection="column">
       {/* Basic box */}
       <box>
         <text>Simple box</text>
@@ -216,26 +215,7 @@ function BoxExample() {
       >
         <text>Centered content</text>
       </box>
-    </group>
-  )
-}
-```
-
-### Group Component
-
-Layout container for organizing multiple components.
-
-```tsx
-function GroupExample() {
-  return (
-    <group flexDirection="row">
-      <box>
-        <text>Left</text>
-      </box>
-      <box>
-        <text>Right</text>
-      </box>
-    </group>
+    </box>
   )
 }
 ```
@@ -318,7 +298,7 @@ function ASCIIFontExample() {
   })
 
   return (
-    <group style={{ paddingLeft: 1, paddingRight: 1 }}>
+    <box style={{ paddingLeft: 1, paddingRight: 1 }}>
       <box
         style={{
           height: 8,
@@ -356,7 +336,7 @@ function ASCIIFontExample() {
       </box>
 
       <ascii-font style={{ width, height }} text={text} font={font} />
-    </group>
+    </box>
   )
 }
 ```
@@ -390,7 +370,7 @@ function LoginForm() {
   }, [username, password])
 
   return (
-    <group style={{ padding: 2, flexDirection: "column" }}>
+    <box style={{ padding: 2, flexDirection: "column" }}>
       <text fg="#FFFF00">Login Form</text>
 
       <box title="Username" style={{ width: 40, height: 3, marginTop: 1 }}>
@@ -418,7 +398,7 @@ function LoginForm() {
       >
         {status.toUpperCase()}
       </text>
-    </group>
+    </box>
   )
 }
 
@@ -460,7 +440,7 @@ import { render } from "@opentui/react"
 
 function StyledTextShowcase() {
   return (
-    <group style={{ flexDirection: "column" }}>
+    <box style={{ flexDirection: "column" }}>
       <text>Simple text</text>
       <text>{bold("Bold text")}</text>
       <text>{underline("Underlined text")}</text>
@@ -468,7 +448,7 @@ function StyledTextShowcase() {
       <text>{blue("Blue text")}</text>
       <text>{bold(red("Bold red text"))}</text>
       <text>{t`${bold("Bold")} and ${blue("blue")} combined`}</text>
-    </group>
+    </box>
   )
 }
 
@@ -504,7 +484,7 @@ class ButtonRenderable extends BoxRenderable {
 
   set label(value: string) {
     this._label = value
-    this.needsUpdate()
+    this.requestRender()
   }
 }
 
@@ -521,10 +501,10 @@ extend({ button: ButtonRenderable })
 // Use in JSX
 function App() {
   return (
-    <group>
+    <box>
       <button label="Click me!" style={{ backgroundColor: "blue" }} />
       <button label="Another button" style={{ backgroundColor: "green" }} />
-    </group>
+    </box>
   )
 }
 

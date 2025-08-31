@@ -3,7 +3,7 @@ import { render } from "@opentui/react"
 export const App = () => {
   return (
     <>
-      <group flexDirection="row">
+      <box flexDirection="row">
         <box border borderStyle="single">
           <text content="Single" />
         </box>
@@ -16,7 +16,7 @@ export const App = () => {
         <box border borderStyle="heavy">
           <text content="Heavy" />
         </box>
-      </group>
+      </box>
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
-import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable, BoxRenderable } from "../index"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 class TimelineExample {
@@ -9,7 +9,7 @@ class TimelineExample {
   private renderer: CliRenderer
   private boxObject: BoxRenderable
   private alternatingObject: BoxRenderable
-  private parentContainer: GroupRenderable
+  private parentContainer: BoxRenderable
 
   private statusLine1: TextRenderable
   private statusLine2: TextRenderable
@@ -44,10 +44,9 @@ class TimelineExample {
     this._mainTimeline.sync(this._subTimeline1, 0)
     this._mainTimeline.sync(this._subTimeline2, 3000)
 
-    this.parentContainer = new GroupRenderable(renderer, {
+    this.parentContainer = new BoxRenderable(renderer, {
       id: "timeline-container",
       zIndex: 10,
-      visible: true,
     })
     this.renderer.root.add(this.parentContainer)
 

@@ -187,7 +187,7 @@ export class TabSelectRenderable extends Renderable {
     this._options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public getSelectedOption(): TabSelectOption | null {
@@ -208,7 +208,7 @@ export class TabSelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
     this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -222,7 +222,7 @@ export class TabSelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
     this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -237,7 +237,7 @@ export class TabSelectRenderable extends Renderable {
     if (index >= 0 && index < this._options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
-      this.needsUpdate()
+      this.requestRender()
       this.emit(TabSelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
     }
   }
@@ -251,14 +251,14 @@ export class TabSelectRenderable extends Renderable {
 
     if (newScrollOffset !== this.scrollOffset) {
       this.scrollOffset = newScrollOffset
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   protected onResize(width: number, height: number): void {
     this.maxVisibleTabs = Math.max(1, Math.floor(width / this._tabWidth))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public setTabWidth(tabWidth: number): void {
@@ -268,7 +268,7 @@ export class TabSelectRenderable extends Renderable {
     this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this._tabWidth))
 
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public getTabWidth(): number {
@@ -304,42 +304,42 @@ export class TabSelectRenderable extends Renderable {
     this._options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set backgroundColor(color: ColorInput) {
     this._backgroundColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set textColor(color: ColorInput) {
     this._textColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set focusedBackgroundColor(color: ColorInput) {
     this._focusedBackgroundColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set focusedTextColor(color: ColorInput) {
     this._focusedTextColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set selectedBackgroundColor(color: ColorInput) {
     this._selectedBackgroundColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set selectedTextColor(color: ColorInput) {
     this._selectedTextColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set selectedDescriptionColor(color: ColorInput) {
     this._selectedDescriptionColor = parseColor(color)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public get showDescription(): boolean {
@@ -351,7 +351,7 @@ export class TabSelectRenderable extends Renderable {
       this._showDescription = show
       const newHeight = this.calculateDynamicHeight()
       this.height = newHeight
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -364,7 +364,7 @@ export class TabSelectRenderable extends Renderable {
       this._showUnderline = show
       const newHeight = this.calculateDynamicHeight()
       this.height = newHeight
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -375,7 +375,7 @@ export class TabSelectRenderable extends Renderable {
   public set showScrollArrows(show: boolean) {
     if (this._showScrollArrows !== show) {
       this._showScrollArrows = show
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -398,6 +398,6 @@ export class TabSelectRenderable extends Renderable {
     this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this._tabWidth))
 
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 }

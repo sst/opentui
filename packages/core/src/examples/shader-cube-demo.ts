@@ -1,13 +1,6 @@
 #!/usr/bin/env bun
 
-import {
-  createCliRenderer,
-  CliRenderer,
-  GroupRenderable,
-  TextRenderable,
-  BoxRenderable,
-  FrameBufferRenderable,
-} from "../index"
+import { createCliRenderer, CliRenderer, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA } from "../lib"
 import { TextureUtils } from "../3d/TextureUtils"
@@ -55,7 +48,7 @@ interface ShaderCubeDemoState {
   specularMapEnabled: boolean
   normalMapEnabled: boolean
   emissiveMapEnabled: boolean
-  parentContainer: GroupRenderable
+  parentContainer: BoxRenderable
   backgroundBox: BoxRenderable
   lightVizText: TextRenderable
   lightColorText: TextRenderable
@@ -90,10 +83,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   ]
 
   // Create parent container for all UI elements
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "shader-cube-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

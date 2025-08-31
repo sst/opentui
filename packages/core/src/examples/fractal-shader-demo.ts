@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable } from "../index"
+import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { Scene as ThreeScene, Mesh as ThreeMesh, PerspectiveCamera, PlaneGeometry, Vector2 } from "three"
 import { MeshBasicNodeMaterial } from "three/webgpu"
@@ -34,17 +34,16 @@ let timeSpeed = 1.0
 let paused = false
 let keyHandler: ((key: Buffer) => void) | null = null
 let handleResize: ((width: number, height: number) => void) | null = null
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 
 export async function run(renderer: CliRenderer): Promise<void> {
   renderer.start()
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "fractal-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

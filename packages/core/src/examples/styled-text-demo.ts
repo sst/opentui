@@ -9,15 +9,14 @@ import {
   green,
   bgYellow,
   fg,
-  GroupRenderable,
+  BoxRenderable,
   type ParsedKey,
 } from "../index"
 import { TextRenderable } from "../renderables/Text"
-import { BoxRenderable } from "../renderables/Box"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { getKeyHandler } from "../lib/KeyHandler"
 
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 let counter = 0
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
 let updateFrequency = 1 // Updates per frame (1 = every frame, 2 = every 2 frames, etc.)
@@ -32,10 +31,9 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#001122")
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "styled-text-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 
@@ -246,7 +244,7 @@ Calculated: ${fg("#00FFFF")(Math.floor(Math.random() * 100))}`
   })
   parentContainer.add(typesDisplay)
 
-  renderer.needsUpdate()
+  renderer.requestRender()
 }
 
 export function destroy(rendererInstance: CliRenderer): void {

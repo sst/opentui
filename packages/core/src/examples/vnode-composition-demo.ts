@@ -1,5 +1,15 @@
 import { createCliRenderer, MouseEvent, type CliRenderer } from "../renderer"
-import { Group, Box, Text, Generic, type VNode, instantiate, delegate, Input } from "../renderables"
+import {
+  Box,
+  Text,
+  Generic,
+  type VNode,
+  instantiate,
+  delegate,
+  Input,
+  BoxRenderable,
+  type BoxOptions,
+} from "../renderables"
 import type { RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -165,7 +175,46 @@ function LabeledInput(props: { id: string; label: string; placeholder: string })
   )
 }
 
+function BaseBox(props: BoxOptions, children: VNode[] = []) {
+  return Box(
+    {
+      id: "base-box",
+      border: true,
+      borderColor: "blue",
+      backgroundColor: "orange",
+      ...props,
+      renderAfter(buffer: OptimizedBuffer, deltaTime: number) {
+        buffer.drawText("Hello", this.x + 1, this.y + 1, RGBA.fromInts(255, 255, 255, 255))
+        props.renderAfter?.call(this, buffer, deltaTime)
+      },
+    },
+    children,
+  )
+}
+
+function ExtendedBaseBox(props: BoxOptions, children: VNode[] = []) {
+  return BaseBox(
+    {
+      id: "extended-base-box",
+      ...props,
+      renderAfter(buffer: OptimizedBuffer, deltaTime: number) {
+        buffer.drawText("Extended", this.x + 1, this.y + 2, RGBA.fromInts(255, 255, 255, 255))
+      },
+    },
+    children,
+  )
+}
+
 export function run(renderer: CliRenderer) {
+  renderer.start()
+  const mainGroup = new BoxRenderable(renderer, {
+    id: "main-group",
+  })
+  renderer.root.add(mainGroup)
+
+  // BaseBox example
+  mainGroup.add(ExtendedBaseBox({ width: 20, height: 10, position: "absolute", left: 55, top: 10, zIndex: 1000 }))
+
   // Proxied VNode example
   const tree = MyRenderable({ id: "demo-root" }, [
     Box({ id: "child-1", width: 20, height: 3, border: true, marginBottom: 1 }, [Text({ content: "Hello" })]),
@@ -173,11 +222,11 @@ export function run(renderer: CliRenderer) {
   ])
   tree.backgroundColor = RGBA.fromInts(0, 155, 155, 100)
 
-  renderer.root.add(tree)
+  mainGroup.add(tree)
 
   const input = LabeledInput({ id: "labeled-input", label: "Label:", placeholder: "Enter your text..." })
   input.focus()
-  renderer.root.add(input)
+  mainGroup.add(input)
 
   //
   // VNode delegated version
@@ -189,7 +238,7 @@ export function run(renderer: CliRenderer) {
   ])
   instance1.backgroundColor = RGBA.fromInts(155, 0, 155, 100)
 
-  renderer.root.add(instance1)
+  mainGroup.add(instance1)
 
   //
   // Instaced Delegated version
@@ -198,7 +247,7 @@ export function run(renderer: CliRenderer) {
     Box({ id: "child-2", width: 24, height: 3, border: true }, [Text({ content: "VNode world 2" })]),
   ])
 
-  renderer.root.add(instance)
+  mainGroup.add(instance)
 
   // Delegated to __box3, would otherwise end up in the top-level group!
   instance.add(Box({ id: "child-3", width: 24, height: 3, border: true }, [Text({ content: "VNode world 3" })]))
@@ -210,21 +259,21 @@ export function run(renderer: CliRenderer) {
     Box({ id: "child-1", width: 20, height: 3, border: true, marginBottom: 1 }, [Text({ content: "Hello 4" })]),
     Box({ id: "child-2", width: 24, height: 3, border: true }, [Text({ content: "VNode world 4" })]),
   ])
-  renderer.root.add(renderableInstance)
+  mainGroup.add(renderableInstance)
 
   // Delegated to __box4, would otherwise end up in the top-level group!
   renderableInstance.add(Button({ title: "Click me too!", onClick: () => console.log("clicked"), borderColor: "red" }))
 
   //
   // Add animated VNode button
-  renderer.root.add(
+  mainGroup.add(
     VNodeButton({
       title: "Animated VNode",
       onClick: () => console.log("vnode 1 clicked"),
       borderColor: RGBA.fromInts(0, 0, 255, 255),
     }),
   )
-  renderer.root.add(
+  mainGroup.add(
     VNodeButton({
       title: "Same VNode, different props",
       onClick: () => console.log("vnode 2 clicked"),
@@ -234,7 +283,7 @@ export function run(renderer: CliRenderer) {
 
   //
   // Add button with class render function
-  renderer.root.add(
+  mainGroup.add(
     ButtonWithClassRender({
       marginLeft: 1,
       title: "ClassRender",
@@ -245,8 +294,8 @@ export function run(renderer: CliRenderer) {
 }
 
 export function destroy(renderer: CliRenderer) {
-  renderer.root.remove("demo-root")
-  renderer.needsUpdate()
+  renderer.root.getRenderable("main-group")?.destroyRecursively()
+  renderer.requestRender()
 }
 
 if (import.meta.main) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import { CliRenderer, createCliRenderer, RGBA, TextRenderable, FrameBufferRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -35,7 +35,7 @@ interface SpriteAnimationDemoState {
   addedSprites: TiledSprite[]
   activeExplosionHandles: ExplosionHandle[]
   isPerspectiveActive: boolean
-  parentContainer: GroupRenderable
+  parentContainer: BoxRenderable
   instructionsText: TextRenderable
   cameraModeText: TextRenderable
   keyHandler: ((key: Buffer) => void) | null
@@ -48,10 +48,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "sprite-animation-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

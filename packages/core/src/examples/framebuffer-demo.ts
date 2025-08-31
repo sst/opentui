@@ -5,9 +5,9 @@ import {
   createCliRenderer,
   RGBA,
   TextAttributes,
-  GroupRenderable,
   TextRenderable,
   FrameBufferRenderable,
+  BoxRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -30,17 +30,16 @@ let growingWidth = true
 let growingHeight = true
 let lastResizeTime = 0
 const resizeInterval = 0.1
-let parentContainer: GroupRenderable | null = null
+let parentContainer: BoxRenderable | null = null
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
   const backgroundColor = RGBA.fromInts(10, 10, 30)
   renderer.setBackgroundColor(backgroundColor)
 
-  parentContainer = new GroupRenderable(renderer, {
+  parentContainer = new BoxRenderable(renderer, {
     id: "framebuffer-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

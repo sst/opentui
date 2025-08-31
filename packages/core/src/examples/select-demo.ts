@@ -3,12 +3,12 @@ import {
   SelectRenderable,
   SelectRenderableEvents,
   RenderableEvents,
-  GroupRenderable,
   type SelectOption,
   type CliRenderer,
   t,
   bold,
   fg,
+  BoxRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextRenderable } from "../renderables/Text"
@@ -90,10 +90,9 @@ export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "parent-container",
     zIndex: 10,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 

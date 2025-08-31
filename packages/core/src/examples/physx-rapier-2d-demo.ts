@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, GroupRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import { CliRenderer, TextRenderable, FrameBufferRenderable, BoxRenderable } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -55,7 +55,7 @@ interface DemoState {
   maxInstancesReached: boolean
   crateResource: any
   crateDef: SpriteDefinition
-  parentContainer: GroupRenderable
+  parentContainer: BoxRenderable
   instructionsText: TextRenderable
   controlsText: TextRenderable
   statsText: TextRenderable
@@ -82,10 +82,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
-  const parentContainer = new GroupRenderable(renderer, {
+  const parentContainer = new BoxRenderable(renderer, {
     id: "rapier-container",
     zIndex: 15,
-    visible: true,
   })
   renderer.root.add(parentContainer)
 
