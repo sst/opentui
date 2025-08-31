@@ -130,7 +130,7 @@ export const {
   createElement,
   createTextNode,
   insertNode,
-  insert: solidUniversalInsert,
+  insert,
   spread,
   setProp,
   mergeProps,
@@ -378,5 +378,3 @@ export const {
     return nextSibling
   },
 })
-
-export const insert = solidUniversalInsert
