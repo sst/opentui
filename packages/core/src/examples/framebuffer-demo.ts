@@ -132,7 +132,6 @@ export function run(renderer: CliRenderer): void {
     top: 5,
     right:0,
     bottom:0,
-    bg: RGBA.fromInts(255,255,0,60),
   }))
 
   const boxFrame = new FrameBufferRenderable(renderer, {
@@ -198,24 +197,24 @@ export function run(renderer: CliRenderer): void {
     10,
     2,
     RGBA.fromInts(255, 255, 255),
-    RGBA.fromInts(0, 120, 180, 200),
+    RGBA.fromInts(0, 120, 180, 180),
     TextAttributes.BOLD,
   )
   overlayBuffer.drawText(
     "This overlay has transparent",
     5,
     5,
-    RGBA.fromInts(255, 255, 255),
-    RGBA.fromInts(0, 120, 180, 200),
+    RGBA.fromInts(255, 0, 255),
+    RGBA.fromInts(0, 120, 180, 180),
   )
   overlayBuffer.drawText(
     "cells that let content below",
     5,
     6,
     RGBA.fromInts(255, 255, 255),
-    RGBA.fromInts(0, 120, 180, 200),
+    RGBA.fromInts(0, 120, 180, 180),
   )
-  overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(0, 120, 180, 200))
+  overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(0, 120, 180, 180))
 
   const ballObj = new FrameBufferRenderable(renderer, {
     id: "ball",
@@ -509,7 +508,7 @@ export function run(renderer: CliRenderer): void {
         10,
         2,
         RGBA.fromInts(255, 255, 255),
-        RGBA.fromInts(255, 255, 255, 200),
+        RGBA.fromInts(255, 255, 255, 180),
         TextAttributes.BOLD,
       )
       overlayBuffer.drawText(
@@ -517,16 +516,16 @@ export function run(renderer: CliRenderer): void {
         5,
         5,
         RGBA.fromInts(255, 255, 255),
-        RGBA.fromInts(255, 255, 255, 200),
+        RGBA.fromInts(255, 255, 255, 180),
       )
       overlayBuffer.drawText(
         "cells that let content below",
         5,
         6,
         RGBA.fromInts(255, 255, 255),
-        RGBA.fromInts(255, 255, 255, 200),
+        RGBA.fromInts(255, 255, 255, 180),
       )
-      overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(255, 255, 255, 200))
+      overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(255, 255, 255, 180))
     }
   })
 

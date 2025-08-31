@@ -92,16 +92,18 @@ fn blendColors(overlay: RGBA, base: RGBA, backgroundMode: bool) RGBA {
     }
 
     const alpha = overlay[3];
-    var perceptualAlpha: f32 = undefined;
+    var perceptualAlpha: f32 = alpha;
 
-    // For overlay-on-text blending, use perceptual curve for better visual
-    // For high alpha values (>0.8), use a more aggressive curve
-    if (alpha > 0.8) {
-        const normalizedHighAlpha = (alpha - 0.8) * 5.0;
-        const curvedHighAlpha = std.math.pow(f32, normalizedHighAlpha, 0.2);
-        perceptualAlpha = 0.8 + (curvedHighAlpha * 0.2);
-    } else {
-        perceptualAlpha = std.math.pow(f32, alpha, 0.9);
+    if (!backgroundMode) {
+        // For overlay-on-text blending, use perceptual curve for better visual
+        // For high alpha values (>0.8), use a more aggressive curve
+        if (alpha > 0.8) {
+            const normalizedHighAlpha = (alpha - 0.8) * 5.0;
+            const curvedHighAlpha = std.math.pow(f32, normalizedHighAlpha, 0.2);
+            perceptualAlpha = 0.8 + (curvedHighAlpha * 0.2);
+        } else {
+            perceptualAlpha = std.math.pow(f32, alpha, 0.9);
+        }
     }
 
     const overlayVec = Vec3f{ overlay[0], overlay[1], overlay[2] };
