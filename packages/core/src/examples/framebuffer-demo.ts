@@ -97,7 +97,6 @@ export function run(renderer: CliRenderer): void {
     }
   }
 
-
   const nestedBox = new BoxRenderable(renderer, {
     id: "nested-box",
     width: 20,
@@ -116,13 +115,14 @@ export function run(renderer: CliRenderer): void {
     bottom: 0,
   }
 
-  nestedBox.add(new BoxRenderable(renderer, {
-    ...inset0,
-    border: true,
-    title: 'Nested example',
-    backgroundColor: RGBA.fromInts(120, 0, 120, 120),
-  }));
-
+  nestedBox.add(
+    new BoxRenderable(renderer, {
+      ...inset0,
+      border: true,
+      title: "Nested example",
+      backgroundColor: RGBA.fromInts(120, 0, 120, 120),
+    }),
+  )
 
   const nestedInnerBox = new BoxRenderable(renderer, {
     id: "nested-inner-box",
@@ -134,15 +134,17 @@ export function run(renderer: CliRenderer): void {
     buffered: true,
   })
 
-  nestedInnerBox.add(new BoxRenderable(renderer, {
-    ...inset0,
-    border: true,
-    title: 'Inner',
-    backgroundColor: RGBA.fromInts(0, 255, 0, 10),
-  }));
+  nestedInnerBox.add(
+    new BoxRenderable(renderer, {
+      ...inset0,
+      border: true,
+      title: "Inner",
+      backgroundColor: RGBA.fromInts(0, 255, 0, 10),
+    }),
+  )
 
-  nestedBox.add(nestedInnerBox);
-  renderer.root.add(nestedBox);
+  nestedBox.add(nestedInnerBox)
+  renderer.root.add(nestedBox)
 
   const boxObj = new BoxRenderable(renderer, {
     id: "moving-box",
