@@ -1103,7 +1103,10 @@ export abstract class Renderable extends EventEmitter {
     }
 
     if (this.buffered && this.frameBuffer) {
+      // Overflow hidden
       buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer, this.x, this.y, this.width, this.height)
+      // Overflow visible
+      // buffer.drawFrameBuffer(0, 0, this.frameBuffer)
     }
   }
 
