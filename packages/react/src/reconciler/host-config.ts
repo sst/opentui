@@ -75,7 +75,7 @@ export const hostConfig: HostConfig<
   // Reset after commit
   resetAfterCommit(containerInfo: Container) {
     // Trigger a render update if needed
-    containerInfo.needsUpdate()
+    containerInfo.requestRender()
   },
 
   // Get root container
@@ -141,13 +141,13 @@ export const hostConfig: HostConfig<
   // Commit update
   commitUpdate(instance: Instance, type: Type, oldProps: Props, newProps: Props, internalInstanceHandle: any) {
     updateProperties(instance, type, oldProps, newProps)
-    instance.needsUpdate()
+    instance.requestRender()
   },
 
   // Commit text update
   commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string) {
     textInstance.content = newText
-    textInstance.needsUpdate()
+    textInstance.requestRender()
   },
 
   // Append child to container
@@ -162,25 +162,25 @@ export const hostConfig: HostConfig<
   // Hide instance
   hideInstance(instance: Instance) {
     instance.visible = false
-    instance.needsUpdate()
+    instance.requestRender()
   },
 
   // Unhide instance
   unhideInstance(instance: Instance, props: Props) {
     instance.visible = true
-    instance.needsUpdate()
+    instance.requestRender()
   },
 
   // Hide text instance
   hideTextInstance(textInstance: TextInstance) {
     textInstance.visible = false
-    textInstance.needsUpdate()
+    textInstance.requestRender()
   },
 
   // Unhide text instance
   unhideTextInstance(textInstance: TextInstance, text: string) {
     textInstance.visible = true
-    textInstance.needsUpdate()
+    textInstance.requestRender()
   },
 
   // Clear container

@@ -283,7 +283,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._focused) {
       this.blur()
     }
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public hasSelection(): boolean {
@@ -313,7 +313,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._focused || !this.focusable) return
 
     this._focused = true
-    this.needsUpdate()
+    this.requestRender()
 
     this.keypressHandler = (key: ParsedKey) => {
       this._keyListeners["down"]?.(key)
@@ -335,7 +335,7 @@ export abstract class Renderable extends EventEmitter {
     if (!this._focused || !this.focusable) return
 
     this._focused = false
-    this.needsUpdate()
+    this.requestRender()
 
     if (this.keypressHandler) {
       this.keyHandler.off("keypress", this.keypressHandler)
@@ -409,9 +409,9 @@ export abstract class Renderable extends EventEmitter {
     this._dirty = false
   }
 
-  public needsUpdate() {
+  public requestRender() {
     this._dirty = true
-    this._ctx.needsUpdate()
+    this._ctx.requestRender()
   }
 
   public get x(): number {
@@ -484,7 +484,7 @@ export abstract class Renderable extends EventEmitter {
     if (isDimensionType(value)) {
       this._width = value
       this.layoutNode.setWidth(value)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -496,7 +496,7 @@ export abstract class Renderable extends EventEmitter {
     if (isDimensionType(value)) {
       this._height = value
       this.layoutNode.setHeight(value)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -648,7 +648,7 @@ export abstract class Renderable extends EventEmitter {
 
     this._positionType = positionType
     this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public setPosition(position: Position): void {
@@ -688,66 +688,66 @@ export abstract class Renderable extends EventEmitter {
         node.setPosition(Edge.Left, left)
       }
     }
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set flexGrow(grow: number) {
     this.layoutNode.yogaNode.setFlexGrow(grow)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set flexShrink(shrink: number) {
     this.layoutNode.yogaNode.setFlexShrink(shrink)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set flexDirection(direction: FlexDirectionString) {
     this.layoutNode.yogaNode.setFlexDirection(parseFlexDirection(direction))
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set alignItems(alignItems: AlignString) {
     this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set justifyContent(justifyContent: JustifyString) {
     this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set flexBasis(basis: number | "auto" | undefined) {
     if (isFlexBasisType(basis)) {
       this.layoutNode.yogaNode.setFlexBasis(basis)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set minWidth(minWidth: number | `${number}%` | undefined) {
     if (isSizeType(minWidth)) {
       this.layoutNode.yogaNode.setMinWidth(minWidth)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set maxWidth(maxWidth: number | `${number}%` | undefined) {
     if (isSizeType(maxWidth)) {
       this.layoutNode.yogaNode.setMaxWidth(maxWidth)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set minHeight(minHeight: number | `${number}%` | undefined) {
     if (isSizeType(minHeight)) {
       this.layoutNode.yogaNode.setMinHeight(minHeight)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
     if (isSizeType(maxHeight)) {
       this.layoutNode.yogaNode.setMaxHeight(maxHeight)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -758,35 +758,35 @@ export abstract class Renderable extends EventEmitter {
       node.setMargin(Edge.Right, margin)
       node.setMargin(Edge.Bottom, margin)
       node.setMargin(Edge.Left, margin)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Top, margin)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Right, margin)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Bottom, margin)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
       this.layoutNode.yogaNode.setMargin(Edge.Left, margin)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -797,35 +797,35 @@ export abstract class Renderable extends EventEmitter {
       node.setPadding(Edge.Right, padding)
       node.setPadding(Edge.Bottom, padding)
       node.setPadding(Edge.Left, padding)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set paddingTop(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Top, padding)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set paddingRight(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Right, padding)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set paddingBottom(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Bottom, padding)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
       this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -855,7 +855,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._visible) {
       this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -931,7 +931,7 @@ export abstract class Renderable extends EventEmitter {
       this.propagateLiveCount(obj._liveCount)
     }
 
-    this.needsUpdate()
+    this.requestRender()
 
     return insertedIndex
   }
@@ -983,7 +983,7 @@ export abstract class Renderable extends EventEmitter {
 
         const childLayoutNode = obj.getLayoutNode()
         this.layoutNode.removeChild(childLayoutNode)
-        this.needsUpdate()
+        this.requestRender()
 
         obj.onRemove()
         obj.parent = null

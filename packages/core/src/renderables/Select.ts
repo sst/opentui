@@ -114,7 +114,7 @@ export class SelectRenderable extends Renderable {
     )
     this._fastScrollStep = options.fastScrollStep || this._defaultOptions.fastScrollStep
 
-    this.needsUpdate() // Initial render needed
+    this.requestRender() // Initial render needed
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -210,7 +210,7 @@ export class SelectRenderable extends Renderable {
     this._options = options
     this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public getSelectedOption(): SelectOption | null {
@@ -233,7 +233,7 @@ export class SelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
     this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -249,7 +249,7 @@ export class SelectRenderable extends Renderable {
     }
 
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
     this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
   }
 
@@ -264,7 +264,7 @@ export class SelectRenderable extends Renderable {
     if (index >= 0 && index < this._options.length) {
       this.selectedIndex = index
       this.updateScrollOffset()
-      this.needsUpdate()
+      this.requestRender()
       this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
     }
   }
@@ -280,14 +280,14 @@ export class SelectRenderable extends Renderable {
 
     if (newScrollOffset !== this.scrollOffset) {
       this.scrollOffset = newScrollOffset
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   protected onResize(width: number, height: number): void {
     this.maxVisibleItems = Math.max(1, Math.floor(height / this.linesPerItem))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
@@ -318,7 +318,7 @@ export class SelectRenderable extends Renderable {
 
   public set showScrollIndicator(show: boolean) {
     this._showScrollIndicator = show
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public get showDescription(): boolean {
@@ -339,7 +339,7 @@ export class SelectRenderable extends Renderable {
 
       this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
       this.updateScrollOffset()
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -355,7 +355,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
     if (this._backgroundColor !== newColor) {
       this._backgroundColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -363,7 +363,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.textColor)
     if (this._textColor !== newColor) {
       this._textColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -371,7 +371,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.focusedBackgroundColor)
     if (this._focusedBackgroundColor !== newColor) {
       this._focusedBackgroundColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -379,7 +379,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.focusedTextColor)
     if (this._focusedTextColor !== newColor) {
       this._focusedTextColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -387,7 +387,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.selectedBackgroundColor)
     if (this._selectedBackgroundColor !== newColor) {
       this._selectedBackgroundColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -395,7 +395,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.selectedTextColor)
     if (this._selectedTextColor !== newColor) {
       this._selectedTextColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -403,7 +403,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.descriptionColor)
     if (this._descriptionColor !== newColor) {
       this._descriptionColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -411,7 +411,7 @@ export class SelectRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.selectedDescriptionColor)
     if (this._selectedDescriptionColor !== newColor) {
       this._selectedDescriptionColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -428,7 +428,7 @@ export class SelectRenderable extends Renderable {
     this.linesPerItem += this._itemSpacing
     this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set itemSpacing(spacing: number) {
@@ -443,7 +443,7 @@ export class SelectRenderable extends Renderable {
     this.linesPerItem += this._itemSpacing
     this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
     this.updateScrollOffset()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public set fastScrollStep(step: number) {

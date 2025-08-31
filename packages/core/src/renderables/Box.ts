@@ -97,7 +97,7 @@ export class BoxRenderable extends Renderable {
   public set customBorderChars(value: BorderCharacters | undefined) {
     this._customBorderCharsObj = value
     this._customBorderChars = value ? borderCharsToArray(value) : undefined
-    this.needsUpdate()
+    this.requestRender()
   }
 
   public get backgroundColor(): RGBA {
@@ -108,7 +108,7 @@ export class BoxRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
     if (this._backgroundColor !== newColor) {
       this._backgroundColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -121,7 +121,7 @@ export class BoxRenderable extends Renderable {
       this._border = value
       this.borderSides = getBorderSides(value)
       this.applyYogaBorders()
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -134,7 +134,7 @@ export class BoxRenderable extends Renderable {
     if (this._borderStyle !== _value) {
       this._borderStyle = _value
       this._customBorderChars = undefined
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -146,7 +146,7 @@ export class BoxRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.borderColor)
     if (this._borderColor !== newColor) {
       this._borderColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -159,7 +159,7 @@ export class BoxRenderable extends Renderable {
     if (this._focusedBorderColor !== newColor) {
       this._focusedBorderColor = newColor
       if (this._focused) {
-        this.needsUpdate()
+        this.requestRender()
       }
     }
   }
@@ -171,7 +171,7 @@ export class BoxRenderable extends Renderable {
   public set title(value: string | undefined) {
     if (this._title !== value) {
       this._title = value
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -182,7 +182,7 @@ export class BoxRenderable extends Renderable {
   public set titleAlignment(value: "left" | "center" | "right") {
     if (this._titleAlignment !== value) {
       this._titleAlignment = value
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -211,7 +211,7 @@ export class BoxRenderable extends Renderable {
     node.setBorder(Edge.Right, this.borderSides.right ? 1 : 0)
     node.setBorder(Edge.Top, this.borderSides.top ? 1 : 0)
     node.setBorder(Edge.Bottom, this.borderSides.bottom ? 1 : 0)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   private applyYogaGap(options: BoxOptions): void {
@@ -233,21 +233,21 @@ export class BoxRenderable extends Renderable {
   public set gap(gap: number | `${number}%` | undefined) {
     if (isGapType(gap)) {
       this.layoutNode.yogaNode.setGap(Gutter.All, gap)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set rowGap(rowGap: number | `${number}%` | undefined) {
     if (isGapType(rowGap)) {
       this.layoutNode.yogaNode.setGap(Gutter.Row, rowGap)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
   public set columnGap(columnGap: number | `${number}%` | undefined) {
     if (isGapType(columnGap)) {
       this.layoutNode.yogaNode.setGap(Gutter.Column, columnGap)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 }

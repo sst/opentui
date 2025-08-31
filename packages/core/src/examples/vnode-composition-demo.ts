@@ -295,7 +295,7 @@ export function run(renderer: CliRenderer) {
 
 export function destroy(renderer: CliRenderer) {
   renderer.root.getRenderable("main-group")?.destroyRecursively()
-  renderer.needsUpdate()
+  renderer.requestRender()
 }
 
 if (import.meta.main) {
