@@ -100,6 +100,7 @@ export class TextRenderable extends Renderable {
     const newColor = value ? parseColor(value) : this._defaultOptions.selectionBg
     if (this._selectionBg !== newColor) {
       this._selectionBg = newColor
+      this.syncSelectionToTextBuffer()
       this.requestRender()
     }
   }
@@ -112,6 +113,7 @@ export class TextRenderable extends Renderable {
     const newColor = value ? parseColor(value) : this._defaultOptions.selectionFg
     if (this._selectionFg !== newColor) {
       this._selectionFg = newColor
+      this.syncSelectionToTextBuffer()
       this.requestRender()
     }
   }
