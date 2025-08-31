@@ -86,7 +86,7 @@ fn isRGBAWithAlpha(color: RGBA) bool {
     return color[3] < 1.0;
 }
 
-fn blendColors(overlay: RGBA, text: RGBA) RGBA {
+fn blendColors(overlay: RGBA, base: RGBA, backgroundMode: bool) RGBA {
     if (overlay[3] == 1.0) {
         return overlay;
     }
@@ -94,6 +94,7 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     const alpha = overlay[3];
     var perceptualAlpha: f32 = undefined;
 
+    // For overlay-on-text blending, use perceptual curve for better visual
     // For high alpha values (>0.8), use a more aggressive curve
     if (alpha > 0.8) {
         const normalizedHighAlpha = (alpha - 0.8) * 5.0;
@@ -104,12 +105,17 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     }
 
     const overlayVec = Vec3f{ overlay[0], overlay[1], overlay[2] };
-    const textVec = Vec3f{ text[0], text[1], text[2] };
+    const baseVec = Vec3f{ base[0], base[1], base[2] };
     const alphaSplat = @as(Vec3f, @splat(perceptualAlpha));
     const oneMinusAlpha = @as(Vec3f, @splat(1.0 - perceptualAlpha));
-    const blended = overlayVec * alphaSplat + textVec * oneMinusAlpha;
+    const blended = overlayVec * alphaSplat + baseVec * oneMinusAlpha;
 
-    return .{ blended[0], blended[1], blended[2], text[3] };
+    const finalAlpha = if (backgroundMode)
+        perceptualAlpha + base[3] * (1.0 - perceptualAlpha)
+    else
+        base[3];
+
+    return .{ blended[0], blended[1], blended[2], finalAlpha };
 }
 
 /// Optimized buffer for terminal rendering
@@ -342,7 +348,7 @@ pub const OptimizedBuffer = struct {
         const hasFgAlpha = isRGBAWithAlpha(overlayCell.fg);
 
         if (hasBgAlpha or hasFgAlpha) {
-            const blendedBgRgb = if (hasBgAlpha) blendColors(overlayCell.bg, destCell.bg) else overlayCell.bg;
+            const blendedBgRgb = if (hasBgAlpha) blendColors(overlayCell.bg, destCell.bg, true) else overlayCell.bg;
 
             const charIsDefaultSpace = overlayCell.char == DEFAULT_SPACE_CHAR;
             const charIsEmpty = overlayCell.char == 0;
@@ -364,9 +370,9 @@ pub const OptimizedBuffer = struct {
 
             var finalFg: RGBA = undefined;
             if (preserveChar) {
-                finalFg = blendColors(overlayCell.bg, destCell.fg);
+                finalFg = blendColors(overlayCell.bg, destCell.fg, false);
             } else {
-                finalFg = if (hasFgAlpha) blendColors(overlayCell.fg, destCell.bg) else overlayCell.fg;
+                finalFg = if (hasFgAlpha) blendColors(overlayCell.fg, destCell.bg, false) else overlayCell.fg;
             }
 
             const finalAttributes = if (preserveChar) destCell.attributes else overlayCell.attributes;
@@ -374,7 +380,7 @@ pub const OptimizedBuffer = struct {
             return Cell{
                 .char = finalChar,
                 .fg = finalFg,
-                .bg = .{ blendedBgRgb[0], blendedBgRgb[1], blendedBgRgb[2], overlayCell.bg[3] },
+                .bg = blendedBgRgb,
                 .attributes = finalAttributes,
             };
         }

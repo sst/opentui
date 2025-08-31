@@ -132,6 +132,7 @@ export function run(renderer: CliRenderer): void {
     top: 5,
     right:0,
     bottom:0,
+    bg: RGBA.fromInts(255,255,0,60),
   }))
 
   const boxFrame = new FrameBufferRenderable(renderer, {
