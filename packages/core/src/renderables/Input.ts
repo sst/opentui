@@ -164,7 +164,7 @@ export class InputRenderable extends Renderable {
     if (this._value !== newValue) {
       this._value = newValue
       this._cursorPosition = Math.min(this._cursorPosition, this._value.length)
-      this.needsUpdate()
+      this.requestRender()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this._value)
     }
@@ -173,7 +173,7 @@ export class InputRenderable extends Renderable {
   public set placeholder(placeholder: string) {
     if (this._placeholder !== placeholder) {
       this._placeholder = placeholder
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -181,7 +181,7 @@ export class InputRenderable extends Renderable {
     const newPosition = Math.max(0, Math.min(position, this._value.length))
     if (this._cursorPosition !== newPosition) {
       this._cursorPosition = newPosition
-      this.needsUpdate()
+      this.requestRender()
       this.updateCursorPosition()
     }
   }
@@ -195,7 +195,7 @@ export class InputRenderable extends Renderable {
     const afterCursor = this._value.substring(this._cursorPosition)
     this._value = beforeCursor + text + afterCursor
     this._cursorPosition += text.length
-    this.needsUpdate()
+    this.requestRender()
     this.updateCursorPosition()
     this.emit(InputRenderableEvents.INPUT, this._value)
   }
@@ -206,14 +206,14 @@ export class InputRenderable extends Renderable {
       const afterCursor = this._value.substring(this._cursorPosition)
       this._value = beforeCursor + afterCursor
       this._cursorPosition--
-      this.needsUpdate()
+      this.requestRender()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this._value)
     } else if (direction === "forward" && this._cursorPosition < this._value.length) {
       const beforeCursor = this._value.substring(0, this._cursorPosition)
       const afterCursor = this._value.substring(this._cursorPosition + 1)
       this._value = beforeCursor + afterCursor
-      this.needsUpdate()
+      this.requestRender()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this._value)
     }
@@ -277,7 +277,7 @@ export class InputRenderable extends Renderable {
     this._maxLength = maxLength
     if (this._value.length > maxLength) {
       this._value = this._value.substring(0, maxLength)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -285,7 +285,7 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
     if (this._backgroundColor !== newColor) {
       this._backgroundColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -293,7 +293,7 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.textColor)
     if (this._textColor !== newColor) {
       this._textColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -301,7 +301,7 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.focusedBackgroundColor)
     if (this._focusedBackgroundColor !== newColor) {
       this._focusedBackgroundColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -309,7 +309,7 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.focusedTextColor)
     if (this._focusedTextColor !== newColor) {
       this._focusedTextColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -317,7 +317,7 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.placeholderColor)
     if (this._placeholderColor !== newColor) {
       this._placeholderColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -325,7 +325,7 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.cursorColor)
     if (this._cursorColor !== newColor) {
       this._cursorColor = newColor
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 

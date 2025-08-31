@@ -77,7 +77,7 @@ export class TextRenderable extends Renderable {
     if (value) {
       this._defaultFg = parseColor(value)
       this.textBuffer.setDefaultFg(this._defaultFg)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -89,7 +89,7 @@ export class TextRenderable extends Renderable {
     if (value) {
       this._defaultBg = parseColor(value)
       this.textBuffer.setDefaultBg(this._defaultBg)
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -100,14 +100,14 @@ export class TextRenderable extends Renderable {
   set attributes(value: number) {
     this._defaultAttributes = value
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
-    this.needsUpdate()
+    this.requestRender()
   }
 
   protected onResize(width: number, height: number): void {
     const changed = this.selectionHelper.reevaluateSelection(width, height)
     if (changed) {
       this.syncSelectionToTextBuffer()
-      this.needsUpdate()
+      this.requestRender()
     }
   }
 
@@ -134,7 +134,7 @@ export class TextRenderable extends Renderable {
     }
 
     this.layoutNode.yogaNode.markDirty()
-    this.needsUpdate()
+    this.requestRender()
   }
 
   private setupMeasureFunc(): void {
@@ -179,7 +179,7 @@ export class TextRenderable extends Renderable {
     const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
     if (changed) {
       this.syncSelectionToTextBuffer()
-      this.needsUpdate()
+      this.requestRender()
     }
     return this.selectionHelper.hasSelection()
   }
