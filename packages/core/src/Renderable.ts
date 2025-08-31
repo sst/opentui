@@ -9,11 +9,15 @@ import {
   parseAlign,
   parseFlexDirection,
   parseJustify,
+  parseOverflow,
   parsePositionType,
+  parseWrap,
   type AlignString,
   type FlexDirectionString,
   type JustifyString,
+  type OverflowString,
   type PositionTypeString,
+  type WrapString,
 } from "./lib/yoga.options"
 import type { MouseEvent } from "./renderer"
 import type { RenderContext, SelectionState } from "./types"
@@ -42,18 +46,21 @@ export interface LayoutOptions {
   flexGrow?: number
   flexShrink?: number
   flexDirection?: FlexDirectionString
+  flexWrap?: WrapString
   alignItems?: AlignString
   justifyContent?: JustifyString
+  alignSelf?: AlignString
   flexBasis?: number | "auto" | undefined
   position?: PositionTypeString
+  overflow?: OverflowString
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
   bottom?: number | "auto" | `${number}%`
   left?: number | "auto" | `${number}%`
-  minWidth?: number
-  minHeight?: number
-  maxWidth?: number
-  maxHeight?: number
+  minWidth?: number | "auto" | `${number}%`
+  minHeight?: number | "auto" | `${number}%`
+  maxWidth?: number | "auto" | `${number}%`
+  maxHeight?: number | "auto" | `${number}%`
   margin?: number | "auto" | `${number}%`
   marginTop?: number | "auto" | `${number}%`
   marginRight?: number | "auto" | `${number}%`
@@ -145,8 +152,12 @@ export function isPositionType(value: any): value is number | "auto" | `${number
   return isValidPercentage(value)
 }
 
-export function isPostionTypeType(value: any): value is PositionTypeString {
+export function isPositionTypeType(value: any): value is PositionTypeString {
   return value === "relative" || value === "absolute"
+}
+
+export function isOverflowType(value: any): value is OverflowString {
+  return value === "visible" || value === "hidden" || value === "scroll"
 }
 
 export function isDimensionType(value: any): value is number | "auto" | `${number}%` {
@@ -180,8 +191,10 @@ export abstract class Renderable extends EventEmitter {
   public readonly id: string
   public readonly num: number
   protected _ctx: RenderContext
-  private _x: number = 0
-  private _y: number = 0
+  protected _translateX: number = 0
+  protected _translateY: number = 0
+  protected _x: number = 0
+  protected _y: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
   protected _widthValue: number = 0
@@ -206,6 +219,7 @@ export abstract class Renderable extends EventEmitter {
 
   protected layoutNode: TrackedNode
   protected _positionType: PositionTypeString = "relative"
+  protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
 
   private _childHostOverride: Renderable | null = null
@@ -414,11 +428,31 @@ export abstract class Renderable extends EventEmitter {
     this._ctx.requestRender()
   }
 
+  public get translateX(): number {
+    return this._translateX
+  }
+
+  public set translateX(value: number) {
+    if (this._translateX === value) return
+    this._translateX = value
+    this.requestRender()
+  }
+
+  public get translateY(): number {
+    return this._translateY
+  }
+
+  public set translateY(value: number) {
+    if (this._translateY === value) return
+    this._translateY = value
+    this.requestRender()
+  }
+
   public get x(): number {
     if (this.parent && this._positionType === "relative") {
-      return this.parent.x + this._x
+      return this.parent.x + this._x + this._translateX
     }
-    return this._x
+    return this._x + this._translateX
   }
 
   public set x(value: number) {
@@ -467,9 +501,9 @@ export abstract class Renderable extends EventEmitter {
 
   public get y(): number {
     if (this.parent && this._positionType === "relative") {
-      return this.parent.y + this._y
+      return this.parent.y + this._y + this._translateY
     }
-    return this._y
+    return this._y + this._translateY
   }
 
   public set y(value: number) {
@@ -552,11 +586,17 @@ export abstract class Renderable extends EventEmitter {
     if (options.flexDirection !== undefined) {
       node.setFlexDirection(parseFlexDirection(options.flexDirection))
     }
+    if (options.flexWrap !== undefined) {
+      node.setFlexWrap(parseWrap(options.flexWrap))
+    }
     if (options.alignItems !== undefined) {
       node.setAlignItems(parseAlign(options.alignItems))
     }
     if (options.justifyContent !== undefined) {
       node.setJustifyContent(parseJustify(options.justifyContent))
+    }
+    if (options.alignSelf !== undefined) {
+      node.setAlignSelf(parseAlign(options.alignSelf))
     }
 
     if (isDimensionType(options.width)) {
@@ -571,6 +611,11 @@ export abstract class Renderable extends EventEmitter {
     this._positionType = options.position === "absolute" ? "absolute" : "relative"
     if (this._positionType !== "relative") {
       node.setPositionType(parsePositionType(this._positionType))
+    }
+
+    this._overflow = options.overflow === "hidden" ? "hidden" : options.overflow === "scroll" ? "scroll" : "visible"
+    if (this._overflow !== "visible") {
+      node.setOverflow(parseOverflow(this._overflow))
     }
 
     // TODO: flatten position properties internally as well
@@ -644,10 +689,18 @@ export abstract class Renderable extends EventEmitter {
   }
 
   set position(positionType: PositionTypeString) {
-    if (!isPostionTypeType(positionType) || this._positionType === positionType) return
+    if (!isPositionTypeType(positionType) || this._positionType === positionType) return
 
     this._positionType = positionType
     this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
+    this.requestRender()
+  }
+
+  set overflow(overflow: OverflowString) {
+    if (!isOverflowType(overflow) || this._overflow === overflow) return
+
+    this._overflow = overflow
+    this.layoutNode.yogaNode.setOverflow(parseOverflow(overflow))
     this.requestRender()
   }
 
@@ -706,6 +759,11 @@ export abstract class Renderable extends EventEmitter {
     this.requestRender()
   }
 
+  public set flexWrap(wrap: WrapString) {
+    this.layoutNode.yogaNode.setFlexWrap(parseWrap(wrap))
+    this.requestRender()
+  }
+
   public set alignItems(alignItems: AlignString) {
     this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
     this.requestRender()
@@ -713,6 +771,11 @@ export abstract class Renderable extends EventEmitter {
 
   public set justifyContent(justifyContent: JustifyString) {
     this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
+    this.requestRender()
+  }
+
+  public set alignSelf(alignSelf: AlignString) {
+    this.layoutNode.yogaNode.setAlignSelf(parseAlign(alignSelf))
     this.requestRender()
   }
 
@@ -891,6 +954,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   protected onResize(width: number, height: number): void {
+    this.emit("resize")
     // Override in subclasses for additional resize logic
   }
 

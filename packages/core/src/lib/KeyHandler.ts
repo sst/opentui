@@ -1,8 +1,12 @@
 import { EventEmitter } from "events"
-import { parseKeypress } from "./parse.keypress"
+import { parseKeypress, type ParsedKey } from "./parse.keypress"
 import { singleton } from "../singleton"
 
-export class KeyHandler extends EventEmitter {
+type KeyHandlerEventMap = {
+  keypress: [ParsedKey]
+}
+
+export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   constructor() {
     super()
 
