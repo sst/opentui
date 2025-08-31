@@ -22,9 +22,9 @@ export type DomNode = Renderable | TextNode | TextChunk
 
 /**
  * Gets the id of a node, or content if it's a text chunk.
- * Intended for use for logging.
+ * Intended for use in logging.
  * @param node The node to get the id of.
- * @returns The id of the node, or content if it's a text chunk.
+ * @returns Log-friendly id of the node.
  */
 const logId = (node?: DomNode): string | undefined => {
   if (!node) return undefined
@@ -48,20 +48,17 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   if (node instanceof StyledText) {
     log("Inserting styled text:", node.toString())
     for (const chunk of node.chunks) {
-      // @ts-expect-error: Sending chunk to createTextNode which is not typed but supported, but we know it's a chunk
-      insertNode(parent, createTextNode(chunk), anchor)
+      _insertNode(parent, _createTextNode(chunk), anchor)
       return
     }
   }
 
   if (isTextChunk(node)) {
-    // @ts-expect-error: Sending chunk to createTextNode which is not typed but supported
-    insertNode(parent, createTextNode(node), anchor)
+    _insertNode(parent, _createTextNode(node), anchor)
     return
   }
 
   if (node instanceof TextNode) {
-    debugger
     return node.insert(parent, anchor)
   }
 
@@ -111,6 +108,20 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   }
 }
 
+function _createTextNode(value?: string | number | boolean | TextChunk): TextNode {
+  log("Creating text node:", value)
+  const chunk: TextChunk =
+    value && isTextChunk(value)
+      ? value
+      : {
+          __isChunk: true,
+          text: new TextEncoder().encode(`${value}`),
+          plainText: `${value}`,
+        }
+  const textNode = new TextNode(chunk)
+  return textNode
+}
+
 export const {
   render: _render,
   effect,
@@ -137,19 +148,7 @@ export const {
     return element
   },
 
-  createTextNode(value?: string | number | boolean | TextChunk): TextNode {
-    log("Creating text node:", value)
-    const chunk: TextChunk =
-      value && isTextChunk(value)
-        ? value
-        : {
-            __isChunk: true,
-            text: new TextEncoder().encode(`${value}`),
-            plainText: `${value}`,
-          }
-    const textNode = new TextNode(chunk)
-    return textNode
-  },
+  createTextNode: _createTextNode,
 
   replaceText(textNode: TextNode, value: string): void {
     log("Replacing text:", value, "in node:", logId(textNode))
