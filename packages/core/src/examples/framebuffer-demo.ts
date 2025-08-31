@@ -121,30 +121,32 @@ export function run(renderer: CliRenderer): void {
     zIndex: 2,
   })
 
-  boxObj.add(boxWrapper);
+  boxObj.add(boxWrapper)
 
-  boxWrapper.add(new ASCIIFontRenderable(renderer, {
-    id: "moving-box-ascii",
-    text: 'ASCII',
-    width: 20,
-    height: 10,
-    position: 'absolute',
-    left: 2,
-    top: 5,
-    right:0,
-    bottom:0,
-    zIndex: 2,
-  }))
+  boxWrapper.add(
+    new ASCIIFontRenderable(renderer, {
+      id: "moving-box-ascii",
+      text: "ASCII",
+      width: 20,
+      height: 10,
+      position: "absolute",
+      left: 2,
+      top: 5,
+      right: 0,
+      bottom: 0,
+      zIndex: 2,
+    }),
+  )
 
   const boxFrame = new FrameBufferRenderable(renderer, {
     id: "moving-box-buffer",
     width: 20,
     height: 10,
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
-    right:0,
-    bottom:0,
+    right: 0,
+    bottom: 0,
     zIndex: 1,
     respectAlpha: true,
   })
