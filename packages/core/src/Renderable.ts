@@ -22,6 +22,7 @@ import {
 import type { MouseEvent } from "./renderer"
 import type { RenderContext, SelectionState } from "./types"
 import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
+import { RGBA } from "./lib/RGBA"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -204,6 +205,7 @@ export abstract class Renderable extends EventEmitter {
   public selectable: boolean = false
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
+  protected fbClearColor: RGBA = RGBA.fromValues(0, 0, 0, 0)
   private _dirty: boolean = false
 
   protected focusable: boolean = false
@@ -916,7 +918,6 @@ export abstract class Renderable extends EventEmitter {
 
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
-      this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
       this.requestRender()
     }
@@ -937,8 +938,8 @@ export abstract class Renderable extends EventEmitter {
   }
 
   protected createFrameBuffer(): void {
-    const w = this.width
-    const h = this.height
+    const w = this.ctx.width
+    const h = this.ctx.height
 
     if (w <= 0 || h <= 0) {
       return
@@ -1080,6 +1081,7 @@ export abstract class Renderable extends EventEmitter {
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
+      this.frameBuffer.clear(this.fbClearColor)
     }
 
     if (this.renderBefore) {
@@ -1101,7 +1103,7 @@ export abstract class Renderable extends EventEmitter {
     }
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer, this.x, this.y, this.width, this.height)
     }
   }
 
@@ -1145,6 +1147,15 @@ export abstract class Renderable extends EventEmitter {
     this.destroy()
     for (const child of this.renderableArray) {
       child.destroyRecursively()
+    }
+  }
+
+  public propagateRootResize(width: number, height: number): void {
+    if (this.buffered) {
+      this.handleFrameBufferResize(width, height)
+    }
+    for (const child of this.renderableArray) {
+      child.propagateRootResize(width, height)
     }
   }
 
@@ -1282,6 +1293,7 @@ export class RootRenderable extends Renderable {
   public resize(width: number, height: number): void {
     this.width = width
     this.height = height
+    this.propagateRootResize(width, height)
 
     this.emit(LayoutEvents.RESIZED, { width, height })
   }
