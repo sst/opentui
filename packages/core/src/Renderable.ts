@@ -1100,7 +1100,7 @@ export abstract class Renderable extends EventEmitter {
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
 
-    const shouldPushScissor = this._overflow === "hidden" && this.width > 0 && this.height > 0
+    const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
     if (shouldPushScissor) {
       const scissorRect = this.getScissorRect()
       renderBuffer.pushScissorRect(scissorRect.x, scissorRect.y, scissorRect.width, scissorRect.height)
