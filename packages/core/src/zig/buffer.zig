@@ -664,16 +664,15 @@ pub const OptimizedBuffer = struct {
 
         const graphemeAware = self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
 
+        // Calculate clipping once for both paths
+        const clippedRect = self.clipRectToScissor(startDestX, startDestY, destWidth, destHeight) orelse return;
+        const clippedStartX = @max(startDestX, clippedRect.x);
+        const clippedStartY = @max(startDestY, clippedRect.y);
+        const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
+        const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+
         if (!graphemeAware and !frameBuffer.respectAlpha) {
             // Fast path: direct memory copy
-            const copyWidth = @as(u32, @intCast(endDestX - startDestX + 1));
-
-            const clippedRect = self.clipRectToScissor(startDestX, startDestY, copyWidth, @as(u32, @intCast(endDestY - startDestY + 1))) orelse return;
-            const clippedStartX = @max(startDestX, clippedRect.x);
-            const clippedStartY = @max(startDestY, clippedRect.y);
-            const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
-            const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
-
             var dY = clippedStartY;
 
             while (dY <= clippedEndY) : (dY += 1) {
@@ -698,13 +697,6 @@ pub const OptimizedBuffer = struct {
             }
             return;
         }
-
-        // TODO: This block is almost the same as the fast path, but it's not the same. Maybe can be just done at the top for both paths?
-        const clippedRect = self.clipRectToScissor(startDestX, startDestY, @as(u32, @intCast(endDestX - startDestX + 1)), @as(u32, @intCast(endDestY - startDestY + 1))) orelse return;
-        const clippedStartX = @max(startDestX, clippedRect.x);
-        const clippedStartY = @max(startDestY, clippedRect.y);
-        const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
-        const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
         var dY = clippedStartY;
         while (dY <= clippedEndY) : (dY += 1) {
