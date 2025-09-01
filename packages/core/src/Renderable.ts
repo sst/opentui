@@ -1171,15 +1171,6 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
-  public propagateRootResize(width: number, height: number): void {
-    if (this.buffered) {
-      this.handleFrameBufferResize(width, height)
-    }
-    for (const child of this.renderableArray) {
-      child.propagateRootResize(width, height)
-    }
-  }
-
   protected destroySelf(): void {
     // Default implementation: do nothing else
     // Override this method to provide custom cleanup
@@ -1314,7 +1305,6 @@ export class RootRenderable extends Renderable {
   public resize(width: number, height: number): void {
     this.width = width
     this.height = height
-    this.propagateRootResize(width, height)
 
     this.emit(LayoutEvents.RESIZED, { width, height })
   }
