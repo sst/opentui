@@ -13,7 +13,6 @@ import {
   BoxRenderable,
   createTimeline,
   engine,
-  type RenderContext,
   type VNode,
   Box,
   type ProxiedVNode,
@@ -57,8 +56,6 @@ function DraggableBox(
   let bounceScale = { value: 1 }
   let baseWidth: number = props.width
   let baseHeight: number = props.height
-  let centerX: number = props.x + baseWidth / 2
-  let centerY: number = props.y + baseHeight / 2
   let originalBg: RGBA = bgColor
   let dragBg: RGBA = RGBA.fromValues(props.color.r, props.color.g, props.color.b, 0.3)
   let originalBorderColor: RGBA = borderColor
@@ -80,12 +77,6 @@ function DraggableBox(
       border: true,
       zIndex: 100,
       renderAfter(buffer, deltaTime) {
-        this.width = Math.round(baseWidth * bounceScale.value)
-        this.height = Math.round(baseHeight * bounceScale.value)
-
-        this.x = Math.round(centerX - this.width / 2)
-        this.y = Math.round(centerY - this.height / 2)
-
         const currentTime = Date.now()
         if (scrollText && currentTime - scrollTimestamp > 2000) {
           scrollText = ""
@@ -156,8 +147,8 @@ function DraggableBox(
               const boundedX = Math.max(0, Math.min(newX, this._ctx.width - this.width))
               const boundedY = Math.max(4, Math.min(newY, this._ctx.height - this.height))
 
-              centerX = boundedX + this.width / 2
-              centerY = boundedY + this.height / 2
+              this.x = boundedX
+              this.y = boundedY
 
               event.preventDefault()
             }
@@ -179,6 +170,11 @@ function DraggableBox(
               value: 1.5,
               duration: 200,
               ease: "outExpo",
+              onUpdate: (values) => {
+                const scale = values.targets[0].value
+                this.width = Math.round(baseWidth * scale)
+                this.height = Math.round(baseHeight * scale)
+              },
             })
 
             timeline.add(
@@ -187,8 +183,13 @@ function DraggableBox(
                 value: 1.0,
                 duration: 400,
                 ease: "outExpo",
+                onUpdate: (values) => {
+                  const scale = values.targets[0].value
+                  this.width = Math.round(baseWidth * scale)
+                  this.height = Math.round(baseHeight * scale)
+                },
               },
-              150,
+              200,
             )
             break
 
@@ -282,6 +283,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
           timestamp: Date.now(),
           isDrag: false,
         })
+        this.requestRender()
         break
 
       case "drag":
@@ -291,6 +293,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
           timestamp: Date.now(),
           isDrag: true,
         })
+        this.requestRender()
         break
 
       case "down":
@@ -299,6 +302,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
         } else {
           this.activatedCells.add(cellKey)
         }
+        this.requestRender()
         break
     }
   }
@@ -314,9 +318,7 @@ export function run(renderer: CliRenderer): void {
   const backgroundColor = RGBA.fromInts(15, 15, 35, 255)
   renderer.setBackgroundColor(backgroundColor)
 
-  renderer.setFrameCallback(async (deltaTime: number) => {
-    engine.update(deltaTime)
-  })
+  engine.attach(renderer)
 
   const mainGroup = new BoxRenderable(renderer, {
     id: "mouse-demo-main-group",

@@ -291,6 +291,7 @@ export class Timeline {
   private autoplay: boolean
   private onComplete?: () => void
   private onPause?: () => void
+  private stateChangeListeners: ((timeline: Timeline) => void)[] = []
 
   constructor(options: TimelineOptions = {}) {
     this.duration = options.duration || 1000
@@ -298,6 +299,20 @@ export class Timeline {
     this.autoplay = options.autoplay !== false
     this.onComplete = options.onComplete
     this.onPause = options.onPause
+  }
+
+  public addStateChangeListener(listener: (timeline: Timeline) => void): void {
+    this.stateChangeListeners.push(listener)
+  }
+
+  public removeStateChangeListener(listener: (timeline: Timeline) => void): void {
+    this.stateChangeListeners = this.stateChangeListeners.filter((l) => l !== listener)
+  }
+
+  private notifyStateChange(): void {
+    for (const listener of this.stateChangeListeners) {
+      listener(this)
+    }
   }
 
   add(target: any, properties: AnimationOptions, startTime: number | string = 0): this {
@@ -392,6 +407,7 @@ export class Timeline {
       }
     })
     this.isPlaying = true
+    this.notifyStateChange()
     return this
   }
 
@@ -403,6 +419,7 @@ export class Timeline {
     if (this.onPause) {
       this.onPause()
     }
+    this.notifyStateChange()
     return this
   }
 
@@ -430,6 +447,7 @@ export class Timeline {
     this.currentTime = 0
     this.isPlaying = true
     this.resetItems()
+    this.notifyStateChange()
 
     return this
   }
@@ -472,26 +490,87 @@ export class Timeline {
       if (this.onComplete) {
         this.onComplete()
       }
+      this.notifyStateChange()
     }
   }
 }
 
 class TimelineEngine {
   private timelines: Set<Timeline> = new Set()
+  private renderer: any = null
+  private frameCallback: ((deltaTime: number) => Promise<void>) | null = null
+  private isLive: boolean = false
   public defaults = {
     frameRate: 60,
   }
 
+  attach(renderer: any): void {
+    if (this.renderer) {
+      this.detach()
+    }
+
+    this.renderer = renderer
+    this.frameCallback = async (deltaTime: number) => {
+      this.update(deltaTime)
+    }
+
+    renderer.setFrameCallback(this.frameCallback)
+  }
+
+  detach(): void {
+    if (this.renderer && this.frameCallback) {
+      this.renderer.removeFrameCallback(this.frameCallback)
+      if (this.isLive) {
+        this.renderer.dropLive()
+        this.isLive = false
+      }
+    }
+    this.renderer = null
+    this.frameCallback = null
+  }
+
+  private updateLiveState(): void {
+    if (!this.renderer) return
+
+    const hasRunningTimelines = Array.from(this.timelines).some(
+      (timeline) => !timeline.synced && timeline.isPlaying && !timeline.isComplete,
+    )
+
+    if (hasRunningTimelines && !this.isLive) {
+      this.renderer.requestLive()
+      this.isLive = true
+    } else if (!hasRunningTimelines && this.isLive) {
+      this.renderer.dropLive()
+      this.isLive = false
+    }
+  }
+
+  private onTimelineStateChange = (timeline: Timeline): void => {
+    this.updateLiveState()
+  }
+
   register(timeline: Timeline): void {
-    this.timelines.add(timeline)
+    if (!this.timelines.has(timeline)) {
+      this.timelines.add(timeline)
+      timeline.addStateChangeListener(this.onTimelineStateChange)
+      this.updateLiveState()
+    }
   }
 
   unregister(timeline: Timeline): void {
-    this.timelines.delete(timeline)
+    if (this.timelines.has(timeline)) {
+      this.timelines.delete(timeline)
+      timeline.removeStateChangeListener(this.onTimelineStateChange)
+      this.updateLiveState()
+    }
   }
 
   clear(): void {
+    for (const timeline of this.timelines) {
+      timeline.removeStateChangeListener(this.onTimelineStateChange)
+    }
     this.timelines.clear()
+    this.updateLiveState()
   }
 
   update(deltaTime: number): void {
