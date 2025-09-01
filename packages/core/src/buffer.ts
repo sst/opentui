@@ -616,4 +616,16 @@ export class OptimizedBuffer {
       options.title ?? null,
     )
   }
+
+  public pushScissorRect(x: number, y: number, width: number, height: number): void {
+    this.lib.bufferPushScissorRect(this.bufferPtr, x, y, width, height)
+  }
+
+  public popScissorRect(): void {
+    this.lib.bufferPopScissorRect(this.bufferPtr)
+  }
+
+  public clearScissorRects(): void {
+    this.lib.bufferClearScissorRects(this.bufferPtr)
+  }
 }

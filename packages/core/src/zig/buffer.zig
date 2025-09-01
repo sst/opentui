@@ -131,6 +131,7 @@ pub const OptimizedBuffer = struct {
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
     id: []const u8,
+    scissor_stack: std.ArrayList(ClipRect),
 
     const InitOptions = struct {
         respectAlpha: bool = false,
@@ -158,6 +159,9 @@ pub const OptimizedBuffer = struct {
         const owned_id = allocator.dupe(u8, options.id) catch return BufferError.OutOfMemory;
         errdefer allocator.free(owned_id);
 
+        var scissor_stack = std.ArrayList(ClipRect).init(allocator);
+        errdefer scissor_stack.deinit();
+
         self.* = .{
             .buffer = .{
                 .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
@@ -175,6 +179,7 @@ pub const OptimizedBuffer = struct {
             .grapheme_tracker = gp.GraphemeTracker.init(allocator, options.pool),
             .width_method = options.width_method,
             .id = owned_id,
+            .scissor_stack = scissor_stack,
         };
 
         @memset(self.buffer.char, 0);
@@ -205,11 +210,85 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn deinit(self: *OptimizedBuffer) void {
+        self.scissor_stack.deinit();
         self.grapheme_tracker.deinit();
         self.display_width.deinit(self.allocator);
         self.graphemes_data.deinit(self.allocator);
         self.allocator.free(self.id);
         self.allocator.destroy(self);
+    }
+
+    pub fn getCurrentScissorRect(self: *const OptimizedBuffer) ?ClipRect {
+        if (self.scissor_stack.items.len == 0) return null;
+        return self.scissor_stack.items[self.scissor_stack.items.len - 1];
+    }
+
+    pub fn isPointInScissor(self: *const OptimizedBuffer, x: i32, y: i32) bool {
+        const scissor = self.getCurrentScissorRect() orelse return true;
+        return x >= scissor.x and x < scissor.x + @as(i32, @intCast(scissor.width)) and
+            y >= scissor.y and y < scissor.y + @as(i32, @intCast(scissor.height));
+    }
+
+    pub fn isRectInScissor(self: *const OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) bool {
+        const scissor = self.getCurrentScissorRect() orelse return true;
+
+        const rect_end_x = x + @as(i32, @intCast(width));
+        const rect_end_y = y + @as(i32, @intCast(height));
+        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
+
+        return !(x >= scissor_end_x or rect_end_x <= scissor.x or
+            y >= scissor_end_y or rect_end_y <= scissor.y);
+    }
+
+    pub fn clipRectToScissor(self: *const OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) ?ClipRect {
+        const scissor = self.getCurrentScissorRect() orelse return ClipRect{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+
+        const rect_end_x = x + @as(i32, @intCast(width));
+        const rect_end_y = y + @as(i32, @intCast(height));
+        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
+
+        const intersect_x = @max(x, scissor.x);
+        const intersect_y = @max(y, scissor.y);
+        const intersect_end_x = @min(rect_end_x, scissor_end_x);
+        const intersect_end_y = @min(rect_end_y, scissor_end_y);
+
+        if (intersect_x >= intersect_end_x or intersect_y >= intersect_end_y) {
+            return null; // No intersection
+        }
+
+        return ClipRect{
+            .x = intersect_x,
+            .y = intersect_y,
+            .width = @intCast(intersect_end_x - intersect_x),
+            .height = @intCast(intersect_end_y - intersect_y),
+        };
+    }
+
+    pub fn pushScissorRect(self: *OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) !void {
+        const rect = ClipRect{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+        try self.scissor_stack.append(rect);
+    }
+
+    pub fn popScissorRect(self: *OptimizedBuffer) void {
+        if (self.scissor_stack.items.len > 0) {
+            _ = self.scissor_stack.pop();
+        }
+    }
+
+    pub fn clearScissorRects(self: *OptimizedBuffer) void {
+        self.scissor_stack.clearRetainingCapacity();
     }
 
     pub fn resize(self: *OptimizedBuffer, width: u32, height: u32) BufferError!void {
@@ -249,6 +328,7 @@ pub const OptimizedBuffer = struct {
 
     pub fn setRaw(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (x >= self.width or y >= self.height) return;
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
         const index = self.coordsToIndex(x, y);
         self.buffer.char[index] = cell.char;
         self.buffer.fg[index] = cell.fg;
@@ -258,6 +338,7 @@ pub const OptimizedBuffer = struct {
 
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (x >= self.width or y >= self.height) return;
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         const index = self.coordsToIndex(x, y);
         const prev_char = self.buffer.char[index];
@@ -401,6 +482,7 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u8,
     ) !void {
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
         const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
 
         if (self.get(x, y)) |destCell| {
@@ -420,6 +502,7 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u8,
     ) !void {
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
         const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
 
         if (self.get(x, y)) |destCell| {
@@ -441,6 +524,8 @@ pub const OptimizedBuffer = struct {
         if (self.width == 0 or self.height == 0 or width == 0 or height == 0) return;
         if (x >= self.width or y >= self.height) return;
 
+        if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return;
+
         const startX = x;
         const startY = y;
         const maxEndX = if (x < self.width) self.width - 1 else 0;
@@ -452,32 +537,37 @@ pub const OptimizedBuffer = struct {
 
         if (startX > endX or startY > endY) return;
 
+        const clippedRect = self.clipRectToScissor(@intCast(startX), @intCast(startY), endX - startX + 1, endY - startY + 1) orelse return;
+        const clippedStartX = @max(startX, @as(u32, @intCast(clippedRect.x)));
+        const clippedStartY = @max(startY, @as(u32, @intCast(clippedRect.y)));
+        const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
+        const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+
         const hasAlpha = isRGBAWithAlpha(bg);
 
         if (hasAlpha or self.grapheme_tracker.hasAny()) {
-            var fillY = startY;
-            while (fillY <= endY) : (fillY += 1) {
-                var fillX = startX;
-                while (fillX <= endX) : (fillX += 1) {
+            var fillY = clippedStartY;
+            while (fillY <= clippedEndY) : (fillY += 1) {
+                var fillX = clippedStartX;
+                while (fillX <= clippedEndX) : (fillX += 1) {
                     try self.setCellWithAlphaBlending(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
                 }
             }
         } else {
             // For non-alpha (fully opaque) backgrounds, we can do direct filling
-            var fillY = startY;
-            while (fillY <= endY) : (fillY += 1) {
-                const rowStartIndex = self.coordsToIndex(startX, fillY);
-                const rowWidth = endX - startX + 1;
-
-                const rowSliceChar = self.buffer.char[rowStartIndex .. rowStartIndex + rowWidth];
-                const rowSliceFg = self.buffer.fg[rowStartIndex .. rowStartIndex + rowWidth];
-                const rowSliceBg = self.buffer.bg[rowStartIndex .. rowStartIndex + rowWidth];
-                const rowSliceAttrs = self.buffer.attributes[rowStartIndex .. rowStartIndex + rowWidth];
-
-                @memset(rowSliceChar, @intCast(DEFAULT_SPACE_CHAR));
-                @memset(rowSliceFg, .{ 1.0, 1.0, 1.0, 1.0 });
-                @memset(rowSliceBg, bg);
-                @memset(rowSliceAttrs, 0);
+            var fillY = clippedStartY;
+            while (fillY <= clippedEndY) : (fillY += 1) {
+                // Only fill cells that are within the scissor rect
+                var fillX = clippedStartX;
+                while (fillX <= clippedEndX) : (fillX += 1) {
+                    if (self.isPointInScissor(@intCast(fillX), @intCast(fillY))) {
+                        const cellIndex = self.coordsToIndex(fillX, fillY);
+                        self.buffer.char[cellIndex] = @intCast(DEFAULT_SPACE_CHAR);
+                        self.buffer.fg[cellIndex] = .{ 1.0, 1.0, 1.0, 1.0 };
+                        self.buffer.bg[cellIndex] = bg;
+                        self.buffer.attributes[cellIndex] = 0;
+                    }
+                }
             }
         }
     }
@@ -499,6 +589,11 @@ pub const OptimizedBuffer = struct {
         while (iter.next()) |gc| {
             const charX = x + advance_cells;
             if (charX >= self.width) break;
+
+            if (!self.isPointInScissor(@intCast(charX), @intCast(y))) {
+                advance_cells += 1;
+                continue;
+            }
 
             var bgColor: RGBA = undefined;
             if (bg) |b| {
@@ -560,42 +655,68 @@ pub const OptimizedBuffer = struct {
         const endDestY = @min(@as(i32, @intCast(self.height)) - 1, destY + @as(i32, @intCast(clampedSrcHeight)) - 1);
 
         if (startDestX > endDestX or startDestY > endDestY) return;
+
+        // Check if the destination rectangle intersects with the scissor rect
+        const destWidth = @as(u32, @intCast(endDestX - startDestX + 1));
+        const destHeight = @as(u32, @intCast(endDestY - startDestY + 1));
+        if (!self.isRectInScissor(startDestX, startDestY, destWidth, destHeight)) return;
+
         const graphemeAware = self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
 
         if (!graphemeAware and !frameBuffer.respectAlpha) {
             // Fast path: direct memory copy
             const copyWidth = @as(u32, @intCast(endDestX - startDestX + 1));
-            var dY = startDestY;
 
-            while (dY <= endDestY) : (dY += 1) {
+            const clippedRect = self.clipRectToScissor(startDestX, startDestY, copyWidth, @as(u32, @intCast(endDestY - startDestY + 1))) orelse return;
+            const clippedStartX = @max(startDestX, clippedRect.x);
+            const clippedStartY = @max(startDestY, clippedRect.y);
+            const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
+            const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+
+            var dY = clippedStartY;
+
+            while (dY <= clippedEndY) : (dY += 1) {
                 const relativeDestY = dY - destY;
                 const sY = srcY + @as(u32, @intCast(relativeDestY));
 
                 if (sY >= frameBuffer.height) continue;
 
-                const relativeDestX = startDestX - destX;
+                const relativeDestX = clippedStartX - destX;
                 const sX = srcX + @as(u32, @intCast(relativeDestX));
 
                 if (sX >= frameBuffer.width) continue;
 
-                const destRowStart = self.coordsToIndex(@intCast(startDestX), @intCast(dY));
-                const srcRowStart = frameBuffer.coordsToIndex(sX, sY);
-                const actualCopyWidth = @min(copyWidth, frameBuffer.width - sX);
-
-                @memcpy(self.buffer.char[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.char[srcRowStart .. srcRowStart + actualCopyWidth]);
-                @memcpy(self.buffer.fg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.fg[srcRowStart .. srcRowStart + actualCopyWidth]);
-                @memcpy(self.buffer.bg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.bg[srcRowStart .. srcRowStart + actualCopyWidth]);
-                @memcpy(self.buffer.attributes[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.attributes[srcRowStart .. srcRowStart + actualCopyWidth]);
+                var copyX = clippedStartX;
+                while (copyX <= clippedEndX) : (copyX += 1) {
+                    if (self.isPointInScissor(copyX, dY)) {
+                        const destIndex = self.coordsToIndex(@intCast(copyX), @intCast(dY));
+                        const srcIndex = frameBuffer.coordsToIndex(sX + @as(u32, @intCast(copyX - clippedStartX)), sY);
+                        self.buffer.char[destIndex] = frameBuffer.buffer.char[srcIndex];
+                        self.buffer.fg[destIndex] = frameBuffer.buffer.fg[srcIndex];
+                        self.buffer.bg[destIndex] = frameBuffer.buffer.bg[srcIndex];
+                        self.buffer.attributes[destIndex] = frameBuffer.buffer.attributes[srcIndex];
+                    }
+                }
             }
             return;
         }
 
-        var dY = startDestY;
-        while (dY <= endDestY) : (dY += 1) {
+        // TODO: This block is almost the same as the fast path, but it's not the same. Maybe can be just done at the top for both paths?
+        const clippedRect = self.clipRectToScissor(startDestX, startDestY, @as(u32, @intCast(endDestX - startDestX + 1)), @as(u32, @intCast(endDestY - startDestY + 1))) orelse return;
+        const clippedStartX = @max(startDestX, clippedRect.x);
+        const clippedStartY = @max(startDestY, clippedRect.y);
+        const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
+        const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+
+        var dY = clippedStartY;
+        while (dY <= clippedEndY) : (dY += 1) {
             var lastDrawnGraphemeId: u32 = 0;
 
-            var dX = startDestX;
-            while (dX <= endDestX) : (dX += 1) {
+            var dX = clippedStartX;
+            while (dX <= clippedEndX) : (dX += 1) {
+                // TODO: We already checked the clipped rect, so we don't need to check again?
+                if (!self.isPointInScissor(dX, dY)) continue;
+
                 const relativeDestX = dX - destX;
                 const relativeDestY = dY - destY;
                 const sX = srcX + @as(u32, @intCast(relativeDestX));
@@ -670,6 +791,7 @@ pub const OptimizedBuffer = struct {
                 continue;
             }
 
+            // TODO: Is the clip rect still necessary when having the scissor rect?
             if (clip_rect) |clip| {
                 if (currentX < clip.x or currentY < clip.y or
                     currentX >= clip.x + @as(i32, @intCast(clip.width)) or
@@ -678,6 +800,11 @@ pub const OptimizedBuffer = struct {
                     currentX += 1;
                     continue;
                 }
+            }
+
+            if (!self.isPointInScissor(currentX, currentY)) {
+                currentX += 1;
+                continue;
             }
 
             var fg = text_buffer.fg[i];
@@ -776,6 +903,10 @@ pub const OptimizedBuffer = struct {
         const endY = @min(@as(i32, @intCast(self.height)) - 1, y + @as(i32, @intCast(height)) - 1);
 
         if (startX > endX or startY > endY) return;
+
+        const boxWidth = @as(u32, @intCast(endX - startX + 1));
+        const boxHeight = @as(u32, @intCast(endY - startY + 1));
+        if (!self.isRectInScissor(startX, startY, boxWidth, boxHeight)) return;
 
         const isAtActualLeft = startX == x;
         const isAtActualRight = endX == x + @as(i32, @intCast(width)) - 1;
@@ -931,6 +1062,10 @@ pub const OptimizedBuffer = struct {
         while (y_cell < self.height) : (y_cell += 1) {
             var x_cell = posX;
             while (x_cell < self.width) : (x_cell += 1) {
+                if (!self.isPointInScissor(@intCast(x_cell), @intCast(y_cell))) {
+                    continue;
+                }
+
                 const renderX: u32 = (x_cell - posX) * 2;
                 const renderY: u32 = (y_cell - posY) * 2;
 
@@ -980,6 +1115,8 @@ pub const OptimizedBuffer = struct {
 
             if (cellX >= terminalWidthCells or cellY >= terminalHeightCells) continue;
             if (cellX >= self.width or cellY >= self.height) continue;
+
+            if (!self.isPointInScissor(@intCast(cellX), @intCast(cellY))) continue;
 
             const bgPtr = @as([*]const f32, @ptrCast(@alignCast(data + cellDataOffset)));
             const bg: RGBA = .{ bgPtr[0], bgPtr[1], bgPtr[2], bgPtr[3] };
