@@ -13,9 +13,11 @@ import {
   BoxRenderable,
   createTimeline,
   engine,
-  type VNode,
   Box,
   type ProxiedVNode,
+  type BoxOptions,
+  Text,
+  type VChild,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -33,8 +35,7 @@ let draggableBoxes: ProxiedVNode<typeof BoxRenderable>[] = []
 let nextZIndex = 101
 
 function DraggableBox(
-  props: {
-    id: string
+  props: BoxOptions & {
     x: number
     y: number
     width: number
@@ -42,7 +43,7 @@ function DraggableBox(
     color: RGBA
     label: string
   },
-  children: VNode[] = [],
+  children?: VChild,
 ) {
   const bgColor = RGBA.fromValues(props.color.r, props.color.g, props.color.b, 0.8)
   const borderColor = RGBA.fromValues(props.color.r * 1.2, props.color.g * 1.2, props.color.b * 1.2, 1.0)
@@ -63,7 +64,7 @@ function DraggableBox(
 
   return Box(
     {
-      id: props.id,
+      ...props,
       position: "absolute",
       left: props.x,
       top: props.y,
@@ -385,15 +386,25 @@ Scroll on boxes: shows direction • Escape: menu`,
       color: RGBA.fromInts(150, 150, 200),
       label: "Box 3",
     }),
-    DraggableBox({
-      id: "drag-box-4",
-      x: 15,
-      y: 20,
-      width: 18,
-      height: 11,
-      color: RGBA.fromInts(200, 200, 100),
-      label: "Box 4",
-    }),
+    DraggableBox(
+      {
+        id: "drag-box-4",
+        x: 15,
+        y: 20,
+        width: 18,
+        height: 11,
+        color: RGBA.fromInts(200, 200, 100),
+        label: "O hidden",
+        overflow: "hidden",
+      },
+      Text({
+        id: "overflow-hidden-box",
+        content: "This should be cut off to the right",
+        width: 25,
+        height: 25,
+        selectable: false,
+      }),
+    ),
   ]
 
   for (const box of draggableBoxes) {

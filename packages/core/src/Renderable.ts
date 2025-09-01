@@ -268,6 +268,10 @@ export abstract class Renderable extends EventEmitter {
 
     this.applyEventOptions(options)
 
+    console.log("setup frame buffer", this._overflow)
+    if (this._overflow !== "visible") {
+      this.buffered = true
+    }
     if (this.buffered) {
       this.createFrameBuffer()
     }
@@ -698,6 +702,10 @@ export abstract class Renderable extends EventEmitter {
     this.requestRender()
   }
 
+  get overflow(): OverflowString {
+    return this._overflow
+  }
+
   set overflow(overflow: OverflowString) {
     if (!isOverflowType(overflow) || this._overflow === overflow) return
 
@@ -1103,10 +1111,11 @@ export abstract class Renderable extends EventEmitter {
     }
 
     if (this.buffered && this.frameBuffer) {
-      // Overflow hidden
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer, this.x, this.y, this.width, this.height)
-      // Overflow visible
-      // buffer.drawFrameBuffer(0, 0, this.frameBuffer)
+      if (this._overflow === "visible") {
+        buffer.drawFrameBuffer(0, 0, this.frameBuffer)
+      } else {
+        buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer, this.x, this.y, this.width, this.height)
+      }
     }
   }
 
