@@ -954,7 +954,10 @@ export abstract class Renderable extends EventEmitter {
 
     try {
       const widthMethod = this._ctx.widthMethod
-      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true })
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, {
+        respectAlpha: true,
+        id: `buffered-renderable-${this.id}`,
+      })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
