@@ -180,6 +180,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
       returns: "void",
     },
+    bufferPushScissorRect: {
+      args: ["ptr", "i32", "i32", "u32", "u32"],
+      returns: "void",
+    },
+    bufferPopScissorRect: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    bufferClearScissorRects: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     addToHitGrid: {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
@@ -521,6 +533,9 @@ export interface RenderLib {
     y: number,
     clipRect?: { x: number; y: number; width: number; height: number },
   ) => void
+  bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
+  bufferPopScissorRect: (buffer: Pointer) => void
+  bufferClearScissorRects: (buffer: Pointer) => void
 
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
@@ -1252,6 +1267,18 @@ class FFIRenderLib implements RenderLib {
       clipHeight,
       hasClipRect,
     )
+  }
+
+  public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {
+    this.opentui.symbols.bufferPushScissorRect(buffer, x, y, width, height)
+  }
+
+  public bufferPopScissorRect(buffer: Pointer): void {
+    this.opentui.symbols.bufferPopScissorRect(buffer)
+  }
+
+  public bufferClearScissorRects(buffer: Pointer): void {
+    this.opentui.symbols.bufferClearScissorRects(buffer)
   }
 
   public getTerminalCapabilities(renderer: Pointer): any {

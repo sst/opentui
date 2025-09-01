@@ -187,7 +187,7 @@ export function run(renderer: CliRenderer): void {
     padding: 1,
     flexDirection: "column",
     border: true,
-    // buffered: true,
+    overflow: "hidden",
   })
   staticContainer.add(staticBox)
 

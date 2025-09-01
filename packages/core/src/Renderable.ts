@@ -696,6 +696,10 @@ export abstract class Renderable extends EventEmitter {
     this.requestRender()
   }
 
+  get overflow(): OverflowString {
+    return this._overflow
+  }
+
   set overflow(overflow: OverflowString) {
     if (!isOverflowType(overflow) || this._overflow === overflow) return
 
@@ -1096,8 +1100,18 @@ export abstract class Renderable extends EventEmitter {
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
     this.ensureZIndexSorted()
 
+    const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
+    if (shouldPushScissor) {
+      const scissorRect = this.getScissorRect()
+      renderBuffer.pushScissorRect(scissorRect.x, scissorRect.y, scissorRect.width, scissorRect.height)
+    }
+
     for (const child of this.renderableArray) {
       child.render(renderBuffer, deltaTime)
+    }
+
+    if (shouldPushScissor) {
+      renderBuffer.popScissorRect()
     }
 
     if (this.buffered && this.frameBuffer) {
@@ -1108,6 +1122,15 @@ export abstract class Renderable extends EventEmitter {
   protected beforeRender(): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
+  }
+
+  protected getScissorRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.buffered ? 0 : this.x,
+      y: this.buffered ? 0 : this.y,
+      width: this.width,
+      height: this.height,
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {

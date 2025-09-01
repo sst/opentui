@@ -224,6 +224,18 @@ export fn bufferDrawPackedBuffer(bufferPtr: *buffer.OptimizedBuffer, data: [*]co
     bufferPtr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
 }
 
+export fn bufferPushScissorRect(bufferPtr: *buffer.OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) void {
+    bufferPtr.pushScissorRect(x, y, width, height) catch {};
+}
+
+export fn bufferPopScissorRect(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.popScissorRect();
+}
+
+export fn bufferClearScissorRects(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.clearScissorRects();
+}
+
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }

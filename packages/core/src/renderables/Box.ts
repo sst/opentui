@@ -205,6 +205,26 @@ export class BoxRenderable extends Renderable {
     })
   }
 
+  protected getScissorRect(): { x: number; y: number; width: number; height: number } {
+    const baseRect = super.getScissorRect()
+
+    if (!this.borderSides.top && !this.borderSides.right && !this.borderSides.bottom && !this.borderSides.left) {
+      return baseRect
+    }
+
+    const leftInset = this.borderSides.left ? 1 : 0
+    const rightInset = this.borderSides.right ? 1 : 0
+    const topInset = this.borderSides.top ? 1 : 0
+    const bottomInset = this.borderSides.bottom ? 1 : 0
+
+    return {
+      x: baseRect.x + leftInset,
+      y: baseRect.y + topInset,
+      width: Math.max(0, baseRect.width - leftInset - rightInset),
+      height: Math.max(0, baseRect.height - topInset - bottomInset),
+    }
+  }
+
   private applyYogaBorders(): void {
     const node = this.layoutNode.yogaNode
     node.setBorder(Edge.Left, this.borderSides.left ? 1 : 0)
