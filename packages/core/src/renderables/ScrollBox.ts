@@ -24,7 +24,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public readonly verticalScrollBar: ScrollBarRenderable
 
   protected focusable: boolean = true
-  
+
   get scrollTop(): number {
     return this.verticalScrollBar.scrollPosition
   }
@@ -120,7 +120,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       showArrows,
       onChange: (position) => {
         this.content.translateY = -position
-      }
+      },
     })
     this.add(this.verticalScrollBar)
 
@@ -132,7 +132,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       showArrows,
       onChange: (position) => {
         this.content.translateX = -position
-      }
+      },
     })
     this.wrapper.add(this.horizontalScrollBar)
 
@@ -171,8 +171,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
-    if (this.verticalScrollBar.handleKeyPress(key)) return true;
-    if (this.horizontalScrollBar.handleKeyPress(key)) return true;
+    if (this.verticalScrollBar.handleKeyPress(key)) return true
+    if (this.horizontalScrollBar.handleKeyPress(key)) return true
     return false
   }
 

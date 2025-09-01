@@ -17,8 +17,8 @@ export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable>
 
 export type ScrollUnit = "absolute" | "viewport" | "content" | "step"
 
-const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3");
-const defaultTrackBackgroundColor = RGBA.fromHex("#252527");
+const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
+const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
 
 export class ScrollBarRenderable extends Renderable {
   public readonly track: BoxRenderable
@@ -253,35 +253,35 @@ export class ScrollBarRenderable extends Renderable {
     switch (keyName) {
       case "left":
       case "h":
-        if (this.orientation !== "horizontal") return false;
-        this.scrollBy(-1 / 5, 'viewport')
+        if (this.orientation !== "horizontal") return false
+        this.scrollBy(-1 / 5, "viewport")
         return true
       case "right":
       case "l":
-        if (this.orientation !== "horizontal") return false;
-        this.scrollBy(1 / 5, 'viewport')
+        if (this.orientation !== "horizontal") return false
+        this.scrollBy(1 / 5, "viewport")
         return true
       case "up":
       case "k":
-        if (this.orientation !== "vertical") return false;
-        this.scrollBy(-1 / 5 , 'viewport')
+        if (this.orientation !== "vertical") return false
+        this.scrollBy(-1 / 5, "viewport")
         return true
       case "down":
       case "j":
-        if (this.orientation !== "vertical") return false;
-        this.scrollBy(1 / 5, 'viewport')
+        if (this.orientation !== "vertical") return false
+        this.scrollBy(1 / 5, "viewport")
         return true
       case "pageup":
-        this.scrollBy(-1 / 2, 'viewport')
+        this.scrollBy(-1 / 2, "viewport")
         return true
       case "pagedown":
-        this.scrollBy(1 / 2, 'viewport')
+        this.scrollBy(1 / 2, "viewport")
         return true
       case "home":
-        this.scrollBy(-1, 'content')
+        this.scrollBy(-1, "content")
         return true
       case "end":
-        this.scrollBy(1, 'content')
+        this.scrollBy(1, "content")
         return true
     }
 
