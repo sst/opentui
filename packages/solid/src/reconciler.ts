@@ -11,12 +11,12 @@ import {
   TextRenderable,
   type TextChunk,
 } from "@opentui/core"
+import { useContext } from "solid-js"
 import { createRenderer } from "solid-js/universal"
-import { elements, RendererContext, type Element } from "./elements"
-import { TextNode, isTextChunk } from "./elements/text-node"
+import { getComponentCatalogue, RendererContext } from "./elements"
+import { isTextChunk, TextNode } from "./elements/text-node"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
-import { useContext } from "solid-js"
 
 export type DomNode = Renderable | TextNode | TextChunk
 
@@ -143,7 +143,13 @@ export const {
     if (!solidRenderer) {
       throw new Error("No renderer found")
     }
-    const element = new elements[tagName as Element](solidRenderer, { id })
+    const elements = getComponentCatalogue()
+
+    if (!elements[tagName]) {
+      throw new Error(`[Reconciler] Unknown component type: ${tagName}`)
+    }
+
+    const element = new elements[tagName](solidRenderer, { id })
     log("Element created with id:", id)
     return element
   },
