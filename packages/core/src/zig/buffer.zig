@@ -590,7 +590,6 @@ pub const OptimizedBuffer = struct {
             return;
         }
 
-        logger.info("drawFrameBuffer: {s} {s} {any} {any}", .{ self.id, frameBuffer.id, self.grapheme_tracker.hasAny(), frameBuffer.grapheme_tracker.hasAny() });
         var dY = startDestY;
         while (dY <= endDestY) : (dY += 1) {
             var lastDrawnGraphemeId: u32 = 0;
@@ -633,7 +632,6 @@ pub const OptimizedBuffer = struct {
                     continue;
                 }
 
-                logger.info("drawBufferCell: {s} {d} {d} {any} [{d:.3},{d:.3},{d:.3},{d:.3}] [{d:.3},{d:.3},{d:.3},{d:.3}] {any}", .{ self.id, dX, dY, srcChar, srcFg[0], srcFg[1], srcFg[2], srcFg[3], srcBg[0], srcBg[1], srcBg[2], srcBg[3], srcAttr });
                 self.setCellWithAlphaBlendingRaw(@intCast(dX), @intCast(dY), srcChar, srcFg, srcBg, srcAttr) catch {};
             }
         }
