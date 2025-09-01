@@ -8,6 +8,7 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   BoxRenderable,
+  ASCIIFontRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -96,7 +97,38 @@ export function run(renderer: CliRenderer): void {
     }
   }
 
-  const boxObj = new FrameBufferRenderable(renderer, {
+  const nestedBox = new BoxRenderable(renderer, {
+    id: "nested-box",
+    width: 20,
+    height: 10,
+    position: "absolute",
+    left: 4,
+    top: 4,
+    zIndex: 5,
+    border: true,
+    title: "Nested example",
+    backgroundColor: RGBA.fromInts(120, 0, 120, 120),
+  })
+  renderer.root.add(nestedBox)
+
+  const innerBoxWidth = 10
+  const innerBoxHeight = 4
+
+  const nestedInnerBox = new BoxRenderable(renderer, {
+    id: "nested-inner-box",
+    width: innerBoxWidth,
+    height: innerBoxHeight,
+    left: 3,
+    top: 3,
+    zIndex: 1,
+    // buffered: true,
+    border: true,
+    title: "Inner",
+    backgroundColor: RGBA.fromInts(0, 255, 0, 10),
+  })
+  nestedBox.add(nestedInnerBox)
+
+  const boxObj = new BoxRenderable(renderer, {
     id: "moving-box",
     width: 20,
     height: 10,
@@ -104,9 +136,38 @@ export function run(renderer: CliRenderer): void {
     left: 10,
     top: 10,
     zIndex: 1,
+    overflow: "hidden",
+    // NOTE: This color is rendered, it is just overlayed by the boxFrame fill color
+    backgroundColor: RGBA.fromInts(255, 120, 120, 255),
   })
+
+  boxObj.add(
+    new ASCIIFontRenderable(renderer, {
+      id: "moving-box-ascii",
+      text: "ASCII",
+      width: 16,
+      height: 5,
+      position: "relative",
+      left: 2,
+      top: 5,
+      zIndex: 2,
+    }),
+  )
+
+  const boxFrame = new FrameBufferRenderable(renderer, {
+    id: "moving-box-buffer",
+    width: 20,
+    height: 10,
+    position: "relative",
+    marginTop: -2,
+    zIndex: 1,
+    respectAlpha: true,
+  })
+
+  boxObj.add(boxFrame)
+
   renderer.root.add(boxObj)
-  const boxBuffer = boxObj.frameBuffer
+  const boxBuffer = boxFrame.frameBuffer
 
   const boxColor = RGBA.fromInts(80, 30, 100, 128)
   boxBuffer.fillRect(0, 0, 20, 10, boxColor)
@@ -153,24 +214,24 @@ export function run(renderer: CliRenderer): void {
     10,
     2,
     RGBA.fromInts(255, 255, 255),
-    RGBA.fromInts(0, 120, 180, 200),
+    RGBA.fromInts(0, 120, 180, 180),
     TextAttributes.BOLD,
   )
   overlayBuffer.drawText(
     "This overlay has transparent",
     5,
     5,
-    RGBA.fromInts(255, 255, 255),
-    RGBA.fromInts(0, 120, 180, 200),
+    RGBA.fromInts(255, 0, 255),
+    RGBA.fromInts(0, 120, 180, 180),
   )
   overlayBuffer.drawText(
     "cells that let content below",
     5,
     6,
     RGBA.fromInts(255, 255, 255),
-    RGBA.fromInts(0, 120, 180, 200),
+    RGBA.fromInts(0, 120, 180, 180),
   )
-  overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(0, 120, 180, 200))
+  overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(0, 120, 180, 180))
 
   const ballObj = new FrameBufferRenderable(renderer, {
     id: "ball",
@@ -464,7 +525,7 @@ export function run(renderer: CliRenderer): void {
         10,
         2,
         RGBA.fromInts(255, 255, 255),
-        RGBA.fromInts(255, 255, 255, 200),
+        RGBA.fromInts(255, 255, 255, 180),
         TextAttributes.BOLD,
       )
       overlayBuffer.drawText(
@@ -472,16 +533,16 @@ export function run(renderer: CliRenderer): void {
         5,
         5,
         RGBA.fromInts(255, 255, 255),
-        RGBA.fromInts(255, 255, 255, 200),
+        RGBA.fromInts(255, 255, 255, 180),
       )
       overlayBuffer.drawText(
         "cells that let content below",
         5,
         6,
         RGBA.fromInts(255, 255, 255),
-        RGBA.fromInts(255, 255, 255, 200),
+        RGBA.fromInts(255, 255, 255, 180),
       )
-      overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(255, 255, 255, 200))
+      overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(255, 255, 255, 180))
     }
   })
 

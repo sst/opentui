@@ -13,10 +13,11 @@ import {
   BoxRenderable,
   createTimeline,
   engine,
-  type RenderContext,
-  type VNode,
   Box,
   type ProxiedVNode,
+  type BoxOptions,
+  Text,
+  type VChild,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -34,8 +35,7 @@ let draggableBoxes: ProxiedVNode<typeof BoxRenderable>[] = []
 let nextZIndex = 101
 
 function DraggableBox(
-  props: {
-    id: string
+  props: BoxOptions & {
     x: number
     y: number
     width: number
@@ -43,7 +43,7 @@ function DraggableBox(
     color: RGBA
     label: string
   },
-  children: VNode[] = [],
+  children?: VChild,
 ) {
   const bgColor = RGBA.fromValues(props.color.r, props.color.g, props.color.b, 0.8)
   const borderColor = RGBA.fromValues(props.color.r * 1.2, props.color.g * 1.2, props.color.b * 1.2, 1.0)
@@ -57,8 +57,6 @@ function DraggableBox(
   let bounceScale = { value: 1 }
   let baseWidth: number = props.width
   let baseHeight: number = props.height
-  let centerX: number = props.x + baseWidth / 2
-  let centerY: number = props.y + baseHeight / 2
   let originalBg: RGBA = bgColor
   let dragBg: RGBA = RGBA.fromValues(props.color.r, props.color.g, props.color.b, 0.3)
   let originalBorderColor: RGBA = borderColor
@@ -66,7 +64,7 @@ function DraggableBox(
 
   return Box(
     {
-      id: props.id,
+      ...props,
       position: "absolute",
       left: props.x,
       top: props.y,
@@ -80,12 +78,6 @@ function DraggableBox(
       border: true,
       zIndex: 100,
       renderAfter(buffer, deltaTime) {
-        this.width = Math.round(baseWidth * bounceScale.value)
-        this.height = Math.round(baseHeight * bounceScale.value)
-
-        this.x = Math.round(centerX - this.width / 2)
-        this.y = Math.round(centerY - this.height / 2)
-
         const currentTime = Date.now()
         if (scrollText && currentTime - scrollTimestamp > 2000) {
           scrollText = ""
@@ -156,8 +148,8 @@ function DraggableBox(
               const boundedX = Math.max(0, Math.min(newX, this._ctx.width - this.width))
               const boundedY = Math.max(4, Math.min(newY, this._ctx.height - this.height))
 
-              centerX = boundedX + this.width / 2
-              centerY = boundedY + this.height / 2
+              this.x = boundedX
+              this.y = boundedY
 
               event.preventDefault()
             }
@@ -179,6 +171,11 @@ function DraggableBox(
               value: 1.5,
               duration: 200,
               ease: "outExpo",
+              onUpdate: (values) => {
+                const scale = values.targets[0].value
+                this.width = Math.round(baseWidth * scale)
+                this.height = Math.round(baseHeight * scale)
+              },
             })
 
             timeline.add(
@@ -187,8 +184,13 @@ function DraggableBox(
                 value: 1.0,
                 duration: 400,
                 ease: "outExpo",
+                onUpdate: (values) => {
+                  const scale = values.targets[0].value
+                  this.width = Math.round(baseWidth * scale)
+                  this.height = Math.round(baseHeight * scale)
+                },
               },
-              150,
+              200,
             )
             break
 
@@ -282,6 +284,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
           timestamp: Date.now(),
           isDrag: false,
         })
+        this.requestRender()
         break
 
       case "drag":
@@ -291,6 +294,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
           timestamp: Date.now(),
           isDrag: true,
         })
+        this.requestRender()
         break
 
       case "down":
@@ -299,6 +303,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
         } else {
           this.activatedCells.add(cellKey)
         }
+        this.requestRender()
         break
     }
   }
@@ -314,9 +319,7 @@ export function run(renderer: CliRenderer): void {
   const backgroundColor = RGBA.fromInts(15, 15, 35, 255)
   renderer.setBackgroundColor(backgroundColor)
 
-  renderer.setFrameCallback(async (deltaTime: number) => {
-    engine.update(deltaTime)
-  })
+  engine.attach(renderer)
 
   const mainGroup = new BoxRenderable(renderer, {
     id: "mouse-demo-main-group",
@@ -383,15 +386,25 @@ Scroll on boxes: shows direction • Escape: menu`,
       color: RGBA.fromInts(150, 150, 200),
       label: "Box 3",
     }),
-    DraggableBox({
-      id: "drag-box-4",
-      x: 15,
-      y: 20,
-      width: 18,
-      height: 11,
-      color: RGBA.fromInts(200, 200, 100),
-      label: "Box 4",
-    }),
+    DraggableBox(
+      {
+        id: "drag-box-4",
+        x: 15,
+        y: 20,
+        width: 18,
+        height: 11,
+        color: RGBA.fromInts(200, 200, 100),
+        label: "O hidden",
+        overflow: "hidden",
+      },
+      Text({
+        id: "overflow-hidden-box",
+        content: "This should be cut off to the right",
+        width: 25,
+        height: 25,
+        selectable: false,
+      }),
+    ),
   ]
 
   for (const box of draggableBoxes) {

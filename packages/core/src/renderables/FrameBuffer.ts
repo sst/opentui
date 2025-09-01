@@ -17,6 +17,7 @@ export class FrameBufferRenderable extends Renderable {
     this.respectAlpha = options.respectAlpha || false
     this.frameBuffer = OptimizedBuffer.create(options.width, options.height, this._ctx.widthMethod, {
       respectAlpha: this.respectAlpha,
+      id: options.id || `framebufferrenderable-${this.id}`,
     })
   }
 

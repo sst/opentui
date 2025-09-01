@@ -563,6 +563,7 @@ export class TerminalConsole extends EventEmitter {
       if (!this.frameBuffer) {
         this.frameBuffer = OptimizedBuffer.create(this.consoleWidth, this.consoleHeight, this.renderer.widthMethod, {
           respectAlpha: this.backgroundColor.a < 1,
+          id: "console framebuffer",
         })
       }
       const logCount = terminalConsoleCache.cachedLogs.length

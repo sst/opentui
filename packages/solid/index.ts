@@ -23,4 +23,5 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
 
 export * from "./src/reconciler"
 export * from "./src/elements"
+export * from "./src/types/elements"
 export { type JSX }

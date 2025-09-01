@@ -1,4 +1,4 @@
-import { dlopen, toArrayBuffer, type Pointer } from "bun:ffi"
+import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import { type CursorStyle, type DebugOverlayCorner, type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
@@ -15,6 +15,11 @@ function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
 
   return dlopen(resolvedLibPath, {
+    // Logging
+    setLogCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
     // Renderer management
     createRenderer: {
       args: ["u32", "u32"],
@@ -58,7 +63,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createOptimizedBuffer: {
-      args: ["u32", "u32", "bool", "u8"],
+      args: ["u32", "u32", "bool", "u8", "ptr", "usize"],
       returns: "ptr",
     },
     destroyOptimizedBuffer: {
@@ -105,6 +110,10 @@ function getOpenTUILib(libPath?: string) {
     bufferSetRespectAlpha: {
       args: ["ptr", "bool"],
       returns: "void",
+    },
+    bufferGetId: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
     },
 
     bufferDrawText: {
@@ -169,6 +178,18 @@ function getOpenTUILib(libPath?: string) {
     },
     bufferDrawBox: {
       args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
+      returns: "void",
+    },
+    bufferPushScissorRect: {
+      args: ["ptr", "i32", "i32", "u32", "u32"],
+      returns: "void",
+    },
+    bufferPopScissorRect: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    bufferClearScissorRects: {
+      args: ["ptr"],
       returns: "void",
     },
 
@@ -323,6 +344,14 @@ function getOpenTUILib(libPath?: string) {
   })
 }
 
+// Log levels matching Zig's LogLevel enum
+export enum LogLevel {
+  Error = 0,
+  Warn = 1,
+  Info = 2,
+  Debug = 3,
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number) => Pointer | null
   destroyRenderer: (renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) => void
@@ -339,6 +368,7 @@ export interface RenderLib {
     height: number,
     widthMethod: WidthMethod,
     respectAlpha?: boolean,
+    id?: string,
   ) => OptimizedBuffer
   destroyOptimizedBuffer: (bufferPtr: Pointer) => void
   drawFrameBuffer: (
@@ -360,6 +390,7 @@ export interface RenderLib {
   bufferGetAttributesPtr: (buffer: Pointer) => Pointer
   bufferGetRespectAlpha: (buffer: Pointer) => boolean
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
+  bufferGetId: (buffer: Pointer) => string
   bufferDrawText: (
     buffer: Pointer,
     text: string,
@@ -502,6 +533,9 @@ export interface RenderLib {
     y: number,
     clipRect?: { x: number; y: number; width: number; height: number },
   ) => void
+  bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
+  bufferPopScissorRect: (buffer: Pointer) => void
+  bufferClearScissorRects: (buffer: Pointer) => void
 
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
@@ -510,9 +544,69 @@ export interface RenderLib {
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
   private encoder: TextEncoder = new TextEncoder()
+  private decoder: TextDecoder = new TextDecoder()
+  private logCallbackWrapper: any // Store the FFI callback wrapper
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
+    this.setupLogging()
+  }
+
+  private setupLogging() {
+    if (this.logCallbackWrapper) {
+      return
+    }
+
+    const logCallback = new JSCallback(
+      (level: number, msgPtr: Pointer, msgLenBigInt: bigint | number) => {
+        try {
+          const msgLen = typeof msgLenBigInt === "bigint" ? Number(msgLenBigInt) : msgLenBigInt
+
+          if (msgLen === 0 || !msgPtr) {
+            return
+          }
+
+          const msgBuffer = toArrayBuffer(msgPtr, 0, msgLen)
+          const msgBytes = new Uint8Array(msgBuffer)
+          const message = this.decoder.decode(msgBytes)
+
+          switch (level) {
+            case LogLevel.Error:
+              console.error(message)
+              break
+            case LogLevel.Warn:
+              console.warn(message)
+              break
+            case LogLevel.Info:
+              console.info(message)
+              break
+            case LogLevel.Debug:
+              console.debug(message)
+              break
+            default:
+              console.log(message)
+          }
+        } catch (error) {
+          console.error("Error in Zig log callback:", error)
+        }
+      },
+      {
+        args: ["u8", "ptr", "usize"],
+        returns: "void",
+      },
+    )
+
+    this.logCallbackWrapper = logCallback
+
+    if (!logCallback.ptr) {
+      throw new Error("Failed to create log callback")
+    }
+
+    this.setLogCallback(logCallback.ptr)
+  }
+
+  private setLogCallback(callbackPtr: Pointer) {
+    this.opentui.symbols.setLogCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number) {
@@ -554,7 +648,7 @@ class FFIRenderLib implements RenderLib {
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, {})
+    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { id: "next buffer" })
   }
 
   public getCurrentBuffer(renderer: Pointer): OptimizedBuffer {
@@ -568,7 +662,7 @@ class FFIRenderLib implements RenderLib {
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, {})
+    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { id: "current buffer" })
   }
 
   private getBuffer(
@@ -665,6 +759,14 @@ class FFIRenderLib implements RenderLib {
 
   public bufferSetRespectAlpha(buffer: Pointer, respectAlpha: boolean): void {
     this.opentui.symbols.bufferSetRespectAlpha(buffer, respectAlpha)
+  }
+
+  public bufferGetId(buffer: Pointer): string {
+    const maxLen = 256
+    const outBuffer = new Uint8Array(maxLen)
+    const actualLen = this.opentui.symbols.bufferGetId(buffer, outBuffer, maxLen)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    return this.decoder.decode(outBuffer.slice(0, len))
   }
 
   public getBufferWidth(buffer: Pointer): number {
@@ -830,20 +932,30 @@ class FFIRenderLib implements RenderLib {
     height: number,
     widthMethod: WidthMethod,
     respectAlpha: boolean = false,
+    id?: string,
   ): OptimizedBuffer {
     if (Number.isNaN(width) || Number.isNaN(height)) {
       console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
     }
 
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha, widthMethodCode)
+    const idToUse = id || "unnamed buffer"
+    const idBytes = this.encoder.encode(idToUse)
+    const bufferPtr = this.opentui.symbols.createOptimizedBuffer(
+      width,
+      height,
+      respectAlpha,
+      widthMethodCode,
+      idBytes,
+      idBytes.length,
+    )
     if (!bufferPtr) {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { respectAlpha })
+    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { respectAlpha, id })
   }
 
   public destroyOptimizedBuffer(bufferPtr: Pointer) {
@@ -1155,6 +1267,18 @@ class FFIRenderLib implements RenderLib {
       clipHeight,
       hasClipRect,
     )
+  }
+
+  public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {
+    this.opentui.symbols.bufferPushScissorRect(buffer, x, y, width, height)
+  }
+
+  public bufferPopScissorRect(buffer: Pointer): void {
+    this.opentui.symbols.bufferPopScissorRect(buffer)
+  }
+
+  public bufferClearScissorRects(buffer: Pointer): void {
+    this.opentui.symbols.bufferClearScissorRects(buffer)
   }
 
   public getTerminalCapabilities(renderer: Pointer): any {

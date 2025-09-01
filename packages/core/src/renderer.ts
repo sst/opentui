@@ -374,7 +374,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
-    if (!this.updateScheduled && !this._isRunning) {
+    if (!this.rendering && !this.updateScheduled && !this._isRunning) {
       this.updateScheduled = true
       process.nextTick(() => {
         this.loop()
@@ -974,6 +974,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public start(): void {
     this.controlState = RendererControlState.EXPLICIT_STARTED
     this.internalStart()
+  }
+
+  public auto(): void {
+    this.controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
   }
 
   private internalStart(): void {

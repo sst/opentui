@@ -1,5 +1,4 @@
 const std = @import("std");
-const log = std.log;
 const Allocator = std.mem.Allocator;
 
 const ansi = @import("ansi.zig");
@@ -9,11 +8,17 @@ const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
+const logger = @import("logger.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
+
+// Export the setLogCallback function from logger module
+export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
+    logger.setLogCallback(callback);
+}
 
 fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
     return .{ ptr[0], ptr[1], ptr[2], ptr[3] };
@@ -24,14 +29,14 @@ const allocator = arena.allocator();
 
 export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
-        log.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
+        logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
     const pool = gp.initGlobalPool(allocator);
 
     return renderer.CliRenderer.create(allocator, width, height, pool) catch |err| {
-        log.err("Failed to create renderer: {}", .{err});
+        logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
 }
@@ -80,20 +85,22 @@ export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
     rendererPtr.render(force);
 }
 
-export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8) ?*buffer.OptimizedBuffer {
+export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {
     if (width == 0 or height == 0) {
-        log.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
+        logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
     const pool = gp.initGlobalPool(allocator);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const id = idPtr[0..idLen];
     return buffer.OptimizedBuffer.init(allocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
+        .id = id,
     }) catch |err| {
-        log.err("Failed to create optimized buffer: {}", .{err});
+        logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
     };
 }
@@ -189,6 +196,13 @@ export fn bufferSetRespectAlpha(bufferPtr: *buffer.OptimizedBuffer, respectAlpha
     bufferPtr.setRespectAlpha(respectAlpha);
 }
 
+export fn bufferGetId(bufferPtr: *buffer.OptimizedBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const id = bufferPtr.getId();
+    const copyLen = @min(id.len, maxLen);
+    @memcpy(outPtr[0..copyLen], id[0..copyLen]);
+    return copyLen;
+}
+
 export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
     const rgbaFg = f32PtrToRGBA(fg);
     const rgbaBg = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
@@ -208,6 +222,18 @@ export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, wid
 
 export fn bufferDrawPackedBuffer(bufferPtr: *buffer.OptimizedBuffer, data: [*]const u8, dataLen: usize, posX: u32, posY: u32, terminalWidthCells: u32, terminalHeightCells: u32) void {
     bufferPtr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
+}
+
+export fn bufferPushScissorRect(bufferPtr: *buffer.OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) void {
+    bufferPtr.pushScissorRect(x, y, width, height) catch {};
+}
+
+export fn bufferPopScissorRect(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.popScissorRect();
+}
+
+export fn bufferClearScissorRects(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.clearScissorRects();
 }
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {

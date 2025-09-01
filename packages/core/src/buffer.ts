@@ -100,9 +100,9 @@ export class OptimizedBuffer {
     },
     width: number,
     height: number,
-    options: { respectAlpha?: boolean },
+    options: { respectAlpha?: boolean; id?: string },
   ) {
-    this.id = `fb_${OptimizedBuffer.fbIdCounter++}`
+    this.id = options.id || `fb_${OptimizedBuffer.fbIdCounter++}`
     this.lib = lib
     this.respectAlpha = options.respectAlpha || false
     this._width = width
@@ -115,11 +115,12 @@ export class OptimizedBuffer {
     width: number,
     height: number,
     widthMethod: WidthMethod,
-    options: { respectAlpha?: boolean } = {},
+    options: { respectAlpha?: boolean; id?: string } = {},
   ): OptimizedBuffer {
     const lib = resolveRenderLib()
     const respectAlpha = options.respectAlpha || false
-    return lib.createOptimizedBuffer(width, height, widthMethod, respectAlpha)
+    const id = options.id && options.id.trim() !== "" ? options.id : "unnamed buffer"
+    return lib.createOptimizedBuffer(width, height, widthMethod, respectAlpha, id)
   }
 
   public get buffers(): {
@@ -146,6 +147,10 @@ export class OptimizedBuffer {
   public setRespectAlpha(respectAlpha: boolean): void {
     this.lib.bufferSetRespectAlpha(this.bufferPtr, respectAlpha)
     this.respectAlpha = respectAlpha
+  }
+
+  public getNativeId(): string {
+    return this.lib.bufferGetId(this.bufferPtr)
   }
 
   public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1), clearChar: string = " "): void {
@@ -610,5 +615,17 @@ export class OptimizedBuffer {
       options.backgroundColor,
       options.title ?? null,
     )
+  }
+
+  public pushScissorRect(x: number, y: number, width: number, height: number): void {
+    this.lib.bufferPushScissorRect(this.bufferPtr, x, y, width, height)
+  }
+
+  public popScissorRect(): void {
+    this.lib.bufferPopScissorRect(this.bufferPtr)
+  }
+
+  public clearScissorRects(): void {
+    this.lib.bufferClearScissorRects(this.bufferPtr)
   }
 }
