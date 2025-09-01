@@ -14,8 +14,11 @@ export function run(rendererInstance: CliRenderer): void {
     width: "100%",
     height: "100%",
     rootOptions: {
-      backgroundColor: "#004589",
+      backgroundColor: "#730000",
       border: true,
+    },
+    wrapperOptions: {
+      backgroundColor: "#9f0045",
     },
     viewportOptions: {
       backgroundColor: "#005dbb",
@@ -37,7 +40,7 @@ export function run(rendererInstance: CliRenderer): void {
 
   const item = new BoxRenderable(renderer, {
     id: "scroll-item",
-    width: 200,
+    width: 120,
     margin: 5,
     height: 5,
     backgroundColor: "red",

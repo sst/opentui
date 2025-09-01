@@ -76,7 +76,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       flexGrow: 1,
       flexShrink: 1,
       flexBasis: "auto",
-      overflow: "scroll",
       maxHeight: "100%",
       maxWidth: "100%",
       ...wrapperOptions,
@@ -88,17 +87,23 @@ export class ScrollBoxRenderable extends BoxRenderable {
       flexGrow: 1,
       flexShrink: 1,
       flexBasis: "auto",
-      overflow: "scroll",
+      minWidth: 0,
+      minHeight: 0,
       maxHeight: "100%",
       maxWidth: "100%",
+      overflow: "hidden",
       ...viewportOptions,
     })
     this.wrapper.add(this.viewport)
 
     this.content = new BoxRenderable(ctx, {
+      minWidth: "100%",
+      minHeight: "100%",
       alignSelf: "flex-start",
       ...contentOptions,
     })
+    this.viewport.add(this.content)
+
     this.verticalScrollBar = new ScrollBarRenderable(ctx, {
       orientation: "vertical",
       trackOptions,
@@ -115,8 +120,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       arrowOptions,
       showArrows,
     })
-
-    this.viewport.add(this.content)
 
     this.wrapper.add(this.horizontalScrollBar)
 
