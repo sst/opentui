@@ -1,3 +1,4 @@
+import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { Timeout } from "../types"
 import type { RenderContext } from "../types"
@@ -20,6 +21,8 @@ export class ScrollBarRenderable extends Renderable {
   public readonly startArrow: BoxRenderable
   public readonly endArrow: BoxRenderable
   public readonly orientation: "vertical" | "horizontal"
+
+  protected focusable: boolean = true
 
   private _scrollSize = 0
   private _scrollPosition = 0
@@ -229,6 +232,47 @@ export class ScrollBarRenderable extends Renderable {
     const sizeRatio = this.scrollSize <= this.viewportSize ? 1 : this.viewportSize / this.scrollSize
 
     this.visible = sizeRatio < 1
+  }
+
+  public handleKeyPress(key: ParsedKey | string): boolean {
+    const keyName = typeof key === "string" ? key : key.name
+
+    switch (keyName) {
+      case "left":
+      case "h":
+        if (this.orientation !== "horizontal") return false;
+        this.scrollBy(-1 / 5, 'viewport')
+        return true
+      case "right":
+      case "l":
+        if (this.orientation !== "horizontal") return false;
+        this.scrollBy(1 / 5, 'viewport')
+        return true
+      case "up":
+      case "k":
+        if (this.orientation !== "vertical") return false;
+        this.scrollBy(-1 / 5 , 'viewport')
+        return true
+      case "down":
+      case "j":
+        if (this.orientation !== "vertical") return false;
+        this.scrollBy(1 / 5, 'viewport')
+        return true
+      case "pageup":
+        this.scrollBy(-1 / 2, 'viewport')
+        return true
+      case "pagedown":
+        this.scrollBy(1 / 2, 'viewport')
+        return true
+      case "home":
+        this.scrollBy(-1, 'content')
+        return true
+      case "end":
+        this.scrollBy(1, 'content')
+        return true
+    }
+
+    return false
   }
 }
 

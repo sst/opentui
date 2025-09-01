@@ -23,6 +23,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public readonly horizontalScrollBar: ScrollBarRenderable
   public readonly verticalScrollBar: ScrollBarRenderable
 
+  protected focusable: boolean = true
+  
   get scrollTop(): number {
     return this.verticalScrollBar.scrollPosition
   }
@@ -221,31 +223,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-
-    switch (keyName) {
-      case "up":
-      case "k":
-        this.scrollBy(-Math.max(1, Math.round(this.viewport.height / 5)))
-        return true
-      case "down":
-      case "j":
-        this.scrollBy(Math.max(1, Math.round(this.viewport.height / 5)))
-        return true
-      case "pageup":
-        this.scrollBy(-Math.max(1, Math.round(this.viewport.height / 2)))
-        return true
-      case "pagedown":
-        this.scrollBy(Math.max(1, Math.round(this.viewport.height / 2)))
-        return true
-      case "home":
-        this.scrollTop = 0
-        return true
-      case "end":
-        this.scrollTop = this.content.height
-        return true
-    }
-
+    if (this.verticalScrollBar.handleKeyPress(key)) return true;
+    if (this.horizontalScrollBar.handleKeyPress(key)) return true;
     return false
   }
 

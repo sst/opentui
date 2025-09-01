@@ -34,6 +34,8 @@ export function run(rendererInstance: CliRenderer): void {
     },
   })
 
+  scrollBox.focus()
+
   renderer.root.add(scrollBox)
 
   for (let index = 0; index < 20; index++) addItem(`Item ${index + 1}`)
