@@ -704,9 +704,6 @@ pub const OptimizedBuffer = struct {
 
             var dX = clippedStartX;
             while (dX <= clippedEndX) : (dX += 1) {
-                // TODO: We already checked the clipped rect, so we don't need to check again?
-                if (!self.isPointInScissor(dX, dY)) continue;
-
                 const relativeDestX = dX - destX;
                 const relativeDestY = dY - destY;
                 const sX = srcX + @as(u32, @intCast(relativeDestX));
