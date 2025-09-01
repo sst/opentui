@@ -557,17 +557,18 @@ pub const OptimizedBuffer = struct {
             // For non-alpha (fully opaque) backgrounds, we can do direct filling
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
-                // Only fill cells that are within the scissor rect
-                var fillX = clippedStartX;
-                while (fillX <= clippedEndX) : (fillX += 1) {
-                    if (self.isPointInScissor(@intCast(fillX), @intCast(fillY))) {
-                        const cellIndex = self.coordsToIndex(fillX, fillY);
-                        self.buffer.char[cellIndex] = @intCast(DEFAULT_SPACE_CHAR);
-                        self.buffer.fg[cellIndex] = .{ 1.0, 1.0, 1.0, 1.0 };
-                        self.buffer.bg[cellIndex] = bg;
-                        self.buffer.attributes[cellIndex] = 0;
-                    }
-                }
+                const rowStartIndex = self.coordsToIndex(@intCast(clippedStartX), @intCast(fillY));
+                const rowWidth = clippedEndX - clippedStartX + 1;
+
+                const rowSliceChar = self.buffer.char[rowStartIndex .. rowStartIndex + rowWidth];
+                const rowSliceFg = self.buffer.fg[rowStartIndex .. rowStartIndex + rowWidth];
+                const rowSliceBg = self.buffer.bg[rowStartIndex .. rowStartIndex + rowWidth];
+                const rowSliceAttrs = self.buffer.attributes[rowStartIndex .. rowStartIndex + rowWidth];
+
+                @memset(rowSliceChar, @intCast(DEFAULT_SPACE_CHAR));
+                @memset(rowSliceFg, .{ 1.0, 1.0, 1.0, 1.0 });
+                @memset(rowSliceBg, bg);
+                @memset(rowSliceAttrs, 0);
             }
         }
     }
@@ -686,17 +687,14 @@ pub const OptimizedBuffer = struct {
 
                 if (sX >= frameBuffer.width) continue;
 
-                var copyX = clippedStartX;
-                while (copyX <= clippedEndX) : (copyX += 1) {
-                    if (self.isPointInScissor(copyX, dY)) {
-                        const destIndex = self.coordsToIndex(@intCast(copyX), @intCast(dY));
-                        const srcIndex = frameBuffer.coordsToIndex(sX + @as(u32, @intCast(copyX - clippedStartX)), sY);
-                        self.buffer.char[destIndex] = frameBuffer.buffer.char[srcIndex];
-                        self.buffer.fg[destIndex] = frameBuffer.buffer.fg[srcIndex];
-                        self.buffer.bg[destIndex] = frameBuffer.buffer.bg[srcIndex];
-                        self.buffer.attributes[destIndex] = frameBuffer.buffer.attributes[srcIndex];
-                    }
-                }
+                const destRowStart = self.coordsToIndex(@intCast(clippedStartX), @intCast(dY));
+                const srcRowStart = frameBuffer.coordsToIndex(sX, sY);
+                const actualCopyWidth = @min(@as(u32, @intCast(clippedEndX - clippedStartX + 1)), frameBuffer.width - sX);
+
+                @memcpy(self.buffer.char[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.char[srcRowStart .. srcRowStart + actualCopyWidth]);
+                @memcpy(self.buffer.fg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.fg[srcRowStart .. srcRowStart + actualCopyWidth]);
+                @memcpy(self.buffer.bg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.bg[srcRowStart .. srcRowStart + actualCopyWidth]);
+                @memcpy(self.buffer.attributes[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.attributes[srcRowStart .. srcRowStart + actualCopyWidth]);
             }
             return;
         }
