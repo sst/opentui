@@ -130,11 +130,13 @@ pub const OptimizedBuffer = struct {
     display_width: DisplayWidth,
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
+    id: []const u8,
 
     const InitOptions = struct {
         respectAlpha: bool = false,
         pool: *gp.GraphemePool,
         width_method: gwidth.WidthMethod = .unicode,
+        id: []const u8 = "unnamed buffer",
     };
 
     pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
@@ -153,6 +155,9 @@ pub const OptimizedBuffer = struct {
 
         const size = width * height;
 
+        const owned_id = allocator.dupe(u8, options.id) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(owned_id);
+
         self.* = .{
             .buffer = .{
                 .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
@@ -169,6 +174,7 @@ pub const OptimizedBuffer = struct {
             .display_width = dw,
             .grapheme_tracker = gp.GraphemeTracker.init(allocator, options.pool),
             .width_method = options.width_method,
+            .id = owned_id,
         };
 
         @memset(self.buffer.char, 0);
@@ -202,6 +208,7 @@ pub const OptimizedBuffer = struct {
         self.grapheme_tracker.deinit();
         self.display_width.deinit(self.allocator);
         self.graphemes_data.deinit(self.allocator);
+        self.allocator.free(self.id);
         self.allocator.destroy(self);
     }
 
@@ -341,13 +348,16 @@ pub const OptimizedBuffer = struct {
         return self.respectAlpha;
     }
 
+    pub fn getId(self: *const OptimizedBuffer) []const u8 {
+        return self.id;
+    }
+
     pub fn blendCells(overlayCell: Cell, destCell: Cell) Cell {
         const hasBgAlpha = isRGBAWithAlpha(overlayCell.bg);
         const hasFgAlpha = isRGBAWithAlpha(overlayCell.fg);
 
         if (hasBgAlpha or hasFgAlpha) {
             const blendedBgRgb = if (hasBgAlpha) blendColors(overlayCell.bg, destCell.bg) else overlayCell.bg;
-
             const charIsDefaultSpace = overlayCell.char == DEFAULT_SPACE_CHAR;
             const destNotZero = destCell.char != 0;
             const destNotDefaultSpace = destCell.char != DEFAULT_SPACE_CHAR;

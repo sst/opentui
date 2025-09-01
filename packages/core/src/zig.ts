@@ -63,7 +63,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createOptimizedBuffer: {
-      args: ["u32", "u32", "bool", "u8"],
+      args: ["u32", "u32", "bool", "u8", "ptr", "usize"],
       returns: "ptr",
     },
     destroyOptimizedBuffer: {
@@ -110,6 +110,10 @@ function getOpenTUILib(libPath?: string) {
     bufferSetRespectAlpha: {
       args: ["ptr", "bool"],
       returns: "void",
+    },
+    bufferGetId: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
     },
 
     bufferDrawText: {
@@ -352,6 +356,7 @@ export interface RenderLib {
     height: number,
     widthMethod: WidthMethod,
     respectAlpha?: boolean,
+    id?: string,
   ) => OptimizedBuffer
   destroyOptimizedBuffer: (bufferPtr: Pointer) => void
   drawFrameBuffer: (
@@ -373,6 +378,7 @@ export interface RenderLib {
   bufferGetAttributesPtr: (buffer: Pointer) => Pointer
   bufferGetRespectAlpha: (buffer: Pointer) => boolean
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
+  bufferGetId: (buffer: Pointer) => string
   bufferDrawText: (
     buffer: Pointer,
     text: string,
@@ -627,7 +633,7 @@ class FFIRenderLib implements RenderLib {
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, {})
+    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { id: "next buffer" })
   }
 
   public getCurrentBuffer(renderer: Pointer): OptimizedBuffer {
@@ -641,7 +647,7 @@ class FFIRenderLib implements RenderLib {
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, {})
+    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { id: "current buffer" })
   }
 
   private getBuffer(
@@ -738,6 +744,14 @@ class FFIRenderLib implements RenderLib {
 
   public bufferSetRespectAlpha(buffer: Pointer, respectAlpha: boolean): void {
     this.opentui.symbols.bufferSetRespectAlpha(buffer, respectAlpha)
+  }
+
+  public bufferGetId(buffer: Pointer): string {
+    const maxLen = 256
+    const outBuffer = new Uint8Array(maxLen)
+    const actualLen = this.opentui.symbols.bufferGetId(buffer, outBuffer, maxLen)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    return this.decoder.decode(outBuffer.slice(0, len))
   }
 
   public getBufferWidth(buffer: Pointer): number {
@@ -903,20 +917,30 @@ class FFIRenderLib implements RenderLib {
     height: number,
     widthMethod: WidthMethod,
     respectAlpha: boolean = false,
+    id?: string,
   ): OptimizedBuffer {
     if (Number.isNaN(width) || Number.isNaN(height)) {
       console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
     }
 
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createOptimizedBuffer(width, height, respectAlpha, widthMethodCode)
+    const idToUse = id || "unnamed buffer"
+    const idBytes = this.encoder.encode(idToUse)
+    const bufferPtr = this.opentui.symbols.createOptimizedBuffer(
+      width,
+      height,
+      respectAlpha,
+      widthMethodCode,
+      idBytes,
+      idBytes.length,
+    )
     if (!bufferPtr) {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
     const size = width * height
     const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { respectAlpha })
+    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { respectAlpha, id })
   }
 
   public destroyOptimizedBuffer(bufferPtr: Pointer) {

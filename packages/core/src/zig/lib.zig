@@ -85,7 +85,7 @@ export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
     rendererPtr.render(force);
 }
 
-export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8) ?*buffer.OptimizedBuffer {
+export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return null;
@@ -93,10 +93,12 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
 
     const pool = gp.initGlobalPool(allocator);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const id = idPtr[0..idLen];
     return buffer.OptimizedBuffer.init(allocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
+        .id = id,
     }) catch |err| {
         logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
@@ -192,6 +194,13 @@ export fn bufferGetRespectAlpha(bufferPtr: *buffer.OptimizedBuffer) bool {
 
 export fn bufferSetRespectAlpha(bufferPtr: *buffer.OptimizedBuffer, respectAlpha: bool) void {
     bufferPtr.setRespectAlpha(respectAlpha);
+}
+
+export fn bufferGetId(bufferPtr: *buffer.OptimizedBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const id = bufferPtr.getId();
+    const copyLen = @min(id.len, maxLen);
+    @memcpy(outPtr[0..copyLen], id[0..copyLen]);
+    return copyLen;
 }
 
 export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
