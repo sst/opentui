@@ -19,30 +19,34 @@ pub const CHAR_EXT_RIGHT_SHIFT: u5 = 28;
 pub const CHAR_EXT_LEFT_SHIFT: u5 = 26;
 pub const CHAR_EXT_MASK: u32 = 0x3;
 
-// Low 26 bits carry the global grapheme ID payload for start cells
+// Grapheme ID payload layout (26 bits total):
+// [ class (3 bits) | generation (7 bits) | slot_index (16 bits) ]
 pub const GRAPHEME_ID_MASK: u32 = 0x03FF_FFFF;
+pub const CLASS_BITS: u5 = 3;
+pub const GENERATION_BITS: u5 = 7;
+pub const SLOT_BITS: u5 = 16;
+pub const CLASS_MASK: u32 = (@as(u32, 1) << CLASS_BITS) - 1; // 0b111
+pub const GENERATION_MASK: u32 = (@as(u32, 1) << GENERATION_BITS) - 1; // 0b1111111
+pub const SLOT_MASK: u32 = (@as(u32, 1) << SLOT_BITS) - 1; // 0xFFFF
 
 /// Global slab-allocated pool for grapheme clusters (byte slices)
 /// This is total overkill probably, but fun
 /// ID layout (26-bit payload):
-/// [ class (3 bits) | slot_index (23 bits) ]
+/// [ class (3 bits) | generation (7 bits) | slot_index (16 bits) ]
 pub const GraphemePool = struct {
     const MAX_CLASSES: u5 = 5; // 0..4 => 8,16,32,64,128
     const CLASS_SIZES = [_]u32{ 8, 16, 32, 64, 128 };
     const SLOTS_PER_PAGE = [_]u32{ 256, 128, 64, 16, 8 };
-    const CLASS_BITS: u5 = 3;
-    const SLOT_BITS: u5 = 23;
-    const CLASS_MASK: u32 = (@as(u32, 1) << CLASS_BITS) - 1; // 0b111
-    const SLOT_MASK: u32 = (@as(u32, 1) << SLOT_BITS) - 1;
 
     pub const IdPayload = u32;
 
     allocator: std.mem.Allocator,
     classes: [MAX_CLASSES]ClassPool,
 
-    const SlotHeader = packed struct {
+    const SlotHeader = extern struct {
         len: u16,
         refcount: u32,
+        generation: u32,
     };
 
     pub fn init(allocator: std.mem.Allocator) GraphemePool {
@@ -73,25 +77,31 @@ pub const GraphemePool = struct {
         const class_id: u32 = classForSize(bytes.len);
         const slot_index = try self.classes[class_id].alloc(bytes);
         if (slot_index > SLOT_MASK) return GraphemePoolError.OutOfMemory;
-        return (class_id << SLOT_BITS) | slot_index;
+        const generation = self.classes[class_id].getGeneration(slot_index);
+        return (class_id << (GENERATION_BITS + SLOT_BITS)) |
+            ((generation & GENERATION_MASK) << SLOT_BITS) |
+            (slot_index & SLOT_MASK);
     }
 
-    pub fn incref(self: *GraphemePool, id: IdPayload) void {
-        const class_id: u32 = (id >> SLOT_BITS) & CLASS_MASK;
+    pub fn incref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
+        const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
         const slot_index: u32 = id & SLOT_MASK;
-        self.classes[class_id].incref(slot_index);
+        const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        try self.classes[class_id].incref(slot_index, generation);
     }
 
     pub fn decref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
-        const class_id: u32 = (id >> SLOT_BITS) & CLASS_MASK;
+        const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
         const slot_index: u32 = id & SLOT_MASK;
-        try self.classes[class_id].decref(slot_index);
+        const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        try self.classes[class_id].decref(slot_index, generation);
     }
 
     pub fn get(self: *GraphemePool, id: IdPayload) GraphemePoolError![]const u8 {
-        const class_id: u32 = (id >> SLOT_BITS) & CLASS_MASK;
+        const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
         const slot_index: u32 = id & SLOT_MASK;
-        return self.classes[class_id].get(slot_index);
+        const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        return self.classes[class_id].get(slot_index, generation);
     }
 
     const ClassPool = struct {
@@ -134,7 +144,7 @@ pub const GraphemePool = struct {
             self.num_slots += self.slots_per_page;
         }
 
-        fn slotPtr(self: *ClassPool, slot_index: u32) *align(1) u8 {
+        fn slotPtr(self: *ClassPool, slot_index: u32) *u8 {
             const offset: usize = @as(usize, slot_index) * self.slot_size_bytes;
             return &self.slots.items[offset];
         }
@@ -149,27 +159,45 @@ pub const GraphemePool = struct {
             const p = self.slotPtr(slot_index);
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
 
-            header_ptr.* = .{ .len = @intCast(@min(bytes.len, self.slot_capacity)), .refcount = 0 };
+            // Increment generation when reusing a slot, wrapping at 7 bits (128 values)
+            const new_generation = (header_ptr.generation + 1) & GENERATION_MASK;
 
-            const base_ptr = @as([*]u8, @ptrCast(p));
-            const data_ptr = base_ptr + @sizeOf(SlotHeader);
+            header_ptr.* = .{
+                .len = @intCast(@min(bytes.len, self.slot_capacity)),
+                .refcount = 1, // Start with refcount of 1 for new allocation
+                .generation = new_generation,
+            };
+
+            const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
             @memcpy(data_ptr[0..header_ptr.len], bytes[0..header_ptr.len]);
 
             return slot_index;
         }
 
-        pub fn incref(self: *ClassPool, slot_index: u32) void {
+        pub fn getGeneration(self: *ClassPool, slot_index: u32) u32 {
+            if (slot_index >= self.num_slots) return 0;
             const p = self.slotPtr(slot_index);
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            return header_ptr.generation;
+        }
+
+        pub fn incref(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!void {
+            const p = self.slotPtr(slot_index);
+            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            if (header_ptr.generation != expected_generation) {
+                // Generation mismatch - this is a stale reference
+                return GraphemePoolError.InvalidId;
+            }
             header_ptr.refcount +%= 1;
         }
 
-        pub fn decref(self: *ClassPool, slot_index: u32) GraphemePoolError!void {
+        pub fn decref(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!void {
             const p = self.slotPtr(slot_index);
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
 
             if (header_ptr.refcount == 0) return GraphemePoolError.InvalidId;
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
 
             header_ptr.refcount -%= 1;
 
@@ -178,13 +206,15 @@ pub const GraphemePool = struct {
             }
         }
 
-        pub fn get(self: *ClassPool, slot_index: u32) GraphemePoolError![]const u8 {
+        pub fn get(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError![]const u8 {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
 
             const p = self.slotPtr(slot_index);
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
-            const base_ptr = @as([*]u8, @ptrCast(p));
-            const data_ptr = base_ptr + @sizeOf(SlotHeader);
+            // Validate generation to prevent accessing stale data
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
+
+            const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
             return data_ptr[0..header_ptr.len];
         }
@@ -295,7 +325,9 @@ pub const GraphemeTracker = struct {
             std.debug.panic("GraphemeTracker.add failed: {}\n", .{err});
         };
         if (!res.found_existing) {
-            self.pool.incref(id);
+            self.pool.incref(id) catch |err| {
+                std.debug.panic("GraphemeTracker.add incref failed: {}\n", .{err});
+            };
         }
     }
 
