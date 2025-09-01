@@ -1,4 +1,4 @@
-import { dlopen, toArrayBuffer, type Pointer } from "bun:ffi"
+import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import { type CursorStyle, type DebugOverlayCorner, type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
@@ -15,6 +15,11 @@ function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
 
   return dlopen(resolvedLibPath, {
+    // Logging
+    setLogCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
     // Renderer management
     createRenderer: {
       args: ["u32", "u32"],
@@ -323,6 +328,14 @@ function getOpenTUILib(libPath?: string) {
   })
 }
 
+// Log levels matching Zig's LogLevel enum
+export enum LogLevel {
+  Error = 0,
+  Warn = 1,
+  Info = 2,
+  Debug = 3,
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number) => Pointer | null
   destroyRenderer: (renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) => void
@@ -510,9 +523,69 @@ export interface RenderLib {
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
   private encoder: TextEncoder = new TextEncoder()
+  private decoder: TextDecoder = new TextDecoder()
+  private logCallbackWrapper: any // Store the FFI callback wrapper
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
+    this.setupLogging()
+  }
+
+  private setupLogging() {
+    if (this.logCallbackWrapper) {
+      return
+    }
+
+    const logCallback = new JSCallback(
+      (level: number, msgPtr: Pointer, msgLenBigInt: bigint | number) => {
+        try {
+          const msgLen = typeof msgLenBigInt === "bigint" ? Number(msgLenBigInt) : msgLenBigInt
+
+          if (msgLen === 0 || !msgPtr) {
+            return
+          }
+
+          const msgBuffer = toArrayBuffer(msgPtr, 0, msgLen)
+          const msgBytes = new Uint8Array(msgBuffer)
+          const message = this.decoder.decode(msgBytes)
+
+          switch (level) {
+            case LogLevel.Error:
+              console.error(message)
+              break
+            case LogLevel.Warn:
+              console.warn(message)
+              break
+            case LogLevel.Info:
+              console.info(message)
+              break
+            case LogLevel.Debug:
+              console.debug(message)
+              break
+            default:
+              console.log(message)
+          }
+        } catch (error) {
+          console.error("Error in Zig log callback:", error)
+        }
+      },
+      {
+        args: ["u8", "ptr", "usize"],
+        returns: "void",
+      },
+    )
+
+    this.logCallbackWrapper = logCallback
+
+    if (!logCallback.ptr) {
+      throw new Error("Failed to create log callback")
+    }
+
+    this.setLogCallback(logCallback.ptr)
+  }
+
+  private setLogCallback(callbackPtr: Pointer) {
+    this.opentui.symbols.setLogCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number) {

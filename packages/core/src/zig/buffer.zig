@@ -8,6 +8,7 @@ const DisplayWidth = @import("DisplayWidth");
 const code_point = @import("code_point");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
+const logger = @import("logger.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const Vec3f = @Vector(3, f32);
@@ -137,7 +138,10 @@ pub const OptimizedBuffer = struct {
     };
 
     pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
-        if (width == 0 or height == 0) return BufferError.InvalidDimensions;
+        if (width == 0 or height == 0) {
+            logger.warn("OptimizedBuffer.init: Invalid dimensions {}x{}", .{ width, height });
+            return BufferError.InvalidDimensions;
+        }
 
         const graph = Graphemes.init(allocator) catch return BufferError.OutOfMemory;
         errdefer graph.deinit(allocator);

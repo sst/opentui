@@ -1,5 +1,4 @@
 const std = @import("std");
-const log = std.log;
 const Allocator = std.mem.Allocator;
 
 const ansi = @import("ansi.zig");
@@ -9,11 +8,17 @@ const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
+const logger = @import("logger.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
+
+// Export the setLogCallback function from logger module
+export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
+    logger.setLogCallback(callback);
+}
 
 fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
     return .{ ptr[0], ptr[1], ptr[2], ptr[3] };
@@ -24,14 +29,14 @@ const allocator = arena.allocator();
 
 export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
-        log.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
+        logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
     const pool = gp.initGlobalPool(allocator);
 
     return renderer.CliRenderer.create(allocator, width, height, pool) catch |err| {
-        log.err("Failed to create renderer: {}", .{err});
+        logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
 }
@@ -82,7 +87,7 @@ export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
 
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8) ?*buffer.OptimizedBuffer {
     if (width == 0 or height == 0) {
-        log.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
+        logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
@@ -93,7 +98,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
         .pool = pool,
         .width_method = wMethod,
     }) catch |err| {
-        log.err("Failed to create optimized buffer: {}", .{err});
+        logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
     };
 }
