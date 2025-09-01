@@ -101,6 +101,8 @@ export interface RenderableOptions<T extends Renderable = Renderable> extends Pa
   onMouseScroll?: (this: T, event: MouseEvent) => void
 
   onKeyDown?: (key: ParsedKey) => void
+
+  onSizeChange?: (this: T) => void
 }
 
 function validateOptions(id: string, options: RenderableOptions<Renderable>): void {
@@ -213,6 +215,7 @@ export abstract class Renderable extends EventEmitter {
   private _live: boolean = false
   protected _liveCount: number = 0
 
+  private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
   private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
@@ -954,6 +957,7 @@ export abstract class Renderable extends EventEmitter {
   }
 
   protected onResize(width: number, height: number): void {
+    this.onSizeChange?.()
     this.emit("resize")
     // Override in subclasses for additional resize logic
   }
@@ -1226,6 +1230,13 @@ export abstract class Renderable extends EventEmitter {
     return this._keyListeners["down"]
   }
 
+  public set onSizeChange(handler: (() => void) | undefined) {
+    this._sizeChangeListener = handler
+  }
+  public get onSizeChange(): (() => void) | undefined {
+    return this._sizeChangeListener
+  }
+
   private applyEventOptions(options: RenderableOptions<Renderable>): void {
     this.onMouse = options.onMouse
     this.onMouseDown = options.onMouseDown
@@ -1238,6 +1249,7 @@ export abstract class Renderable extends EventEmitter {
     this.onMouseOut = options.onMouseOut
     this.onMouseScroll = options.onMouseScroll
     this.onKeyDown = options.onKeyDown
+    this.onSizeChange = options.onSizeChange
   }
 }
 

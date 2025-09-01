@@ -94,6 +94,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       maxHeight: "100%",
       maxWidth: "100%",
       overflow: "hidden",
+      onSizeChange: () => {
+        this.recalculateBarProps()
+      },
       ...viewportOptions,
     })
     this.wrapper.add(this.viewport)
@@ -102,6 +105,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       minWidth: "100%",
       minHeight: "100%",
       alignSelf: "flex-start",
+      onSizeChange: () => {
+        this.recalculateBarProps()
+      },
       ...contentOptions,
     })
     this.viewport.add(this.content)
@@ -112,6 +118,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       thumbOptions,
       arrowOptions,
       showArrows,
+      onChange: (position) => {
+        this.content.translateY = -position
+      }
     })
     this.add(this.verticalScrollBar)
 
@@ -121,25 +130,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
       thumbOptions,
       arrowOptions,
       showArrows,
+      onChange: (position) => {
+        this.content.translateX = -position
+      }
     })
-
     this.wrapper.add(this.horizontalScrollBar)
-
-    this.viewport.on("resize", () => {
-      this.recalculateBarProps()
-    })
-
-    this.content.on("resize", () => {
-      this.recalculateBarProps()
-    })
-
-    this.verticalScrollBar.on("change", ({ position }: { position: number }) => {
-      this.content.translateY = -position
-    })
-
-    this.horizontalScrollBar.on("change", ({ position }: { position: number }) => {
-      this.content.translateX = -position
-    })
 
     this.setupDragToScroll()
 

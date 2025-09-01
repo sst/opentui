@@ -11,6 +11,7 @@ export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable>
   trackOptions?: BoxOptions
   thumbOptions?: BoxOptions
   arrowOptions?: BoxOptions
+  onChange?: (position: number) => void
 }
 
 export type ScrollUnit = "absolute" | "viewport" | "content" | "step"
@@ -28,6 +29,8 @@ export class ScrollBarRenderable extends Renderable {
   private _scrollPosition = 0
   private _viewportSize = 0
   private _showArrows = false
+
+  private _onChange: ((position: number) => void) | undefined
 
   scrollStep: number | undefined | null = null
 
@@ -54,6 +57,7 @@ export class ScrollBarRenderable extends Renderable {
     const newPosition = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
     if (newPosition !== this._scrollPosition) {
       this._scrollPosition = newPosition
+      this._onChange?.(newPosition)
       this.emit("change", { position: newPosition })
     }
   }
@@ -86,6 +90,9 @@ export class ScrollBarRenderable extends Renderable {
       alignItems: "stretch",
       ...(options as BoxOptions),
     })
+
+    this._onChange = options.onChange
+
     this.orientation = orientation
     this._showArrows = showArrows
 
