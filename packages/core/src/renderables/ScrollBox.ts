@@ -93,7 +93,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       minHeight: 0,
       maxHeight: "100%",
       maxWidth: "100%",
-      overflow: "hidden",
+      overflow: "scroll",
       onSizeChange: () => {
         this.recalculateBarProps()
       },
