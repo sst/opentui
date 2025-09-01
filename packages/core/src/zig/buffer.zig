@@ -778,7 +778,12 @@ pub const OptimizedBuffer = struct {
                 continue;
             }
 
-            // TODO: Is the clip rect still necessary when having the scissor rect?
+            // TODO: Clip rect is currently used in text buffer drawing and cannot be removed yet.
+            // The scissor rect is pushed AFTER renderSelf() in Renderable.ts, but text
+            // rendering happens INSIDE renderSelf(). For overflow="visible" (default),
+            // no scissor rect is set, so clipRect is the only clipping mechanism.
+            // For overflow="hidden", both are used (redundant). Need to figure out where
+            // to push scissor rect to allow box drawing but clip children without border.
             if (clip_rect) |clip| {
                 if (currentX < clip.x or currentY < clip.y or
                     currentX >= clip.x + @as(i32, @intCast(clip.width)) or
