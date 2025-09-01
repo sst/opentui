@@ -104,38 +104,29 @@ export function run(renderer: CliRenderer): void {
     position: "absolute",
     left: 4,
     top: 4,
-    buffered: true,
+    zIndex: 5,
+    border: true,
+    title: "Nested example",
+    backgroundColor: RGBA.fromInts(120, 0, 120, 120),
   })
+  renderer.root.add(nestedBox)
 
-  nestedBox.add(
-    new BoxRenderable(renderer, {
-      position: "relative",
-      border: true,
-      title: "Nested example",
-      backgroundColor: RGBA.fromInts(120, 0, 120, 120),
-    }),
-  )
+  const innerBoxWidth = 10
+  const innerBoxHeight = 4
 
   const nestedInnerBox = new BoxRenderable(renderer, {
     id: "nested-inner-box",
-    width: 10,
-    height: 4,
-    position: "absolute",
-    left: 5,
+    width: innerBoxWidth,
+    height: innerBoxHeight,
+    left: 3,
     top: 3,
-    buffered: true,
+    zIndex: 1,
+    // buffered: true,
+    border: true,
+    title: "Inner",
+    backgroundColor: RGBA.fromInts(0, 255, 0, 10),
   })
-
-  nestedInnerBox.add(
-    new BoxRenderable(renderer, {
-      border: true,
-      title: "Inner",
-      backgroundColor: RGBA.fromInts(0, 255, 0, 10),
-    }),
-  )
-
   nestedBox.add(nestedInnerBox)
-  renderer.root.add(nestedBox)
 
   const boxObj = new BoxRenderable(renderer, {
     id: "moving-box",
@@ -145,7 +136,6 @@ export function run(renderer: CliRenderer): void {
     left: 10,
     top: 10,
     zIndex: 1,
-    // buffered: true,
     overflow: "hidden",
     // NOTE: This color is rendered, it is just overlayed by the boxFrame fill color
     backgroundColor: RGBA.fromInts(255, 120, 120, 255),
