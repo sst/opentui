@@ -36,10 +36,10 @@ export class MouseParser {
       const [, buttonCode, x, y, pressRelease] = sgrMatch
       const rawButtonCode = parseInt(buttonCode)
 
-      const isScroll = (rawButtonCode & 64) != 0
-      const scrollDirection = !isScroll ? undefined : MouseParser.SCROLL_DIRECTIONS[rawButtonCode & 0b11]
-
       const button = rawButtonCode & 3
+      const isScroll = (rawButtonCode & 64) !== 0
+      const scrollDirection = !isScroll ? undefined : MouseParser.SCROLL_DIRECTIONS[button]
+
       const isMotion = (rawButtonCode & 32) !== 0
       const modifiers = {
         shift: (rawButtonCode & 4) !== 0,
@@ -93,10 +93,10 @@ export class MouseParser {
       const x = str.charCodeAt(4) - 33
       const y = str.charCodeAt(5) - 33
 
-      const isScroll = (buttonByte & 64) != 0
-      const scrollDirection = !isScroll ? undefined : MouseParser.SCROLL_DIRECTIONS[buttonByte & 0b11]
-
       const button = buttonByte & 3
+      const isScroll = (buttonByte & 64) !== 0
+      const scrollDirection = !isScroll ? undefined : MouseParser.SCROLL_DIRECTIONS[button]
+
       const modifiers = {
         shift: (buttonByte & 4) !== 0,
         alt: (buttonByte & 8) !== 0,

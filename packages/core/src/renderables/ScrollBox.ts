@@ -1,6 +1,5 @@
 import { type ParsedKey } from "../lib"
 import type { MouseEvent } from "../renderer"
-import type { Timeout } from "../types"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
 import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
