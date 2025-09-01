@@ -136,8 +136,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.horizontalScrollBar)
 
-    this.setupDragToScroll()
-
     this.recalculateBarProps()
   }
 
@@ -169,51 +167,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       else if (dir === "down") this.scrollTop += event.scroll?.delta ?? 0
       else if (dir === "left") this.scrollLeft -= event.scroll?.delta ?? 0
       else if (dir === "right") this.scrollLeft += event.scroll?.delta ?? 0
-    }
-  }
-
-  /**
-   * When user brings mouse closer to the edges while dragging, scroll the content.
-   */
-  private setupDragToScroll(): void {
-    let contentMouseDownTimer: Timeout = undefined
-    let mouseX = 0
-    let mouseY = 0
-    let isDragging = false
-    this.content.onMouseDown = (ev) => {
-      const startMouseX = (mouseX = ev.x)
-      const startMouseY = (mouseY = ev.y)
-      isDragging = true
-
-      contentMouseDownTimer = setInterval(() => {
-        if (!isDragging) return
-
-        let scrollX = 0
-        let scrollY = 0
-
-        if (startMouseX !== mouseX) {
-          if (mouseX - this.viewport.x < 8) scrollX = -1
-          if (mouseX - this.viewport.x > this.viewport.width - 8) scrollX = 1
-        }
-
-        if (startMouseY !== mouseY) {
-          if (mouseY - this.viewport.y < 4) scrollY = -1
-          if (mouseY - this.viewport.y > this.viewport.height - 4) scrollY = 1
-        }
-
-        if (scrollX !== 0 || scrollY !== 0) this.scrollBy({ x: scrollX, y: scrollY })
-      }, 100)
-    }
-
-    this.content.onMouseDrag = (ev) => {
-      if (!isDragging) return
-      mouseX = ev.x
-      mouseY = ev.y
-    }
-
-    this.content.onMouseUp = () => {
-      isDragging = false
-      clearInterval(contentMouseDownTimer)
     }
   }
 
