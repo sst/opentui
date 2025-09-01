@@ -3,17 +3,16 @@ import type { MouseEvent } from "../renderer"
 import type { Timeout } from "../types"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
-import { ScrollBarRenderable, type ScrollUnit } from "./ScrollBar"
+import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
 
 export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
   rootOptions?: BoxOptions
   wrapperOptions?: BoxOptions
   viewportOptions?: BoxOptions
   contentOptions?: BoxOptions
-  trackOptions?: BoxOptions
-  thumbOptions?: BoxOptions
-  arrowOptions?: BoxOptions
-  showArrows?: boolean
+  scrollbarOptions?: Omit<ScrollBarOptions, 'orientation'>
+  verticalScrollbarOptions?: Omit<ScrollBarOptions, 'orientation'>
+  horizontalScrollbarOptions?: Omit<ScrollBarOptions, 'orientation'>
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -55,11 +54,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
       wrapperOptions,
       viewportOptions,
       contentOptions,
-      trackOptions,
-      thumbOptions,
       rootOptions,
-      arrowOptions,
-      showArrows,
+      scrollbarOptions,
+      verticalScrollbarOptions,
+      horizontalScrollbarOptions,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -113,11 +111,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.viewport.add(this.content)
 
     this.verticalScrollBar = new ScrollBarRenderable(ctx, {
+      ...scrollbarOptions,
+      ...verticalScrollbarOptions,
       orientation: "vertical",
-      trackOptions,
-      thumbOptions,
-      arrowOptions,
-      showArrows,
       onChange: (position) => {
         this.content.translateY = -position
       },
@@ -125,11 +121,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.add(this.verticalScrollBar)
 
     this.horizontalScrollBar = new ScrollBarRenderable(ctx, {
+      ...scrollbarOptions,
+      ...horizontalScrollbarOptions,
       orientation: "horizontal",
-      trackOptions,
-      thumbOptions,
-      arrowOptions,
-      showArrows,
       onChange: (position) => {
         this.content.translateX = -position
       },

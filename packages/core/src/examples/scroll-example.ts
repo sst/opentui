@@ -26,11 +26,14 @@ export function run(rendererInstance: CliRenderer): void {
     contentOptions: {
       backgroundColor: "#7fbfff",
     },
-    thumbOptions: {
-      backgroundColor: "#fe9d15",
-    },
-    trackOptions: {
-      backgroundColor: "#fff693",
+    scrollbarOptions: {
+      showArrows: true,
+      thumbOptions: {
+        backgroundColor: "#fe9d15",
+      },
+      trackOptions: {
+        backgroundColor: "#fff693",
+      },
     },
   })
 
