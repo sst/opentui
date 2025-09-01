@@ -1,3 +1,4 @@
+import { RGBA } from "../lib"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { Timeout } from "../types"
@@ -15,6 +16,9 @@ export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable>
 }
 
 export type ScrollUnit = "absolute" | "viewport" | "content" | "step"
+
+const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3");
+const defaultTrackBackgroundColor = RGBA.fromHex("#252527");
 
 export class ScrollBarRenderable extends Renderable {
   public readonly track: BoxRenderable
@@ -82,7 +86,7 @@ export class ScrollBarRenderable extends Renderable {
 
   constructor(
     ctx: RenderContext,
-    { trackOptions, thumbOptions, arrowOptions, orientation, showArrows = true, ...options }: ScrollBarOptions,
+    { trackOptions, thumbOptions, arrowOptions, orientation, showArrows = false, ...options }: ScrollBarOptions,
   ) {
     super(ctx, {
       flexDirection: orientation === "vertical" ? "column" : "row",
@@ -110,6 +114,7 @@ export class ScrollBarRenderable extends Renderable {
           }),
       flexGrow: 1,
       flexShrink: 1,
+      backgroundColor: defaultTrackBackgroundColor,
       ...trackOptions,
     })
 
@@ -154,6 +159,7 @@ export class ScrollBarRenderable extends Renderable {
             width: 1,
             height: "100%",
           }),
+      backgroundColor: defaultThumbBackgroundColor,
       ...thumbOptions,
     })
     this.track.add(this.thumb)
