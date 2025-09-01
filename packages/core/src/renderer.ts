@@ -373,7 +373,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
+  private _requestRenderWarningTriggered: boolean = false
   public requestRender() {
+    if (this.rendering && !this._isRunning) {
+      if (!this._requestRenderWarningTriggered) {
+        this._requestRenderWarningTriggered = true
+        const capturedStackTrace = new Error().stack
+        console.warn("requestRender called during render loop. This will cause an infinite loop.", capturedStackTrace)
+      }
+      return
+    }
+
     if (!this.updateScheduled && !this._isRunning) {
       this.updateScheduled = true
       process.nextTick(() => {
