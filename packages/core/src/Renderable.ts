@@ -268,7 +268,6 @@ export abstract class Renderable extends EventEmitter {
 
     this.applyEventOptions(options)
 
-    console.log("setup frame buffer", this._overflow)
     if (this._overflow !== "visible") {
       this.buffered = true
     }
