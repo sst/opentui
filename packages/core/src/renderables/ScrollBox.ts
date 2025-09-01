@@ -10,9 +10,9 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
   wrapperOptions?: BoxOptions
   viewportOptions?: BoxOptions
   contentOptions?: BoxOptions
-  scrollbarOptions?: Omit<ScrollBarOptions, 'orientation'>
-  verticalScrollbarOptions?: Omit<ScrollBarOptions, 'orientation'>
-  horizontalScrollbarOptions?: Omit<ScrollBarOptions, 'orientation'>
+  scrollbarOptions?: Omit<ScrollBarOptions, "orientation">
+  verticalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
+  horizontalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
