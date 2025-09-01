@@ -22,7 +22,6 @@ import {
 import type { MouseEvent } from "./renderer"
 import type { RenderContext, SelectionState } from "./types"
 import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
-import { RGBA } from "./lib/RGBA"
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
@@ -205,7 +204,6 @@ export abstract class Renderable extends EventEmitter {
   public selectable: boolean = false
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
-  protected fbClearColor: RGBA = RGBA.fromValues(0, 0, 0, 0)
   private _dirty: boolean = false
 
   protected focusable: boolean = false
@@ -268,9 +266,6 @@ export abstract class Renderable extends EventEmitter {
 
     this.applyEventOptions(options)
 
-    if (this._overflow !== "visible") {
-      this.buffered = true
-    }
     if (this.buffered) {
       this.createFrameBuffer()
     }
@@ -925,6 +920,7 @@ export abstract class Renderable extends EventEmitter {
 
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
+      this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
       this.requestRender()
     }
@@ -945,8 +941,8 @@ export abstract class Renderable extends EventEmitter {
   }
 
   protected createFrameBuffer(): void {
-    const w = this.ctx.width
-    const h = this.ctx.height
+    const w = this.width
+    const h = this.height
 
     if (w <= 0 || h <= 0) {
       return
@@ -954,10 +950,7 @@ export abstract class Renderable extends EventEmitter {
 
     try {
       const widthMethod = this._ctx.widthMethod
-      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, {
-        respectAlpha: true,
-        id: `buffered-renderable-${this.id}`,
-      })
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
@@ -1091,7 +1084,6 @@ export abstract class Renderable extends EventEmitter {
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
-      this.frameBuffer.clear(this.fbClearColor)
     }
 
     if (this.renderBefore) {
@@ -1113,11 +1105,7 @@ export abstract class Renderable extends EventEmitter {
     }
 
     if (this.buffered && this.frameBuffer) {
-      if (this._overflow === "visible") {
-        buffer.drawFrameBuffer(0, 0, this.frameBuffer)
-      } else {
-        buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer, this.x, this.y, this.width, this.height)
-      }
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
     }
   }
 
