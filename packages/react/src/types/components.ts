@@ -8,6 +8,7 @@ import type {
   Renderable,
   RenderableOptions,
   RenderContext,
+  ScrollBoxOptions,
   SelectOption,
   SelectRenderable,
   SelectRenderableOptions,
@@ -19,6 +20,7 @@ import type {
   TextOptions,
   TextRenderable,
 } from "@opentui/core"
+import type { ScrollBarRenderable } from "@opentui/core/src/renderables/ScrollBar"
 import type React from "react"
 
 // ============================================================================
@@ -109,6 +111,10 @@ export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderab
   focused?: boolean
   onChange?: (index: number, option: SelectOption | null) => void
   onSelect?: (index: number, option: SelectOption | null) => void
+}
+
+export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, ScrollBarRenderable> & {
+  focused?: boolean
 }
 
 export type AsciiFontProps = ComponentProps<ASCIIFontOptions, ASCIIFontRenderable>
