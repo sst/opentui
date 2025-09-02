@@ -37,7 +37,7 @@ class ContentRenderable extends BoxRenderable {
   }
 }
 
-export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
+export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   rootOptions?: BoxOptions
   wrapperOptions?: BoxOptions
   viewportOptions?: BoxOptions
