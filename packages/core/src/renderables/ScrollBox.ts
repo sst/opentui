@@ -1,8 +1,41 @@
 import { type ParsedKey } from "../lib"
+import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
-import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
+import type { VNode } from "./composition/vnode"
+import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit, type ArrowOptions } from "./ScrollBar"
+
+class ContentRenderable extends BoxRenderable {
+  private viewport: BoxRenderable
+
+  constructor(ctx: RenderContext, viewport: BoxRenderable, options: RenderableOptions<BoxRenderable>) {
+    super(ctx, options)
+    this.viewport = viewport
+  }
+
+  protected shouldRenderChild(child: Renderable): boolean {
+    const viewportLeft = this.viewport.x
+    const viewportTop = this.viewport.y
+    const viewportRight = this.viewport.x + this.viewport.width
+    const viewportBottom = this.viewport.y + this.viewport.height
+
+    const childLeft = child.x
+    const childTop = child.y
+    const childRight = child.x + child.width
+    const childBottom = child.y + child.height
+
+    // Check if child intersects with viewport (with some padding for safety)
+    const padding = 10
+    const intersects =
+      childLeft < viewportRight + padding &&
+      childRight > viewportLeft - padding &&
+      childTop < viewportBottom + padding &&
+      childBottom > viewportTop - padding
+
+    return intersects
+  }
+}
 
 export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
   rootOptions?: BoxOptions
@@ -12,12 +45,13 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
   scrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   verticalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   horizontalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
+  arrowOptions?: Omit<ArrowOptions, "direction">
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
   public readonly wrapper: BoxRenderable
   public readonly viewport: BoxRenderable
-  public readonly content: BoxRenderable
+  public readonly content: ContentRenderable
   public readonly horizontalScrollBar: ScrollBarRenderable
   public readonly verticalScrollBar: ScrollBarRenderable
 
@@ -57,6 +91,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollbarOptions,
       verticalScrollbarOptions,
       horizontalScrollbarOptions,
+      arrowOptions,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -79,7 +114,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       maxWidth: "100%",
       ...wrapperOptions,
     })
-    this.add(this.wrapper)
+    super.add(this.wrapper)
 
     this.viewport = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -98,7 +133,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.viewport)
 
-    this.content = new BoxRenderable(ctx, {
+    this.content = new ContentRenderable(ctx, this.viewport, {
       minWidth: "100%",
       minHeight: "100%",
       alignSelf: "flex-start",
@@ -112,16 +147,26 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.verticalScrollBar = new ScrollBarRenderable(ctx, {
       ...scrollbarOptions,
       ...verticalScrollbarOptions,
+      arrowOptions: {
+        ...arrowOptions,
+        ...scrollbarOptions?.arrowOptions,
+        ...verticalScrollbarOptions?.arrowOptions,
+      },
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
       },
     })
-    this.add(this.verticalScrollBar)
+    super.add(this.verticalScrollBar)
 
     this.horizontalScrollBar = new ScrollBarRenderable(ctx, {
       ...scrollbarOptions,
       ...horizontalScrollbarOptions,
+      arrowOptions: {
+        ...arrowOptions,
+        ...scrollbarOptions?.arrowOptions,
+        ...horizontalScrollbarOptions?.arrowOptions,
+      },
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
@@ -148,6 +193,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.scrollTop = position.y
       this.scrollLeft = position.x
     }
+  }
+
+  public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
+    console.log("adding", this.content)
+    return this.content.add(obj, index)
+  }
+
+  public remove(id: string): void {
+    this.content.remove(id)
   }
 
   protected onMouseEvent(event: MouseEvent): void {

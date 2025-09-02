@@ -1,30 +1,27 @@
-import { RGBA } from "../lib"
+import { parseColor, RGBA } from "../lib"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { Timeout } from "../types"
 import type { RenderContext } from "../types"
-import { BoxRenderable, type BoxOptions } from "./Box"
-import { TextRenderable } from "./Text"
+import { type BoxOptions } from "./Box"
+import type { OptimizedBuffer } from "../buffer"
+import { SliderRenderable } from "./Slider"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
   showArrows?: boolean
   trackOptions?: BoxOptions
   thumbOptions?: BoxOptions
-  arrowOptions?: BoxOptions
+  arrowOptions?: Omit<ArrowOptions, "direction">
   onChange?: (position: number) => void
 }
 
 export type ScrollUnit = "absolute" | "viewport" | "content" | "step"
 
-const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
-const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
-
 export class ScrollBarRenderable extends Renderable {
-  public readonly track: BoxRenderable
-  public readonly thumb: ThumbRenderable
-  public readonly startArrow: BoxRenderable
-  public readonly endArrow: BoxRenderable
+  public readonly slider: SliderRenderable
+  public readonly startArrow: ArrowRenderable
+  public readonly endArrow: ArrowRenderable
   public readonly orientation: "vertical" | "horizontal"
 
   protected focusable: boolean = true
@@ -33,10 +30,25 @@ export class ScrollBarRenderable extends Renderable {
   private _scrollPosition = 0
   private _viewportSize = 0
   private _showArrows = false
+  private _manualVisibility = false
 
   private _onChange: ((position: number) => void) | undefined
 
   scrollStep: number | undefined | null = null
+
+  get visible(): boolean {
+    return super.visible
+  }
+
+  set visible(value: boolean) {
+    this._manualVisibility = true
+    super.visible = value
+  }
+
+  public resetVisibilityControl(): void {
+    this._manualVisibility = false
+    this.recalculateVisibility()
+  }
 
   get scrollSize(): number {
     return this._scrollSize
@@ -58,9 +70,10 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   set scrollPosition(value: number) {
-    const newPosition = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
+    const newPosition = Math.round(Math.min(Math.max(0, value), this.scrollSize - this.viewportSize))
     if (newPosition !== this._scrollPosition) {
       this._scrollPosition = newPosition
+      this.updateSliderFromScrollState()
       this._onChange?.(newPosition)
       this.emit("change", { position: newPosition })
     }
@@ -100,7 +113,14 @@ export class ScrollBarRenderable extends Renderable {
     this.orientation = orientation
     this._showArrows = showArrows
 
-    this.track = new BoxRenderable(ctx, {
+    this.slider = new SliderRenderable(ctx, {
+      orientation,
+      onChange: (position) => {
+        const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
+        this._scrollPosition = Math.round(position * scrollRange)
+        this._onChange?.(this._scrollPosition)
+        this.emit("change", { position: this._scrollPosition })
+      },
       ...(orientation === "vertical"
         ? {
             width: 2,
@@ -114,78 +134,40 @@ export class ScrollBarRenderable extends Renderable {
           }),
       flexGrow: 1,
       flexShrink: 1,
-      backgroundColor: defaultTrackBackgroundColor,
-      ...trackOptions,
+      trackColor: trackOptions?.backgroundColor,
+      thumbColor: thumbOptions?.backgroundColor,
     })
 
-    this.startArrow = new BoxRenderable(ctx, {
-      alignSelf: "center",
-      visible: this.showArrows,
-      ...arrowOptions,
-    })
-    this.startArrow.add(
-      new TextRenderable(ctx, {
-        margin: "auto",
-        content: this.orientation === "vertical" ? "◢◣" : " ◀ ",
-        selectable: false,
-      }),
-    )
+    this.updateSliderFromScrollState()
 
-    this.endArrow = new BoxRenderable(ctx, {
+    const arrowOpts = arrowOptions
+      ? {
+          fg: (arrowOptions as any).backgroundColor,
+          bg: (arrowOptions as any).backgroundColor,
+          attributes: (arrowOptions as any).attributes,
+          ...arrowOptions,
+        }
+      : {}
+
+    this.startArrow = new ArrowRenderable(ctx, {
       alignSelf: "center",
       visible: this.showArrows,
-      ...arrowOptions,
+      direction: this.orientation === "vertical" ? "up" : "left",
+      height: this.orientation === "vertical" ? 1 : 1,
+      ...arrowOpts,
     })
-    this.endArrow.add(
-      new TextRenderable(ctx, {
-        margin: "auto",
-        content: this.orientation === "vertical" ? "◥◤" : " ▶ ",
-        selectable: false,
-      }),
-    )
+
+    this.endArrow = new ArrowRenderable(ctx, {
+      alignSelf: "center",
+      visible: this.showArrows,
+      direction: this.orientation === "vertical" ? "down" : "right",
+      height: this.orientation === "vertical" ? 1 : 1,
+      ...arrowOpts,
+    })
 
     this.add(this.startArrow)
-    this.add(this.track)
+    this.add(this.slider)
     this.add(this.endArrow)
-
-    this.thumb = new ThumbRenderable(ctx, {
-      scrollbar: this,
-      ...(orientation === "vertical"
-        ? {
-            width: "100%",
-            height: 1,
-          }
-        : {
-            width: 1,
-            height: "100%",
-          }),
-      backgroundColor: defaultThumbBackgroundColor,
-      ...thumbOptions,
-    })
-    this.track.add(this.thumb)
-
-    let relativeStartPos = 0
-
-    this.thumb.onMouseDown = (event) => {
-      event.preventDefault()
-      relativeStartPos = orientation === "vertical" ? event.y - this.thumb.y : event.x - this.thumb.x
-    }
-
-    this.track.onMouseDown = (event) => {
-      event.preventDefault()
-      relativeStartPos = orientation === "vertical" ? this.thumb.height / 2 : this.thumb.width / 2
-      this.scrollPosition =
-        ((orientation === "vertical" ? event.y - this.track.y : event.x - this.track.x) - relativeStartPos) *
-        (this.scrollSize / this.viewportSize)
-    }
-
-    this.thumb.onMouseDrag = this.track.onMouseDrag = (event) => {
-      event.preventDefault()
-
-      this.scrollPosition =
-        ((orientation === "vertical" ? event.y - this.track.y : event.x - this.track.x) - relativeStartPos) *
-        (this.scrollSize / this.viewportSize)
-    }
 
     let startArrowMouseTimeout = undefined as Timeout
     let endArrowMouseTimeout = undefined as Timeout
@@ -227,6 +209,22 @@ export class ScrollBarRenderable extends Renderable {
     }
   }
 
+  private updateSliderFromScrollState(): void {
+    const trackSize = this.orientation === "vertical" ? this.slider.height : this.slider.width
+    const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
+
+    if (scrollRange === 0) {
+      this.slider.thumbSize = trackSize
+      this.slider.thumbPosition = 0
+    } else {
+      const sizeRatio = this._viewportSize / this._scrollSize
+      this.slider.thumbSize = Math.max(1, Math.round(sizeRatio * trackSize))
+
+      const positionRatio = this._scrollPosition / scrollRange
+      this.slider.thumbPosition = Math.max(0, Math.min(1, positionRatio))
+    }
+  }
+
   public scrollBy(delta: number, unit: ScrollUnit = "absolute"): void {
     const multiplier =
       unit === "viewport"
@@ -242,9 +240,10 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   private recalculateVisibility(): void {
-    const sizeRatio = this.scrollSize <= this.viewportSize ? 1 : this.viewportSize / this.scrollSize
-
-    this.visible = sizeRatio < 1
+    if (!this._manualVisibility) {
+      const sizeRatio = this.scrollSize <= this.viewportSize ? 1 : this.viewportSize / this.scrollSize
+      super.visible = sizeRatio < 1
+    }
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
@@ -289,34 +288,121 @@ export class ScrollBarRenderable extends Renderable {
   }
 }
 
-class ThumbRenderable extends BoxRenderable {
-  private readonly scrollbar: ScrollBarRenderable
+export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
+  direction: "up" | "down" | "left" | "right"
+  fg?: string | RGBA
+  bg?: string | RGBA
+  attributes?: number
+  backgroundColor?: string | RGBA
+  arrowChars?: {
+    up?: string
+    down?: string
+    left?: string
+    right?: string
+  }
+}
 
-  constructor(ctx: RenderContext, options: BoxOptions & { scrollbar: ScrollBarRenderable }) {
-    super(ctx, options)
-    this.scrollbar = options.scrollbar
+export class ArrowRenderable extends Renderable {
+  private _direction: "up" | "down" | "left" | "right"
+  private _fg: RGBA
+  private _bg: RGBA
+  private _attributes: number
+  private _arrowChars: {
+    up: string
+    down: string
+    left: string
+    right: string
   }
 
-  public updateFromLayout(): void {
-    super.updateFromLayout()
+  constructor(ctx: RenderContext, options: ArrowOptions) {
+    super(ctx, options)
+    this._direction = options.direction
+    this._fg = options.fg
+      ? typeof options.fg === "string"
+        ? parseColor(options.fg)
+        : options.fg
+      : RGBA.fromValues(1, 1, 1, 1)
+    this._bg = options.bg
+      ? typeof options.bg === "string"
+        ? parseColor(options.bg)
+        : options.bg
+      : RGBA.fromValues(0, 0, 0, 0)
+    this._attributes = options.attributes ?? 0
 
-    if (!this.parent) return
+    this._arrowChars = {
+      up: "◢◣",
+      down: "◥◤",
+      left: " ◀ ",
+      right: " ▶ ",
+      ...options.arrowChars,
+    }
 
-    const scrollbar = this.scrollbar
+    if (!options.width) {
+      this.width = Bun.stringWidth(this.getArrowChar())
+    }
+  }
 
-    const sizeRatio = scrollbar.scrollSize <= scrollbar.viewportSize ? 1 : scrollbar.viewportSize / scrollbar.scrollSize
+  get direction(): "up" | "down" | "left" | "right" {
+    return this._direction
+  }
 
-    const parentSize = scrollbar.orientation === "vertical" ? this.parent.height : this.parent.width
-    const resolvedSize = Math.max(1, Math.round(sizeRatio * parentSize))
-    const maxPos = parentSize - resolvedSize
+  set direction(value: "up" | "down" | "left" | "right") {
+    if (this._direction !== value) {
+      this._direction = value
+      this.requestRender()
+    }
+  }
 
-    if (scrollbar.orientation === "vertical") this._heightValue = resolvedSize
-    else this._widthValue = resolvedSize
+  get fg(): RGBA {
+    return this._fg
+  }
 
-    const posRatio = scrollbar.scrollPosition / scrollbar.scrollSize
-    const pos = Math.min(maxPos, Math.ceil(posRatio * parentSize))
+  set fg(value: RGBA) {
+    if (this._fg !== value) {
+      this._fg = value
+      this.requestRender()
+    }
+  }
 
-    if (scrollbar.orientation === "vertical") this._translateY = pos
-    else this._translateX = pos
+  get bg(): RGBA {
+    return this._bg
+  }
+
+  set bg(value: RGBA) {
+    if (this._bg !== value) {
+      this._bg = value
+      this.requestRender()
+    }
+  }
+
+  get attributes(): number {
+    return this._attributes
+  }
+
+  set attributes(value: number) {
+    if (this._attributes !== value) {
+      this._attributes = value
+      this.requestRender()
+    }
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    const char = this.getArrowChar()
+    buffer.drawText(char, this.x, this.y, this._fg, this._bg, this._attributes)
+  }
+
+  private getArrowChar(): string {
+    switch (this._direction) {
+      case "up":
+        return this._arrowChars.up
+      case "down":
+        return this._arrowChars.down
+      case "left":
+        return this._arrowChars.left
+      case "right":
+        return this._arrowChars.right
+      default:
+        return "?"
+    }
   }
 }
