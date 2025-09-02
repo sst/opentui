@@ -3,6 +3,7 @@ import { renderer } from "./src/renderer"
 import { setCurrentCliRenderer } from "./src/cli-renderer-ref"
 import type { InjectionKey } from "vue"
 export * from "./src/composables/index"
+export * from "./src/extend"
 
 export const cliRendererKey: InjectionKey<CliRenderer> = Symbol("cliRenderer")
 
