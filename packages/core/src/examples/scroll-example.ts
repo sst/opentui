@@ -1,4 +1,21 @@
-import { ASCIIFontRenderable, BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable } from "../index"
+import {
+  ASCIIFontRenderable,
+  BoxRenderable,
+  type CliRenderer,
+  createCliRenderer,
+  TextRenderable,
+  t,
+  fg,
+  bold,
+  underline,
+  italic,
+  blue,
+  green,
+  red,
+  cyan,
+  magenta,
+  yellow,
+} from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -41,33 +58,44 @@ export function run(rendererInstance: CliRenderer): void {
 
   renderer.root.add(scrollBox)
 
-  for (let index = 0; index < 20; index++) addItem(`Item ${index + 1}`)
+  // Generate 1000 boxes, each with multiline styled text
+  for (let index = 0; index < 1000; index++) addBox(index)
 
-  const item = new BoxRenderable(renderer, {
-    id: "scroll-item",
-    width: 120,
-    margin: 5,
-    height: 5,
-    backgroundColor: "red",
-  })
+  function addBox(i: number) {
+    const box = new BoxRenderable(renderer!, {
+      id: `box-${i + 1}`,
+      width: "100%",
+      padding: 1,
+      marginBottom: 1,
+      backgroundColor: i % 2 === 0 ? "#10304a" : "#14283a",
+    })
 
-  scrollBox.content.add(item)
+    const content = makeMultilineContent(i)
+    const text = new TextRenderable(renderer!, {
+      content,
+    })
 
-  item.add(
-    new ASCIIFontRenderable(renderer, {
-      text: "OPENTUI Scroll",
-      margin: "auto",
-    }),
-  )
+    box.add(text)
+    scrollBox!.content.add(box)
+  }
 
-  for (let index = 0; index < 20; index++) addItem(`Item ${index + 1}`)
+  function makeMultilineContent(i: number) {
+    const palette = [blue, green, red, cyan, magenta, yellow]
+    const colorize = palette[i % palette.length]
+    const id = (i + 1).toString().padStart(4, "0")
+    const tag = i % 3 === 0 ? underline("INFO") : i % 3 === 1 ? bold("WARN") : bold(red("ERROR"))
 
-  function addItem(content: string) {
-    scrollBox!.content.add(
-      new TextRenderable(renderer!, {
-        content,
-      }),
-    )
+    const barUnits = 10 + (i % 30)
+    const bar = "█".repeat(Math.floor(barUnits * 0.6)).padEnd(barUnits, "░")
+    const details = "data ".repeat((i % 4) + 2)
+
+    return t`${fg("#888")(`[${id}]`)} ${bold(colorize(`Box ${i + 1}`))} ${fg("#666")("|")} ${tag}
+${fg("#aac")("Multiline content with mixed styles for stress testing.")}
+${colorize("• Title:")} ${bold(italic(`Lorem ipsum ${i}`))}
+${green("• Detail A:")} ${fg("#ccc")(details.trim())}
+${magenta("• Detail B:")} ${fg("#bbb")("The quick brown fox jumps over the lazy dog.")}
+${cyan("• Progress:")} ${fg("#0f0")(bar)} ${fg("#777")(barUnits)}
+${fg("#aaa")("— end of box —")}`
   }
 }
 
