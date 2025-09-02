@@ -108,8 +108,7 @@ Important Note on <textRenderable>
 
 The <textRenderable> component only accepts plain text as a direct child. For styled text or text chunks, you must use the content prop.
 
-Code snippet
-
+```jsx
 <script setup lang="ts">
 import { blue, bold, t, underline, type TextChunk } from "@opentui/core"
 
@@ -123,6 +122,7 @@ const textChunk: TextChunk = bold(`This is a text chunk.`)
 
 <textRenderable>This is plain text.</textRenderable>
 </template>
+```
 
 ## Composables
 
