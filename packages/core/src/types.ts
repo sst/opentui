@@ -43,3 +43,5 @@ export interface SelectionState {
   isActive: boolean
   isSelecting: boolean
 }
+
+export type Timeout = ReturnType<typeof setTimeout> | undefined
