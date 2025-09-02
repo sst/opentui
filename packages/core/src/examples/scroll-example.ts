@@ -16,15 +16,26 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let scrollBox: ScrollBoxRenderable | null = null
 let renderer: CliRenderer | null = null
+let mainContainer: BoxRenderable | null = null
+let instructionsBox: BoxRenderable | null = null
 
 export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#1a1b26")
 
+  mainContainer = new BoxRenderable(renderer, {
+    id: "main-container",
+    width: "100%",
+    height: "100%",
+    flexDirection: "column",
+    backgroundColor: "#1a1b26",
+  })
+
   scrollBox = new ScrollBoxRenderable(renderer, {
     id: "scroll-box",
     width: "100%",
     height: "100%",
+    flexGrow: 1,
     rootOptions: {
       backgroundColor: "#24283b",
       border: true,
@@ -49,9 +60,25 @@ export function run(rendererInstance: CliRenderer): void {
     },
   })
 
-  scrollBox.focus()
+  instructionsBox = new BoxRenderable(renderer, {
+    id: "instructions",
+    width: "100%",
+    backgroundColor: "#2a2b3a",
+    paddingLeft: 1,
+  })
 
-  renderer.root.add(scrollBox)
+  const instructionsText = new TextRenderable(renderer, {
+    content: t`${bold(fg("#7aa2f7")("Controls:"))} ${fg("#c0caf5")("↑/↓/PgUp/PgDn/Home/End")} ${fg("#565f89")("|")} ${bold(fg("#9ece6a")("A"))} ${fg("#c0caf5")("Toggle arrows")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("Tab"))} ${fg("#c0caf5")("Focus scrollbox")}`,
+  })
+
+  instructionsBox.add(instructionsText)
+
+  mainContainer.add(scrollBox)
+  mainContainer.add(instructionsBox)
+
+  renderer.root.add(mainContainer)
+
+  scrollBox.focus()
 
   // Generate 1000 boxes, each with multiline styled text
   // Add an ASCII renderable at the top (index 0) for immediate visibility
@@ -139,10 +166,18 @@ ${fg("#565f89")("— end of box —")}`
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
+  if (mainContainer) {
+    rendererInstance.root.remove(mainContainer.id)
+    mainContainer.destroy()
+    mainContainer = null
+  }
   if (scrollBox) {
-    rendererInstance.root.remove(scrollBox.id)
     scrollBox.destroy()
     scrollBox = null
+  }
+  if (instructionsBox) {
+    instructionsBox.destroy()
+    instructionsBox = null
   }
   renderer = null
 }
@@ -154,4 +189,14 @@ if (import.meta.main) {
 
   run(renderer)
   setupCommonDemoKeys(renderer)
+
+  const { getKeyHandler } = await import("../lib/KeyHandler")
+  getKeyHandler().on("keypress", (key) => {
+    if (key.name === "a" && scrollBox) {
+      const currentState = scrollBox.verticalScrollBar?.showArrows ?? false
+      scrollBox.verticalScrollBar!.showArrows = !currentState
+      scrollBox.horizontalScrollBar!.showArrows = !currentState
+      console.log(`Arrows ${!currentState ? "enabled" : "disabled"}`)
+    }
+  })
 }
