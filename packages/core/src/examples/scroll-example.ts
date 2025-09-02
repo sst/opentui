@@ -63,15 +63,21 @@ export function run(rendererInstance: CliRenderer): void {
   instructionsBox = new BoxRenderable(renderer, {
     id: "instructions",
     width: "100%",
+    flexDirection: "column",
     backgroundColor: "#2a2b3a",
     paddingLeft: 1,
   })
 
-  const instructionsText = new TextRenderable(renderer, {
+  const instructionsText1 = new TextRenderable(renderer, {
     content: t`${bold(fg("#7aa2f7")("Controls:"))} ${fg("#c0caf5")("↑/↓/PgUp/PgDn/Home/End")} ${fg("#565f89")("|")} ${bold(fg("#9ece6a")("A"))} ${fg("#c0caf5")("Toggle arrows")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("Tab"))} ${fg("#c0caf5")("Focus scrollbox")}`,
   })
 
-  instructionsBox.add(instructionsText)
+  const instructionsText2 = new TextRenderable(renderer, {
+    content: t`${bold(fg("#7aa2f7")("Scrollbars:"))} ${bold(fg("#e0af68")("V"))} ${fg("#c0caf5")("Toggle vertical")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("H"))} ${fg("#c0caf5")("Toggle horizontal")}`,
+  })
+
+  instructionsBox.add(instructionsText1)
+  instructionsBox.add(instructionsText2)
 
   mainContainer.add(scrollBox)
   mainContainer.add(instructionsBox)
@@ -197,6 +203,14 @@ if (import.meta.main) {
       scrollBox.verticalScrollBar!.showArrows = !currentState
       scrollBox.horizontalScrollBar!.showArrows = !currentState
       console.log(`Arrows ${!currentState ? "enabled" : "disabled"}`)
+    } else if (key.name === "v" && scrollBox) {
+      const currentState = scrollBox.verticalScrollBar.visible
+      scrollBox.verticalScrollBar.visible = !currentState
+      console.log(`Vertical scrollbar ${!currentState ? "shown" : "hidden"}`)
+    } else if (key.name === "h" && scrollBox) {
+      const currentState = scrollBox.horizontalScrollBar.visible
+      scrollBox.horizontalScrollBar.visible = !currentState
+      console.log(`Horizontal scrollbar ${!currentState ? "shown" : "hidden"}`)
     }
   })
 }

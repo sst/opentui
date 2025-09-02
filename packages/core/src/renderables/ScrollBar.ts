@@ -33,10 +33,25 @@ export class ScrollBarRenderable extends Renderable {
   private _scrollPosition = 0
   private _viewportSize = 0
   private _showArrows = false
+  private _manualVisibility = false
 
   private _onChange: ((position: number) => void) | undefined
 
   scrollStep: number | undefined | null = null
+
+  get visible(): boolean {
+    return super.visible
+  }
+
+  set visible(value: boolean) {
+    this._manualVisibility = true
+    super.visible = value
+  }
+
+  public resetVisibilityControl(): void {
+    this._manualVisibility = false
+    this.recalculateVisibility()
+  }
 
   get scrollSize(): number {
     return this._scrollSize
@@ -241,9 +256,10 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   private recalculateVisibility(): void {
-    const sizeRatio = this.scrollSize <= this.viewportSize ? 1 : this.viewportSize / this.scrollSize
-
-    this.visible = sizeRatio < 1
+    if (!this._manualVisibility) {
+      const sizeRatio = this.scrollSize <= this.viewportSize ? 1 : this.viewportSize / this.scrollSize
+      super.visible = sizeRatio < 1
+    }
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
