@@ -39,7 +39,9 @@ export const hostConfig: HostConfig<
       throw new Error(`[Reconciler] Unknown component type: ${type}`)
     }
 
-    return new components[type](rootContainerInstance.ctx, {})
+    return new components[type](rootContainerInstance.ctx, {
+      id,
+    })
   },
 
   // Append a child to a parent
