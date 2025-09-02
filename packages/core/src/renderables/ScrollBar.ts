@@ -67,7 +67,6 @@ export class ScrollBarRenderable extends Renderable {
   set scrollSize(value: number) {
     if (value === this.scrollSize) return
     this._scrollSize = value
-    this.slider.scrollSize = value
     this.recalculateVisibility()
     this.scrollPosition = this.scrollPosition
   }
@@ -76,7 +75,7 @@ export class ScrollBarRenderable extends Renderable {
     const newPosition = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
     if (newPosition !== this._scrollPosition) {
       this._scrollPosition = newPosition
-      this.slider.scrollPosition = newPosition
+      this.updateSliderFromScrollState()
       this._onChange?.(newPosition)
       this.emit("change", { position: newPosition })
     }
@@ -85,7 +84,6 @@ export class ScrollBarRenderable extends Renderable {
   set viewportSize(value: number) {
     if (value === this.viewportSize) return
     this._viewportSize = value
-    this.slider.viewportSize = value
     this.recalculateVisibility()
     this.scrollPosition = this.scrollPosition
   }
@@ -119,13 +117,11 @@ export class ScrollBarRenderable extends Renderable {
 
     this.slider = new SliderRenderable(ctx, {
       orientation,
-      scrollSize: this._scrollSize,
-      viewportSize: this._viewportSize,
-      scrollPosition: this._scrollPosition,
       onChange: (position) => {
-        this._scrollPosition = position
-        this._onChange?.(position)
-        this.emit("change", { position })
+        const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
+        this._scrollPosition = position * scrollRange
+        this._onChange?.(this._scrollPosition)
+        this.emit("change", { position: this._scrollPosition })
       },
       ...(orientation === "vertical"
         ? {
@@ -143,6 +139,8 @@ export class ScrollBarRenderable extends Renderable {
       trackColor: trackOptions?.backgroundColor || defaultTrackBackgroundColor,
       thumbColor: thumbOptions?.backgroundColor || defaultThumbBackgroundColor,
     })
+
+    this.updateSliderFromScrollState()
 
     const arrowOpts = arrowOptions
       ? {
@@ -210,6 +208,22 @@ export class ScrollBarRenderable extends Renderable {
     this.endArrow.onMouseUp = (event) => {
       event.preventDefault()
       clearInterval(endArrowMouseTimeout!)
+    }
+  }
+
+  private updateSliderFromScrollState(): void {
+    const trackSize = this.orientation === "vertical" ? this.slider.height : this.slider.width
+    const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
+
+    if (scrollRange === 0) {
+      this.slider.thumbSize = trackSize
+      this.slider.thumbPosition = 0
+    } else {
+      const sizeRatio = this._viewportSize / this._scrollSize
+      this.slider.thumbSize = Math.max(1, Math.round(sizeRatio * trackSize))
+
+      const positionRatio = this._scrollPosition / scrollRange
+      this.slider.thumbPosition = Math.max(0, Math.min(1, positionRatio))
     }
   }
 
@@ -399,17 +413,15 @@ export interface SliderOptions extends RenderableOptions<SliderRenderable> {
   orientation: "vertical" | "horizontal"
   trackColor?: string | RGBA
   thumbColor?: string | RGBA
-  scrollSize: number
-  viewportSize: number
-  scrollPosition: number
+  thumbSize?: number
+  thumbPosition?: number
   onChange?: (position: number) => void
 }
 
 export class SliderRenderable extends Renderable {
   public readonly orientation: "vertical" | "horizontal"
-  private _scrollSize: number
-  private _viewportSize: number
-  private _scrollPosition: number
+  private _thumbSize: number
+  private _thumbPosition: number
   private _trackColor: RGBA
   private _thumbColor: RGBA
   private _onChange?: (position: number) => void
@@ -417,9 +429,8 @@ export class SliderRenderable extends Renderable {
   constructor(ctx: RenderContext, options: SliderOptions) {
     super(ctx, options)
     this.orientation = options.orientation
-    this._scrollSize = options.scrollSize
-    this._viewportSize = options.viewportSize
-    this._scrollPosition = options.scrollPosition
+    this._thumbSize = options.thumbSize ?? 1
+    this._thumbPosition = options.thumbPosition ?? 0
     this._onChange = options.onChange
     this._trackColor = options.trackColor
       ? typeof options.trackColor === "string"
@@ -435,36 +446,26 @@ export class SliderRenderable extends Renderable {
     this.setupMouseHandling()
   }
 
-  get scrollSize(): number {
-    return this._scrollSize
+  get thumbSize(): number {
+    return this._thumbSize
   }
 
-  set scrollSize(value: number) {
-    if (value !== this._scrollSize) {
-      this._scrollSize = value
+  set thumbSize(value: number) {
+    const clamped = Math.max(1, Math.min(value, this.orientation === "vertical" ? this.height : this.width))
+    if (clamped !== this._thumbSize) {
+      this._thumbSize = clamped
       this.requestRender()
     }
   }
 
-  get viewportSize(): number {
-    return this._viewportSize
+  get thumbPosition(): number {
+    return this._thumbPosition
   }
 
-  set viewportSize(value: number) {
-    if (value !== this._viewportSize) {
-      this._viewportSize = value
-      this.requestRender()
-    }
-  }
-
-  get scrollPosition(): number {
-    return this._scrollPosition
-  }
-
-  set scrollPosition(value: number) {
-    const clamped = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
-    if (clamped !== this._scrollPosition) {
-      this._scrollPosition = clamped
+  set thumbPosition(value: number) {
+    const clamped = Math.max(0, Math.min(1, value))
+    if (clamped !== this._thumbPosition) {
+      this._thumbPosition = clamped
       this._onChange?.(clamped)
       this.emit("change", { position: clamped })
       this.requestRender()
@@ -525,44 +526,27 @@ export class SliderRenderable extends Renderable {
   }
 
   private updatePositionFromMouse(event: any, relativeStartPos: number): void {
-    if (this.scrollSize <= this.viewportSize) return
-
     const trackStart = this.orientation === "vertical" ? this.y : this.x
     const trackSize = this.orientation === "vertical" ? this.height : this.width
-    const thumbSize = this.getThumbSize()
     const mousePos = this.orientation === "vertical" ? event.y : event.x
 
     const thumbStartPos = mousePos - trackStart - relativeStartPos
-    const maxThumbStartPos = trackSize - thumbSize
+    const maxThumbStartPos = trackSize - this._thumbSize
 
     const clampedThumbStartPos = Math.max(0, Math.min(maxThumbStartPos, thumbStartPos))
 
-    const scrollRatio = clampedThumbStartPos / maxThumbStartPos
-    const newScrollPos = scrollRatio * (this.scrollSize - this.viewportSize)
+    const newPosition = maxThumbStartPos > 0 ? clampedThumbStartPos / maxThumbStartPos : 0
 
-    this.scrollPosition = newScrollPos
-  }
-
-  private getThumbSize(): number {
-    if (this.scrollSize <= this.viewportSize) return 1
-    const trackSize = this.orientation === "vertical" ? this.height : this.width
-    const sizeRatio = this.viewportSize / this.scrollSize
-    return Math.max(1, Math.round(sizeRatio * trackSize))
+    this.thumbPosition = newPosition
   }
 
   private getThumbPosition(): number {
     const trackSize = this.orientation === "vertical" ? this.height : this.width
-    const thumbSize = this.getThumbSize()
-    const maxPos = trackSize - thumbSize
-
-    if (this.scrollSize <= this.viewportSize) return 0
-
-    const posRatio = this.scrollPosition / this.scrollSize
-    return Math.min(maxPos, Math.round(posRatio * trackSize))
+    const maxPos = trackSize - this._thumbSize
+    return Math.round(this._thumbPosition * maxPos)
   }
 
   private getThumbRect(): { x: number; y: number; width: number; height: number } {
-    const thumbSize = this.getThumbSize()
     const thumbPos = this.getThumbPosition()
 
     if (this.orientation === "vertical") {
@@ -570,13 +554,13 @@ export class SliderRenderable extends Renderable {
         x: this.x,
         y: this.y + thumbPos,
         width: this.width,
-        height: thumbSize,
+        height: this._thumbSize,
       }
     } else {
       return {
         x: this.x + thumbPos,
         y: this.y,
-        width: thumbSize,
+        width: this._thumbSize,
         height: this.height,
       }
     }
