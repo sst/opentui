@@ -402,7 +402,9 @@ Scroll on boxes: shows direction • Escape: menu`,
         content: "This should be cut off to the right",
         width: 25,
         height: 25,
-        selectable: false,
+        onMouse: (event: MouseEvent) => {
+          console.log("mouse", event.type)
+        },
       }),
     ),
   ]
