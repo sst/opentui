@@ -11,7 +11,7 @@ export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable>
   showArrows?: boolean
   trackOptions?: BoxOptions
   thumbOptions?: BoxOptions
-  arrowOptions?: BoxOptions
+  arrowOptions?: Omit<ArrowOptions, "direction">
   onChange?: (position: number) => void
 }
 
@@ -131,7 +131,6 @@ export class ScrollBarRenderable extends Renderable {
       alignSelf: "center",
       visible: this.showArrows,
       direction: this.orientation === "vertical" ? "up" : "left",
-      width: this.orientation === "vertical" ? 2 : 3,
       height: this.orientation === "vertical" ? 1 : 1,
       ...arrowOpts,
     })
@@ -140,7 +139,6 @@ export class ScrollBarRenderable extends Renderable {
       alignSelf: "center",
       visible: this.showArrows,
       direction: this.orientation === "vertical" ? "down" : "right",
-      width: this.orientation === "vertical" ? 2 : 3,
       height: this.orientation === "vertical" ? 1 : 1,
       ...arrowOpts,
     })
@@ -296,6 +294,12 @@ export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
   bg?: string | RGBA
   attributes?: number
   backgroundColor?: string | RGBA
+  arrowChars?: {
+    up?: string
+    down?: string
+    left?: string
+    right?: string
+  }
 }
 
 export class ArrowRenderable extends Renderable {
@@ -303,6 +307,12 @@ export class ArrowRenderable extends Renderable {
   private _fg: RGBA
   private _bg: RGBA
   private _attributes: number
+  private _arrowChars: {
+    up: string
+    down: string
+    left: string
+    right: string
+  }
 
   constructor(ctx: RenderContext, options: ArrowOptions) {
     super(ctx, options)
@@ -318,6 +328,18 @@ export class ArrowRenderable extends Renderable {
         : options.bg
       : RGBA.fromValues(0, 0, 0, 0)
     this._attributes = options.attributes ?? 0
+
+    this._arrowChars = {
+      up: "◢◣",
+      down: "◥◤",
+      left: " ◀ ",
+      right: " ▶ ",
+      ...options.arrowChars,
+    }
+
+    if (!options.width) {
+      this.width = Bun.stringWidth(this.getArrowChar())
+    }
   }
 
   get direction(): "up" | "down" | "left" | "right" {
@@ -372,13 +394,13 @@ export class ArrowRenderable extends Renderable {
   private getArrowChar(): string {
     switch (this._direction) {
       case "up":
-        return "◢◣"
+        return this._arrowChars.up
       case "down":
-        return "◥◤"
+        return this._arrowChars.down
       case "left":
-        return " ◀ "
+        return this._arrowChars.left
       case "right":
-        return " ▶ "
+        return this._arrowChars.right
       default:
         return "?"
     }

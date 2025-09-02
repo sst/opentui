@@ -4,7 +4,7 @@ import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
 import type { VNode } from "./composition/vnode"
-import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
+import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit, type ArrowOptions } from "./ScrollBar"
 
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable
@@ -45,6 +45,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
   scrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   verticalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   horizontalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
+  arrowOptions?: Omit<ArrowOptions, "direction">
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -90,6 +91,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollbarOptions,
       verticalScrollbarOptions,
       horizontalScrollbarOptions,
+      arrowOptions,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -145,6 +147,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.verticalScrollBar = new ScrollBarRenderable(ctx, {
       ...scrollbarOptions,
       ...verticalScrollbarOptions,
+      arrowOptions: {
+        ...arrowOptions,
+        ...scrollbarOptions?.arrowOptions,
+        ...verticalScrollbarOptions?.arrowOptions,
+      },
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
@@ -155,6 +162,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.horizontalScrollBar = new ScrollBarRenderable(ctx, {
       ...scrollbarOptions,
       ...horizontalScrollbarOptions,
+      arrowOptions: {
+        ...arrowOptions,
+        ...scrollbarOptions?.arrowOptions,
+        ...horizontalScrollbarOptions?.arrowOptions,
+      },
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
