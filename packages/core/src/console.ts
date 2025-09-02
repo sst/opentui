@@ -68,7 +68,6 @@ class TerminalConsoleCache extends EventEmitter {
 
   public activate(): void {
     this.setupConsoleCapture()
-    this.overrideConsoleMethods()
   }
 
   private setupConsoleCapture(): void {
@@ -87,6 +86,26 @@ class TerminalConsoleCache extends EventEmitter {
         depth: 2,
       },
     })
+
+    console.log = (...args: any[]) => {
+      this.appendToConsole(LogLevel.LOG, ...args)
+    }
+
+    console.info = (...args: any[]) => {
+      this.appendToConsole(LogLevel.INFO, ...args)
+    }
+
+    console.warn = (...args: any[]) => {
+      this.appendToConsole(LogLevel.WARN, ...args)
+    }
+
+    console.error = (...args: any[]) => {
+      this.appendToConsole(LogLevel.ERROR, ...args)
+    }
+
+    console.debug = (...args: any[]) => {
+      this.appendToConsole(LogLevel.DEBUG, ...args)
+    }
   }
 
   public setCollectCallerInfo(enabled: boolean): void {
@@ -109,28 +128,6 @@ class TerminalConsoleCache extends EventEmitter {
     // Restore to the original console object
     const originalNodeConsole = require("node:console")
     global.console = originalNodeConsole
-  }
-
-  private overrideConsoleMethods(): void {
-    console.log = (...args: any[]) => {
-      this.appendToConsole(LogLevel.LOG, ...args)
-    }
-
-    console.info = (...args: any[]) => {
-      this.appendToConsole(LogLevel.INFO, ...args)
-    }
-
-    console.warn = (...args: any[]) => {
-      this.appendToConsole(LogLevel.WARN, ...args)
-    }
-
-    console.error = (...args: any[]) => {
-      this.appendToConsole(LogLevel.ERROR, ...args)
-    }
-
-    console.debug = (...args: any[]) => {
-      this.appendToConsole(LogLevel.DEBUG, ...args)
-    }
   }
 
   public addLogEntry(level: LogLevel, ...args: any[]) {
