@@ -21,8 +21,7 @@ const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
 const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
 
 export class ScrollBarRenderable extends Renderable {
-  public readonly track: BoxRenderable
-  public readonly thumb: ThumbRenderable
+  public readonly slider: SliderRenderable
   public readonly startArrow: ArrowRenderable
   public readonly endArrow: ArrowRenderable
   public readonly orientation: "vertical" | "horizontal"
@@ -68,6 +67,7 @@ export class ScrollBarRenderable extends Renderable {
   set scrollSize(value: number) {
     if (value === this.scrollSize) return
     this._scrollSize = value
+    this.slider.scrollSize = value
     this.recalculateVisibility()
     this.scrollPosition = this.scrollPosition
   }
@@ -76,6 +76,7 @@ export class ScrollBarRenderable extends Renderable {
     const newPosition = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
     if (newPosition !== this._scrollPosition) {
       this._scrollPosition = newPosition
+      this.slider.scrollPosition = newPosition
       this._onChange?.(newPosition)
       this.emit("change", { position: newPosition })
     }
@@ -84,6 +85,7 @@ export class ScrollBarRenderable extends Renderable {
   set viewportSize(value: number) {
     if (value === this.viewportSize) return
     this._viewportSize = value
+    this.slider.viewportSize = value
     this.recalculateVisibility()
     this.scrollPosition = this.scrollPosition
   }
@@ -115,7 +117,16 @@ export class ScrollBarRenderable extends Renderable {
     this.orientation = orientation
     this._showArrows = showArrows
 
-    this.track = new BoxRenderable(ctx, {
+    this.slider = new SliderRenderable(ctx, {
+      orientation,
+      scrollSize: this._scrollSize,
+      viewportSize: this._viewportSize,
+      scrollPosition: this._scrollPosition,
+      onChange: (position) => {
+        this._scrollPosition = position
+        this._onChange?.(position)
+        this.emit("change", { position })
+      },
       ...(orientation === "vertical"
         ? {
             width: 2,
@@ -129,8 +140,8 @@ export class ScrollBarRenderable extends Renderable {
           }),
       flexGrow: 1,
       flexShrink: 1,
-      backgroundColor: defaultTrackBackgroundColor,
-      ...trackOptions,
+      trackColor: trackOptions?.backgroundColor || defaultTrackBackgroundColor,
+      thumbColor: thumbOptions?.backgroundColor || defaultThumbBackgroundColor,
     })
 
     const arrowOpts = arrowOptions
@@ -159,47 +170,8 @@ export class ScrollBarRenderable extends Renderable {
     })
 
     this.add(this.startArrow)
-    this.add(this.track)
+    this.add(this.slider)
     this.add(this.endArrow)
-
-    this.thumb = new ThumbRenderable(ctx, {
-      scrollbar: this,
-      ...(orientation === "vertical"
-        ? {
-            width: "100%",
-            height: 1,
-          }
-        : {
-            width: 1,
-            height: "100%",
-          }),
-      backgroundColor: defaultThumbBackgroundColor,
-      ...thumbOptions,
-    })
-    this.track.add(this.thumb)
-
-    let relativeStartPos = 0
-
-    this.thumb.onMouseDown = (event) => {
-      event.preventDefault()
-      relativeStartPos = orientation === "vertical" ? event.y - this.thumb.y : event.x - this.thumb.x
-    }
-
-    this.track.onMouseDown = (event) => {
-      event.preventDefault()
-      relativeStartPos = orientation === "vertical" ? this.thumb.height / 2 : this.thumb.width / 2
-      this.scrollPosition =
-        ((orientation === "vertical" ? event.y - this.track.y : event.x - this.track.x) - relativeStartPos) *
-        (this.scrollSize / this.viewportSize)
-    }
-
-    this.thumb.onMouseDrag = this.track.onMouseDrag = (event) => {
-      event.preventDefault()
-
-      this.scrollPosition =
-        ((orientation === "vertical" ? event.y - this.track.y : event.x - this.track.x) - relativeStartPos) *
-        (this.scrollSize / this.viewportSize)
-    }
 
     let startArrowMouseTimeout = undefined as Timeout
     let endArrowMouseTimeout = undefined as Timeout
@@ -423,34 +395,197 @@ export class ArrowRenderable extends Renderable {
   }
 }
 
-class ThumbRenderable extends BoxRenderable {
-  private readonly scrollbar: ScrollBarRenderable
+export interface SliderOptions extends RenderableOptions<SliderRenderable> {
+  orientation: "vertical" | "horizontal"
+  trackColor?: string | RGBA
+  thumbColor?: string | RGBA
+  scrollSize: number
+  viewportSize: number
+  scrollPosition: number
+  onChange?: (position: number) => void
+}
 
-  constructor(ctx: RenderContext, options: BoxOptions & { scrollbar: ScrollBarRenderable }) {
+export class SliderRenderable extends Renderable {
+  public readonly orientation: "vertical" | "horizontal"
+  private _scrollSize: number
+  private _viewportSize: number
+  private _scrollPosition: number
+  private _trackColor: RGBA
+  private _thumbColor: RGBA
+  private _onChange?: (position: number) => void
+
+  constructor(ctx: RenderContext, options: SliderOptions) {
     super(ctx, options)
-    this.scrollbar = options.scrollbar
+    this.orientation = options.orientation
+    this._scrollSize = options.scrollSize
+    this._viewportSize = options.viewportSize
+    this._scrollPosition = options.scrollPosition
+    this._onChange = options.onChange
+    this._trackColor = options.trackColor
+      ? typeof options.trackColor === "string"
+        ? parseColor(options.trackColor)
+        : options.trackColor
+      : defaultTrackBackgroundColor
+    this._thumbColor = options.thumbColor
+      ? typeof options.thumbColor === "string"
+        ? parseColor(options.thumbColor)
+        : options.thumbColor
+      : defaultThumbBackgroundColor
+
+    this.setupMouseHandling()
   }
 
-  public updateFromLayout(): void {
-    super.updateFromLayout()
+  get scrollSize(): number {
+    return this._scrollSize
+  }
 
-    if (!this.parent) return
+  set scrollSize(value: number) {
+    if (value !== this._scrollSize) {
+      this._scrollSize = value
+      this.requestRender()
+    }
+  }
 
-    const scrollbar = this.scrollbar
+  get viewportSize(): number {
+    return this._viewportSize
+  }
 
-    const sizeRatio = scrollbar.scrollSize <= scrollbar.viewportSize ? 1 : scrollbar.viewportSize / scrollbar.scrollSize
+  set viewportSize(value: number) {
+    if (value !== this._viewportSize) {
+      this._viewportSize = value
+      this.requestRender()
+    }
+  }
 
-    const parentSize = scrollbar.orientation === "vertical" ? this.parent.height : this.parent.width
-    const resolvedSize = Math.max(1, Math.round(sizeRatio * parentSize))
-    const maxPos = parentSize - resolvedSize
+  get scrollPosition(): number {
+    return this._scrollPosition
+  }
 
-    if (scrollbar.orientation === "vertical") this._heightValue = resolvedSize
-    else this._widthValue = resolvedSize
+  set scrollPosition(value: number) {
+    const clamped = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
+    if (clamped !== this._scrollPosition) {
+      this._scrollPosition = clamped
+      this._onChange?.(clamped)
+      this.emit("change", { position: clamped })
+      this.requestRender()
+    }
+  }
 
-    const posRatio = scrollbar.scrollPosition / scrollbar.scrollSize
-    const pos = Math.min(maxPos, Math.ceil(posRatio * parentSize))
+  get trackColor(): RGBA {
+    return this._trackColor
+  }
 
-    if (scrollbar.orientation === "vertical") this._translateY = pos
-    else this._translateX = pos
+  set trackColor(value: RGBA) {
+    this._trackColor = value
+    this.requestRender()
+  }
+
+  get thumbColor(): RGBA {
+    return this._thumbColor
+  }
+
+  set thumbColor(value: RGBA) {
+    this._thumbColor = value
+    this.requestRender()
+  }
+
+  private setupMouseHandling(): void {
+    let isDragging = false
+    let relativeStartPos = 0
+
+    this.onMouseDown = (event) => {
+      event.preventDefault()
+      isDragging = true
+
+      const thumbRect = this.getThumbRect()
+      const isOnThumb =
+        event.x >= thumbRect.x &&
+        event.x < thumbRect.x + thumbRect.width &&
+        event.y >= thumbRect.y &&
+        event.y < thumbRect.y + thumbRect.height
+
+      if (isOnThumb) {
+        relativeStartPos = this.orientation === "vertical" ? event.y - thumbRect.y : event.x - thumbRect.x
+      } else {
+        relativeStartPos = this.orientation === "vertical" ? thumbRect.height / 2 : thumbRect.width / 2
+      }
+
+      this.updatePositionFromMouse(event, relativeStartPos)
+    }
+
+    this.onMouseDrag = (event) => {
+      if (!isDragging) return
+      event.preventDefault()
+      this.updatePositionFromMouse(event, relativeStartPos)
+    }
+
+    this.onMouseUp = () => {
+      isDragging = false
+    }
+  }
+
+  private updatePositionFromMouse(event: any, relativeStartPos: number): void {
+    if (this.scrollSize <= this.viewportSize) return
+
+    const trackStart = this.orientation === "vertical" ? this.y : this.x
+    const trackSize = this.orientation === "vertical" ? this.height : this.width
+    const thumbSize = this.getThumbSize()
+    const mousePos = this.orientation === "vertical" ? event.y : event.x
+
+    const thumbStartPos = mousePos - trackStart - relativeStartPos
+    const maxThumbStartPos = trackSize - thumbSize
+
+    const clampedThumbStartPos = Math.max(0, Math.min(maxThumbStartPos, thumbStartPos))
+
+    const scrollRatio = clampedThumbStartPos / maxThumbStartPos
+    const newScrollPos = scrollRatio * (this.scrollSize - this.viewportSize)
+
+    this.scrollPosition = newScrollPos
+  }
+
+  private getThumbSize(): number {
+    if (this.scrollSize <= this.viewportSize) return 1
+    const trackSize = this.orientation === "vertical" ? this.height : this.width
+    const sizeRatio = this.viewportSize / this.scrollSize
+    return Math.max(1, Math.round(sizeRatio * trackSize))
+  }
+
+  private getThumbPosition(): number {
+    const trackSize = this.orientation === "vertical" ? this.height : this.width
+    const thumbSize = this.getThumbSize()
+    const maxPos = trackSize - thumbSize
+
+    if (this.scrollSize <= this.viewportSize) return 0
+
+    const posRatio = this.scrollPosition / this.scrollSize
+    return Math.min(maxPos, Math.round(posRatio * trackSize))
+  }
+
+  private getThumbRect(): { x: number; y: number; width: number; height: number } {
+    const thumbSize = this.getThumbSize()
+    const thumbPos = this.getThumbPosition()
+
+    if (this.orientation === "vertical") {
+      return {
+        x: this.x,
+        y: this.y + thumbPos,
+        width: this.width,
+        height: thumbSize,
+      }
+    } else {
+      return {
+        x: this.x + thumbPos,
+        y: this.y,
+        width: thumbSize,
+        height: this.height,
+      }
+    }
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    buffer.fillRect(this.x, this.y, this.width, this.height, this._trackColor)
+
+    const thumbRect = this.getThumbRect()
+    buffer.fillRect(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, this._thumbColor)
   }
 }
