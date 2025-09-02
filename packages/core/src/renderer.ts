@@ -662,7 +662,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
+      if (mouseEvent.type === "drag" && this.selectionState && !this.selectionState.isSelecting) {
         if (
           maybeRenderable &&
           maybeRenderable.selectable &&
@@ -685,6 +685,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.selectionState) {
         this.clearSelection()
+      }
+
+      if (mouseEvent.type === "down") {
+        if (maybeRenderable && maybeRenderable.selectable) {
+          console.log("prepareStartSelection", mouseEvent.x, mouseEvent.y)
+          this.prepareStartSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        }
       }
 
       if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
@@ -1214,16 +1221,31 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers = []
   }
 
+  private prepareStartSelection(renderable: Renderable, x: number, y: number): void {
+    if (renderable.selectable && renderable.shouldStartSelection(x, y)) {
+      this.clearSelection()
+      this.selectionState = {
+        anchor: { x, y },
+        focus: { x, y },
+        isActive: false,
+        isSelecting: false,
+      }
+      console.log("setting state", x, y, this.selectionState)
+    }
+  }
+
   private startSelection(startRenderable: Renderable, x: number, y: number): void {
-    this.clearSelection()
     this.selectionContainers.push(startRenderable.parent || this.root)
 
     this.selectionState = {
-      anchor: { x, y },
-      focus: { x, y },
+      ...(this.selectionState || {
+        anchor: { x, y },
+        focus: { x, y },
+      }),
       isActive: true,
       isSelecting: true,
     }
+    console.log("starting selection", x, y, this.selectionState)
 
     this.currentSelection = new Selection({ x, y }, { x, y })
     this.notifySelectablesOfSelectionChange()
