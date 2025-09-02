@@ -76,7 +76,7 @@ export function run(rendererInstance: CliRenderer): void {
     })
 
     box.add(text)
-    scrollBox!.content.add(box)
+    scrollBox!.add(box)
   }
 
   function makeMultilineContent(i: number) {

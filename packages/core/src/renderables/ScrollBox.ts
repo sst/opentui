@@ -1,7 +1,9 @@
 import { type ParsedKey } from "../lib"
+import type { Renderable } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
+import type { VNode } from "./composition/vnode"
 import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
 
 export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
@@ -79,7 +81,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       maxWidth: "100%",
       ...wrapperOptions,
     })
-    this.add(this.wrapper)
+    super.add(this.wrapper)
 
     this.viewport = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -117,7 +119,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
         this.content.translateY = -position
       },
     })
-    this.add(this.verticalScrollBar)
+    super.add(this.verticalScrollBar)
 
     this.horizontalScrollBar = new ScrollBarRenderable(ctx, {
       ...scrollbarOptions,
@@ -148,6 +150,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.scrollTop = position.y
       this.scrollLeft = position.x
     }
+  }
+
+  public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
+    console.log("adding", this.content)
+    return this.content.add(obj, index)
+  }
+
+  public remove(id: string): void {
+    this.content.remove(id)
   }
 
   protected onMouseEvent(event: MouseEvent): void {
