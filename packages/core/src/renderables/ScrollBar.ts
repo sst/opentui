@@ -1,10 +1,10 @@
-import { RGBA } from "../lib"
+import { parseColor, RGBA } from "../lib"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { Timeout } from "../types"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
-import { TextRenderable } from "./Text"
+import type { OptimizedBuffer } from "../buffer"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
@@ -23,8 +23,8 @@ const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
 export class ScrollBarRenderable extends Renderable {
   public readonly track: BoxRenderable
   public readonly thumb: ThumbRenderable
-  public readonly startArrow: BoxRenderable
-  public readonly endArrow: BoxRenderable
+  public readonly startArrow: ArrowRenderable
+  public readonly endArrow: ArrowRenderable
   public readonly orientation: "vertical" | "horizontal"
 
   protected focusable: boolean = true
@@ -118,31 +118,32 @@ export class ScrollBarRenderable extends Renderable {
       ...trackOptions,
     })
 
-    this.startArrow = new BoxRenderable(ctx, {
-      alignSelf: "center",
-      visible: this.showArrows,
-      ...arrowOptions,
-    })
-    this.startArrow.add(
-      new TextRenderable(ctx, {
-        margin: "auto",
-        content: this.orientation === "vertical" ? "◢◣" : " ◀ ",
-        selectable: false,
-      }),
-    )
+    const arrowOpts = arrowOptions
+      ? {
+          fg: (arrowOptions as any).backgroundColor,
+          bg: (arrowOptions as any).backgroundColor,
+          attributes: (arrowOptions as any).attributes,
+          ...arrowOptions,
+        }
+      : {}
 
-    this.endArrow = new BoxRenderable(ctx, {
+    this.startArrow = new ArrowRenderable(ctx, {
       alignSelf: "center",
       visible: this.showArrows,
-      ...arrowOptions,
+      direction: this.orientation === "vertical" ? "up" : "left",
+      width: this.orientation === "vertical" ? 2 : 3,
+      height: this.orientation === "vertical" ? 1 : 1,
+      ...arrowOpts,
     })
-    this.endArrow.add(
-      new TextRenderable(ctx, {
-        margin: "auto",
-        content: this.orientation === "vertical" ? "◥◤" : " ▶ ",
-        selectable: false,
-      }),
-    )
+
+    this.endArrow = new ArrowRenderable(ctx, {
+      alignSelf: "center",
+      visible: this.showArrows,
+      direction: this.orientation === "vertical" ? "down" : "right",
+      width: this.orientation === "vertical" ? 2 : 3,
+      height: this.orientation === "vertical" ? 1 : 1,
+      ...arrowOpts,
+    })
 
     this.add(this.startArrow)
     this.add(this.track)
@@ -286,6 +287,101 @@ export class ScrollBarRenderable extends Renderable {
     }
 
     return false
+  }
+}
+
+export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
+  direction: "up" | "down" | "left" | "right"
+  fg?: string | RGBA
+  bg?: string | RGBA
+  attributes?: number
+  backgroundColor?: string | RGBA
+}
+
+export class ArrowRenderable extends Renderable {
+  private _direction: "up" | "down" | "left" | "right"
+  private _fg: RGBA
+  private _bg: RGBA
+  private _attributes: number
+
+  constructor(ctx: RenderContext, options: ArrowOptions) {
+    super(ctx, options)
+    this._direction = options.direction
+    this._fg = options.fg
+      ? typeof options.fg === "string"
+        ? parseColor(options.fg)
+        : options.fg
+      : RGBA.fromValues(1, 1, 1, 1)
+    this._bg = options.bg
+      ? typeof options.bg === "string"
+        ? parseColor(options.bg)
+        : options.bg
+      : RGBA.fromValues(0, 0, 0, 0)
+    this._attributes = options.attributes ?? 0
+  }
+
+  get direction(): "up" | "down" | "left" | "right" {
+    return this._direction
+  }
+
+  set direction(value: "up" | "down" | "left" | "right") {
+    if (this._direction !== value) {
+      this._direction = value
+      this.requestRender()
+    }
+  }
+
+  get fg(): RGBA {
+    return this._fg
+  }
+
+  set fg(value: RGBA) {
+    if (this._fg !== value) {
+      this._fg = value
+      this.requestRender()
+    }
+  }
+
+  get bg(): RGBA {
+    return this._bg
+  }
+
+  set bg(value: RGBA) {
+    if (this._bg !== value) {
+      this._bg = value
+      this.requestRender()
+    }
+  }
+
+  get attributes(): number {
+    return this._attributes
+  }
+
+  set attributes(value: number) {
+    if (this._attributes !== value) {
+      this._attributes = value
+      this.requestRender()
+    }
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    const char = this.getArrowChar()
+    buffer.drawText(char, this.x, this.y, this._fg, this._bg, this._attributes)
+  }
+
+  private getArrowChar(): string {
+    switch (this._direction) {
+      case "up":
+        return "◢◣"
+      case "down":
+        return "◥◤"
+      case "left":
+        return " ◀ "
+      case "right":
+        return " ▶ "
+      default:
+        return "?"
+    }
   }
 }
 
