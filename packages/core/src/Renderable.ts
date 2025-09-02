@@ -225,8 +225,6 @@ export abstract class Renderable extends EventEmitter {
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
 
-  private _childHostOverride: Renderable | null = null
-
   private renderableMap: Map<string, Renderable> = new Map()
   private renderableArray: Renderable[] = []
   private needsZIndexSort: boolean = false
@@ -322,11 +320,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public focus(): void {
-    if (this.childHost !== this) {
-      this.childHost.focus()
-      return
-    }
-
     if (this._focused || !this.focusable) return
 
     this._focused = true
@@ -344,11 +337,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public blur(): void {
-    if (this.childHost !== this) {
-      this.childHost.blur()
-      return
-    }
-
     if (!this._focused || !this.focusable) return
 
     this._focused = false
@@ -396,14 +384,6 @@ export abstract class Renderable extends EventEmitter {
     return this._dirty
   }
 
-  public get childHost(): Renderable {
-    return this._childHostOverride || this
-  }
-
-  public set childHost(host: Renderable | null) {
-    this._childHostOverride = host
-  }
-
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this.renderableArray) {
       if (child.id === id) return child
@@ -411,15 +391,6 @@ export abstract class Renderable extends EventEmitter {
       if (found) return found
     }
     return undefined
-  }
-
-  public setChildHostById(id: string): boolean {
-    const found = this.findDescendantById(id)
-    if (found) {
-      this._childHostOverride = found
-      return true
-    }
-    return false
   }
 
   private markClean(): void {
@@ -974,10 +945,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
-    if (this.childHost !== this) {
-      return this.childHost.add(obj, index)
-    }
-
     obj = ensureRenderable(this._ctx, obj)
 
     if (this.renderableMap.has(obj.id)) {
@@ -1009,11 +976,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   insertBefore(obj: Renderable | VNode<any, any[]>, anchor?: Renderable): number {
-    if (this.childHost !== this) {
-      const idx = this.childHost.insertBefore(obj, anchor)
-      return idx
-    }
-
     obj = ensureRenderable(this._ctx, obj)
 
     if (!anchor) {
@@ -1034,15 +996,10 @@ export abstract class Renderable extends EventEmitter {
 
   // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
-    if (this.childHost !== this) return this.childHost.getRenderable(id)
     return this.renderableMap.get(id)
   }
 
   public remove(id: string): void {
-    if (this.childHost !== this) {
-      this.childHost.remove(id)
-      return
-    }
     if (!id) {
       return
     }
@@ -1075,7 +1032,6 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public getChildren(): Renderable[] {
-    if (this.childHost !== this) return this.childHost.getChildren()
     return [...this.renderableArray]
   }
 

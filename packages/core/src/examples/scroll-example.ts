@@ -13,6 +13,7 @@ import {
 } from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { getKeyHandler } from "../lib/KeyHandler"
 
 let scrollBox: ScrollBoxRenderable | null = null
 let renderer: CliRenderer | null = null
@@ -197,7 +198,6 @@ if (import.meta.main) {
   run(renderer)
   setupCommonDemoKeys(renderer)
 
-  const { getKeyHandler } = await import("../lib/KeyHandler")
   getKeyHandler().on("keypress", (key) => {
     if (key.name === "a" && scrollBox) {
       const currentState = scrollBox.verticalScrollBar?.showArrows ?? false
