@@ -25,8 +25,9 @@ export function run(rendererInstance: CliRenderer): void {
 
   mainContainer = new BoxRenderable(renderer, {
     id: "main-container",
-    width: "100%",
-    height: "100%",
+    // TODO: Using 100% sets the width and height once as absolute values and does not update when the window is resized
+    // width: "100%",
+    // height: "100%",
     flexDirection: "column",
     backgroundColor: "#1a1b26",
   })
