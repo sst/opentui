@@ -196,7 +196,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
-    console.log("adding", this.content)
     return this.content.add(obj, index)
   }
 
