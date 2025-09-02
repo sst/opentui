@@ -209,6 +209,7 @@ Here's a step-by-step guide to creating a custom button component.
 First, create a class that extends one of the base renderables from `@opentui/core`. For our custom button, we'll extend `BoxRenderable`.
 
 `CustomButtonRenderable.ts`:
+
 ```typescript
 import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
 
@@ -252,6 +253,7 @@ export class ConsoleButtonRenderable extends BoxRenderable {
 In your application's entry point (e.g., `main.ts`), import the `extend` function and your custom component. Then, call `extend` with an object where the key is the component's tag name (in camelCase) and the value is the component class.
 
 `main.ts`:
+
 ```typescript
 import { render, extend } from "@opentui/vue"
 import { ConsoleButtonRenderable } from "./CustomButtonRenderable"
@@ -263,6 +265,7 @@ extend({ consoleButtonRenderable: ConsoleButtonRenderable })
 // Render the app
 render(App)
 ```
+
 > **Important:** The `extend` function should be called in your main application entry file (e.g., `main.ts` or `index.js`). Calling it inside the `<script>` section of a `.vue` file can cause issues with the Vue compiler. It may incorrectly try to instantiate the renderable classes you import from `@opentui/core`, leading to a runtime error.
 
 #### 3. Add TypeScript definitions
@@ -270,22 +273,25 @@ render(App)
 To get proper type-checking and autocompletion for your custom component in Vue templates, you need to augment the `@opentui/vue` types. Create a declaration file (e.g., `opentui.d.ts`) in your project and add the following:
 
 `opentui.d.ts`:
-```typescript
-import { ConsoleButtonRenderable } from './CustomButtonRenderable'
 
-declare module '@opentui/vue' {
+```typescript
+import { ConsoleButtonRenderable } from "./CustomButtonRenderable"
+
+declare module "@opentui/vue" {
   export interface OpenTUIComponents {
     consoleButtonRenderable: typeof ConsoleButtonRenderable
   }
 }
 ```
-*Note: Make sure this file is included in your `tsconfig.json`.*
+
+_Note: Make sure this file is included in your `tsconfig.json`._
 
 #### 4. Use your custom component
 
 Now you can use `<consoleButtonRenderable>` in your Vue components just like any other OpenTUI component.
 
 `ExtendExample.vue`:
+
 ```vue
 <template>
   <boxRenderable :style="{ flexDirection: 'column' }">
