@@ -4,6 +4,7 @@ import {
   type CliRenderer,
   createCliRenderer,
   TextRenderable,
+  RGBA,
   t,
   fg,
   bold,
@@ -59,7 +60,16 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.root.add(scrollBox)
 
   // Generate 1000 boxes, each with multiline styled text
-  for (let index = 0; index < 1000; index++) addBox(index)
+  // Add an ASCII renderable at the top (index 0) for immediate visibility
+  addAsciiRenderable(0)
+
+  for (let index = 1; index < 1000; index++) {
+    if ((index + 1) % 100 === 0) {
+      addAsciiRenderable(index)
+    } else {
+      addBox(index)
+    }
+  }
 
   function addBox(i: number) {
     const box = new BoxRenderable(renderer!, {
@@ -77,6 +87,41 @@ export function run(rendererInstance: CliRenderer): void {
 
     box.add(text)
     scrollBox!.add(box)
+  }
+
+  function addAsciiRenderable(i: number) {
+    const fonts = ["tiny", "block", "shade", "slick"] as const
+    const font = fonts[i % fonts.length]
+    const colors = [
+      [RGBA.fromInts(0, 255, 0, 255), RGBA.fromInts(0, 128, 255, 255)],
+      [RGBA.fromInts(255, 0, 0, 255), RGBA.fromInts(255, 255, 0, 255)],
+      [RGBA.fromInts(0, 255, 255, 255), RGBA.fromInts(255, 0, 255, 255)],
+      [RGBA.fromInts(0, 128, 255, 255), RGBA.fromInts(0, 255, 255, 255)],
+    ][i % 4]
+
+    const longText =
+      `ASCII FONT RENDERABLE #${i + 1} - ${font.toUpperCase()} STYLE - This is an extremely long piece of text that will definitely exceed the width of the scrollbox and trigger horizontal scrolling functionality. `.repeat(
+        15,
+      ) +
+      `Additional content includes: Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. `.repeat(
+        12,
+      ) +
+      `The quick brown fox jumps over the lazy dog while the sly red panda silently observes from the treetops, contemplating the mysteries of the universe and wondering about the meaning of life. Meanwhile, technology continues to advance at an unprecedented rate, bringing both amazing opportunities and challenging ethical dilemmas to humanity's doorstep. From artificial intelligence to quantum computing, the future holds limitless possibilities that our ancestors could only dream of in their wildest imaginations.`.repeat(
+        8,
+      )
+
+    const asciiRenderable = new ASCIIFontRenderable(renderer!, {
+      id: `ascii-${i + 1}`,
+      text: longText,
+      font: font,
+      fg: colors,
+      bg: RGBA.fromInts(10, 20, 30, 255),
+      selectionBg: "#ff6b6b",
+      selectionFg: "#ffffff",
+      zIndex: 10,
+    })
+
+    scrollBox!.add(asciiRenderable)
   }
 
   function makeMultilineContent(i: number) {
