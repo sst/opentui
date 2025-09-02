@@ -10,12 +10,6 @@ import {
   bold,
   underline,
   italic,
-  blue,
-  green,
-  red,
-  cyan,
-  magenta,
-  yellow,
 } from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -25,32 +19,32 @@ let renderer: CliRenderer | null = null
 
 export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
-  renderer.setBackgroundColor("#001122")
+  renderer.setBackgroundColor("#1a1b26")
 
   scrollBox = new ScrollBoxRenderable(renderer, {
     id: "scroll-box",
     width: "100%",
     height: "100%",
     rootOptions: {
-      backgroundColor: "#730000",
+      backgroundColor: "#24283b",
       border: true,
     },
     wrapperOptions: {
-      backgroundColor: "#9f0045",
+      backgroundColor: "#1f2335",
     },
     viewportOptions: {
-      backgroundColor: "#005dbb",
+      backgroundColor: "#1a1b26",
     },
     contentOptions: {
-      backgroundColor: "#7fbfff",
+      backgroundColor: "#16161e",
     },
     scrollbarOptions: {
       showArrows: true,
       thumbOptions: {
-        backgroundColor: "#fe9d15",
+        backgroundColor: "#7aa2f7",
       },
       trackOptions: {
-        backgroundColor: "#fff693",
+        backgroundColor: "#414868",
       },
     },
   })
@@ -77,7 +71,7 @@ export function run(rendererInstance: CliRenderer): void {
       width: "100%",
       padding: 1,
       marginBottom: 1,
-      backgroundColor: i % 2 === 0 ? "#10304a" : "#14283a",
+      backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449",
     })
 
     const content = makeMultilineContent(i)
@@ -93,10 +87,10 @@ export function run(rendererInstance: CliRenderer): void {
     const fonts = ["tiny", "block", "shade", "slick"] as const
     const font = fonts[i % fonts.length]
     const colors = [
-      [RGBA.fromInts(0, 255, 0, 255), RGBA.fromInts(0, 128, 255, 255)],
-      [RGBA.fromInts(255, 0, 0, 255), RGBA.fromInts(255, 255, 0, 255)],
-      [RGBA.fromInts(0, 255, 255, 255), RGBA.fromInts(255, 0, 255, 255)],
-      [RGBA.fromInts(0, 128, 255, 255), RGBA.fromInts(0, 255, 255, 255)],
+      [RGBA.fromInts(166, 227, 161, 255), RGBA.fromInts(122, 162, 247, 255)],
+      [RGBA.fromInts(247, 118, 142, 255), RGBA.fromInts(245, 194, 231, 255)],
+      [RGBA.fromInts(125, 196, 228, 255), RGBA.fromInts(199, 146, 234, 255)],
+      [RGBA.fromInts(244, 191, 117, 255), RGBA.fromInts(249, 226, 175, 255)],
     ][i % 4]
 
     const longText =
@@ -115,9 +109,9 @@ export function run(rendererInstance: CliRenderer): void {
       text: longText,
       font: font,
       fg: colors,
-      bg: RGBA.fromInts(10, 20, 30, 255),
-      selectionBg: "#ff6b6b",
-      selectionFg: "#ffffff",
+      bg: RGBA.fromInts(26, 27, 38, 255),
+      selectionBg: "#f7768e",
+      selectionFg: "#c0caf5",
       zIndex: 10,
     })
 
@@ -125,22 +119,22 @@ export function run(rendererInstance: CliRenderer): void {
   }
 
   function makeMultilineContent(i: number) {
-    const palette = [blue, green, red, cyan, magenta, yellow]
+    const palette = [fg("#7aa2f7"), fg("#9ece6a"), fg("#f7768e"), fg("#7dcfff"), fg("#bb9af7"), fg("#e0af68")]
     const colorize = palette[i % palette.length]
     const id = (i + 1).toString().padStart(4, "0")
-    const tag = i % 3 === 0 ? underline("INFO") : i % 3 === 1 ? bold("WARN") : bold(red("ERROR"))
+    const tag = i % 3 === 0 ? underline("INFO") : i % 3 === 1 ? bold("WARN") : bold(fg("#f7768e")("ERROR"))
 
     const barUnits = 10 + (i % 30)
     const bar = "█".repeat(Math.floor(barUnits * 0.6)).padEnd(barUnits, "░")
     const details = "data ".repeat((i % 4) + 2)
 
-    return t`${fg("#888")(`[${id}]`)} ${bold(colorize(`Box ${i + 1}`))} ${fg("#666")("|")} ${tag}
-${fg("#aac")("Multiline content with mixed styles for stress testing.")}
+    return t`${fg("#565f89")(`[${id}]`)} ${bold(colorize(`Box ${i + 1}`))} ${fg("#565f89")("|")} ${tag}
+${fg("#9aa5ce")("Multiline content with mixed styles for stress testing.")}
 ${colorize("• Title:")} ${bold(italic(`Lorem ipsum ${i}`))}
-${green("• Detail A:")} ${fg("#ccc")(details.trim())}
-${magenta("• Detail B:")} ${fg("#bbb")("The quick brown fox jumps over the lazy dog.")}
-${cyan("• Progress:")} ${fg("#0f0")(bar)} ${fg("#777")(barUnits)}
-${fg("#aaa")("— end of box —")}`
+${fg("#9ece6a")("• Detail A:")} ${fg("#c0caf5")(details.trim())}
+${fg("#bb9af7")("• Detail B:")} ${fg("#a9b1d6")("The quick brown fox jumps over the lazy dog.")}
+${fg("#7dcfff")("• Progress:")} ${fg("#73daca")(bar)} ${fg("#565f89")(barUnits)}
+${fg("#565f89")("— end of box —")}`
   }
 }
 
