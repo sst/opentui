@@ -70,7 +70,7 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   set scrollPosition(value: number) {
-    const newPosition = Math.min(Math.max(0, value), this.scrollSize - this.viewportSize)
+    const newPosition = Math.round(Math.min(Math.max(0, value), this.scrollSize - this.viewportSize))
     if (newPosition !== this._scrollPosition) {
       this._scrollPosition = newPosition
       this.updateSliderFromScrollState()
@@ -117,7 +117,7 @@ export class ScrollBarRenderable extends Renderable {
       orientation,
       onChange: (position) => {
         const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
-        this._scrollPosition = position * scrollRange
+        this._scrollPosition = Math.round(position * scrollRange)
         this._onChange?.(this._scrollPosition)
         this.emit("change", { position: this._scrollPosition })
       },
