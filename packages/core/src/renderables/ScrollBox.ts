@@ -1,10 +1,41 @@
 import { type ParsedKey } from "../lib"
-import type { Renderable } from "../Renderable"
+import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
 import type { VNode } from "./composition/vnode"
 import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
+
+class ContentRenderable extends BoxRenderable {
+  private viewport: BoxRenderable
+
+  constructor(ctx: RenderContext, viewport: BoxRenderable, options: RenderableOptions<BoxRenderable>) {
+    super(ctx, options)
+    this.viewport = viewport
+  }
+
+  protected shouldRenderChild(child: Renderable): boolean {
+    const viewportLeft = this.viewport.x
+    const viewportTop = this.viewport.y
+    const viewportRight = this.viewport.x + this.viewport.width
+    const viewportBottom = this.viewport.y + this.viewport.height
+
+    const childLeft = child.x
+    const childTop = child.y
+    const childRight = child.x + child.width
+    const childBottom = child.y + child.height
+
+    // Check if child intersects with viewport (with some padding for safety)
+    const padding = 10
+    const intersects =
+      childLeft < viewportRight + padding &&
+      childRight > viewportLeft - padding &&
+      childTop < viewportBottom + padding &&
+      childBottom > viewportTop - padding
+
+    return intersects
+  }
+}
 
 export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
   rootOptions?: BoxOptions
@@ -19,7 +50,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBarRenderable> {
 export class ScrollBoxRenderable extends BoxRenderable {
   public readonly wrapper: BoxRenderable
   public readonly viewport: BoxRenderable
-  public readonly content: BoxRenderable
+  public readonly content: ContentRenderable
   public readonly horizontalScrollBar: ScrollBarRenderable
   public readonly verticalScrollBar: ScrollBarRenderable
 
@@ -100,7 +131,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.viewport)
 
-    this.content = new BoxRenderable(ctx, {
+    this.content = new ContentRenderable(ctx, this.viewport, {
       minWidth: "100%",
       minHeight: "100%",
       alignSelf: "flex-start",

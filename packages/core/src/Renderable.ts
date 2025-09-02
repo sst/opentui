@@ -1111,7 +1111,9 @@ export abstract class Renderable extends EventEmitter {
     }
 
     for (const child of this.renderableArray) {
-      child.render(renderBuffer, deltaTime)
+      if (this.shouldRenderChild(child)) {
+        child.render(renderBuffer, deltaTime)
+      }
     }
 
     if (shouldPushScissor) {
@@ -1121,6 +1123,10 @@ export abstract class Renderable extends EventEmitter {
     if (this.buffered && this.frameBuffer) {
       buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
     }
+  }
+
+  protected shouldRenderChild(child: Renderable): boolean {
+    return true
   }
 
   protected beforeRender(): void {
