@@ -8,6 +8,8 @@ import type {
   Renderable,
   RenderableOptions,
   RenderContext,
+  ScrollBoxOptions,
+  ScrollBoxRenderable,
   SelectOption,
   SelectRenderable,
   SelectRenderableOptions,
@@ -109,6 +111,10 @@ export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderab
   focused?: boolean
   onChange?: (index: number, option: SelectOption | null) => void
   onSelect?: (index: number, option: SelectOption | null) => void
+}
+
+export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, ScrollBoxRenderable> & {
+  focused?: boolean
 }
 
 export type AsciiFontProps = ComponentProps<ASCIIFontOptions, ASCIIFontRenderable>

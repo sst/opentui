@@ -2,12 +2,14 @@ import type * as React from "react"
 import type {
   AsciiFontProps,
   BoxProps,
+  ExtendedIntrinsicElements,
   InputProps,
+  OpenTUIComponents,
+  ScrollBoxProps,
   SelectProps,
   TabSelectProps,
   TextProps,
 } from "./src/types/components"
-import type { ExtendedIntrinsicElements, OpenTUIComponents } from "./src/types/components"
 
 export namespace JSX {
   type Element = React.ReactNode
@@ -29,6 +31,7 @@ export namespace JSX {
     text: TextProps
     input: InputProps
     select: SelectProps
+    scrollbox: ScrollBoxProps
     "ascii-font": AsciiFontProps
     "tab-select": TabSelectProps
   }

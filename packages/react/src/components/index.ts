@@ -2,6 +2,7 @@ import {
   ASCIIFontRenderable,
   BoxRenderable,
   InputRenderable,
+  ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
   TextRenderable,
@@ -13,6 +14,7 @@ export const baseComponents = {
   text: TextRenderable,
   input: InputRenderable,
   select: SelectRenderable,
+  scrollbox: ScrollBoxRenderable,
   "ascii-font": ASCIIFontRenderable,
   "tab-select": TabSelectRenderable,
 }
