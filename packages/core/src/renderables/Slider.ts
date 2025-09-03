@@ -70,7 +70,7 @@ export class SliderRenderable extends Renderable {
     return this._backgroundColor
   }
 
-  set backgroundColor(value: RGBA) {
+  set backgroundColor(value: ColorInput) {
     this._backgroundColor = parseColor(value)
     this.requestRender()
   }
@@ -79,7 +79,7 @@ export class SliderRenderable extends Renderable {
     return this._foregroundColor
   }
 
-  set foregroundColor(value: RGBA) {
+  set foregroundColor(value: ColorInput) {
     this._foregroundColor = parseColor(value)
     this.requestRender()
   }
