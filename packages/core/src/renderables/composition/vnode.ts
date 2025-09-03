@@ -1,4 +1,4 @@
-import { Renderable, type RenderableOptions } from "../../Renderable"
+import { isRenderable, Renderable, type RenderableOptions } from "../../Renderable"
 import type { RenderContext } from "../../types"
 
 export type VChild = VNode | Renderable | VChild[] | null | undefined | false
@@ -131,7 +131,7 @@ export function isVNode(node: any): node is VNode {
 }
 
 export function ensureRenderable(ctx: RenderContext, node: Renderable | VNode<any, any[]>): Renderable {
-  if (node instanceof Renderable) return node
+  if (isRenderable(node)) return node
   return instantiate(ctx, node)
 }
 
@@ -190,7 +190,7 @@ export function instantiate<NodeType extends VNode | Renderable>(
   ctx: RenderContext,
   node: NodeType,
 ): InstantiateFn<NodeType> {
-  if (node instanceof Renderable) return node
+  if (isRenderable(node)) return node
 
   if (!node || typeof node !== "object") {
     throw new TypeError("mount() received an invalid vnode")
@@ -205,7 +205,7 @@ export function instantiate<NodeType extends VNode | Renderable>(
     const instance = new type(ctx, (props || {}) as any)
 
     for (const child of children) {
-      if (child instanceof Renderable) {
+      if (isRenderable(child)) {
         instance.add(child)
       } else {
         const mounted = instantiate(ctx, child as NodeType)
@@ -270,7 +270,7 @@ export function delegate<NodeType extends VNode | Renderable | InstantiateFn<any
   mapping: Record<string, string>,
   vnode: NodeType,
 ): VNode | Renderable {
-  if (vnode instanceof Renderable) {
+  if (isRenderable(vnode)) {
     return wrapWithDelegates(vnode, mapping)
   }
   if (!vnode || typeof vnode !== "object") return vnode
