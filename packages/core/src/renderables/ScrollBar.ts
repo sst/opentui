@@ -1,5 +1,5 @@
 import type { OptimizedBuffer } from "../buffer"
-import { parseColor, RGBA } from "../lib"
+import { parseColor, RGBA, type ColorInput } from "../lib"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext, Timeout } from "../types"
@@ -305,9 +305,8 @@ export class ScrollBarRenderable extends Renderable {
 
 export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
   direction: "up" | "down" | "left" | "right"
-  color?: string | RGBA
-  foregroundColor?: string | RGBA
-  backgroundColor?: string | RGBA
+  foregroundColor?: ColorInput
+  backgroundColor?: ColorInput
   attributes?: number
   arrowChars?: {
     up?: string
@@ -332,16 +331,8 @@ export class ArrowRenderable extends Renderable {
   constructor(ctx: RenderContext, options: ArrowOptions) {
     super(ctx, options)
     this._direction = options.direction
-    this._foregroundColor = options.foregroundColor
-      ? typeof options.foregroundColor === "string"
-        ? parseColor(options.foregroundColor)
-        : options.foregroundColor
-      : RGBA.fromValues(1, 1, 1, 1)
-    this._backgroundColor = options.backgroundColor
-      ? typeof options.backgroundColor === "string"
-        ? parseColor(options.backgroundColor)
-        : options.backgroundColor
-      : RGBA.fromValues(0, 0, 0, 0)
+    this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : RGBA.fromValues(1, 1, 1, 1)
+    this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : RGBA.fromValues(0, 0, 0, 0)
     this._attributes = options.attributes ?? 0
 
     this._arrowChars = {
@@ -372,7 +363,7 @@ export class ArrowRenderable extends Renderable {
     return this._foregroundColor
   }
 
-  set foregroundColor(value: RGBA) {
+  set foregroundColor(value: ColorInput) {
     if (this._foregroundColor !== value) {
       this._foregroundColor = parseColor(value)
       this.requestRender()
@@ -383,7 +374,7 @@ export class ArrowRenderable extends Renderable {
     return this._backgroundColor
   }
 
-  set backgroundColor(value: RGBA) {
+  set backgroundColor(value: ColorInput) {
     if (this._backgroundColor !== value) {
       this._backgroundColor = parseColor(value)
       this.requestRender()
