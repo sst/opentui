@@ -8,6 +8,8 @@ import type {
   Renderable,
   RenderableOptions,
   RenderContext,
+  ScrollBoxOptions,
+  ScrollBoxRenderable,
   SelectOption,
   SelectRenderable,
   SelectRenderableOptions,
@@ -116,6 +118,10 @@ export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelec
   focused?: boolean
   onChange?: (index: number, option: TabSelectOption | null) => void
   onSelect?: (index: number, option: TabSelectOption | null) => void
+}
+
+export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, ScrollBoxRenderable> & {
+  focused?: boolean
 }
 
 // ============================================================================
