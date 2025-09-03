@@ -23,6 +23,8 @@ import type { MouseEvent } from "./renderer"
 import type { RenderContext, SelectionState } from "./types"
 import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
 
+const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
+
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
   ADDED = "added",
@@ -186,7 +188,13 @@ export function isSizeType(value: any): value is number | `${number}%` | undefin
   return isValidPercentage(value)
 }
 
+export function isRenderable(obj: any): obj is Renderable {
+  return !!obj?.[BrandedRenderable]
+}
+
 export abstract class Renderable extends EventEmitter {
+  [BrandedRenderable] = true
+
   private static renderableNumber = 1
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
