@@ -8,6 +8,7 @@ import TextStyleScene from "./text-style-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
+import { ScrollDemo } from "./scroll-demo.tsx"
 
 const EXAMPLES = [
   {
@@ -44,6 +45,11 @@ const EXAMPLES = [
     name: "Extend Demo",
     description: "Extend demo",
     scene: "extend-demo",
+  },
+  {
+    name: "Scroll Demo",
+    description: "Scroll demo",
+    scene: "scroll-demo",
   },
 ]
 
@@ -117,6 +123,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "extend-demo"}>
         <ExtendDemo />
+      </Match>
+      <Match when={selectedScene() === "scroll-demo"}>
+        <ScrollDemo />
       </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>

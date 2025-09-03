@@ -2,6 +2,7 @@ import {
   ASCIIFontRenderable,
   BoxRenderable,
   InputRenderable,
+  ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
   TextRenderable,
@@ -16,6 +17,7 @@ export const baseComponents = {
   select: SelectRenderable,
   ascii_font: ASCIIFontRenderable,
   tab_select: TabSelectRenderable,
+  scrollbox: ScrollBoxRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>
