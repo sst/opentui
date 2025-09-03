@@ -41,6 +41,7 @@ export const hostConfig: HostConfig<
 
     return new components[type](rootContainerInstance.ctx, {
       id,
+      ...props,
     })
   },
 
