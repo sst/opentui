@@ -61,8 +61,18 @@ export type TabSelectProps = VueComponentProps<TabSelectRenderableOptions, NonSt
   onSelect?: (index: number, option: TabSelectOption | null) => void
 }
 
+export type ExtendedIntrinsicElements<TComponentCatalogue extends Record<string, RenderableConstructor>> = {
+  [TComponentName in keyof TComponentCatalogue]: ExtendedComponentProps<TComponentCatalogue[TComponentName]>
+}
+
+export interface OpenTUIComponents {
+  [componentName: string]: RenderableConstructor
+}
+
+export function extend<T extends Record<string, any>>(components: T): void
+
 declare module "@vue/runtime-core" {
-  export interface GlobalComponents {
+  export interface GlobalComponents extends ExtendedIntrinsicElements<OpenTUIComponents> {
     asciiFontRenderable: DefineComponent<AsciiFontProps>
     boxRenderable: DefineComponent<BoxProps>
     inputRenderable: DefineComponent<InputProps>
@@ -75,7 +85,7 @@ declare module "@vue/runtime-core" {
 
 // Augment for JSX/TSX support in Vue
 declare module "@vue/runtime-dom" {
-  export interface IntrinsicElementAttributes {
+  export interface IntrinsicElementAttributes extends ExtendedIntrinsicElements<OpenTUIComponents> {
     asciiFontRenderable: AsciiFontProps
     boxRenderable: BoxProps
     inputRenderable: InputProps
