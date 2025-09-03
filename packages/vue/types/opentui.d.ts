@@ -13,6 +13,7 @@ import type {
   TabSelectRenderableOptions,
   TextChunk,
   TextOptions,
+  ScrollBoxOptions,
 } from "@opentui/core"
 
 type NonStyledProps = "buffered" | "live" | "enableLayout" | "selectable"
@@ -36,6 +37,8 @@ export type TextProps = Omit<VueComponentProps<TextOptions, NonStyledProps | "co
 }
 
 export type BoxProps = VueComponentProps<ContainerProps<BoxOptions>, NonStyledProps | "title">
+
+export type ScrollBoxProps = VueComponentProps<ContainerProps<ScrollBoxOptions>, NonStyledProps | "title">
 
 export type InputProps = VueComponentProps<InputRenderableOptions, NonStyledProps> & {
   focused?: boolean
@@ -66,6 +69,7 @@ declare module "@vue/runtime-core" {
     selectRenderable: DefineComponent<SelectProps>
     tabSelectRenderable: DefineComponent<TabSelectProps>
     textRenderable: DefineComponent<TextProps>
+    scrollBoxRenderable: DefineComponent<ScrollBoxProps>
   }
 }
 
@@ -78,5 +82,6 @@ declare module "@vue/runtime-dom" {
     selectRenderable: SelectProps
     tabSelectRenderable: TabSelectProps
     textRenderable: TextProps
+    scrollBoxRenderable: ScrollBoxProps
   }
 }
