@@ -15,7 +15,6 @@ const exampleOptions = [
   { name: "Login Form", description: "A simple login form example", value: "login" },
   { name: "Styled Text", description: "Text with various styles applied", value: "styledText" },
   { name: "Tab Select", description: "Tabs", value: "tabSelect" },
-  { name: "ScrollBox", description: "ScrollBox example", value: "scrollBox" },
   { name: "Extend", description: "Extend example", value: "extend" },
   { name: "ScrollBox", description: "ScrollBox example", value: "scrollBox" },
 ]
@@ -46,7 +45,6 @@ const selectStyles = { flexGrow: 1 }
   <LoginForm v-else-if="selectedExample?.value === 'login'" />
   <StyledText v-else-if="selectedExample?.value === 'styledText'" />
   <TabSelect v-else-if="selectedExample?.value === 'tabSelect'" />
-  <ScrollBox v-else-if="selectedExample?.value === 'scrollBox'" />
   <ExtendExample v-else-if="selectedExample?.value === 'extend'" />
   <ScrollBox v-else-if="selectedExample?.value === 'scrollBox'" />
   <boxRenderable v-else :style="boxStyles">
