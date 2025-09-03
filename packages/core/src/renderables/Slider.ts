@@ -1,14 +1,22 @@
-import { OptimizedBuffer, Renderable, type RenderableOptions, type RenderContext, RGBA, parseColor } from "../index"
+import {
+  type ColorInput,
+  OptimizedBuffer,
+  parseColor,
+  Renderable,
+  type RenderableOptions,
+  type RenderContext,
+  RGBA,
+} from "../index"
 
 const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
 const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
 
 export interface SliderOptions extends RenderableOptions<SliderRenderable> {
   orientation: "vertical" | "horizontal"
-  trackColor?: string | RGBA
-  thumbColor?: string | RGBA
   thumbSize?: number
   thumbPosition?: number
+  backgroundColor?: ColorInput
+  foregroundColor?: ColorInput
   onChange?: (position: number) => void
 }
 
@@ -16,8 +24,8 @@ export class SliderRenderable extends Renderable {
   public readonly orientation: "vertical" | "horizontal"
   private _thumbSize: number
   private _thumbPosition: number
-  private _trackColor: RGBA
-  private _thumbColor: RGBA
+  private _backgroundColor: RGBA
+  private _foregroundColor: RGBA
   private _onChange?: (position: number) => void
 
   constructor(ctx: RenderContext, options: SliderOptions) {
@@ -26,16 +34,8 @@ export class SliderRenderable extends Renderable {
     this._thumbSize = options.thumbSize ?? 1
     this._thumbPosition = options.thumbPosition ?? 0
     this._onChange = options.onChange
-    this._trackColor = options.trackColor
-      ? typeof options.trackColor === "string"
-        ? parseColor(options.trackColor)
-        : options.trackColor
-      : defaultTrackBackgroundColor
-    this._thumbColor = options.thumbColor
-      ? typeof options.thumbColor === "string"
-        ? parseColor(options.thumbColor)
-        : options.thumbColor
-      : defaultThumbBackgroundColor
+    this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : defaultTrackBackgroundColor
+    this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : defaultThumbBackgroundColor
 
     this.setupMouseHandling()
   }
@@ -66,21 +66,21 @@ export class SliderRenderable extends Renderable {
     }
   }
 
-  get trackColor(): RGBA {
-    return this._trackColor
+  get backgroundColor(): RGBA {
+    return this._backgroundColor
   }
 
-  set trackColor(value: RGBA) {
-    this._trackColor = value
+  set backgroundColor(value: ColorInput) {
+    this._backgroundColor = parseColor(value)
     this.requestRender()
   }
 
-  get thumbColor(): RGBA {
-    return this._thumbColor
+  get foregroundColor(): RGBA {
+    return this._foregroundColor
   }
 
-  set thumbColor(value: RGBA) {
-    this._thumbColor = value
+  set foregroundColor(value: ColorInput) {
+    this._foregroundColor = parseColor(value)
     this.requestRender()
   }
 
@@ -161,9 +161,9 @@ export class SliderRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    buffer.fillRect(this.x, this.y, this.width, this.height, this._trackColor)
+    buffer.fillRect(this.x, this.y, this.width, this.height, this._backgroundColor)
 
     const thumbRect = this.getThumbRect()
-    buffer.fillRect(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, this._thumbColor)
+    buffer.fillRect(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, this._foregroundColor)
   }
 }

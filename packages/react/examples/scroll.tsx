@@ -4,12 +4,8 @@ export const App = () => {
   return (
     <scrollbox
       style={{
-        width: "100%",
-        height: "100%",
-        flexGrow: 1,
         rootOptions: {
           backgroundColor: "#24283b",
-          border: true,
         },
         wrapperOptions: {
           backgroundColor: "#1f2335",
@@ -22,10 +18,8 @@ export const App = () => {
         },
         scrollbarOptions: {
           showArrows: true,
-          thumbOptions: {
-            backgroundColor: "#7aa2f7",
-          },
           trackOptions: {
+            foregroundColor: "#7aa2f7",
             backgroundColor: "#414868",
           },
         },
