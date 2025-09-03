@@ -1132,7 +1132,7 @@ export abstract class Renderable extends EventEmitter {
     this.removeAllListeners()
 
     this._ctx.focusManager?.detachWalker()
-    
+
     this.destroySelf()
   }
 

@@ -126,7 +126,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   await renderer.setupTerminal()
   // Install default keyboard navigation (Tab/Shift+Tab)
   const fm = FocusManager.install(renderer.root)
-    ; (renderer as any).focusManager = fm as FocusController
+  ;(renderer as any).focusManager = fm as FocusController
   return renderer
 }
 
@@ -193,11 +193,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     renderTime?: number
     frameCallbackTime: number
   } = {
-      frameCount: 0,
-      fps: 0,
-      renderTime: 0,
-      frameCallbackTime: 0,
-    }
+    frameCount: 0,
+    fps: 0,
+    renderTime: 0,
+    frameCallbackTime: 0,
+  }
   public debugOverlay = {
     enabled: false,
     corner: DebugOverlayCorner.bottomRight,
