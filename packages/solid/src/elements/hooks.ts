@@ -62,6 +62,11 @@ export const useKeyboard = (callback: (key: ParsedKey) => void) => {
   })
 }
 
+/**
+ * @deprecated renamed to useKeyboard
+ */
+export const useKeyHandler = useKeyboard;
+
 export const useSelectionHandler = (callback: (selection: Selection) => void) => {
   const renderer = useRenderer()
 
