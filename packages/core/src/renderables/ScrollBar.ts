@@ -4,14 +4,13 @@ import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext, Timeout } from "../types"
 import { type BoxOptions } from "./Box"
-import { SliderRenderable } from "./Slider"
+import { SliderRenderable, type SliderOptions } from "./Slider"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
   showArrows?: boolean
-  trackOptions?: Pick<BoxOptions, "backgroundColor">
-  thumbOptions?: Pick<BoxOptions, "backgroundColor">
   arrowOptions?: Omit<ArrowOptions, "direction">
+  trackOptions?: Partial<SliderOptions>
   onChange?: (position: number) => void
 }
 
@@ -98,7 +97,7 @@ export class ScrollBarRenderable extends Renderable {
 
   constructor(
     ctx: RenderContext,
-    { trackOptions, thumbOptions, arrowOptions, orientation, showArrows = false, ...options }: ScrollBarOptions,
+    { trackOptions, arrowOptions, orientation, showArrows = false, ...options }: ScrollBarOptions,
   ) {
     super(ctx, {
       flexDirection: orientation === "vertical" ? "column" : "row",
@@ -133,8 +132,7 @@ export class ScrollBarRenderable extends Renderable {
           }),
       flexGrow: 1,
       flexShrink: 1,
-      trackColor: trackOptions?.backgroundColor,
-      thumbColor: thumbOptions?.backgroundColor,
+      ...trackOptions,
     })
 
     this.updateSliderFromScrollState()
@@ -214,13 +212,8 @@ export class ScrollBarRenderable extends Renderable {
     this.requestRender()
   }
 
-  public set thumbOptions(options: ScrollBarOptions["thumbOptions"]) {
-    Object.assign(this.slider, { thumbColor: options?.backgroundColor })
-    this.requestRender()
-  }
-
   public set trackOptions(options: ScrollBarOptions["trackOptions"]) {
-    Object.assign(this.slider, { trackColor: options?.backgroundColor })
+    Object.assign(this.slider, options)
     this.requestRender()
   }
 
