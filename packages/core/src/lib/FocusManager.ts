@@ -49,8 +49,6 @@ export class FocusManager {
             if (key.name === "tab") {
                 key.shift ? this.focusPrev() : this.focusNext()
             }
-            console.log(this.current);
-
         }
         keyHandler.on("keypress", keypress)
         this.keyUnsubscribe = () => keyHandler.off("keypress", keypress)
