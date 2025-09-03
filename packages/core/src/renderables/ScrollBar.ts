@@ -141,9 +141,9 @@ export class ScrollBarRenderable extends Renderable {
 
     const arrowOpts = arrowOptions
       ? {
-          fg: (arrowOptions as any).backgroundColor,
-          bg: (arrowOptions as any).backgroundColor,
-          attributes: (arrowOptions as any).attributes,
+          foregroundColor: arrowOptions.backgroundColor,
+          backgroundColor: arrowOptions.backgroundColor,
+          attributes: arrowOptions.attributes,
           ...arrowOptions,
         }
       : {}
@@ -305,8 +305,9 @@ export class ScrollBarRenderable extends Renderable {
 
 export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
   direction: "up" | "down" | "left" | "right"
-  fg?: string | RGBA
-  bg?: string | RGBA
+  color?: string | RGBA
+  foregroundColor?: string | RGBA
+  backgroundColor?: string | RGBA
   attributes?: number
   arrowChars?: {
     up?: string
@@ -318,8 +319,8 @@ export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
 
 export class ArrowRenderable extends Renderable {
   private _direction: "up" | "down" | "left" | "right"
-  private _fg: RGBA
-  private _bg: RGBA
+  private _foregroundColor: RGBA
+  private _backgroundColor: RGBA
   private _attributes: number
   private _arrowChars: {
     up: string
@@ -331,15 +332,15 @@ export class ArrowRenderable extends Renderable {
   constructor(ctx: RenderContext, options: ArrowOptions) {
     super(ctx, options)
     this._direction = options.direction
-    this._fg = options.fg
-      ? typeof options.fg === "string"
-        ? parseColor(options.fg)
-        : options.fg
+    this._foregroundColor = options.foregroundColor
+      ? typeof options.foregroundColor === "string"
+        ? parseColor(options.foregroundColor)
+        : options.foregroundColor
       : RGBA.fromValues(1, 1, 1, 1)
-    this._bg = options.bg
-      ? typeof options.bg === "string"
-        ? parseColor(options.bg)
-        : options.bg
+    this._backgroundColor = options.backgroundColor
+      ? typeof options.backgroundColor === "string"
+        ? parseColor(options.backgroundColor)
+        : options.backgroundColor
       : RGBA.fromValues(0, 0, 0, 0)
     this._attributes = options.attributes ?? 0
 
@@ -367,24 +368,24 @@ export class ArrowRenderable extends Renderable {
     }
   }
 
-  get fg(): RGBA {
-    return this._fg
+  get foregroundColor(): RGBA {
+    return this._foregroundColor
   }
 
-  set fg(value: RGBA) {
-    if (this._fg !== value) {
-      this._fg = parseColor(value)
+  set foregroundColor(value: RGBA) {
+    if (this._foregroundColor !== value) {
+      this._foregroundColor = parseColor(value)
       this.requestRender()
     }
   }
 
-  get bg(): RGBA {
-    return this._bg
+  get backgroundColor(): RGBA {
+    return this._backgroundColor
   }
 
-  set bg(value: RGBA) {
-    if (this._bg !== value) {
-      this._bg = parseColor(value)
+  set backgroundColor(value: RGBA) {
+    if (this._backgroundColor !== value) {
+      this._backgroundColor = parseColor(value)
       this.requestRender()
     }
   }
@@ -410,7 +411,7 @@ export class ArrowRenderable extends Renderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     const char = this.getArrowChar()
-    buffer.drawText(char, this.x, this.y, this._fg, this._bg, this._attributes)
+    buffer.drawText(char, this.x, this.y, this._foregroundColor, this._backgroundColor, this._attributes)
   }
 
   private getArrowChar(): string {
