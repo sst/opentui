@@ -17,6 +17,7 @@ const exampleOptions = [
   { name: "Tab Select", description: "Tabs", value: "tabSelect" },
   { name: "ScrollBox", description: "ScrollBox example", value: "scrollBox" },
   { name: "Extend", description: "Extend example", value: "extend" },
+  { name: "ScrollBox", description: "ScrollBox example", value: "scrollBox" },
 ]
 
 type ExampleOption = (typeof exampleOptions)[number]
@@ -47,6 +48,7 @@ const selectStyles = { flexGrow: 1 }
   <TabSelect v-else-if="selectedExample?.value === 'tabSelect'" />
   <ScrollBox v-else-if="selectedExample?.value === 'scrollBox'" />
   <ExtendExample v-else-if="selectedExample?.value === 'extend'" />
+  <ScrollBox v-else-if="selectedExample?.value === 'scrollBox'" />
   <boxRenderable v-else :style="boxStyles">
     <selectRenderable
       :style="selectStyles"
