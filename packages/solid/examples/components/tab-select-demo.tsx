@@ -1,6 +1,6 @@
 import { createSignal, For, Match, onMount, Switch } from "solid-js"
 import { EventEmitter } from "events"
-import { render, useKeyHandler, useRenderer } from "@opentui/solid"
+import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { ConsolePosition } from "@opentui/core/src/console"
 
 const Tab = (props: { title: string; active: boolean; index: number }) => {
@@ -39,7 +39,7 @@ export default function TabSelectDemo() {
     renderer.console.show()
   })
 
-  useKeyHandler((key) => {})
+  useKeyboard((key) => {})
 
   return (
     <box style={{ flexDirection: "column", flexGrow: 1 }}>

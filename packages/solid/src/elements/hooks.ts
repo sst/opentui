@@ -51,7 +51,7 @@ export const useTerminalDimensions = () => {
   return terminalDimensions
 }
 
-export const useKeyHandler = (callback: (key: ParsedKey) => void) => {
+export const useKeyboard = (callback: (key: ParsedKey) => void) => {
   const keyHandler = getKeyHandler()
   onMount(() => {
     keyHandler.on("keypress", callback)

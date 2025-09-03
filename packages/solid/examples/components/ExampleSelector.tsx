@@ -1,5 +1,5 @@
 import { measureText, TextRenderable } from "@opentui/core"
-import { useTerminalDimensions, useRenderer, useKeyHandler } from "@opentui/solid"
+import { useTerminalDimensions, useRenderer, useKeyboard } from "@opentui/solid"
 import { createSignal, Show, onMount, Switch, Match } from "solid-js"
 import { SplitModeDemo } from "./animation-demo.tsx"
 import InputScene from "./input-demo.tsx"
@@ -74,7 +74,7 @@ const ExampleSelector = () => {
     setSelected(idx)
   }
 
-  useKeyHandler((key) => {
+  useKeyboard((key) => {
     switch (key.name) {
       case "escape":
         setSelected(-1)
