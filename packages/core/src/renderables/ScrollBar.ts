@@ -1,17 +1,16 @@
+import type { OptimizedBuffer } from "../buffer"
 import { parseColor, RGBA } from "../lib"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
-import type { Timeout } from "../types"
-import type { RenderContext } from "../types"
+import type { RenderContext, Timeout } from "../types"
 import { type BoxOptions } from "./Box"
-import type { OptimizedBuffer } from "../buffer"
 import { SliderRenderable } from "./Slider"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
   showArrows?: boolean
-  trackOptions?: BoxOptions
-  thumbOptions?: BoxOptions
+  trackOptions?: Pick<BoxOptions, "backgroundColor">
+  thumbOptions?: Pick<BoxOptions, "backgroundColor">
   arrowOptions?: Omit<ArrowOptions, "direction">
   onChange?: (position: number) => void
 }
@@ -209,6 +208,22 @@ export class ScrollBarRenderable extends Renderable {
     }
   }
 
+  public set arrowOptions(options: ScrollBarOptions["arrowOptions"]) {
+    Object.assign(this.startArrow, options)
+    Object.assign(this.endArrow, options)
+    this.requestRender()
+  }
+
+  public set thumbOptions(options: ScrollBarOptions["thumbOptions"]) {
+    Object.assign(this.slider, { thumbColor: options?.backgroundColor })
+    this.requestRender()
+  }
+
+  public set trackOptions(options: ScrollBarOptions["trackOptions"]) {
+    Object.assign(this.slider, { trackColor: options?.backgroundColor })
+    this.requestRender()
+  }
+
   private updateSliderFromScrollState(): void {
     const trackSize = this.orientation === "vertical" ? this.slider.height : this.slider.width
     const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
@@ -293,7 +308,6 @@ export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
   fg?: string | RGBA
   bg?: string | RGBA
   attributes?: number
-  backgroundColor?: string | RGBA
   arrowChars?: {
     up?: string
     down?: string
@@ -359,7 +373,7 @@ export class ArrowRenderable extends Renderable {
 
   set fg(value: RGBA) {
     if (this._fg !== value) {
-      this._fg = value
+      this._fg = parseColor(value)
       this.requestRender()
     }
   }
@@ -370,7 +384,7 @@ export class ArrowRenderable extends Renderable {
 
   set bg(value: RGBA) {
     if (this._bg !== value) {
-      this._bg = value
+      this._bg = parseColor(value)
       this.requestRender()
     }
   }
@@ -384,6 +398,14 @@ export class ArrowRenderable extends Renderable {
       this._attributes = value
       this.requestRender()
     }
+  }
+
+  set arrowChars(value: ArrowOptions["arrowChars"]) {
+    this._arrowChars = {
+      ...this._arrowChars,
+      ...value,
+    }
+    this.requestRender()
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

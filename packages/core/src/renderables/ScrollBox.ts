@@ -4,7 +4,7 @@ import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
 import { BoxRenderable, type BoxOptions } from "./Box"
 import type { VNode } from "./composition/vnode"
-import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit, type ArrowOptions } from "./ScrollBar"
+import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
 
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable
@@ -45,7 +45,6 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   verticalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   horizontalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
-  arrowOptions?: Omit<ArrowOptions, "direction">
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -91,7 +90,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollbarOptions,
       verticalScrollbarOptions,
       horizontalScrollbarOptions,
-      arrowOptions,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -148,7 +146,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       ...scrollbarOptions,
       ...verticalScrollbarOptions,
       arrowOptions: {
-        ...arrowOptions,
         ...scrollbarOptions?.arrowOptions,
         ...verticalScrollbarOptions?.arrowOptions,
       },
@@ -163,7 +160,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       ...scrollbarOptions,
       ...horizontalScrollbarOptions,
       arrowOptions: {
-        ...arrowOptions,
         ...scrollbarOptions?.arrowOptions,
         ...horizontalScrollbarOptions?.arrowOptions,
       },
@@ -227,5 +223,42 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.verticalScrollBar.viewportSize = this.viewport.height
     this.horizontalScrollBar.scrollSize = this.content.width
     this.horizontalScrollBar.viewportSize = this.viewport.width
+  }
+
+  // Setters for reactive properties
+  public set rootOptions(options: ScrollBoxOptions["rootOptions"]) {
+    Object.assign(this, options)
+    this.requestRender()
+  }
+
+  public set wrapperOptions(options: ScrollBoxOptions["wrapperOptions"]) {
+    Object.assign(this.wrapper, options)
+    this.requestRender()
+  }
+
+  public set viewportOptions(options: ScrollBoxOptions["viewportOptions"]) {
+    Object.assign(this.viewport, options)
+    this.requestRender()
+  }
+
+  public set contentOptions(options: ScrollBoxOptions["contentOptions"]) {
+    Object.assign(this.content, options)
+    this.requestRender()
+  }
+
+  public set scrollbarOptions(options: ScrollBoxOptions["scrollbarOptions"]) {
+    Object.assign(this.verticalScrollBar, options)
+    Object.assign(this.horizontalScrollBar, options)
+    this.requestRender()
+  }
+
+  public set verticalScrollbarOptions(options: ScrollBoxOptions["verticalScrollbarOptions"]) {
+    Object.assign(this.verticalScrollBar, options)
+    this.requestRender()
+  }
+
+  public set horizontalScrollbarOptions(options: ScrollBoxOptions["horizontalScrollbarOptions"]) {
+    Object.assign(this.horizontalScrollBar, options)
+    this.requestRender()
   }
 }

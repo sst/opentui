@@ -1,4 +1,4 @@
-import { OptimizedBuffer, Renderable, type RenderableOptions, type RenderContext, RGBA, parseColor } from "../index"
+import { OptimizedBuffer, parseColor, Renderable, type RenderableOptions, type RenderContext, RGBA } from "../index"
 
 const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
 const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
@@ -26,16 +26,8 @@ export class SliderRenderable extends Renderable {
     this._thumbSize = options.thumbSize ?? 1
     this._thumbPosition = options.thumbPosition ?? 0
     this._onChange = options.onChange
-    this._trackColor = options.trackColor
-      ? typeof options.trackColor === "string"
-        ? parseColor(options.trackColor)
-        : options.trackColor
-      : defaultTrackBackgroundColor
-    this._thumbColor = options.thumbColor
-      ? typeof options.thumbColor === "string"
-        ? parseColor(options.thumbColor)
-        : options.thumbColor
-      : defaultThumbBackgroundColor
+    this._trackColor = options.trackColor ? parseColor(options.trackColor) : defaultTrackBackgroundColor
+    this._thumbColor = options.thumbColor ? parseColor(options.thumbColor) : defaultThumbBackgroundColor
 
     this.setupMouseHandling()
   }
@@ -71,7 +63,7 @@ export class SliderRenderable extends Renderable {
   }
 
   set trackColor(value: RGBA) {
-    this._trackColor = value
+    this._trackColor = parseColor(value)
     this.requestRender()
   }
 
@@ -80,7 +72,7 @@ export class SliderRenderable extends Renderable {
   }
 
   set thumbColor(value: RGBA) {
-    this._thumbColor = value
+    this._thumbColor = parseColor(value)
     this.requestRender()
   }
 
