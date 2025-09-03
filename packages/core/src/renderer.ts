@@ -6,6 +6,7 @@ import {
   type RenderContext,
   type SelectionState,
   type WidthMethod,
+  type FocusController,
 } from "./types"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
 import type { Pointer } from "bun:ffi"
@@ -16,6 +17,7 @@ import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo }
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
+import { FocusManager } from "./lib/FocusManager"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -122,6 +124,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
+  // Install default keyboard navigation (Tab/Shift+Tab)
+  const fm = FocusManager.install(renderer.root)
+    ; (renderer as any).focusManager = fm as FocusController
   return renderer
 }
 
@@ -188,11 +193,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     renderTime?: number
     frameCallbackTime: number
   } = {
-    frameCount: 0,
-    fps: 0,
-    renderTime: 0,
-    frameCallbackTime: 0,
-  }
+      frameCount: 0,
+      fps: 0,
+      renderTime: 0,
+      frameCallbackTime: 0,
+    }
   public debugOverlay = {
     enabled: false,
     corner: DebugOverlayCorner.bottomRight,
@@ -235,6 +240,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: (() => void) | null = null
   private _capabilities: any | null = null
+  public focusManager?: FocusController
 
   constructor(
     lib: RenderLib,

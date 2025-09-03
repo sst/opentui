@@ -23,6 +23,10 @@ export enum DebugOverlayCorner {
 
 export type WidthMethod = "wcwidth" | "unicode"
 
+export interface FocusController {
+  detachWalker: () => void
+}
+
 export interface RenderContext {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
   width: number
@@ -35,6 +39,7 @@ export interface RenderContext {
   capabilities: any | null
   requestLive: () => void
   dropLive: () => void
+  focusManager?: FocusController
 }
 
 export interface SelectionState {

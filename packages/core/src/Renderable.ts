@@ -972,6 +972,8 @@ export abstract class Renderable extends EventEmitter {
 
     this.requestRender()
 
+    this._ctx.focusManager?.detachWalker()
+
     return insertedIndex
   }
 
@@ -1023,6 +1025,8 @@ export abstract class Renderable extends EventEmitter {
       if (index !== -1) {
         this.renderableArray.splice(index, 1)
       }
+
+      this._ctx.focusManager?.detachWalker()
     }
   }
 
@@ -1127,6 +1131,8 @@ export abstract class Renderable extends EventEmitter {
     this.blur()
     this.removeAllListeners()
 
+    this._ctx.focusManager?.detachWalker()
+    
     this.destroySelf()
   }
 
