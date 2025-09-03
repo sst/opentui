@@ -5,6 +5,10 @@
     height="100%"
     :border="true"
     :style="{
+      //does not works
+      wrapperOptions: {
+        backgroundColor: '#ff0000',
+      },
       scrollbarOptions: {
         showArrows: true,
         thumbOptions: {
@@ -22,28 +26,22 @@
   </scrollBoxRenderable>
 </template>
 
-<!-- rootOptions: {
-  backgroundColor: "#24283b",
-  border: true,
-},
-wrapperOptions: {
-  backgroundColor: "#1f2335",
-},
-viewportOptions: {
-  backgroundColor: "#1a1b26",
-}, -->
-
 <script setup lang="ts">
-import { ScrollBarRenderable } from "@opentui/core"
+import { type ScrollBoxRenderable } from "@opentui/core"
 import { onMounted, shallowRef } from "vue"
+import { useCliRenderer } from "@opentui/vue"
 
-const scrollBoxRef = shallowRef<ScrollBarRenderable | null>(null)
+const scrollBoxRef = shallowRef<ScrollBoxRenderable | null>(null)
 const items = Array.from({ length: 1000 }, (_, i) => i + 1)
+
+const renderer = useCliRenderer()
 
 onMounted(() => {
   if (scrollBoxRef.value) {
     scrollBoxRef.value.focus()
-    scrollBoxRef.value.showArrows = true
+    // works
+    scrollBoxRef.value.wrapper.backgroundColor = "#25f788"
+    renderer.requestRender()
   }
 })
 </script>
