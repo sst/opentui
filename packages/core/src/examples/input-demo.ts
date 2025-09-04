@@ -11,14 +11,12 @@ import {
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextRenderable } from "../renderables/Text"
-import { getKeyHandler } from "../lib/KeyHandler"
 
 let nameInput: InputRenderable | null = null
 let emailInput: InputRenderable | null = null
 let passwordInput: InputRenderable | null = null
 let commentInput: InputRenderable | null = null
 let renderer: CliRenderer | null = null
-let keyboardHandler: ((key: any) => void) | null = null
 let keyLegendDisplay: TextRenderable | null = null
 let statusDisplay: TextRenderable | null = null
 let lastActionText: string = "Welcome to InputRenderable demo! Use Tab to navigate between fields."
@@ -299,54 +297,10 @@ export function run(rendererInstance: CliRenderer): void {
 
   updateDisplays()
 
-  keyboardHandler = (key) => {
-    const anyInputFocused = inputElements.some((input) => input.focused)
-
-    if (key.name === "tab") {
-      if (key.shift) {
-        // Navigate backward
-        navigateToInput(activeInputIndex - 1)
-      } else {
-        // Navigate forward
-        navigateToInput(activeInputIndex + 1)
-      }
-    } else if (key.ctrl && key.name === "f") {
-      // Only respond to Ctrl+F for focus toggle
-      const activeInput = getActiveInput()
-      if (activeInput?.focused) {
-        activeInput.blur()
-        lastActionText = `Focus removed from ${getInputName(activeInput)} input`
-      } else {
-        activeInput?.focus()
-        lastActionText = `${getInputName(activeInput)} input focused`
-      }
-      lastActionColor = "#FFCC00"
-      updateDisplays()
-    } else if (key.ctrl && key.name === "c") {
-      // Only respond to Ctrl+C for clear
-      const activeInput = getActiveInput()
-      if (activeInput) {
-        activeInput.value = ""
-        lastActionText = `${getInputName(activeInput)} input cleared`
-        lastActionColor = "#FFAA00"
-        updateDisplays()
-      }
-    } else if (key.ctrl && key.name === "r") {
-      // Only respond to Ctrl+R for reset
-      resetInputs()
-    }
-  }
-
-  getKeyHandler().on("keypress", keyboardHandler)
   nameInput.focus()
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
-  if (keyboardHandler) {
-    getKeyHandler().off("keypress", keyboardHandler)
-    keyboardHandler = null
-  }
-
   inputElements.forEach((input) => {
     if (input) {
       rendererInstance.root.remove(input.id)
