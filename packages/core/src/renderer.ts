@@ -36,6 +36,7 @@ export interface CliRendererConfig {
   useConsole?: boolean
   experimental_splitHeight?: number
   focusKeyHandler?: FocusKeyHandler
+  enableFocusManager?: boolean
 }
 
 export type PixelResolution = {
@@ -125,7 +126,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
 
-  FocusManager.install(renderer, { onKey: config.focusKeyHandler })
+  if (config.enableFocusManager ?? true) {
+    FocusManager.install(renderer, { onKey: config.focusKeyHandler })
+  }
 
   return renderer
 }
