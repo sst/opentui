@@ -3,6 +3,12 @@ import type { Renderable } from "../Renderable"
 import { YGTreeWalker } from "./YGTreeWalker"
 import type { ParsedKey } from "./parse.keypress"
 
+export type FocusKeyHandler = (key: ParsedKey, focusNext: () => void, focusPrev: () => void) => void
+
+interface FocusManagerConfig {
+  onKey?: FocusKeyHandler
+}
+
 export class FocusManager {
   private static instance: FocusManager | null = null
 
@@ -10,10 +16,11 @@ export class FocusManager {
   private readonly root: Renderable
   private current: Renderable | null = null
   private walker: YGTreeWalker | null = null
+  private onKey?: FocusKeyHandler
 
-  static install(root: Renderable): FocusManager {
+  static install(root: Renderable, config?: FocusManagerConfig): FocusManager {
     if (this.instance) return this.instance
-    const mgr = new FocusManager(root)
+    const mgr = new FocusManager(root, config)
     this.instance = mgr
     mgr.attach()
     mgr.initFocus()
@@ -25,9 +32,10 @@ export class FocusManager {
     this.instance = null
   }
 
-  constructor(root: Renderable) {
+  constructor(root: Renderable, config?: FocusManagerConfig) {
     this.root = root
     this.walker = new YGTreeWalker(this.root, (n) => this.isFocusable(n))
+    this.onKey = config?.onKey
   }
 
   private getWalker(): YGTreeWalker {
@@ -38,10 +46,23 @@ export class FocusManager {
   private attach(): void {
     const keyHandler = getKeyHandler()
     const keypress = (key: ParsedKey) => {
-      if (key.name === "tab") {
-        key.shift ? this.focusPrev() : this.focusNext()
+      if (this.onKey) {
+        this.onKey(
+          key,
+          () => this.focusNext(),
+          () => this.focusPrev(),
+        )
+      } else {
+        if (key.name === "tab") {
+          key.shift ? this.focusPrev() : this.focusNext()
+        } else if (key.name === "up") {
+          this.focusPrev()
+        } else if (key.name === "down") {
+          this.focusNext()
+        }
       }
     }
+
     keyHandler.on("keypress", keypress)
     this.keyUnsubscribe = () => keyHandler.off("keypress", keypress)
   }

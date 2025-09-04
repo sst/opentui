@@ -16,7 +16,7 @@ import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo }
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
-import { FocusManager } from "./lib/FocusManager"
+import { FocusManager, type FocusKeyHandler } from "./lib/FocusManager"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -35,6 +35,7 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
+  focusKeyHandler?: FocusKeyHandler
 }
 
 export type PixelResolution = {
@@ -125,7 +126,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   await renderer.setupTerminal()
 
   // Install default keyboard navigation (Tab/Shift+Tab)
-  FocusManager.install(renderer.root)
+  FocusManager.install(renderer.root, { onKey: config.focusKeyHandler })
 
   return renderer
 }
