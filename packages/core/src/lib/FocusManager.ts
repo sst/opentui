@@ -3,6 +3,7 @@ import type { Renderable } from "../Renderable"
 import { YGTreeWalker } from "./YGTreeWalker"
 import type { ParsedKey } from "./parse.keypress"
 import type { CliRenderer } from "../renderer"
+import { globalEmitter } from "./globalEmitter"
 
 export type FocusKeyHandler = (key: ParsedKey, focusNext: () => void, focusPrev: () => void) => void
 
@@ -12,6 +13,8 @@ interface FocusManagerConfig {
 
 export class FocusManager {
   private static instance: FocusManager | null = null
+
+  private globalListener: () => void
 
   private keyUnsubscribe: (() => void) | null = null
   private readonly renderer: CliRenderer
@@ -36,6 +39,9 @@ export class FocusManager {
     this.renderer = renderer
     this.walker = new YGTreeWalker(this.renderer.root, (n) => this.isFocusable(n))
     this.onKey = config?.onKey
+
+    this.globalListener = () => this.walker?.reset()
+    globalEmitter.on("treeChanged", this.globalListener)
   }
 
   private getWalker(): YGTreeWalker {
@@ -60,10 +66,6 @@ export class FocusManager {
       } else {
         if (key.name === "tab") {
           key.shift ? this.focusPrev() : this.focusNext()
-        } else if (key.name === "up") {
-          this.focusPrev()
-        } else if (key.name === "down") {
-          this.focusNext()
         }
       }
     }
@@ -75,6 +77,7 @@ export class FocusManager {
   private detach(): void {
     this.keyUnsubscribe?.()
     this.keyUnsubscribe = null
+    globalEmitter.off("treeChanged", this.globalListener)
     this.renderer.focusedRenderable = null
     this.walker = null
   }

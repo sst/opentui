@@ -12,10 +12,6 @@ export class YGTreeWalker {
     this._current = root
     this.accept = accept
     this.rootNode = this.root.getLayoutNode()
-
-    this.rootNode.on("treeChanged", () => {
-      this.reset()
-    })
   }
 
   public reset() {
