@@ -2,6 +2,7 @@ import { getKeyHandler } from "./KeyHandler"
 import type { Renderable } from "../Renderable"
 import { YGTreeWalker } from "./YGTreeWalker"
 import type { ParsedKey } from "./parse.keypress"
+import type { CliRenderer } from "../renderer"
 
 export type FocusKeyHandler = (key: ParsedKey, focusNext: () => void, focusPrev: () => void) => void
 
@@ -13,14 +14,13 @@ export class FocusManager {
   private static instance: FocusManager | null = null
 
   private keyUnsubscribe: (() => void) | null = null
-  private readonly root: Renderable
-  private current: Renderable | null = null
+  private readonly renderer: CliRenderer
   private walker: YGTreeWalker | null = null
   private onKey?: FocusKeyHandler
 
-  static install(root: Renderable, config?: FocusManagerConfig): FocusManager {
+  static install(renderer: CliRenderer, config?: FocusManagerConfig): FocusManager {
     if (this.instance) return this.instance
-    const mgr = new FocusManager(root, config)
+    const mgr = new FocusManager(renderer, config)
     this.instance = mgr
     mgr.attach()
     mgr.initFocus()
@@ -32,15 +32,20 @@ export class FocusManager {
     this.instance = null
   }
 
-  constructor(root: Renderable, config?: FocusManagerConfig) {
-    this.root = root
-    this.walker = new YGTreeWalker(this.root, (n) => this.isFocusable(n))
+  constructor(renderer: CliRenderer, config?: FocusManagerConfig) {
+    this.renderer = renderer
+    this.walker = new YGTreeWalker(this.renderer.root, (n) => this.isFocusable(n))
     this.onKey = config?.onKey
   }
 
   private getWalker(): YGTreeWalker {
-    if (this.current && this.walker) this.walker.currentNode = this.current
-    return this.walker!
+    if (!this.walker) throw new Error("Walker not initialized")
+
+    if (this.renderer.focusedRenderable) {
+      this.walker.currentNode = this.renderer.focusedRenderable
+    }
+
+    return this.walker
   }
 
   private attach(): void {
@@ -70,7 +75,7 @@ export class FocusManager {
   private detach(): void {
     this.keyUnsubscribe?.()
     this.keyUnsubscribe = null
-    this.current = null
+    this.renderer.focusedRenderable = null
     this.walker = null
   }
 
@@ -82,7 +87,7 @@ export class FocusManager {
     const walker = this.getWalker()
     const first = walker.firstAccepted()
     if (first) {
-      this.current = first
+      this.renderer.focusedRenderable = first
       first.focus()
     }
   }
@@ -96,9 +101,9 @@ export class FocusManager {
   private focusNext() {
     const next = this.findNextFocusable()
     if (!next) return
-    this.current?.blur()
-    this.current = next
-    this.current.focus()
+    this.renderer.focusedRenderable?.blur()
+    this.renderer.focusedRenderable = next
+    this.renderer.focusedRenderable.focus()
   }
 
   private findPrevFocusable(): Renderable | null {
@@ -110,8 +115,8 @@ export class FocusManager {
   private focusPrev() {
     const prev = this.findPrevFocusable()
     if (!prev) return
-    this.current?.blur()
-    this.current = prev
-    this.current.focus()
+    this.renderer.focusedRenderable?.blur()
+    this.renderer.focusedRenderable = prev
+    this.renderer.focusedRenderable.focus()
   }
 }

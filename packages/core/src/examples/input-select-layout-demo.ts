@@ -279,6 +279,8 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer.root.add(inputContainerBox)
   renderer.root.add(footerBox)
 
+  textInput.focus()
+
   setupEventHandlers()
 
   renderer.on("resize", handleResize)

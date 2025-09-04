@@ -125,7 +125,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
 
-  FocusManager.install(renderer.root, { onKey: config.focusKeyHandler })
+  FocusManager.install(renderer, { onKey: config.focusKeyHandler })
 
   return renderer
 }
@@ -193,11 +193,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     renderTime?: number
     frameCallbackTime: number
   } = {
-      frameCount: 0,
-      fps: 0,
-      renderTime: 0,
-      frameCallbackTime: 0,
-    }
+    frameCount: 0,
+    fps: 0,
+    renderTime: 0,
+    frameCallbackTime: 0,
+  }
   public debugOverlay = {
     enabled: false,
     corner: DebugOverlayCorner.bottomRight,
@@ -207,6 +207,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _resolution: PixelResolution | null = null
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
+
+  private _focusedRenderable: Renderable | null = null
 
   private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
   private resizeDebounceDelay: number = 100
@@ -361,6 +363,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     }
+  }
+
+  public set focusedRenderable(renderable: Renderable | null) {
+    this._focusedRenderable = renderable
+  }
+
+  public get focusedRenderable(): Renderable | null {
+    return this._focusedRenderable
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {

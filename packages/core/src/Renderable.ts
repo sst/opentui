@@ -330,6 +330,8 @@ export abstract class Renderable extends EventEmitter {
   public focus(): void {
     if (this._focused || !this.focusable) return
 
+    this.ctx.focusedRenderable?.blur()
+    this.ctx.focusedRenderable = this
     this._focused = true
     this.requestRender()
 
@@ -347,6 +349,7 @@ export abstract class Renderable extends EventEmitter {
   public blur(): void {
     if (!this._focused || !this.focusable) return
 
+    this.ctx.focusedRenderable = null
     this._focused = false
     this.requestRender()
 
