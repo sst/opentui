@@ -54,9 +54,6 @@ export class FocusManager {
   }
 
   private isFocusable(r: Renderable): boolean {
-    const is = r["focusable"] === true && r["_visible"] === true
-    console.log(is, r["id"])
-
     return r["focusable"] === true && r["_visible"] === true
   }
 
