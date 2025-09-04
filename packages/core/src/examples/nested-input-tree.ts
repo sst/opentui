@@ -40,7 +40,6 @@ function createNestedBox(depth: number, maxDepth: number): BoxRenderable {
     title: `Level ${depth}`,
     titleAlignment: "center",
     flexGrow: 1,
-    flexShrink: 1,
     backgroundColor: "transparent",
     border: true,
   })

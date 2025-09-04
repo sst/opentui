@@ -40,8 +40,6 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
 
-  renderer.start()
-
   headerBox = new BoxRenderable(renderer, {
     id: "header-box",
     zIndex: 0,
