@@ -46,6 +46,7 @@ import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
+import * as nestedInputTreeExample from "./nested-input-tree"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -110,6 +111,12 @@ const examples: Example[] = [
     description: "Interactive layout with input and select elements",
     run: inputSelectLayoutExample.run,
     destroy: inputSelectLayoutExample.destroy,
+  },
+  {
+    name: "Nested Input Tree Demo",
+    description: "Demonstrates the Focus Manager with a recursive tree of nested labeled inputs and sublevels",
+    run: nestedInputTreeExample.run,
+    destroy: nestedInputTreeExample.destroy,
   },
   {
     name: "ASCII Font Demo",
