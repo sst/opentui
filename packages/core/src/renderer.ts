@@ -196,11 +196,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     renderTime?: number
     frameCallbackTime: number
   } = {
-      frameCount: 0,
-      fps: 0,
-      renderTime: 0,
-      frameCallbackTime: 0,
-    }
+    frameCount: 0,
+    fps: 0,
+    renderTime: 0,
+    frameCallbackTime: 0,
+  }
   public debugOverlay = {
     enabled: false,
     corner: DebugOverlayCorner.bottomRight,
