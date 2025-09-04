@@ -405,7 +405,6 @@ class ExampleSelector {
         case "\u0003":
           this.cleanup()
           process.exit()
-          break
       }
       switch (key.name) {
         case "c":
@@ -447,6 +446,7 @@ class ExampleSelector {
       this.selectBox.visible = false
     }
     if (this.selectElement) {
+      this.selectElement.visible = false
       this.selectElement.blur()
     }
   }
@@ -458,6 +458,7 @@ class ExampleSelector {
       this.selectBox.visible = true
     }
     if (this.selectElement) {
+      this.selectElement.visible = true
       this.selectElement.focus()
     }
   }

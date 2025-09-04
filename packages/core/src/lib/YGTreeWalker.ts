@@ -1,16 +1,25 @@
 import type { Renderable } from "../Renderable"
-
-export type YGAcceptFn = (node: Renderable) => boolean
+import type { TrackedNode } from "./TrackedNode"
 
 export class YGTreeWalker {
   public readonly root: Renderable
+  public readonly rootNode: TrackedNode
   private _current: Renderable
-  private readonly accept?: YGAcceptFn
+  private readonly accept?: (node: Renderable) => boolean
 
-  constructor(root: Renderable, accept?: YGAcceptFn) {
+  constructor(root: Renderable, accept?: (node: Renderable) => boolean) {
     this.root = root
     this._current = root
     this.accept = accept
+    this.rootNode = this.root.getLayoutNode()
+
+    this.rootNode.on("treeChanged", () => {
+      this.reset()
+    })
+  }
+
+  public reset() {
+    this._current = this.root
   }
 
   public get currentNode(): Renderable {
@@ -21,13 +30,21 @@ export class YGTreeWalker {
     this._current = node
   }
 
+  private isAccepted(node: Renderable): boolean {
+    return this.accept ? this.accept(node) : true
+  }
+
   private getParent(node: Renderable): Renderable | null {
     return node.parent || null
   }
 
-  private getFirstChild(node: Renderable): Renderable | null {
+  private getChildAt(node: Renderable, index: number): Renderable | null {
     const children = node.getChildren()
-    return children.length > 0 ? children[0] : null
+    return children[index] ?? null
+  }
+
+  private getFirstChild(node: Renderable): Renderable | null {
+    return this.getChildAt(node, 0)
   }
 
   private getLastChild(node: Renderable): Renderable | null {
@@ -40,8 +57,7 @@ export class YGTreeWalker {
     if (!parent) return null
     const siblings = parent.getChildren()
     const idx = siblings.indexOf(node)
-    if (idx === -1) return null
-    return idx + 1 < siblings.length ? siblings[idx + 1] : null
+    return idx >= 0 && idx + 1 < siblings.length ? siblings[idx + 1] : null
   }
 
   private getPrevSibling(node: Renderable): Renderable | null {
@@ -49,8 +65,7 @@ export class YGTreeWalker {
     if (!parent) return null
     const siblings = parent.getChildren()
     const idx = siblings.indexOf(node)
-    if (idx <= 0) return null
-    return siblings[idx - 1]
+    return idx > 0 ? siblings[idx - 1] : null
   }
 
   private nextRaw(from: Renderable): Renderable | null {
@@ -69,61 +84,65 @@ export class YGTreeWalker {
     const prevSibling = this.getPrevSibling(from)
     if (prevSibling) {
       let deepest: Renderable = prevSibling
-      for (;;) {
+      while (true) {
         const child = this.getLastChild(deepest)
         if (!child) break
         deepest = child
       }
       return deepest
     }
-    const parent = this.getParent(from)
-    return parent
+    return this.getParent(from)
+  }
+
+  private *traverseForward(from: Renderable): Generator<Renderable> {
+    let node: Renderable | null = from
+    while ((node = this.nextRaw(node))) {
+      yield node
+    }
+  }
+
+  private *traverseBackward(from: Renderable): Generator<Renderable> {
+    let node: Renderable | null = from
+    while ((node = this.prevRaw(node))) {
+      yield node
+    }
   }
 
   public firstAccepted(): Renderable | null {
     const stack: Renderable[] = [this.root]
     while (stack.length > 0) {
-      const node = stack.shift() as Renderable
-      if (!this.accept || this.accept(node)) return node
-      const children = node.getChildren()
-      for (let i = 0; i < children.length; i++) {
-        stack.splice(i, 0, children[i])
-      }
+      const node = stack.pop()!
+      if (this.isAccepted(node)) return node
+      stack.push(...node.getChildren().reverse())
     }
     return null
   }
 
   public lastAccepted(): Renderable | null {
     let node: Renderable | null = this.root
-    // descend to the deepest last
     while (true) {
       const lastChild: Renderable | null = node ? this.getLastChild(node) : null
       if (!lastChild) break
       node = lastChild
     }
-    // climb backwards until accepted
     while (node) {
-      if (!this.accept || this.accept(node)) return node
+      if (this.isAccepted(node)) return node
       node = this.prevRaw(node)
     }
     return null
   }
 
   public nextAccepted(): Renderable | null {
-    let node: Renderable | null = this._current
-    while (true) {
-      node = node ? this.nextRaw(node) : null
-      if (!node) return null
-      if (!this.accept || this.accept(node)) return node
+    for (const node of this.traverseForward(this._current)) {
+      if (this.isAccepted(node)) return node
     }
+    return null
   }
 
   public prevAccepted(): Renderable | null {
-    let node: Renderable | null = this._current
-    while (true) {
-      node = node ? this.prevRaw(node) : null
-      if (!node) return null
-      if (!this.accept || this.accept(node)) return node
+    for (const node of this.traverseBackward(this._current)) {
+      if (this.isAccepted(node)) return node
     }
+    return null
   }
 }

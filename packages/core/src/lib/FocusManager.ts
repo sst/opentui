@@ -7,40 +7,32 @@ export class FocusManager {
   private static instance: FocusManager | null = null
 
   private keyUnsubscribe: (() => void) | null = null
-  private root: Renderable | null = null
+  private readonly root: Renderable
   private current: Renderable | null = null
   private walker: YGTreeWalker | null = null
 
   static install(root: Renderable): FocusManager {
     if (this.instance) return this.instance
-    this.instance = new FocusManager(root)
-    this.instance.attach()
-    this.instance.findFirstFocusable()
-    return this.instance
-  }
-
-  constructor(root: Renderable) {
-    this.root = root
-  }
-
-  private createWalker(): YGTreeWalker | null {
-    if (!this.root) return null
-    return new YGTreeWalker(this.root, (n) => this.isFocusable(n))
-  }
-
-  private getWalker(): YGTreeWalker {
-    if (!this.walker) this.walker = this.createWalker()
-    if (this.current && this.walker) this.walker.currentNode = this.current
-    return this.walker!
-  }
-
-  public detachWalker(): void {
-    this.walker = null
+    const mgr = new FocusManager(root)
+    this.instance = mgr
+    mgr.attach()
+    mgr.initFocus()
+    return mgr
   }
 
   static uninstall(): void {
     this.instance?.detach()
     this.instance = null
+  }
+
+  constructor(root: Renderable) {
+    this.root = root
+    this.walker = new YGTreeWalker(this.root, (n) => this.isFocusable(n))
+  }
+
+  private getWalker(): YGTreeWalker {
+    if (this.current && this.walker) this.walker.currentNode = this.current
+    return this.walker!
   }
 
   private attach(): void {
@@ -62,18 +54,23 @@ export class FocusManager {
   }
 
   private isFocusable(r: Renderable): boolean {
-    return r["focusable"] === true && r.visible === true
+    const is = r["focusable"] === true && r["_visible"] === true
+    console.log(is, r["id"])
+
+    return r["focusable"] === true && r["_visible"] === true
   }
 
-  private findFirstFocusable(): Renderable | null {
+  private initFocus() {
     const walker = this.getWalker()
-    if (!walker) return null
-    return walker.firstAccepted()
+    const first = walker.firstAccepted()
+    if (first) {
+      this.current = first
+      first.focus()
+    }
   }
 
   private findNextFocusable(): Renderable | null {
     const walker = this.getWalker()
-    if (!walker) return null
     const next = walker.nextAccepted()
     return next ?? walker.firstAccepted()
   }
@@ -81,15 +78,13 @@ export class FocusManager {
   private focusNext() {
     const next = this.findNextFocusable()
     if (!next) return
-
-    if (this.current) this.current.blur()
+    this.current?.blur()
     this.current = next
     this.current.focus()
   }
 
   private findPrevFocusable(): Renderable | null {
     const walker = this.getWalker()
-    if (!walker) return null
     const prev = walker.prevAccepted()
     return prev ?? walker.lastAccepted()
   }
@@ -97,8 +92,7 @@ export class FocusManager {
   private focusPrev() {
     const prev = this.findPrevFocusable()
     if (!prev) return
-
-    if (this.current) this.current.blur()
+    this.current?.blur()
     this.current = prev
     this.current.focus()
   }

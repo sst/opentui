@@ -6,7 +6,6 @@ import {
   type RenderContext,
   type SelectionState,
   type WidthMethod,
-  type FocusController,
 } from "./types"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
 import type { Pointer } from "bun:ffi"
@@ -124,9 +123,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
+
   // Install default keyboard navigation (Tab/Shift+Tab)
-  const fm = FocusManager.install(renderer.root)
-  ;(renderer as any).focusManager = fm as FocusController
+  FocusManager.install(renderer.root)
+
   return renderer
 }
 
@@ -240,7 +240,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: (() => void) | null = null
   private _capabilities: any | null = null
-  public focusManager?: FocusController
 
   constructor(
     lib: RenderLib,
