@@ -199,6 +199,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.content.remove(id)
   }
 
+  public getChildren(): Renderable[] {
+    return this.content.getChildren()
+  }
+
   protected onMouseEvent(event: MouseEvent): void {
     if (event.type === "scroll") {
       let dir = event.scroll?.direction
