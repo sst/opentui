@@ -1,7 +1,6 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type ParsedKey } from "../index"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer } from "../index"
 import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
 import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select"
-import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let renderer: CliRenderer | null = null
@@ -20,7 +19,6 @@ let textInput: InputRenderable | null = null
 let textInputBox: BoxRenderable | null = null
 let footer: TextRenderable | null = null
 let footerBox: BoxRenderable | null = null
-let currentFocusIndex = 0
 
 const colorOptions: SelectOption[] = [
   { name: "Red", description: "A warm primary color", value: "#ff0000" },
@@ -41,6 +39,8 @@ const sizeOptions: SelectOption[] = [
 function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#001122")
+
+  renderer.start()
 
   headerBox = new BoxRenderable(renderer, {
     id: "header-box",
@@ -375,7 +375,6 @@ export function destroy(rendererInstance: CliRenderer): void {
   footer = null
   footerBox = null
   renderer = null
-  currentFocusIndex = 0
 }
 
 if (import.meta.main) {
