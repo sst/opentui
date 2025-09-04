@@ -125,7 +125,6 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
 
-  // Install default keyboard navigation (Tab/Shift+Tab)
   FocusManager.install(renderer.root, { onKey: config.focusKeyHandler })
 
   return renderer
@@ -194,11 +193,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     renderTime?: number
     frameCallbackTime: number
   } = {
-    frameCount: 0,
-    fps: 0,
-    renderTime: 0,
-    frameCallbackTime: 0,
-  }
+      frameCount: 0,
+      fps: 0,
+      renderTime: 0,
+      frameCallbackTime: 0,
+    }
   public debugOverlay = {
     enabled: false,
     corner: DebugOverlayCorner.bottomRight,
@@ -1044,6 +1043,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.sigwinchHandler = null
     }
 
+    FocusManager.uninstall()
     this._console.deactivate()
     this.disableStdoutInterception()
     this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
