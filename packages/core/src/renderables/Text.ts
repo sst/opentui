@@ -1,5 +1,5 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
-import { TextSelectionHelper } from "../lib/selection"
+import { convertGlobalToLocalSelection, type LocalSelectionBounds } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
@@ -19,16 +19,15 @@ export interface TextOptions extends RenderableOptions<TextRenderable> {
 
 export class TextRenderable extends Renderable {
   public selectable: boolean = true
-  private _text: StyledText = stringToStyledText("")
+  private _text: StyledText
   private _defaultFg: RGBA
   private _defaultBg: RGBA
   private _defaultAttributes: number
   private _selectionBg: RGBA | undefined
   private _selectionFg: RGBA | undefined
-  private selectionHelper: TextSelectionHelper
+  private lastLocalSelection: LocalSelectionBounds | null = null
 
   private textBuffer: TextBuffer
-  private _plainText: string = ""
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
   protected _defaultOptions = {
@@ -44,15 +43,9 @@ export class TextRenderable extends Renderable {
   constructor(ctx: RenderContext, options: TextOptions) {
     super(ctx, options)
 
-    this.selectionHelper = new TextSelectionHelper(
-      () => this.x,
-      () => this.y,
-      () => this._plainText.length,
-      () => this._lineInfo,
-    )
-
     const content = options.content ?? this._defaultOptions.content
-    this._text = typeof content === "string" ? stringToStyledText(content) : content
+    const styledText = typeof content === "string" ? stringToStyledText(content) : content
+    this._text = styledText
     this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
     this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
     this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
@@ -67,7 +60,7 @@ export class TextRenderable extends Renderable {
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
 
     this.setupMeasureFunc()
-    this.updateTextInfo()
+    this.updateTextInfo(styledText)
   }
 
   get content(): StyledText {
@@ -75,8 +68,9 @@ export class TextRenderable extends Renderable {
   }
 
   set content(value: StyledText | string) {
-    this._text = typeof value === "string" ? stringToStyledText(value) : value
-    this.updateTextInfo()
+    const styledText = typeof value === "string" ? stringToStyledText(value) : value
+    this._text = styledText
+    this.updateTextInfo(styledText)
   }
 
   get fg(): RGBA {
@@ -100,7 +94,9 @@ export class TextRenderable extends Renderable {
     const newColor = value ? parseColor(value) : this._defaultOptions.selectionBg
     if (this._selectionBg !== newColor) {
       this._selectionBg = newColor
-      this.syncSelectionToTextBuffer()
+      if (this.lastLocalSelection) {
+        this.updateLocalSelection(this.lastLocalSelection)
+      }
       this.requestRender()
     }
   }
@@ -113,7 +109,9 @@ export class TextRenderable extends Renderable {
     const newColor = value ? parseColor(value) : this._defaultOptions.selectionFg
     if (this._selectionFg !== newColor) {
       this._selectionFg = newColor
-      this.syncSelectionToTextBuffer()
+      if (this.lastLocalSelection) {
+        this.updateLocalSelection(this.lastLocalSelection)
+      }
       this.requestRender()
     }
   }
@@ -144,33 +142,42 @@ export class TextRenderable extends Renderable {
   }
 
   protected onResize(width: number, height: number): void {
-    const changed = this.selectionHelper.reevaluateSelection(width, height)
-    if (changed) {
-      this.syncSelectionToTextBuffer()
-      this.requestRender()
+    if (this.lastLocalSelection) {
+      const changed = this.updateLocalSelection(this.lastLocalSelection)
+      if (changed) {
+        this.requestRender()
+      }
     }
   }
 
-  private syncSelectionToTextBuffer(): void {
-    const selection = this.selectionHelper.getSelection()
-    if (selection) {
-      this.textBuffer.setSelection(selection.start, selection.end, this._selectionBg, this._selectionFg)
-    } else {
-      this.textBuffer.resetSelection()
+  private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
+    if (!localSelection?.isActive) {
+      this.textBuffer.resetLocalSelection()
+      return true
     }
+
+    return this.textBuffer.setLocalSelection(
+      localSelection.anchorX,
+      localSelection.anchorY,
+      localSelection.focusX,
+      localSelection.focusY,
+      this._selectionBg,
+      this._selectionFg,
+    )
   }
 
-  private updateTextInfo(): void {
-    this._plainText = this._text.toString()
-    this.updateTextBuffer()
+  private updateTextInfo(styledText: StyledText): void {
+    this.updateTextBuffer(styledText)
 
     const lineInfo = this.textBuffer.lineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
 
-    const changed = this.selectionHelper.reevaluateSelection(this.width, this.height)
-    if (changed) {
-      this.syncSelectionToTextBuffer()
+    if (this.lastLocalSelection) {
+      const changed = this.updateLocalSelection(this.lastLocalSelection)
+      if (changed) {
+        this.requestRender()
+      }
     }
 
     this.layoutNode.yogaNode.markDirty()
@@ -212,30 +219,41 @@ export class TextRenderable extends Renderable {
   }
 
   shouldStartSelection(x: number, y: number): boolean {
-    return this.selectionHelper.shouldStartSelection(x, y, this.width, this.height)
+    if (!this.selectable) return false
+
+    const localX = x - this.x
+    const localY = y - this.y
+
+    return localX >= 0 && localX < this.width && localY >= 0 && localY < this.height
   }
 
   onSelectionChanged(selection: SelectionState | null): boolean {
-    const changed = this.selectionHelper.onSelectionChanged(selection, this.width, this.height)
+    const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
+    this.lastLocalSelection = localSelection
+
+    const changed = this.updateLocalSelection(localSelection)
+
     if (changed) {
-      this.syncSelectionToTextBuffer()
       this.requestRender()
     }
-    return this.selectionHelper.hasSelection()
+
+    return changed
   }
 
   getSelectedText(): string {
-    const selection = this.selectionHelper.getSelection()
-    if (!selection) return ""
-    return this._plainText.slice(selection.start, selection.end)
+    return this.textBuffer.getSelectedText()
   }
 
   hasSelection(): boolean {
-    return this.selectionHelper.hasSelection()
+    return this.textBuffer.hasSelection()
   }
 
-  private updateTextBuffer(): void {
-    this.textBuffer.setStyledText(this._text)
+  getSelection(): { start: number; end: number } | null {
+    return this.textBuffer.getSelection()
+  }
+
+  private updateTextBuffer(styledText: StyledText): void {
+    this.textBuffer.setStyledText(styledText)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

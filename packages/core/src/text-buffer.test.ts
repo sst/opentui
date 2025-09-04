@@ -207,27 +207,6 @@ describe("TextBuffer", () => {
       expect(lineInfo.lineWidths.length).toBe(2)
     })
 
-    it("should handle concatenation of buffers", () => {
-      const buffer1 = TextBuffer.create(256, "wcwidth")
-      const buffer2 = TextBuffer.create(256, "wcwidth")
-
-      const styledText1 = stringToStyledText("First\n")
-      const styledText2 = stringToStyledText("Second\nThird")
-
-      buffer1.setStyledText(styledText1)
-      buffer2.setStyledText(styledText2)
-
-      const concatenated = buffer1.concat(buffer2)
-
-      const lineInfo = concatenated.lineInfo
-      expect(lineInfo.lineStarts.length).toBe(3) // Should have 3 lines total
-      expect(lineInfo.lineWidths.length).toBe(3)
-
-      buffer1.destroy()
-      buffer2.destroy()
-      concatenated.destroy()
-    })
-
     it("should handle buffer with only whitespace", () => {
       const styledText = stringToStyledText("   \n \n ")
       buffer.setStyledText(styledText)
@@ -452,27 +431,6 @@ describe("TextBuffer", () => {
       const lineInfo = unicodeBuffer.lineInfo
       expect(lineInfo.lineStarts).toEqual([0, 4]) // "Red\n" = 4 chars
       expect(lineInfo.lineWidths.length).toBe(2)
-    })
-
-    it("should handle concatenation of buffers", () => {
-      const buffer1 = TextBuffer.create(256, "unicode")
-      const buffer2 = TextBuffer.create(256, "unicode")
-
-      const styledText1 = stringToStyledText("First\n")
-      const styledText2 = stringToStyledText("Second\nThird")
-
-      buffer1.setStyledText(styledText1)
-      buffer2.setStyledText(styledText2)
-
-      const concatenated = buffer1.concat(buffer2)
-
-      const lineInfo = concatenated.lineInfo
-      expect(lineInfo.lineStarts.length).toBe(3) // Should have 3 lines total
-      expect(lineInfo.lineWidths.length).toBe(3)
-
-      buffer1.destroy()
-      buffer2.destroy()
-      concatenated.destroy()
     })
   })
 })

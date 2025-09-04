@@ -19,53 +19,28 @@ export interface StyleAttrs {
 
 export class StyledText {
   public readonly chunks: TextChunk[]
-  // TODO: plaintext should not be needed anymore when selection moved to native
-  private _plainText: string = ""
 
   constructor(chunks: TextChunk[]) {
     this.chunks = chunks
-
-    for (let i = 0; i < chunks.length; i++) {
-      this._plainText += chunks[i].plainText
-    }
   }
 
-  toString(): string {
-    return this._plainText
-  }
-
-  private static _createInstance(chunks: TextChunk[], plainText: string): StyledText {
+  private static _createInstance(chunks: TextChunk[]): StyledText {
     const newInstance = Object.create(StyledText.prototype)
     newInstance.chunks = chunks
-    newInstance._plainText = plainText
     return newInstance
-  }
-
-  private static _chunksToPlainText(chunks: TextChunk[]): string {
-    let plainText = ""
-    for (const chunk of chunks) {
-      plainText += chunk.plainText
-    }
-    return plainText
   }
 
   insert(chunk: TextChunk, index?: number): StyledText {
     const originalLength = this.chunks.length
     let newChunks: TextChunk[]
-    let newPlainText: string
 
-    if (index === undefined) {
+    if (index === undefined || index === originalLength) {
       newChunks = [...this.chunks, chunk]
-      newPlainText = this._plainText + chunk.plainText
-    } else if (index === originalLength) {
-      newChunks = [...this.chunks, chunk]
-      newPlainText = this._plainText + chunk.plainText
     } else {
       newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index)]
-      newPlainText = StyledText._chunksToPlainText(newChunks)
     }
 
-    return StyledText._createInstance(newChunks, newPlainText)
+    return StyledText._createInstance(newChunks)
   }
 
   remove(chunk: TextChunk): StyledText {
@@ -74,17 +49,14 @@ export class StyledText {
     if (index === -1) return this
 
     let newChunks: TextChunk[]
-    let newPlainText: string
 
     if (index === originalLength - 1) {
       newChunks = this.chunks.slice(0, -1)
-      newPlainText = this._plainText.slice(0, this._plainText.length - chunk.plainText.length)
     } else {
       newChunks = [...this.chunks.slice(0, index), ...this.chunks.slice(index + 1)]
-      newPlainText = StyledText._chunksToPlainText(newChunks)
     }
 
-    return StyledText._createInstance(newChunks, newPlainText)
+    return StyledText._createInstance(newChunks)
   }
 
   replace(chunk: TextChunk, oldChunk: TextChunk): StyledText {
@@ -92,17 +64,14 @@ export class StyledText {
     if (index === -1) return this
 
     let newChunks: TextChunk[]
-    let newPlainText: string
 
     if (index === this.chunks.length - 1) {
       newChunks = [...this.chunks.slice(0, -1), chunk]
-      newPlainText = this._plainText.slice(0, this._plainText.length - oldChunk.plainText.length) + chunk.plainText
     } else {
       newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index + 1)]
-      newPlainText = StyledText._chunksToPlainText(newChunks)
     }
 
-    return StyledText._createInstance(newChunks, newPlainText)
+    return StyledText._createInstance(newChunks)
   }
 }
 
@@ -211,8 +180,6 @@ export const bg =
  */
 export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
   const chunks: TextChunk[] = []
-  let length = 0
-  let plainText = ""
 
   for (let i = 0; i < strings.length; i++) {
     const raw = strings[i]
@@ -224,15 +191,11 @@ export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): S
         plainText: raw,
         attributes: 0,
       })
-      length += raw.length
-      plainText += raw
     }
 
     const val = values[i]
     if (typeof val === "object" && "__isChunk" in val) {
       chunks.push(val as TextChunk)
-      length += (val as TextChunk).plainText.length
-      plainText += (val as TextChunk).plainText
     } else if (val !== undefined) {
       const plainTextStr = String(val)
       chunks.push({
@@ -241,8 +204,6 @@ export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): S
         plainText: plainTextStr,
         attributes: 0,
       })
-      length += plainTextStr.length
-      plainText += plainTextStr
     }
   }
 
@@ -256,8 +217,6 @@ export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): S
  */
 export function t(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
   let cachedStringChunks = templateCache.get(strings)
-  let length = 0
-  let plainText = ""
 
   if (!cachedStringChunks) {
     cachedStringChunks = []
@@ -283,15 +242,11 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
     const stringChunk = cachedStringChunks[i]
     if (stringChunk) {
       chunks.push(stringChunk)
-      length += stringChunk.plainText.length
-      plainText += stringChunk.plainText
     }
 
     const val = values[i]
     if (typeof val === "object" && "__isChunk" in val) {
       chunks.push(val as TextChunk)
-      length += (val as TextChunk).plainText.length
-      plainText += (val as TextChunk).plainText
     } else if (val !== undefined) {
       const plainTextStr = String(val)
       chunks.push({
@@ -300,8 +255,6 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
         plainText: plainTextStr,
         attributes: 0,
       })
-      length += plainTextStr.length
-      plainText += plainTextStr
     }
   }
 
