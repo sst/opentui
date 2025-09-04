@@ -1,12 +1,12 @@
-import type { CliRenderer, ColorInput } from "."
 import { EventEmitter } from "events"
-import { OptimizedBuffer } from "./buffer"
-import { parseColor, RGBA } from "./lib/RGBA"
 import { Console } from "node:console"
-import util from "node:util"
 import fs from "node:fs"
 import path from "node:path"
+import util from "node:util"
+import type { CliRenderer, ColorInput } from "."
+import { OptimizedBuffer } from "./buffer"
 import { Capture, CapturedWritableStream } from "./lib/output.capture"
+import { parseColor, RGBA } from "./lib/RGBA"
 import { singleton } from "./singleton"
 
 interface CallerInfo {
@@ -68,6 +68,7 @@ class TerminalConsoleCache extends EventEmitter {
 
   public activate(): void {
     this.setupConsoleCapture()
+    this.overrideConsoleMethods()
   }
 
   private setupConsoleCapture(): void {
@@ -86,7 +87,9 @@ class TerminalConsoleCache extends EventEmitter {
         depth: 2,
       },
     })
+  }
 
+  private overrideConsoleMethods(): void {
     console.log = (...args: any[]) => {
       this.appendToConsole(LogLevel.LOG, ...args)
     }
@@ -128,6 +131,9 @@ class TerminalConsoleCache extends EventEmitter {
     // Restore to the original console object
     const originalNodeConsole = require("node:console")
     global.console = originalNodeConsole
+
+    // Restore console capture after restoring the original console
+    this.setupConsoleCapture()
   }
 
   public addLogEntry(level: LogLevel, ...args: any[]) {

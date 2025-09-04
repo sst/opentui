@@ -1,5 +1,5 @@
 import { measureText, TextRenderable } from "@opentui/core"
-import { useTerminalDimensions, useRenderer, useKeyHandler } from "@opentui/solid"
+import { useTerminalDimensions, useRenderer, useKeyboard } from "@opentui/solid"
 import { createSignal, Show, onMount, Switch, Match } from "solid-js"
 import { SplitModeDemo } from "./animation-demo.tsx"
 import InputScene from "./input-demo.tsx"
@@ -8,6 +8,7 @@ import TextStyleScene from "./text-style-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
+import { ScrollDemo } from "./scroll-demo.tsx"
 
 const EXAMPLES = [
   {
@@ -45,6 +46,11 @@ const EXAMPLES = [
     description: "Extend demo",
     scene: "extend-demo",
   },
+  {
+    name: "Scroll Demo",
+    description: "Scroll demo",
+    scene: "scroll-demo",
+  },
 ]
 
 const ExampleSelector = () => {
@@ -68,7 +74,7 @@ const ExampleSelector = () => {
     setSelected(idx)
   }
 
-  useKeyHandler((key) => {
+  useKeyboard((key) => {
     switch (key.name) {
       case "escape":
         setSelected(-1)
@@ -117,6 +123,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "extend-demo"}>
         <ExtendDemo />
+      </Match>
+      <Match when={selectedScene() === "scroll-demo"}>
+        <ScrollDemo />
       </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>

@@ -757,120 +757,129 @@ pub const OptimizedBuffer = struct {
         var currentY = y;
         const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
 
-        var i: u32 = 0;
-        while (i < text_buffer.cursor) : (i += 1) {
-            const charCode = text_buffer.char[i];
+        for (text_buffer.lines.items) |line| {
+            for (line.chunks.items) |chunk| {
+                var chunkFg = chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };
+                var chunkBg = chunk.bg orelse text_buffer.default_bg orelse .{ 0.0, 0.0, 0.0, 0.0 };
+                var chunkAttributes: u8 = @intCast(chunk.attributes & tb.ATTR_MASK);
 
-            // TODO: This implementation is very naive and inefficient but works for now.
-
-            if (charCode == '\n') {
-                currentY += 1;
-                currentX = x;
-                continue;
-            }
-
-            if (currentX < 0 or currentY < 0) {
-                currentX += 1;
-                continue;
-            }
-            if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
-                currentX += 1;
-                continue;
-            }
-
-            // TODO: Clip rect is currently used in text buffer drawing and cannot be removed yet.
-            // The scissor rect is pushed AFTER renderSelf() in Renderable.ts, but text
-            // rendering happens INSIDE renderSelf(). For overflow="visible" (default),
-            // no scissor rect is set, so clipRect is the only clipping mechanism.
-            // For overflow="hidden", both are used (redundant). Need to figure out where
-            // to push scissor rect to allow box drawing but clip children without border.
-            if (clip_rect) |clip| {
-                if (currentX < clip.x or currentY < clip.y or
-                    currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                    currentY >= clip.y + @as(i32, @intCast(clip.height)))
-                {
-                    currentX += 1;
-                    continue;
-                }
-            }
-
-            if (!self.isPointInScissor(currentX, currentY)) {
-                currentX += 1;
-                continue;
-            }
-
-            var fg = text_buffer.fg[i];
-            var bg = text_buffer.bg[i];
-            const attributesRaw = text_buffer.attributes[i];
-
-            if (attributesRaw & tb.USE_DEFAULT_FG != 0) {
-                if (text_buffer.default_fg) |defFg| {
-                    fg = defFg;
-                }
-            }
-
-            if (attributesRaw & tb.USE_DEFAULT_BG != 0) {
-                if (text_buffer.default_bg) |defBg| {
-                    bg = defBg;
-                }
-            }
-
-            var attributes: u8 = @intCast(attributesRaw & tb.ATTR_MASK);
-            if (attributesRaw & tb.USE_DEFAULT_ATTR != 0) {
-                if (text_buffer.default_attributes) |defAttr| {
-                    attributes = defAttr;
-                }
-            }
-
-            if (text_buffer.selection) |sel| {
-                const isSelected = i >= sel.start and i < sel.end;
-                if (isSelected) {
-                    if (sel.bgColor) |selBg| {
-                        bg = selBg;
-                        if (sel.fgColor) |selFg| {
-                            fg = selFg;
-                        }
-                    } else {
-                        // Swap fg and bg for default selection style
-                        const temp = fg;
-                        fg = if (bg[3] > 0) bg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
-                        bg = temp;
+                if (chunk.attributes & tb.USE_DEFAULT_ATTR != 0) {
+                    if (text_buffer.default_attributes) |defAttr| {
+                        chunkAttributes = defAttr;
                     }
                 }
-            }
 
-            // Wait, isn't that handled by the ansi itself?
-            if (attributes & (1 << 5) != 0) { // reverse bit
-                const temp = fg;
-                fg = bg;
-                bg = temp;
-            }
-
-            if (graphemeAware) {
-                if (gp.isContinuationChar(charCode)) {
-                    try self.setCellWithAlphaBlending(
-                        @intCast(currentX),
-                        @intCast(currentY),
-                        charCode,
-                        fg,
-                        bg,
-                        attributes,
-                    );
-                } else {
-                    try self.setCellWithAlphaBlending(
-                        @intCast(currentX),
-                        @intCast(currentY),
-                        charCode,
-                        fg,
-                        bg,
-                        attributes,
-                    );
+                if (chunk.attributes & tb.USE_DEFAULT_FG != 0) {
+                    if (text_buffer.default_fg) |defFg| {
+                        chunkFg = defFg;
+                    }
                 }
-            } else {
-                self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), charCode, fg, bg, attributes) catch {};
-            }
+                if (chunk.attributes & tb.USE_DEFAULT_BG != 0) {
+                    if (text_buffer.default_bg) |defBg| {
+                        chunkBg = defBg;
+                    }
+                }
 
-            currentX += 1;
+                var chunkCharIndex: u32 = 0;
+                while (chunkCharIndex < chunk.length) : (chunkCharIndex += 1) {
+                    const globalCharIndex = chunk.offset + chunkCharIndex;
+                    const charCode = text_buffer.char[globalCharIndex];
+
+                    if (charCode == '\n') {
+                        currentY += 1;
+                        currentX = x;
+                        continue;
+                    }
+
+                    if (currentX < 0 or currentY < 0) {
+                        currentX += 1;
+                        continue;
+                    }
+                    if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
+                        currentX += 1;
+                        continue;
+                    }
+
+                    // TODO: Clip rect is currently used in text buffer drawing and cannot be removed yet.
+                    // The scissor rect is pushed AFTER renderSelf() in Renderable.ts, but text
+                    // rendering happens INSIDE renderSelf(). For overflow="visible" (default),
+                    // no scissor rect is set, so clipRect is the only clipping mechanism.
+                    // For overflow="hidden", both are used (redundant). Need to figure out where
+                    // to push scissor rect to allow box drawing but clip children without border.
+                    if (clip_rect) |clip| {
+                        if (currentX < clip.x or currentY < clip.y or
+                            currentX >= clip.x + @as(i32, @intCast(clip.width)) or
+                            currentY >= clip.y + @as(i32, @intCast(clip.height)))
+                        {
+                            currentX += 1;
+                            continue;
+                        }
+                    }
+
+                    if (!self.isPointInScissor(currentX, currentY)) {
+                        currentX += 1;
+                        continue;
+                    }
+
+                    var finalFg = chunkFg;
+                    var finalBg = chunkBg;
+                    const finalAttributes = chunkAttributes;
+
+                    if (text_buffer.selection) |sel| {
+                        const isSelected = globalCharIndex >= sel.start and globalCharIndex < sel.end;
+                        if (isSelected) {
+                            if (sel.bgColor) |selBg| {
+                                finalBg = selBg;
+                                if (sel.fgColor) |selFg| {
+                                    finalFg = selFg;
+                                }
+                            } else {
+                                // Swap fg and bg for default selection style
+                                const temp = finalFg;
+                                finalFg = if (finalBg[3] > 0) finalBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                finalBg = temp;
+                            }
+                        }
+                    }
+
+                    var drawFg = finalFg;
+                    var drawBg = finalBg;
+                    const drawAttributes = finalAttributes;
+
+                    // Wait, isn't that handled by the ansi itself?
+                    if (drawAttributes & (1 << 5) != 0) { // reverse bit
+                        const temp = drawFg;
+                        drawFg = drawBg;
+                        drawBg = temp;
+                    }
+
+                    if (graphemeAware) {
+                        if (gp.isContinuationChar(charCode)) {
+                            try self.setCellWithAlphaBlending(
+                                @intCast(currentX),
+                                @intCast(currentY),
+                                charCode,
+                                drawFg,
+                                drawBg,
+                                drawAttributes,
+                            );
+                        } else {
+                            try self.setCellWithAlphaBlending(
+                                @intCast(currentX),
+                                @intCast(currentY),
+                                charCode,
+                                drawFg,
+                                drawBg,
+                                drawAttributes,
+                            );
+                        }
+                    } else {
+                        self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), charCode, drawFg, drawBg, drawAttributes) catch {};
+                    }
+
+                    currentX += 1;
+                }
+            }
         }
     }
 

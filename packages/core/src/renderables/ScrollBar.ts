@@ -1,18 +1,16 @@
-import { parseColor, RGBA } from "../lib"
+import type { OptimizedBuffer } from "../buffer"
+import { parseColor, RGBA, type ColorInput } from "../lib"
 import type { ParsedKey } from "../lib/parse.keypress"
 import { Renderable, type RenderableOptions } from "../Renderable"
-import type { Timeout } from "../types"
-import type { RenderContext } from "../types"
+import type { RenderContext, Timeout } from "../types"
 import { type BoxOptions } from "./Box"
-import type { OptimizedBuffer } from "../buffer"
-import { SliderRenderable } from "./Slider"
+import { SliderRenderable, type SliderOptions } from "./Slider"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
   showArrows?: boolean
-  trackOptions?: BoxOptions
-  thumbOptions?: BoxOptions
   arrowOptions?: Omit<ArrowOptions, "direction">
+  trackOptions?: Partial<SliderOptions>
   onChange?: (position: number) => void
 }
 
@@ -99,7 +97,7 @@ export class ScrollBarRenderable extends Renderable {
 
   constructor(
     ctx: RenderContext,
-    { trackOptions, thumbOptions, arrowOptions, orientation, showArrows = false, ...options }: ScrollBarOptions,
+    { trackOptions, arrowOptions, orientation, showArrows = false, ...options }: ScrollBarOptions,
   ) {
     super(ctx, {
       flexDirection: orientation === "vertical" ? "column" : "row",
@@ -134,17 +132,16 @@ export class ScrollBarRenderable extends Renderable {
           }),
       flexGrow: 1,
       flexShrink: 1,
-      trackColor: trackOptions?.backgroundColor,
-      thumbColor: thumbOptions?.backgroundColor,
+      ...trackOptions,
     })
 
     this.updateSliderFromScrollState()
 
     const arrowOpts = arrowOptions
       ? {
-          fg: (arrowOptions as any).backgroundColor,
-          bg: (arrowOptions as any).backgroundColor,
-          attributes: (arrowOptions as any).attributes,
+          foregroundColor: arrowOptions.backgroundColor,
+          backgroundColor: arrowOptions.backgroundColor,
+          attributes: arrowOptions.attributes,
           ...arrowOptions,
         }
       : {}
@@ -207,6 +204,17 @@ export class ScrollBarRenderable extends Renderable {
       event.preventDefault()
       clearInterval(endArrowMouseTimeout!)
     }
+  }
+
+  public set arrowOptions(options: ScrollBarOptions["arrowOptions"]) {
+    Object.assign(this.startArrow, options)
+    Object.assign(this.endArrow, options)
+    this.requestRender()
+  }
+
+  public set trackOptions(options: ScrollBarOptions["trackOptions"]) {
+    Object.assign(this.slider, options)
+    this.requestRender()
   }
 
   private updateSliderFromScrollState(): void {
@@ -290,10 +298,9 @@ export class ScrollBarRenderable extends Renderable {
 
 export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
   direction: "up" | "down" | "left" | "right"
-  fg?: string | RGBA
-  bg?: string | RGBA
+  foregroundColor?: ColorInput
+  backgroundColor?: ColorInput
   attributes?: number
-  backgroundColor?: string | RGBA
   arrowChars?: {
     up?: string
     down?: string
@@ -304,8 +311,8 @@ export interface ArrowOptions extends RenderableOptions<ArrowRenderable> {
 
 export class ArrowRenderable extends Renderable {
   private _direction: "up" | "down" | "left" | "right"
-  private _fg: RGBA
-  private _bg: RGBA
+  private _foregroundColor: RGBA
+  private _backgroundColor: RGBA
   private _attributes: number
   private _arrowChars: {
     up: string
@@ -317,16 +324,8 @@ export class ArrowRenderable extends Renderable {
   constructor(ctx: RenderContext, options: ArrowOptions) {
     super(ctx, options)
     this._direction = options.direction
-    this._fg = options.fg
-      ? typeof options.fg === "string"
-        ? parseColor(options.fg)
-        : options.fg
-      : RGBA.fromValues(1, 1, 1, 1)
-    this._bg = options.bg
-      ? typeof options.bg === "string"
-        ? parseColor(options.bg)
-        : options.bg
-      : RGBA.fromValues(0, 0, 0, 0)
+    this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : RGBA.fromValues(1, 1, 1, 1)
+    this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : RGBA.fromValues(0, 0, 0, 0)
     this._attributes = options.attributes ?? 0
 
     this._arrowChars = {
@@ -353,24 +352,24 @@ export class ArrowRenderable extends Renderable {
     }
   }
 
-  get fg(): RGBA {
-    return this._fg
+  get foregroundColor(): RGBA {
+    return this._foregroundColor
   }
 
-  set fg(value: RGBA) {
-    if (this._fg !== value) {
-      this._fg = value
+  set foregroundColor(value: ColorInput) {
+    if (this._foregroundColor !== value) {
+      this._foregroundColor = parseColor(value)
       this.requestRender()
     }
   }
 
-  get bg(): RGBA {
-    return this._bg
+  get backgroundColor(): RGBA {
+    return this._backgroundColor
   }
 
-  set bg(value: RGBA) {
-    if (this._bg !== value) {
-      this._bg = value
+  set backgroundColor(value: ColorInput) {
+    if (this._backgroundColor !== value) {
+      this._backgroundColor = parseColor(value)
       this.requestRender()
     }
   }
@@ -386,9 +385,17 @@ export class ArrowRenderable extends Renderable {
     }
   }
 
+  set arrowChars(value: ArrowOptions["arrowChars"]) {
+    this._arrowChars = {
+      ...this._arrowChars,
+      ...value,
+    }
+    this.requestRender()
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     const char = this.getArrowChar()
-    buffer.drawText(char, this.x, this.y, this._fg, this._bg, this._attributes)
+    buffer.drawText(char, this.x, this.y, this._foregroundColor, this._backgroundColor, this._attributes)
   }
 
   private getArrowChar(): string {

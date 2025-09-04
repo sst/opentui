@@ -1,11 +1,13 @@
-import { render } from "@opentui/react"
-
-export const App = () => {
+export const ScrollDemo = () => {
   return (
     <scrollbox
       style={{
+        width: "100%",
+        height: "100%",
+        flexGrow: 1,
         rootOptions: {
           backgroundColor: "#24283b",
+          border: true,
         },
         wrapperOptions: {
           backgroundColor: "#1f2335",
@@ -28,7 +30,6 @@ export const App = () => {
     >
       {Array.from({ length: 1000 }).map((_, i) => (
         <box
-          key={i}
           style={{ width: "100%", padding: 1, marginBottom: 1, backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449" }}
         >
           <text content={`Box ${i}`} />
@@ -37,5 +38,3 @@ export const App = () => {
     </scrollbox>
   )
 }
-
-render(<App />)

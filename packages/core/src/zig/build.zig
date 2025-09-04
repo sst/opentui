@@ -13,6 +13,18 @@ const SUPPORTED_ZIG_VERSIONS = [_]SupportedZigVersion{
     // .{ .major = 0, .minor = 15, .patch = 0 },
 };
 
+/// Apply zg (Zig Unicode) dependencies to a module
+fn applyZgDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
+    const zg_dep = b.dependency("zg", .{
+        // .cjk = false,
+        .optimize = optimize,
+        .target = target,
+    });
+    module.addImport("code_point", zg_dep.module("code_point"));
+    module.addImport("Graphemes", zg_dep.module("Graphemes"));
+    module.addImport("DisplayWidth", zg_dep.module("DisplayWidth"));
+}
+
 const SupportedTarget = struct {
     cpu_arch: std.Target.Cpu.Arch,
     os_tag: std.Target.Os.Tag,
@@ -78,6 +90,25 @@ pub fn build(b: *std.Build) void {
     } else {
         buildAllTargets(b, optimize);
     }
+
+    // Add test step
+    const test_step = b.step("test", "Run all tests");
+    const test_target_query = std.Target.Query{
+        .cpu_arch = builtin.cpu.arch,
+        .os_tag = builtin.os.tag,
+    };
+    const test_target = b.resolveTargetQuery(test_target_query);
+
+    // Run tests using the test index file
+    const test_exe = b.addTest(.{
+        .root_source_file = b.path("test.zig"),
+        .target = test_target,
+    });
+
+    applyZgDependencies(b, test_exe.root_module, .Debug, test_target);
+
+    const run_test = b.addRunArtifact(test_exe);
+    test_step.dependOn(&run_test.step);
 }
 
 fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
@@ -116,14 +147,7 @@ fn buildTargetFromQuery(
         .link_libc = false,
     });
 
-    const zg_dep = b.dependency("zg", .{
-        // .cjk = false,
-        .optimize = optimize,
-        .target = target,
-    });
-    module.addImport("code_point", zg_dep.module("code_point"));
-    module.addImport("Graphemes", zg_dep.module("Graphemes"));
-    module.addImport("DisplayWidth", zg_dep.module("DisplayWidth"));
+    applyZgDependencies(b, module, optimize, target);
 
     target_output = b.addLibrary(.{
         .name = LIB_NAME,

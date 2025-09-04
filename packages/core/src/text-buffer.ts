@@ -1,7 +1,7 @@
 import type { StyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type RenderLib } from "./zig"
-import { type Pointer } from "bun:ffi"
+import { type Pointer, toArrayBuffer } from "bun:ffi"
 import { type WidthMethod } from "./types"
 
 export interface TextChunk {
@@ -16,42 +16,19 @@ export interface TextChunk {
 export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
-  private buffer: {
-    char: Uint32Array
-    fg: Float32Array
-    bg: Float32Array
-    attributes: Uint16Array
-  }
   private _length: number = 0
   private _capacity: number
   private _lineInfo?: { lineStarts: number[]; lineWidths: number[] }
 
-  constructor(
-    lib: RenderLib,
-    ptr: Pointer,
-    buffer: {
-      char: Uint32Array
-      fg: Float32Array
-      bg: Float32Array
-      attributes: Uint16Array
-    },
-    capacity: number,
-  ) {
+  constructor(lib: RenderLib, ptr: Pointer, capacity: number) {
     this.lib = lib
     this.bufferPtr = ptr
-    this.buffer = buffer
     this._capacity = capacity
   }
 
   static create(capacity: number = 256, widthMethod: WidthMethod): TextBuffer {
     const lib = resolveRenderLib()
     return lib.createTextBuffer(capacity, widthMethod)
-  }
-
-  private syncBuffersAfterResize(): void {
-    const capacity = this.lib.textBufferGetCapacity(this.bufferPtr)
-    this.buffer = this.lib.getTextBufferArrays(this.bufferPtr, capacity)
-    this._capacity = capacity
   }
 
   public setStyledText(text: StyledText): void {
@@ -69,10 +46,11 @@ export class TextBuffer {
       )
 
       if (result & 1) {
-        this.syncBuffersAfterResize()
+        this._capacity = this.lib.textBufferGetCapacity(this.bufferPtr)
       }
     }
 
+    // TODO: textBufferFinalizeLineInfo can return the length of the text buffer, not another call to textBufferGetLength
     this.lib.textBufferFinalizeLineInfo(this.bufferPtr)
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
   }
@@ -105,23 +83,20 @@ export class TextBuffer {
     return this.bufferPtr
   }
 
+  public getSelectedText(): string {
+    if (this._length === 0) return ""
+    const selectedBytes = this.lib.getSelectedTextBytes(this.bufferPtr, this._length)
+
+    if (!selectedBytes) return ""
+
+    return this.lib.decoder.decode(selectedBytes)
+  }
+
   public get lineInfo(): { lineStarts: number[]; lineWidths: number[] } {
     if (!this._lineInfo) {
       this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
     }
     return this._lineInfo
-  }
-
-  public toString(): string {
-    const chars: string[] = []
-    for (let i = 0; i < this._length; i++) {
-      chars.push(String.fromCharCode(this.buffer.char[i]))
-    }
-    return chars.join("")
-  }
-
-  public concat(other: TextBuffer): TextBuffer {
-    return this.lib.textBufferConcat(this.bufferPtr, other.bufferPtr)
   }
 
   public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
@@ -130,6 +105,37 @@ export class TextBuffer {
 
   public resetSelection(): void {
     this.lib.textBufferResetSelection(this.bufferPtr)
+  }
+
+  public setLocalSelection(
+    anchorX: number,
+    anchorY: number,
+    focusX: number,
+    focusY: number,
+    bgColor?: RGBA,
+    fgColor?: RGBA,
+  ): boolean {
+    return this.lib.textBufferSetLocalSelection(
+      this.bufferPtr,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bgColor || null,
+      fgColor || null,
+    )
+  }
+
+  public resetLocalSelection(): void {
+    this.lib.textBufferResetLocalSelection(this.bufferPtr)
+  }
+
+  public getSelection(): { start: number; end: number } | null {
+    return this.lib.textBufferGetSelection(this.bufferPtr)
+  }
+
+  public hasSelection(): boolean {
+    return this.getSelection() !== null
   }
 
   public destroy(): void {

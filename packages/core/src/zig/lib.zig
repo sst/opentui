@@ -343,29 +343,8 @@ export fn textBufferGetCharPtr(tb: *text_buffer.TextBuffer) [*]u32 {
     return tb.getCharPtr();
 }
 
-export fn textBufferGetFgPtr(tb: *text_buffer.TextBuffer) [*]RGBA {
-    return tb.getFgPtr();
-}
-
-export fn textBufferGetBgPtr(tb: *text_buffer.TextBuffer) [*]RGBA {
-    return tb.getBgPtr();
-}
-
-export fn textBufferGetAttributesPtr(tb: *text_buffer.TextBuffer) [*]u16 {
-    return tb.getAttributesPtr();
-}
-
 export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLength();
-}
-
-export fn textBufferSetCell(tb: *text_buffer.TextBuffer, index: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attr: u16) void {
-    tb.setCell(index, char, f32PtrToRGBA(fg), f32PtrToRGBA(bg), attr) catch {};
-}
-
-export fn textBufferConcat(tb1: *text_buffer.TextBuffer, tb2: *text_buffer.TextBuffer) ?*text_buffer.TextBuffer {
-    const result = tb1.concat(tb2) catch return null;
-    return result;
 }
 
 export fn textBufferResize(tb: *text_buffer.TextBuffer, newLength: u32) void {
@@ -422,16 +401,16 @@ export fn textBufferFinalizeLineInfo(tb: *text_buffer.TextBuffer) void {
     tb.finalizeLineInfo();
 }
 
-export fn textBufferGetLineStartsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
-    return tb.getLineStarts().ptr;
-}
-
-export fn textBufferGetLineWidthsPtr(tb: *text_buffer.TextBuffer) [*]const u32 {
-    return tb.getLineWidths().ptr;
-}
-
 export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLineCount();
+}
+
+export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) void {
+    const line_count = tb.getLineCount();
+    for (0..line_count) |i| {
+        lineStartsPtr[i] = tb.lines.items[i].char_start;
+        lineWidthsPtr[i] = tb.lines.items[i].width;
+    }
 }
 
 export fn bufferDrawTextBuffer(
@@ -453,4 +432,25 @@ export fn bufferDrawTextBuffer(
     } else null;
 
     bufferPtr.drawTextBuffer(textBufferPtr, x, y, clip_rect) catch {};
+}
+
+// Get selection info as packed u64: [start:u32][end:u32]
+// Returns 0xFFFFFFFF_FFFFFFFF if no selection
+export fn textBufferGetSelectionInfo(tb: *text_buffer.TextBuffer) u64 {
+    return tb.packSelectionInfo();
+}
+
+export fn textBufferGetSelectedText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getSelectedTextIntoBuffer(outBuffer);
+}
+
+export fn textBufferSetLocalSelection(tb: *text_buffer.TextBuffer, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    return tb.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn textBufferResetLocalSelection(tb: *text_buffer.TextBuffer) void {
+    tb.resetLocalSelection();
 }
