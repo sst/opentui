@@ -36,7 +36,7 @@ export interface CliRendererConfig {
   useConsole?: boolean
   experimental_splitHeight?: number
   focusKeyHandler?: FocusKeyHandler
-  enableFocusManager?: boolean
+  useFocusManager?: boolean
 }
 
 export type PixelResolution = {
@@ -126,7 +126,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
 
-  if (config.enableFocusManager ?? true) {
+  if (config.useFocusManager ?? true) {
     FocusManager.install(renderer, { onKey: config.focusKeyHandler })
   }
 
@@ -196,11 +196,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     renderTime?: number
     frameCallbackTime: number
   } = {
-    frameCount: 0,
-    fps: 0,
-    renderTime: 0,
-    frameCallbackTime: 0,
-  }
+      frameCount: 0,
+      fps: 0,
+      renderTime: 0,
+      frameCallbackTime: 0,
+    }
   public debugOverlay = {
     enabled: false,
     corner: DebugOverlayCorner.bottomRight,
