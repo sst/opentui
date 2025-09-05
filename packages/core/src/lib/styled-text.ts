@@ -34,7 +34,7 @@ export class StyledText {
     const originalLength = this.chunks.length
     let newChunks: TextChunk[]
 
-    if (index === undefined || index === originalLength) {
+    if (index === undefined || index === originalLength || index < 0) {
       newChunks = [...this.chunks, chunk]
     } else {
       newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index)]
