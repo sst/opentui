@@ -1074,6 +1074,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
+    if (!obj) {
+      return -1
+    }
+
     obj = ensureRenderable(this._ctx, obj)
 
     if (this.renderableMap.has(obj.id)) {
@@ -1106,6 +1110,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   insertBefore(obj: Renderable | VNode<any, any[]>, anchor?: Renderable): number {
+    if (!obj) {
+      return -1
+    }
+
     obj = ensureRenderable(this._ctx, obj)
 
     if (!anchor) {
