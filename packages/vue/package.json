@@ -1,6 +1,6 @@
 {
   "name": "@opentui/vue",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Vue renderer for OpenTUI",
   "repository": {
     "type": "git",
