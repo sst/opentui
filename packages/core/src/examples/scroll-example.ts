@@ -29,15 +29,15 @@ export function run(rendererInstance: CliRenderer): void {
     // TODO: Using 100% sets the width and height once as absolute values and does not update when the window is resized
     // width: "100%",
     // height: "100%",
+    flexGrow: 1,
+    maxHeight: "100%",
+    maxWidth: "100%",
     flexDirection: "column",
     backgroundColor: "#1a1b26",
   })
 
   scrollBox = new ScrollBoxRenderable(renderer, {
     id: "scroll-box",
-    width: "100%",
-    height: "100%",
-    flexGrow: 1,
     rootOptions: {
       backgroundColor: "#24283b",
       border: true,

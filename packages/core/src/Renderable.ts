@@ -20,8 +20,9 @@ import {
   type WrapString,
 } from "./lib/yoga.options"
 import type { MouseEvent } from "./renderer"
-import type { RenderContext, SelectionState } from "./types"
+import type { RenderContext, ViewportBounds } from "./types"
 import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
+import type { Selection } from "./lib/selection"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -234,9 +235,12 @@ export abstract class Renderable extends EventEmitter {
   protected _position: Position = {}
 
   private renderableMap: Map<string, Renderable> = new Map()
-  private renderableArray: Renderable[] = []
+  protected renderableArray: Renderable[] = []
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
+
+  private childrenPrimarySortDirty: boolean = true
+  private childrenSortedByPrimaryAxis: Renderable[] = []
 
   public renderBefore?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
   public renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
@@ -313,7 +317,7 @@ export abstract class Renderable extends EventEmitter {
     return false
   }
 
-  public onSelectionChanged(selection: SelectionState | null): boolean {
+  public onSelectionChanged(selection: Selection | null): boolean {
     // Default implementation: do nothing
     // Override this method to provide custom selection handling
     return false
@@ -418,6 +422,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._translateX === value) return
     this._translateX = value
     this.requestRender()
+    if (this.parent) this.parent.childrenPrimarySortDirty = true
   }
 
   public get translateY(): number {
@@ -428,6 +433,7 @@ export abstract class Renderable extends EventEmitter {
     if (this._translateY === value) return
     this._translateY = value
     this.requestRender()
+    if (this.parent) this.parent.childrenPrimarySortDirty = true
   }
 
   public get x(): number {
@@ -536,6 +542,114 @@ export abstract class Renderable extends EventEmitter {
       this.renderableArray.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
       this.needsZIndexSort = false
     }
+  }
+
+  public getChildrenInViewport(
+    viewport: ViewportBounds,
+    padding: number = 10,
+    minTriggerSize: number = 16,
+  ): Renderable[] {
+    if (this.renderableArray.length < minTriggerSize) return this.renderableArray
+
+    const viewportTop = viewport.y - padding
+    const viewportBottom = viewport.y + viewport.height + padding
+    const viewportLeft = viewport.x - padding
+    const viewportRight = viewport.x + viewport.width + padding
+
+    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    const isRow = dir === 2 || dir === 3
+
+    const children = this.getChildrenSortedByPrimaryAxis()
+    const totalChildren = children.length
+    if (totalChildren === 0) return []
+
+    const vpStart = isRow ? viewportLeft : viewportTop
+    const vpEnd = isRow ? viewportRight : viewportBottom
+
+    // Binary search to find any child that overlaps along the primary axis
+    let lo = 0
+    let hi = totalChildren - 1
+    let candidate = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      const c = children[mid]
+      const start = isRow ? c.x : c.y
+      const end = isRow ? c.x + c.width : c.y + c.height
+
+      if (end < vpStart) {
+        lo = mid + 1 // before viewport along axis
+      } else if (start > vpEnd) {
+        hi = mid - 1 // after viewport along axis
+      } else {
+        candidate = mid
+        break
+      }
+    }
+
+    const visibleChildren: Renderable[] = []
+    if (candidate === -1) {
+      return visibleChildren
+    }
+
+    let left = candidate
+    while (left - 1 >= 0) {
+      const prev = children[left - 1]
+      if ((isRow ? prev.x + prev.width : prev.y + prev.height) < vpStart) break
+      left--
+    }
+
+    let right = candidate + 1
+    while (right < totalChildren) {
+      const next = children[right]
+      if ((isRow ? next.x : next.y) > vpEnd) break
+      right++
+    }
+
+    // Collect candidates that also overlap on the cross axis
+    for (let i = left; i < right; i++) {
+      const child = children[i]
+
+      if (isRow) {
+        const childBottom = child.y + child.height
+        if (childBottom < viewportTop) continue
+        const childTop = child.y
+        if (childTop > viewportBottom) continue
+      } else {
+        const childRight = child.x + child.width
+        if (childRight < viewportLeft) continue
+        const childLeft = child.x
+        if (childLeft > viewportRight) continue
+      }
+
+      visibleChildren.push(child)
+    }
+
+    // At this point there should be not a lot of children, so this should be fast
+    if (visibleChildren.length > 1) {
+      visibleChildren.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
+    }
+
+    return visibleChildren
+  }
+
+  protected getChildrenSortedByPrimaryAxis(): Renderable[] {
+    if (!this.childrenPrimarySortDirty && this.childrenSortedByPrimaryAxis.length === this.renderableArray.length) {
+      return this.childrenSortedByPrimaryAxis
+    }
+
+    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    const axis: "x" | "y" = dir === 2 || dir === 3 ? "x" : "y"
+
+    const sorted = [...this.renderableArray]
+    sorted.sort((a, b) => {
+      const va = axis === "y" ? a.y : a.x
+      const vb = axis === "y" ? b.y : b.x
+      return va - vb
+    })
+
+    this.childrenSortedByPrimaryAxis = sorted
+    this.childrenPrimarySortDirty = false
+    return this.childrenSortedByPrimaryAxis
   }
 
   private setupYogaProperties(options: RenderableOptions<Renderable>): void {
@@ -885,6 +999,9 @@ export abstract class Renderable extends EventEmitter {
   public updateFromLayout(): void {
     const layout = this.layoutNode.yogaNode.getComputedLayout()
 
+    const oldX = this._x
+    const oldY = this._y
+
     this._x = layout.left
     this._y = layout.top
 
@@ -897,6 +1014,10 @@ export abstract class Renderable extends EventEmitter {
 
     if (sizeChanged) {
       this.onLayoutResize(newWidth, newHeight)
+    }
+
+    if (oldX !== this._x || oldY !== this._y) {
+      if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
   }
 
@@ -972,6 +1093,7 @@ export abstract class Renderable extends EventEmitter {
       insertedIndex = this.layoutNode.addChild(childLayoutNode)
     }
     this.needsZIndexSort = true
+    this.childrenPrimarySortDirty = true
     this.renderableMap.set(obj.id, obj)
 
     if (obj._liveCount > 0) {
@@ -1031,6 +1153,7 @@ export abstract class Renderable extends EventEmitter {
       if (index !== -1) {
         this.renderableArray.splice(index, 1)
       }
+      this.childrenPrimarySortDirty = true
     }
   }
 
@@ -1041,6 +1164,10 @@ export abstract class Renderable extends EventEmitter {
 
   public getChildren(): Renderable[] {
     return [...this.renderableArray]
+  }
+
+  public getChildrenCount(): number {
+    return this.renderableArray.length
   }
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -1074,10 +1201,8 @@ export abstract class Renderable extends EventEmitter {
       renderBuffer.pushScissorRect(scissorRect.x, scissorRect.y, scissorRect.width, scissorRect.height)
     }
 
-    for (const child of this.renderableArray) {
-      if (this.shouldRenderChild(child)) {
-        child.render(renderBuffer, deltaTime)
-      }
+    for (const child of this._getChildren()) {
+      child.render(renderBuffer, deltaTime)
     }
 
     if (shouldPushScissor) {
@@ -1089,8 +1214,8 @@ export abstract class Renderable extends EventEmitter {
     }
   }
 
-  protected shouldRenderChild(child: Renderable): boolean {
-    return true
+  protected _getChildren(): Renderable[] {
+    return this.renderableArray
   }
 
   protected beforeRender(): void {

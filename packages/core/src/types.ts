@@ -37,11 +37,11 @@ export interface RenderContext {
   dropLive: () => void
 }
 
-export interface SelectionState {
-  anchor: { x: number; y: number }
-  focus: { x: number; y: number }
-  isActive: boolean
-  isSelecting: boolean
-}
-
 export type Timeout = ReturnType<typeof setTimeout> | undefined
+
+export interface ViewportBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}

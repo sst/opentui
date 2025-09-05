@@ -430,7 +430,7 @@ export class CLICanvas {
 
             const cellColor = RGBA.fromValues(r, g, b, 1.0)
 
-            buffer.setCell(x, y, "█", cellColor, backgroundColor)
+            buffer.setCellWithAlphaBlending(x, y, "█", cellColor, backgroundColor)
           }
         }
       }

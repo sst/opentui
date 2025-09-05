@@ -1,9 +1,9 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
-import { convertGlobalToLocalSelection, type LocalSelectionBounds } from "../lib/selection"
+import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { type SelectionState, type RenderContext } from "../types"
+import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 
@@ -227,7 +227,7 @@ export class TextRenderable extends Renderable {
     return localX >= 0 && localX < this.width && localY >= 0 && localY < this.height
   }
 
-  onSelectionChanged(selection: SelectionState | null): boolean {
+  onSelectionChanged(selection: Selection | null): boolean {
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
@@ -237,7 +237,7 @@ export class TextRenderable extends Renderable {
       this.requestRender()
     }
 
-    return changed
+    return this.hasSelection()
   }
 
   getSelectedText(): string {

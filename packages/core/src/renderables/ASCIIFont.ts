@@ -1,5 +1,10 @@
 import type { RenderableOptions } from "../Renderable"
-import { ASCIIFontSelectionHelper, convertGlobalToLocalSelection, type LocalSelectionBounds } from "../lib/selection"
+import {
+  ASCIIFontSelectionHelper,
+  convertGlobalToLocalSelection,
+  Selection,
+  type LocalSelectionBounds,
+} from "../lib/selection"
 import {
   type fonts,
   measureText,
@@ -9,7 +14,7 @@ import {
 } from "../lib/ascii.font"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer"
-import type { RenderContext, SelectionState } from "../types"
+import type { RenderContext } from "../types"
 
 export interface ASCIIFontOptions extends RenderableOptions<ASCIIFontRenderable> {
   text?: string
@@ -130,7 +135,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     return this.selectionHelper.shouldStartSelection(localX, localY, this.width, this.height)
   }
 
-  onSelectionChanged(selection: SelectionState | null): boolean {
+  onSelectionChanged(selection: Selection | null): boolean {
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
     const changed = this.selectionHelper.onLocalSelectionChanged(localSelection, this.width, this.height)

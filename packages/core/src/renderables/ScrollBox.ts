@@ -14,26 +14,8 @@ class ContentRenderable extends BoxRenderable {
     this.viewport = viewport
   }
 
-  protected shouldRenderChild(child: Renderable): boolean {
-    const viewportLeft = this.viewport.x
-    const viewportTop = this.viewport.y
-    const viewportRight = this.viewport.x + this.viewport.width
-    const viewportBottom = this.viewport.y + this.viewport.height
-
-    const childLeft = child.x
-    const childTop = child.y
-    const childRight = child.x + child.width
-    const childBottom = child.y + child.height
-
-    // Check if child intersects with viewport (with some padding for safety)
-    const padding = 10
-    const intersects =
-      childLeft < viewportRight + padding &&
-      childRight > viewportLeft - padding &&
-      childTop < viewportBottom + padding &&
-      childBottom > viewportTop - padding
-
-    return intersects
+  protected _getChildren(): Renderable[] {
+    return this.getChildrenInViewport(this.viewport)
   }
 }
 
@@ -48,6 +30,8 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
+  static idCounter = 0
+  private internalId = 0
   public readonly wrapper: BoxRenderable
   public readonly viewport: BoxRenderable
   public readonly content: ContentRenderable
@@ -96,12 +80,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
     // Root
     super(ctx, {
       flexShrink: 1,
+      flexGrow: 1,
       flexDirection: "row",
       flexWrap: "wrap",
       alignItems: "stretch",
       ...(options as BoxOptions),
       ...(rootOptions as BoxOptions),
     })
+
+    this.internalId = ScrollBoxRenderable.idCounter++
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -111,6 +98,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       maxHeight: "100%",
       maxWidth: "100%",
       ...wrapperOptions,
+      id: `scroll-box-wrapper-${this.internalId}`,
     })
     super.add(this.wrapper)
 
@@ -119,8 +107,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       flexGrow: 1,
       flexShrink: 1,
       flexBasis: "auto",
-      minWidth: 0,
-      minHeight: 0,
       maxHeight: "100%",
       maxWidth: "100%",
       overflow: "scroll",
@@ -128,17 +114,17 @@ export class ScrollBoxRenderable extends BoxRenderable {
         this.recalculateBarProps()
       },
       ...viewportOptions,
+      id: `scroll-box-viewport-${this.internalId}`,
     })
     this.wrapper.add(this.viewport)
 
     this.content = new ContentRenderable(ctx, this.viewport, {
-      minWidth: "100%",
-      minHeight: "100%",
       alignSelf: "flex-start",
       onSizeChange: () => {
         this.recalculateBarProps()
       },
       ...contentOptions,
+      id: `scroll-box-content-${this.internalId}`,
     })
     this.viewport.add(this.content)
 
@@ -149,6 +135,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
         ...scrollbarOptions?.arrowOptions,
         ...verticalScrollbarOptions?.arrowOptions,
       },
+      id: `scroll-box-vertical-scrollbar-${this.internalId}`,
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
@@ -163,6 +150,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
         ...scrollbarOptions?.arrowOptions,
         ...horizontalScrollbarOptions?.arrowOptions,
       },
+      id: `scroll-box-horizontal-scrollbar-${this.internalId}`,
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
