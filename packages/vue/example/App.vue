@@ -4,6 +4,7 @@ import LoginForm from "./LoginForm.vue"
 import Counter from "./Counter.vue"
 import StyledText from "./Styled-Text.vue"
 import TabSelect from "./TabSelect.vue"
+import ScrollBox from "./ScrollBox.vue"
 import { ref } from "vue"
 import { getKeyHandler } from "@opentui/core"
 import ExtendExample from "./ExtendExample.vue"
@@ -15,6 +16,7 @@ const exampleOptions = [
   { name: "Styled Text", description: "Text with various styles applied", value: "styledText" },
   { name: "Tab Select", description: "Tabs", value: "tabSelect" },
   { name: "Extend", description: "Extend example", value: "extend" },
+  { name: "ScrollBox", description: "ScrollBox example", value: "scrollBox" },
 ]
 
 type ExampleOption = (typeof exampleOptions)[number]
@@ -44,6 +46,7 @@ const selectStyles = { flexGrow: 1 }
   <StyledText v-else-if="selectedExample?.value === 'styledText'" />
   <TabSelect v-else-if="selectedExample?.value === 'tabSelect'" />
   <ExtendExample v-else-if="selectedExample?.value === 'extend'" />
+  <ScrollBox v-else-if="selectedExample?.value === 'scrollBox'" />
   <boxRenderable v-else :style="boxStyles">
     <selectRenderable
       :style="selectStyles"

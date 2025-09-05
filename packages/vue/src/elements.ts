@@ -5,6 +5,7 @@ import {
   SelectRenderable,
   TabSelectRenderable,
   TextRenderable,
+  ScrollBoxRenderable,
 } from "@opentui/core"
 
 export const elements = {
@@ -14,5 +15,6 @@ export const elements = {
   selectRenderable: SelectRenderable,
   tabSelectRenderable: TabSelectRenderable,
   textRenderable: TextRenderable,
+  scrollBoxRenderable: ScrollBoxRenderable,
 }
 export type Element = keyof typeof elements
