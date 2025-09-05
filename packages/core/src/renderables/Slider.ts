@@ -90,6 +90,8 @@ export class SliderRenderable extends Renderable {
 
     this.onMouseDown = (event) => {
       event.stopPropagation()
+      event.preventDefault()
+
       isDragging = true
 
       const thumbRect = this.getThumbRect()
