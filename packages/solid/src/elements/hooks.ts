@@ -6,7 +6,6 @@ import {
   type CliRenderer,
   type JSAnimation,
   type ParsedKey,
-  type SelectionState,
   type TimelineOptions,
 } from "@opentui/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"

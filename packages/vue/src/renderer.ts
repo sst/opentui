@@ -38,12 +38,13 @@ function createText(value: string | number | boolean | TextChunk): OpenTUINode {
 }
 
 export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
-  createElement(type: string) {
+  createElement(type: string, _isSVG: undefined, _anchor: any, props) {
     const RenderableClass = elements[type as Element]
     if (!RenderableClass) throw new Error(`${type} is not a valid element`)
 
     const id = getNextId(type)
-    return new RenderableClass(getCurrentCliRenderer(), { id })
+    const { style = {}, ...options } = props || {}
+    return new RenderableClass(getCurrentCliRenderer(), { id, ...style, ...options })
   },
 
   createText,

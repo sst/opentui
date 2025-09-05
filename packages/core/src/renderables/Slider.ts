@@ -89,7 +89,7 @@ export class SliderRenderable extends Renderable {
     let relativeStartPos = 0
 
     this.onMouseDown = (event) => {
-      event.preventDefault()
+      event.stopPropagation()
       isDragging = true
 
       const thumbRect = this.getThumbRect()
@@ -110,7 +110,7 @@ export class SliderRenderable extends Renderable {
 
     this.onMouseDrag = (event) => {
       if (!isDragging) return
-      event.preventDefault()
+      event.stopPropagation()
       this.updatePositionFromMouse(event, relativeStartPos)
     }
 

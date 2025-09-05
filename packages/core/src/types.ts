@@ -1,4 +1,6 @@
 import type { RGBA } from "./lib/RGBA"
+import type { EventEmitter } from "events"
+import type { Selection } from "./lib/selection"
 import type { Renderable } from "./Renderable"
 
 export const TextAttributes = {
@@ -24,7 +26,15 @@ export enum DebugOverlayCorner {
 
 export type WidthMethod = "wcwidth" | "unicode"
 
-export interface RenderContext {
+export interface RendererEvents {
+  resize: (width: number, height: number) => void
+  key: (data: Buffer) => void
+  "memory:snapshot": (snapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number }) => void
+  selection: (selection: Selection) => void
+  "debugOverlay:toggle": (enabled: boolean) => void
+}
+
+export interface RenderContext extends EventEmitter {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
   width: number
   height: number
@@ -37,13 +47,16 @@ export interface RenderContext {
   requestLive: () => void
   dropLive: () => void
   focusedRenderable: Renderable | null
-}
-
-export interface SelectionState {
-  anchor: { x: number; y: number }
-  focus: { x: number; y: number }
-  isActive: boolean
-  isSelecting: boolean
+  hasSelection: boolean
+  getSelection: () => Selection | null
+  requestSelectionUpdate: () => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined
+
+export interface ViewportBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}

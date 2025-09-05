@@ -124,6 +124,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
       returns: "void",
     },
+    bufferSetCell: {
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
+      returns: "void",
+    },
     bufferFillRect: {
       args: ["ptr", "u32", "u32", "u32", "u32", "ptr"],
       returns: "void",
@@ -402,6 +406,15 @@ export interface RenderLib {
     bgColor: RGBA,
     attributes?: number,
   ) => void
+  bufferSetCell: (
+    buffer: Pointer,
+    x: number,
+    y: number,
+    char: string,
+    color: RGBA,
+    bgColor: RGBA,
+    attributes?: number,
+  ) => void
   bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) => void
   bufferDrawSuperSampleBuffer: (
     buffer: Pointer,
@@ -433,16 +446,7 @@ export interface RenderLib {
     backgroundColor: RGBA,
     title: string | null,
   ) => void
-  bufferResize: (
-    buffer: Pointer,
-    width: number,
-    height: number,
-  ) => {
-    char: Uint32Array
-    fg: Float32Array
-    bg: Float32Array
-    attributes: Uint8Array
-  }
+  bufferResize: (buffer: Pointer, width: number, height: number) => void
   resizeRenderer: (renderer: Pointer, width: number, height: number) => void
   setCursorPosition: (renderer: Pointer, x: number, y: number, visible: boolean) => void
   setCursorStyle: (renderer: Pointer, style: CursorStyle, blinking: boolean) => void
@@ -506,12 +510,6 @@ export interface RenderLib {
   textBufferGetSelection: (buffer: Pointer) => { start: number; end: number } | null
   getSelectedTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
   readonly decoder: TextDecoder
-  getTextBufferArrays: (
-    buffer: Pointer,
-    size: number,
-  ) => {
-    char: Uint32Array
-  }
   bufferDrawTextBuffer: (
     buffer: Pointer,
     textBuffer: Pointer,
@@ -631,10 +629,8 @@ class FFIRenderLib implements RenderLib {
 
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
-    const size = width * height
-    const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { id: "next buffer" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer" })
   }
 
   public getCurrentBuffer(renderer: Pointer): OptimizedBuffer {
@@ -645,57 +641,8 @@ class FFIRenderLib implements RenderLib {
 
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
-    const size = width * height
-    const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { id: "current buffer" })
-  }
-
-  private getBuffer(
-    bufferPtr: Pointer,
-    size: number,
-  ): {
-    char: Uint32Array
-    fg: Float32Array
-    bg: Float32Array
-    attributes: Uint8Array
-  } {
-    const charPtr = this.opentui.symbols.bufferGetCharPtr(bufferPtr)
-    const fgPtr = this.opentui.symbols.bufferGetFgPtr(bufferPtr)
-    const bgPtr = this.opentui.symbols.bufferGetBgPtr(bufferPtr)
-    const attributesPtr = this.opentui.symbols.bufferGetAttributesPtr(bufferPtr)
-
-    if (!charPtr || !fgPtr || !bgPtr || !attributesPtr) {
-      throw new Error("Failed to get buffer pointers")
-    }
-
-    const buffers = {
-      char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
-      fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)), // 4 floats per RGBA
-      bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)), // 4 floats per RGBA
-      attributes: new Uint8Array(toArrayBuffer(attributesPtr, 0, size)),
-    }
-
-    return buffers
-  }
-
-  private getTextBuffer(
-    bufferPtr: Pointer,
-    size: number,
-  ): {
-    char: Uint32Array
-  } {
-    const charPtr = this.opentui.symbols.textBufferGetCharPtr(bufferPtr)
-
-    if (!charPtr) {
-      throw new Error("Failed to get text buffer char pointer")
-    }
-
-    const buffers = {
-      char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
-    }
-
-    return buffers
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer" })
   }
 
   public bufferGetCharPtr(buffer: Pointer): Pointer {
@@ -791,6 +738,22 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferSetCellWithAlphaBlending(buffer, x, y, charPtr, fg, bg, attributes ?? 0)
   }
 
+  public bufferSetCell(
+    buffer: Pointer,
+    x: number,
+    y: number,
+    char: string,
+    color: RGBA,
+    bgColor: RGBA,
+    attributes?: number,
+  ) {
+    const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
+    const bg = bgColor.buffer
+    const fg = color.buffer
+
+    this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fg, bg, attributes ?? 0)
+  }
+
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
     const bg = color.buffer
     this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bg)
@@ -868,19 +831,8 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public bufferResize(
-    buffer: Pointer,
-    width: number,
-    height: number,
-  ): {
-    char: Uint32Array
-    fg: Float32Array
-    bg: Float32Array
-    attributes: Uint8Array
-  } {
+  public bufferResize(buffer: Pointer, width: number, height: number): void {
     this.opentui.symbols.bufferResize(buffer, width, height)
-    const buffers = this.getBuffer(buffer, width * height)
-    return buffers
   }
 
   public resizeRenderer(renderer: Pointer, width: number, height: number) {
@@ -929,10 +881,8 @@ class FFIRenderLib implements RenderLib {
     if (!bufferPtr) {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
-    const size = width * height
-    const buffers = this.getBuffer(bufferPtr, size)
 
-    return new OptimizedBuffer(this, bufferPtr, buffers, width, height, { respectAlpha, id })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { respectAlpha, id })
   }
 
   public destroyOptimizedBuffer(bufferPtr: Pointer) {
@@ -1184,15 +1134,6 @@ class FFIRenderLib implements RenderLib {
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
     }
-  }
-
-  public getTextBufferArrays(
-    buffer: Pointer,
-    size: number,
-  ): {
-    char: Uint32Array
-  } {
-    return this.getTextBuffer(buffer, size)
   }
 
   public bufferDrawTextBuffer(

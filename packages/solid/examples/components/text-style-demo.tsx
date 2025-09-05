@@ -18,15 +18,15 @@ export default function TextStyleScene() {
 
   return (
     <box>
-      <text>Simple text works! {counter()}</text>
-      <text>{underline(bold(`Chunk also works! ${counter()}`))}</text>
-      <text>{t`${italic(fg("#adff2f")("Styled"))} ${bold(fg("#ff8c00")("Text"))} also works! ${counter()}`}</text>
+      <text>Simple text works! {counter()} times</text>
+      <text>{underline(bold(`Chunk also works! ${counter()} times`))}</text>
+      <text>{t`${italic(fg("#adff2f")("Styled"))} ${bold(fg("#ff8c00")("Text"))} also works! ${counter()} times`}</text>
       <text>
-        And {bold("chunk arrays")} work {fg("#ff8c00")("as welll")}!! {italic(underline(`${counter()}`))}
+        And {bold("chunk arrays")} work {fg("#ff8c00")("as welll")}!! {italic(underline(`${counter()}`))} times
       </text>
-      You do not need to have a text node {counter()} as a parent when dealing with text {counter()}
+      You do not need to have a text node {counter()} as a parent when dealing with text {counter()} times
       <box border>
-        {counter()} Mix in some {bold("more text")} {counter()}
+        {counter()} Mix in some {bold("more text")} {counter()} times
       </box>
     </box>
   )

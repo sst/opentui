@@ -1,36 +1,114 @@
-import { Renderable } from ".."
-import type { SelectionState } from "../types"
+import { Renderable, type ViewportBounds } from ".."
 import { coordinateToCharacterIndex, fonts } from "./ascii.font"
 
-export class Selection {
-  private _anchor: { x: number; y: number }
-  private _focus: { x: number; y: number }
-  private _selectedRenderables: Renderable[] = []
+class SelectionAnchor {
+  private relativeX: number
+  private relativeY: number
 
-  constructor(anchor: { x: number; y: number }, focus: { x: number; y: number }) {
-    this._anchor = { ...anchor }
-    this._focus = { ...focus }
+  constructor(
+    private renderable: Renderable,
+    absoluteX: number,
+    absoluteY: number,
+  ) {
+    this.relativeX = absoluteX - this.renderable.x
+    this.relativeY = absoluteY - this.renderable.y
+  }
+
+  get x(): number {
+    return this.renderable.x + this.relativeX
+  }
+
+  get y(): number {
+    return this.renderable.y + this.relativeY
+  }
+}
+
+export class Selection {
+  private _anchor: SelectionAnchor
+  private _originalFocus: { x: number; y: number }
+  private _normalizedAnchor!: { x: number; y: number }
+  private _normalizedFocus!: { x: number; y: number }
+  private _selectedRenderables: Renderable[] = []
+  private _touchedRenderables: Renderable[] = []
+  private _isActive: boolean = true
+  private _isSelecting: boolean = true
+
+  constructor(anchorRenderable: Renderable, anchor: { x: number; y: number }, focus: { x: number; y: number }) {
+    this._anchor = new SelectionAnchor(anchorRenderable, anchor.x, anchor.y)
+    this._originalFocus = { ...focus }
+    this._updateNormalizedSelection()
   }
 
   get anchor(): { x: number; y: number } {
-    return { ...this._anchor }
+    return { ...this._normalizedAnchor }
   }
 
   get focus(): { x: number; y: number } {
-    return { ...this._focus }
+    return { ...this._normalizedFocus }
   }
 
-  get bounds(): { startX: number; startY: number; endX: number; endY: number } {
+  set focus(value: { x: number; y: number }) {
+    this._originalFocus = { ...value }
+    this._updateNormalizedSelection()
+  }
+
+  private _updateNormalizedSelection(): void {
+    const anchorBeforeFocus =
+      this._anchor.y < this._originalFocus.y ||
+      (this._anchor.y === this._originalFocus.y && this._anchor.x <= this._originalFocus.x)
+
+    if (anchorBeforeFocus) {
+      this._normalizedAnchor = { x: this._anchor.x, y: this._anchor.y }
+      this._normalizedFocus = { ...this._originalFocus }
+    } else {
+      this._normalizedAnchor = { ...this._originalFocus }
+      this._normalizedFocus = { x: this._anchor.x + 1, y: this._anchor.y }
+    }
+  }
+
+  get isActive(): boolean {
+    return this._isActive
+  }
+
+  set isActive(value: boolean) {
+    this._isActive = value
+  }
+
+  get isSelecting(): boolean {
+    return this._isSelecting
+  }
+
+  set isSelecting(value: boolean) {
+    this._isSelecting = value
+  }
+
+  get bounds(): ViewportBounds {
     return {
-      startX: Math.min(this._anchor.x, this._focus.x),
-      startY: Math.min(this._anchor.y, this._focus.y),
-      endX: Math.max(this._anchor.x, this._focus.x),
-      endY: Math.max(this._anchor.y, this._focus.y),
+      x: Math.min(this._normalizedAnchor.x, this._normalizedFocus.x),
+      y: Math.min(this._normalizedAnchor.y, this._normalizedFocus.y),
+      width:
+        Math.max(this._normalizedAnchor.x, this._normalizedFocus.x) -
+        Math.min(this._normalizedAnchor.x, this._normalizedFocus.x),
+      height:
+        Math.max(this._normalizedAnchor.y, this._normalizedFocus.y) -
+        Math.min(this._normalizedAnchor.y, this._normalizedFocus.y),
     }
   }
 
   updateSelectedRenderables(selectedRenderables: Renderable[]): void {
     this._selectedRenderables = selectedRenderables
+  }
+
+  get selectedRenderables(): Renderable[] {
+    return this._selectedRenderables
+  }
+
+  updateTouchedRenderables(touchedRenderables: Renderable[]): void {
+    this._touchedRenderables = touchedRenderables
+  }
+
+  get touchedRenderables(): Renderable[] {
+    return this._touchedRenderables
   }
 
   getSelectedText(): string {
@@ -59,7 +137,7 @@ export interface LocalSelectionBounds {
 }
 
 export function convertGlobalToLocalSelection(
-  globalSelection: SelectionState | null,
+  globalSelection: Selection | null,
   localX: number,
   localY: number,
 ): LocalSelectionBounds | null {
@@ -115,19 +193,8 @@ export class ASCIIFontSelectionHelper {
     const text = this.getText()
     const font = this.getFont()
 
-    let selStart: { x: number; y: number }
-    let selEnd: { x: number; y: number }
-
-    if (
-      localSelection.anchorY < localSelection.focusY ||
-      (localSelection.anchorY === localSelection.focusY && localSelection.anchorX <= localSelection.focusX)
-    ) {
-      selStart = { x: localSelection.anchorX, y: localSelection.anchorY }
-      selEnd = { x: localSelection.focusX, y: localSelection.focusY }
-    } else {
-      selStart = { x: localSelection.focusX, y: localSelection.focusY }
-      selEnd = { x: localSelection.anchorX, y: localSelection.anchorY }
-    }
+    const selStart = { x: localSelection.anchorX, y: localSelection.anchorY }
+    const selEnd = { x: localSelection.focusX, y: localSelection.focusY }
 
     if (height - 1 < selStart.y || 0 > selEnd.y) {
       this.localSelection = null
@@ -168,9 +235,7 @@ export class ASCIIFontSelectionHelper {
     }
 
     return (
-      (this.localSelection !== null) !== (previousSelection !== null) ||
-      this.localSelection?.start !== previousSelection?.start ||
-      this.localSelection?.end !== previousSelection?.end
+      previousSelection?.start !== this.localSelection?.start || previousSelection?.end !== this.localSelection?.end
     )
   }
 }

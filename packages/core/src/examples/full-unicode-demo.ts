@@ -56,19 +56,19 @@ class DraggableGraphemeBox extends FrameBufferRenderable {
         this.isDragging = true
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
-        event.preventDefault()
+        event.stopPropagation()
         break
       case "drag":
         if (this.isDragging) {
           this.x = event.x - this.dragOffsetX
           this.y = event.y - this.dragOffsetY
-          event.preventDefault()
+          event.stopPropagation()
         }
         break
       case "drag-end":
         if (this.isDragging) {
           this.isDragging = false
-          event.preventDefault()
+          event.stopPropagation()
         }
         break
     }
@@ -120,19 +120,19 @@ ${underline("Complex:")} a̐éö̲  Z͑͗͛̒͘a̴͈͚̐̓l̷͓̱͉g̶̙̗̓͘
         this.isDragging = true
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
-        event.preventDefault()
+        event.stopPropagation()
         break
       case "drag":
         if (this.isDragging) {
           this.x = event.x - this.dragOffsetX
           this.y = event.y - this.dragOffsetY
-          event.preventDefault()
+          event.stopPropagation()
         }
         break
       case "drag-end":
         if (this.isDragging) {
           this.isDragging = false
-          event.preventDefault()
+          event.stopPropagation()
         }
         break
     }

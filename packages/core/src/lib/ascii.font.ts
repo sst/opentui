@@ -294,7 +294,7 @@ export function renderFontToFrameBuffer(
             if (renderX >= 0 && renderX < width) {
               const fontChar = segment.text[charIdx]
               if (fontChar !== " ") {
-                buffer.setCell(renderX, renderY, fontChar, segmentColor, bg)
+                buffer.setCellWithAlphaBlending(renderX, renderY, fontChar, segmentColor, bg)
               }
             }
           }

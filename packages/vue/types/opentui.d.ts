@@ -3,96 +3,62 @@ export {}
 import type { DefineComponent } from "vue"
 import type {
   ASCIIFontOptions,
-  ASCIIFontRenderable,
   BoxOptions,
-  BoxRenderable,
-  InputRenderable,
   InputRenderableOptions,
-  Renderable,
   RenderableOptions,
-  RenderContext,
   SelectOption,
-  SelectRenderable,
   SelectRenderableOptions,
   StyledText,
   TabSelectOption,
-  TabSelectRenderable,
   TabSelectRenderableOptions,
   TextChunk,
   TextOptions,
-  TextRenderable,
+  ScrollBoxOptions,
 } from "@opentui/core"
 
-export type NonStyledProps = "buffered" | "live" | "enableLayout" | "selectable" | `on${string}`
+type NonStyledProps = "buffered" | "live" | "enableLayout" | "selectable"
 
-export type RenderableConstructor<TRenderable extends Renderable = Renderable> = new (
-  ctx: RenderContext,
-  options: any,
-) => TRenderable
+type ContainerProps<TOptions> = TOptions
 
-type ExtractRenderableOptions<TConstructor> = TConstructor extends new (
-  ctx: RenderContext,
-  options: infer TOptions,
-) => any
-  ? TOptions
-  : never
-
-type ExtractRenderable<TConstructor> = TConstructor extends new (ctx: RenderContext, options: any) => infer TRenderable
-  ? TRenderable
-  : never
-
-export type GetNonStyledProperties<TConstructor> =
-  TConstructor extends RenderableConstructor<TextRenderable>
-    ? NonStyledProps | "content"
-    : TConstructor extends RenderableConstructor<BoxRenderable>
-      ? NonStyledProps | "title"
-      : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
-        ? NonStyledProps | "text" | "selectable"
-        : TConstructor extends RenderableConstructor<InputRenderable>
-          ? NonStyledProps | "placeholder" | "value"
-          : NonStyledProps
-
-type ContainerProps<TOptions> = TOptions & { children?: any }
-
-type ComponentProps<TOptions extends RenderableOptions<TRenderable>, TRenderable extends Renderable> = TOptions & {
-  style?: Partial<Omit<TOptions, GetNonStyledProperties<RenderableConstructor<TRenderable>>>>
+type VueComponentProps<TOptions, TNonStyled extends keyof TOptions> = TOptions & {
+  style?: Partial<Omit<TOptions, TNonStyled>>
 }
 
-type TextChildren = string | number | boolean | null | undefined
-
-export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
-  children?: TextChildren | StyledText | TextChunk | Array<TextChildren | StyledText | TextChunk>
+export type TextProps = Omit<VueComponentProps<TextOptions, NonStyledProps | "content">, "content"> & {
+  children?:
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | StyledText
+    | Array<string | number | boolean | null | undefined | StyledText>
+  content?: string | StyledText | TextChunk
 }
 
-export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
+export type BoxProps = VueComponentProps<ContainerProps<BoxOptions>, NonStyledProps | "title">
 
-export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
+export type ScrollBoxProps = VueComponentProps<ContainerProps<ScrollBoxOptions>, NonStyledProps | "title">
+
+export type InputProps = VueComponentProps<InputRenderableOptions, NonStyledProps> & {
   focused?: boolean
   onInput?: (value: string) => void
   onChange?: (value: string) => void
   onSubmit?: (value: string) => void
 }
 
-export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
+export type SelectProps = VueComponentProps<SelectRenderableOptions, NonStyledProps> & {
   focused?: boolean
   onChange?: (index: number, option: SelectOption | null) => void
   onSelect?: (index: number, option: SelectOption | null) => void
 }
 
-export type AsciiFontProps = ComponentProps<ASCIIFontOptions, ASCIIFontRenderable>
+export type AsciiFontProps = VueComponentProps<ASCIIFontOptions, NonStyledProps | "text">
 
-export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelectRenderable> & {
+export type TabSelectProps = VueComponentProps<TabSelectRenderableOptions, NonStyledProps> & {
   focused?: boolean
   onChange?: (index: number, option: TabSelectOption | null) => void
   onSelect?: (index: number, option: TabSelectOption | null) => void
-}
-
-export type ExtendedComponentProps<
-  TConstructor extends RenderableConstructor,
-  TOptions = ExtractRenderableOptions<TConstructor>,
-> = TOptions & {
-  children?: any
-  style?: Partial<Omit<TOptions, GetNonStyledProperties<TConstructor>>>
 }
 
 export type ExtendedIntrinsicElements<TComponentCatalogue extends Record<string, RenderableConstructor>> = {
@@ -113,6 +79,7 @@ declare module "@vue/runtime-core" {
     selectRenderable: DefineComponent<SelectProps>
     tabSelectRenderable: DefineComponent<TabSelectProps>
     textRenderable: DefineComponent<TextProps>
+    scrollBoxRenderable: DefineComponent<ScrollBoxProps>
   }
 }
 
@@ -125,5 +92,6 @@ declare module "@vue/runtime-dom" {
     selectRenderable: SelectProps
     tabSelectRenderable: TabSelectProps
     textRenderable: TextProps
+    scrollBoxRenderable: ScrollBoxProps
   }
 }

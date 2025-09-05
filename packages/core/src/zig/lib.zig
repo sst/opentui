@@ -215,6 +215,18 @@ export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: 
     bufferPtr.setCellWithAlphaBlending(x, y, char, rgbaFg, rgbaBg, attributes) catch {};
 }
 
+export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
+    const rgbaFg = f32PtrToRGBA(fg);
+    const rgbaBg = f32PtrToRGBA(bg);
+    const cell = buffer.Cell{
+        .char = char,
+        .fg = rgbaFg,
+        .bg = rgbaBg,
+        .attributes = attributes,
+    };
+    bufferPtr.set(x, y, cell);
+}
+
 export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const f32) void {
     const rgbaBg = f32PtrToRGBA(bg);
     bufferPtr.fillRect(x, y, width, height, rgbaBg) catch {};

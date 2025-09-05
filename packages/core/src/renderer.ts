@@ -4,7 +4,7 @@ import {
   type CursorStyle,
   DebugOverlayCorner,
   type RenderContext,
-  type SelectionState,
+  type ViewportBounds,
   type WidthMethod,
 } from "./types"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
@@ -57,13 +57,14 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
-  private _defaultPrevented: boolean = false
+  public readonly isSelecting?: boolean
+  private _propagationStopped: boolean = false
 
-  public get defaultPrevented(): boolean {
-    return this._defaultPrevented
+  public get propagationStopped(): boolean {
+    return this._propagationStopped
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable }) {
+  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isSelecting?: boolean }) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -72,10 +73,11 @@ export class MouseEvent {
     this.modifiers = attributes.modifiers
     this.scroll = attributes.scroll
     this.source = attributes.source
+    this.isSelecting = attributes.isSelecting
   }
 
-  public preventDefault(): void {
-    this._defaultPrevented = true
+  public stopPropagation(): void {
+    this._propagationStopped = true
   }
 }
 
@@ -224,7 +226,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lastOverRenderable?: Renderable
 
   private currentSelection: Selection | null = null
-  private selectionState: SelectionState | null = null
   private selectionContainers: Renderable[] = []
 
   private _splitHeight: number = 0
@@ -333,6 +334,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         process.exit(1)
       })
     }
+
+    process.on("warning", (warning) => {
+      console.warn(JSON.stringify(warning.message, null, 2))
+    })
 
     process.on("uncaughtException", handleError)
     process.on("unhandledRejection", handleError)
@@ -680,7 +685,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
+      if (
+        mouseEvent.type === "down" &&
+        mouseEvent.button === MouseButton.LEFT &&
+        !this.currentSelection?.isSelecting &&
+        !mouseEvent.modifiers.ctrl
+      ) {
         if (
           maybeRenderable &&
           maybeRenderable.selectable &&
@@ -693,18 +703,35 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
 
-      if (mouseEvent.type === "drag" && this.selectionState?.isSelecting) {
+      if (mouseEvent.type === "drag" && this.currentSelection?.isSelecting) {
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          maybeRenderable.processMouseEvent(event)
+        }
+
         return true
       }
 
-      if (mouseEvent.type === "up" && this.selectionState?.isSelecting) {
+      if (mouseEvent.type === "up" && this.currentSelection?.isSelecting) {
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          maybeRenderable.processMouseEvent(event)
+        }
+
         this.finishSelection()
         return true
       }
 
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.selectionState) {
-        this.clearSelection()
+      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
+        if (mouseEvent.modifiers.ctrl) {
+          this.currentSelection.isSelecting = true
+          this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+          return true
+        } else {
+          this.clearSelection()
+        }
       }
 
       if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
@@ -853,7 +880,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderOffset = height - this._splitHeight
       this.width = width
       this.height = this._splitHeight
-      this.currentRenderBuffer.clearLocal(RGBA.fromHex("#000000"), "\u0a00")
+      this.currentRenderBuffer.clear(RGBA.fromHex("#000000"))
       this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
     } else {
       this.width = width
@@ -1218,20 +1245,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.currentSelection
   }
 
+  public get hasSelection(): boolean {
+    return !!this.currentSelection
+  }
+
   public getSelectionContainer(): Renderable | null {
     return this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : null
   }
 
-  public hasSelection(): boolean {
-    return this.currentSelection !== null
-  }
-
   public clearSelection(): void {
-    if (this.selectionState) {
-      this.selectionState = null
-      this.notifySelectablesOfSelectionChange()
+    if (this.currentSelection) {
+      for (const renderable of this.currentSelection.touchedRenderables) {
+        if (renderable.selectable) {
+          renderable.onSelectionChanged(null)
+        }
+      }
+      this.currentSelection = null
     }
-    this.currentSelection = null
     this.selectionContainers = []
   }
 
@@ -1239,20 +1269,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.clearSelection()
     this.selectionContainers.push(startRenderable.parent || this.root)
 
-    this.selectionState = {
-      anchor: { x, y },
-      focus: { x, y },
-      isActive: true,
-      isSelecting: true,
-    }
-
-    this.currentSelection = new Selection({ x, y }, { x, y })
+    this.currentSelection = new Selection(startRenderable, { x, y }, { x, y })
     this.notifySelectablesOfSelectionChange()
   }
 
   private updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
-    if (this.selectionState) {
-      this.selectionState.focus = { x, y }
+    if (this.currentSelection) {
+      this.currentSelection.focus = { x, y }
 
       if (this.selectionContainers.length > 0) {
         const currentContainer = this.selectionContainers[this.selectionContainers.length - 1]
@@ -1274,11 +1297,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
 
-      if (this.currentSelection) {
-        this.currentSelection = new Selection(this.selectionState.anchor, this.selectionState.focus)
-      }
-
       this.notifySelectablesOfSelectionChange()
+    }
+  }
+
+  public requestSelectionUpdate(): void {
+    if (this.currentSelection?.isSelecting) {
+      const lastMouseX = this.currentSelection.focus.x
+      const lastMouseY = this.currentSelection.focus.y
+
+      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, lastMouseX, lastMouseY)
+      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+      this.updateSelection(maybeRenderable, lastMouseX, lastMouseY)
     }
   }
 
@@ -1292,54 +1323,56 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private finishSelection(): void {
-    if (this.selectionState) {
-      this.selectionState.isSelecting = false
+    if (this.currentSelection) {
+      this.currentSelection.isSelecting = false
       this.emit("selection", this.currentSelection)
     }
   }
 
   private notifySelectablesOfSelectionChange(): void {
-    let normalizedSelection: SelectionState | null = null
-    if (this.selectionState) {
-      normalizedSelection = { ...this.selectionState }
-
-      if (
-        normalizedSelection.anchor.y > normalizedSelection.focus.y ||
-        (normalizedSelection.anchor.y === normalizedSelection.focus.y &&
-          normalizedSelection.anchor.x > normalizedSelection.focus.x)
-      ) {
-        const temp = normalizedSelection.anchor
-        normalizedSelection.anchor = normalizedSelection.focus
-        normalizedSelection.focus = {
-          x: temp.x + 1,
-          y: temp.y,
-        }
-      }
-    }
-
     const selectedRenderables: Renderable[] = []
-
-    for (const [, renderable] of Renderable.renderablesByNumber) {
-      if (renderable.visible && renderable.selectable) {
-        const currentContainer =
-          this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : null
-        let hasSelection = false
-        if (!currentContainer || this.isWithinContainer(renderable, currentContainer)) {
-          hasSelection = renderable.onSelectionChanged(normalizedSelection)
-        } else {
-          hasSelection = renderable.onSelectionChanged(
-            normalizedSelection ? { ...normalizedSelection, isActive: false } : null,
-          )
-        }
-
-        if (hasSelection) {
-          selectedRenderables.push(renderable)
-        }
-      }
-    }
+    const touchedRenderables: Renderable[] = []
+    const currentContainer =
+      this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : this.root
 
     if (this.currentSelection) {
+      this.walkSelectableRenderables(
+        currentContainer,
+        this.currentSelection.bounds,
+        selectedRenderables,
+        touchedRenderables,
+      )
+
+      for (const renderable of this.currentSelection.touchedRenderables) {
+        if (!touchedRenderables.includes(renderable)) {
+          renderable.onSelectionChanged(null)
+        }
+      }
+
       this.currentSelection.updateSelectedRenderables(selectedRenderables)
+      this.currentSelection.updateTouchedRenderables(touchedRenderables)
+    }
+  }
+
+  private walkSelectableRenderables(
+    container: Renderable,
+    selectionBounds: ViewportBounds,
+    selectedRenderables: Renderable[],
+    touchedRenderables: Renderable[],
+  ): void {
+    const children = container.getChildrenInViewport(selectionBounds, 0)
+
+    for (const child of children) {
+      if (child.selectable) {
+        const hasSelection = child.onSelectionChanged(this.currentSelection)
+        if (hasSelection) {
+          selectedRenderables.push(child)
+        }
+        touchedRenderables.push(child)
+      }
+      if (child.getChildrenCount() > 0) {
+        this.walkSelectableRenderables(child, selectionBounds, selectedRenderables, touchedRenderables)
+      }
     }
   }
 }

@@ -109,7 +109,7 @@ export function run(renderer: CliRenderer): void {
     title: "Nested example",
     backgroundColor: RGBA.fromInts(120, 0, 120, 120),
   })
-  renderer.root.add(nestedBox)
+  parentContainer.add(nestedBox)
 
   const innerBoxWidth = 10
   const innerBoxHeight = 4

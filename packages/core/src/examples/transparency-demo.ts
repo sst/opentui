@@ -63,13 +63,13 @@ class DraggableTransparentBox extends BoxRenderable {
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
         this.zIndex = nextZIndex++
-        event.preventDefault()
+        event.stopPropagation()
         break
 
       case "drag-end":
         if (this.isDragging) {
           this.isDragging = false
-          event.preventDefault()
+          event.stopPropagation()
         }
         break
 
@@ -81,7 +81,7 @@ class DraggableTransparentBox extends BoxRenderable {
           this.x = Math.max(0, Math.min(newX, this._ctx.width - this.width))
           this.y = Math.max(4, Math.min(newY, this._ctx.height - this.height))
 
-          event.preventDefault()
+          event.stopPropagation()
         }
         break
     }
