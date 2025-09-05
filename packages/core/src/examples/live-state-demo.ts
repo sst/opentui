@@ -56,12 +56,12 @@ function LiveButton(options: BoxOptions & { label: string }) {
       switch (event.type) {
         case "down":
           this.backgroundColor = pressBg
-          event.preventDefault()
+          event.stopPropagation()
           break
 
         case "up":
           this.backgroundColor = base
-          event.preventDefault()
+          event.stopPropagation()
           break
 
         case "over":

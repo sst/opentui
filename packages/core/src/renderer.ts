@@ -54,13 +54,14 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
-  private _defaultPrevented: boolean = false
+  public readonly isSelecting?: boolean
+  private _propagationStopped: boolean = false
 
-  public get defaultPrevented(): boolean {
-    return this._defaultPrevented
+  public get propagationStopped(): boolean {
+    return this._propagationStopped
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable }) {
+  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isSelecting?: boolean }) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -69,10 +70,11 @@ export class MouseEvent {
     this.modifiers = attributes.modifiers
     this.scroll = attributes.scroll
     this.source = attributes.source
+    this.isSelecting = attributes.isSelecting
   }
 
-  public preventDefault(): void {
-    this._defaultPrevented = true
+  public stopPropagation(): void {
+    this._propagationStopped = true
   }
 }
 
@@ -322,6 +324,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         process.exit(1)
       })
     }
+
+    process.on("warning", (warning) => {
+      console.warn(JSON.stringify(warning.message, null, 2))
+    })
 
     process.on("uncaughtException", handleError)
     process.on("unhandledRejection", handleError)
@@ -681,10 +687,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (mouseEvent.type === "drag" && this.currentSelection?.isSelecting) {
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          maybeRenderable.processMouseEvent(event)
+        }
+
         return true
       }
 
       if (mouseEvent.type === "up" && this.currentSelection?.isSelecting) {
+        if (maybeRenderable) {
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          maybeRenderable.processMouseEvent(event)
+        }
+
         this.finishSelection()
         return true
       }
@@ -1209,12 +1226,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.currentSelection
   }
 
-  public getSelectionContainer(): Renderable | null {
-    return this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : null
+  public get hasSelection(): boolean {
+    return !!this.currentSelection
   }
 
-  public hasSelection(): boolean {
-    return this.currentSelection !== null
+  public getSelectionContainer(): Renderable | null {
+    return this.selectionContainers.length > 0 ? this.selectionContainers[this.selectionContainers.length - 1] : null
   }
 
   public clearSelection(): void {
@@ -1262,6 +1279,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
 
       this.notifySelectablesOfSelectionChange()
+    }
+  }
+
+  public requestSelectionUpdate(): void {
+    if (this.currentSelection?.isSelecting) {
+      const lastMouseX = this.currentSelection.focus.x
+      const lastMouseY = this.currentSelection.focus.y
+
+      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, lastMouseX, lastMouseY)
+      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+      this.updateSelection(maybeRenderable, lastMouseX, lastMouseY)
     }
   }
 

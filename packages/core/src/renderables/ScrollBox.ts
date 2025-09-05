@@ -39,6 +39,19 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public readonly verticalScrollBar: ScrollBarRenderable
 
   protected focusable: boolean = true
+  private selectionListener?: () => void
+
+  private autoScrollMouseX: number = 0
+  private autoScrollMouseY: number = 0
+  private readonly autoScrollThresholdVertical = 3
+  private readonly autoScrollThresholdHorizontal = 3
+  private readonly autoScrollSpeedSlow = 6
+  private readonly autoScrollSpeedMedium = 36
+  private readonly autoScrollSpeedFast = 72
+  private isAutoScrolling: boolean = false
+  private cachedAutoScrollSpeed: number = 3
+  private autoScrollAccumulatorX: number = 0
+  private autoScrollAccumulatorY: number = 0
 
   get scrollTop(): number {
     return this.verticalScrollBar.scrollPosition
@@ -159,6 +172,18 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.wrapper.add(this.horizontalScrollBar)
 
     this.recalculateBarProps()
+
+    this.selectionListener = () => {
+      const selection = this._ctx.getSelection()
+      if (!selection || !selection.isSelecting) {
+        this.stopAutoScroll()
+      }
+    }
+    this._ctx.on("selection", this.selectionListener)
+  }
+
+  protected onUpdate(deltaTime: number): void {
+    this.handleAutoScroll(deltaTime)
   }
 
   public scrollBy(delta: number | { x: number; y: number }, unit: ScrollUnit = "absolute"): void {
@@ -202,12 +227,152 @@ export class ScrollBoxRenderable extends BoxRenderable {
       else if (dir === "left") this.scrollLeft -= event.scroll?.delta ?? 0
       else if (dir === "right") this.scrollLeft += event.scroll?.delta ?? 0
     }
+
+    if (event.type === "drag" && event.isSelecting) {
+      this.updateAutoScroll(event.x, event.y)
+    } else if (event.type === "up") {
+      this.stopAutoScroll()
+    }
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
     if (this.verticalScrollBar.handleKeyPress(key)) return true
     if (this.horizontalScrollBar.handleKeyPress(key)) return true
     return false
+  }
+
+  public startAutoScroll(mouseX: number, mouseY: number): void {
+    this.stopAutoScroll()
+    this.autoScrollMouseX = mouseX
+    this.autoScrollMouseY = mouseY
+    this.cachedAutoScrollSpeed = this.getAutoScrollSpeed(mouseX, mouseY)
+    this.isAutoScrolling = true
+
+    if (!this.live) {
+      this.live = true
+    }
+  }
+
+  public updateAutoScroll(mouseX: number, mouseY: number): void {
+    this.autoScrollMouseX = mouseX
+    this.autoScrollMouseY = mouseY
+
+    // Cache the speed based on current mouse position
+    this.cachedAutoScrollSpeed = this.getAutoScrollSpeed(mouseX, mouseY)
+
+    const scrollX = this.getAutoScrollDirectionX(mouseX)
+    const scrollY = this.getAutoScrollDirectionY(mouseY)
+
+    if (scrollX === 0 && scrollY === 0) {
+      this.stopAutoScroll()
+    } else if (!this.isAutoScrolling) {
+      this.startAutoScroll(mouseX, mouseY)
+    }
+  }
+
+  public stopAutoScroll(): void {
+    const wasAutoScrolling = this.isAutoScrolling
+    this.isAutoScrolling = false
+    this.autoScrollAccumulatorX = 0
+    this.autoScrollAccumulatorY = 0
+
+    // Only turn off live if no other features need it
+    // For now, auto-scroll is the only feature using live, but this could be extended
+    if (wasAutoScrolling && !this.hasOtherLiveReasons()) {
+      this.live = false
+    }
+  }
+
+  private hasOtherLiveReasons(): boolean {
+    // Placeholder for future features that might need live mode
+    // For now, always return false since auto-scroll is the only user
+    return false
+  }
+
+  private handleAutoScroll(deltaTime: number): void {
+    if (!this.isAutoScrolling) return
+
+    const scrollX = this.getAutoScrollDirectionX(this.autoScrollMouseX)
+    const scrollY = this.getAutoScrollDirectionY(this.autoScrollMouseY)
+    const scrollAmount = this.cachedAutoScrollSpeed * (deltaTime / 1000)
+
+    let scrolled = false
+
+    if (scrollX !== 0) {
+      this.autoScrollAccumulatorX += scrollX * scrollAmount
+      const integerScrollX = Math.trunc(this.autoScrollAccumulatorX)
+      if (integerScrollX !== 0) {
+        this.scrollLeft += integerScrollX
+        this.autoScrollAccumulatorX -= integerScrollX
+        scrolled = true
+      }
+    }
+
+    if (scrollY !== 0) {
+      this.autoScrollAccumulatorY += scrollY * scrollAmount
+      const integerScrollY = Math.trunc(this.autoScrollAccumulatorY)
+      if (integerScrollY !== 0) {
+        this.scrollTop += integerScrollY
+        this.autoScrollAccumulatorY -= integerScrollY
+        scrolled = true
+      }
+    }
+
+    if (scrolled) {
+      this._ctx.requestSelectionUpdate()
+    }
+
+    if (scrollX === 0 && scrollY === 0) {
+      this.stopAutoScroll()
+    }
+  }
+
+  private getAutoScrollDirectionX(mouseX: number): number {
+    const relativeX = mouseX - this.x
+    const distToLeft = relativeX
+    const distToRight = this.width - relativeX
+
+    if (distToLeft <= this.autoScrollThresholdHorizontal) {
+      return this.scrollLeft > 0 ? -1 : 0
+    } else if (distToRight <= this.autoScrollThresholdHorizontal) {
+      const maxScrollLeft = this.scrollWidth - this.viewport.width
+      return this.scrollLeft < maxScrollLeft ? 1 : 0
+    }
+    return 0
+  }
+
+  private getAutoScrollDirectionY(mouseY: number): number {
+    const relativeY = mouseY - this.y
+    const distToTop = relativeY
+    const distToBottom = this.height - relativeY
+
+    if (distToTop <= this.autoScrollThresholdVertical) {
+      return this.scrollTop > 0 ? -1 : 0
+    } else if (distToBottom <= this.autoScrollThresholdVertical) {
+      const maxScrollTop = this.scrollHeight - this.viewport.height
+      return this.scrollTop < maxScrollTop ? 1 : 0
+    }
+    return 0
+  }
+
+  private getAutoScrollSpeed(mouseX: number, mouseY: number): number {
+    const relativeX = mouseX - this.x
+    const relativeY = mouseY - this.y
+
+    const distToLeft = relativeX
+    const distToRight = this.width - relativeX
+    const distToTop = relativeY
+    const distToBottom = this.height - relativeY
+
+    const minDistance = Math.min(distToLeft, distToRight, distToTop, distToBottom)
+
+    if (minDistance <= 1) {
+      return this.autoScrollSpeedFast
+    } else if (minDistance <= 2) {
+      return this.autoScrollSpeedMedium
+    } else {
+      return this.autoScrollSpeedSlow
+    }
   }
 
   private recalculateBarProps(): void {
@@ -252,5 +417,13 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public set horizontalScrollbarOptions(options: ScrollBoxOptions["horizontalScrollbarOptions"]) {
     Object.assign(this.horizontalScrollBar, options)
     this.requestRender()
+  }
+
+  protected destroySelf(): void {
+    if (this.selectionListener) {
+      this._ctx.off("selection", this.selectionListener)
+      this.selectionListener = undefined
+    }
+    super.destroySelf()
   }
 }

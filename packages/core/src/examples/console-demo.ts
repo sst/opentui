@@ -101,12 +101,12 @@ class ConsoleButton extends BoxRenderable {
         buttonCounters[this.logType as keyof typeof buttonCounters]++
 
         this.triggerConsoleLog()
-        event.preventDefault()
+        event.stopPropagation()
         break
 
       case "up":
         this.isPressed = false
-        event.preventDefault()
+        event.stopPropagation()
         break
 
       case "over":

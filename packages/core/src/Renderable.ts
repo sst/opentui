@@ -1173,7 +1173,7 @@ export abstract class Renderable extends EventEmitter {
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
 
-    this.beforeRender()
+    this.onUpdate(deltaTime)
     this.updateFromLayout()
 
     let renderBuffer = buffer
@@ -1218,7 +1218,7 @@ export abstract class Renderable extends EventEmitter {
     return this.renderableArray
   }
 
-  protected beforeRender(): void {
+  protected onUpdate(deltaTime: number): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
   }
@@ -1280,7 +1280,7 @@ export abstract class Renderable extends EventEmitter {
     this._mouseListeners[event.type]?.call(this, event)
     this.onMouseEvent(event)
 
-    if (this.parent && !event.defaultPrevented) {
+    if (this.parent && !event.propagationStopped) {
       this.parent.processMouseEvent(event)
     }
   }
@@ -1416,7 +1416,7 @@ export class RootRenderable extends Renderable {
     this.emit(LayoutEvents.RESIZED, { width, height })
   }
 
-  protected beforeRender(): void {
+  protected onUpdate(): void {
     if (this.layoutNode.yogaNode.isDirty()) {
       this.calculateLayout()
     }

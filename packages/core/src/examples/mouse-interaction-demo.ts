@@ -127,7 +127,7 @@ function DraggableBox(
             this.zIndex = nextZIndex++
             this.backgroundColor = dragBg
             this.borderColor = dragBorderColor
-            event.preventDefault()
+            event.stopPropagation()
             break
 
           case "drag-end":
@@ -136,7 +136,7 @@ function DraggableBox(
               this.zIndex = 100
               this.backgroundColor = originalBg
               this.borderColor = originalBorderColor
-              event.preventDefault()
+              event.stopPropagation()
             }
             break
 
@@ -151,7 +151,7 @@ function DraggableBox(
               this.x = boundedX
               this.y = boundedY
 
-              event.preventDefault()
+              event.stopPropagation()
             }
             break
 
@@ -198,7 +198,7 @@ function DraggableBox(
             if (event.scroll) {
               scrollText = `scroll ${event.scroll.direction}`
               scrollTimestamp = Date.now()
-              event.preventDefault()
+              event.stopPropagation()
             }
             break
         }
@@ -272,7 +272,7 @@ class MouseInteractionFrameBuffer extends FrameBufferRenderable {
   }
 
   protected onMouseEvent(event: MouseEvent): void {
-    if (event.defaultPrevented) return
+    if (event.propagationStopped) return
 
     const cellKey = `${event.x},${event.y}`
 
