@@ -71,13 +71,20 @@ export class TextNode {
     this.textParent = textParent
     let styledText = textParent.content
 
-    if (anchor && anchor instanceof TextNode) {
-      const anchorIndex = styledText.chunks.indexOf(anchor.chunk)
+    if (anchor) {
+      if (anchor instanceof Renderable) {
+        console.warn("text node can't be anchored to Renderable")
+        return
+      } else if (isTextChunk(anchor)) {
+        anchor = ChunkToTextNodeMap.get(anchor)
+      }
+      const anchorIndex = anchor ? styledText.chunks.indexOf(anchor.chunk) : -1
       if (anchorIndex === -1) {
         log("anchor not found")
-        return
+        styledText = styledText.insert(this.chunk)
+      } else {
+        styledText = styledText.insert(this.chunk, anchorIndex)
       }
-      styledText = styledText.insert(this.chunk, anchorIndex)
     } else {
       const firstChunk = textParent.content.chunks[0]
       if (firstChunk && !ChunkToTextNodeMap.has(firstChunk)) {
