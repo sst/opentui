@@ -344,8 +344,4 @@ export class InputRenderable extends Renderable {
       this._ctx.setCursorPosition(0, 0, false)
     }
   }
-
-  protected destroySelf(): void {
-    super.destroySelf()
-  }
 }

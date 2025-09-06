@@ -201,6 +201,7 @@ export abstract class Renderable extends EventEmitter {
 
   public readonly id: string
   public readonly num: number
+  private _isDestroyed: boolean = false
   protected _ctx: RenderContext
   protected _translateX: number = 0
   protected _translateY: number = 0
@@ -1083,6 +1084,13 @@ export abstract class Renderable extends EventEmitter {
       return -1
     }
 
+    if (renderable.isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping add`)
+      }
+      return -1
+    }
+
     if (this.renderableMap.has(renderable.id)) {
       console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
       this.remove(renderable.id)
@@ -1126,11 +1134,13 @@ export abstract class Renderable extends EventEmitter {
       return this.add(renderable)
     }
 
+    // Should we really throw for this? Maybe just log a warning in dev.
     if (!this.renderableMap.has(anchor.id)) {
       throw new Error("Anchor does not exist")
     }
 
     const anchorIndex = this.renderableArray.indexOf(anchor)
+    // Same here: maybe just log a warning in dev.
     if (anchorIndex === -1) {
       throw new Error("Anchor does not exist")
     }
@@ -1251,7 +1261,17 @@ export abstract class Renderable extends EventEmitter {
     // Override this method to provide custom rendering
   }
 
+  public get isDestroyed(): boolean {
+    return this._isDestroyed
+  }
+
   public destroy(): void {
+    if (this._isDestroyed) {
+      return
+    }
+
+    this._isDestroyed = true
+
     if (this.parent) {
       this.parent.remove(this.id)
     }
@@ -1262,19 +1282,18 @@ export abstract class Renderable extends EventEmitter {
     }
 
     for (const child of this.renderableArray) {
-      child.parent = null
-      child.destroy()
+      this.remove(child.id)
     }
 
     this.renderableArray = []
     this.renderableMap.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
-    this.layoutNode.destroy()
     this.blur()
     this.removeAllListeners()
 
     this.destroySelf()
+    this.layoutNode.destroy()
   }
 
   public destroyRecursively(): void {
@@ -1446,7 +1465,5 @@ export class RootRenderable extends Renderable {
     } catch (error) {
       // Config might already be freed
     }
-
-    super.destroySelf()
   }
 }
