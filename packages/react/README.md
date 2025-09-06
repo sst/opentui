@@ -27,6 +27,26 @@ function App() {
 render(<App />)
 ```
 
+
+## TypeScript Configuration
+
+For optimal TypeScript support, configure your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
+```
+
 ## Core Concepts
 
 ### Components
@@ -509,23 +529,4 @@ function App() {
 }
 
 render(<App />)
-```
-
-## TypeScript Configuration
-
-For optimal TypeScript support, configure your `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
-    "strict": true,
-    "skipLibCheck": true
-  }
-}
 ```
