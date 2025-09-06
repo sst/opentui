@@ -1,6 +1,7 @@
 import type { RGBA } from "./lib/RGBA"
 import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection"
+import type { Renderable } from "./Renderable"
 
 export const TextAttributes = {
   NONE: 0,
@@ -45,6 +46,7 @@ export interface RenderContext extends EventEmitter {
   capabilities: any | null
   requestLive: () => void
   dropLive: () => void
+  focusedRenderable: Renderable | null
   hasSelection: boolean
   getSelection: () => Selection | null
   requestSelectionUpdate: () => void

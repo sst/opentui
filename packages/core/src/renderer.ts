@@ -16,6 +16,7 @@ import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo }
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
+import { FocusManager, type FocusKeyHandler } from "./lib/FocusManager"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -34,6 +35,8 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
+  focusKeyHandler?: FocusKeyHandler
+  useFocusManager?: boolean
 }
 
 export type PixelResolution = {
@@ -133,6 +136,11 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
+
+  if (config.useFocusManager ?? true) {
+    FocusManager.install(renderer, { onKey: config.focusKeyHandler })
+  }
+
   return renderer
 }
 
@@ -213,6 +221,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _resolution: PixelResolution | null = null
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
+
+  private _focusedRenderable: Renderable | null = null
 
   private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
   private resizeDebounceDelay: number = 100
@@ -371,6 +381,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     }
+  }
+
+  public set focusedRenderable(renderable: Renderable | null) {
+    this._focusedRenderable = renderable
+  }
+
+  public get focusedRenderable(): Renderable | null {
+    return this._focusedRenderable
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
@@ -1081,6 +1099,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.sigwinchHandler = null
     }
 
+    FocusManager.uninstall()
     this._console.deactivate()
     this.disableStdoutInterception()
     this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)

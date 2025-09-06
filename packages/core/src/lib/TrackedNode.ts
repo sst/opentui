@@ -1,5 +1,6 @@
 import Yoga, { type Config, type Node as YogaNode } from "yoga-layout"
 import { EventEmitter } from "events"
+import { globalEmitter } from "./globalEmitter"
 
 // TrackedNode
 // A TypeScript wrapper for Yoga nodes that tracks indices and maintains parent-child relationships.
@@ -105,6 +106,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
       console.error("Error setting width and height", e)
     }
 
+    globalEmitter.emit("treeChanged", this)
     return index
   }
 
@@ -123,6 +125,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
 
     childNode.parent = null
 
+    globalEmitter.emit("treeChanged", this)
     return true
   }
 
@@ -138,6 +141,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
 
     childNode.parent = null
 
+    globalEmitter.emit("treeChanged", this)
     return childNode
   }
 
@@ -159,6 +163,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     this.yogaNode.removeChild(childNode.yogaNode)
     this.yogaNode.insertChild(childNode.yogaNode, boundedNewIndex)
 
+    globalEmitter.emit("treeChanged", this)
     return boundedNewIndex
   }
 
@@ -180,6 +185,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
       console.error("Error setting width and height", e)
     }
 
+    globalEmitter.emit("treeChanged", this)
     return boundedIndex
   }
 
@@ -222,6 +228,7 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     } catch (e) {
       // Might be already freed and will throw an error if we try to free it again
     }
+    globalEmitter.emit("treeChanged", this)
     this._destroyed = true
   }
 }
