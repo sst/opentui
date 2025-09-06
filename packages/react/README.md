@@ -27,7 +27,6 @@ function App() {
 render(<App />)
 ```
 
-
 ## TypeScript Configuration
 
 For optimal TypeScript support, configure your `tsconfig.json`:
