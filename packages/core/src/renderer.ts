@@ -317,6 +317,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           resolve(true)
         }, 100)
       }).then(() => {
+        // TODO: Fix friggin shut down sequence to not splurt into scrollback
+        this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
+
         this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
         this.realStdoutWrite.call(this.stdout, "Console cache:\n")
         this.realStdoutWrite.call(this.stdout, this.console.getCachedLogs())

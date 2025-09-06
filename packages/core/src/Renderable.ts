@@ -21,7 +21,7 @@ import {
 } from "./lib/yoga.options"
 import type { MouseEvent } from "./renderer"
 import type { RenderContext, ViewportBounds } from "./types"
-import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
+import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
 import type { Selection } from "./lib/selection"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
@@ -1078,30 +1078,33 @@ export abstract class Renderable extends EventEmitter {
       return -1
     }
 
-    obj = ensureRenderable(this._ctx, obj)
-
-    if (this.renderableMap.has(obj.id)) {
-      console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
-      this.remove(obj.id)
+    const renderable = maybeMakeRenderable(this._ctx, obj)
+    if (!renderable) {
+      return -1
     }
 
-    this.replaceParent(obj)
+    if (this.renderableMap.has(renderable.id)) {
+      console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
+      this.remove(renderable.id)
+    }
 
-    const childLayoutNode = obj.getLayoutNode()
+    this.replaceParent(renderable)
+
+    const childLayoutNode = renderable.getLayoutNode()
     let insertedIndex: number
     if (index !== undefined) {
-      this.renderableArray.splice(index, 0, obj)
+      this.renderableArray.splice(index, 0, renderable)
       insertedIndex = this.layoutNode.insertChild(childLayoutNode, index)
     } else {
-      this.renderableArray.push(obj)
+      this.renderableArray.push(renderable)
       insertedIndex = this.layoutNode.addChild(childLayoutNode)
     }
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
-    this.renderableMap.set(obj.id, obj)
+    this.renderableMap.set(renderable.id, renderable)
 
-    if (obj._liveCount > 0) {
-      this.propagateLiveCount(obj._liveCount)
+    if (renderable._liveCount > 0) {
+      this.propagateLiveCount(renderable._liveCount)
     }
 
     this.requestRender()
@@ -1114,10 +1117,13 @@ export abstract class Renderable extends EventEmitter {
       return -1
     }
 
-    obj = ensureRenderable(this._ctx, obj)
+    const renderable = maybeMakeRenderable(this._ctx, obj)
+    if (!renderable) {
+      return -1
+    }
 
     if (!anchor) {
-      return this.add(obj)
+      return this.add(renderable)
     }
 
     if (!this.renderableMap.has(anchor.id)) {
@@ -1129,7 +1135,7 @@ export abstract class Renderable extends EventEmitter {
       throw new Error("Anchor does not exist")
     }
 
-    return this.add(obj, anchorIndex)
+    return this.add(renderable, anchorIndex)
   }
 
   // TODO: that naming is meh
