@@ -55,7 +55,7 @@ jobs:
         run: bun i
 
       - name: Prepare release versions
-        run: bun run prepare-release ${{ steps.version_scheme.outputs.version }}
+        run: bun run prepare-release "${{ steps.version_scheme.outputs.version }}"
 
       - name: Create and auto-merge version bump PR (full release only)
         if: steps.version_scheme.outputs.is_prerelease == 'false'
