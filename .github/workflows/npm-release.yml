@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   release:
     runs-on: macos-latest
@@ -37,7 +41,7 @@ jobs:
           TAG_VERSION="${{ steps.extract_version.outputs.version }}"
           COMMIT_SHA=$(git rev-parse --short=8 HEAD)
 
-          if [[ "$TAG_VERSION" == *"-snapshot" ]]; then
+          if [[ "$TAG_VERSION" == *"-snapshot"* ]]; then
             # Pre-release snapshot
             VERSION="${TAG_VERSION}-${COMMIT_SHA}"
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
