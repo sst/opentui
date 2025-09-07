@@ -212,6 +212,7 @@ function validatePackage(config: PackageConfig): void {
 function getUserConfirmation(): void {
   console.log(
     `
+
 Pre-publish checklist:
 
 1. [OK] Version fields in package.json files have been updated
@@ -222,6 +223,11 @@ Pre-publish checklist:
 Continue with publishing? (y/n)
 `.trim(),
   )
+
+  if (process.env.CI === "true") {
+    console.log("INFO: Running in CI environment, skipping user confirmation")
+    return
+  }
 
   const confirm: SpawnSyncReturns<Buffer> = spawnSync(
     "node",

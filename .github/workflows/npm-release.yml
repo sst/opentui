@@ -37,19 +37,19 @@ jobs:
           TAG_VERSION="${{ steps.extract_version.outputs.version }}"
           COMMIT_SHA=$(git rev-parse --short=8 HEAD)
 
-          if [[ "$GITHUB_REF" == *"-"* ]]; then
-            # Pre-release (contains hyphen)
+          if [[ "$TAG_VERSION" == *"-snapshot" ]]; then
+            # Pre-release snapshot
             VERSION="${TAG_VERSION}-${COMMIT_SHA}"
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Using snapshot version: $VERSION"
           else
             # Full release
             VERSION="*"
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Using full release version: $VERSION"
           fi
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using version: $VERSION"
-          echo "Is prerelease: ${{ steps.version_scheme.outputs.is_prerelease }}"
 
       - name: Install dependencies
         run: bun i
@@ -110,4 +110,5 @@ jobs:
       - name: Publish packages
         run: bun run publish
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CI: true
