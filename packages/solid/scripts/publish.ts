@@ -23,7 +23,15 @@ const distDir = join(rootDir, "dist")
 
 console.log(`\nPublishing ${packageJson.name}@${packageJson.version}...`)
 
-const publish: SpawnSyncReturns<Buffer> = spawnSync("npm", ["publish", "--access=public"], {
+const isSnapshot = packageJson.version.includes("-snapshot")
+const publishArgs = ["publish", "--access=public"]
+
+if (isSnapshot) {
+  publishArgs.push("--tag", "snapshot")
+  console.log(`  Publishing as snapshot (--tag snapshot)`)
+}
+
+const publish: SpawnSyncReturns<Buffer> = spawnSync("npm", publishArgs, {
   cwd: distDir,
   stdio: "inherit",
 })
