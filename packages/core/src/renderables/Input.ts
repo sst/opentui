@@ -177,6 +177,10 @@ export class InputRenderable extends Renderable {
     }
   }
 
+  public get cursorPosition(): number {
+    return this._cursorPosition
+  }
+
   public set cursorPosition(position: number) {
     const newPosition = Math.max(0, Math.min(position, this._value.length))
     if (this._cursorPosition !== newPosition) {
