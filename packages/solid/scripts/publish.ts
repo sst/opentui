@@ -23,7 +23,7 @@ const distDir = join(rootDir, "dist")
 
 console.log(`\nPublishing ${packageJson.name}@${packageJson.version}...`)
 
-const isSnapshot = packageJson.version.includes("-snapshot")
+const isSnapshot = packageJson.version.includes("-snapshot") || /^0\.0\.0-\d{8}-[a-f0-9]{8}$/.test(packageJson.version)
 const publishArgs = ["publish", "--access=public"]
 
 if (isSnapshot) {
