@@ -21,10 +21,6 @@
       "types": "./index.ts",
       "import": "./index.ts"
     },
-    "./reconciler": {
-      "types": "./src/reconciler.ts",
-      "import": "./src/reconciler.ts"
-    },
     "./preload": {
       "import": "./scripts/preload.ts"
     },
