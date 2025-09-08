@@ -123,7 +123,12 @@ export class TextNode {
         this.textParent.content = styledText
       } else {
         this.parent?.remove(this.textParent.id)
-        this.textParent.destroyRecursively()
+        process.nextTick(() => {
+          if (!this.textParent) return
+          if (!this.textParent.parent) {
+            this.textParent.destroyRecursively()
+          }
+        })
       }
     }
   }

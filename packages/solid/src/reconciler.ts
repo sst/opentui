@@ -104,7 +104,11 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   }
   if (parent instanceof Renderable && node instanceof Renderable) {
     parent.remove(node.id)
-    node.destroyRecursively()
+    process.nextTick(() => {
+      if (!node.parent) {
+        node.destroyRecursively()
+      }
+    })
   }
 }
 
