@@ -30,6 +30,39 @@ pub const TextChunk = struct {
     attributes: u16,
 };
 
+pub const ChunkRef = struct {
+    line_index: usize,
+    chunk_index: usize,
+};
+
+/// A ChunkGroup tracks references to TextChunks that were created from a single writeChunk call
+/// This allows mapping StyledText operations to the native text buffer
+pub const ChunkGroup = struct {
+    /// References to TextChunks created from this group, in order
+    chunk_refs: std.ArrayList(ChunkRef),
+
+    pub fn init(allocator: Allocator) ChunkGroup {
+        return .{
+            .chunk_refs = std.ArrayList(ChunkRef).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *ChunkGroup) void {
+        self.chunk_refs.deinit();
+    }
+
+    pub fn addChunkRef(self: *ChunkGroup, line_index: usize, chunk_index: usize) !void {
+        try self.chunk_refs.append(ChunkRef{
+            .line_index = line_index,
+            .chunk_index = chunk_index,
+        });
+    }
+
+    pub fn getChunkCount(self: *const ChunkGroup) usize {
+        return self.chunk_refs.items.len;
+    }
+};
+
 /// A line contains multiple chunks and tracks its total width and start position
 pub const TextLine = struct {
     chunks: std.ArrayList(TextChunk),
@@ -74,22 +107,22 @@ pub const TextBuffer = struct {
     current_line: usize,
     current_line_width: u32,
 
+    chunk_groups: std.ArrayList(*ChunkGroup),
+
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
 
-    pub fn init(allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod) TextBufferError!*TextBuffer {
+    pub fn init(allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
         if (length == 0) return TextBufferError.InvalidDimensions;
 
         const self = allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
         errdefer allocator.destroy(self);
 
-        const graph = Graphemes.init(allocator) catch return TextBufferError.OutOfMemory;
-        errdefer graph.deinit(allocator);
-        const dw = DisplayWidth.initWithGraphemes(allocator, graph) catch return TextBufferError.OutOfMemory;
-        errdefer dw.deinit(allocator);
+        const graph = graphemes_data.*;
+        const dw = display_width.*;
 
         var lines = std.ArrayList(TextLine).init(allocator);
         errdefer {
@@ -98,6 +131,9 @@ pub const TextBuffer = struct {
             }
             lines.deinit();
         }
+
+        var chunk_groups = std.ArrayList(*ChunkGroup).init(allocator);
+        errdefer chunk_groups.deinit();
 
         const first_line = TextLine.init(allocator);
         lines.append(first_line) catch return TextBufferError.OutOfMemory;
@@ -115,6 +151,7 @@ pub const TextBuffer = struct {
             .lines = lines,
             .current_line = 0,
             .current_line_width = 0,
+            .chunk_groups = chunk_groups,
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
@@ -129,13 +166,17 @@ pub const TextBuffer = struct {
 
     pub fn deinit(self: *TextBuffer) void {
         self.grapheme_tracker.deinit();
-        self.display_width.deinit(self.allocator);
-        self.graphemes_data.deinit(self.allocator);
 
         for (self.lines.items) |*line| {
             line.deinit();
         }
         self.lines.deinit();
+
+        for (self.chunk_groups.items) |chunk_group| {
+            chunk_group.deinit();
+            self.allocator.destroy(chunk_group);
+        }
+        self.chunk_groups.deinit();
 
         self.allocator.free(self.char);
         self.allocator.destroy(self);
@@ -172,6 +213,13 @@ pub const TextBuffer = struct {
             line.deinit();
         }
         self.lines.clearRetainingCapacity();
+
+        // Clean up chunk groups
+        for (self.chunk_groups.items) |chunk_group| {
+            chunk_group.deinit();
+            self.allocator.destroy(chunk_group);
+        }
+        self.chunk_groups.clearRetainingCapacity();
 
         const first_line = TextLine.init(self.allocator);
         self.lines.append(first_line) catch {};
@@ -230,7 +278,25 @@ pub const TextBuffer = struct {
     /// Creates a new chunk with the specified styling and adds it to the current line
     /// Returns flags: bit 0 = resized during write, bits 1-31 = number of cells written
     pub fn writeChunk(self: *TextBuffer, textBytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
-        if (textBytes.len == 0) return 0;
+        // Empty text creates a single chunk group
+        if (textBytes.len == 0) {
+            const chunk_group = self.allocator.create(ChunkGroup) catch return TextBufferError.OutOfMemory;
+            chunk_group.* = ChunkGroup.init(self.allocator);
+            errdefer {
+                chunk_group.deinit();
+                self.allocator.destroy(chunk_group);
+            }
+            self.chunk_groups.append(chunk_group) catch return TextBufferError.OutOfMemory;
+            return 0;
+        }
+
+        // Create chunk group to track this write operation
+        const chunk_group = self.allocator.create(ChunkGroup) catch return TextBufferError.OutOfMemory;
+        chunk_group.* = ChunkGroup.init(self.allocator);
+        errdefer {
+            chunk_group.deinit();
+            self.allocator.destroy(chunk_group);
+        }
 
         var attrValue: u16 = 0;
 
@@ -257,9 +323,9 @@ pub const TextBuffer = struct {
             wasResized = true;
         }
 
-        const chunk_offset = self.char_count;
-        var chunk_chars: u32 = 0;
-        var chunk_width: u32 = 0;
+        var current_chunk_offset = self.char_count;
+        var current_chunk_chars: u32 = 0;
+        var current_chunk_width: u32 = 0;
 
         iter = self.graphemes_data.iterator(textBytes);
 
@@ -283,8 +349,11 @@ pub const TextBuffer = struct {
                 const width: u32 = @intCast(width_u16);
                 required = width;
 
-                if (bytes.len == 1 and width == 1 and bytes[0] >= 32) {
-                    encoded_char = @as(u32, bytes[0]);
+                if (width == 1) {
+                    const codepoint = std.unicode.utf8Decode(bytes) catch {
+                        continue;
+                    };
+                    encoded_char = codepoint;
                 } else {
                     const gid = self.pool.alloc(bytes) catch return TextBufferError.OutOfMemory;
                     encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, width);
@@ -298,22 +367,44 @@ pub const TextBuffer = struct {
 
                 self.char[self.char_count] = encoded_char;
                 self.char_count += 1;
-                chunk_chars += 1;
+                current_chunk_chars += 1;
 
                 var k: u32 = 1;
                 while (k <= right and self.char_count < self.capacity) : (k += 1) {
                     const cont = gp.packContinuation(k, right - k, gid);
                     self.char[self.char_count] = cont;
                     self.char_count += 1;
-                    chunk_chars += 1;
+                    current_chunk_chars += 1;
                 }
             } else {
                 self.char[self.char_count] = encoded_char;
                 self.char_count += 1;
-                chunk_chars += 1;
+                current_chunk_chars += 1;
             }
 
             if (is_newline) {
+                if (current_chunk_chars > 0) {
+                    const chunk = TextChunk{
+                        .offset = current_chunk_offset,
+                        .length = current_chunk_chars,
+                        .fg = fg,
+                        .bg = bg,
+                        .attributes = attrValue,
+                    };
+
+                    if (self.current_line < self.lines.items.len) {
+                        const chunk_index = self.lines.items[self.current_line].chunks.items.len;
+                        self.lines.items[self.current_line].chunks.append(chunk) catch return TextBufferError.OutOfMemory;
+                        self.lines.items[self.current_line].width += current_chunk_width;
+
+                        chunk_group.addChunkRef(self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
+                    }
+
+                    current_chunk_offset = self.char_count;
+                    current_chunk_chars = 0;
+                    current_chunk_width = 0;
+                }
+
                 if (self.current_line < self.lines.items.len) {
                     self.lines.items[self.current_line].width = self.current_line_width;
                 }
@@ -327,29 +418,34 @@ pub const TextBuffer = struct {
                     self.lines.append(new_line) catch return TextBufferError.OutOfMemory;
                 }
 
-                chunk_width = 0;
                 cellCount += 1;
             } else {
-                chunk_width += required;
+                current_chunk_width += required;
                 self.current_line_width += required;
                 cellCount += required;
             }
         }
 
-        if (chunk_chars > 0) {
+        // Create final chunk if there's remaining content
+        if (current_chunk_chars > 0) {
             const chunk = TextChunk{
-                .offset = chunk_offset,
-                .length = chunk_chars,
+                .offset = current_chunk_offset,
+                .length = current_chunk_chars,
                 .fg = fg,
                 .bg = bg,
                 .attributes = attrValue,
             };
 
             if (self.current_line < self.lines.items.len) {
+                const chunk_index = self.lines.items[self.current_line].chunks.items.len;
                 self.lines.items[self.current_line].chunks.append(chunk) catch return TextBufferError.OutOfMemory;
-                self.lines.items[self.current_line].width += chunk_width;
+                self.lines.items[self.current_line].width += current_chunk_width;
+
+                chunk_group.addChunkRef(self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
             }
         }
+
+        self.chunk_groups.append(chunk_group) catch return TextBufferError.OutOfMemory;
 
         const resizeFlag: u32 = if (wasResized) 1 else 0;
         return (cellCount << 1) | resizeFlag;
@@ -515,44 +611,206 @@ pub const TextBuffer = struct {
 
         var out_index: usize = 0;
         var count: u32 = 0;
-        var char_index: u32 = 0;
 
-        while (char_index < self.char_count and count < end and out_index < out_buffer.len) {
-            const c = self.char[char_index];
-            if (!gp.isContinuationChar(c)) {
-                if (count >= start) {
-                    if (gp.isGraphemeChar(c)) {
-                        const gid = gp.graphemeIdFromChar(c);
-                        const grapheme_bytes = self.pool.get(gid) catch continue;
-                        const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
-                        @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
-                        out_index += copy_len;
-                    } else {
-                        var utf8_buf: [4]u8 = undefined;
-                        const utf8_len = std.unicode.utf8Encode(@intCast(c), &utf8_buf) catch 1;
-                        const copy_len = @min(utf8_len, out_buffer.len - out_index);
-                        @memcpy(out_buffer[out_index .. out_index + copy_len], utf8_buf[0..copy_len]);
-                        out_index += copy_len;
-                    }
-                }
-                count += 1;
+        // Iterate through all lines and chunks, similar to rendering
+        for (self.lines.items) |line| {
+            for (line.chunks.items) |chunk| {
+                var chunk_char_index: u32 = 0;
+                while (chunk_char_index < chunk.length and count < end and out_index < out_buffer.len) : (chunk_char_index += 1) {
+                    const global_char_index = chunk.offset + chunk_char_index;
+                    const c = self.char[global_char_index];
 
-                // Skip continuation characters for graphemes
-                if (gp.isGraphemeChar(c)) {
-                    const right_extent = gp.charRightExtent(c);
-                    var k: u32 = 0;
-                    while (k < right_extent and char_index + 1 < self.char_count) : (k += 1) {
-                        if (gp.isContinuationChar(self.char[char_index + 1])) {
-                            char_index += 1;
-                        } else {
-                            break;
+                    if (!gp.isContinuationChar(c)) {
+                        if (count >= start) {
+                            if (gp.isGraphemeChar(c)) {
+                                const gid = gp.graphemeIdFromChar(c);
+                                const grapheme_bytes = self.pool.get(gid) catch continue;
+                                const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
+                                @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
+                                out_index += copy_len;
+                            } else {
+                                var utf8_buf: [4]u8 = undefined;
+                                const utf8_len = std.unicode.utf8Encode(@intCast(c), &utf8_buf) catch 1;
+                                const copy_len = @min(utf8_len, out_buffer.len - out_index);
+                                @memcpy(out_buffer[out_index .. out_index + copy_len], utf8_buf[0..copy_len]);
+                                out_index += copy_len;
+                            }
+                        }
+                        count += 1;
+
+                        // Skip continuation characters for graphemes
+                        if (gp.isGraphemeChar(c)) {
+                            const right_extent = gp.charRightExtent(c);
+                            var k: u32 = 0;
+                            while (k < right_extent and chunk_char_index + 1 < chunk.length) : (k += 1) {
+                                chunk_char_index += 1;
+                                // Verify the continuation character exists
+                                const cont_index = chunk.offset + chunk_char_index;
+                                if (cont_index >= self.char_count or !gp.isContinuationChar(self.char[cont_index])) {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
             }
-            char_index += 1;
         }
 
         return out_index;
+    }
+
+    /// Extract all text as UTF-8 bytes from the char buffer into provided output buffer
+    /// Returns the number of bytes written to the output buffer
+    pub fn getPlainTextIntoBuffer(self: *const TextBuffer, out_buffer: []u8) usize {
+        var out_index: usize = 0;
+
+        // Iterate through all lines and chunks, similar to rendering
+        for (self.lines.items) |line| {
+            for (line.chunks.items) |chunk| {
+                var chunk_char_index: u32 = 0;
+                while (chunk_char_index < chunk.length and out_index < out_buffer.len) : (chunk_char_index += 1) {
+                    const global_char_index = chunk.offset + chunk_char_index;
+                    const c = self.char[global_char_index];
+
+                    if (!gp.isContinuationChar(c)) {
+                        if (gp.isGraphemeChar(c)) {
+                            const gid = gp.graphemeIdFromChar(c);
+                            const grapheme_bytes = self.pool.get(gid) catch continue;
+                            const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
+                            @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
+                            out_index += copy_len;
+                        } else {
+                            var utf8_buf: [4]u8 = undefined;
+                            const utf8_len = std.unicode.utf8Encode(@intCast(c), &utf8_buf) catch 1;
+                            const copy_len = @min(utf8_len, out_buffer.len - out_index);
+                            @memcpy(out_buffer[out_index .. out_index + copy_len], utf8_buf[0..copy_len]);
+                            out_index += copy_len;
+                        }
+
+                        // Skip continuation characters for graphemes
+                        if (gp.isGraphemeChar(c)) {
+                            const right_extent = gp.charRightExtent(c);
+                            var k: u32 = 0;
+                            while (k < right_extent and chunk_char_index + 1 < chunk.length) : (k += 1) {
+                                chunk_char_index += 1;
+                                // Verify the continuation character exists
+                                const cont_index = chunk.offset + chunk_char_index;
+                                if (cont_index >= self.char_count or !gp.isContinuationChar(self.char[cont_index])) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return out_index;
+    }
+
+    /// Insert a chunk group at the specified index
+    /// This maps to StyledText.insert() operation
+    pub fn insertChunkGroup(self: *TextBuffer, index: usize, text_bytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
+        if (text_bytes.len == 0) return self.char_count;
+
+        // TODO: Inserts currently leak, as they only append
+        // - will be solved with a global text pool
+
+        const old_char_count = self.char_count;
+        // TODO: Use a re-usable parseChunk function instead of writeChunk and .pop workaround
+        _ = try self.writeChunk(text_bytes, fg, bg, attr);
+        const new_chunk_group = self.chunk_groups.pop() orelse return TextBufferError.InvalidIndex;
+
+        if (index >= self.chunk_groups.items.len) {
+            self.chunk_groups.append(new_chunk_group) catch return TextBufferError.OutOfMemory;
+            return self.char_count;
+        }
+
+        // TODO: Everything form here on seems very inefficient, can be improved
+
+        // Move chunks from temporary lines to correct insertion point
+        const target_group = self.chunk_groups.items[index];
+        const insert_line_idx = if (target_group.chunk_refs.items.len > 0)
+            target_group.chunk_refs.items[0].line_index
+        else
+            0;
+        const insert_chunk_idx = if (target_group.chunk_refs.items.len > 0)
+            target_group.chunk_refs.items[0].chunk_index
+        else
+            0;
+
+        if (insert_line_idx < self.lines.items.len) {
+            var target_line = &self.lines.items[insert_line_idx];
+
+            var inserted_chunk_idx: ?usize = null;
+            for (target_line.chunks.items, 0..) |chunk, i| {
+                if (chunk.offset >= old_char_count) {
+                    inserted_chunk_idx = i;
+                    break;
+                }
+            }
+
+            if (inserted_chunk_idx) |idx| {
+                const inserted_chunk = target_line.chunks.orderedRemove(idx);
+
+                target_line.chunks.insert(insert_chunk_idx, inserted_chunk) catch return TextBufferError.OutOfMemory;
+
+                for (new_chunk_group.chunk_refs.items) |*ref| {
+                    if (ref.line_index == insert_line_idx) {
+                        ref.chunk_index = insert_chunk_idx;
+                    }
+                }
+            }
+        }
+
+        self.chunk_groups.insert(index, new_chunk_group) catch return TextBufferError.OutOfMemory;
+
+        return self.char_count;
+    }
+
+    /// Remove a chunk group at the specified index
+    /// This maps to StyledText.remove() operation
+    pub fn removeChunkGroup(self: *TextBuffer, index: usize) TextBufferError!u32 {
+        if (index >= self.chunk_groups.items.len) return TextBufferError.InvalidIndex;
+
+        const chunk_group = self.chunk_groups.items[index];
+
+        var i = chunk_group.chunk_refs.items.len;
+        while (i > 0) {
+            i -= 1;
+            const chunk_ref = chunk_group.chunk_refs.items[i];
+            if (chunk_ref.line_index < self.lines.items.len and
+                chunk_ref.chunk_index < self.lines.items[chunk_ref.line_index].chunks.items.len)
+            {
+                _ = self.lines.items[chunk_ref.line_index].chunks.orderedRemove(chunk_ref.chunk_index);
+            }
+        }
+
+        _ = self.chunk_groups.orderedRemove(index);
+        chunk_group.deinit();
+        self.allocator.destroy(chunk_group);
+
+        return self.char_count;
+    }
+
+    /// Replace a chunk group at the specified index
+    /// This maps to StyledText.replace() operation
+    pub fn replaceChunkGroup(self: *TextBuffer, index: usize, text_bytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
+        if (index >= self.chunk_groups.items.len) return TextBufferError.InvalidIndex;
+
+        _ = try self.removeChunkGroup(index);
+
+        return try self.insertChunkGroup(index, text_bytes, fg, bg, attr);
+    }
+
+    /// Get the number of chunk groups
+    pub fn getChunkGroupCount(self: *const TextBuffer) usize {
+        return self.chunk_groups.items.len;
+    }
+
+    /// Get a chunk group by index
+    pub fn getChunkGroup(self: *const TextBuffer, index: usize) ?*const ChunkGroup {
+        if (index >= self.chunk_groups.items.len) return null;
+        return self.chunk_groups.items[index];
     }
 };

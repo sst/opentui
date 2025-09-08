@@ -60,17 +60,51 @@ export class TextRenderable extends Renderable {
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
 
     this.setupMeasureFunc()
-    this.updateTextInfo(styledText)
+    this.updateTextBuffer(styledText)
+    this._text.mount(this)
+    this.updateTextInfo()
+  }
+
+  private updateTextBuffer(styledText: StyledText): void {
+    this.textBuffer.setStyledText(styledText)
+    this.clearChunks(styledText)
+  }
+
+  private clearChunks(styledText: StyledText): void {
+    // Clearing chunks that were already writtend to the text buffer,
+    // to not retain references to the text data in js
+    styledText.chunks.forEach((chunk) => {
+      // @ts-ignore
+      chunk.text = undefined
+      // @ts-ignore
+      chunk.plainText = undefined
+    })
   }
 
   get content(): StyledText {
     return this._text
   }
 
+  get plainText(): string {
+    return this.textBuffer.getPlainText()
+  }
+
+  get textLength(): number {
+    return this.textBuffer.length
+  }
+
+  get chunks(): TextChunk[] {
+    return this._text.chunks
+  }
+
   set content(value: StyledText | string) {
     const styledText = typeof value === "string" ? stringToStyledText(value) : value
-    this._text = styledText
-    this.updateTextInfo(styledText)
+    if (this._text !== styledText) {
+      this._text = styledText
+      styledText.mount(this)
+      this.updateTextBuffer(styledText)
+      this.updateTextInfo()
+    }
   }
 
   get fg(): RGBA {
@@ -166,9 +200,7 @@ export class TextRenderable extends Renderable {
     )
   }
 
-  private updateTextInfo(styledText: StyledText): void {
-    this.updateTextBuffer(styledText)
-
+  private updateTextInfo(): void {
     const lineInfo = this.textBuffer.lineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
@@ -218,6 +250,35 @@ export class TextRenderable extends Renderable {
     this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
   }
 
+  insertChunk(chunk: TextChunk, index?: number): void {
+    this.textBuffer.insertEncodedChunkGroup(
+      index ?? this.textBuffer.chunkGroupCount,
+      chunk.text,
+      chunk.fg,
+      chunk.bg,
+      chunk.attributes,
+    )
+    this.updateTextInfo()
+    this.clearChunks(this._text)
+  }
+
+  removeChunk(chunk: TextChunk): void {
+    const index = this._text.chunks.indexOf(chunk)
+    if (index === -1) return
+    this.textBuffer.removeChunkGroup(index)
+    this.updateTextInfo()
+    this.clearChunks(this._text)
+  }
+
+  replaceChunk(chunk: TextChunk, oldChunk: TextChunk): void {
+    const index = this._text.chunks.indexOf(oldChunk)
+
+    if (index === -1) return
+    this.textBuffer.replaceEncodedChunkGroup(index, chunk.text, chunk.fg, chunk.bg, chunk.attributes)
+    this.updateTextInfo()
+    this.clearChunks(this._text)
+  }
+
   shouldStartSelection(x: number, y: number): boolean {
     if (!this.selectable) return false
 
@@ -250,10 +311,6 @@ export class TextRenderable extends Renderable {
 
   getSelection(): { start: number; end: number } | null {
     return this.textBuffer.getSelection()
-  }
-
-  private updateTextBuffer(styledText: StyledText): void {
-    this.textBuffer.setStyledText(styledText)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

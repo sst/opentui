@@ -1,4 +1,6 @@
 const std = @import("std");
+pub const Graphemes = @import("Graphemes");
+pub const DisplayWidth = @import("DisplayWidth");
 
 pub const GraphemePoolError = error{
     OutOfMemory,
@@ -289,6 +291,35 @@ pub fn deinitGlobalPool() void {
     if (GLOBAL_POOL_STORAGE) |*p| {
         p.deinit();
         GLOBAL_POOL_STORAGE = null;
+    }
+}
+
+var GLOBAL_GRAPHEMES_STORAGE: ?Graphemes = null;
+var GLOBAL_DISPLAY_WIDTH_STORAGE: ?DisplayWidth = null;
+
+pub fn initGlobalUnicodeData(allocator: std.mem.Allocator) struct { *Graphemes, *DisplayWidth } {
+    if (GLOBAL_GRAPHEMES_STORAGE == null) {
+        GLOBAL_GRAPHEMES_STORAGE = Graphemes.init(allocator) catch |err| {
+            std.debug.panic("Failed to initialize global Graphemes: {}", .{err});
+        };
+        GLOBAL_DISPLAY_WIDTH_STORAGE = DisplayWidth.initWithGraphemes(allocator, GLOBAL_GRAPHEMES_STORAGE.?) catch |err| {
+            GLOBAL_GRAPHEMES_STORAGE.?.deinit(allocator);
+            GLOBAL_GRAPHEMES_STORAGE = null;
+            std.debug.panic("Failed to initialize global DisplayWidth: {}", .{err});
+        };
+    }
+    return .{ &GLOBAL_GRAPHEMES_STORAGE.?, &GLOBAL_DISPLAY_WIDTH_STORAGE.? };
+}
+
+// Unused currently, as process shutdown will clean up all memory
+pub fn deinitGlobalUnicodeData(allocator: std.mem.Allocator) void {
+    if (GLOBAL_DISPLAY_WIDTH_STORAGE) |*dw| {
+        dw.deinit(allocator);
+        GLOBAL_DISPLAY_WIDTH_STORAGE = null;
+    }
+    if (GLOBAL_GRAPHEMES_STORAGE) |*g| {
+        g.deinit(allocator);
+        GLOBAL_GRAPHEMES_STORAGE = null;
     }
 }
 

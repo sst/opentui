@@ -19,7 +19,7 @@ const EmptyStyledTextTest = () => {
       setShowBox((s) => !s)
     } else if (key.name === "tab") {
       console.log("==== TOGGLING STYLED CONTENT ====")
-      setCont((s) => s ? null : "text")
+      setCont((s) => (s ? null : "text"))
     }
   })
 

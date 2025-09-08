@@ -140,16 +140,14 @@ pub const OptimizedBuffer = struct {
         id: []const u8 = "unnamed buffer",
     };
 
-    pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
+    pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions, graphemes_data: *Graphemes, display_width: *DisplayWidth) BufferError!*OptimizedBuffer {
         if (width == 0 or height == 0) {
             logger.warn("OptimizedBuffer.init: Invalid dimensions {}x{}", .{ width, height });
             return BufferError.InvalidDimensions;
         }
 
-        const graph = Graphemes.init(allocator) catch return BufferError.OutOfMemory;
-        errdefer graph.deinit(allocator);
-        const dw = DisplayWidth.initWithGraphemes(allocator, graph) catch return BufferError.OutOfMemory;
-        errdefer dw.deinit(allocator);
+        const graph = graphemes_data.*;
+        const dw = display_width.*;
 
         const self = allocator.create(OptimizedBuffer) catch return BufferError.OutOfMemory;
         errdefer allocator.destroy(self);
@@ -212,8 +210,6 @@ pub const OptimizedBuffer = struct {
     pub fn deinit(self: *OptimizedBuffer) void {
         self.scissor_stack.deinit();
         self.grapheme_tracker.deinit();
-        self.display_width.deinit(self.allocator);
-        self.graphemes_data.deinit(self.allocator);
         self.allocator.free(self.id);
         self.allocator.destroy(self);
     }
