@@ -1297,10 +1297,10 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public destroyRecursively(): void {
-    this.destroy()
     for (const child of this.renderableArray) {
       child.destroyRecursively()
     }
+    this.destroy()
   }
 
   protected destroySelf(): void {
