@@ -43,7 +43,7 @@ jobs:
 
           if [[ "$TAG_VERSION" == *"-snapshot"* ]]; then
             # Pre-release snapshot
-            VERSION="${TAG_VERSION}-${COMMIT_SHA}"
+            VERSION="0.0.0-$(date +%Y%m%d)-${COMMIT_SHA}"
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "Using snapshot version: $VERSION"
