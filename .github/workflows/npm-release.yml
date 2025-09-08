@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "*snapshot*"
 
 permissions:
   contents: write
@@ -41,7 +42,7 @@ jobs:
           TAG_VERSION="${{ steps.extract_version.outputs.version }}"
           COMMIT_SHA=$(git rev-parse --short=8 HEAD)
 
-          if [[ "$TAG_VERSION" == *"-snapshot"* ]]; then
+          if [[ "$TAG_VERSION" == *"snapshot"* ]]; then
             # Pre-release snapshot
             VERSION="0.0.0-$(date +%Y%m%d)-${COMMIT_SHA}"
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
