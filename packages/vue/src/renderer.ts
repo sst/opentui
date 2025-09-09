@@ -44,7 +44,8 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
       if (!RenderableClass) throw new Error(`${type} is not a valid element`)
 
       const id = getNextId(type)
-      const { style = {}, ...options } = props || {}
+      //we don't pass content directly, we handle it in patchProp
+      const { style = {}, content, ...options } = props || {}
       return new RenderableClass(cliRenderer, { id, ...style, ...options })
     },
 
