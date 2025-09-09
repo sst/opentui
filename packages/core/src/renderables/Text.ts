@@ -1,4 +1,4 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
+import { BaseRenderable, Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { TextBuffer, type TextChunk } from "../text-buffer"
@@ -6,6 +6,7 @@ import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
+import { isTextNodeRenderable, RootTextNodeRenderable } from "./TextNode"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
   content?: StyledText | string
@@ -29,6 +30,8 @@ export class TextRenderable extends Renderable {
 
   private textBuffer: TextBuffer
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
+
+  private rootTextNode: RootTextNodeRenderable
 
   protected _defaultOptions = {
     content: "",
@@ -60,6 +63,14 @@ export class TextRenderable extends Renderable {
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
 
     this.setupMeasureFunc()
+
+    this.rootTextNode = new RootTextNodeRenderable(ctx, {
+      id: `${this.id}-root`,
+      fg: this._defaultFg,
+      bg: this._defaultBg,
+      attributes: this._defaultAttributes,
+    })
+
     this.updateTextBuffer(styledText)
     this._text.mount(this)
     this.updateTextInfo()
@@ -73,12 +84,11 @@ export class TextRenderable extends Renderable {
   private clearChunks(styledText: StyledText): void {
     // Clearing chunks that were already writtend to the text buffer,
     // to not retain references to the text data in js
-    styledText.chunks.forEach((chunk) => {
-      // @ts-ignore
-      chunk.text = undefined
-      // @ts-ignore
-      chunk.plainText = undefined
-    })
+    // TODO: This is causing issues in the solid renderer
+    // styledText.chunks.forEach((chunk) => {
+    //   // @ts-ignore
+    //   chunk.text = undefined
+    // })
   }
 
   get content(): StyledText {
@@ -251,7 +261,7 @@ export class TextRenderable extends Renderable {
   }
 
   insertChunk(chunk: TextChunk, index?: number): void {
-    this.textBuffer.insertEncodedChunkGroup(
+    this.textBuffer.insertChunkGroup(
       index ?? this.textBuffer.chunkGroupCount,
       chunk.text,
       chunk.fg,
@@ -274,9 +284,61 @@ export class TextRenderable extends Renderable {
     const index = this._text.chunks.indexOf(oldChunk)
 
     if (index === -1) return
-    this.textBuffer.replaceEncodedChunkGroup(index, chunk.text, chunk.fg, chunk.bg, chunk.attributes)
+    this.textBuffer.replaceChunkGroup(index, chunk.text, chunk.fg, chunk.bg, chunk.attributes)
     this.updateTextInfo()
     this.clearChunks(this._text)
+  }
+
+  private updateTextFromNodes(): void {
+    if (this.rootTextNode.isDirty) {
+      const startTime = performance.now()
+      const chunks = this.rootTextNode.gatherWithInheritedStyle({
+        fg: this._defaultFg,
+        bg: this._defaultBg,
+        attributes: this._defaultAttributes,
+      })
+      this.textBuffer.setStyledText(new StyledText(chunks))
+      this.updateTextInfo()
+      const endTime = performance.now()
+      console.log(`updateTextFromNodes took ${endTime - startTime}ms`)
+    }
+  }
+
+  public add(obj: Renderable | any, index?: number): number {
+    if (!isTextNodeRenderable(obj)) {
+      throw new Error("TextRenderable only accepts TextNodeRenderables. Use add() method.")
+    }
+    return this.rootTextNode.add(obj, index)
+  }
+
+  public remove(id: string): void {
+    const child = this.rootTextNode.getRenderable(id)
+    if (child && isTextNodeRenderable(child)) {
+      this.rootTextNode.remove(child)
+    }
+  }
+
+  public insertBefore(obj: BaseRenderable | any, anchor?: BaseRenderable): number {
+    if (!isTextNodeRenderable(obj)) {
+      throw new Error("TextRenderable insertBefore only accepts TextNodeRenderables")
+    }
+    if (!anchor || !isTextNodeRenderable(anchor)) {
+      throw new Error("Anchor must be a TextNodeRenderable")
+    }
+    this.rootTextNode.insertBefore(obj, anchor)
+    return this.rootTextNode.children.indexOf(obj)
+  }
+
+  public clear(): void {
+    this.rootTextNode.clear()
+
+    const emptyStyledText = stringToStyledText("")
+    this._text = emptyStyledText
+    emptyStyledText.mount(this)
+    this.updateTextBuffer(emptyStyledText)
+    this.updateTextInfo()
+
+    this.requestRender()
   }
 
   shouldStartSelection(x: number, y: number): boolean {
@@ -313,6 +375,20 @@ export class TextRenderable extends Renderable {
     return this.textBuffer.getSelection()
   }
 
+  render(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (!this.visible) return
+
+    this.onUpdate(deltaTime)
+    this.updateFromLayout()
+
+    this.updateTextFromNodes()
+
+    this.markClean()
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+
+    this.renderSelf(buffer)
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
       const clipRect = {
@@ -328,6 +404,7 @@ export class TextRenderable extends Renderable {
 
   destroy(): void {
     this.textBuffer.destroy()
+    this.rootTextNode.children.length = 0
     super.destroy()
   }
 }

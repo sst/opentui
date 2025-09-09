@@ -29,7 +29,7 @@ export type DomNode = Renderable | TextNode | TextChunk
 const logId = (node?: DomNode): string | undefined => {
   if (!node) return undefined
   if (isTextChunk(node)) {
-    return node.plainText
+    return node.text
   }
   return node.id
 }
@@ -119,8 +119,7 @@ function _createTextNode(value?: string | number | boolean | TextChunk): TextNod
       ? value
       : {
           __isChunk: true,
-          text: new TextEncoder().encode(`${value}`),
-          plainText: `${value}`,
+          text: `${value}`,
         }
   const textNode = new TextNode(chunk)
   return textNode
@@ -169,8 +168,7 @@ export const {
     }
     const newChunk: TextChunk = {
       __isChunk: true,
-      text: new TextEncoder().encode(value),
-      plainText: value,
+      text: value,
     }
     textNode.replaceText(newChunk)
   },
