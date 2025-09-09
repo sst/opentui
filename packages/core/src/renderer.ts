@@ -354,6 +354,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
       this.animationRequest.set(id, callback)
+      this.requestLive()
       return id
     }
     global.cancelAnimationFrame = (handle: number) => {
@@ -1129,7 +1130,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const frameRequests = Array.from(this.animationRequest.values())
     this.animationRequest.clear()
     const animationRequestStart = performance.now()
-    frameRequests.forEach((callback) => callback(deltaTime))
+    frameRequests.forEach((callback) => {
+      callback(deltaTime)
+      this.dropLive()
+    })
     const animationRequestEnd = performance.now()
     const animationRequestTime = animationRequestEnd - animationRequestStart
 
