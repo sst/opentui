@@ -89,8 +89,6 @@ export class SyntaxStyle {
   }
 }
 
-const textEncoder = new TextEncoder()
-
 function hastToTextChunks(node: HASTNode, syntaxStyle: SyntaxStyle, parentStyles: string[] = []): TextChunk[] {
   const chunks: TextChunk[] = []
 
@@ -100,8 +98,7 @@ function hastToTextChunks(node: HASTNode, syntaxStyle: SyntaxStyle, parentStyles
 
     chunks.push({
       __isChunk: true,
-      text: textEncoder.encode(node.value),
-      plainText: node.value,
+      text: node.value,
       fg: mergedStyle.fg,
       bg: mergedStyle.bg,
       attributes: mergedStyle.attributes,

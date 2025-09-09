@@ -1,6 +1,7 @@
 export * from "./Box"
 export * from "./FrameBuffer"
 export * from "./Text"
+export * from "./TextNode"
 export * from "./ASCIIFont"
 export * from "./Input"
 export * from "./Select"

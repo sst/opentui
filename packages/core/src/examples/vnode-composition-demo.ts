@@ -9,16 +9,20 @@ import {
   Input,
   BoxRenderable,
   type BoxOptions,
+  vstyles,
 } from "../renderables"
 import type { RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA, parseColor } from "../lib"
 import type { Renderable } from "../Renderable"
+import { TextAttributes } from "../types"
 
 const textColor = parseColor("#FFFFFF")
-const bgColor = parseColor("#333333")
+const globalbgColor = parseColor("#333333")
 const transparent = parseColor("transparent")
+
+const { bold, italic, underline, dim, boldItalic, boldUnderline, italicUnderline, color, bgColor, styled } = vstyles
 
 // This is NOT react and not reactive, it's just a declarative way to compose renderables
 // and mount them into a parent container.
@@ -291,6 +295,33 @@ export function run(renderer: CliRenderer) {
       borderColor: RGBA.fromInts(0, 0, 255, 255),
     }),
   )
+
+  mainGroup.add(
+    Box({ flexDirection: "column", marginTop: 2 }, [
+      // Basic styles
+      Text({}, bold("Bold Text")),
+      Text({}, italic("Italic Text")),
+      Text({}, underline("Underlined Text")),
+      Text({}, dim("Dim Text")),
+
+      // Combined styles
+      Text({}, boldItalic("Bold and Italic")),
+      Text({}, boldUnderline("Bold and Underlined")),
+      Text({}, italicUnderline("Italic and Underlined")),
+
+      // Colors
+      Text({}, color("#ff6b6b", "Red Text")),
+      Text({}, bgColor("#4ecdc4", "Text with Background")),
+
+      // Custom styling
+      Text({}, styled(TextAttributes.BOLD | TextAttributes.UNDERLINE, "Custom Styled")),
+
+      // Stacked styles
+      Text({}, bold(underline("hello"), " world")),
+      Text({}, color("#ff6b6b", bold("Bold Red"), " normal")),
+      Text({}, italic(color("#4ecdc4", "Green Italic"), " normal again")),
+    ]),
+  )
 }
 
 export function destroy(renderer: CliRenderer) {
@@ -333,7 +364,12 @@ function demoRenderFn(
   )
 
   const bgPulse = Math.sin(timeInSeconds * 2 + Math.PI / 2) * 0.4 + 0.6 // Different frequency and phase
-  const pulsingBgColor = RGBA.fromValues(bgColor.r * bgPulse, bgColor.g * bgPulse, bgColor.b * bgPulse, bgColor.a)
+  const pulsingBgColor = RGBA.fromValues(
+    globalbgColor.r * bgPulse,
+    globalbgColor.g * bgPulse,
+    globalbgColor.b * bgPulse,
+    globalbgColor.a,
+  )
 
   for (let row = 0; row < height; row++) {
     for (let col = 0; col < width; col++) {

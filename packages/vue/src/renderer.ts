@@ -18,7 +18,7 @@ import { insertNode, removeNode } from "./noOps"
 import { getCurrentCliRenderer } from "./cli-renderer-ref"
 
 function createText(value: string | number | boolean | TextChunk): OpenTUINode {
-  const plainText = typeof value === "object" ? (value as TextChunk).plainText : String(value)
+  const plainText = typeof value === "object" ? (value as TextChunk).text : String(value)
 
   if (plainText?.trim() === "") {
     return new WhiteSpaceNode()
@@ -29,8 +29,7 @@ function createText(value: string | number | boolean | TextChunk): OpenTUINode {
       ? value
       : {
           __isChunk: true,
-          text: new TextEncoder().encode(`${value}`),
-          plainText: `${value}`,
+          text: `${value}`,
         }
   const textNode = new TextNode(chunk)
   ChunkToTextNodeMap.set(chunk, textNode)
@@ -154,8 +153,7 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
             if (typeof child === "string") {
               chunks.push({
                 __isChunk: true,
-                text: new TextEncoder().encode(child),
-                plainText: child,
+                text: child,
               })
             } else if (child && typeof child === "object" && "__isChunk" in child) {
               chunks.push(child as TextChunk)
@@ -165,8 +163,7 @@ export const renderer = createRenderer<OpenTUINode, OpenTUIElement>({
               const stringValue = String(child)
               chunks.push({
                 __isChunk: true,
-                text: new TextEncoder().encode(stringValue),
-                plainText: stringValue,
+                text: stringValue,
               })
             }
           }

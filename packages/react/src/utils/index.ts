@@ -37,8 +37,7 @@ function handleTextChildren(textInstance: TextRenderable, children: any) {
         // Convert string to TextChunk
         chunks.push({
           __isChunk: true,
-          text: new TextEncoder().encode(child),
-          plainText: child,
+          text: child,
         })
       } else if (child && typeof child === "object" && "__isChunk" in child) {
         // Already a TextChunk
@@ -51,8 +50,7 @@ function handleTextChildren(textInstance: TextRenderable, children: any) {
         const stringValue = String(child)
         chunks.push({
           __isChunk: true,
-          text: new TextEncoder().encode(stringValue),
-          plainText: stringValue,
+          text: stringValue,
         })
       }
     }

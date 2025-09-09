@@ -1,10 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach, afterAll } from "bun:test"
 import { TextRenderable, type TextOptions } from "./Text"
+import { TextNodeRenderable } from "./TextNode"
 import { RGBA } from "../lib/RGBA"
 import { stringToStyledText } from "../lib/styled-text"
 import { RootRenderable } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
-import type { RenderContext, SelectionState } from "../types"
+import type { RenderContext } from "../types"
+import { Selection, type LocalSelectionBounds } from "../lib/selection"
 
 // Minimal mock render context for testing
 class MockRenderContext {
@@ -51,6 +53,20 @@ function createTextRenderable(options: TextOptions): TextRenderable {
   return textRenderable
 }
 
+// Helper function to create Selection objects for testing
+function createSelection(
+  textRenderable: TextRenderable,
+  anchor: { x: number; y: number },
+  focus: { x: number; y: number },
+  isActive: boolean = true,
+  isSelecting: boolean = false,
+): Selection {
+  const selection = new Selection(textRenderable, anchor, focus)
+  selection.isActive = isActive
+  selection.isSelecting = isSelecting
+  return selection
+}
+
 describe("TextRenderable Selection", () => {
   describe("Native getSelectedText", () => {
     it("should use native implementation", () => {
@@ -60,14 +76,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Simulate a selection from start to position 5 (selecting "Hello")
-      const selectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 5, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selection = createSelection(text, { x: 0, y: 0 }, { x: 5, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selection)
 
       const selectedText = text.getSelectedText()
       expect(selectedText).toBe("Hello")
@@ -80,14 +91,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Select "Hello 🌍" (7 characters: H,e,l,l,o, ,🌍)
-      const selectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 7, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selection = createSelection(text, { x: 0, y: 0 }, { x: 7, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selection)
 
       const selectedText = text.getSelectedText()
       expect(selectedText).toBe("Hello 🌍")
@@ -148,14 +154,9 @@ describe("TextRenderable Selection", () => {
       expect(text.shouldStartSelection(6, 0)).toBe(true)
 
       // Set selection from 6 to 11 (selecting "World")
-      const selectionState: SelectionState = {
-        anchor: { x: 6, y: 0 },
-        focus: { x: 11, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 6, y: 0 }, { x: 11, y: 0 }, true, false)
 
-      const hasSelection = text.onSelectionChanged(selectionState)
+      const hasSelection = text.onSelectionChanged(selectionObj)
       expect(hasSelection).toBe(true)
       expect(text.hasSelection()).toBe(true)
 
@@ -176,14 +177,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Select from middle of line 2 to middle of line 3
-      const selectionState: SelectionState = {
-        anchor: { x: 2, y: 1 }, // "ne" in "Line 2"
-        focus: { x: 4, y: 2 }, // "e 3" in "Line 3"
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 2, y: 1 }, { x: 4, y: 2 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -200,14 +196,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Select from start of line 1 to end of line 2
-      const selectionState: SelectionState = {
-        anchor: { x: 0, y: 1 }, // Start of "Second"
-        focus: { x: 6, y: 1 }, // End of "Second"
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 0, y: 1 }, { x: 6, y: 1 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -221,14 +212,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Select from middle of first line to middle of last line
-      const selectionState: SelectionState = {
-        anchor: { x: 0, y: 1 }, // Start of line 2
-        focus: { x: 1, y: 2 }, // Middle of line 3
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 0, y: 1 }, { x: 1, y: 2 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -245,14 +231,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Select across line boundaries
-      const selectionState: SelectionState = {
-        anchor: { x: 4, y: 0 }, // End of "Line1"
-        focus: { x: 2, y: 1 }, // Middle of "Line2"
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 4, y: 0 }, { x: 2, y: 1 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -269,14 +250,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Start selection from end to beginning
-      const selectionState: SelectionState = {
-        anchor: { x: 11, y: 0 }, // End of text
-        focus: { x: 6, y: 0 }, // Start of "World"
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 11, y: 0 }, { x: 6, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -295,14 +271,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      const selectionState: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 0, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 0, y: 0 }, { x: 0, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       expect(text.hasSelection()).toBe(false)
       expect(text.getSelection()).toBe(null)
@@ -315,14 +286,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      const selectionState: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 1, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 0, y: 0 }, { x: 1, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -338,14 +304,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      const selectionState: SelectionState = {
-        anchor: { x: 5, y: 0 },
-        focus: { x: 5, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 5, y: 0 }, { x: 5, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       // Zero-width selection should be considered no selection
       expect(text.hasSelection()).toBe(false)
@@ -359,14 +320,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      const selectionState: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 10, y: 0 }, // Beyond text length
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 0, y: 0 }, { x: 10, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -388,14 +344,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      const selectionState: SelectionState = {
-        anchor: { x: 6, y: 0 },
-        focus: { x: 11, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 6, y: 0 }, { x: 11, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -413,14 +364,9 @@ describe("TextRenderable Selection", () => {
         selectionFg: RGBA.fromValues(0, 0, 0, 1), // Black selection text
       })
 
-      const selectionState: SelectionState = {
-        anchor: { x: 8, y: 0 }, // Start of "Blue"
-        focus: { x: 12, y: 0 }, // End of "Blue"
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 8, y: 0 }, { x: 12, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
@@ -439,14 +385,9 @@ describe("TextRenderable Selection", () => {
       })
 
       // Set initial selection
-      const selectionState: SelectionState = {
-        anchor: { x: 6, y: 0 },
-        focus: { x: 11, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 6, y: 0 }, { x: 11, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
       expect(text.hasSelection()).toBe(true)
 
       // Clear selection
@@ -463,38 +404,23 @@ describe("TextRenderable Selection", () => {
       })
 
       // First selection: "quick"
-      let selectionState: SelectionState = {
-        anchor: { x: 4, y: 0 },
-        focus: { x: 9, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      let selectionObj = createSelection(text, { x: 4, y: 0 }, { x: 9, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
       expect(text.getSelectedText()).toBe("quick")
       expect(text.getSelection()).toEqual({ start: 4, end: 9 })
 
       // Second selection: "brown fox"
-      selectionState = {
-        anchor: { x: 10, y: 0 },
-        focus: { x: 19, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      selectionObj = createSelection(text, { x: 10, y: 0 }, { x: 19, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
       expect(text.getSelectedText()).toBe("brown fox")
       expect(text.getSelection()).toEqual({ start: 10, end: 19 })
 
       // Third selection: "lazy dog"
-      selectionState = {
-        anchor: { x: 35, y: 0 },
-        focus: { x: 43, y: 0 },
-        isActive: true,
-        isSelecting: false,
-      }
+      selectionObj = createSelection(text, { x: 35, y: 0 }, { x: 43, y: 0 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
       expect(text.getSelectedText()).toBe("lazy dog")
       expect(text.getSelection()).toEqual({ start: 35, end: 43 })
     })
@@ -544,14 +470,9 @@ describe("TextRenderable Selection", () => {
       // Note: In a real scenario, the TextRenderable would handle width constraints
       // For this test, we're just verifying that selection works with multi-line content
 
-      const selectionState: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 10, y: 1 }, // Select across line boundary
-        isActive: true,
-        isSelecting: false,
-      }
+      const selectionObj = createSelection(text, { x: 0, y: 0 }, { x: 10, y: 1 }, true, false)
 
-      text.onSelectionChanged(selectionState)
+      text.onSelectionChanged(selectionObj)
 
       // The exact start/end positions will depend on how text wraps,
       // but we verify the selection exists and has valid bounds
@@ -606,48 +527,23 @@ describe("TextRenderable Selection", () => {
       // In the real system, this would be handled by the renderer's global selection manager
 
       // Start selection at the beginning of the first text
-      const startSelection: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 18, y: 0 }, // Select full "Selected 5 chars:"
-        isActive: true,
-        isSelecting: false,
-      }
+      const startSelection = createSelection(statusText, { x: 0, y: 0 }, { x: 18, y: 0 }, true, false)
       statusText.onSelectionChanged(startSelection)
 
       // Continue selection to the second text
-      const continueSelection1: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 7, y: 0 }, // Select full '"Hello"'
-        isActive: true,
-        isSelecting: false,
-      }
+      const continueSelection1 = createSelection(selectionStartText, { x: 0, y: 0 }, { x: 7, y: 0 }, true, false)
       selectionStartText.onSelectionChanged(continueSelection1)
 
       // Continue to third text (empty) - use same wide bounds
-      const continueSelection2: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 18, y: 0 }, // Same wide bounds as first text
-        isActive: true,
-        isSelecting: false,
-      }
+      const continueSelection2 = createSelection(selectionMiddleText, { x: 0, y: 0 }, { x: 18, y: 0 }, true, false)
       selectionMiddleText.onSelectionChanged(continueSelection2)
 
       // Continue to fourth text (empty) - use same wide bounds
-      const continueSelection3: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 18, y: 0 }, // Same wide bounds as first text
-        isActive: true,
-        isSelecting: false,
-      }
+      const continueSelection3 = createSelection(selectionEndText, { x: 0, y: 0 }, { x: 18, y: 0 }, true, false)
       selectionEndText.onSelectionChanged(continueSelection3)
 
       // End selection at the last text
-      const endSelection: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 25, y: 0 }, // Select full "Selected renderables: 2/5"
-        isActive: true,
-        isSelecting: false,
-      }
+      const endSelection = createSelection(debugText, { x: 0, y: 0 }, { x: 25, y: 0 }, true, false)
       debugText.onSelectionChanged(endSelection)
 
       // Verify that each renderable has the expected selection
@@ -696,15 +592,9 @@ describe("TextRenderable Selection", () => {
       const allRenderables = [statusText, selectionStartText, debugText]
 
       // Establish initial selection covering all renderables
-      const initialSelection: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 50, y: 0 }, // Wide selection covering all
-        isActive: true,
-        isSelecting: false,
-      }
-
       // Apply the same selection state to all renderables (simulating global selection)
       allRenderables.forEach((renderable) => {
+        const initialSelection = createSelection(renderable, { x: 0, y: 0 }, { x: 50, y: 0 }, true, false)
         renderable.onSelectionChanged(initialSelection)
       })
 
@@ -719,14 +609,8 @@ describe("TextRenderable Selection", () => {
 
       // The selection should automatically adjust to include the new content
       // since the anchor/focus covers the entire area
-      const updatedSelection: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 60, y: 0 }, // Extended to cover new content
-        isActive: true,
-        isSelecting: false,
-      }
-
       allRenderables.forEach((renderable) => {
+        const updatedSelection = createSelection(renderable, { x: 0, y: 0 }, { x: 60, y: 0 }, true, false)
         renderable.onSelectionChanged(updatedSelection)
       })
 
@@ -746,14 +630,8 @@ describe("TextRenderable Selection", () => {
       debugText.content = "Selected renderables: 3/5 | Container: statusBox"
 
       // Selection should update again
-      const finalSelection: SelectionState = {
-        anchor: { x: 0, y: 0 },
-        focus: { x: 70, y: 0 }, // Extended further
-        isActive: true,
-        isSelecting: false,
-      }
-
       allRenderables.forEach((renderable) => {
+        const finalSelection = createSelection(renderable, { x: 0, y: 0 }, { x: 70, y: 0 }, true, false)
         renderable.onSelectionChanged(finalSelection)
       })
 
@@ -796,16 +674,11 @@ describe("TextRenderable Selection", () => {
 
       // Simulate selection that starts above the box (negative Y coordinate relative to box)
       // and ends below/right of the box (coordinates beyond the box boundaries)
-      const crossBoxSelection: SelectionState = {
-        anchor: { x: 5, y: -2 }, // Above the box
-        focus: { x: 60, y: 15 }, // Below and to the right of the box
-        isActive: true,
-        isSelecting: false,
-      }
 
       // In a real implementation, the renderer would determine which renderables
       // are covered by this selection and apply appropriate local selections
       allRenderables.forEach((renderable) => {
+        const crossBoxSelection = createSelection(renderable, { x: 5, y: -2 }, { x: 60, y: 15 }, true, false)
         renderable.onSelectionChanged(crossBoxSelection)
       })
 
@@ -829,6 +702,382 @@ describe("TextRenderable Selection", () => {
           "End: (45,12)\n" +
           "Debug: Cross-renderable selection spanning 3 elements",
       )
+    })
+  })
+
+  describe("TextNode Integration with getPlainText", () => {
+    it("should render correct plain text after adding TextNodes", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Create TextNodeRenderables
+      const node1 = new TextNodeRenderable({
+        fg: RGBA.fromValues(1, 0, 0, 1),
+        bg: RGBA.fromValues(0, 0, 0, 1),
+      })
+      node1.add("Hello")
+
+      const node2 = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 1, 0, 1),
+        bg: RGBA.fromValues(0, 0, 0, 1),
+      })
+      node2.add(" World")
+
+      // Add TextNodes to TextRenderable
+      text.add(node1)
+      text.add(node2)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Hello World")
+    })
+
+    it("should render correct plain text after inserting TextNodes", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      const node1 = new TextNodeRenderable({})
+      node1.add("Hello")
+
+      const node2 = new TextNodeRenderable({})
+      node2.add(" World")
+
+      const node3 = new TextNodeRenderable({})
+      node3.add("!")
+
+      // Add first two nodes
+      text.add(node1)
+      text.add(node2)
+
+      // Insert third node before second node
+      text.insertBefore(node3, node2)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Hello! World")
+    })
+
+    it("should render correct plain text after removing TextNodes", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      const node1 = new TextNodeRenderable({})
+      node1.add("Hello")
+
+      const node2 = new TextNodeRenderable({})
+      node2.add(" Cruel")
+
+      const node3 = new TextNodeRenderable({})
+      node3.add(" World")
+
+      // Add all nodes
+      text.add(node1)
+      text.add(node2)
+      text.add(node3)
+
+      // Trigger initial render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Hello Cruel World")
+
+      // Remove middle node - this generates remove commands
+      text.remove(node2.id)
+
+      // Trigger render to apply the remove commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      // After removing " Cruel", should be "Hello World"
+      expect(text.plainText).toBe("Hello World")
+    })
+
+    it("should handle simple add and remove operations", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      const node = new TextNodeRenderable({})
+      node.add("Test")
+
+      // Add node
+      text.add(node)
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Test")
+
+      // Remove node
+      text.remove(node.id)
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("")
+    })
+
+    it("should render correct plain text after clearing all TextNodes", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Add initial content via TextNodes
+      const node1 = new TextNodeRenderable({})
+      node1.add("Hello")
+
+      const node2 = new TextNodeRenderable({})
+      node2.add(" World")
+
+      text.add(node1)
+      text.add(node2)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Hello World")
+
+      // Clear all content
+      text.clear()
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("")
+    })
+
+    it("should handle nested TextNode structures correctly", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Create nested structure: Parent -> [Child1, Child2]
+      const parent = new TextNodeRenderable({
+        fg: RGBA.fromValues(1, 1, 0, 1),
+      })
+
+      const child1 = new TextNodeRenderable({
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+      child1.add("Red")
+
+      const child2 = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 1, 0, 1),
+      })
+      child2.add(" Green")
+
+      parent.add(child1)
+      parent.add(child2)
+
+      const standalone = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 0, 1, 1),
+      })
+      standalone.add(" Blue")
+
+      text.add(parent)
+      text.add(standalone)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Red Green Blue")
+    })
+
+    it("should handle mixed string and TextNode content", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Add initial string content via TextNode
+      const startNode = new TextNodeRenderable({})
+      startNode.add("Start ")
+
+      const node1 = new TextNodeRenderable({})
+      node1.add("middle")
+
+      const node2 = new TextNodeRenderable({})
+      node2.add(" end")
+
+      text.add(startNode)
+      text.add(node1)
+      text.add(node2)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Start middle end")
+    })
+
+    it("should handle TextNode operations with inherited styles", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+        fg: RGBA.fromValues(1, 1, 1, 1), // White default
+      })
+
+      // Create parent with red color
+      const redParent = new TextNodeRenderable({
+        fg: RGBA.fromValues(1, 0, 0, 1), // Red
+      })
+
+      // Child inherits red color but has no text
+      const redChild = new TextNodeRenderable({})
+
+      // Grandchild with green color and text
+      const greenGrandchild = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 1, 0, 1), // Green
+      })
+      greenGrandchild.add("Green")
+
+      redChild.add(greenGrandchild)
+      redParent.add(redChild)
+
+      const blueNode = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 0, 1, 1), // Blue
+      })
+      blueNode.add(" Blue")
+
+      text.add(redParent)
+      text.add(blueNode)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Green Blue")
+    })
+
+    it("should handle empty TextNodes correctly", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      const emptyNode1 = new TextNodeRenderable({})
+      const nodeWithText = new TextNodeRenderable({})
+      nodeWithText.add("Text")
+      const emptyNode2 = new TextNodeRenderable({})
+
+      text.add(emptyNode1)
+      text.add(nodeWithText)
+      text.add(emptyNode2)
+
+      // Trigger render to apply commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Text")
+    })
+
+    it("should handle complex TextNode operations sequence", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Create initial content node
+      const initialNode = new TextNodeRenderable({})
+      initialNode.add("Initial")
+
+      // Create multiple nodes
+      const nodeA = new TextNodeRenderable({})
+      nodeA.add(" A")
+
+      const nodeB = new TextNodeRenderable({})
+      nodeB.add(" B")
+
+      const nodeC = new TextNodeRenderable({})
+      nodeC.add(" C")
+
+      const nodeD = new TextNodeRenderable({})
+      nodeD.add(" D")
+
+      // Add all nodes
+      text.add(initialNode)
+      text.add(nodeA)
+      text.add(nodeB)
+      text.add(nodeC)
+      text.add(nodeD)
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Initial A B C D")
+
+      // Remove middle node
+      text.remove(nodeB.id)
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Initial A C D")
+
+      // Insert new node before nodeC
+      const nodeX = new TextNodeRenderable({})
+      nodeX.add(" X")
+      text.insertBefore(nodeX, nodeC)
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Initial A X C D")
+
+      // Add more content to existing node
+      nodeX.add(" Y")
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+      expect(text.plainText).toBe("Initial A X Y C D")
+    })
+
+    it("should handle TextNode commands with multiple operations per render", () => {
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Create nodes and perform multiple operations before rendering
+      const node1 = new TextNodeRenderable({})
+      node1.add("First")
+
+      const node2 = new TextNodeRenderable({})
+      node2.add("Second")
+
+      const node3 = new TextNodeRenderable({})
+      node3.add("Third")
+
+      text.add(node1)
+      text.add(node2)
+      text.insertBefore(node3, node1) // Insert before node1, so order will be: node3, node1, node2
+
+      // Modify node2 after adding - this should generate additional commands
+      // Note: This test may fail if modifications after adding don't get tracked
+      node2.add(" Modified")
+
+      // Trigger single render to apply all commands
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      // The order should be: Third (inserted before node1), First, Second Modified
+      // TODO: This may need to be updated based on actual behavior
+      expect(text.plainText).toBe("ThirdFirstSecond Modified")
     })
   })
 })
