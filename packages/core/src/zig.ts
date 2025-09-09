@@ -316,6 +316,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "usize",
     },
+    textBufferGetPlainText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
     textBufferSetLocalSelection: {
       args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
       returns: "bool",
@@ -324,6 +328,28 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    textBufferInsertChunkGroup: {
+      args: ["ptr", "usize", "ptr", "u32", "ptr", "ptr", "u8"],
+      returns: "u32",
+    },
+    textBufferRemoveChunkGroup: {
+      args: ["ptr", "usize"],
+      returns: "u32",
+    },
+    textBufferReplaceChunkGroup: {
+      args: ["ptr", "usize", "ptr", "u32", "ptr", "ptr", "u8"],
+      returns: "u32",
+    },
+    textBufferGetChunkGroupCount: {
+      args: ["ptr"],
+      returns: "usize",
+    },
+
+    getArenaAllocatedBytes: {
+      args: [],
+      returns: "usize",
+    },
+
     bufferDrawTextBuffer: {
       args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
       returns: "void",
@@ -509,6 +535,8 @@ export interface RenderLib {
   textBufferGetLineInfo: (buffer: Pointer) => { lineStarts: number[]; lineWidths: number[] }
   textBufferGetSelection: (buffer: Pointer) => { start: number; end: number } | null
   getSelectedTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
+  getPlainTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
+  readonly encoder: TextEncoder
   readonly decoder: TextDecoder
   bufferDrawTextBuffer: (
     buffer: Pointer,
@@ -521,13 +549,34 @@ export interface RenderLib {
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
 
+  textBufferInsertChunkGroup: (
+    buffer: Pointer,
+    index: number,
+    textBytes: Uint8Array,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number | null,
+  ) => number
+  textBufferRemoveChunkGroup: (buffer: Pointer, index: number) => number
+  textBufferReplaceChunkGroup: (
+    buffer: Pointer,
+    index: number,
+    textBytes: Uint8Array,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number | null,
+  ) => number
+  textBufferGetChunkGroupCount: (buffer: Pointer) => number
+
+  getArenaAllocatedBytes: () => number
+
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
 }
 
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
-  private encoder: TextEncoder = new TextEncoder()
+  public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: any // Store the FFI callback wrapper
 
@@ -1038,6 +1087,7 @@ class FFIRenderLib implements RenderLib {
     bg: RGBA | null,
     attributes: number | null,
   ): number {
+    // Create attribute buffer - null means use default, otherwise pass the u8 value
     const attrValue = attributes === null ? null : new Uint8Array([attributes])
     return this.opentui.symbols.textBufferWriteChunk(
       buffer,
@@ -1088,10 +1138,27 @@ class FFIRenderLib implements RenderLib {
     return typeof result === "bigint" ? Number(result) : result
   }
 
+  private textBufferGetPlainText(buffer: Pointer, outPtr: Pointer, maxLen: number): number {
+    const result = this.opentui.symbols.textBufferGetPlainText(buffer, outPtr, maxLen)
+    return typeof result === "bigint" ? Number(result) : result
+  }
+
   public getSelectedTextBytes(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
     const actualLen = this.textBufferGetSelectedText(buffer, ptr(outBuffer), maxLength)
+
+    if (actualLen === 0) {
+      return null
+    }
+
+    return outBuffer.slice(0, actualLen)
+  }
+
+  public getPlainTextBytes(buffer: Pointer, maxLength: number): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+
+    const actualLen = this.textBufferGetPlainText(buffer, ptr(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -1116,6 +1183,64 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferResetLocalSelection(buffer: Pointer): void {
     this.opentui.symbols.textBufferResetLocalSelection(buffer)
+  }
+
+  public textBufferInsertChunkGroup(
+    buffer: Pointer,
+    index: number,
+    textBytes: Uint8Array,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number | null,
+  ): number {
+    const fgPtr = fg ? fg.buffer : null
+    const bgPtr = bg ? bg.buffer : null
+    const attr = attributes ?? 255
+    return this.opentui.symbols.textBufferInsertChunkGroup(
+      buffer,
+      index,
+      textBytes,
+      textBytes.length,
+      fgPtr,
+      bgPtr,
+      attr,
+    )
+  }
+
+  public textBufferRemoveChunkGroup(buffer: Pointer, index: number): number {
+    return this.opentui.symbols.textBufferRemoveChunkGroup(buffer, index)
+  }
+
+  public textBufferReplaceChunkGroup(
+    buffer: Pointer,
+    index: number,
+    textBytes: Uint8Array,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number | null,
+  ): number {
+    const fgPtr = fg ? fg.buffer : null
+    const bgPtr = bg ? bg.buffer : null
+    const attr = attributes ?? 255
+    return this.opentui.symbols.textBufferReplaceChunkGroup(
+      buffer,
+      index,
+      textBytes,
+      textBytes.length,
+      fgPtr,
+      bgPtr,
+      attr,
+    )
+  }
+
+  public textBufferGetChunkGroupCount(buffer: Pointer): number {
+    const result = this.opentui.symbols.textBufferGetChunkGroupCount(buffer)
+    return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public getArenaAllocatedBytes(): number {
+    const result = this.opentui.symbols.getArenaAllocatedBytes()
+    return typeof result === "bigint" ? Number(result) : result
   }
 
   public textBufferGetLineInfo(buffer: Pointer): { lineStarts: number[]; lineWidths: number[] } {

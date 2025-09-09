@@ -17,13 +17,40 @@ const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
 
 const args = process.argv.slice(2)
-const version = args[0]
+let version = args[0]
 
 if (!version) {
   console.error("Error: Please provide a version number")
   console.error("Usage: bun scripts/prepare-release.ts <version>")
   console.error("Example: bun scripts/prepare-release.ts 0.2.0")
+  console.error("         bun scripts/prepare-release.ts '*' (auto-increment patch)")
   process.exit(1)
+}
+
+// Handle auto-increment case
+if (version === "*") {
+  try {
+    const corePackageJsonPath = join(rootDir, "packages", "core", "package.json")
+    const corePackageJson: PackageJson = JSON.parse(readFileSync(corePackageJsonPath, "utf8"))
+    const currentVersion = corePackageJson.version
+
+    // Parse current version and increment patch
+    const versionParts = currentVersion.split(".")
+    if (versionParts.length !== 3) {
+      console.error(`Error: Invalid current version format: ${currentVersion}`)
+      process.exit(1)
+    }
+
+    const major = parseInt(versionParts[0])
+    const minor = parseInt(versionParts[1])
+    const patch = parseInt(versionParts[2]) + 1
+
+    version = `${major}.${minor}.${patch}`
+    console.log(`Auto-incrementing version from ${currentVersion} to ${version}`)
+  } catch (error) {
+    console.error(`Error: Failed to read current version: ${error}`)
+    process.exit(1)
+  }
 }
 
 if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {

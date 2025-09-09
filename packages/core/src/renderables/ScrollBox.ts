@@ -133,6 +133,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     this.content = new ContentRenderable(ctx, this.viewport, {
       alignSelf: "flex-start",
+      minWidth: "100%",
+      minHeight: "100%",
       onSizeChange: () => {
         this.recalculateBarProps()
       },

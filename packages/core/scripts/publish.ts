@@ -36,7 +36,15 @@ for (const pkgName of Object.keys(packageJsons[libDir].optionalDependencies!).fi
 Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
   console.log(`\nPublishing ${name}@${version}...`)
 
-  const publish: SpawnSyncReturns<Buffer> = spawnSync("npm", ["publish", "--access=public"], {
+  const isSnapshot = version.includes("-snapshot") || /^0\.0\.0-\d{8}-[a-f0-9]{8}$/.test(version)
+  const publishArgs = ["publish", "--access=public"]
+
+  if (isSnapshot) {
+    publishArgs.push("--tag", "snapshot")
+    console.log(`  Publishing as snapshot (--tag snapshot)`)
+  }
+
+  const publish: SpawnSyncReturns<Buffer> = spawnSync("npm", publishArgs, {
     cwd: dir,
     stdio: "inherit",
   })

@@ -1,4 +1,4 @@
-import type { CliRenderer, ParsedKey } from "../.."
+import { resolveRenderLib, type CliRenderer, type ParsedKey } from "../.."
 import { getKeyHandler } from "../../lib/KeyHandler"
 
 export function setupCommonDemoKeys(renderer: CliRenderer) {
@@ -16,6 +16,11 @@ export function setupCommonDemoKeys(renderer: CliRenderer) {
       renderer.stop()
     } else if (key.name === "a" && key.shift) {
       renderer.auto()
+    } else if (key.name === "a" && key.ctrl) {
+      const lib = resolveRenderLib()
+      const rawBytes = lib.getArenaAllocatedBytes()
+      const formattedBytes = `${(rawBytes / 1024 / 1024).toFixed(2)} MB`
+      console.log("arena allocated bytes:", formattedBytes)
     }
   })
 }

@@ -1,6 +1,6 @@
 {
   "name": "@opentui/solid",
-  "version": "0.1.16",
+  "version": "0.1.18",
   "description": "SolidJS renderer for OpenTUI",
   "repository": {
     "type": "git",
@@ -20,10 +20,6 @@
     ".": {
       "types": "./index.ts",
       "import": "./index.ts"
-    },
-    "./reconciler": {
-      "types": "./src/reconciler.ts",
-      "import": "./src/reconciler.ts"
     },
     "./preload": {
       "import": "./scripts/preload.ts"

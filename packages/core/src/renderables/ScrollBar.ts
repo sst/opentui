@@ -171,6 +171,8 @@ export class ScrollBarRenderable extends Renderable {
 
     this.startArrow.onMouseDown = (event) => {
       event.stopPropagation()
+      event.preventDefault()
+
       this.scrollBy(-0.5, "viewport")
 
       startArrowMouseTimeout = setTimeout(() => {
@@ -189,6 +191,8 @@ export class ScrollBarRenderable extends Renderable {
 
     this.endArrow.onMouseDown = (event) => {
       event.stopPropagation()
+      event.preventDefault()
+
       this.scrollBy(0.5, "viewport")
 
       endArrowMouseTimeout = setTimeout(() => {

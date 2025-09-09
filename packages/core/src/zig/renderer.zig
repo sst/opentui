@@ -129,11 +129,11 @@ pub const CliRenderer = struct {
         }
     };
 
-    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !*CliRenderer {
+    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, graphemes_data: *gp.Graphemes, display_width: *gp.DisplayWidth) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
 
-        const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
-        const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
+        const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" }, graphemes_data, display_width);
+        const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" }, graphemes_data, display_width);
 
         const stdout = std.io.getStdOut();
         const stdoutWriter = std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };

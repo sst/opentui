@@ -37,7 +37,7 @@ import { createCliRenderer, TextRenderable } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const obj = new TextRenderable("my-obj", { content: "Hello, world!" })
+const obj = new TextRenderable(renderer, { id: "my-obj", content: "Hello, world!" })
 
 renderer.root.add(obj)
 ```

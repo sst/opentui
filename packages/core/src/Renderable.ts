@@ -21,7 +21,7 @@ import {
 } from "./lib/yoga.options"
 import type { MouseEvent } from "./renderer"
 import type { RenderContext, ViewportBounds } from "./types"
-import { ensureRenderable, type VNode } from "./renderables/composition/vnode"
+import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
 import type { Selection } from "./lib/selection"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
@@ -201,6 +201,7 @@ export abstract class Renderable extends EventEmitter {
 
   public readonly id: string
   public readonly num: number
+  private _isDestroyed: boolean = false
   protected _ctx: RenderContext
   protected _translateX: number = 0
   protected _translateY: number = 0
@@ -1078,30 +1079,44 @@ export abstract class Renderable extends EventEmitter {
   }
 
   public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
-    obj = ensureRenderable(this._ctx, obj)
-
-    if (this.renderableMap.has(obj.id)) {
-      console.warn(`A renderable with id ${obj.id} already exists in ${this.id}, removing it`)
-      this.remove(obj.id)
+    if (!obj) {
+      return -1
     }
 
-    this.replaceParent(obj)
+    const renderable = maybeMakeRenderable(this._ctx, obj)
+    if (!renderable) {
+      return -1
+    }
 
-    const childLayoutNode = obj.getLayoutNode()
+    if (renderable.isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping add`)
+      }
+      return -1
+    }
+
+    if (this.renderableMap.has(renderable.id)) {
+      console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
+      this.remove(renderable.id)
+    }
+
+    this.replaceParent(renderable)
+
+    const childLayoutNode = renderable.getLayoutNode()
     let insertedIndex: number
     if (index !== undefined) {
-      this.renderableArray.splice(index, 0, obj)
+      this.renderableArray.splice(index, 0, renderable)
       insertedIndex = this.layoutNode.insertChild(childLayoutNode, index)
     } else {
-      this.renderableArray.push(obj)
+      this.renderableArray.push(renderable)
       insertedIndex = this.layoutNode.addChild(childLayoutNode)
     }
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
-    this.renderableMap.set(obj.id, obj)
+    this.renderableMap.set(renderable.id, renderable)
 
-    if (obj._liveCount > 0) {
-      this.propagateLiveCount(obj._liveCount)
+    if (renderable._liveCount > 0) {
+      this.propagateLiveCount(renderable._liveCount)
     }
 
     if (obj.focusable) {
@@ -1114,22 +1129,31 @@ export abstract class Renderable extends EventEmitter {
   }
 
   insertBefore(obj: Renderable | VNode<any, any[]>, anchor?: Renderable): number {
-    obj = ensureRenderable(this._ctx, obj)
-
-    if (!anchor) {
-      return this.add(obj)
+    if (!obj) {
+      return -1
     }
 
+    const renderable = maybeMakeRenderable(this._ctx, obj)
+    if (!renderable) {
+      return -1
+    }
+
+    if (!anchor) {
+      return this.add(renderable)
+    }
+
+    // Should we really throw for this? Maybe just log a warning in dev.
     if (!this.renderableMap.has(anchor.id)) {
       throw new Error("Anchor does not exist")
     }
 
     const anchorIndex = this.renderableArray.indexOf(anchor)
+    // Same here: maybe just log a warning in dev.
     if (anchorIndex === -1) {
       throw new Error("Anchor does not exist")
     }
 
-    return this.add(obj, anchorIndex)
+    return this.add(renderable, anchorIndex)
   }
 
   // TODO: that naming is meh
@@ -1248,7 +1272,17 @@ export abstract class Renderable extends EventEmitter {
     // Override this method to provide custom rendering
   }
 
+  public get isDestroyed(): boolean {
+    return this._isDestroyed
+  }
+
   public destroy(): void {
+    if (this._isDestroyed) {
+      return
+    }
+
+    this._isDestroyed = true
+
     if (this.parent) {
       this.parent.remove(this.id)
     }
@@ -1259,26 +1293,26 @@ export abstract class Renderable extends EventEmitter {
     }
 
     for (const child of this.renderableArray) {
-      child.parent = null
-      child.destroy()
+      this.remove(child.id)
     }
 
     this.renderableArray = []
     this.renderableMap.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
-    this.layoutNode.destroy()
     this.blur()
     this.removeAllListeners()
 
     this.destroySelf()
+    this.layoutNode.destroy()
   }
 
   public destroyRecursively(): void {
-    this.destroy()
+    // Destroy children first to ensure removal as destroy clears child array
     for (const child of this.renderableArray) {
       child.destroyRecursively()
     }
+    this.destroy()
   }
 
   protected destroySelf(): void {
@@ -1443,7 +1477,5 @@ export class RootRenderable extends Renderable {
     } catch (error) {
       // Config might already be freed
     }
-
-    super.destroySelf()
   }
 }

@@ -1,5 +1,6 @@
 import { isRenderable, Renderable, type RenderableOptions } from "../../Renderable"
 import type { RenderContext } from "../../types"
+import util from "node:util"
 
 export type VChild = VNode | Renderable | VChild[] | null | undefined | false
 
@@ -9,8 +10,10 @@ export interface PendingCall {
   isProperty?: boolean
 }
 
+const BrandedVNode: unique symbol = Symbol.for("@opentui/core/VNode")
+
 export interface VNode<P = any, C = VChild[]> {
-  __isVNode: true
+  [BrandedVNode]: true
   type: Construct<P>
   props?: P
   children?: C
@@ -69,7 +72,7 @@ export function h<P>(type: Construct<P>, props?: P, ...children: VChild[]): any 
   }
 
   const vnode: VNode<P> = {
-    __isVNode: true,
+    [BrandedVNode]: true,
     type,
     props,
     children: flattenChildren(children),
@@ -127,12 +130,16 @@ export function h<P>(type: Construct<P>, props?: P, ...children: VChild[]): any 
 }
 
 export function isVNode(node: any): node is VNode {
-  return node && node.__isVNode
+  return node && node[BrandedVNode]
 }
 
-export function ensureRenderable(ctx: RenderContext, node: Renderable | VNode<any, any[]>): Renderable {
+export function maybeMakeRenderable(ctx: RenderContext, node: Renderable | VNode<any, any[]>): Renderable | null {
   if (isRenderable(node)) return node
-  return instantiate(ctx, node)
+  if (isVNode(node)) return instantiate(ctx, node)
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("maybeMakeRenderable received an invalid node", util.inspect(node, { depth: 2 }))
+  }
+  return null
 }
 
 export function wrapWithDelegates<T extends InstanceType<RenderableConstructor>>(

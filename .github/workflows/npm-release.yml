@@ -1,0 +1,119 @@
+name: NPM Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "*snapshot*"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Extract version from tag
+        id: extract_version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "Extracted version: $TAG"
+
+      - name: Determine version scheme
+        id: version_scheme
+        run: |
+          TAG_VERSION="${{ steps.extract_version.outputs.version }}"
+          COMMIT_SHA=$(git rev-parse --short=8 HEAD)
+
+          if [[ "$TAG_VERSION" == *"snapshot"* ]]; then
+            # Pre-release snapshot
+            VERSION="0.0.0-$(date +%Y%m%d)-${COMMIT_SHA}"
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Using snapshot version: $VERSION"
+          else
+            # Full release
+            VERSION="*"
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Using full release version: $VERSION"
+          fi
+
+      - name: Install dependencies
+        run: bun i
+
+      - name: Prepare release versions
+        run: bun run prepare-release "${{ steps.version_scheme.outputs.version }}"
+
+      - name: Create and auto-merge version bump PR (full release only)
+        if: steps.version_scheme.outputs.is_prerelease == 'false'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Create and switch to a new branch
+          BRANCH_NAME="release/bump-versions-${{ steps.extract_version.outputs.version }}"
+          git checkout -b $BRANCH_NAME
+
+          # Add and commit changes
+          git add -A
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: bump versions for release ${{ steps.extract_version.outputs.version }}"
+            git push origin $BRANCH_NAME
+            
+            # Create PR using GitHub CLI
+            PR_URL=$(gh pr create \
+              --title "chore: bump versions for release ${{ steps.extract_version.outputs.version }}" \
+              --body "Automated version bump for release ${{ steps.extract_version.outputs.version }}" \
+              --base main \
+              --head $BRANCH_NAME)
+            
+            echo "Created PR: $PR_URL"
+            
+            # Auto-approve the PR
+            gh pr review $PR_URL --approve
+            echo "Auto-approved PR"
+            
+            # Auto-merge the PR
+            gh pr merge $PR_URL --auto --squash
+            echo "Set PR to auto-merge"
+            
+            # Wait for merge to complete and fetch latest changes
+            echo "Waiting for PR to merge..."
+            sleep 15
+            
+            # Switch back to main and pull latest changes
+            git checkout main
+            git pull origin main
+            echo "Updated to latest main branch"
+          else
+            echo "No version changes detected, skipping PR creation."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Publish packages
+        run: bun run publish
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CI: true

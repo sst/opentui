@@ -1,4 +1,5 @@
-import type { TextChunk } from "../text-buffer"
+import type { TextRenderable } from "../renderables/Text"
+import type { TextBuffer, TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
 import { parseColor, type ColorInput } from "./RGBA"
 
@@ -18,60 +19,80 @@ export interface StyleAttrs {
 }
 
 export class StyledText {
-  public readonly chunks: TextChunk[]
+  public chunks: TextChunk[]
+  public textRenderable?: TextRenderable
 
   constructor(chunks: TextChunk[]) {
     this.chunks = chunks
   }
 
-  private static _createInstance(chunks: TextChunk[]): StyledText {
-    const newInstance = Object.create(StyledText.prototype)
-    newInstance.chunks = chunks
-    return newInstance
+  public mount(textRenderable: TextRenderable): void {
+    this.textRenderable = textRenderable
   }
 
+  /**
+   * @deprecated: Use textRenderable.insertChunk instead
+   */
   insert(chunk: TextChunk, index?: number): StyledText {
     const originalLength = this.chunks.length
-    let newChunks: TextChunk[]
+    if (this.textRenderable) {
+      this.textRenderable.insertChunk(chunk, index ?? originalLength)
 
-    if (index === undefined || index === originalLength) {
-      newChunks = [...this.chunks, chunk]
-    } else {
-      newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index)]
+      let newChunks: TextChunk[]
+
+      if (index === undefined || index === originalLength) {
+        newChunks = [...this.chunks, chunk]
+      } else {
+        newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index)]
+      }
+      this.chunks = newChunks
     }
-
-    return StyledText._createInstance(newChunks)
+    return this
   }
 
+  /**
+   * @deprecated: Use textRenderable.removeChunk instead
+   */
   remove(chunk: TextChunk): StyledText {
-    const originalLength = this.chunks.length
-    const index = this.chunks.indexOf(chunk)
-    if (index === -1) return this
+    if (this.textRenderable) {
+      this.textRenderable.removeChunk(chunk)
 
-    let newChunks: TextChunk[]
+      const originalLength = this.chunks.length
+      const index = this.chunks.indexOf(chunk)
+      if (index === -1) return this
 
-    if (index === originalLength - 1) {
-      newChunks = this.chunks.slice(0, -1)
-    } else {
-      newChunks = [...this.chunks.slice(0, index), ...this.chunks.slice(index + 1)]
+      let newChunks: TextChunk[]
+
+      if (index === originalLength - 1) {
+        newChunks = this.chunks.slice(0, -1)
+      } else {
+        newChunks = [...this.chunks.slice(0, index), ...this.chunks.slice(index + 1)]
+      }
+      this.chunks = newChunks
     }
-
-    return StyledText._createInstance(newChunks)
+    return this
   }
 
+  /**
+   * @deprecated: Use textRenderable.replaceChunk instead
+   */
   replace(chunk: TextChunk, oldChunk: TextChunk): StyledText {
-    const index = this.chunks.indexOf(oldChunk)
-    if (index === -1) return this
+    if (this.textRenderable) {
+      this.textRenderable.replaceChunk(chunk, oldChunk)
 
-    let newChunks: TextChunk[]
+      const index = this.chunks.indexOf(oldChunk)
+      if (index === -1) return this
 
-    if (index === this.chunks.length - 1) {
-      newChunks = [...this.chunks.slice(0, -1), chunk]
-    } else {
-      newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index + 1)]
+      let newChunks: TextChunk[]
+
+      if (index === this.chunks.length - 1) {
+        newChunks = [...this.chunks.slice(0, -1), chunk]
+      } else {
+        newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index + 1)]
+      }
+      this.chunks = newChunks
     }
-
-    return StyledText._createInstance(newChunks)
+    return this
   }
 }
 
@@ -86,8 +107,6 @@ export function stringToStyledText(content: string): StyledText {
 }
 
 export type StylableInput = string | number | boolean | TextChunk
-
-const templateCache = new WeakMap<TemplateStringsArray, (TextChunk | null)[]>()
 
 function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
   if (typeof input === "object" && "__isChunk" in input) {
@@ -178,7 +197,7 @@ export const bg =
  * Template literal handler for styled text (non-cached version).
  * Returns a StyledText object containing chunks of text with optional styles.
  */
-export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
+export function t(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
   const chunks: TextChunk[] = []
 
   for (let i = 0; i < strings.length; i++) {
@@ -191,57 +210,6 @@ export function tn(strings: TemplateStringsArray, ...values: StylableInput[]): S
         plainText: raw,
         attributes: 0,
       })
-    }
-
-    const val = values[i]
-    if (typeof val === "object" && "__isChunk" in val) {
-      chunks.push(val as TextChunk)
-    } else if (val !== undefined) {
-      const plainTextStr = String(val)
-      chunks.push({
-        __isChunk: true,
-        text: textEncoder.encode(plainTextStr),
-        plainText: plainTextStr,
-        attributes: 0,
-      })
-    }
-  }
-
-  return new StyledText(chunks)
-}
-
-/**
- * Template literal handler for styled text (cached version).
- * Returns a StyledText object containing chunks of text with optional styles.
- * Uses caching to avoid re-encoding the same template strings.
- */
-export function t(strings: TemplateStringsArray, ...values: StylableInput[]): StyledText {
-  let cachedStringChunks = templateCache.get(strings)
-
-  if (!cachedStringChunks) {
-    cachedStringChunks = []
-    for (let i = 0; i < strings.length; i++) {
-      const raw = strings[i]
-      if (raw) {
-        cachedStringChunks.push({
-          __isChunk: true,
-          text: textEncoder.encode(raw),
-          plainText: raw,
-          attributes: 0,
-        })
-      } else {
-        cachedStringChunks.push(null)
-      }
-    }
-    templateCache.set(strings, cachedStringChunks)
-  }
-
-  const chunks: TextChunk[] = []
-
-  for (let i = 0; i < strings.length; i++) {
-    const stringChunk = cachedStringChunks[i]
-    if (stringChunk) {
-      chunks.push(stringChunk)
     }
 
     const val = values[i]

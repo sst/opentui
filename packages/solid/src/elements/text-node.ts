@@ -96,7 +96,7 @@ export class TextNode {
     textParent.content = styledText
     // Solid creates empty text nodes to cleanup a child array. This
     // handles such cases.
-    textParent.visible = styledText.toString() !== ""
+    textParent.visible = textParent.textLength !== 0
     this.parent = parent
   }
 
@@ -123,7 +123,12 @@ export class TextNode {
         this.textParent.content = styledText
       } else {
         this.parent?.remove(this.textParent.id)
-        this.textParent.destroyRecursively()
+        process.nextTick(() => {
+          if (!this.textParent) return
+          if (!this.textParent.parent) {
+            this.textParent.destroyRecursively()
+          }
+        })
       }
     }
   }

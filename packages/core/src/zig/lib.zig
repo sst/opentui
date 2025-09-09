@@ -27,6 +27,10 @@ fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 const allocator = arena.allocator();
 
+export fn getArenaAllocatedBytes() usize {
+    return arena.queryCapacity();
+}
+
 export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
@@ -34,8 +38,10 @@ export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
     }
 
     const pool = gp.initGlobalPool(allocator);
+    const unicode_data = gp.initGlobalUnicodeData(allocator);
 
-    return renderer.CliRenderer.create(allocator, width, height, pool) catch |err| {
+    const graphemes_ptr, const display_width_ptr = unicode_data;
+    return renderer.CliRenderer.create(allocator, width, height, pool, graphemes_ptr, display_width_ptr) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -94,12 +100,16 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     const pool = gp.initGlobalPool(allocator);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
+
+    const unicode_data = gp.initGlobalUnicodeData(allocator);
+
+    const graphemes_ptr, const display_width_ptr = unicode_data;
     return buffer.OptimizedBuffer.init(allocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
         .id = id,
-    }) catch |err| {
+    }, graphemes_ptr, display_width_ptr) catch |err| {
         logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
     };
@@ -343,7 +353,11 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
 export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffer {
     const pool = gp.initGlobalPool(allocator);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
-    const tb = text_buffer.TextBuffer.init(allocator, length, pool, wMethod) catch return null;
+
+    const unicode_data = gp.initGlobalUnicodeData(allocator);
+
+    const graphemes_ptr, const display_width_ptr = unicode_data;
+    const tb = text_buffer.TextBuffer.init(allocator, length, pool, wMethod, graphemes_ptr, display_width_ptr) catch return null;
     return tb;
 }
 
@@ -457,6 +471,11 @@ export fn textBufferGetSelectedText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, 
     return tb.getSelectedTextIntoBuffer(outBuffer);
 }
 
+export fn textBufferGetPlainText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getPlainTextIntoBuffer(outBuffer);
+}
+
 export fn textBufferSetLocalSelection(tb: *text_buffer.TextBuffer, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
     const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
@@ -465,4 +484,28 @@ export fn textBufferSetLocalSelection(tb: *text_buffer.TextBuffer, anchorX: i32,
 
 export fn textBufferResetLocalSelection(tb: *text_buffer.TextBuffer) void {
     tb.resetLocalSelection();
+}
+
+export fn textBufferInsertChunkGroup(tb: *text_buffer.TextBuffer, index: usize, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: u8) u32 {
+    const textSlice = textBytes[0..textLen];
+    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const attrValue = if (attr == 255) null else attr;
+    return tb.insertChunkGroup(index, textSlice, fgColor, bgColor, attrValue) catch 0;
+}
+
+export fn textBufferRemoveChunkGroup(tb: *text_buffer.TextBuffer, index: usize) u32 {
+    return tb.removeChunkGroup(index) catch tb.char_count;
+}
+
+export fn textBufferReplaceChunkGroup(tb: *text_buffer.TextBuffer, index: usize, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: u8) u32 {
+    const textSlice = textBytes[0..textLen];
+    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const attrValue = if (attr == 255) null else attr;
+    return tb.replaceChunkGroup(index, textSlice, fgColor, bgColor, attrValue) catch tb.char_count;
+}
+
+export fn textBufferGetChunkGroupCount(tb: *const text_buffer.TextBuffer) usize {
+    return tb.getChunkGroupCount();
 }

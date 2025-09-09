@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+      - "!v*-snapshot*"
   workflow_dispatch:
 
 jobs:
