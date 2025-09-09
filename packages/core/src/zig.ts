@@ -5,14 +5,37 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 
-const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
-const targetLibPath = module.default
-if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+// Try optional prebuilt native package first; fall back to local dev build
+let targetLibPath: string | undefined
+try {
+  const mod = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+  targetLibPath = (mod as any).default
+  if (targetLibPath && !existsSync(targetLibPath)) {
+    targetLibPath = undefined
+  }
+} catch {
+  targetLibPath = undefined
+}
+
+function devLocateLibPath(): string | undefined {
+  try {
+    const arch = process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch
+    const os = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux"
+    const ext = process.platform === "darwin" ? "dylib" : process.platform === "win32" ? "dll" : "so"
+    const url = new URL(`./zig/lib/${arch}-${os}/libopentui.${ext}`, import.meta.url)
+    const p = url.pathname
+    return existsSync(p) ? p : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function getOpenTUILib(libPath?: string) {
-  const resolvedLibPath = libPath || targetLibPath
+  const fallback = devLocateLibPath()
+  const resolvedLibPath = libPath || targetLibPath || fallback
+  if (!resolvedLibPath) {
+    throw new Error(`OpenTUI native library not found. Install platform package or build local Zig lib.`)
+  }
 
   const rawSymbols = dlopen(resolvedLibPath, {
     // Logging
@@ -243,6 +266,32 @@ function getOpenTUILib(libPath?: string) {
     },
     setupTerminal: {
       args: ["ptr", "bool"],
+      returns: "void",
+    },
+
+    // PTY Terminal Session
+    terminalSessionCreate: {
+      args: ["u16", "u16"],
+      returns: "ptr",
+    },
+    terminalSessionDestroy: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    terminalSessionWrite: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    terminalSessionResize: {
+      args: ["ptr", "u16", "u16"],
+      returns: "void",
+    },
+    terminalSessionTick: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    terminalSessionRender: {
+      args: ["ptr", "ptr", "u32", "u32"],
       returns: "void",
     },
 
@@ -749,6 +798,14 @@ export interface RenderLib {
 
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
+
+  // PTY TerminalSession
+  terminalSessionCreate: (cols: number, rows: number) => Pointer | null
+  terminalSessionDestroy: (session: Pointer) => void
+  terminalSessionWrite: (session: Pointer, data: Uint8Array, len: number) => number
+  terminalSessionResize: (session: Pointer, cols: number, rows: number) => void
+  terminalSessionTick: (session: Pointer) => number
+  terminalSessionRender: (session: Pointer, buffer: Pointer, x: number, y: number) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -1511,6 +1568,26 @@ class FFIRenderLib implements RenderLib {
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
     this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
+  }
+
+  // PTY TerminalSession wrappers
+  public terminalSessionCreate(cols: number, rows: number): Pointer | null {
+    return this.opentui.symbols.terminalSessionCreate(cols, rows)
+  }
+  public terminalSessionDestroy(session: Pointer): void {
+    this.opentui.symbols.terminalSessionDestroy(session)
+  }
+  public terminalSessionWrite(session: Pointer, data: Uint8Array): number {
+    return this.opentui.symbols.terminalSessionWrite(session, ptr(data), data.length) as number
+  }
+  public terminalSessionResize(session: Pointer, cols: number, rows: number): void {
+    this.opentui.symbols.terminalSessionResize(session, cols, rows)
+  }
+  public terminalSessionTick(session: Pointer): number {
+    return this.opentui.symbols.terminalSessionTick(session) as number
+  }
+  public terminalSessionRender(session: Pointer, buffer: Pointer, x: number, y: number): void {
+    this.opentui.symbols.terminalSessionRender(session, buffer, x, y)
   }
 }
 

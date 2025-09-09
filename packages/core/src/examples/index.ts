@@ -42,6 +42,7 @@ import * as mouseInteractionExample from "./mouse-interaction-demo"
 import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
+import * as ptyTwoPaneDemo from "./pty-two-pane-demo"
 import * as consoleExample from "./console-demo"
 import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
@@ -49,6 +50,8 @@ import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
 import { getKeyHandler } from "../lib/KeyHandler"
+import { setRenderLibPath } from "../zig"
+import fs from "node:fs"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -262,6 +265,12 @@ const examples: Example[] = [
     description: "Renderer confined to bottom area with normal terminal output above",
     run: splitModeExample.run,
     destroy: splitModeExample.destroy,
+  },
+  {
+    name: "PTY Two-Pane Demo",
+    description: "Two side-by-side native PTY shells; Tab switches focus",
+    run: ptyTwoPaneDemo.run,
+    destroy: ptyTwoPaneDemo.destroy,
   },
 ]
 
@@ -507,6 +516,17 @@ class ExampleSelector {
     }
   }
 }
+
+// Prefer local freshly-built native lib during development
+try {
+  const arch = process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch
+  const os = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux"
+  const ext = process.platform === "darwin" ? "dylib" : process.platform === "win32" ? "dll" : "so"
+  const url = new URL(`../zig/lib/${arch}-${os}/libopentui.${ext}`, import.meta.url)
+  if (fs.existsSync(url.pathname)) {
+    setRenderLibPath(url.pathname)
+  }
+} catch {}
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
