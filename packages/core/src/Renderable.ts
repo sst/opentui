@@ -1119,7 +1119,7 @@ export abstract class Renderable extends EventEmitter {
       this.propagateLiveCount(renderable._liveCount)
     }
 
-    if (obj.focusable) {
+    if (isRenderable(obj) && obj.focusable) {
       this.ctx.addFocusable(obj)
     }
 
