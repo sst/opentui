@@ -4,6 +4,14 @@ A React renderer for building terminal user interfaces using [OpenTUI core](http
 
 ## Installation
 
+Quick start with [bun](https://bun.sh) and [create-tui](https://github.com/msmps/create-tui):
+
+```bash
+bun create tui --template react
+```
+
+Manual installation:
+
 ```bash
 bun install @opentui/react @opentui/core react
 ```
@@ -14,14 +22,7 @@ bun install @opentui/react @opentui/core react
 import { render } from "@opentui/react"
 
 function App() {
-  return (
-    <box>
-      <text fg="#00FF00">Hello, Terminal!</text>
-      <box title="Welcome" padding={2}>
-        <text>Welcome to OpenTUI with React!</text>
-      </box>
-    </box>
-  )
+  return <text>Hello, world!</text>
 }
 
 render(<App />)
@@ -56,6 +57,7 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 - **`<box>`** - Container with borders and layout
 - **`<input>`** - Text input field
 - **`<select>`** - Selection dropdown
+- **`<scrollbox>`** - A scrollable box
 - **`<tab-select>`** - Tab-based selection
 - **`<ascii-font>`** - Display ASCII art text with different font styles
 
@@ -65,11 +67,13 @@ Components can be styled using props or the `style` prop:
 
 ```tsx
 // Direct props
-<text fg="#FF0000">Hello</text>
+<box backgroundColor="blue" padding={2}>
+  <text>Hello, world!</text>
+</box>
 
 // Style prop
 <box style={{ backgroundColor: "blue", padding: 2 }}>
-  <text>Styled content</text>
+  <text>Hello, world!</text>
 </box>
 ```
 
@@ -102,14 +106,15 @@ Access the OpenTUI renderer instance.
 ```tsx
 import { useRenderer } from "@opentui/react"
 
-function MyComponent() {
+function App() {
   const renderer = useRenderer()
 
   useEffect(() => {
-    renderer.toggleDebugOverlay()
+    renderer.console.show()
+    console.log("Hello, from the console!")
   }, [])
 
-  return <text>Debug available</text>
+  return <box />
 }
 ```
 
@@ -120,7 +125,7 @@ Handle keyboard events.
 ```tsx
 import { useKeyboard } from "@opentui/react"
 
-function MyComponent() {
+function App() {
   useKeyboard((key) => {
     if (key.name === "escape") {
       process.exit(0)
@@ -139,7 +144,7 @@ Handle terminal resize events.
 import { useOnResize, useRenderer } from "@opentui/react"
 import { useEffect } from "react"
 
-function MyComponent() {
+function App() {
   const renderer = useRenderer()
 
   useEffect(() => {
@@ -161,7 +166,7 @@ Get current terminal dimensions and automatically update when the terminal is re
 ```tsx
 import { useTerminalDimensions } from "@opentui/react"
 
-function MyComponent() {
+function App() {
   const { width, height } = useTerminalDimensions()
 
   return (
@@ -188,7 +193,7 @@ Display text with rich formatting.
 ```tsx
 import { bold, fg, t } from "@opentui/core"
 
-function TextExample() {
+function App() {
   return (
     <box>
       {/* Simple text */}
@@ -209,22 +214,23 @@ function TextExample() {
 Container with borders and layout capabilities.
 
 ```tsx
-function BoxExample() {
+function App() {
   return (
     <box flexDirection="column">
       {/* Basic box */}
-      <box>
+      <box border>
         <text>Simple box</text>
       </box>
 
       {/* Box with title and styling */}
-      <box title="Settings" borderStyle="double" padding={2} backgroundColor="blue">
+      <box title="Settings" border borderStyle="double" padding={2} backgroundColor="blue">
         <text>Box content</text>
       </box>
 
       {/* Styled box */}
       <box
         style={{
+          border: true,
           width: 40,
           height: 10,
           margin: 1,
@@ -246,20 +252,16 @@ Text input field with event handling.
 ```tsx
 import { useState } from "react"
 
-function InputExample() {
+function App() {
   const [value, setValue] = useState("")
-  const [focused, setFocused] = useState(true)
 
   return (
-    <box title="Enter your name" style={{ height: 3 }}>
+    <box title="Enter your name" style={{ border: true, height: 3 }}>
       <input
         placeholder="Type here..."
-        focused={focused}
+        focused
         onInput={setValue}
         onSubmit={(value) => console.log("Submitted:", value)}
-        style={{
-          focusedBackgroundColor: "#333333",
-        }}
       />
     </box>
   )
@@ -274,7 +276,7 @@ Dropdown selection component.
 import type { SelectOption } from "@opentui/core"
 import { useState } from "react"
 
-function SelectExample() {
+function App() {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const options: SelectOption[] = [
@@ -284,7 +286,7 @@ function SelectExample() {
   ]
 
   return (
-    <box style={{ height: 24 }}>
+    <box style={{ border: true, height: 24 }}>
       <select
         style={{ height: 22 }}
         options={options}
@@ -299,6 +301,50 @@ function SelectExample() {
 }
 ```
 
+### Scrollbox Component
+
+A scrollable box.
+
+```tsx
+function App() {
+  return (
+    <scrollbox
+      style={{
+        rootOptions: {
+          backgroundColor: "#24283b",
+        },
+        wrapperOptions: {
+          backgroundColor: "#1f2335",
+        },
+        viewportOptions: {
+          backgroundColor: "#1a1b26",
+        },
+        contentOptions: {
+          backgroundColor: "#16161e",
+        },
+        scrollbarOptions: {
+          showArrows: true,
+          trackOptions: {
+            foregroundColor: "#7aa2f7",
+            backgroundColor: "#414868",
+          },
+        },
+      }}
+      focused
+    >
+      {Array.from({ length: 1000 }).map((_, i) => (
+        <box
+          key={i}
+          style={{ width: "100%", padding: 1, marginBottom: 1, backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449" }}
+        >
+          <text content={`Box ${i}`} />
+        </box>
+      ))}
+    </scrollbox>
+  )
+}
+```
+
 ### ASCII Font Component
 
 Display ASCII art text with different font styles.
@@ -307,7 +353,7 @@ Display ASCII art text with different font styles.
 import { measureText } from "@opentui/core"
 import { useState } from "react"
 
-function ASCIIFontExample() {
+function App() {
   const text = "ASCII"
   const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
 
@@ -317,10 +363,11 @@ function ASCIIFontExample() {
   })
 
   return (
-    <box style={{ paddingLeft: 1, paddingRight: 1 }}>
+    <box style={{ border: true, paddingLeft: 1, paddingRight: 1 }}>
       <box
         style={{
           height: 8,
+          border: true,
           marginBottom: 1,
         }}
       >
@@ -365,10 +412,10 @@ function ASCIIFontExample() {
 ### Login Form
 
 ```tsx
-import { useState, useCallback } from "react"
 import { render, useKeyboard } from "@opentui/react"
+import { useCallback, useState } from "react"
 
-function LoginForm() {
+function App() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [focused, setFocused] = useState<"username" | "password">("username")
@@ -389,10 +436,10 @@ function LoginForm() {
   }, [username, password])
 
   return (
-    <box style={{ padding: 2, flexDirection: "column" }}>
+    <box style={{ border: true, padding: 2, flexDirection: "column", gap: 1 }}>
       <text fg="#FFFF00">Login Form</text>
 
-      <box title="Username" style={{ width: 40, height: 3, marginTop: 1 }}>
+      <box title="Username" style={{ border: true, width: 40, height: 3 }}>
         <input
           placeholder="Enter username..."
           onInput={setUsername}
@@ -401,7 +448,7 @@ function LoginForm() {
         />
       </box>
 
-      <box title="Password" style={{ width: 40, height: 3, marginTop: 1 }}>
+      <box title="Password" style={{ border: true, width: 40, height: 3 }}>
         <input
           placeholder="Enter password..."
           onInput={setPassword}
@@ -421,16 +468,16 @@ function LoginForm() {
   )
 }
 
-render(<LoginForm />)
+render(<App />)
 ```
 
 ### Counter with Timer
 
 ```tsx
-import { useState, useEffect } from "react"
 import { render } from "@opentui/react"
+import { useEffect, useState } from "react"
 
-function Counter() {
+function App() {
   const [count, setCount] = useState(0)
 
   useEffect(() => {
@@ -448,7 +495,7 @@ function Counter() {
   )
 }
 
-render(<Counter />)
+render(<App />)
 ```
 
 ### Styled Text Showcase
@@ -457,7 +504,7 @@ render(<Counter />)
 import { blue, bold, red, t, underline } from "@opentui/core"
 import { render } from "@opentui/react"
 
-function StyledTextShowcase() {
+function App() {
   return (
     <box style={{ flexDirection: "column" }}>
       <text>Simple text</text>
@@ -471,25 +518,32 @@ function StyledTextShowcase() {
   )
 }
 
-render(<StyledTextShowcase />)
+render(<App />)
 ```
 
 ## Component Extension
 
-You can create custom components by extending OpenTUI's base renderables:
+You can create custom components by extending OpenTUIs base renderables:
 
 ```tsx
-import { BoxRenderable, OptimizedBuffer, RGBA } from "@opentui/core"
+import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
 import { extend, render } from "@opentui/react"
 
 // Create custom component class
 class ButtonRenderable extends BoxRenderable {
   private _label: string = "Button"
 
-  constructor(id: string, options: any) {
-    super(id, options)
-    this.borderStyle = "single"
-    this.padding = 1
+  constructor(ctx: RenderContext, options: BoxOptions & { label?: string }) {
+    super(ctx, {
+      border: true,
+      borderStyle: "single",
+      minHeight: 3,
+      ...options,
+    })
+
+    if (options.label) {
+      this._label = options.label
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -510,19 +564,19 @@ class ButtonRenderable extends BoxRenderable {
 // Add TypeScript support
 declare module "@opentui/react" {
   interface OpenTUIComponents {
-    button: typeof ButtonRenderable
+    consoleButton: typeof ButtonRenderable
   }
 }
 
 // Register the component
-extend({ button: ButtonRenderable })
+extend({ consoleButton: ButtonRenderable })
 
 // Use in JSX
 function App() {
   return (
     <box>
-      <button label="Click me!" style={{ backgroundColor: "blue" }} />
-      <button label="Another button" style={{ backgroundColor: "green" }} />
+      <consoleButton label="Click me!" style={{ backgroundColor: "blue" }} />
+      <consoleButton label="Another button" style={{ backgroundColor: "green" }} />
     </box>
   )
 }
