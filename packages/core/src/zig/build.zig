@@ -140,11 +140,16 @@ fn buildTargetFromQuery(
     const target = b.resolveTargetQuery(target_query);
     var target_output: *std.Build.Step.Compile = undefined;
 
+    const link_libc_needed = switch (target.result.os.tag) {
+        .macos, .linux => true,
+        else => false,
+    };
+
     const module = b.addModule(LIB_NAME, .{
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
-        .link_libc = false,
+        .link_libc = link_libc_needed,
     });
 
     applyZgDependencies(b, module, optimize, target);

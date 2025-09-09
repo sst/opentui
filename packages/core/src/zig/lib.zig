@@ -9,6 +9,7 @@ const text_buffer = @import("text-buffer.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const ts = @import("terminal_session.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -324,6 +325,34 @@ export fn addToHitGrid(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width
 
 export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
+}
+
+// ========================
+// Native PTY TerminalSession API
+// ========================
+
+export fn terminalSessionCreate(cols: u16, rows: u16) ?*ts.TerminalSession {
+    return ts.TerminalSession.create(allocator, cols, rows) catch null;
+}
+
+export fn terminalSessionDestroy(session: *ts.TerminalSession) void {
+    session.destroy();
+}
+
+export fn terminalSessionWrite(session: *ts.TerminalSession, data: [*]const u8, len: usize) usize {
+    return session.write(data[0..len]);
+}
+
+export fn terminalSessionResize(session: *ts.TerminalSession, cols: u16, rows: u16) void {
+    session.resize(cols, rows);
+}
+
+export fn terminalSessionTick(session: *ts.TerminalSession) i32 {
+    return session.tick();
+}
+
+export fn terminalSessionRender(session: *ts.TerminalSession, bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32) void {
+    session.render(bufferPtr, x, y);
 }
 
 export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
