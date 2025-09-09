@@ -50,6 +50,9 @@ export interface RenderContext extends EventEmitter {
   hasSelection: boolean
   getSelection: () => Selection | null
   requestSelectionUpdate: () => void
+  focusables: Renderable[]
+  removeFocusable: (renderable: Renderable) => void
+  addFocusable: (node: Renderable) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

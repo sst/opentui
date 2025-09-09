@@ -214,6 +214,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
   private _focusedRenderable: Renderable | null = null
+  private _focusables: Renderable[] = []
 
   private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
   private resizeDebounceDelay: number = 100
@@ -371,6 +372,43 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     }
+  }
+
+  private *findParentInList(node: Renderable, list: Renderable[]): Generator<Renderable, void, unknown> {
+    let current = node.parent
+    while (current) {
+      if (list.includes(current)) {
+        yield current
+        return
+      }
+      current = current.parent
+    }
+  }
+
+  public addFocusable(node: Renderable): void {
+    if (this._focusables.includes(node)) return
+
+    let index = 0
+
+    const parentGen = this.findParentInList(node, this._focusables)
+    const parentFound = parentGen.next()
+    if (!parentFound.done) {
+      const parent = parentFound.value
+      index = this._focusables.indexOf(parent) + 1
+    } else {
+      index = this._focusables.length
+    }
+
+    this._focusables.splice(index, 0, node)
+  }
+
+  public removeFocusable(node: Renderable): void {
+    const i = this._focusables.indexOf(node)
+    if (i !== -1) this._focusables.splice(i, 1)
+  }
+
+  public get focusables(): Renderable[] {
+    return this._focusables
   }
 
   public set focusedRenderable(renderable: Renderable | null) {

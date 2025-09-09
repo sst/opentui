@@ -1,9 +1,7 @@
 import { getKeyHandler } from "./KeyHandler"
 import type { Renderable } from "../Renderable"
-import { YGTreeWalker } from "./YGTreeWalker"
 import type { ParsedKey } from "./parse.keypress"
 import type { CliRenderer } from "../renderer"
-import { globalEmitter } from "./globalEmitter"
 
 export type FocusKeyHandler = (key: ParsedKey, focusNext: () => void, focusPrev: () => void) => void
 
@@ -14,11 +12,8 @@ interface FocusManagerConfig {
 export class FocusManager {
   private static instance: FocusManager | null = null
 
-  private globalListener: () => void
-
   private keyUnsubscribe: (() => void) | null = null
   private readonly renderer: CliRenderer
-  private walker: YGTreeWalker | null = null
   private onKey?: FocusKeyHandler
 
   static install(renderer: CliRenderer, config?: FocusManagerConfig): FocusManager {
@@ -37,21 +32,20 @@ export class FocusManager {
 
   constructor(renderer: CliRenderer, config?: FocusManagerConfig) {
     this.renderer = renderer
-    this.walker = new YGTreeWalker(this.renderer.root, (n) => this.isFocusable(n))
     this.onKey = config?.onKey
-
-    this.globalListener = () => this.walker?.reset()
-    globalEmitter.on("treeChanged", this.globalListener)
   }
 
-  private getWalker(): YGTreeWalker {
-    if (!this.walker) throw new Error("Walker not initialized")
+  private getFocusables(): Renderable[] {
+    console.log(
+      "Focusables:",
+      this.renderer.focusables.map((callback) => callback.id),
+    )
 
-    if (this.renderer.focusedRenderable) {
-      this.walker.currentNode = this.renderer.focusedRenderable
-    }
+    return this.renderer.focusables
+  }
 
-    return this.walker
+  private isVisible(r: Renderable): boolean {
+    return r["visible"] === true
   }
 
   private attach(): void {
@@ -77,18 +71,11 @@ export class FocusManager {
   private detach(): void {
     this.keyUnsubscribe?.()
     this.keyUnsubscribe = null
-    globalEmitter.off("treeChanged", this.globalListener)
     this.renderer.focusedRenderable = null
-    this.walker = null
   }
 
-  private isFocusable(r: Renderable): boolean {
-    return r["focusable"] === true && r["_visible"] === true
-  }
-
-  private initFocus() {
-    const walker = this.getWalker()
-    const first = walker.firstAccepted()
+  private initFocus(): void {
+    const first = this.getFocusables().find((r) => this.isVisible(r))
     if (first) {
       this.renderer.focusedRenderable = first
       first.focus()
@@ -96,30 +83,40 @@ export class FocusManager {
   }
 
   private findNextFocusable(): Renderable | null {
-    const walker = this.getWalker()
-    const next = walker.nextAccepted()
-    return next ?? walker.firstAccepted()
+    const focusables = this.getFocusables()
+    if (!this.renderer.focusedRenderable) return focusables.find((r) => this.isVisible(r)) ?? null
+
+    const startIndex = focusables.indexOf(this.renderer.focusedRenderable) + 1
+    for (let i = startIndex; i < focusables.length; i++) {
+      if (this.isVisible(focusables[i])) return focusables[i]
+    }
+    return focusables.find((r) => this.isVisible(r)) ?? null
   }
 
-  private focusNext() {
+  private focusNext(): void {
     const next = this.findNextFocusable()
     if (!next) return
     this.renderer.focusedRenderable?.blur()
     this.renderer.focusedRenderable = next
-    this.renderer.focusedRenderable.focus()
+    next.focus()
   }
 
   private findPrevFocusable(): Renderable | null {
-    const walker = this.getWalker()
-    const prev = walker.prevAccepted()
-    return prev ?? walker.lastAccepted()
+    const focusables = this.getFocusables()
+    if (!this.renderer.focusedRenderable) return [...focusables].reverse().find((r) => this.isVisible(r)) ?? null
+
+    const startIndex = focusables.indexOf(this.renderer.focusedRenderable) - 1
+    for (let i = startIndex; i >= 0; i--) {
+      if (this.isVisible(focusables[i])) return focusables[i]
+    }
+    return [...focusables].reverse().find((r) => this.isVisible(r)) ?? null
   }
 
-  private focusPrev() {
+  private focusPrev(): void {
     const prev = this.findPrevFocusable()
     if (!prev) return
     this.renderer.focusedRenderable?.blur()
     this.renderer.focusedRenderable = prev
-    this.renderer.focusedRenderable.focus()
+    prev.focus()
   }
 }

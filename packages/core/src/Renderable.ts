@@ -218,6 +218,7 @@ export abstract class Renderable extends EventEmitter {
   private _dirty: boolean = false
 
   protected focusable: boolean = false
+  protected tabbable: boolean = false
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
@@ -1103,6 +1104,10 @@ export abstract class Renderable extends EventEmitter {
       this.propagateLiveCount(obj._liveCount)
     }
 
+    if (obj.focusable) {
+      this.ctx.addFocusable(obj)
+    }
+
     this.requestRender()
 
     return insertedIndex
@@ -1145,6 +1150,9 @@ export abstract class Renderable extends EventEmitter {
 
         const childLayoutNode = obj.getLayoutNode()
         this.layoutNode.removeChild(childLayoutNode)
+        if (obj.focusable) {
+          this.ctx.removeFocusable(obj)
+        }
         this.requestRender()
 
         obj.onRemove()
