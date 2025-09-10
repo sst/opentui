@@ -250,7 +250,6 @@ export abstract class Renderable extends BaseRenderable {
   protected frameBuffer: OptimizedBuffer | null = null
 
   protected focusable: boolean = false
-  protected tabbable: boolean = false
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
