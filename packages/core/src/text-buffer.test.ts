@@ -182,19 +182,16 @@ describe("TextBuffer", () => {
     it("should handle styled text with colors and attributes", () => {
       const redChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Red"),
-        plainText: "Red",
+        text: "Red",
         fg: RGBA.fromValues(1, 0, 0, 1),
       }
       const newlineChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("\n"),
-        plainText: "\n",
+        text: "\n",
       }
       const blueChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Blue"),
-        plainText: "Blue",
+        text: "Blue",
         fg: RGBA.fromValues(0, 0, 1, 1),
       }
 
@@ -408,19 +405,16 @@ describe("TextBuffer", () => {
     it("should handle styled text with colors and attributes", () => {
       const redChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Red"),
-        plainText: "Red",
+        text: "Red",
         fg: RGBA.fromValues(1, 0, 0, 1),
       }
       const newlineChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("\n"),
-        plainText: "\n",
+        text: "\n",
       }
       const blueChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Blue"),
-        plainText: "Blue",
+        text: "Blue",
         fg: RGBA.fromValues(0, 0, 1, 1),
       }
 
@@ -491,14 +485,12 @@ describe("TextBuffer", () => {
     it("should handle selection that spans styled text", () => {
       const redChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Red"),
-        plainText: "Red",
+        text: "Red",
         fg: RGBA.fromValues(1, 0, 0, 1),
       }
       const blueChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Blue"),
-        plainText: "Blue",
+        text: "Blue",
         fg: RGBA.fromValues(0, 0, 1, 1),
       }
 
@@ -558,19 +550,16 @@ describe("TextBuffer", () => {
     it("should handle styled text with colors and attributes", () => {
       const redChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Red"),
-        plainText: "Red",
+        text: "Red",
         fg: RGBA.fromValues(1, 0, 0, 1),
       }
       const newlineChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("\n"),
-        plainText: "\n",
+        text: "\n",
       }
       const blueChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Blue"),
-        plainText: "Blue",
+        text: "Blue",
         fg: RGBA.fromValues(0, 0, 1, 1),
       }
 
@@ -803,13 +792,11 @@ describe("TextBuffer", () => {
       // Create styled text with only empty chunks
       const emptyChunk1 = {
         __isChunk: true as const,
-        text: new TextEncoder().encode(""),
-        plainText: "",
+        text: "",
       }
       const emptyChunk2 = {
         __isChunk: true as const,
-        text: new TextEncoder().encode(""),
-        plainText: "",
+        text: "",
       }
       const styledText = new StyledText([emptyChunk1, emptyChunk2])
       buffer.setStyledText(styledText)
@@ -863,13 +850,11 @@ describe("TextBuffer", () => {
     it("should handle mixed content with empty chunks", () => {
       const emptyChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode(""),
-        plainText: "",
+        text: "",
       }
       const contentChunk = {
         __isChunk: true as const,
-        text: new TextEncoder().encode("Hello"),
-        plainText: "Hello",
+        text: "Hello",
       }
       const styledText = new StyledText([emptyChunk, contentChunk, emptyChunk])
       buffer.setStyledText(styledText)
@@ -887,8 +872,7 @@ describe("TextBuffer", () => {
     it("should handle consecutive empty chunks correctly", () => {
       const emptyChunks = Array.from({ length: 5 }, () => ({
         __isChunk: true as const,
-        text: new TextEncoder().encode(""),
-        plainText: "",
+        text: "",
       }))
       const styledText = new StyledText(emptyChunks)
       buffer.setStyledText(styledText)

@@ -3,8 +3,9 @@ import type { TextBuffer, TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
 import { parseColor, type ColorInput } from "./RGBA"
 
+const BrandedStyledText: unique symbol = Symbol.for("@opentui/core/StyledText")
+
 export type Color = ColorInput
-const textEncoder = new TextEncoder()
 
 export interface StyleAttrs {
   fg?: Color
@@ -18,7 +19,13 @@ export interface StyleAttrs {
   blink?: boolean
 }
 
+export function isStyledText(obj: any): obj is StyledText {
+  return obj && obj[BrandedStyledText]
+}
+
 export class StyledText {
+  [BrandedStyledText] = true
+
   public chunks: TextChunk[]
   public textRenderable?: TextRenderable
 
@@ -97,11 +104,9 @@ export class StyledText {
 }
 
 export function stringToStyledText(content: string): StyledText {
-  const textEncoder = new TextEncoder()
   const chunk = {
     __isChunk: true as const,
-    text: textEncoder.encode(content),
-    plainText: content,
+    text: content,
   }
   return new StyledText([chunk])
 }
@@ -121,22 +126,19 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
     return {
       __isChunk: true,
       text: existingChunk.text,
-      plainText: existingChunk.plainText,
       fg,
       bg,
       attributes: mergedAttrs,
     }
   } else {
     const plainTextStr = String(input)
-    const text = textEncoder.encode(plainTextStr)
     const fg = style.fg ? parseColor(style.fg) : undefined
     const bg = style.bg ? parseColor(style.bg) : undefined
     const attributes = createTextAttributes(style)
 
     return {
       __isChunk: true,
-      text,
-      plainText: plainTextStr,
+      text: plainTextStr,
       fg,
       bg,
       attributes,
@@ -206,8 +208,7 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
     if (raw) {
       chunks.push({
         __isChunk: true,
-        text: textEncoder.encode(raw),
-        plainText: raw,
+        text: raw,
         attributes: 0,
       })
     }
@@ -219,8 +220,7 @@ export function t(strings: TemplateStringsArray, ...values: StylableInput[]): St
       const plainTextStr = String(val)
       chunks.push({
         __isChunk: true,
-        text: textEncoder.encode(plainTextStr),
-        plainText: plainTextStr,
+        text: plainTextStr,
         attributes: 0,
       })
     }

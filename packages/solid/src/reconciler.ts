@@ -29,7 +29,7 @@ export type DomNode = Renderable | TextNode | TextChunk
 const logId = (node?: DomNode): string | undefined => {
   if (!node) return undefined
   if (isTextChunk(node)) {
-    return node.plainText
+    return node.text
   }
   return node.id
 }
@@ -48,6 +48,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   if (node instanceof StyledText) {
     log("Inserting styled text:", node.toString())
     for (const chunk of node.chunks) {
+      // Why is this only adding the first chunk?
       _insertNode(parent, _createTextNode(chunk), anchor)
       return
     }
@@ -119,8 +120,7 @@ function _createTextNode(value?: string | number | boolean | TextChunk): TextNod
       ? value
       : {
           __isChunk: true,
-          text: new TextEncoder().encode(`${value}`),
-          plainText: `${value}`,
+          text: `${value}`,
         }
   const textNode = new TextNode(chunk)
   return textNode
@@ -169,8 +169,7 @@ export const {
     }
     const newChunk: TextChunk = {
       __isChunk: true,
-      text: new TextEncoder().encode(value),
-      plainText: value,
+      text: value,
     }
     textNode.replaceText(newChunk)
   },

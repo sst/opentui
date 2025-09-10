@@ -45,7 +45,11 @@ export interface Position {
   left?: number | "auto" | `${number}%`
 }
 
-export interface LayoutOptions {
+export interface BaseRenderableOptions {
+  id?: string
+}
+
+export interface LayoutOptions extends BaseRenderableOptions {
   flexGrow?: number
   flexShrink?: number
   flexDirection?: FlexDirectionString
@@ -77,8 +81,7 @@ export interface LayoutOptions {
   enableLayout?: boolean
 }
 
-export interface RenderableOptions<T extends Renderable = Renderable> extends Partial<LayoutOptions> {
-  id?: string
+export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> extends Partial<LayoutOptions> {
   width?: number | "auto" | `${number}%`
   height?: number | "auto" | `${number}%`
   zIndex?: number
@@ -193,14 +196,43 @@ export function isRenderable(obj: any): obj is Renderable {
   return !!obj?.[BrandedRenderable]
 }
 
-export abstract class Renderable extends EventEmitter {
+export abstract class BaseRenderable extends EventEmitter {
   [BrandedRenderable] = true
 
   private static renderableNumber = 1
-  static renderablesByNumber: Map<number, Renderable> = new Map()
-
   public readonly id: string
   public readonly num: number
+  protected _dirty: boolean = false
+
+  constructor(options: BaseRenderableOptions) {
+    super()
+    this.num = BaseRenderable.renderableNumber++
+    this.id = options.id ?? `renderable-${this.num}`
+  }
+
+  public abstract add(obj: BaseRenderable | unknown, index?: number): number
+  public abstract remove(id: string): void
+  public abstract getChildren(): BaseRenderable[]
+  public abstract getChildrenCount(): number
+  public abstract getRenderable(id: string): BaseRenderable | undefined
+  public abstract requestRender(): void
+
+  public get isDirty(): boolean {
+    return this._dirty
+  }
+
+  protected markClean(): void {
+    this._dirty = false
+  }
+
+  protected markDirty(): void {
+    this._dirty = true
+  }
+}
+
+export abstract class Renderable extends BaseRenderable {
+  static renderablesByNumber: Map<number, Renderable> = new Map()
+
   private _isDestroyed: boolean = false
   protected _ctx: RenderContext
   protected _translateX: number = 0
@@ -216,7 +248,6 @@ export abstract class Renderable extends EventEmitter {
   public selectable: boolean = false
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
-  private _dirty: boolean = false
 
   protected focusable: boolean = false
   protected tabbable: boolean = false
@@ -248,9 +279,8 @@ export abstract class Renderable extends EventEmitter {
   public renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
 
   constructor(ctx: RenderContext, options: RenderableOptions<any>) {
-    super()
-    this.num = Renderable.renderableNumber++
-    this.id = options.id ?? `renderable-${this.num}`
+    super(options)
+
     this._ctx = ctx
     Renderable.renderablesByNumber.set(this.num, this)
 
@@ -397,10 +427,6 @@ export abstract class Renderable extends EventEmitter {
 
   public handleKeyPress?(key: ParsedKey | string): boolean
 
-  protected get isDirty(): boolean {
-    return this._dirty
-  }
-
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this.renderableArray) {
       if (child.id === id) return child
@@ -410,12 +436,8 @@ export abstract class Renderable extends EventEmitter {
     return undefined
   }
 
-  private markClean(): void {
-    this._dirty = false
-  }
-
   public requestRender() {
-    this._dirty = true
+    this.markDirty()
     this._ctx.requestRender()
   }
 
@@ -1078,7 +1100,7 @@ export abstract class Renderable extends EventEmitter {
     obj.parent = this
   }
 
-  public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
+  public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
     if (!obj) {
       return -1
     }
@@ -1128,7 +1150,7 @@ export abstract class Renderable extends EventEmitter {
     return insertedIndex
   }
 
-  insertBefore(obj: Renderable | VNode<any, any[]>, anchor?: Renderable): number {
+  insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
     if (!obj) {
       return -1
     }
@@ -1140,6 +1162,10 @@ export abstract class Renderable extends EventEmitter {
 
     if (!anchor) {
       return this.add(renderable)
+    }
+
+    if (!isRenderable(anchor)) {
+      throw new Error("Anchor must be a Renderable")
     }
 
     // Should we really throw for this? Maybe just log a warning in dev.

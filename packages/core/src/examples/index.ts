@@ -47,6 +47,7 @@ import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as nestedInputTreeExample from "./nested-input-tree"
+import * as textNodeDemo from "./text-node-demo"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -87,6 +88,12 @@ const examples: Example[] = [
     description: "Template literals with styled text, colors, and formatting",
     run: styledTextExample.run,
     destroy: styledTextExample.destroy,
+  },
+  {
+    name: "TextNode Demo",
+    description: "TextNode API for building complex styled text structures",
+    run: textNodeDemo.run,
+    destroy: textNodeDemo.destroy,
   },
   {
     name: "HAST Syntax Highlighting Demo",

@@ -6,8 +6,7 @@ import { type WidthMethod } from "./types"
 
 export interface TextChunk {
   __isChunk: true
-  text: Uint8Array
-  plainText: string
+  text: string
   fg?: RGBA
   bg?: RGBA
   attributes?: number
@@ -37,9 +36,10 @@ export class TextBuffer {
     this._lineInfo = undefined
 
     for (const chunk of text.chunks) {
+      const textBytes = this.lib.encoder.encode(chunk.text)
       const result = this.lib.textBufferWriteChunk(
         this.bufferPtr,
-        chunk.text,
+        textBytes,
         chunk.fg || null,
         chunk.bg || null,
         chunk.attributes ?? null,

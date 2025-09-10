@@ -1,7 +1,6 @@
-import { Renderable, TextRenderable, RootRenderable, type TextChunk } from "@opentui/core"
+import { Renderable, TextRenderable, RootRenderable, type TextChunk, type CliRenderer } from "@opentui/core"
 import { getNextId } from "./utils"
 import type { elements } from "./elements"
-import { getCurrentCliRenderer } from "./cli-renderer-ref"
 
 export const ChunkToTextNodeMap = new WeakMap<TextChunk, TextNode>()
 
@@ -18,8 +17,8 @@ export class TextNode {
 }
 
 export class WhiteSpaceNode extends Renderable {
-  constructor() {
-    super(getCurrentCliRenderer(), { id: getNextId("whitespace") })
+  constructor(cliRenderer: CliRenderer) {
+    super(cliRenderer, { id: getNextId("whitespace") })
   }
 }
 
