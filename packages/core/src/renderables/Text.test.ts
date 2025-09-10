@@ -36,21 +36,21 @@ let root: RootRenderable
 let testBuffer: OptimizedBuffer
 
 // Helper function to setup TextRenderable with proper layout
-function createTextRenderable(options: TextOptions): TextRenderable {
+function createTextRenderable(options: TextOptions): { text: TextRenderable; root: RootRenderable } {
   // Create root renderable for layout
-  root = new RootRenderable(ctx)
+  const rootRenderable = new RootRenderable(ctx)
 
   // Create text renderable
   const textRenderable = new TextRenderable(ctx, options)
 
   // Add text to root to enable layout
-  root.add(textRenderable)
+  rootRenderable.add(textRenderable)
 
   // Create test buffer and trigger layout by rendering
   testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-  root.render(testBuffer, 0)
+  rootRenderable.render(testBuffer, 0)
 
-  return textRenderable
+  return { text: textRenderable, root: rootRenderable }
 }
 
 // Helper function to create Selection objects for testing
@@ -70,7 +70,7 @@ function createSelection(
 describe("TextRenderable Selection", () => {
   describe("Native getSelectedText", () => {
     it("should use native implementation", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -85,7 +85,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle graphemes correctly", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello 🌍 World",
         selectable: true,
       })
@@ -100,15 +100,13 @@ describe("TextRenderable Selection", () => {
     })
   })
 
-  let text: TextRenderable
-
   beforeEach(() => {
     ctx = new MockRenderContext() as any
   })
 
   describe("Initialization", () => {
     it("should initialize properly", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -121,12 +119,6 @@ describe("TextRenderable Selection", () => {
   })
 
   afterEach(() => {
-    if (text) {
-      text.destroy()
-    }
-    if (root) {
-      root.destroy()
-    }
     if (testBuffer) {
       testBuffer.destroy()
     }
@@ -140,7 +132,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Basic Selection Flow", () => {
     it("should handle selection from start to end", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -171,7 +163,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection with newline characters", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Line 1\nLine 2\nLine 3",
         selectable: true,
       })
@@ -190,7 +182,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection spanning multiple lines completely", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "First\nSecond\nThird",
         selectable: true,
       })
@@ -206,7 +198,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection including multiple line breaks", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "A\nB\nC\nD",
         selectable: true,
       })
@@ -225,7 +217,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection that includes line breaks at boundaries", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Line1\nLine2\nLine3",
         selectable: true,
       })
@@ -244,7 +236,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle reverse selection (end before start)", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -266,7 +258,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection Edge Cases", () => {
     it("should handle empty text", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -281,7 +273,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle single character selection", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "A",
         selectable: true,
       })
@@ -299,7 +291,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle zero-width selection", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -315,7 +307,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection beyond text bounds", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hi",
         selectable: true,
       })
@@ -339,7 +331,7 @@ describe("TextRenderable Selection", () => {
       // Add some styling to make it more realistic
       styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
 
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: styledText,
         selectable: true,
       })
@@ -357,7 +349,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection with different text colors", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Red and Blue",
         selectable: true,
         selectionBg: RGBA.fromValues(1, 1, 0, 1), // Yellow selection background
@@ -379,7 +371,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection State Management", () => {
     it("should clear selection when null passed to onSelectionChanged", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -398,7 +390,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle multiple selection changes", () => {
-      text = createTextRenderable({
+      const { text } = createTextRenderable({
         content: "The quick brown fox jumps over the lazy dog",
         selectable: true,
       })
@@ -428,7 +420,7 @@ describe("TextRenderable Selection", () => {
 
   describe("shouldStartSelection", () => {
     it("should return false for non-selectable text", () => {
-      text = createTextRenderable({
+      const { text } = createTextRenderable({
         content: "Hello World",
         selectable: false,
       })
@@ -438,7 +430,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should return true for selectable text within bounds", () => {
-      text = createTextRenderable({
+      const { text } = createTextRenderable({
         content: "Hello World",
         selectable: true,
       })
@@ -449,7 +441,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle shouldStartSelection with multi-line text", () => {
-      text = createTextRenderable({
+      const { text } = createTextRenderable({
         content: "Line 1\nLine 2\nLine 3",
         selectable: true,
       })
@@ -462,7 +454,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection with Custom Dimensions", () => {
     it("should handle selection in constrained width", () => {
-      text = createTextRenderable({
+      const { text } = createTextRenderable({
         content: "This is a very long text that should wrap to multiple lines",
         selectable: true,
       })
@@ -489,31 +481,31 @@ describe("TextRenderable Selection", () => {
       // Create a mock box structure similar to the status box in text-selection-demo.ts
       // We'll create multiple text renderables that simulate the status box layout
 
-      const statusText = createTextRenderable({
+      const { text: statusText } = createTextRenderable({
         content: "Selected 5 chars:",
         selectable: true,
         fg: "#f0f6fc",
       })
 
-      const selectionStartText = createTextRenderable({
+      const { text: selectionStartText } = createTextRenderable({
         content: '"Hello"',
         selectable: true,
         fg: "#7dd3fc",
       })
 
-      const selectionMiddleText = createTextRenderable({
+      const { text: selectionMiddleText } = createTextRenderable({
         content: "",
         selectable: true,
         fg: "#94a3b8",
       })
 
-      const selectionEndText = createTextRenderable({
+      const { text: selectionEndText } = createTextRenderable({
         content: "",
         selectable: true,
         fg: "#7dd3fc",
       })
 
-      const debugText = createTextRenderable({
+      const { text: debugText } = createTextRenderable({
         content: "Selected renderables: 2/5",
         selectable: true,
         fg: "#e6edf3",
@@ -571,19 +563,19 @@ describe("TextRenderable Selection", () => {
 
     it("should automatically update selection when text content changes within covered area", () => {
       // Create renderables similar to the status box
-      const statusText = createTextRenderable({
+      const { text: statusText } = createTextRenderable({
         content: "Selected 5 chars:",
         selectable: true,
         fg: "#f0f6fc",
       })
 
-      const selectionStartText = createTextRenderable({
+      const { text: selectionStartText } = createTextRenderable({
         content: '"Hello"',
         selectable: true,
         fg: "#7dd3fc",
       })
 
-      const debugText = createTextRenderable({
+      const { text: debugText } = createTextRenderable({
         content: "Selected renderables: 2/5",
         selectable: true,
         fg: "#e6edf3",
@@ -646,25 +638,25 @@ describe("TextRenderable Selection", () => {
       // Simulate the physical layout where selection starts above the status box
       // and ends below/right of it, covering all text renderables within
 
-      const statusText = createTextRenderable({
+      const { text: statusText } = createTextRenderable({
         content: "Status: Selection active",
         selectable: true,
         fg: "#f0f6fc",
       })
 
-      const selectionStartText = createTextRenderable({
+      const { text: selectionStartText } = createTextRenderable({
         content: "Start: (10,5)",
         selectable: true,
         fg: "#7dd3fc",
       })
 
-      const selectionEndText = createTextRenderable({
+      const { text: selectionEndText } = createTextRenderable({
         content: "End: (45,12)",
         selectable: true,
         fg: "#7dd3fc",
       })
 
-      const debugText = createTextRenderable({
+      const { text: debugText } = createTextRenderable({
         content: "Debug: Cross-renderable selection spanning 3 elements",
         selectable: true,
         fg: "#e6edf3",
@@ -707,7 +699,7 @@ describe("TextRenderable Selection", () => {
 
   describe("TextNode Integration with getPlainText", () => {
     it("should render correct plain text after adding TextNodes", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -731,13 +723,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Hello World")
     })
 
     it("should render correct plain text after inserting TextNodes", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -760,13 +752,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Hello! World")
     })
 
     it("should render correct plain text after removing TextNodes", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -787,7 +779,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger initial render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Hello Cruel World")
 
       // Remove middle node - this generates remove commands
@@ -795,14 +787,14 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply the remove commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       // After removing " Cruel", should be "Hello World"
       expect(text.plainText).toBe("Hello World")
     })
 
     it("should handle simple add and remove operations", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -815,7 +807,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Test")
 
       // Remove node
@@ -823,12 +815,12 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("")
     })
 
     it("should render correct plain text after clearing all TextNodes", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -845,7 +837,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Hello World")
 
       // Clear all content
@@ -853,13 +845,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("")
     })
 
     it("should handle nested TextNode structures correctly", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -892,13 +884,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Red Green Blue")
     })
 
     it("should handle mixed string and TextNode content", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -919,13 +911,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Start middle end")
     })
 
     it("should handle TextNode operations with inherited styles", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
         fg: RGBA.fromValues(1, 1, 1, 1), // White default
@@ -958,13 +950,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Green Blue")
     })
 
     it("should handle empty TextNodes correctly", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -980,13 +972,13 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render to apply commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Text")
     })
 
     it("should handle complex TextNode operations sequence", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -1017,7 +1009,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Initial A B C D")
 
       // Remove middle node
@@ -1025,7 +1017,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Initial A C D")
 
       // Insert new node before nodeC
@@ -1035,7 +1027,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Initial A X C D")
 
       // Add more content to existing node
@@ -1043,12 +1035,12 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
       expect(text.plainText).toBe("Initial A X Y C D")
     })
 
     it("should handle TextNode commands with multiple operations per render", () => {
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -1073,7 +1065,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger single render to apply all commands
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       // The order should be: Third (inserted before node1), First, Second Modified
       // TODO: This may need to be updated based on actual behavior
@@ -1088,14 +1080,14 @@ describe("TextRenderable Selection", () => {
       styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
       styledText.chunks[0].bg = RGBA.fromValues(0, 0, 0, 1) // Black background
 
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: styledText,
         selectable: true,
       })
 
       // Trigger render to apply styling
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Hello World")
       expect(text.width).toBeGreaterThan(0)
@@ -1106,7 +1098,7 @@ describe("TextRenderable Selection", () => {
       const styledText = stringToStyledText("Hello World")
       styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
 
-      text = createTextRenderable({
+      const { text } = createTextRenderable({
         content: styledText,
         selectable: true,
       })
@@ -1126,14 +1118,14 @@ describe("TextRenderable Selection", () => {
     it("should handle empty StyledText", () => {
       const emptyStyledText = stringToStyledText("")
 
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: emptyStyledText,
         selectable: true,
       })
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("")
       expect(text.hasSelection()).toBe(false)
@@ -1150,14 +1142,14 @@ describe("TextRenderable Selection", () => {
         { __isChunk: true, text: "Blue", fg: RGBA.fromValues(0, 0, 1, 1), attributes: 0 },
       ])
 
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: styledText,
         selectable: true,
       })
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Red Green Blue")
 
@@ -1170,7 +1162,7 @@ describe("TextRenderable Selection", () => {
 
     it("should handle StyledText with TextNodeRenderable children", () => {
       // Create TextRenderable with empty content (following existing test pattern)
-      text = createTextRenderable({
+      const { text, root } = createTextRenderable({
         content: "",
         selectable: true,
       })
@@ -1195,7 +1187,7 @@ describe("TextRenderable Selection", () => {
 
       // Trigger render
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
-      text.render(testBuffer, 0)
+      root.render(testBuffer, 0)
 
       expect(text.plainText).toBe("Base Styled")
 
