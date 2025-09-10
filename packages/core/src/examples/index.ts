@@ -25,6 +25,7 @@ import * as nestedZIndexDemo from "./nested-zindex-demo"
 import * as relativePositioningDemo from "./relative-positioning-demo"
 import * as transparencyDemo from "./transparency-demo"
 import * as scrollExample from "./scroll-example"
+import * as stickyScrollExample from "./sticky-scroll-example"
 import * as shaderCubeExample from "./shader-cube-demo"
 import * as spriteAnimationExample from "./sprite-animation-demo"
 import * as spriteParticleExample from "./sprite-particle-generator-demo"
@@ -183,6 +184,12 @@ const examples: Example[] = [
     description: "Scrollable container with customization",
     run: scrollExample.run,
     destroy: scrollExample.destroy,
+  },
+  {
+    name: "Sticky Scroll Demo",
+    description: "ScrollBox with sticky scroll behavior - maintains position at borders when content changes",
+    run: stickyScrollExample.run,
+    destroy: stickyScrollExample.destroy,
   },
   {
     name: "Shader Cube",

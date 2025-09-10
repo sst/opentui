@@ -1019,6 +1019,7 @@ export abstract class Renderable extends BaseRenderable {
     obj.parent = this
   }
 
+  private _forceLayoutUpdateFor: Renderable[] | null = null
   public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
     if (!obj) {
       return -1
@@ -1047,6 +1048,7 @@ export abstract class Renderable extends BaseRenderable {
     let insertedIndex: number
     if (index !== undefined) {
       this.renderableArray.splice(index, 0, renderable)
+      this._forceLayoutUpdateFor = this.renderableArray.slice(index)
       insertedIndex = this.layoutNode.insertChild(childLayoutNode, index)
     } else {
       this.renderableArray.push(renderable)
@@ -1168,6 +1170,16 @@ export abstract class Renderable extends BaseRenderable {
         child.updateFromLayout()
       }
       this._newChildren = []
+    }
+
+    // NOTE: This is a hack to force layout updates for children that were after the anchor index,
+    // related to the the layout constraints described above and elsewhere.
+    // Simpler would be to just update all children in that case, but also expensive for a long list of children.
+    if (this._forceLayoutUpdateFor) {
+      for (const child of this._forceLayoutUpdateFor) {
+        child.updateFromLayout()
+      }
+      this._forceLayoutUpdateFor = null
     }
 
     this.ensureZIndexSorted()

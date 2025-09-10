@@ -28,6 +28,8 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   verticalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   horizontalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
+  stickyScroll?: boolean
+  stickyStart?: "bottom" | "top" | "left" | "right"
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -54,12 +56,40 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private autoScrollAccumulatorX: number = 0
   private autoScrollAccumulatorY: number = 0
 
+  private _stickyScroll: boolean
+  private _stickyScrollTop: boolean = false
+  private _stickyScrollBottom: boolean = false
+  private _stickyScrollLeft: boolean = false
+  private _stickyScrollRight: boolean = false
+  private _stickyStart?: "bottom" | "top" | "left" | "right"
+  private _hasManualScroll: boolean = false
+
+  get stickyScroll(): boolean {
+    return this._stickyScroll
+  }
+
+  set stickyScroll(value: boolean) {
+    this._stickyScroll = value
+    this.updateStickyState()
+  }
+
+  get stickyStart(): "bottom" | "top" | "left" | "right" | undefined {
+    return this._stickyStart
+  }
+
+  set stickyStart(value: "bottom" | "top" | "left" | "right" | undefined) {
+    this._stickyStart = value
+    this.updateStickyState()
+  }
+
   get scrollTop(): number {
     return this.verticalScrollBar.scrollPosition
   }
 
   set scrollTop(value: number) {
     this.verticalScrollBar.scrollPosition = value
+    this._hasManualScroll = true
+    this.updateStickyState()
   }
 
   get scrollLeft(): number {
@@ -68,6 +98,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollLeft(value: number) {
     this.horizontalScrollBar.scrollPosition = value
+    this._hasManualScroll = true
+    this.updateStickyState()
   }
 
   get scrollWidth(): number {
@@ -76,6 +108,60 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   get scrollHeight(): number {
     return this.verticalScrollBar.scrollSize
+  }
+
+  private updateStickyState(): void {
+    if (!this._stickyScroll) return
+
+    const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+    const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+
+    if (this.scrollTop <= 0) {
+      this._stickyScrollTop = true
+      this._stickyScrollBottom = false
+    } else if (this.scrollTop >= maxScrollTop) {
+      this._stickyScrollTop = false
+      this._stickyScrollBottom = true
+    } else {
+      this._stickyScrollTop = false
+      this._stickyScrollBottom = false
+    }
+
+    if (this.scrollLeft <= 0) {
+      this._stickyScrollLeft = true
+      this._stickyScrollRight = false
+    } else if (this.scrollLeft >= maxScrollLeft) {
+      this._stickyScrollLeft = false
+      this._stickyScrollRight = true
+    } else {
+      this._stickyScrollLeft = false
+      this._stickyScrollRight = false
+    }
+  }
+
+  private applyStickyStart(stickyStart: "bottom" | "top" | "left" | "right"): void {
+    switch (stickyStart) {
+      case "top":
+        this._stickyScrollTop = true
+        this._stickyScrollBottom = false
+        this.verticalScrollBar.scrollPosition = 0
+        break
+      case "bottom":
+        this._stickyScrollTop = false
+        this._stickyScrollBottom = true
+        this.verticalScrollBar.scrollPosition = Math.max(0, this.scrollHeight - this.viewport.height)
+        break
+      case "left":
+        this._stickyScrollLeft = true
+        this._stickyScrollRight = false
+        this.horizontalScrollBar.scrollPosition = 0
+        break
+      case "right":
+        this._stickyScrollLeft = false
+        this._stickyScrollRight = true
+        this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
+        break
+    }
   }
 
   constructor(
@@ -88,6 +174,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollbarOptions,
       verticalScrollbarOptions,
       horizontalScrollbarOptions,
+      stickyScroll = false,
+      stickyStart,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -103,6 +191,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
 
     this.internalId = ScrollBoxRenderable.idCounter++
+    this._stickyScroll = stickyScroll
+    this._stickyStart = stickyStart
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -176,6 +266,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     this.recalculateBarProps()
 
+    if (stickyStart && stickyScroll) {
+      this.applyStickyStart(stickyStart)
+    }
+
     this.selectionListener = () => {
       const selection = this._ctx.getSelection()
       if (!selection || !selection.isSelecting) {
@@ -196,6 +290,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.verticalScrollBar.scrollBy(delta.y, unit)
       this.horizontalScrollBar.scrollBy(delta.x, unit)
     }
+    this._hasManualScroll = true
   }
 
   public scrollTo(position: number | { x: number; y: number }): void {
@@ -229,6 +324,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       else if (dir === "down") this.scrollTop += event.scroll?.delta ?? 0
       else if (dir === "left") this.scrollLeft -= event.scroll?.delta ?? 0
       else if (dir === "right") this.scrollLeft += event.scroll?.delta ?? 0
+
+      this._hasManualScroll = true
     }
 
     if (event.type === "drag" && event.isSelecting) {
@@ -383,6 +480,27 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.verticalScrollBar.viewportSize = this.viewport.height
     this.horizontalScrollBar.scrollSize = this.content.width
     this.horizontalScrollBar.viewportSize = this.viewport.width
+
+    if (this._stickyScroll) {
+      const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+      const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+
+      if (this._stickyStart && !this._hasManualScroll) {
+        this.applyStickyStart(this._stickyStart)
+      } else {
+        if (this._stickyScrollTop) {
+          this.scrollTop = 0
+        } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
+          this.scrollTop = newMaxScrollTop
+        }
+
+        if (this._stickyScrollLeft) {
+          this.scrollLeft = 0
+        } else if (this._stickyScrollRight && newMaxScrollLeft > 0) {
+          this.scrollLeft = newMaxScrollLeft
+        }
+      }
+    }
   }
 
   // Setters for reactive properties

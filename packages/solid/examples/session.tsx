@@ -113,6 +113,8 @@ export function Session() {
       <scrollbox
         ref={(r: any) => (scrollRef = r)}
         scrollbarOptions={{ visible: true }}
+        stickyScroll={true}
+        stickyStart="bottom"
         paddingTop={1}
         paddingBottom={1}
         contentOptions={{

@@ -122,6 +122,8 @@ export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelec
 
 export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, ScrollBoxRenderable> & {
   focused?: boolean
+  stickyScroll?: boolean
+  stickyStart?: "bottom" | "top" | "left" | "right"
 }
 
 // ============================================================================
