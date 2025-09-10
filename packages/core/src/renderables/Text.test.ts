@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, afterAll } from "bun:test"
 import { TextRenderable, type TextOptions } from "./Text"
 import { TextNodeRenderable } from "./TextNode"
 import { RGBA } from "../lib/RGBA"
-import { stringToStyledText } from "../lib/styled-text"
+import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { RootRenderable } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { RenderContext } from "../types"
@@ -1078,6 +1078,131 @@ describe("TextRenderable Selection", () => {
       // The order should be: Third (inserted before node1), First, Second Modified
       // TODO: This may need to be updated based on actual behavior
       expect(text.plainText).toBe("ThirdFirstSecond Modified")
+    })
+  })
+
+  describe("StyledText Integration", () => {
+    it("should render StyledText content correctly", () => {
+      const styledText = stringToStyledText("Hello World")
+      // Add some styling to make it more realistic
+      styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
+      styledText.chunks[0].bg = RGBA.fromValues(0, 0, 0, 1) // Black background
+
+      text = createTextRenderable({
+        content: styledText,
+        selectable: true,
+      })
+
+      // Trigger render to apply styling
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Hello World")
+      expect(text.width).toBeGreaterThan(0)
+      expect(text.height).toBeGreaterThan(0)
+    })
+
+    it("should handle selection with StyledText content", () => {
+      const styledText = stringToStyledText("Hello World")
+      styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
+
+      text = createTextRenderable({
+        content: styledText,
+        selectable: true,
+      })
+
+      // Select "World" (positions 6-11)
+      const selectionObj = createSelection(text, { x: 6, y: 0 }, { x: 11, y: 0 }, true, false)
+
+      text.onSelectionChanged(selectionObj)
+
+      const selection = text.getSelection()
+      expect(selection).not.toBe(null)
+      expect(selection!.start).toBe(6)
+      expect(selection!.end).toBe(11)
+      expect(text.getSelectedText()).toBe("World")
+    })
+
+    it("should handle empty StyledText", () => {
+      const emptyStyledText = stringToStyledText("")
+
+      text = createTextRenderable({
+        content: emptyStyledText,
+        selectable: true,
+      })
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("")
+      expect(text.hasSelection()).toBe(false)
+      expect(text.getSelectedText()).toBe("")
+    })
+
+    it("should handle StyledText with multiple chunks", () => {
+      // Create a StyledText with multiple chunks manually using the constructor
+      const styledText = new StyledText([
+        { __isChunk: true, text: "Red", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 1 },
+        { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
+        { __isChunk: true, text: "Green", fg: RGBA.fromValues(0, 1, 0, 1), attributes: 2 },
+        { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
+        { __isChunk: true, text: "Blue", fg: RGBA.fromValues(0, 0, 1, 1), attributes: 0 },
+      ])
+
+      text = createTextRenderable({
+        content: styledText,
+        selectable: true,
+      })
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Red Green Blue")
+
+      // Select "Green"
+      const selectionObj = createSelection(text, { x: 4, y: 0 }, { x: 9, y: 0 }, true, false)
+      text.onSelectionChanged(selectionObj)
+
+      expect(text.getSelectedText()).toBe("Green")
+    })
+
+    it("should handle StyledText with TextNodeRenderable children", () => {
+      // Create TextRenderable with empty content (following existing test pattern)
+      text = createTextRenderable({
+        content: "",
+        selectable: true,
+      })
+
+      // Add base content as a TextNodeRenderable
+      const baseNode = new TextNodeRenderable({})
+      baseNode.add("Base ")
+      text.add(baseNode)
+
+      // Add TextNodeRenderable children with StyledText
+      const styledNode = new TextNodeRenderable({
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+
+      // Create a proper StyledText instance for the node
+      const nodeStyledText = new StyledText([
+        { __isChunk: true, text: "Styled", fg: RGBA.fromValues(0, 1, 0, 1), attributes: 1 },
+      ])
+
+      styledNode.add(nodeStyledText)
+      text.add(styledNode)
+
+      // Trigger render
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      text.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Base Styled")
+
+      // Test that we can select text from the combined content
+      const selectionObj = createSelection(text, { x: 5, y: 0 }, { x: 11, y: 0 }, true, false)
+      text.onSelectionChanged(selectionObj)
+      expect(text.getSelectedText()).toBe("Styled")
     })
   })
 })

@@ -29,10 +29,10 @@ const InputTest = () => {
             <input
               focused
               placeholder="input0"
-              onSubmit={onSubmit}
-              // onSubmit={() => {
-              //   console.log("input 0")
-              // }}
+              // onSubmit={onSubmit}
+              onSubmit={() => {
+                console.log("input 0")
+              }}
             />
           </box>
         </Match>
@@ -42,10 +42,10 @@ const InputTest = () => {
               <input
                 focused
                 placeholder="input1"
-                onSubmit={onSubmit}
-                // onSubmit={() => {
-                //   console.log("input 1")
-                // }}
+                // onSubmit={onSubmit}
+                onSubmit={() => {
+                  console.log("input 1")
+                }}
               />
             </box>
           </Show>
@@ -55,10 +55,10 @@ const InputTest = () => {
             <input
               focused
               placeholder="input2"
-              onSubmit={onSubmit}
-              // onSubmit={() => {
-              //   console.log("input 2")
-              // }}
+              // onSubmit={onSubmit}
+              onSubmit={() => {
+                console.log("input 2")
+              }}
             />
           </box>
         </Match>

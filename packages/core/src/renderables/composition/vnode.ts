@@ -133,7 +133,10 @@ export function isVNode(node: any): node is VNode {
   return node && node[BrandedVNode]
 }
 
-export function maybeMakeRenderable(ctx: RenderContext, node: Renderable | VNode<any, any[]>): Renderable | null {
+export function maybeMakeRenderable(
+  ctx: RenderContext,
+  node: Renderable | VNode<any, any[]> | unknown,
+): Renderable | null {
   if (isRenderable(node)) return node
   if (isVNode(node)) return instantiate(ctx, node)
   if (process.env.NODE_ENV !== "production") {

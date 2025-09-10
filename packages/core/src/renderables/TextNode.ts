@@ -1,5 +1,6 @@
 import { BaseRenderable, type BaseRenderableOptions } from "../Renderable"
 import { RGBA, parseColor } from "../lib/RGBA"
+import { isStyledText, StyledText } from "../lib/styled-text"
 import { type TextChunk } from "../text-buffer"
 import type { RenderContext } from "../types"
 
@@ -13,6 +14,18 @@ const BrandedTextNodeRenderable: unique symbol = Symbol.for("@opentui/core/TextN
 
 export function isTextNodeRenderable(obj: any): obj is TextNodeRenderable {
   return !!obj?.[BrandedTextNodeRenderable]
+}
+
+function styledTextToTextNodes(styledText: StyledText): TextNodeRenderable[] {
+  return styledText.chunks.map((chunk) => {
+    const node = new TextNodeRenderable({
+      fg: chunk.fg,
+      bg: chunk.bg,
+      attributes: chunk.attributes,
+    })
+    node.add(chunk.text)
+    return node
+  })
 }
 
 export class TextNodeRenderable extends BaseRenderable {
@@ -46,18 +59,18 @@ export class TextNodeRenderable extends BaseRenderable {
     this.parent?.requestRender()
   }
 
-  public add(obj: TextNodeRenderable | string, index?: number): number {
+  public add(obj: TextNodeRenderable | StyledText | string, index?: number): number {
     if (typeof obj === "string") {
       if (index !== undefined) {
         this._children.splice(index, 0, obj)
         this.requestRender()
         return index
-      } else {
-        const insertIndex = this._children.length
-        this._children.push(obj)
-        this.requestRender()
-        return insertIndex
       }
+
+      const insertIndex = this._children.length
+      this._children.push(obj)
+      this.requestRender()
+      return insertIndex
     }
 
     if (isTextNodeRenderable(obj)) {
@@ -66,28 +79,60 @@ export class TextNodeRenderable extends BaseRenderable {
         obj.parent = this
         this.requestRender()
         return index
-      } else {
-        const insertIndex = this._children.length
-        this._children.push(obj)
-        obj.parent = this
-        this.requestRender()
-        return insertIndex
       }
+
+      const insertIndex = this._children.length
+      this._children.push(obj)
+      obj.parent = this
+      this.requestRender()
+      return insertIndex
     }
 
-    throw new Error("TextNodeRenderable only accepts strings or other TextNodeRenderable instances")
+    if (isStyledText(obj)) {
+      const textNodes = styledTextToTextNodes(obj)
+      if (index !== undefined) {
+        this._children.splice(index, 0, ...textNodes)
+        textNodes.forEach((node) => (node.parent = this))
+        this.requestRender()
+        return index
+      }
+
+      const insertIndex = this._children.length
+      this._children.push(...textNodes)
+      textNodes.forEach((node) => (node.parent = this))
+      this.requestRender()
+      return insertIndex
+    }
+
+    throw new Error("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
   }
 
-  public insertBefore(child: string | TextNodeRenderable, anchorNode: string | TextNodeRenderable): this {
+  public insertBefore(
+    child: string | TextNodeRenderable | StyledText,
+    anchorNode: TextNodeRenderable | string | unknown,
+  ): this {
+    if (!anchorNode || !isTextNodeRenderable(anchorNode)) {
+      throw new Error("Anchor must be a TextNodeRenderable")
+    }
+
     const anchorIndex = this._children.indexOf(anchorNode)
     if (anchorIndex === -1) {
       throw new Error("Anchor node not found in children")
     }
 
-    this._children.splice(anchorIndex, 0, child)
-    if (typeof child !== "string") {
+    if (typeof child === "string") {
+      this._children.splice(anchorIndex, 0, child)
+    } else if (isTextNodeRenderable(child)) {
+      this._children.splice(anchorIndex, 0, child)
       child.parent = this
+    } else if (child instanceof StyledText) {
+      const textNodes = styledTextToTextNodes(child)
+      this._children.splice(anchorIndex, 0, ...textNodes)
+      textNodes.forEach((node) => (node.parent = this))
+    } else {
+      throw new Error("Child must be a string, TextNodeRenderable, or StyledText instance")
     }
+
     this.requestRender()
     return this
   }
