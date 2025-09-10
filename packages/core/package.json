@@ -18,7 +18,7 @@
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
     "test:native": "cd src/zig && zig build test --summary all",
-    "publish": "node scripts/publish.ts",
+    "publish": "bun scripts/publish.ts",
     "test:js": "bun test",
     "test": "bun run test:native && bun run test:js"
   },
