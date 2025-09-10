@@ -17,7 +17,6 @@ import { type OpenTUINode, type OpenTUIElement, TextNode, WhiteSpaceNode, ChunkT
 import { elements, type Element } from "./elements"
 import { insertNode, removeNode } from "./noOps"
 
-
 export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
   function createText(value: string | number | boolean | TextChunk): OpenTUINode {
     const plainText = typeof value === "object" ? (value as TextChunk).text : String(value)
