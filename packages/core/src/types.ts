@@ -1,6 +1,7 @@
 import type { RGBA } from "./lib/RGBA"
 import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection"
+import type { Renderable } from "./Renderable"
 
 export const TextAttributes = {
   NONE: 0,
@@ -48,6 +49,8 @@ export interface RenderContext extends EventEmitter {
   hasSelection: boolean
   getSelection: () => Selection | null
   requestSelectionUpdate: () => void
+  currentFocusedRenderable: Renderable | null
+  focusRenderable: (renderable: Renderable) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

@@ -249,7 +249,7 @@ export abstract class Renderable extends BaseRenderable {
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
 
-  protected focusable: boolean = false
+  protected _focusable: boolean = false
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
@@ -316,6 +316,10 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  public get focusable(): boolean {
+    return this._focusable
+  }
+
   public get ctx(): RenderContext {
     return this._ctx
   }
@@ -369,8 +373,9 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public focus(): void {
-    if (this._focused || !this.focusable) return
+    if (this._focused || !this._focusable) return
 
+    this._ctx.focusRenderable(this)
     this._focused = true
     this.requestRender()
 
@@ -386,7 +391,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public blur(): void {
-    if (!this._focused || !this.focusable) return
+    if (!this._focused || !this._focusable) return
 
     this._focused = false
     this.requestRender()

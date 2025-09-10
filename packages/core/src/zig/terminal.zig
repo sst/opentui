@@ -75,10 +75,6 @@ pub fn init(opts: Options) Terminal {
     };
 }
 
-pub fn deinit(self: *Terminal, tty: AnyWriter) void {
-    self.resetState(tty) catch {};
-}
-
 pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
     try tty.writeAll(ansi.ANSI.showCursor);
     try tty.writeAll(ansi.ANSI.reset);

@@ -153,7 +153,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private static animationFrameId = 0
   private lib: RenderLib
   public rendererPtr: Pointer
-  private stdin: NodeJS.ReadStream
+  public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
   private isDestroyed: boolean = false
@@ -247,6 +247,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private sigwinchHandler: (() => void) | null = null
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
+
+  private _currentFocusedRenderable: Renderable | null = null
 
   constructor(
     lib: RenderLib,
@@ -376,6 +378,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     }
+  }
+
+  public get currentFocusedRenderable(): Renderable | null {
+    return this._currentFocusedRenderable
+  }
+
+  public focusRenderable(renderable: Renderable) {
+    if (this._currentFocusedRenderable === renderable) return
+
+    if (this._currentFocusedRenderable) {
+      this._currentFocusedRenderable.blur()
+    }
+
+    this._currentFocusedRenderable = renderable
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
