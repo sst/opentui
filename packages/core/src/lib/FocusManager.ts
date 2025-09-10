@@ -39,8 +39,8 @@ export class FocusManager {
     return this.renderer.focusables
   }
 
-  private isVisible(r: Renderable): boolean {
-    return r["visible"] === true
+  private isFocusable(r: Renderable): boolean {
+    return r["visible"] === true && r["focusable"] === true
   }
 
   private attach(): void {
@@ -70,7 +70,7 @@ export class FocusManager {
   }
 
   private initFocus(): void {
-    const first = this.getFocusables().find((r) => this.isVisible(r))
+    const first = this.getFocusables().find((r) => this.isFocusable(r))
     if (first) {
       this.renderer.focusedRenderable = first
       first.focus()
@@ -79,13 +79,13 @@ export class FocusManager {
 
   private findNextFocusable(): Renderable | null {
     const focusables = this.getFocusables()
-    if (!this.renderer.focusedRenderable) return focusables.find((r) => this.isVisible(r)) ?? null
+    if (!this.renderer.focusedRenderable) return focusables.find((r) => this.isFocusable(r)) ?? null
 
     const startIndex = focusables.indexOf(this.renderer.focusedRenderable) + 1
     for (let i = startIndex; i < focusables.length; i++) {
-      if (this.isVisible(focusables[i])) return focusables[i]
+      if (this.isFocusable(focusables[i])) return focusables[i]
     }
-    return focusables.find((r) => this.isVisible(r)) ?? null
+    return focusables.find((r) => this.isFocusable(r)) ?? null
   }
 
   private focusNext(): void {
@@ -98,13 +98,13 @@ export class FocusManager {
 
   private findPrevFocusable(): Renderable | null {
     const focusables = this.getFocusables()
-    if (!this.renderer.focusedRenderable) return [...focusables].reverse().find((r) => this.isVisible(r)) ?? null
+    if (!this.renderer.focusedRenderable) return focusables.findLast((r) => this.isFocusable(r)) ?? null
 
     const startIndex = focusables.indexOf(this.renderer.focusedRenderable) - 1
     for (let i = startIndex; i >= 0; i--) {
-      if (this.isVisible(focusables[i])) return focusables[i]
+      if (this.isFocusable(focusables[i])) return focusables[i]
     }
-    return [...focusables].reverse().find((r) => this.isVisible(r)) ?? null
+    return focusables.findLast((r) => this.isFocusable(r)) ?? null
   }
 
   private focusPrev(): void {
