@@ -364,13 +364,12 @@ export class TextRenderable extends Renderable {
     return this.textBuffer.getSelection()
   }
 
+  protected onUpdate(deltaTime: number): void {
+    this.updateTextFromNodes()
+  }
+
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
-
-    this.onUpdate(deltaTime)
-    this.updateFromLayout()
-
-    this.updateTextFromNodes()
 
     this.markClean()
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)

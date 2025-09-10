@@ -16,6 +16,7 @@ import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo }
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
+import { getObjectsInViewport } from "./lib/objects-in-viewport"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -1363,7 +1364,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     selectedRenderables: Renderable[],
     touchedRenderables: Renderable[],
   ): void {
-    const children = container.getChildrenInViewport(selectionBounds, 0)
+    const children = getObjectsInViewport<Renderable>(
+      selectionBounds,
+      container.getChildrenSortedByPrimaryAxis(),
+      container.primaryAxis,
+      0,
+    )
 
     for (const child of children) {
       if (child.selectable) {

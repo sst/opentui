@@ -1,4 +1,5 @@
 import { type ParsedKey } from "../lib"
+import { getObjectsInViewport } from "../lib/objects-in-viewport"
 import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
@@ -15,7 +16,7 @@ class ContentRenderable extends BoxRenderable {
   }
 
   protected _getChildren(): Renderable[] {
-    return this.getChildrenInViewport(this.viewport)
+    return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis)
   }
 }
 

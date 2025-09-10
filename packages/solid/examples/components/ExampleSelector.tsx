@@ -9,6 +9,7 @@ import TextSelectionDemo from "./text-selection-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import { ScrollDemo } from "./scroll-demo.tsx"
+import { Session } from "../session.tsx"
 
 const EXAMPLES = [
   {
@@ -50,6 +51,11 @@ const EXAMPLES = [
     name: "Scroll Demo",
     description: "Scroll demo",
     scene: "scroll-demo",
+  },
+  {
+    name: "Session Scrollbox",
+    description: "Live message stream with chunked arrival simulation",
+    scene: "session-scrollbox",
   },
 ]
 
@@ -126,6 +132,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "scroll-demo"}>
         <ScrollDemo />
+      </Match>
+      <Match when={selectedScene() === "session-scrollbox"}>
+        <Session />
       </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>
