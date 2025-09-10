@@ -36,11 +36,6 @@ export class FocusManager {
   }
 
   private getFocusables(): Renderable[] {
-    console.log(
-      "Focusables:",
-      this.renderer.focusables.map((callback) => callback.id),
-    )
-
     return this.renderer.focusables
   }
 

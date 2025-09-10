@@ -388,15 +388,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
 
-  private *findParentInList(node: Renderable, list: Renderable[]): Generator<Renderable, void, unknown> {
+  private findParentInList(node: Renderable, list: Renderable[]): Renderable | undefined {
     let current = node.parent
     while (current) {
       if (list.includes(current)) {
-        yield current
-        return
+        return current
       }
       current = current.parent
     }
+    return undefined
   }
 
   public addFocusable(node: Renderable): void {
@@ -404,10 +404,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     let index = 0
 
-    const parentGen = this.findParentInList(node, this._focusables)
-    const parentFound = parentGen.next()
-    if (!parentFound.done) {
-      const parent = parentFound.value
+    const parent = this.findParentInList(node, this._focusables)
+    if (parent) {
       index = this._focusables.indexOf(parent) + 1
     } else {
       index = this._focusables.length
