@@ -3,6 +3,8 @@ import type { TextBuffer, TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
 import { parseColor, type ColorInput } from "./RGBA"
 
+const BrandedStyledText: unique symbol = Symbol.for("@opentui/core/StyledText")
+
 export type Color = ColorInput
 
 export interface StyleAttrs {
@@ -17,7 +19,13 @@ export interface StyleAttrs {
   blink?: boolean
 }
 
+export function isStyledText(obj: any): obj is StyledText {
+  return obj && obj[BrandedStyledText]
+}
+
 export class StyledText {
+  [BrandedStyledText] = true
+
   public chunks: TextChunk[]
   public textRenderable?: TextRenderable
 

@@ -48,6 +48,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   if (node instanceof StyledText) {
     log("Inserting styled text:", node.toString())
     for (const chunk of node.chunks) {
+      // Why is this only adding the first chunk?
       _insertNode(parent, _createTextNode(chunk), anchor)
       return
     }

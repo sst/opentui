@@ -1096,7 +1096,7 @@ export abstract class Renderable extends BaseRenderable {
     obj.parent = this
   }
 
-  public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
+  public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
     if (!obj) {
       return -1
     }
@@ -1142,7 +1142,7 @@ export abstract class Renderable extends BaseRenderable {
     return insertedIndex
   }
 
-  insertBefore(obj: Renderable | VNode<any, any[]>, anchor?: Renderable): number {
+  insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
     if (!obj) {
       return -1
     }
@@ -1154,6 +1154,10 @@ export abstract class Renderable extends BaseRenderable {
 
     if (!anchor) {
       return this.add(renderable)
+    }
+
+    if (!isRenderable(anchor)) {
+      throw new Error("Anchor must be a Renderable")
     }
 
     // Should we really throw for this? Maybe just log a warning in dev.

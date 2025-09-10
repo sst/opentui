@@ -6,7 +6,8 @@ import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
-import { isTextNodeRenderable, RootTextNodeRenderable } from "./TextNode"
+import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
+import util from "util"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
   content?: StyledText | string
@@ -291,7 +292,6 @@ export class TextRenderable extends Renderable {
 
   private updateTextFromNodes(): void {
     if (this.rootTextNode.isDirty) {
-      const startTime = performance.now()
       const chunks = this.rootTextNode.gatherWithInheritedStyle({
         fg: this._defaultFg,
         bg: this._defaultBg,
@@ -299,15 +299,10 @@ export class TextRenderable extends Renderable {
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.updateTextInfo()
-      const endTime = performance.now()
-      console.log(`updateTextFromNodes took ${endTime - startTime}ms`)
     }
   }
 
-  public add(obj: Renderable | any, index?: number): number {
-    if (!isTextNodeRenderable(obj)) {
-      throw new Error("TextRenderable only accepts TextNodeRenderables. Use add() method.")
-    }
+  public add(obj: TextNodeRenderable | StyledText | string, index?: number): number {
     return this.rootTextNode.add(obj, index)
   }
 
@@ -318,13 +313,7 @@ export class TextRenderable extends Renderable {
     }
   }
 
-  public insertBefore(obj: BaseRenderable | any, anchor?: BaseRenderable): number {
-    if (!isTextNodeRenderable(obj)) {
-      throw new Error("TextRenderable insertBefore only accepts TextNodeRenderables")
-    }
-    if (!anchor || !isTextNodeRenderable(anchor)) {
-      throw new Error("Anchor must be a TextNodeRenderable")
-    }
+  public insertBefore(obj: BaseRenderable | any, anchor?: TextNodeRenderable): number {
     this.rootTextNode.insertBefore(obj, anchor)
     return this.rootTextNode.children.indexOf(obj)
   }
