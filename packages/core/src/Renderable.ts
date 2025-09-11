@@ -1125,7 +1125,7 @@ export abstract class Renderable extends BaseRenderable {
 
         const childLayoutNode = obj.getLayoutNode()
         this.layoutNode.removeChild(childLayoutNode)
-          this.ctx.removeFocusable(obj)
+        this.ctx.removeFocusable(obj)
         this.requestRender()
 
         obj.onRemove()
