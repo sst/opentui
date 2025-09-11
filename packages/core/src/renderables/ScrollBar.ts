@@ -22,7 +22,7 @@ export class ScrollBarRenderable extends Renderable {
   public readonly endArrow: ArrowRenderable
   public readonly orientation: "vertical" | "horizontal"
 
-  protected focusable: boolean = true
+  protected _focusable: boolean = true
 
   private _scrollSize = 0
   private _scrollPosition = 0

@@ -249,7 +249,7 @@ export abstract class Renderable extends BaseRenderable {
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
 
-  protected focusable: boolean = false
+  protected _focusable: boolean = false
   protected _focused: boolean = false
   protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
@@ -273,6 +273,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private childrenPrimarySortDirty: boolean = true
   private childrenSortedByPrimaryAxis: Renderable[] = []
+  private _newChildren: Renderable[] = []
 
   public renderBefore?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
   public renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
@@ -315,12 +316,21 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  public get focusable(): boolean {
+    return this._focusable
+  }
+
   public get ctx(): RenderContext {
     return this._ctx
   }
 
   public get visible(): boolean {
     return this._visible
+  }
+
+  public get primaryAxis(): "row" | "column" {
+    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    return dir === 2 || dir === 3 ? "row" : "column"
   }
 
   public set visible(value: boolean) {
@@ -363,7 +373,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public focus(): void {
-    if (this._focused || !this.focusable) return
+    if (this._focused || !this._focusable) return
 
     this.ctx.focusedRenderable?.blur()
     this.ctx.focusedRenderable = this
@@ -382,7 +392,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public blur(): void {
-    if (!this._focused || !this.focusable) return
+    if (!this._focused || !this._focusable) return
 
     this.ctx.focusedRenderable = null
     this._focused = false
@@ -570,95 +580,7 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
-  public getChildrenInViewport(
-    viewport: ViewportBounds,
-    padding: number = 10,
-    minTriggerSize: number = 16,
-  ): Renderable[] {
-    if (this.renderableArray.length < minTriggerSize) return this.renderableArray
-
-    const viewportTop = viewport.y - padding
-    const viewportBottom = viewport.y + viewport.height + padding
-    const viewportLeft = viewport.x - padding
-    const viewportRight = viewport.x + viewport.width + padding
-
-    const dir = this.layoutNode.yogaNode.getFlexDirection()
-    const isRow = dir === 2 || dir === 3
-
-    const children = this.getChildrenSortedByPrimaryAxis()
-    const totalChildren = children.length
-    if (totalChildren === 0) return []
-
-    const vpStart = isRow ? viewportLeft : viewportTop
-    const vpEnd = isRow ? viewportRight : viewportBottom
-
-    // Binary search to find any child that overlaps along the primary axis
-    let lo = 0
-    let hi = totalChildren - 1
-    let candidate = -1
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1
-      const c = children[mid]
-      const start = isRow ? c.x : c.y
-      const end = isRow ? c.x + c.width : c.y + c.height
-
-      if (end < vpStart) {
-        lo = mid + 1 // before viewport along axis
-      } else if (start > vpEnd) {
-        hi = mid - 1 // after viewport along axis
-      } else {
-        candidate = mid
-        break
-      }
-    }
-
-    const visibleChildren: Renderable[] = []
-    if (candidate === -1) {
-      return visibleChildren
-    }
-
-    let left = candidate
-    while (left - 1 >= 0) {
-      const prev = children[left - 1]
-      if ((isRow ? prev.x + prev.width : prev.y + prev.height) < vpStart) break
-      left--
-    }
-
-    let right = candidate + 1
-    while (right < totalChildren) {
-      const next = children[right]
-      if ((isRow ? next.x : next.y) > vpEnd) break
-      right++
-    }
-
-    // Collect candidates that also overlap on the cross axis
-    for (let i = left; i < right; i++) {
-      const child = children[i]
-
-      if (isRow) {
-        const childBottom = child.y + child.height
-        if (childBottom < viewportTop) continue
-        const childTop = child.y
-        if (childTop > viewportBottom) continue
-      } else {
-        const childRight = child.x + child.width
-        if (childRight < viewportLeft) continue
-        const childLeft = child.x
-        if (childLeft > viewportRight) continue
-      }
-
-      visibleChildren.push(child)
-    }
-
-    // At this point there should be not a lot of children, so this should be fast
-    if (visibleChildren.length > 1) {
-      visibleChildren.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
-    }
-
-    return visibleChildren
-  }
-
-  protected getChildrenSortedByPrimaryAxis(): Renderable[] {
+  public getChildrenSortedByPrimaryAxis(): Renderable[] {
     if (!this.childrenPrimarySortDirty && this.childrenSortedByPrimaryAxis.length === this.renderableArray.length) {
       return this.childrenSortedByPrimaryAxis
     }
@@ -1099,6 +1021,7 @@ export abstract class Renderable extends BaseRenderable {
     obj.parent = this
   }
 
+  private _forceLayoutUpdateFor: Renderable[] | null = null
   public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
     if (!obj) {
       return -1
@@ -1127,6 +1050,7 @@ export abstract class Renderable extends BaseRenderable {
     let insertedIndex: number
     if (index !== undefined) {
       this.renderableArray.splice(index, 0, renderable)
+      this._forceLayoutUpdateFor = this.renderableArray.slice(index)
       insertedIndex = this.layoutNode.insertChild(childLayoutNode, index)
     } else {
       this.renderableArray.push(renderable)
@@ -1135,6 +1059,7 @@ export abstract class Renderable extends BaseRenderable {
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
     this.renderableMap.set(renderable.id, renderable)
+    this._newChildren.push(renderable)
 
     if (renderable._liveCount > 0) {
       this.propagateLiveCount(renderable._liveCount)
@@ -1190,6 +1115,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!id) {
       return
     }
+
     if (this.renderableMap.has(id)) {
       const obj = this.renderableMap.get(id)
       if (obj) {
@@ -1228,12 +1154,65 @@ export abstract class Renderable extends BaseRenderable {
     return this.renderableArray.length
   }
 
-  public render(buffer: OptimizedBuffer, deltaTime: number): void {
+  public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
     if (!this.visible) return
 
-    this.onUpdate(deltaTime)
+    // NOTE: worst case updateFromLayout is called throughout the whole tree,
+    // which currently still has yoga performance issues.
+    // This can be mitigated at some point when the layout tree moved to native,
+    // as in the native yoga tree we can use events during the calculateLayout phase,
+    // and anctually know if a child has changed or not.
+    // That would allow us to to generate optimised render commands,
+    // including the layout updates, in one pass.
     this.updateFromLayout()
 
+    this.onUpdate(deltaTime)
+    renderList.push({ action: "render", renderable: this })
+
+    // Note: This will update newly added children, but not their children.
+    // It is meant to make sure children update the layout, even though they may not be in the viewport
+    // and filtered out for updates like for the ScrollBox for example.
+    if (this._newChildren.length > 0) {
+      for (const child of this._newChildren) {
+        child.updateFromLayout()
+      }
+      this._newChildren = []
+    }
+
+    // NOTE: This is a hack to force layout updates for children that were after the anchor index,
+    // related to the the layout constraints described above and elsewhere.
+    // Simpler would be to just update all children in that case, but also expensive for a long list of children.
+    if (this._forceLayoutUpdateFor) {
+      for (const child of this._forceLayoutUpdateFor) {
+        child.updateFromLayout()
+      }
+      this._forceLayoutUpdateFor = null
+    }
+
+    this.ensureZIndexSorted()
+
+    const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
+    if (shouldPushScissor) {
+      const scissorRect = this.getScissorRect()
+      renderList.push({
+        action: "pushScissorRect",
+        x: scissorRect.x,
+        y: scissorRect.y,
+        width: scissorRect.width,
+        height: scissorRect.height,
+      })
+    }
+
+    for (const child of this._getChildren()) {
+      child.updateLayout(deltaTime, renderList)
+    }
+
+    if (shouldPushScissor) {
+      renderList.push({ action: "popScissorRect" })
+    }
+  }
+
+  public render(buffer: OptimizedBuffer, deltaTime: number): void {
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
@@ -1251,21 +1230,6 @@ export abstract class Renderable extends BaseRenderable {
 
     this.markClean()
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
-    this.ensureZIndexSorted()
-
-    const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
-    if (shouldPushScissor) {
-      const scissorRect = this.getScissorRect()
-      renderBuffer.pushScissorRect(scissorRect.x, scissorRect.y, scissorRect.width, scissorRect.height)
-    }
-
-    for (const child of this._getChildren()) {
-      child.render(renderBuffer, deltaTime)
-    }
-
-    if (shouldPushScissor) {
-      renderBuffer.popScissorRect()
-    }
 
     if (this.buffered && this.frameBuffer) {
       buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
@@ -1439,8 +1403,32 @@ export abstract class Renderable extends BaseRenderable {
   }
 }
 
+interface RenderCommandBase {
+  action: "render" | "pushScissorRect" | "popScissorRect"
+}
+
+interface RenderCommandPushScissorRect extends RenderCommandBase {
+  action: "pushScissorRect"
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface RenderCommandPopScissorRect extends RenderCommandBase {
+  action: "popScissorRect"
+}
+
+interface RenderCommandRender extends RenderCommandBase {
+  action: "render"
+  renderable: Renderable
+}
+
+export type RenderCommand = RenderCommandPushScissorRect | RenderCommandPopScissorRect | RenderCommandRender
+
 export class RootRenderable extends Renderable {
   private yogaConfig: Config
+  private renderList: RenderCommand[] = []
 
   constructor(ctx: RenderContext) {
     super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
@@ -1459,6 +1447,42 @@ export class RootRenderable extends Renderable {
     this.layoutNode.yogaNode.setFlexDirection(FlexDirection.Column)
 
     this.calculateLayout()
+  }
+
+  public render(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (!this.visible) return
+
+    // NOTE: Strictly speaking, this is a 3-pass rendering process:
+    // 1. Calculate layout from root
+    // 2. Update layout throughout the tree and collect render list
+    // 3. Render all collected renderables
+    // Should be 2-pass by hooking into the calculateLayout phase,
+    // but that's only possible if we move the layout tree to native.
+
+    // 1. Calculate layout from root
+    if (this.layoutNode.yogaNode.isDirty()) {
+      this.calculateLayout()
+    }
+
+    // 2. Update layout throughout the tree and collect render list
+    this.renderList.length = 0
+    this.updateLayout(deltaTime, this.renderList)
+
+    // 3. Render all collected renderables
+    for (let i = 1; i < this.renderList.length; i++) {
+      const command = this.renderList[i]
+      switch (command.action) {
+        case "render":
+          command.renderable.render(buffer, deltaTime)
+          break
+        case "pushScissorRect":
+          buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          break
+        case "popScissorRect":
+          buffer.popScissorRect()
+          break
+      }
+    }
   }
 
   protected propagateLiveCount(delta: number): void {
@@ -1484,10 +1508,9 @@ export class RootRenderable extends Renderable {
     this.emit(LayoutEvents.RESIZED, { width, height })
   }
 
-  protected onUpdate(): void {
-    if (this.layoutNode.yogaNode.isDirty()) {
-      this.calculateLayout()
-    }
+  protected onUpdate(deltaTime: number): void {
+    // Layout calculation is now handled in render() method
+    // This method can be used for other update logic if needed
   }
 
   protected destroySelf(): void {

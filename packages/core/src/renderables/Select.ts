@@ -35,7 +35,7 @@ export enum SelectRenderableEvents {
 }
 
 export class SelectRenderable extends Renderable {
-  protected focusable: boolean = true
+  protected _focusable: boolean = true
 
   private _options: SelectOption[] = []
   private selectedIndex: number = 0

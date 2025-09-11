@@ -17,6 +17,7 @@ import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
 import { FocusManager, type FocusKeyHandler } from "./lib/FocusManager"
+import { getObjectsInViewport } from "./lib/objects-in-viewport"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -160,7 +161,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private static animationFrameId = 0
   private lib: RenderLib
   public rendererPtr: Pointer
-  private stdin: NodeJS.ReadStream
+  public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
   private isDestroyed: boolean = false
@@ -257,6 +258,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private sigwinchHandler: (() => void) | null = null
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
+
+  private _currentFocusedRenderable: Renderable | null = null
 
   constructor(
     lib: RenderLib,
@@ -1418,7 +1421,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     selectedRenderables: Renderable[],
     touchedRenderables: Renderable[],
   ): void {
-    const children = container.getChildrenInViewport(selectionBounds, 0)
+    const children = getObjectsInViewport<Renderable>(
+      selectionBounds,
+      container.getChildrenSortedByPrimaryAxis(),
+      container.primaryAxis,
+      0,
+    )
 
     for (const child of children) {
       if (child.selectable) {

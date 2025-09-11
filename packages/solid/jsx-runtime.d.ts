@@ -5,6 +5,7 @@ import type {
   ExtendedIntrinsicElements,
   InputProps,
   OpenTUIComponents,
+  ScrollBoxProps,
   SelectProps,
   TabSelectProps,
   TextProps,
@@ -23,6 +24,7 @@ declare namespace JSX {
     select: SelectProps
     ascii_font: AsciiFontProps
     tab_select: TabSelectProps
+    scrollbox: ScrollBoxProps
   }
 
   interface ElementChildrenAttribute {

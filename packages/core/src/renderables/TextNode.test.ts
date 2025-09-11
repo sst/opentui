@@ -310,6 +310,42 @@ describe("TextNodeRenderable", () => {
       expect(merged.bg?.b).toBe(1)
       expect(merged.attributes).toBe(2)
     })
+
+    it("should inherit nothing when parent has no styling", () => {
+      const node = new TextNodeRenderable({}) // No styles defined
+
+      const parentStyle = {
+        fg: undefined,
+        bg: undefined,
+        attributes: 0,
+      }
+
+      const merged = node.mergeStyles(parentStyle)
+
+      expect(merged.fg).toBeUndefined()
+      expect(merged.bg).toBeUndefined()
+      expect(merged.attributes).toBe(0)
+    })
+
+    it("should combine attributes using bitwise OR", () => {
+      // Test various attribute combinations
+      const testCases = [
+        { nodeAttrs: 0, parentAttrs: 0, expected: 0 }, // 0 | 0 = 0
+        { nodeAttrs: 1, parentAttrs: 0, expected: 1 }, // 1 | 0 = 1 (bold)
+        { nodeAttrs: 0, parentAttrs: 2, expected: 2 }, // 0 | 2 = 2 (italic)
+        { nodeAttrs: 1, parentAttrs: 2, expected: 3 }, // 1 | 2 = 3 (bold + italic)
+        { nodeAttrs: 3, parentAttrs: 4, expected: 7 }, // 3 | 4 = 7 (bold + italic + underline)
+        { nodeAttrs: 7, parentAttrs: 8, expected: 15 }, // 7 | 8 = 15 (all previous + strikethrough)
+      ]
+
+      testCases.forEach(({ nodeAttrs, parentAttrs, expected }) => {
+        const node = new TextNodeRenderable({ attributes: nodeAttrs })
+        const parentStyle = { fg: undefined, bg: undefined, attributes: parentAttrs }
+
+        const merged = node.mergeStyles(parentStyle)
+        expect(merged.attributes).toBe(expected)
+      })
+    })
   })
 
   describe("gatherWithInheritedStyle Method", () => {
@@ -361,6 +397,181 @@ describe("TextNodeRenderable", () => {
       expect(chunks[1].text).toBe("Child")
       expect(chunks[1].fg).toEqual(RGBA.fromInts(255, 0, 0, 255)) // Inherited from parent
       expect(chunks[1].bg).toEqual(RGBA.fromInts(0, 255, 0, 255)) // Own style
+    })
+
+    it("should inherit nothing when parent has no default styling", () => {
+      const parent = new TextNodeRenderable({}) // No styles
+
+      const child = new TextNodeRenderable({}) // No styles
+      child.add("Child")
+
+      parent.add("Parent")
+      parent.add(child)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(2)
+      expect(chunks[0].text).toBe("Parent")
+      expect(chunks[0].fg).toBeUndefined()
+      expect(chunks[0].bg).toBeUndefined()
+      expect(chunks[0].attributes).toBe(0)
+
+      expect(chunks[1].text).toBe("Child")
+      expect(chunks[1].fg).toBeUndefined() // Nothing inherited
+      expect(chunks[1].bg).toBeUndefined() // Nothing inherited
+      expect(chunks[1].attributes).toBe(0) // Nothing inherited
+    })
+
+    it("should allow children to override parent styles independently", () => {
+      const parent = new TextNodeRenderable({
+        fg: RGBA.fromInts(255, 0, 0, 255),
+        bg: RGBA.fromInts(0, 0, 255, 255),
+        attributes: 1,
+      })
+
+      const childOverrideFg = new TextNodeRenderable({
+        fg: RGBA.fromInts(0, 255, 0, 255),
+      })
+      childOverrideFg.add("Green Text")
+
+      const childOverrideBg = new TextNodeRenderable({
+        bg: RGBA.fromInts(255, 255, 0, 255),
+      })
+      childOverrideBg.add("Yellow BG")
+
+      const childOverrideAttrs = new TextNodeRenderable({
+        attributes: 2,
+      })
+      childOverrideAttrs.add("Italic")
+
+      parent.add(childOverrideFg)
+      parent.add(childOverrideBg)
+      parent.add(childOverrideAttrs)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(3)
+
+      // First child: overrides fg, inherits bg and attributes
+      expect(chunks[0].text).toBe("Green Text")
+      expect(chunks[0].fg).toEqual(RGBA.fromInts(0, 255, 0, 255)) // Overridden
+      expect(chunks[0].bg).toEqual(RGBA.fromInts(0, 0, 255, 255)) // Inherited
+      expect(chunks[0].attributes).toBe(1) // Inherited
+
+      // Second child: overrides bg, inherits fg and attributes
+      expect(chunks[1].text).toBe("Yellow BG")
+      expect(chunks[1].fg).toEqual(RGBA.fromInts(255, 0, 0, 255)) // Inherited
+      expect(chunks[1].bg).toEqual(RGBA.fromInts(255, 255, 0, 255)) // Overridden
+      expect(chunks[1].attributes).toBe(1) // Inherited
+
+      // Third child: overrides attributes (OR'd), inherits fg and bg
+      expect(chunks[2].text).toBe("Italic")
+      expect(chunks[2].fg).toEqual(RGBA.fromInts(255, 0, 0, 255)) // Inherited
+      expect(chunks[2].bg).toEqual(RGBA.fromInts(0, 0, 255, 255)) // Inherited
+      expect(chunks[2].attributes).toBe(3) // 1 | 2 = 3
+    })
+
+    it("should support multi-level inheritance (grandparent -> parent -> child)", () => {
+      const grandparent = new TextNodeRenderable({
+        fg: RGBA.fromInts(255, 0, 0, 255),
+        attributes: 1,
+      })
+
+      const parent = new TextNodeRenderable({
+        bg: RGBA.fromInts(0, 0, 255, 255),
+      })
+
+      const child = new TextNodeRenderable({
+        fg: RGBA.fromInts(0, 255, 0, 255),
+        attributes: 2,
+      })
+
+      child.add("Grandchild")
+      parent.add("Parent")
+      parent.add(child)
+      grandparent.add("Grandparent")
+      grandparent.add(parent)
+
+      const chunks = grandparent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(3)
+
+      expect(chunks[0].text).toBe("Grandparent")
+      expect(chunks[0].fg).toEqual(RGBA.fromInts(255, 0, 0, 255))
+      expect(chunks[0].bg).toBeUndefined()
+      expect(chunks[0].attributes).toBe(1)
+
+      expect(chunks[1].text).toBe("Parent")
+      expect(chunks[1].fg).toEqual(RGBA.fromInts(255, 0, 0, 255))
+      expect(chunks[1].bg).toEqual(RGBA.fromInts(0, 0, 255, 255))
+      expect(chunks[1].attributes).toBe(1)
+
+      expect(chunks[2].text).toBe("Grandchild")
+      expect(chunks[2].fg).toEqual(RGBA.fromInts(0, 255, 0, 255))
+      expect(chunks[2].bg).toEqual(RGBA.fromInts(0, 0, 255, 255))
+      expect(chunks[2].attributes).toBe(3)
+    })
+
+    it("should support partial style overrides in children", () => {
+      const parent = new TextNodeRenderable({
+        fg: RGBA.fromInts(255, 0, 0, 255),
+        bg: RGBA.fromInts(0, 0, 255, 255),
+        attributes: 1,
+      })
+
+      const childPartial1 = new TextNodeRenderable({
+        fg: RGBA.fromInts(0, 255, 0, 255),
+      })
+      childPartial1.add("Green on Blue")
+
+      const childPartial2 = new TextNodeRenderable({
+        bg: RGBA.fromInts(255, 255, 0, 255),
+      })
+      childPartial2.add("Red on Yellow")
+
+      const childPartial3 = new TextNodeRenderable({
+        attributes: 2,
+      })
+      childPartial3.add("Red on Blue Bold+Italic")
+
+      const childPartial4 = new TextNodeRenderable({
+        fg: RGBA.fromInts(255, 255, 255, 255),
+        attributes: 4,
+      })
+      childPartial4.add("White on Blue Bold+Underline")
+
+      parent.add(childPartial1)
+      parent.add(childPartial2)
+      parent.add(childPartial3)
+      parent.add(childPartial4)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(4)
+
+      // Child 1: only fg overridden
+      expect(chunks[0].text).toBe("Green on Blue")
+      expect(chunks[0].fg).toEqual(RGBA.fromInts(0, 255, 0, 255))
+      expect(chunks[0].bg).toEqual(RGBA.fromInts(0, 0, 255, 255))
+      expect(chunks[0].attributes).toBe(1)
+
+      // Child 2: only bg overridden
+      expect(chunks[1].text).toBe("Red on Yellow")
+      expect(chunks[1].fg).toEqual(RGBA.fromInts(255, 0, 0, 255))
+      expect(chunks[1].bg).toEqual(RGBA.fromInts(255, 255, 0, 255))
+      expect(chunks[1].attributes).toBe(1)
+
+      // Child 3: only attributes overridden (OR'd)
+      expect(chunks[2].text).toBe("Red on Blue Bold+Italic")
+      expect(chunks[2].fg).toEqual(RGBA.fromInts(255, 0, 0, 255))
+      expect(chunks[2].bg).toEqual(RGBA.fromInts(0, 0, 255, 255))
+      expect(chunks[2].attributes).toBe(3) // 1 | 2 = 3
+
+      // Child 4: fg and attributes overridden, bg inherited
+      expect(chunks[3].text).toBe("White on Blue Bold+Underline")
+      expect(chunks[3].fg).toEqual(RGBA.fromInts(255, 255, 255, 255))
+      expect(chunks[3].bg).toEqual(RGBA.fromInts(0, 0, 255, 255))
+      expect(chunks[3].attributes).toBe(5) // 1 | 4 = 5
     })
   })
 
