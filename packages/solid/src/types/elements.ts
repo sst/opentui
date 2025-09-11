@@ -20,7 +20,8 @@ import type {
   TextOptions,
   TextRenderable,
 } from "@opentui/core"
-import type { JSX, Ref } from "solid-js"
+import type { Ref } from "solid-js"
+import type { JSX } from "../../jsx-runtime"
 
 // ============================================================================
 // Core Type System
@@ -86,17 +87,19 @@ type ComponentProps<TOptions extends RenderableOptions<TRenderable>, TRenderable
 } & ElementProps<TRenderable>
 
 /** Valid text content types for Text component children */
-type TextChildren = (string & {}) | number | boolean | null | undefined | TextNodeRenderable
+type TextChildren = string | number | boolean | null | undefined | JSX.Element
 
 // ============================================================================
 // Built-in Component Props
 // ============================================================================
 
 export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
-  children?: TextChildren | Element | Array<TextChildren | Element>
+  children?: TextChildren | Array<TextChildren>
 }
 
-export type SpanProps = ComponentProps<{}, TextNodeRenderable> & { children?: TextChildren | Array<TextChildren> }
+export type SpanProps = ComponentProps<{}, TextNodeRenderable> & {
+  children?: TextChildren | Array<TextChildren>
+}
 
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
 
