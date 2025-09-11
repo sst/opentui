@@ -1,15 +1,15 @@
-import { measureText, TextRenderable } from "@opentui/core"
-import { useTerminalDimensions, useRenderer, useKeyboard } from "@opentui/solid"
-import { createSignal, Show, onMount, Switch, Match } from "solid-js"
+import { measureText } from "@opentui/core"
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { createSignal, Match, onMount, Switch } from "solid-js"
+import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
+import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
-import TextStyleScene from "./text-style-demo.tsx"
-import TextSelectionDemo from "./text-selection-demo.tsx"
+import { ScrollDemo, ScrollDemoIndex } from "./scroll-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
-import ExtendDemo from "./extend-demo.tsx"
-import { ScrollDemo } from "./scroll-demo.tsx"
-import { Session } from "../session.tsx"
+import TextSelectionDemo from "./text-selection-demo.tsx"
+import TextStyleScene from "./text-style-demo.tsx"
 
 const EXAMPLES = [
   {
@@ -51,6 +51,11 @@ const EXAMPLES = [
     name: "Scroll Demo",
     description: "Scroll demo",
     scene: "scroll-demo",
+  },
+  {
+    name: "Scroll Demo Index",
+    description: "Scroll demo Index",
+    scene: "scroll-demo-index",
   },
   {
     name: "Session Scrollbox",
@@ -132,6 +137,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "scroll-demo"}>
         <ScrollDemo />
+      </Match>
+      <Match when={selectedScene() === "scroll-demo-index"}>
+        <ScrollDemoIndex />
       </Match>
       <Match when={selectedScene() === "session-scrollbox"}>
         <Session />
