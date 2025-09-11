@@ -65,12 +65,16 @@ export class TextRenderable extends Renderable {
 
     this.setupMeasureFunc()
 
-    this.rootTextNode = new RootTextNodeRenderable(ctx, {
-      id: `${this.id}-root`,
-      fg: this._defaultFg,
-      bg: this._defaultBg,
-      attributes: this._defaultAttributes,
-    })
+    this.rootTextNode = new RootTextNodeRenderable(
+      ctx,
+      {
+        id: `${this.id}-root`,
+        fg: this._defaultFg,
+        bg: this._defaultBg,
+        attributes: this._defaultAttributes,
+      },
+      this,
+    )
 
     this.updateTextBuffer(styledText)
     this._text.mount(this)

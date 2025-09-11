@@ -7,18 +7,28 @@ import {
   isTextNodeRenderable,
   parseColor,
   Renderable,
+  RootTextNodeRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
   TextNodeRenderable,
   TextRenderable,
+  type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
 import { createRenderer } from "solid-js/universal"
 import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
+
+class TextNode extends TextNodeRenderable {
+  public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
+    const node = new TextNode(options)
+    node.add(text)
+    return node
+  }
+}
 
 export type DomNode = BaseRenderable
 
@@ -51,7 +61,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     logId(parent),
     "with anchor:",
     logId(anchor),
-    node instanceof TextNodeRenderable,
+    node instanceof TextNode,
   )
 
   if (isTextNodeRenderable(node)) {
@@ -87,28 +97,35 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
 
   parent.remove(node.id)
+
   process.nextTick(() => {
-    if (!node.parent) {
-      if (node instanceof Renderable) {
-        node.destroyRecursively()
-      } else {
-        log("[REMOVE]", "handle destroyed text node")
-      }
+    if (node instanceof Renderable && !node.parent) {
+      node.destroyRecursively()
+      return
     }
   })
 }
 
-function _createTextNode(value: string | number): TextNodeRenderable {
+function _createTextNode(value: string | number): TextNode {
   log("Creating text node:", value)
 
   const id = getNextId("text-node")
-  const textNode = new TextNodeRenderable({ id })
 
   if (typeof value === "number") {
     value = value.toString()
   }
-  textNode.add(value)
-  return textNode
+
+  return TextNode.fromString(value, { id })
+}
+
+function _getParentNode(childNode: DomNode): DomNode | undefined {
+  log("Getting parent of node:", logId(childNode))
+
+  let parent = childNode.parent ?? undefined
+  if (parent instanceof RootTextNodeRenderable) {
+    parent = parent.textParent ?? undefined
+  }
+  return parent
 }
 
 export const {
@@ -145,11 +162,11 @@ export const {
 
   createTextNode: _createTextNode,
 
-  replaceText(textNode: TextNodeRenderable, value: string): void {
-    log("Replacing text", "in node:", logId(textNode))
-    if (!(textNode instanceof TextNodeRenderable)) return
-    textNode.clear()
-    textNode.add(value)
+  replaceText(textNode: TextNode, value: string): void {
+    log("Replacing text:", value, "in node:", logId(textNode))
+
+    if (!(textNode instanceof TextNode)) return
+    textNode.replace(value, 0)
   },
 
   setProperty(node: DomNode, name: string, value: any, prev: any): void {
@@ -264,17 +281,14 @@ export const {
   },
 
   isTextNode(node: DomNode): boolean {
-    return node instanceof TextNodeRenderable
+    return node instanceof TextNode
   },
 
   insertNode: _insertNode,
 
   removeNode: _removeNode,
 
-  getParentNode(childNode: DomNode): DomNode | undefined {
-    log("Getting parent of node:", logId(childNode))
-    return childNode.parent ?? undefined
-  },
+  getParentNode: _getParentNode,
 
   getFirstChild(node: DomNode): DomNode | undefined {
     log("Getting first child of node:", logId(node))
@@ -293,7 +307,7 @@ export const {
   getNextSibling(node: DomNode): DomNode | undefined {
     log("Getting next sibling of node:", logId(node))
 
-    const parent = node.parent
+    const parent = _getParentNode(node)
     if (!parent) {
       log("No parent found for node:", logId(node))
       return undefined

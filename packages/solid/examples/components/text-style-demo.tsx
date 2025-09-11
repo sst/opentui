@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount } from "solid-js"
+import { createSignal, onCleanup, onMount, Show } from "solid-js"
 
 export default function TextStyleScene() {
   const [counter, setCounter] = createSignal(0)
@@ -21,6 +21,16 @@ export default function TextStyleScene() {
       <text style={{ bg: "red", fg: "black" }}>
         Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
         <span style={{ bg: "blue", fg: "yellow", underline: true }}>{counter()}</span>
+      </text>
+
+      <text>
+        Toggle{" "}
+        <Show when={counter() % 2 === 0}>
+          <span style={{ underline: true, fg: "red" }}>text</span>
+        </Show>
+      </text>
+      <text>
+        Toggle <Show when={counter() % 2 === 0}>text</Show>
       </text>
     </box>
   )
