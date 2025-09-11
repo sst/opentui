@@ -118,17 +118,15 @@ export class SliderRenderable extends Renderable {
     this.requestRender()
   }
 
-  private calculateDragOffsetVirtual(
-    event: any,
-    virtualThumbStart: number,
-    virtualThumbSize: number,
-    trackStart: number,
-    mousePos: number,
-  ): number {
+  private calculateDragOffsetVirtual(event: any): number {
+    const trackStart = this.orientation === "vertical" ? this.y : this.x
+    const mousePos = (this.orientation === "vertical" ? event.y : event.x) - trackStart
     const virtualMousePos = Math.max(
       0,
-      Math.min((this.orientation === "vertical" ? this.height : this.width) * 2, mousePos * 2 - trackStart * 2),
+      Math.min((this.orientation === "vertical" ? this.height : this.width) * 2, mousePos * 2),
     )
+    const virtualThumbStart = this.getVirtualThumbStart()
+    const virtualThumbSize = this.getVirtualThumbSize()
 
     return Math.max(0, Math.min(virtualThumbSize, virtualMousePos - virtualThumbStart))
   }
@@ -141,34 +139,19 @@ export class SliderRenderable extends Renderable {
       event.stopPropagation()
       event.preventDefault()
 
-      const trackStart = this.orientation === "vertical" ? this.y : this.x
-      const mousePos = (this.orientation === "vertical" ? event.y : event.x) - trackStart
-      const virtualMousePos = mousePos * 2
-      const virtualThumbStart = this.getVirtualThumbStart()
-      const virtualThumbSize = this.getVirtualThumbSize()
-      const inThumb = virtualMousePos >= virtualThumbStart && virtualMousePos < virtualThumbStart + virtualThumbSize
+      const thumb = this.getThumbRect()
+      const inThumb =
+        event.x >= thumb.x && event.x < thumb.x + thumb.width && event.y >= thumb.y && event.y < thumb.y + thumb.height
 
       if (inThumb) {
         isDragging = true
 
-        dragOffsetVirtual = this.calculateDragOffsetVirtual(
-          event,
-          virtualThumbStart,
-          virtualThumbSize,
-          trackStart,
-          mousePos,
-        )
+        dragOffsetVirtual = this.calculateDragOffsetVirtual(event)
       } else {
         this.updateValueFromMouseDirect(event)
         isDragging = true
 
-        dragOffsetVirtual = this.calculateDragOffsetVirtual(
-          event,
-          virtualThumbStart,
-          virtualThumbSize,
-          trackStart,
-          mousePos,
-        )
+        dragOffsetVirtual = this.calculateDragOffsetVirtual(event)
       }
     }
 
@@ -221,6 +204,30 @@ export class SliderRenderable extends Renderable {
     const newValue = this._min + ratio * range
 
     this.value = newValue
+  }
+
+  private getThumbRect(): { x: number; y: number; width: number; height: number } {
+    const virtualThumbSize = this.getVirtualThumbSize()
+    const virtualThumbStart = this.getVirtualThumbStart()
+
+    const realThumbStart = Math.floor(virtualThumbStart / 2)
+    const realThumbSize = Math.ceil((virtualThumbStart + virtualThumbSize) / 2) - realThumbStart
+
+    if (this.orientation === "vertical") {
+      return {
+        x: this.x,
+        y: this.y + realThumbStart,
+        width: this.width,
+        height: Math.max(1, realThumbSize),
+      }
+    } else {
+      return {
+        x: this.x + realThumbStart,
+        y: this.y,
+        width: Math.max(1, realThumbSize),
+        height: this.height,
+      }
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -316,7 +323,7 @@ export class SliderRenderable extends Renderable {
     if (range === 0) return virtualTrackSize
 
     const viewportSize = Math.max(1, this._viewPortSize)
-    const contentSize = range + viewportSize
+    const contentSize = range
 
     if (contentSize <= viewportSize) return virtualTrackSize
 
