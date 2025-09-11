@@ -19,7 +19,7 @@ let scrollBox: ScrollBoxRenderable | null = null
 let renderer: CliRenderer | null = null
 let mainContainer: BoxRenderable | null = null
 let instructionsBox: BoxRenderable | null = null
-let nextIndex = 10000
+let nextIndex = 1000
 
 function addBox(i: number) {
   if (!renderer || !scrollBox) return
@@ -129,7 +129,7 @@ export function run(rendererInstance: CliRenderer): void {
       backgroundColor: "#16161e",
     },
     scrollbarOptions: {
-      showArrows: true,
+      //   showArrows: true,
       trackOptions: {
         foregroundColor: "#7aa2f7",
         backgroundColor: "#414868",

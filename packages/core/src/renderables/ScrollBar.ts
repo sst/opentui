@@ -72,14 +72,16 @@ export class ScrollBarRenderable extends Renderable {
     if (newPosition !== this._scrollPosition) {
       this._scrollPosition = newPosition
       this.updateSliderFromScrollState()
-      this._onChange?.(newPosition)
-      this.emit("change", { position: newPosition })
+      // Events are triggered by the slider change event
+      // this._onChange?.(newPosition)
+      // this.emit("change", { position: newPosition })
     }
   }
 
   set viewportSize(value: number) {
     if (value === this.viewportSize) return
     this._viewportSize = value
+    this.slider.viewPortSize = Math.max(1, this._viewportSize)
     this.recalculateVisibility()
     this.scrollPosition = this.scrollPosition
   }
@@ -111,17 +113,25 @@ export class ScrollBarRenderable extends Renderable {
     this.orientation = orientation
     this._showArrows = showArrows
 
+    const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
+
+    const defaultStepSize = Math.max(1, this._viewportSize)
+    const stepSize = trackOptions?.viewPortSize ?? defaultStepSize
+
     this.slider = new SliderRenderable(ctx, {
       orientation,
-      onChange: (position) => {
-        const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
-        this._scrollPosition = Math.round(position * scrollRange)
+      min: 0,
+      max: scrollRange,
+      value: this._scrollPosition,
+      viewPortSize: stepSize,
+      onChange: (value) => {
+        this._scrollPosition = Math.round(value)
         this._onChange?.(this._scrollPosition)
         this.emit("change", { position: this._scrollPosition })
       },
       ...(orientation === "vertical"
         ? {
-            width: 2,
+            width: Math.max(1, Math.min(2, this.width)),
             height: "100%",
             marginLeft: "auto",
           }
@@ -222,19 +232,12 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   private updateSliderFromScrollState(): void {
-    const trackSize = this.orientation === "vertical" ? this.slider.height : this.slider.width
     const scrollRange = Math.max(0, this._scrollSize - this._viewportSize)
 
-    if (scrollRange === 0) {
-      this.slider.thumbSize = trackSize
-      this.slider.thumbPosition = 0
-    } else {
-      const sizeRatio = this._viewportSize / this._scrollSize
-      this.slider.thumbSize = Math.max(1, Math.round(sizeRatio * trackSize))
+    this.slider.min = 0
+    this.slider.max = scrollRange
 
-      const positionRatio = this._scrollPosition / scrollRange
-      this.slider.thumbPosition = Math.max(0, Math.min(1, positionRatio))
-    }
+    this.slider.value = Math.min(this._scrollPosition, scrollRange)
   }
 
   public scrollBy(delta: number, unit: ScrollUnit = "absolute"): void {
@@ -333,10 +336,10 @@ export class ArrowRenderable extends Renderable {
     this._attributes = options.attributes ?? 0
 
     this._arrowChars = {
-      up: "◢◣",
-      down: "◥◤",
-      left: " ◀ ",
-      right: " ▶ ",
+      up: "▲",
+      down: "▼",
+      left: "◀",
+      right: "▶",
       ...options.arrowChars,
     }
 

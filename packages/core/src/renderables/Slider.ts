@@ -13,26 +13,32 @@ const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
 
 export interface SliderOptions extends RenderableOptions<SliderRenderable> {
   orientation: "vertical" | "horizontal"
-  thumbSize?: number
-  thumbPosition?: number
+  value?: number
+  min?: number
+  max?: number
+  viewPortSize?: number
   backgroundColor?: ColorInput
   foregroundColor?: ColorInput
-  onChange?: (position: number) => void
+  onChange?: (value: number) => void
 }
 
 export class SliderRenderable extends Renderable {
   public readonly orientation: "vertical" | "horizontal"
-  private _thumbSize: number
-  private _thumbPosition: number
+  private _value: number
+  private _min: number
+  private _max: number
+  private _viewPortSize: number
   private _backgroundColor: RGBA
   private _foregroundColor: RGBA
-  private _onChange?: (position: number) => void
+  private _onChange?: (value: number) => void
 
   constructor(ctx: RenderContext, options: SliderOptions) {
     super(ctx, options)
     this.orientation = options.orientation
-    this._thumbSize = options.thumbSize ?? 1
-    this._thumbPosition = options.thumbPosition ?? 0
+    this._min = options.min ?? 0
+    this._max = options.max ?? 100
+    this._value = options.value ?? this._min
+    this._viewPortSize = options.viewPortSize ?? Math.max(1, (this._max - this._min) * 0.1)
     this._onChange = options.onChange
     this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : defaultTrackBackgroundColor
     this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : defaultThumbBackgroundColor
@@ -40,30 +46,58 @@ export class SliderRenderable extends Renderable {
     this.setupMouseHandling()
   }
 
-  get thumbSize(): number {
-    return this._thumbSize
+  get value(): number {
+    return this._value
   }
 
-  set thumbSize(value: number) {
-    const clamped = Math.max(1, Math.min(value, this.orientation === "vertical" ? this.height : this.width))
-    if (clamped !== this._thumbSize) {
-      this._thumbSize = clamped
-      this.requestRender()
-    }
-  }
-
-  get thumbPosition(): number {
-    return this._thumbPosition
-  }
-
-  set thumbPosition(value: number) {
-    const clamped = Math.max(0, Math.min(1, value))
-    if (clamped !== this._thumbPosition) {
-      this._thumbPosition = clamped
+  set value(newValue: number) {
+    const clamped = Math.max(this._min, Math.min(this._max, newValue))
+    if (clamped !== this._value) {
+      this._value = clamped
       this._onChange?.(clamped)
-      this.emit("change", { position: clamped })
+      this.emit("change", { value: clamped })
       this.requestRender()
     }
+  }
+
+  get min(): number {
+    return this._min
+  }
+
+  set min(newMin: number) {
+    if (newMin !== this._min) {
+      this._min = newMin
+      if (this._value < newMin) {
+        this.value = newMin
+      }
+      this.requestRender()
+    }
+  }
+
+  get max(): number {
+    return this._max
+  }
+
+  set max(newMax: number) {
+    if (newMax !== this._max) {
+      this._max = newMax
+      if (this._value > newMax) {
+        this.value = newMax
+      }
+      this.requestRender()
+    }
+  }
+
+  set viewPortSize(size: number) {
+    const clampedSize = Math.max(0.01, Math.min(size, this._max - this._min))
+    if (clampedSize !== this._viewPortSize) {
+      this._viewPortSize = clampedSize
+      this.requestRender()
+    }
+  }
+
+  get viewPortSize(): number {
+    return this._viewPortSize
   }
 
   get backgroundColor(): RGBA {
@@ -84,88 +118,223 @@ export class SliderRenderable extends Renderable {
     this.requestRender()
   }
 
+  private calculateDragOffsetVirtual(
+    event: any,
+    virtualThumbStart: number,
+    virtualThumbSize: number,
+    trackStart: number,
+    mousePos: number,
+  ): number {
+    const virtualMousePos = Math.max(
+      0,
+      Math.min((this.orientation === "vertical" ? this.height : this.width) * 2, mousePos * 2 - trackStart * 2),
+    )
+
+    return Math.max(0, Math.min(virtualThumbSize, virtualMousePos - virtualThumbStart))
+  }
+
   private setupMouseHandling(): void {
     let isDragging = false
-    let relativeStartPos = 0
+    let dragOffsetVirtual = 0
 
     this.onMouseDown = (event) => {
       event.stopPropagation()
       event.preventDefault()
 
-      isDragging = true
+      const trackStart = this.orientation === "vertical" ? this.y : this.x
+      const mousePos = (this.orientation === "vertical" ? event.y : event.x) - trackStart
+      const virtualMousePos = mousePos * 2
+      const virtualThumbStart = this.getVirtualThumbStart()
+      const virtualThumbSize = this.getVirtualThumbSize()
+      const inThumb = virtualMousePos >= virtualThumbStart && virtualMousePos < virtualThumbStart + virtualThumbSize
 
-      const thumbRect = this.getThumbRect()
-      const isOnThumb =
-        event.x >= thumbRect.x &&
-        event.x < thumbRect.x + thumbRect.width &&
-        event.y >= thumbRect.y &&
-        event.y < thumbRect.y + thumbRect.height
+      if (inThumb) {
+        isDragging = true
 
-      if (isOnThumb) {
-        relativeStartPos = this.orientation === "vertical" ? event.y - thumbRect.y : event.x - thumbRect.x
+        dragOffsetVirtual = this.calculateDragOffsetVirtual(
+          event,
+          virtualThumbStart,
+          virtualThumbSize,
+          trackStart,
+          mousePos,
+        )
       } else {
-        relativeStartPos = this.orientation === "vertical" ? thumbRect.height / 2 : thumbRect.width / 2
-      }
+        this.updateValueFromMouseDirect(event)
+        isDragging = true
 
-      this.updatePositionFromMouse(event, relativeStartPos)
+        dragOffsetVirtual = this.calculateDragOffsetVirtual(
+          event,
+          virtualThumbStart,
+          virtualThumbSize,
+          trackStart,
+          mousePos,
+        )
+      }
     }
 
     this.onMouseDrag = (event) => {
       if (!isDragging) return
       event.stopPropagation()
-      this.updatePositionFromMouse(event, relativeStartPos)
+      this.updateValueFromMouseWithOffset(event, dragOffsetVirtual)
     }
 
-    this.onMouseUp = () => {
+    this.onMouseUp = (event) => {
+      if (isDragging) {
+        this.updateValueFromMouseWithOffset(event, dragOffsetVirtual)
+      }
       isDragging = false
     }
   }
 
-  private updatePositionFromMouse(event: any, relativeStartPos: number): void {
+  private updateValueFromMouseDirect(event: any): void {
     const trackStart = this.orientation === "vertical" ? this.y : this.x
     const trackSize = this.orientation === "vertical" ? this.height : this.width
     const mousePos = this.orientation === "vertical" ? event.y : event.x
 
-    const thumbStartPos = mousePos - trackStart - relativeStartPos
-    const maxThumbStartPos = trackSize - this._thumbSize
+    const relativeMousePos = mousePos - trackStart
+    const clampedMousePos = Math.max(0, Math.min(trackSize, relativeMousePos))
+    const ratio = trackSize === 0 ? 0 : clampedMousePos / trackSize
+    const range = this._max - this._min
+    const newValue = this._min + ratio * range
 
-    const clampedThumbStartPos = Math.max(0, Math.min(maxThumbStartPos, thumbStartPos))
-
-    const newPosition = maxThumbStartPos > 0 ? clampedThumbStartPos / maxThumbStartPos : 0
-
-    this.thumbPosition = newPosition
+    this.value = newValue
   }
 
-  private getThumbPosition(): number {
+  private updateValueFromMouseWithOffset(event: any, offsetVirtual: number): void {
+    const trackStart = this.orientation === "vertical" ? this.y : this.x
     const trackSize = this.orientation === "vertical" ? this.height : this.width
-    const maxPos = trackSize - this._thumbSize
-    return Math.round(this._thumbPosition * maxPos)
+    const mousePos = this.orientation === "vertical" ? event.y : event.x
+
+    const virtualTrackSize = trackSize * 2
+    const relativeMousePos = mousePos - trackStart
+    const clampedMousePos = Math.max(0, Math.min(trackSize, relativeMousePos))
+    const virtualMousePos = clampedMousePos * 2
+
+    const virtualThumbSize = this.getVirtualThumbSize()
+    const maxThumbStart = Math.max(0, virtualTrackSize - virtualThumbSize)
+
+    let desiredThumbStart = virtualMousePos - offsetVirtual
+    desiredThumbStart = Math.max(0, Math.min(maxThumbStart, desiredThumbStart))
+
+    const ratio = maxThumbStart === 0 ? 0 : desiredThumbStart / maxThumbStart
+    const range = this._max - this._min
+    const newValue = this._min + ratio * range
+
+    this.value = newValue
   }
 
-  private getThumbRect(): { x: number; y: number; width: number; height: number } {
-    const thumbPos = this.getThumbPosition()
-
-    if (this.orientation === "vertical") {
-      return {
-        x: this.x,
-        y: this.y + thumbPos,
-        width: this.width,
-        height: this._thumbSize,
-      }
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    if (this.orientation === "horizontal") {
+      this.renderHorizontal(buffer)
     } else {
-      return {
-        x: this.x + thumbPos,
-        y: this.y,
-        width: this._thumbSize,
-        height: this.height,
+      this.renderVertical(buffer)
+    }
+  }
+
+  private renderHorizontal(buffer: OptimizedBuffer): void {
+    const virtualThumbSize = this.getVirtualThumbSize()
+    const virtualThumbStart = this.getVirtualThumbStart()
+    const virtualThumbEnd = virtualThumbStart + virtualThumbSize
+
+    buffer.fillRect(this.x, this.y, this.width, this.height, this._backgroundColor)
+
+    const realStartCell = Math.floor(virtualThumbStart / 2)
+    const realEndCell = Math.floor((virtualThumbEnd - 1) / 2)
+    const startX = Math.max(0, realStartCell)
+    const endX = Math.min(this.width - 1, realEndCell)
+
+    for (let realX = startX; realX <= endX; realX++) {
+      const virtualCellStart = realX * 2
+      const virtualCellEnd = virtualCellStart + 2
+
+      const thumbStartInCell = Math.max(virtualThumbStart, virtualCellStart)
+      const thumbEndInCell = Math.min(virtualThumbEnd, virtualCellEnd)
+      const coverage = thumbEndInCell - thumbStartInCell
+
+      let char = " "
+
+      if (coverage >= 2) {
+        char = "█"
+      } else {
+        const isLeftHalf = thumbStartInCell === virtualCellStart
+        if (isLeftHalf) {
+          char = "▌"
+        } else {
+          char = "▐"
+        }
+      }
+
+      for (let y = 0; y < this.height; y++) {
+        buffer.setCellWithAlphaBlending(this.x + realX, this.y + y, char, this._foregroundColor, this._backgroundColor)
       }
     }
   }
 
-  protected renderSelf(buffer: OptimizedBuffer): void {
+  private renderVertical(buffer: OptimizedBuffer): void {
+    const virtualThumbSize = this.getVirtualThumbSize()
+    const virtualThumbStart = this.getVirtualThumbStart()
+    const virtualThumbEnd = virtualThumbStart + virtualThumbSize
+
     buffer.fillRect(this.x, this.y, this.width, this.height, this._backgroundColor)
 
-    const thumbRect = this.getThumbRect()
-    buffer.fillRect(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height, this._foregroundColor)
+    const realStartCell = Math.floor(virtualThumbStart / 2)
+    const realEndCell = Math.floor((virtualThumbEnd - 1) / 2)
+    const startY = Math.max(0, realStartCell)
+    const endY = Math.min(this.height - 1, realEndCell)
+
+    for (let realY = startY; realY <= endY; realY++) {
+      const virtualCellStart = realY * 2
+      const virtualCellEnd = virtualCellStart + 2
+
+      const thumbStartInCell = Math.max(virtualThumbStart, virtualCellStart)
+      const thumbEndInCell = Math.min(virtualThumbEnd, virtualCellEnd)
+      const coverage = thumbEndInCell - thumbStartInCell
+
+      let char = " "
+
+      if (coverage >= 2) {
+        char = "█"
+      } else if (coverage > 0) {
+        const virtualPositionInCell = thumbStartInCell - virtualCellStart
+        if (virtualPositionInCell === 0) {
+          char = "▀"
+        } else {
+          char = "▄"
+        }
+      }
+
+      for (let x = 0; x < this.width; x++) {
+        buffer.setCellWithAlphaBlending(this.x + x, this.y + realY, char, this._foregroundColor, this._backgroundColor)
+      }
+    }
+  }
+
+  private getVirtualThumbSize(): number {
+    const virtualTrackSize = this.orientation === "vertical" ? this.height * 2 : this.width * 2
+    const range = this._max - this._min
+
+    if (range === 0) return virtualTrackSize
+
+    const viewportSize = Math.max(1, this._viewPortSize)
+    const contentSize = range + viewportSize
+
+    if (contentSize <= viewportSize) return virtualTrackSize
+
+    const thumbRatio = viewportSize / contentSize
+    const calculatedSize = Math.floor(virtualTrackSize * thumbRatio)
+
+    return Math.max(1, Math.min(calculatedSize, virtualTrackSize))
+  }
+
+  private getVirtualThumbStart(): number {
+    const virtualTrackSize = this.orientation === "vertical" ? this.height * 2 : this.width * 2
+    const range = this._max - this._min
+
+    if (range === 0) return 0
+
+    const valueRatio = (this._value - this._min) / range
+    const virtualThumbSize = this.getVirtualThumbSize()
+
+    return Math.round(valueRatio * (virtualTrackSize - virtualThumbSize))
   }
 }

@@ -378,6 +378,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     }
+
+    this.setupInput()
   }
 
   public get currentFocusedRenderable(): Renderable | null {
@@ -552,7 +554,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return true
   }
 
-  private disableStdoutInterception(): void {
+  public disableStdoutInterception(): void {
     this.flushStdoutCache(this._splitHeight)
     this.stdout.write = this.realStdoutWrite
   }
@@ -637,6 +639,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.enableMouse()
     }
 
+    this.queryPixelResolution()
+  }
+
+  private setupInput(): void {
     this.stdin.on("data", (data: Buffer) => {
       const str = data.toString()
 
@@ -667,8 +673,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       this.emit("key", data)
     })
-
-    this.queryPixelResolution()
   }
 
   private handleMouseData(data: Buffer): boolean {

@@ -71,7 +71,8 @@ export function run(rendererInstance: CliRenderer): void {
       backgroundColor: "#16161e",
     },
     scrollbarOptions: {
-      showArrows: true,
+      // width: 2,
+      // showArrows: true,
       trackOptions: {
         foregroundColor: "#7aa2f7",
         backgroundColor: "#414868",

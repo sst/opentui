@@ -22,7 +22,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32"],
+      args: ["u32", "u32", "bool"],
       returns: "ptr",
     },
     destroyRenderer: {
@@ -376,7 +376,7 @@ export enum LogLevel {
 }
 
 export interface RenderLib {
-  createRenderer: (width: number, height: number) => Pointer | null
+  createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
@@ -642,8 +642,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setLogCallback(callbackPtr)
   }
 
-  public createRenderer(width: number, height: number) {
-    return this.opentui.symbols.createRenderer(width, height)
+  public createRenderer(width: number, height: number, options: { testing: boolean } = { testing: false }) {
+    return this.opentui.symbols.createRenderer(width, height, options.testing)
   }
 
   public destroyRenderer(renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) {

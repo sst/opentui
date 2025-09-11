@@ -4,6 +4,7 @@ const ansi = @import("ansi.zig");
 const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const Terminal = @import("terminal.zig");
+const logger = @import("logger.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
@@ -47,6 +48,7 @@ pub const CliRenderer = struct {
     backgroundColor: RGBA,
     renderOffset: u32,
     terminal: Terminal,
+    testing: bool = false,
 
     renderStats: struct {
         lastFrameTime: f64,
@@ -129,14 +131,24 @@ pub const CliRenderer = struct {
         }
     };
 
-    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, graphemes_data: *gp.Graphemes, display_width: *gp.DisplayWidth) !*CliRenderer {
+    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, graphemes_data: *gp.Graphemes, display_width: *gp.DisplayWidth, testing: bool) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
 
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" }, graphemes_data, display_width);
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" }, graphemes_data, display_width);
 
-        const stdout = std.io.getStdOut();
-        const stdoutWriter = std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };
+        const stdoutWriter = if (testing) blk: {
+            // In testing mode, use /dev/null to discard output
+            const devnull = std.fs.openFileAbsolute("/dev/null", .{ .mode = .write_only }) catch {
+                // Fallback to stdout if /dev/null can't be opened
+                logger.warn("Failed to open /dev/null, falling back to stdout\n", .{});
+                break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = std.io.getStdOut().writer() };
+            };
+            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = devnull.writer() };
+        } else blk: {
+            const stdout = std.io.getStdOut();
+            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };
+        };
 
         // stat sample arrays
         var lastFrameTime = std.ArrayList(f64).init(allocator);
@@ -170,6 +182,7 @@ pub const CliRenderer = struct {
             .backgroundColor = .{ 0.0, 0.0, 0.0, 1.0 },
             .renderOffset = 0,
             .terminal = Terminal.init(.{}),
+            .testing = testing,
 
             .renderStats = .{
                 .lastFrameTime = 0,

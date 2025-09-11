@@ -1,21 +1,38 @@
 import { CliRenderer, type CliRendererConfig } from "../renderer"
 import { resolveRenderLib } from "../zig"
 import { createMockKeys } from "./mock-keys"
+import { createMockMouse } from "./mock-mouse"
 
-export async function createTestRenderer(
-  options: CliRendererConfig,
-): Promise<{ renderer: CliRenderer; mockInput: ReturnType<typeof createMockKeys> }> {
+export interface TestRendererOptions extends CliRendererConfig {}
+export interface TestRenderer extends CliRenderer {}
+export type MockInput = ReturnType<typeof createMockKeys>
+export type MockMouse = ReturnType<typeof createMockMouse>
+
+export async function createTestRenderer(options: TestRendererOptions): Promise<{
+  renderer: TestRenderer
+  mockInput: MockInput
+  mockMouse: MockMouse
+  renderOnce: () => Promise<void>
+}> {
   const renderer = await setupTestRenderer({
     ...options,
     useAlternateScreen: false,
     useConsole: false,
   })
 
-  //@ts-expect-error - this is a test renderer
-  renderer.renderNative = function () {}
+  renderer.disableStdoutInterception()
 
   const mockInput = createMockKeys(renderer)
-  return { renderer, mockInput }
+  const mockMouse = createMockMouse(renderer)
+  return {
+    renderer,
+    mockInput,
+    mockMouse,
+    renderOnce: async () => {
+      //@ts-expect-error - this is a test renderer
+      await renderer.loop()
+    },
+  }
 }
 
 async function setupTestRenderer(config: CliRendererConfig) {
@@ -28,7 +45,7 @@ async function setupTestRenderer(config: CliRendererConfig) {
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight)
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, { testing: true })
   if (!rendererPtr) {
     throw new Error("Failed to create test renderer")
   }

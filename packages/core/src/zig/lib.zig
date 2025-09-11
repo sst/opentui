@@ -31,7 +31,7 @@ export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
 
-export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
+export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
@@ -41,7 +41,7 @@ export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
     const unicode_data = gp.initGlobalUnicodeData(allocator);
 
     const graphemes_ptr, const display_width_ptr = unicode_data;
-    return renderer.CliRenderer.create(allocator, width, height, pool, graphemes_ptr, display_width_ptr) catch |err| {
+    return renderer.CliRenderer.create(allocator, width, height, pool, graphemes_ptr, display_width_ptr, testing) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };

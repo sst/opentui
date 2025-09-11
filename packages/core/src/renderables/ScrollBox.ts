@@ -245,6 +245,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
+        this._hasManualScroll = true
+        this.updateStickyState()
       },
     })
     super.add(this.verticalScrollBar)
@@ -260,6 +262,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
+        this._hasManualScroll = true
+        this.updateStickyState()
       },
     })
     this.wrapper.add(this.horizontalScrollBar)
@@ -336,8 +340,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public handleKeyPress(key: ParsedKey | string): boolean {
-    if (this.verticalScrollBar.handleKeyPress(key)) return true
-    if (this.horizontalScrollBar.handleKeyPress(key)) return true
+    if (this.verticalScrollBar.handleKeyPress(key)) {
+      this._hasManualScroll = true
+      return true
+    }
+    if (this.horizontalScrollBar.handleKeyPress(key)) {
+      this._hasManualScroll = true
+      return true
+    }
     return false
   }
 
@@ -501,6 +511,19 @@ export class ScrollBoxRenderable extends BoxRenderable {
         }
       }
     }
+
+    // NOTE: This is obviously a workaround for something,
+    // which is that the bar props are recalculated when the viewport is resized,
+    // which intially happens onUpdate but is the viewport does not have the correct dimensions yet,
+    // then when it does, no update is triggered and when we do we are in the middle of a render,
+    // which just ignores the request. ¯\_(ツ)_/¯
+    // TODO: Fix this properly. How? Move yoga to native, get all changes for elements in one go
+    // and update all renderables in one go before rendering.
+    // OR: Move this logic to the viewport. IMHO the wrapper and viewport are overkill and not necessary.
+    //     The Scrollbox can be the viewport, we are using translations on the content anyway.
+    process.nextTick(() => {
+      this.requestRender()
+    })
   }
 
   // Setters for reactive properties
