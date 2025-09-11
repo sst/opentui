@@ -1,5 +1,6 @@
-import { createMemo, createSignal, For, onMount } from "solid-js"
-import { ScrollBoxRenderable, fg } from "@opentui/core"
+import { ScrollBoxRenderable } from "@opentui/core"
+import { createMemo, For, onMount, Show } from "solid-js"
+import { createStore, produce } from "solid-js/store"
 
 // Message types
 type Message = {
@@ -26,18 +27,16 @@ const messageTemplates = [
 ]
 
 export function Session() {
-  const [messages, setMessages] = createSignal<Message[]>([])
+  const [messages, setMessages] = createStore<{ data: Message[] }>({ data: [] })
   let scrollRef: ScrollBoxRenderable | undefined
   let isChunkingActive = false
 
   // Generate a random message
   const generateMessage = (): Message => {
-    const templates = messageTemplates
-    const template = templates[Math.floor(Math.random() * templates.length)]
     const role = Math.random() > 0.5 ? "user" : "assistant"
 
     return {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 9),
       role,
       content: "", // Start empty, will be filled in chunks
       timestamp: new Date(),
@@ -56,7 +55,7 @@ export function Session() {
     newMessage.content = "" // Start empty
     newMessage.fullContent = fullContent // Store the full content
 
-    setMessages((prev) => [...prev, newMessage])
+    setMessages("data", messages.data.length, newMessage)
 
     // Start chunking this message
     if (fullContent) {
@@ -72,16 +71,15 @@ export function Session() {
 
     const chunkInterval = setInterval(
       () => {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === messageId
-              ? {
-                  ...msg,
-                  content: fullContent.slice(0, currentIndex + chunkSize),
-                  isComplete: currentIndex + chunkSize >= fullContent.length,
-                }
-              : msg,
-          ),
+        setMessages(
+          "data",
+          produce((ms) => {
+            const message = ms.find((m) => m.id === messageId)
+            if (message) {
+              message.content = fullContent.slice(0, currentIndex + chunkSize)
+              message.isComplete = currentIndex + chunkSize >= fullContent.length
+            }
+          }),
         )
 
         currentIndex += chunkSize
@@ -105,7 +103,7 @@ export function Session() {
     <box paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2} flexGrow={1} maxHeight="100%">
       <box paddingBottom={1}>
         <text>
-          {fg("#00ff00")("📨")} {fg("#ffffff")("Live Message Stream")}
+          <span style={{ fg: "#00ff00" }}>📨</span> <span style={{ fg: "#ffffff" }}>Live Message Stream</span>
         </text>
         <text fg="#666666">Messages arrive in chunks - watch them build character by character!</text>
       </box>
@@ -122,12 +120,15 @@ export function Session() {
           gap: 1,
         }}
       >
-        <For each={messages()}>{(message) => <MessageItem message={message} />}</For>
+        <For each={messages.data}>{(message) => <MessageItem message={message} />}</For>
       </scrollbox>
 
       <box paddingTop={1}>
         <text fg="#666666">
-          Messages: {messages().length} | {isChunkingActive ? "Receiving message..." : "Waiting for next message..."}
+          Messages: {messages.data.length} |{" "}
+          <Show when={isChunkingActive} fallback="Waiting for next message...">
+            Receiving message...
+          </Show>
         </text>
       </box>
     </box>
@@ -155,22 +156,28 @@ function MessageItem(props: { message: Message }) {
       backgroundColor={props.message.role === "user" ? "#001100" : "#000022"}
     >
       <box flexDirection="row" paddingBottom={0.5}>
-        <text>{props.message.role === "user" ? fg("#00ff00")("👤 You") : fg("#0088ff")("🤖 Assistant")}</text>
+        <text>
+          <Show when={props.message.role === "user"} fallback={<span style={{ fg: "#0088ff" }}>🤖 Assistant</span>}>
+            <span style={{ fg: "#00ff00" }}>👤 You</span>
+          </Show>
+        </text>
         <box flexGrow={1} />
         <text fg="#666666">{timeString()}</text>
       </box>
 
       <text>
         {props.message.content}
-        {!props.message.isComplete && fg("#ffff00")("▊")}
+        <Show when={!props.message.isComplete}>
+          <span style={{ fg: "#ffff00" }}>▊</span>
+        </Show>
       </text>
 
-      {!props.message.isComplete && props.message.fullContent && (
+      <Show when={!props.message.isComplete && props.message.fullContent}>
         <text fg="#666666" paddingTop={0.5}>
-          Receiving message... ({Math.round((props.message.content.length / props.message.fullContent.length) * 100)}
+          Receiving message... ({Math.round((props.message.content.length / props.message.fullContent!.length) * 100)}
           %)
         </text>
-      )}
+      </Show>
     </box>
   )
 }
