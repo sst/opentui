@@ -6,7 +6,7 @@ import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { RootRenderable } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { RenderContext } from "../types"
-import { Selection, type LocalSelectionBounds } from "../lib/selection"
+import { Selection } from "../lib/selection"
 
 // Minimal mock render context for testing
 class MockRenderContext {
@@ -1037,6 +1037,175 @@ describe("TextRenderable Selection", () => {
       testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
       root.render(testBuffer, 0)
       expect(text.plainText).toBe("Initial A X Y C D")
+    })
+
+    it("should inherit fg/bg colors from TextRenderable to TextNode children", () => {
+      const { text, root } = createTextRenderable({
+        content: "",
+        selectable: true,
+        fg: RGBA.fromValues(1, 0, 0, 1),
+        bg: RGBA.fromValues(0, 0, 1, 1),
+      })
+
+      const child1 = new TextNodeRenderable({})
+      child1.add("Child1")
+
+      const child2 = new TextNodeRenderable({})
+      child2.add(" Child2")
+
+      // Add children to TextRenderable
+      text.add(child1)
+      text.add(child2)
+
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      root.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Child1 Child2")
+
+      const chunks = text.textNode.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(2)
+
+      chunks.forEach((chunk) => {
+        expect(chunk.fg).toEqual(RGBA.fromValues(1, 0, 0, 1))
+        expect(chunk.bg).toEqual(RGBA.fromValues(0, 0, 1, 1))
+        expect(chunk.attributes).toBe(0)
+      })
+
+      expect(chunks[0].text).toBe("Child1")
+      expect(chunks[1].text).toBe(" Child2")
+    })
+
+    it("should allow TextNode children to override parent TextRenderable colors", () => {
+      const { text, root } = createTextRenderable({
+        content: "",
+        selectable: true,
+        fg: RGBA.fromValues(1, 0, 0, 1),
+        bg: RGBA.fromValues(0, 0, 1, 1),
+      })
+
+      const inheritingChild = new TextNodeRenderable({})
+      inheritingChild.add("Inherit")
+
+      const overridingChild = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 1, 0, 1),
+        bg: RGBA.fromValues(1, 1, 0, 1),
+      })
+      overridingChild.add(" Override")
+
+      const partialOverrideChild = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 0, 1, 1),
+      })
+      partialOverrideChild.add(" Partial")
+
+      text.add(inheritingChild)
+      text.add(overridingChild)
+      text.add(partialOverrideChild)
+
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      root.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Inherit Override Partial")
+
+      const chunks = text.textNode.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(3)
+
+      // First child: inherits both fg and bg from parent
+      expect(chunks[0].text).toBe("Inherit")
+      expect(chunks[0].fg).toEqual(RGBA.fromValues(1, 0, 0, 1))
+      expect(chunks[0].bg).toEqual(RGBA.fromValues(0, 0, 1, 1))
+
+      // Second child: overrides both fg and bg
+      expect(chunks[1].text).toBe(" Override")
+      expect(chunks[1].fg).toEqual(RGBA.fromValues(0, 1, 0, 1))
+      expect(chunks[1].bg).toEqual(RGBA.fromValues(1, 1, 0, 1))
+
+      // Third child: overrides fg, inherits bg
+      expect(chunks[2].text).toBe(" Partial")
+      expect(chunks[2].fg).toEqual(RGBA.fromValues(0, 0, 1, 1))
+      expect(chunks[2].bg).toEqual(RGBA.fromValues(0, 0, 1, 1))
+    })
+
+    it("should inherit TextRenderable colors through nested TextNode hierarchies", () => {
+      const { text, root } = createTextRenderable({
+        content: "",
+        selectable: true,
+        fg: RGBA.fromValues(0, 1, 0, 1),
+        bg: RGBA.fromValues(0, 0, 0, 1),
+      })
+
+      const grandparent = new TextNodeRenderable({})
+      const parent = new TextNodeRenderable({})
+      const child = new TextNodeRenderable({})
+
+      child.add("Deep")
+      parent.add("Nested ")
+      parent.add(child)
+      grandparent.add("Very ")
+      grandparent.add(parent)
+
+      text.add(grandparent)
+
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      root.render(testBuffer, 0)
+
+      expect(text.plainText).toBe("Very Nested Deep")
+
+      const chunks = text.textNode.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(3)
+
+      // All chunks should inherit the TextRenderable's green fg and black bg
+      chunks.forEach((chunk) => {
+        expect(chunk.fg).toEqual(RGBA.fromValues(0, 1, 0, 1))
+        expect(chunk.bg).toEqual(RGBA.fromValues(0, 0, 0, 1))
+        expect(chunk.attributes).toBe(0)
+      })
+
+      expect(chunks[0].text).toBe("Very ")
+      expect(chunks[1].text).toBe("Nested ")
+      expect(chunks[2].text).toBe("Deep")
+    })
+
+    it("should handle TextRenderable color changes affecting existing TextNode children", () => {
+      const { text, root } = createTextRenderable({
+        content: "",
+        selectable: true,
+        fg: RGBA.fromValues(1, 0, 0, 1),
+        bg: RGBA.fromValues(0, 0, 0, 1),
+      })
+
+      const child1 = new TextNodeRenderable({})
+      child1.add("Before")
+
+      const child2 = new TextNodeRenderable({})
+      child2.add(" Change")
+
+      text.add(child1)
+      text.add(child2)
+
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      root.render(testBuffer, 0)
+      expect(text.plainText).toBe("Before Change")
+
+      text.fg = RGBA.fromValues(0, 0, 1, 1)
+      text.bg = RGBA.fromValues(1, 1, 1, 1)
+
+      testBuffer = OptimizedBuffer.create(ctx.width, ctx.height, ctx.widthMethod)
+      root.render(testBuffer, 0)
+
+      const chunks = text.textNode.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(2)
+
+      chunks.forEach((chunk) => {
+        expect(chunk.fg).toEqual(RGBA.fromValues(0, 0, 1, 1))
+        expect(chunk.bg).toEqual(RGBA.fromValues(1, 1, 1, 1))
+      })
+
+      expect(chunks[0].text).toBe("Before")
+      expect(chunks[1].text).toBe(" Change")
     })
 
     it("should handle TextNode commands with multiple operations per render", () => {

@@ -7,7 +7,6 @@ import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
-import util from "util"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
   content?: StyledText | string
@@ -32,7 +31,7 @@ export class TextRenderable extends Renderable {
   private textBuffer: TextBuffer
   private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
 
-  private rootTextNode: RootTextNodeRenderable
+  protected rootTextNode: RootTextNodeRenderable
 
   protected _defaultOptions = {
     content: "",
@@ -108,6 +107,10 @@ export class TextRenderable extends Renderable {
     return this._text.chunks
   }
 
+  get textNode(): RootTextNodeRenderable {
+    return this.rootTextNode
+  }
+
   set content(value: StyledText | string) {
     const styledText = typeof value === "string" ? stringToStyledText(value) : value
     if (this._text !== styledText) {
@@ -127,6 +130,7 @@ export class TextRenderable extends Renderable {
     if (this._defaultFg !== newColor) {
       this._defaultFg = newColor
       this.textBuffer.setDefaultFg(this._defaultFg)
+      this.rootTextNode.fg = newColor
       this.requestRender()
     }
   }
@@ -170,6 +174,7 @@ export class TextRenderable extends Renderable {
     if (this._defaultBg !== newColor) {
       this._defaultBg = newColor
       this.textBuffer.setDefaultBg(this._defaultBg)
+      this.rootTextNode.bg = newColor
       this.requestRender()
     }
   }
@@ -182,6 +187,7 @@ export class TextRenderable extends Renderable {
     if (this._defaultAttributes !== value) {
       this._defaultAttributes = value
       this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+      this.rootTextNode.attributes = value
       this.requestRender()
     }
   }
