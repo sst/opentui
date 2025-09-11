@@ -56,8 +56,9 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
   if (isTextNodeRenderable(node)) {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
-      // TODO random text nodes
-      throw new Error("Unhandled")
+      // TODO this can happen naturally with match and show, probably should handle better
+      log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
+      return
     }
   }
 
@@ -145,7 +146,7 @@ export const {
   createTextNode: _createTextNode,
 
   replaceText(textNode: TextNodeRenderable, value: string): void {
-    log("Replacing text:", value, "in node:", logId(textNode))
+    log("Replacing text", "in node:", logId(textNode))
     if (!(textNode instanceof TextNodeRenderable)) return
     textNode.clear()
     textNode.add(value)
