@@ -5,6 +5,7 @@ import type {
   ExtendedIntrinsicElements,
   InputProps,
   OpenTUIComponents,
+  ScrollBoxProps,
   SelectProps,
   TabSelectProps,
   TextProps,
