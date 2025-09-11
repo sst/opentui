@@ -203,6 +203,7 @@ export abstract class BaseRenderable extends EventEmitter {
   public readonly id: string
   public readonly num: number
   protected _dirty: boolean = false
+  public parent: BaseRenderable | null = null
 
   constructor(options: BaseRenderableOptions) {
     super()

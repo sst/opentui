@@ -318,6 +318,10 @@ export class TextRenderable extends Renderable {
     return this.rootTextNode.children.indexOf(obj)
   }
 
+  public getTextChildren(): BaseRenderable[] {
+    return this.rootTextNode.getChildren()
+  }
+
   public clear(): void {
     this.rootTextNode.clear()
 
