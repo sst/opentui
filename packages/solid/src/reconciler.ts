@@ -1,9 +1,11 @@
 /* @refresh skip */
 import {
   BaseRenderable,
+  createTextAttributes,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
+  parseColor,
   Renderable,
   SelectRenderable,
   SelectRenderableEvents,
@@ -159,6 +161,16 @@ export const {
         node.off(eventName, prev)
       }
 
+      return
+    }
+
+    if (isTextNodeRenderable(node)) {
+      if (name !== "style") {
+        return
+      }
+      node.attributes |= createTextAttributes(value)
+      node.fg = value.fg ? parseColor(value.fg) : node.fg
+      node.bg = value.bg ? parseColor(value.bg) : node.bg
       return
     }
 

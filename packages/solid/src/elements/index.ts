@@ -5,6 +5,7 @@ import {
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
+  TextNodeRenderable,
   TextRenderable,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/elements"
@@ -18,6 +19,8 @@ export const baseComponents = {
   ascii_font: ASCIIFontRenderable,
   tab_select: TabSelectRenderable,
   scrollbox: ScrollBoxRenderable,
+
+  span: TextNodeRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

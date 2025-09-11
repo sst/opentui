@@ -7,6 +7,7 @@ import type {
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
+  SpanProps,
   TabSelectProps,
   TextProps,
 } from "./src/types/elements"
@@ -25,6 +26,8 @@ declare namespace JSX {
     ascii_font: AsciiFontProps
     tab_select: TabSelectProps
     scrollbox: ScrollBoxProps
+
+    span: SpanProps
   }
 
   interface ElementChildrenAttribute {

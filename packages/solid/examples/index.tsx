@@ -3,7 +3,7 @@ import { ConsolePosition } from "@opentui/core/src/console"
 import ExampleSelector from "./components/ExampleSelector"
 
 // Uncomment to debug solidjs reconciler
-// process.env.DEBUG = "true"
+process.env.DEBUG = "true"
 
 const App = () => <ExampleSelector />
 

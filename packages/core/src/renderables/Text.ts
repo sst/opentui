@@ -124,6 +124,7 @@ export class TextRenderable extends Renderable {
 
   set fg(value: RGBA | string | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.fg)
+    this.rootTextNode.fg = newColor
     if (this._defaultFg !== newColor) {
       this._defaultFg = newColor
       this.textBuffer.setDefaultFg(this._defaultFg)
@@ -167,6 +168,7 @@ export class TextRenderable extends Renderable {
 
   set bg(value: RGBA | string | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.bg)
+    this.rootTextNode.bg = newColor
     if (this._defaultBg !== newColor) {
       this._defaultBg = newColor
       this.textBuffer.setDefaultBg(this._defaultBg)

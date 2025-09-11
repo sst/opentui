@@ -1,4 +1,3 @@
-import { bold, underline, t, fg, bg, italic } from "@opentui/core"
 import { createSignal, onCleanup, onMount } from "solid-js"
 
 export default function TextStyleScene() {
@@ -18,10 +17,10 @@ export default function TextStyleScene() {
 
   return (
     <box>
-      <text style={{ bg: "red" }}>Simple text works! {counter()} times</text>
-      <text style={{ bg: "red" }}>
-        Hello <span style={{ bg: "yellow" }}>World</span> {counter()}{" "}
-        <span style={{ bg: "blue", underline: true }}>{counter()}</span>
+      <text style={{ bg: "red", fg: "black" }}>Simple text works! {counter()} times</text>
+      <text style={{ bg: "red", fg: "black" }}>
+        Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
+        <span style={{ bg: "blue", fg: "yellow", underline: true }}>{counter()}</span>
       </text>
     </box>
   )
