@@ -2,6 +2,8 @@ import { render } from "@opentui/solid"
 import { ConsolePosition } from "@opentui/core/src/console"
 import ExampleSelector from "./components/ExampleSelector"
 
+process.env.DEBUG = "true"
+
 const App = () => <ExampleSelector />
 
 render(App, {
