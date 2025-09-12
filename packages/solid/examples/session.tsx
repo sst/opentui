@@ -1,12 +1,12 @@
-import { createMemo, createSignal, For, onMount } from "solid-js"
-import { ScrollBoxRenderable, fg } from "@opentui/core"
+import { createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { createStore, produce } from "solid-js/store"
 
 // Message types
 type Message = {
   id: string
   role: "user" | "assistant"
   content: string
-  fullContent?: string
+  fullContent: string
   timestamp: Date
   isComplete: boolean
 }
@@ -26,20 +26,21 @@ const messageTemplates = [
 ]
 
 export function Session() {
-  const [messages, setMessages] = createSignal<Message[]>([])
-  let scrollRef: ScrollBoxRenderable | undefined
-  let isChunkingActive = false
+  const [messages, setMessages] = createStore<{ data: Message[] }>({ data: [] })
+  let [isChunkingActive, setIsChunkingActive] = createSignal(false)
 
   // Generate a random message
   const generateMessage = (): Message => {
-    const templates = messageTemplates
-    const template = templates[Math.floor(Math.random() * templates.length)]
     const role = Math.random() > 0.5 ? "user" : "assistant"
-
+    let fullContent = messageTemplates[Math.floor(Math.random() * messageTemplates.length)]
+    if (!fullContent) {
+      fullContent = messageTemplates[0]!
+    }
     return {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 9),
       role,
       content: "", // Start empty, will be filled in chunks
+      fullContent,
       timestamp: new Date(),
       isComplete: false,
     }
@@ -47,22 +48,19 @@ export function Session() {
 
   // Add a new message to the list (only if not already chunking)
   const addMessage = () => {
-    if (isChunkingActive) return // Don't add new messages while one is being chunked
+    if (isChunkingActive()) return // Don't add new messages while one is being chunked
 
     const newMessage = generateMessage()
-    const fullContent = messageTemplates[Math.floor(Math.random() * messageTemplates.length)]
 
     // Set the full content on the message but mark it as incomplete
     newMessage.content = "" // Start empty
-    newMessage.fullContent = fullContent // Store the full content
 
-    setMessages((prev) => [...prev, newMessage])
+    setMessages("data", messages.data.length, newMessage)
 
     // Start chunking this message
-    if (fullContent) {
-      isChunkingActive = true
-      startChunkingMessage(newMessage.id, fullContent)
-    }
+
+    setIsChunkingActive(true)
+    startChunkingMessage(newMessage.id, newMessage.fullContent)
   }
 
   // Simulate chunked arrival for a specific message
@@ -70,31 +68,27 @@ export function Session() {
     let currentIndex = 0
     const chunkSize = Math.floor(Math.random() * 5) + 1 // 1-5 characters per chunk
 
-    const chunkInterval = setInterval(
-      () => {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === messageId
-              ? {
-                  ...msg,
-                  content: fullContent.slice(0, currentIndex + chunkSize),
-                  isComplete: currentIndex + chunkSize >= fullContent.length,
-                }
-              : msg,
-          ),
-        )
+    const chunkInterval = setInterval(() => {
+      setMessages(
+        "data",
+        produce((ms) => {
+          const message = ms.find((m) => m.id === messageId)
+          if (message) {
+            message.content = fullContent.slice(0, currentIndex + chunkSize)
+            message.isComplete = currentIndex + chunkSize >= fullContent.length
+          }
+        }),
+      )
 
-        currentIndex += chunkSize
+      currentIndex += chunkSize
 
-        if (currentIndex >= fullContent.length) {
-          clearInterval(chunkInterval)
-          isChunkingActive = false // Reset the flag
-          // Immediately start the next message
-          addMessage()
-        }
-      },
-      2 + Math.random() * 10,
-    )
+      if (currentIndex >= fullContent.length) {
+        clearInterval(chunkInterval)
+        setIsChunkingActive(false) // Reset the flag
+        // Immediately start the next message
+        addMessage()
+      }
+    }, 16)
   }
 
   onMount(() => {
@@ -105,13 +99,12 @@ export function Session() {
     <box paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2} flexGrow={1} maxHeight="100%">
       <box paddingBottom={1}>
         <text>
-          {fg("#00ff00")("📨")} {fg("#ffffff")("Live Message Stream")}
+          <span style={{ fg: "#00ff00" }}>📨</span> <span style={{ fg: "#ffffff" }}>Live Message Stream</span>
         </text>
         <text fg="#666666">Messages arrive in chunks - watch them build character by character!</text>
       </box>
 
       <scrollbox
-        ref={(r: any) => (scrollRef = r)}
         scrollbarOptions={{ visible: true }}
         stickyScroll={true}
         stickyStart="bottom"
@@ -122,12 +115,15 @@ export function Session() {
           gap: 1,
         }}
       >
-        <For each={messages()}>{(message) => <MessageItem message={message} />}</For>
+        <For each={messages.data}>{(message) => <MessageItem message={message} />}</For>
       </scrollbox>
 
       <box paddingTop={1}>
         <text fg="#666666">
-          Messages: {messages().length} | {isChunkingActive ? "Receiving message..." : "Waiting for next message..."}
+          Messages: {messages.data.length} |{" "}
+          <Show when={isChunkingActive()} fallback="Waiting for next message...">
+            Receiving message...
+          </Show>
         </text>
       </box>
     </box>
@@ -155,22 +151,34 @@ function MessageItem(props: { message: Message }) {
       backgroundColor={props.message.role === "user" ? "#001100" : "#000022"}
     >
       <box flexDirection="row" paddingBottom={0.5}>
-        <text>{props.message.role === "user" ? fg("#00ff00")("👤 You") : fg("#0088ff")("🤖 Assistant")}</text>
+        <text>
+          <Show when={props.message.role === "user"} fallback={<span style={{ fg: "#0088ff" }}>🤖 Assistant</span>}>
+            <span style={{ fg: "#00ff00" }}>👤 You</span>
+          </Show>
+        </text>
         <box flexGrow={1} />
         <text fg="#666666">{timeString()}</text>
       </box>
 
       <text>
         {props.message.content}
-        {!props.message.isComplete && fg("#ffff00")("▊")}
+        <Show when={!props.message.isComplete} fallback={""}>
+          <span style={{ fg: "#ffff00" }}>▊</span>
+        </Show>
       </text>
 
-      {!props.message.isComplete && props.message.fullContent && (
-        <text fg="#666666" paddingTop={0.5}>
-          Receiving message... ({Math.round((props.message.content.length / props.message.fullContent.length) * 100)}
-          %)
-        </text>
-      )}
+      <Show when={!props.message.isComplete}>
+        {() => {
+          const progress = createMemo(() =>
+            Math.round((props.message.content.length / props.message.fullContent!.length) * 100),
+          )
+          return (
+            <text fg="#666666" paddingTop={0.5}>
+              Receiving message... ({progress()}%)
+            </text>
+          )
+        }}
+      </Show>
     </box>
   )
 }

@@ -1,24 +1,36 @@
 /* @refresh skip */
 import {
+  BaseRenderable,
+  createTextAttributes,
   InputRenderable,
   InputRenderableEvents,
+  isTextNodeRenderable,
+  parseColor,
   Renderable,
+  RootTextNodeRenderable,
   SelectRenderable,
   SelectRenderableEvents,
-  StyledText,
   TabSelectRenderable,
   TabSelectRenderableEvents,
+  TextNodeRenderable,
   TextRenderable,
-  type TextChunk,
+  type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
 import { createRenderer } from "solid-js/universal"
 import { getComponentCatalogue, RendererContext } from "./elements"
-import { isTextChunk, TextNode } from "./elements/text-node"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 
-export type DomNode = Renderable | TextNode | TextChunk
+class TextNode extends TextNodeRenderable {
+  public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
+    const node = new TextNode(options)
+    node.add(text)
+    return node
+  }
+}
+
+export type DomNode = BaseRenderable
 
 /**
  * Gets the id of a node, or content if it's a text chunk.
@@ -28,10 +40,17 @@ export type DomNode = Renderable | TextNode | TextChunk
  */
 const logId = (node?: DomNode): string | undefined => {
   if (!node) return undefined
-  if (isTextChunk(node)) {
-    return node.text
-  }
   return node.id
+}
+
+const getNodeChildren = (node: DomNode) => {
+  let children
+  if (node instanceof TextRenderable) {
+    children = node.getTextChildren()
+  } else {
+    children = node.getChildren()
+  }
+  return children
 }
 
 function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
@@ -45,85 +64,68 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     node instanceof TextNode,
   )
 
-  if (node instanceof StyledText) {
-    log("Inserting styled text:", node.toString())
-    for (const chunk of node.chunks) {
-      // Why is this only adding the first chunk?
-      _insertNode(parent, _createTextNode(chunk), anchor)
+  if (isTextNodeRenderable(node)) {
+    if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
+      // TODO this can happen naturally with match and show, probably should handle better
+      log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
       return
     }
-  }
-
-  if (isTextChunk(node)) {
-    _insertNode(parent, _createTextNode(node), anchor)
-    return
-  }
-
-  if (node instanceof TextNode) {
-    return node.insert(parent, anchor)
   }
 
   // Renderable nodes
-  if (!(parent instanceof Renderable)) {
+  if (!(parent instanceof BaseRenderable)) {
+    log("[INSERT]", "Tried to mount a non base renderable")
     return
   }
 
-  if (anchor) {
-    if (isTextChunk(anchor)) {
-      console.warn("Cannot add non text node with text chunk anchor")
-      return
-    }
-
-    const anchorIndex = parent.getChildren().findIndex((el) => {
-      if (anchor instanceof TextNode) {
-        return el.id === anchor.textParent?.id
-      }
-      return el.id === anchor.id
-    })
-    parent.add(node, anchorIndex)
-  } else {
+  if (!anchor) {
     parent.add(node)
+    return
   }
+
+  const children = getNodeChildren(parent)
+
+  const anchorIndex = children.findIndex((el) => el.id === anchor.id)
+  if (anchorIndex === -1) {
+    log("[INSERT]", "Could not find anchor", logId(parent), logId(anchor), "[children]", ...children.map((c) => c.id))
+  }
+
+  parent.add(node, anchorIndex)
 }
 
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
-  if (isTextChunk(node)) {
-    const textNode = TextNode.getTextNodeFromChunk(node)
-    if (textNode) {
-      _removeNode(parent, textNode)
+
+  parent.remove(node.id)
+
+  process.nextTick(() => {
+    if (node instanceof Renderable && !node.parent) {
+      node.destroyRecursively()
+      return
     }
-  } else if (node instanceof StyledText) {
-    for (const chunk of node.chunks) {
-      const textNode = TextNode.getTextNodeFromChunk(chunk)
-      if (!textNode) continue
-      _removeNode(parent, textNode)
-    }
-  }
-  if (node instanceof TextNode) {
-    return node.remove(parent)
-  }
-  if (parent instanceof Renderable && node instanceof Renderable) {
-    parent.remove(node.id)
-    process.nextTick(() => {
-      if (!node.parent) {
-        node.destroyRecursively()
-      }
-    })
-  }
+  })
 }
 
-function _createTextNode(value?: string | number | boolean | TextChunk): TextNode {
+function _createTextNode(value: string | number): TextNode {
   log("Creating text node:", value)
-  const chunk: TextChunk =
-    value && isTextChunk(value)
-      ? value
-      : {
-          __isChunk: true,
-          text: `${value}`,
-        }
-  const textNode = new TextNode(chunk)
-  return textNode
+
+  const id = getNextId("text-node")
+
+  if (typeof value === "number") {
+    value = value.toString()
+  }
+
+  return TextNode.fromString(value, { id })
+}
+
+function _getParentNode(childNode: DomNode): DomNode | undefined {
+  log("Getting parent of node:", logId(childNode))
+
+  let parent = childNode.parent ?? undefined
+  if (parent instanceof RootTextNodeRenderable) {
+    parent = parent.textParent ?? undefined
+  }
+  return parent
 }
 
 export const {
@@ -162,26 +164,12 @@ export const {
 
   replaceText(textNode: TextNode, value: string): void {
     log("Replacing text:", value, "in node:", logId(textNode))
-    if (textNode instanceof Renderable) return
-    if (isTextChunk(textNode)) {
-      console.warn("Cannot replace text on text chunk", logId(textNode))
-      return
-    }
-    const newChunk: TextChunk = {
-      __isChunk: true,
-      text: value,
-    }
-    textNode.replaceText(newChunk)
+
+    if (!(textNode instanceof TextNode)) return
+    textNode.replace(value, 0)
   },
 
   setProperty(node: DomNode, name: string, value: any, prev: any): void {
-    // log("Setting property:", name, "on node:", node.id);
-    if (node instanceof TextNode || isTextChunk(node)) {
-      // TODO: implement <b> and <i> tags property setters here
-      console.warn("Cannot set property on text node:", logId(node))
-      return
-    }
-
     if (name.startsWith("on:")) {
       const eventName = name.slice(3)
       if (value) {
@@ -194,8 +182,19 @@ export const {
       return
     }
 
+    if (isTextNodeRenderable(node)) {
+      if (name !== "style") {
+        return
+      }
+      node.attributes |= createTextAttributes(value)
+      node.fg = value.fg ? parseColor(value.fg) : node.fg
+      node.bg = value.bg ? parseColor(value.bg) : node.bg
+      return
+    }
+
     switch (name) {
       case "focused":
+        if (!(node instanceof Renderable)) return
         if (value) {
           node.focus()
         } else {
@@ -289,39 +288,12 @@ export const {
 
   removeNode: _removeNode,
 
-  getParentNode(childNode: DomNode): DomNode | undefined {
-    log("Getting parent of node:", logId(childNode))
-    let node = childNode as Renderable | TextNode
-    if (isTextChunk(childNode)) {
-      const parentTextNode = TextNode.getTextNodeFromChunk(childNode)
-      if (!parentTextNode) return undefined
-      node = parentTextNode
-    }
-    const parent = node.parent
-
-    if (!parent) {
-      log("No parent found for node:", logId(node))
-      return undefined
-    }
-
-    log("Parent found:", logId(parent), "for node:", logId(node))
-    return parent
-  },
+  getParentNode: _getParentNode,
 
   getFirstChild(node: DomNode): DomNode | undefined {
     log("Getting first child of node:", logId(node))
-    if (node instanceof TextRenderable) {
-      const chunk = node.content.chunks[0]
-      if (chunk) {
-        return TextNode.getTextNodeFromChunk(chunk)
-      } else {
-        return undefined
-      }
-    }
-    if (node instanceof TextNode || isTextChunk(node)) {
-      return undefined
-    }
-    const firstChild = node.getChildren()[0]
+
+    const firstChild = getNodeChildren(node)[0]
 
     if (!firstChild) {
       log("No first child found for node:", logId(node))
@@ -334,41 +306,14 @@ export const {
 
   getNextSibling(node: DomNode): DomNode | undefined {
     log("Getting next sibling of node:", logId(node))
-    if (isTextChunk(node)) {
-      // unreachable
-      console.warn("Cannot get next sibling of text chunk")
-      return undefined
-    }
-    const parent = node.parent
+
+    const parent = _getParentNode(node)
     if (!parent) {
       log("No parent found for node:", logId(node))
       return undefined
     }
+    const siblings = getNodeChildren(node)
 
-    if (node instanceof TextNode) {
-      if (parent instanceof TextRenderable) {
-        const siblings = parent.content.chunks
-        const index = siblings.indexOf(node.chunk)
-
-        if (index === -1 || index === siblings.length - 1) {
-          log("No next sibling found for node:", logId(node))
-          return undefined
-        }
-
-        const nextSibling = siblings[index + 1]
-
-        if (!nextSibling) {
-          log("Next sibling is null for node:", logId(node))
-          return undefined
-        }
-
-        return TextNode.getTextNodeFromChunk(nextSibling)
-      }
-      console.warn("Text parent is not a text node:", logId(node))
-      return undefined
-    }
-
-    const siblings = parent.getChildren()
     const index = siblings.indexOf(node)
 
     if (index === -1 || index === siblings.length - 1) {

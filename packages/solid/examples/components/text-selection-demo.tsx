@@ -1,7 +1,7 @@
-import { bold, cyan, green, italic, magenta, Selection, yellow } from "@opentui/core"
+import { Selection } from "@opentui/core"
 import { ConsolePosition } from "@opentui/core/src/console"
 import { render, useRenderer, useSelectionHandler, type TextProps } from "@opentui/solid"
-import { createEffect, createSignal, onMount, type Ref } from "solid-js"
+import { createEffect, createSignal, onMount } from "solid-js"
 
 const words = ["Hello", "World", "OpenTUI", "SolidJS", "ReactJS", "TypeScript", "JavaScript", "CSS", "HTML", "JSX"]
 
@@ -126,7 +126,9 @@ export default function TextSelectionDemo() {
             }}
           >
             <text style={{ width: 27, height: 1, zIndex: 26, selectionBg: "#4a5568", selectionFg: "#ffffff" }}>
-              {yellow("Important:")} {bold(cyan("Nested content"))} {italic(green("with styles"))}
+              <span style={{ fg: "yellow" }}>Important:</span>{" "}
+              <span style={{ bold: true, fg: "cyan" }}>Nested content</span>{" "}
+              <span style={{ italic: true, fg: "green" }}></span>
             </text>
           </box>
         </box>
@@ -155,15 +157,17 @@ export default function TextSelectionDemo() {
             title="Code Example"
           >
             <text style={{ fg: "#f0f6fc", zIndex: 21 }}>
-              {magenta("function")} {cyan("handleSelection")}() {"{"}
+              <span style={{ fg: "magenta" }}>function</span> <span style={{ fg: "cyan" }}>handleSelection</span>(){" "}
+              {"{"}
             </text>
             <text style={{ fg: "#f0f6fc", zIndex: 21 }}>
               {"  "}
-              {magenta("const")} selected = {cyan("getSelectedText")}()
+              <span style={{ fg: "magenta" }}>const</span> selected ={" "}
+              <span style={{ fg: "cyan" }}>getSelectedText</span>()
             </text>
             <text style={{ fg: "#f0f6fc", zIndex: 21 }}>
               {"  "}
-              {yellow("console")}.{green("log")}(selected)
+              <span style={{ fg: "yellow" }}>console</span>.<span style={{ fg: "green" }}>log</span>(selected)
             </text>
             <text style={{ fg: "#e6edf3", zIndex: 21 }}>{"}"}</text>
           </box>
@@ -188,13 +192,13 @@ export default function TextSelectionDemo() {
         title="README"
       >
         <text style={{ fg: "#f0f6fc", zIndex: 31, height: "auto" }}>
-          {bold(cyan("Selection Demo"))}
+          <span style={{ bold: true, fg: "cyan" }}>Selection Demo</span>
           {"\n"}
-          {green("✓")} Cross-renderable selection
+          <span style={{ fg: "green" }}>✓</span> Cross-renderable selection
           {"\n"}
-          {green("✓")} Nested boxes
+          <span style={{ fg: "green" }}>✓</span> Nested boxes
           {"\n"}
-          {green("✓")} Styled text support
+          <span style={{ fg: "green" }}>✓</span> Styled text support
         </text>
       </box>
       <box

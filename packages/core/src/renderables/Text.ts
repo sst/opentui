@@ -64,12 +64,16 @@ export class TextRenderable extends Renderable {
 
     this.setupMeasureFunc()
 
-    this.rootTextNode = new RootTextNodeRenderable(ctx, {
-      id: `${this.id}-root`,
-      fg: this._defaultFg,
-      bg: this._defaultBg,
-      attributes: this._defaultAttributes,
-    })
+    this.rootTextNode = new RootTextNodeRenderable(
+      ctx,
+      {
+        id: `${this.id}-root`,
+        fg: this._defaultFg,
+        bg: this._defaultBg,
+        attributes: this._defaultAttributes,
+      },
+      this,
+    )
 
     this.updateTextBuffer(styledText)
     this._text.mount(this)
@@ -127,6 +131,7 @@ export class TextRenderable extends Renderable {
 
   set fg(value: RGBA | string | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.fg)
+    this.rootTextNode.fg = newColor
     if (this._defaultFg !== newColor) {
       this._defaultFg = newColor
       this.textBuffer.setDefaultFg(this._defaultFg)
@@ -171,6 +176,7 @@ export class TextRenderable extends Renderable {
 
   set bg(value: RGBA | string | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.bg)
+    this.rootTextNode.bg = newColor
     if (this._defaultBg !== newColor) {
       this._defaultBg = newColor
       this.textBuffer.setDefaultBg(this._defaultBg)
@@ -322,6 +328,10 @@ export class TextRenderable extends Renderable {
   public insertBefore(obj: BaseRenderable | any, anchor?: TextNodeRenderable): number {
     this.rootTextNode.insertBefore(obj, anchor)
     return this.rootTextNode.children.indexOf(obj)
+  }
+
+  public getTextChildren(): BaseRenderable[] {
+    return this.rootTextNode.getChildren()
   }
 
   public clear(): void {

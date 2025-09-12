@@ -5,10 +5,22 @@ import {
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
+  TextNodeRenderable,
   TextRenderable,
+  type RenderContext,
+  type TextNodeOptions,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/elements"
 export * from "./hooks"
+
+class SpanRenderable extends TextNodeRenderable {
+  constructor(
+    private readonly _ctx: RenderContext,
+    options: TextNodeOptions,
+  ) {
+    super(options)
+  }
+}
 
 export const baseComponents = {
   box: BoxRenderable,
@@ -18,6 +30,8 @@ export const baseComponents = {
   ascii_font: ASCIIFontRenderable,
   tab_select: TabSelectRenderable,
   scrollbox: ScrollBoxRenderable,
+
+  span: SpanRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

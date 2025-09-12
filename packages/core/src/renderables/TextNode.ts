@@ -1,3 +1,4 @@
+import type { TextRenderable } from "."
 import { BaseRenderable, type BaseRenderableOptions } from "../Renderable"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { isStyledText, StyledText } from "../lib/styled-text"
@@ -105,6 +106,14 @@ export class TextNodeRenderable extends BaseRenderable {
     }
 
     throw new Error("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
+  }
+
+  public replace(obj: TextNodeRenderable | string, index: number) {
+    this._children[index] = obj
+    if (typeof obj !== "string") {
+      obj.parent = this
+    }
+    this.requestRender()
   }
 
   public insertBefore(
@@ -229,11 +238,15 @@ export class TextNodeRenderable extends BaseRenderable {
 }
 
 export class RootTextNodeRenderable extends TextNodeRenderable {
+  textParent: TextRenderable
+
   constructor(
     private readonly ctx: RenderContext,
     options: TextNodeOptions,
+    textParent: TextRenderable,
   ) {
     super(options)
+    this.textParent = textParent
   }
 
   public requestRender(): void {
