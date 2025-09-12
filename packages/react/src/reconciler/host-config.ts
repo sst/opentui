@@ -1,4 +1,4 @@
-import type { Renderable, TextRenderable } from "@opentui/core"
+import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
@@ -83,31 +83,34 @@ export const hostConfig: HostConfig<
 
   // Get root container
   getRootHostContext(rootContainerInstance: Container) {
-    return {}
+    return { isInsideText: false }
   },
 
   // Get child context
   getChildHostContext(parentHostContext: HostContext, type: Type, rootContainerInstance: Container) {
-    return parentHostContext
+    const isInsideText =
+      type === "text" ||
+      type === "span" ||
+      type === "b" ||
+      type === "strong" ||
+      type === "i" ||
+      type === "em" ||
+      type === "u"
+    return { ...parentHostContext, isInsideText }
   },
 
   // Should set text content
   shouldSetTextContent(type: Type, props: Props) {
-    // For text components, we want to handle StyledText and TextChunk children specially
-    if (type === "text") {
-      return true
-    }
-
     return false
   },
 
   // Create text instance
   createTextInstance(text: string, rootContainerInstance: Container, hostContext: HostContext) {
-    const components = getComponentCatalogue()
-    return new components["text"](rootContainerInstance.ctx, {
-      id: getNextId("text"),
-      content: text,
-    }) as TextInstance
+    if (!hostContext.isInsideText) {
+      throw new Error("Text must be created inside of a text node")
+    }
+
+    return TextNodeRenderable.fromString(text)
   },
 
   // Schedule timeout
@@ -149,7 +152,7 @@ export const hostConfig: HostConfig<
 
   // Commit text update
   commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string) {
-    textInstance.content = newText
+    textInstance.children = [newText]
     textInstance.requestRender()
   },
 
@@ -244,7 +247,7 @@ export const hostConfig: HostConfig<
 
   detachDeletedInstance(instance: Instance) {
     if (!instance.parent) {
-      instance.destroy()
+      instance.destroyRecursively()
     }
   },
 

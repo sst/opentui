@@ -5,6 +5,7 @@ import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import type { MouseEventType } from "./lib/parse.mouse"
+import type { Selection } from "./lib/selection"
 import {
   parseAlign,
   parseFlexDirection,
@@ -19,10 +20,9 @@ import {
   type PositionTypeString,
   type WrapString,
 } from "./lib/yoga.options"
-import type { MouseEvent } from "./renderer"
-import type { RenderContext, ViewportBounds } from "./types"
 import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
-import type { Selection } from "./lib/selection"
+import type { MouseEvent } from "./renderer"
+import type { RenderContext } from "./types"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -204,6 +204,7 @@ export abstract class BaseRenderable extends EventEmitter {
   public readonly num: number
   protected _dirty: boolean = false
   public parent: BaseRenderable | null = null
+  protected _visible: boolean = true
 
   constructor(options: BaseRenderableOptions) {
     super()
@@ -213,6 +214,7 @@ export abstract class BaseRenderable extends EventEmitter {
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
   public abstract remove(id: string): void
+  public abstract insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void
   public abstract getChildren(): BaseRenderable[]
   public abstract getChildrenCount(): number
   public abstract getRenderable(id: string): BaseRenderable | undefined
@@ -228,6 +230,24 @@ export abstract class BaseRenderable extends EventEmitter {
 
   protected markDirty(): void {
     this._dirty = true
+  }
+
+  public destroy(): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom removal logic
+  }
+
+  public destroyRecursively(): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom destruction logic
+  }
+
+  public get visible(): boolean {
+    return this._visible
+  }
+
+  public set visible(value: boolean) {
+    this._visible = value
   }
 }
 
@@ -245,7 +265,6 @@ export abstract class Renderable extends BaseRenderable {
   protected _widthValue: number = 0
   protected _heightValue: number = 0
   private _zIndex: number
-  protected _visible: boolean
   public selectable: boolean = false
   protected buffered: boolean
   protected frameBuffer: OptimizedBuffer | null = null
