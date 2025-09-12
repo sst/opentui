@@ -174,26 +174,6 @@ export function run(rendererInstance: CliRenderer): void {
       addBox(index)
     }
   }
-}
-
-export function destroy(rendererInstance: CliRenderer): void {
-  if (mainContainer) {
-    rendererInstance.root.remove(mainContainer.id)
-    mainContainer.destroyRecursively()
-    mainContainer = null
-  }
-  scrollBox = null
-  instructionsBox = null
-  renderer = null
-}
-
-if (import.meta.main) {
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
-  })
-
-  run(renderer)
-  setupCommonDemoKeys(renderer)
 
   getKeyHandler().on("keypress", (key) => {
     if (key.name === "a" && scrollBox) {
@@ -214,4 +194,24 @@ if (import.meta.main) {
       nextIndex++
     }
   })
+}
+
+export function destroy(rendererInstance: CliRenderer): void {
+  if (mainContainer) {
+    rendererInstance.root.remove(mainContainer.id)
+    mainContainer.destroyRecursively()
+    mainContainer = null
+  }
+  scrollBox = null
+  instructionsBox = null
+  renderer = null
+}
+
+if (import.meta.main) {
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+  })
+
+  run(renderer)
+  setupCommonDemoKeys(renderer)
 }

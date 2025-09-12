@@ -69,22 +69,30 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
 
   setWidth(width: number | "auto" | `${number}%`): void {
     this._width = width
-    const parsedWidth = this.parseWidth(width)
-    if (parsedWidth === "auto") {
-      this.yogaNode.setWidthAuto()
-    } else {
-      this.yogaNode.setWidth(parsedWidth)
-    }
+    this.yogaNode.setWidth(width)
+    // This was a workaround because percentage widths were not working,
+    // should be fixed with the multi-pass rendering
+    // TODO: Remove this if there are no percentage issues anymore
+    // const parsedWidth = this.parseWidth(width)
+    // if (parsedWidth === "auto") {
+    //   this.yogaNode.setWidthAuto()
+    // } else {
+    //   this.yogaNode.setWidth(parsedWidth)
+    // }
   }
 
   setHeight(height: number | "auto" | `${number}%`): void {
     this._height = height
-    const parsedHeight = this.parseHeight(height)
-    if (parsedHeight === "auto") {
-      this.yogaNode.setHeightAuto()
-    } else {
-      this.yogaNode.setHeight(parsedHeight)
-    }
+    this.yogaNode.setHeight(height)
+    // This was a workaround because percentage widths were not working,
+    // should be fixed with the multi-pass rendering
+    // TODO: Remove this if there are no percentage issues anymore
+    // const parsedHeight = this.parseHeight(height)
+    // if (parsedHeight === "auto") {
+    //   this.yogaNode.setHeightAuto()
+    // } else {
+    //   this.yogaNode.setHeight(parsedHeight)
+    // }
   }
 
   addChild<U extends NodeMetadata>(childNode: TrackedNode<U>): number {

@@ -323,7 +323,7 @@ export class SliderRenderable extends Renderable {
     if (range === 0) return virtualTrackSize
 
     const viewportSize = Math.max(1, this._viewPortSize)
-    const contentSize = range
+    const contentSize = range + viewportSize
 
     if (contentSize <= viewportSize) return virtualTrackSize
 
