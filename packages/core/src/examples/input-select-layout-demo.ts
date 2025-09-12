@@ -1,7 +1,6 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type ParsedKey } from "../index"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer } from "../index"
 import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
 import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select"
-import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let renderer: CliRenderer | null = null
@@ -20,10 +19,6 @@ let textInput: InputRenderable | null = null
 let textInputBox: BoxRenderable | null = null
 let footer: TextRenderable | null = null
 let footerBox: BoxRenderable | null = null
-let currentFocusIndex = 0
-
-const focusableElements: Array<InputRenderable | SelectRenderable> = []
-const focusableBoxes: Array<BoxRenderable | null> = []
 
 const colorOptions: SelectOption[] = [
   { name: "Red", description: "A warm primary color", value: "#ff0000" },
@@ -282,10 +277,9 @@ function createLayoutElements(rendererInstance: CliRenderer): void {
   renderer.root.add(inputContainerBox)
   renderer.root.add(footerBox)
 
-  focusableElements.push(leftSelect, rightSelect, textInput)
-  focusableBoxes.push(leftSelectBox, rightSelectBox, textInputBox)
+  textInput.focus()
+
   setupEventHandlers()
-  updateFocus()
 
   renderer.on("resize", handleResize)
 }
@@ -343,41 +337,12 @@ function handleResize(width: number, height: number): void {
   // Root layout is automatically resized by the renderer
 }
 
-function updateFocus(): void {
-  focusableElements.forEach((element) => element.blur())
-  focusableBoxes.forEach((box) => {
-    if (box) box.blur()
-  })
-
-  if (focusableElements[currentFocusIndex]) {
-    focusableElements[currentFocusIndex].focus()
-  }
-  if (focusableBoxes[currentFocusIndex]) {
-    focusableBoxes[currentFocusIndex]!.focus()
-  }
-}
-
-function handleKeyPress(key: ParsedKey): void {
-  if (key.name === "tab") {
-    if (key.shift) {
-      currentFocusIndex = (currentFocusIndex - 1 + focusableElements.length) % focusableElements.length
-    } else {
-      currentFocusIndex = (currentFocusIndex + 1) % focusableElements.length
-    }
-    updateFocus()
-    return
-  }
-}
-
 export function run(rendererInstance: CliRenderer): void {
   createLayoutElements(rendererInstance)
-  getKeyHandler().on("keypress", handleKeyPress)
   updateDisplay()
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
-  getKeyHandler().off("keypress", handleKeyPress)
-
   if (renderer) {
     renderer.off("resize", handleResize)
   }
@@ -410,9 +375,6 @@ export function destroy(rendererInstance: CliRenderer): void {
   footer = null
   footerBox = null
   renderer = null
-  currentFocusIndex = 0
-  focusableElements.length = 0
-  focusableBoxes.length = 0
 }
 
 if (import.meta.main) {
