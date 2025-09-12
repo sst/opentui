@@ -1170,6 +1170,8 @@ export abstract class Renderable extends BaseRenderable {
   public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
     if (!this.visible) return
 
+    this.onUpdate(deltaTime)
+
     // NOTE: worst case updateFromLayout is called throughout the whole tree,
     // which currently still has yoga performance issues.
     // This can be mitigated at some point when the layout tree moved to native,
@@ -1179,7 +1181,6 @@ export abstract class Renderable extends BaseRenderable {
     // including the layout updates, in one pass.
     this.updateFromLayout()
 
-    this.onUpdate(deltaTime)
     renderList.push({ action: "render", renderable: this })
 
     // Note: This will update newly added children, but not their children.
@@ -1519,11 +1520,6 @@ export class RootRenderable extends Renderable {
     this.height = height
 
     this.emit(LayoutEvents.RESIZED, { width, height })
-  }
-
-  protected onUpdate(deltaTime: number): void {
-    // Layout calculation is now handled in render() method
-    // This method can be used for other update logic if needed
   }
 
   protected destroySelf(): void {

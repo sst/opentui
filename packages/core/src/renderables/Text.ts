@@ -5,7 +5,7 @@ import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
-import { MeasureMode } from "yoga-layout"
+import { Direction, MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
@@ -311,6 +311,12 @@ export class TextRenderable extends Renderable {
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.updateTextInfo()
+
+      // This is a workaround to make sure the layout is updated
+      // because we run this within a layout update pass and at this point the yoga layout is already calculated,
+      // the measure func was called and is not called again otherwise.
+      // This can get reaslly expensive if there are a lot of nodes in the parent.
+      this.parent?.getLayoutNode()?.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     }
   }
 
