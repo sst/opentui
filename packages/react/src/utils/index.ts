@@ -6,7 +6,6 @@ import {
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
-  TextRenderable,
 } from "@opentui/core"
 import type { Instance, Props, Type } from "../types/host"
 
@@ -17,29 +16,6 @@ function initEventListeners(instance: Instance, eventName: string, listener: any
 
   if (listener) {
     instance.on(eventName, listener)
-  }
-}
-
-function handleTextChildren(textInstance: TextRenderable, children: any) {
-  // Clear existing content first
-  textInstance.clear()
-
-  if (children == null) {
-    return
-  }
-
-  // For TextRenderable, we should not be setting content directly
-  // Instead, children should be managed by React reconciler through add/remove operations
-  // This function should only handle simple string children for backward compatibility
-  if (typeof children === "string") {
-    textInstance.add(children)
-  } else if (Array.isArray(children)) {
-    // Handle array of simple string children
-    for (const child of children) {
-      if (typeof child === "string") {
-        textInstance.add(child)
-      }
-    }
   }
 }
 
