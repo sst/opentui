@@ -32,18 +32,18 @@ function styledTextToTextNodes(styledText: StyledText): TextNodeRenderable[] {
 export class TextNodeRenderable extends BaseRenderable {
   [BrandedTextNodeRenderable] = true
 
-  public fg?: RGBA
-  public bg?: RGBA
-  public attributes: number
+  private _fg?: RGBA
+  private _bg?: RGBA
+  private _attributes: number
   private _children: (string | TextNodeRenderable)[] = []
   public parent: TextNodeRenderable | null = null
 
   constructor(options: TextNodeOptions) {
     super(options)
 
-    this.fg = options.fg ? parseColor(options.fg) : undefined
-    this.bg = options.bg ? parseColor(options.bg) : undefined
-    this.attributes = options.attributes ?? 0
+    this._fg = options.fg ? parseColor(options.fg) : undefined
+    this._bg = options.bg ? parseColor(options.bg) : undefined
+    this._attributes = options.attributes ?? 0
   }
 
   public get children(): (string | TextNodeRenderable)[] {
@@ -171,9 +171,9 @@ export class TextNodeRenderable extends BaseRenderable {
     attributes: number
   } {
     return {
-      fg: this.fg ?? parentStyle.fg,
-      bg: this.bg ?? parentStyle.bg,
-      attributes: this.attributes | parentStyle.attributes,
+      fg: this._fg ?? parentStyle.fg,
+      bg: this._bg ?? parentStyle.bg,
+      attributes: this._attributes | parentStyle.attributes,
     }
   }
 
@@ -234,6 +234,21 @@ export class TextNodeRenderable extends BaseRenderable {
 
   public getRenderable(id: string): BaseRenderable | undefined {
     return this._children.find((child): child is TextNodeRenderable => typeof child !== "string" && child.id === id)
+  }
+
+  public set fg(fg: RGBA) {
+    this._fg = parseColor(fg)
+    this.requestRender()
+  }
+
+  public set bg(bg: RGBA) {
+    this._bg = parseColor(bg)
+    this.requestRender()
+  }
+
+  public set attributes(attributes: number) {
+    this._attributes = attributes
+    this.requestRender()
   }
 }
 

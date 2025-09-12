@@ -1,11 +1,11 @@
 import type {
   ASCIIFontOptions,
   ASCIIFontRenderable,
+  BaseRenderable,
   BoxOptions,
   BoxRenderable,
   InputRenderable,
   InputRenderableOptions,
-  Renderable,
   RenderableOptions,
   RenderContext,
   ScrollBoxOptions,
@@ -13,11 +13,11 @@ import type {
   SelectOption,
   SelectRenderable,
   SelectRenderableOptions,
-  StyledText,
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
-  TextChunk,
+  TextNodeOptions,
+  TextNodeRenderable,
   TextOptions,
   TextRenderable,
 } from "@opentui/core"
@@ -45,7 +45,7 @@ export type ReactProps<TRenderable = unknown> = {
 }
 
 /** Base type for any renderable constructor */
-export type RenderableConstructor<TRenderable extends Renderable = Renderable> = new (
+export type RenderableConstructor<TRenderable extends BaseRenderable = BaseRenderable> = new (
   ctx: RenderContext,
   options: any,
 ) => TRenderable
@@ -83,19 +83,23 @@ export type GetNonStyledProperties<TConstructor> =
 type ContainerProps<TOptions> = TOptions & { children?: React.ReactNode }
 
 /** Smart component props that automatically determine excluded properties */
-type ComponentProps<TOptions extends RenderableOptions<TRenderable>, TRenderable extends Renderable> = TOptions & {
+type ComponentProps<TOptions extends RenderableOptions<TRenderable>, TRenderable extends BaseRenderable> = TOptions & {
   style?: Partial<Omit<TOptions, GetNonStyledProperties<RenderableConstructor<TRenderable>>>>
 } & ReactProps<TRenderable>
 
 /** Valid text content types for Text component children */
-type TextChildren = string | number | boolean | null | undefined
+type TextChildren = string | number | boolean | null | undefined | React.ReactNode
 
 // ============================================================================
 // Built-in Component Props
 // ============================================================================
 
 export type TextProps = ComponentProps<TextOptions, TextRenderable> & {
-  children?: TextChildren | StyledText | TextChunk | Array<TextChildren | StyledText | TextChunk>
+  children?: TextChildren
+}
+
+export type SpanProps = ComponentProps<TextNodeOptions, TextNodeRenderable> & {
+  children?: TextChildren
 }
 
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>

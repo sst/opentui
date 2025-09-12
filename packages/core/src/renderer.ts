@@ -249,6 +249,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
 
   private _currentFocusedRenderable: Renderable | null = null
+  private lifecyclePasses: Set<Renderable> = new Set()
 
   constructor(
     lib: RenderLib,
@@ -380,6 +381,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.setupInput()
+  }
+
+  public registerLifecyclePass(renderable: Renderable) {
+    this.lifecyclePasses.add(renderable)
+  }
+
+  public unregisterLifecyclePass(renderable: Renderable) {
+    this.lifecyclePasses.delete(renderable)
+  }
+
+  public getLifecyclePasses() {
+    return this.lifecyclePasses
   }
 
   public get currentFocusedRenderable(): Renderable | null {

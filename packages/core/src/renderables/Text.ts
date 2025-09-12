@@ -5,7 +5,7 @@ import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
-import { MeasureMode } from "yoga-layout"
+import { Direction, MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
@@ -380,7 +380,7 @@ export class TextRenderable extends Renderable {
     return this.textBuffer.getSelection()
   }
 
-  protected onUpdate(deltaTime: number): void {
+  public onLifecyclePass = () => {
     this.updateTextFromNodes()
   }
 

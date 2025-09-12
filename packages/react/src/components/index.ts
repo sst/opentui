@@ -8,6 +8,7 @@ import {
   TextRenderable,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/components"
+import { BoldSpanRenderable, ItalicSpanRenderable, SpanRenderable, UnderlineSpanRenderable } from "./text"
 
 export const baseComponents = {
   box: BoxRenderable,
@@ -17,6 +18,14 @@ export const baseComponents = {
   scrollbox: ScrollBoxRenderable,
   "ascii-font": ASCIIFontRenderable,
   "tab-select": TabSelectRenderable,
+
+  // Text modifiers
+  span: SpanRenderable,
+  b: BoldSpanRenderable,
+  strong: BoldSpanRenderable,
+  i: ItalicSpanRenderable,
+  em: ItalicSpanRenderable,
+  u: UnderlineSpanRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

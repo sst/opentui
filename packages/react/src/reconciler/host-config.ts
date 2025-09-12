@@ -1,8 +1,9 @@
-import type { Renderable, TextRenderable } from "@opentui/core"
+import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
 import { getComponentCatalogue } from "../components"
+import { textNodeKeys, type TextNodeKey } from "../components/text"
 import type { Container, HostContext, Instance, Props, PublicInstance, TextInstance, Type } from "../types/host"
 import { getNextId } from "../utils/id"
 import { setInitialProperties, updateProperties } from "../utils/index"
@@ -32,11 +33,15 @@ export const hostConfig: HostConfig<
 
   // Create instances of opentui components
   createInstance(type: Type, props: Props, rootContainerInstance: Container, hostContext: HostContext) {
+    if (textNodeKeys.includes(type as TextNodeKey) && !hostContext.isInsideText) {
+      throw new Error(`Component of type "${type}" must be created inside of a text node`)
+    }
+
     const id = getNextId(type)
     const components = getComponentCatalogue()
 
     if (!components[type]) {
-      throw new Error(`[Reconciler] Unknown component type: ${type}`)
+      throw new Error(`Unknown component type: ${type}`)
     }
 
     return new components[type](rootContainerInstance.ctx, {
@@ -83,31 +88,27 @@ export const hostConfig: HostConfig<
 
   // Get root container
   getRootHostContext(rootContainerInstance: Container) {
-    return {}
+    return { isInsideText: false }
   },
 
   // Get child context
   getChildHostContext(parentHostContext: HostContext, type: Type, rootContainerInstance: Container) {
-    return parentHostContext
+    const isInsideText = ["text", "span", "b", "strong", "i", "em", "u"].includes(type)
+    return { ...parentHostContext, isInsideText }
   },
 
   // Should set text content
   shouldSetTextContent(type: Type, props: Props) {
-    // For text components, we want to handle StyledText and TextChunk children specially
-    if (type === "text") {
-      return true
-    }
-
     return false
   },
 
   // Create text instance
   createTextInstance(text: string, rootContainerInstance: Container, hostContext: HostContext) {
-    const components = getComponentCatalogue()
-    return new components["text"](rootContainerInstance.ctx, {
-      id: getNextId("text"),
-      content: text,
-    }) as TextInstance
+    if (!hostContext.isInsideText) {
+      throw new Error("Text must be created inside of a text node")
+    }
+
+    return TextNodeRenderable.fromString(text)
   },
 
   // Schedule timeout
@@ -149,7 +150,7 @@ export const hostConfig: HostConfig<
 
   // Commit text update
   commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string) {
-    textInstance.content = newText
+    textInstance.children = [newText]
     textInstance.requestRender()
   },
 
@@ -244,7 +245,7 @@ export const hostConfig: HostConfig<
 
   detachDeletedInstance(instance: Instance) {
     if (!instance.parent) {
-      instance.destroy()
+      instance.destroyRecursively()
     }
   },
 
