@@ -128,7 +128,7 @@ export default function TextSelectionDemo() {
             <text style={{ width: 27, height: 1, zIndex: 26, selectionBg: "#4a5568", selectionFg: "#ffffff" }}>
               <span style={{ fg: "yellow" }}>Important:</span>{" "}
               <span style={{ bold: true, fg: "cyan" }}>Nested content</span>{" "}
-              <span style={{ italic: true, fg: "greem" }}></span>
+              <span style={{ italic: true, fg: "green" }}></span>
             </text>
           </box>
         </box>
