@@ -17,10 +17,10 @@ import type {
   TabSelectRenderable,
   TabSelectRenderableOptions,
   TextNodeOptions,
+  TextNodeRenderable,
   TextOptions,
   TextRenderable,
 } from "@opentui/core"
-import { TextNodeRenderable } from "@opentui/core/src/renderables/TextNode"
 import type React from "react"
 
 // ============================================================================
