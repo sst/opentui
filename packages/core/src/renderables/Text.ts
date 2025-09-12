@@ -311,12 +311,6 @@ export class TextRenderable extends Renderable {
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.updateTextInfo()
-
-      // This is a workaround to make sure the layout is updated
-      // because we run this within a layout update pass and at this point the yoga layout is already calculated,
-      // the measure func was called and is not called again otherwise.
-      // This can get reaslly expensive if there are a lot of nodes in the parent.
-      this.parent?.getLayoutNode()?.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     }
   }
 
@@ -386,7 +380,7 @@ export class TextRenderable extends Renderable {
     return this.textBuffer.getSelection()
   }
 
-  protected onUpdate(deltaTime: number): void {
+  public onLifecyclePass = () => {
     this.updateTextFromNodes()
   }
 

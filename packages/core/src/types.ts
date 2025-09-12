@@ -51,6 +51,9 @@ export interface RenderContext extends EventEmitter {
   requestSelectionUpdate: () => void
   currentFocusedRenderable: Renderable | null
   focusRenderable: (renderable: Renderable) => void
+  registerLifecyclePass: (renderable: Renderable) => void
+  unregisterLifecyclePass: (renderable: Renderable) => void
+  getLifecyclePasses: () => Set<Renderable>
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

@@ -295,6 +295,8 @@ export abstract class Renderable extends BaseRenderable {
   private childrenSortedByPrimaryAxis: Renderable[] = []
   private _newChildren: Renderable[] = []
 
+  public onLifecyclePass: (() => void) | null = null
+
   public renderBefore?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
   public renderAfter?: (this: Renderable, buffer: OptimizedBuffer, deltaTime: number) => void
 
@@ -1077,6 +1079,11 @@ export abstract class Renderable extends BaseRenderable {
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
     this.renderableMap.set(renderable.id, renderable)
+
+    if (typeof renderable.onLifecyclePass === "function") {
+      this._ctx.registerLifecyclePass(renderable)
+    }
+
     this._newChildren.push(renderable)
 
     if (renderable._liveCount > 0) {
@@ -1143,6 +1150,7 @@ export abstract class Renderable extends BaseRenderable {
 
         obj.onRemove()
         obj.parent = null
+        this._ctx.unregisterLifecyclePass(obj)
       }
       this.renderableMap.delete(id)
 
@@ -1465,6 +1473,11 @@ export class RootRenderable extends Renderable {
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
+
+    // 0. Run lifecycle pass
+    for (const renderable of this._ctx.getLifecyclePasses()) {
+      renderable.onLifecyclePass?.call(renderable)
+    }
 
     // NOTE: Strictly speaking, this is a 3-pass rendering process:
     // 1. Calculate layout from root
