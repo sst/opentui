@@ -3,6 +3,7 @@ import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
 import { getComponentCatalogue } from "../components"
+import { textNodeKeys, type TextNodeKey } from "../components/text"
 import type { Container, HostContext, Instance, Props, PublicInstance, TextInstance, Type } from "../types/host"
 import { getNextId } from "../utils/id"
 import { setInitialProperties, updateProperties } from "../utils/index"
@@ -32,11 +33,15 @@ export const hostConfig: HostConfig<
 
   // Create instances of opentui components
   createInstance(type: Type, props: Props, rootContainerInstance: Container, hostContext: HostContext) {
+    if (textNodeKeys.includes(type as TextNodeKey) && !hostContext.isInsideText) {
+      throw new Error(`Component of type "${type}" must be created inside of a text node`)
+    }
+
     const id = getNextId(type)
     const components = getComponentCatalogue()
 
     if (!components[type]) {
-      throw new Error(`[Reconciler] Unknown component type: ${type}`)
+      throw new Error(`Unknown component type: ${type}`)
     }
 
     return new components[type](rootContainerInstance.ctx, {

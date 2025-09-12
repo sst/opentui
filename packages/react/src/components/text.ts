@@ -1,5 +1,8 @@
 import { TextAttributes, TextNodeRenderable, type RenderContext, type TextNodeOptions } from "@opentui/core"
 
+export const textNodeKeys = ["span", "b", "strong", "i", "em", "u"] as const
+export type TextNodeKey = (typeof textNodeKeys)[number]
+
 export class SpanRenderable extends TextNodeRenderable {
   constructor(
     private readonly ctx: RenderContext | null,
@@ -11,7 +14,7 @@ export class SpanRenderable extends TextNodeRenderable {
 
 // Custom TextNode component for text modifiers
 class TextModifierRenderable extends SpanRenderable {
-  constructor(options: any, modifier?: string) {
+  constructor(options: any, modifier?: TextNodeKey) {
     super(null, options)
 
     // Set appropriate attributes based on modifier type
