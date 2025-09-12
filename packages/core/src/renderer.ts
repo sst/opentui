@@ -727,6 +727,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         if (
           maybeRenderable &&
           maybeRenderable.selectable &&
+          !maybeRenderable.isDestroyed &&
           maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
         ) {
           this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
@@ -1294,7 +1295,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public clearSelection(): void {
     if (this.currentSelection) {
       for (const renderable of this.currentSelection.touchedRenderables) {
-        if (renderable.selectable) {
+        if (renderable.selectable && !renderable.isDestroyed) {
           renderable.onSelectionChanged(null)
         }
       }

@@ -101,7 +101,9 @@ pub const TextBuffer = struct {
     default_fg: ?RGBA,
     default_bg: ?RGBA,
     default_attributes: ?u8,
+
     allocator: Allocator,
+    arena: *std.heap.ArenaAllocator,
 
     lines: std.ArrayList(TextLine),
     current_line: usize,
@@ -115,16 +117,23 @@ pub const TextBuffer = struct {
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
 
-    pub fn init(allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
+    pub fn init(global_allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
         if (length == 0) return TextBufferError.InvalidDimensions;
 
-        const self = allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
-        errdefer allocator.destroy(self);
+        const self = global_allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
+        errdefer global_allocator.destroy(self);
+
+        const internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        errdefer global_allocator.destroy(internal_arena);
+        internal_arena.* = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+
+        const internal_allocator = internal_arena.allocator();
 
         const graph = graphemes_data.*;
         const dw = display_width.*;
 
-        var lines = std.ArrayList(TextLine).init(allocator);
+        var lines = std.ArrayList(TextLine).init(internal_allocator);
+
         errdefer {
             for (lines.items) |*line| {
                 line.deinit();
@@ -132,14 +141,14 @@ pub const TextBuffer = struct {
             lines.deinit();
         }
 
-        var chunk_groups = std.ArrayList(*ChunkGroup).init(allocator);
+        var chunk_groups = std.ArrayList(*ChunkGroup).init(internal_allocator);
         errdefer chunk_groups.deinit();
 
-        const first_line = TextLine.init(allocator);
+        const first_line = TextLine.init(internal_allocator);
         lines.append(first_line) catch return TextBufferError.OutOfMemory;
 
         self.* = .{
-            .char = allocator.alloc(u32, length) catch return TextBufferError.OutOfMemory,
+            .char = internal_allocator.alloc(u32, length) catch return TextBufferError.OutOfMemory,
             .capacity = length,
             .char_count = 0,
             .selection = null,
@@ -147,7 +156,8 @@ pub const TextBuffer = struct {
             .default_fg = null,
             .default_bg = null,
             .default_attributes = null,
-            .allocator = allocator,
+            .allocator = internal_allocator,
+            .arena = internal_arena,
             .lines = lines,
             .current_line = 0,
             .current_line_width = 0,
@@ -155,7 +165,7 @@ pub const TextBuffer = struct {
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
-            .grapheme_tracker = gp.GraphemeTracker.init(allocator, pool),
+            .grapheme_tracker = gp.GraphemeTracker.init(global_allocator, pool),
             .width_method = width_method,
         };
 
@@ -166,20 +176,7 @@ pub const TextBuffer = struct {
 
     pub fn deinit(self: *TextBuffer) void {
         self.grapheme_tracker.deinit();
-
-        for (self.lines.items) |*line| {
-            line.deinit();
-        }
-        self.lines.deinit();
-
-        for (self.chunk_groups.items) |chunk_group| {
-            chunk_group.deinit();
-            self.allocator.destroy(chunk_group);
-        }
-        self.chunk_groups.deinit();
-
-        self.allocator.free(self.char);
-        self.allocator.destroy(self);
+        self.arena.deinit();
     }
 
     pub fn getCharPtr(self: *TextBuffer) [*]u32 {
@@ -204,22 +201,21 @@ pub const TextBuffer = struct {
 
     pub fn reset(self: *TextBuffer) void {
         self.grapheme_tracker.clear();
+
+        _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
+
         self.char_count = 0;
         self.current_line = 0;
         self.current_line_width = 0;
         self.local_selection = null;
+        self.selection = null;
 
-        for (self.lines.items) |*line| {
-            line.deinit();
-        }
-        self.lines.clearRetainingCapacity();
+        self.char = self.allocator.alloc(u32, self.capacity) catch {
+            @panic("TextBuffer.reset: alloc failed");
+        };
 
-        // Clean up chunk groups
-        for (self.chunk_groups.items) |chunk_group| {
-            chunk_group.deinit();
-            self.allocator.destroy(chunk_group);
-        }
-        self.chunk_groups.clearRetainingCapacity();
+        self.lines = std.ArrayList(TextLine).init(self.allocator);
+        self.chunk_groups = std.ArrayList(*ChunkGroup).init(self.allocator);
 
         const first_line = TextLine.init(self.allocator);
         self.lines.append(first_line) catch {};
@@ -290,7 +286,6 @@ pub const TextBuffer = struct {
             return 0;
         }
 
-        // Create chunk group to track this write operation
         const chunk_group = self.allocator.create(ChunkGroup) catch return TextBufferError.OutOfMemory;
         chunk_group.* = ChunkGroup.init(self.allocator);
         errdefer {
@@ -316,13 +311,11 @@ pub const TextBuffer = struct {
         var iter = self.graphemes_data.iterator(textBytes);
         var cellCount: u32 = 0;
         var wasResized: bool = false;
-
         const estimatedCapacity = textBytes.len * 2;
         try self.ensureCapacity(@intCast(estimatedCapacity));
         if (self.capacity != self.char.len) {
             wasResized = true;
         }
-
         var current_chunk_offset = self.char_count;
         var current_chunk_chars: u32 = 0;
         var current_chunk_width: u32 = 0;

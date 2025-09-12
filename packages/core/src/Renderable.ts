@@ -1536,10 +1536,6 @@ export class RootRenderable extends Renderable {
   }
 
   protected destroySelf(): void {
-    if (this.layoutNode) {
-      this.layoutNode.destroy()
-    }
-
     try {
       this.yogaConfig.free()
     } catch (error) {

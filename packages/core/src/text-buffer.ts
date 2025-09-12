@@ -18,6 +18,7 @@ export class TextBuffer {
   private _length: number = 0
   private _capacity: number
   private _lineInfo?: { lineStarts: number[]; lineWidths: number[] }
+  private _destroyed: boolean = false
 
   constructor(lib: RenderLib, ptr: Pointer, capacity: number) {
     this.lib = lib
@@ -25,12 +26,20 @@ export class TextBuffer {
     this._capacity = capacity
   }
 
-  static create(capacity: number = 256, widthMethod: WidthMethod): TextBuffer {
+  static create(capacity: number = 64, widthMethod: WidthMethod): TextBuffer {
     const lib = resolveRenderLib()
     return lib.createTextBuffer(capacity, widthMethod)
   }
 
+  // Fail loud and clear
+  // Instead of trying to return values that could work or not,
+  // this at least will show a stack trace to know where the call to a destroyed TextBuffer was made
+  private guard(): void {
+    if (this._destroyed) throw new Error("TextBuffer is destroyed")
+  }
+
   public setStyledText(text: StyledText): void {
+    this.guard()
     this.lib.textBufferReset(this.bufferPtr)
     this._length = 0
     this._lineInfo = undefined
@@ -56,34 +65,42 @@ export class TextBuffer {
   }
 
   public setDefaultFg(fg: RGBA | null): void {
+    this.guard()
     this.lib.textBufferSetDefaultFg(this.bufferPtr, fg)
   }
 
   public setDefaultBg(bg: RGBA | null): void {
+    this.guard()
     this.lib.textBufferSetDefaultBg(this.bufferPtr, bg)
   }
 
   public setDefaultAttributes(attributes: number | null): void {
+    this.guard()
     this.lib.textBufferSetDefaultAttributes(this.bufferPtr, attributes)
   }
 
   public resetDefaults(): void {
+    this.guard()
     this.lib.textBufferResetDefaults(this.bufferPtr)
   }
 
   public get length(): number {
+    this.guard()
     return this._length
   }
 
   public get capacity(): number {
+    this.guard()
     return this._capacity
   }
 
   public get ptr(): Pointer {
+    this.guard()
     return this.bufferPtr
   }
 
   public getSelectedText(): string {
+    this.guard()
     if (this._length === 0) return ""
     // TODO: The _length should be the text length, need to know the number of bytes for the text though
     const selectedBytes = this.lib.getSelectedTextBytes(this.bufferPtr, this.length * 4)
@@ -94,6 +111,7 @@ export class TextBuffer {
   }
 
   public getPlainText(): string {
+    this.guard()
     if (this._length === 0) return ""
     // TODO: The _length should be the text length, need to know the number of bytes for the text though
     const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, this.length * 4)
@@ -104,6 +122,7 @@ export class TextBuffer {
   }
 
   public get lineInfo(): { lineStarts: number[]; lineWidths: number[] } {
+    this.guard()
     if (!this._lineInfo) {
       this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
     }
@@ -111,10 +130,12 @@ export class TextBuffer {
   }
 
   public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
     this.lib.textBufferSetSelection(this.bufferPtr, start, end, bgColor || null, fgColor || null)
   }
 
   public resetSelection(): void {
+    this.guard()
     this.lib.textBufferResetSelection(this.bufferPtr)
   }
 
@@ -126,6 +147,7 @@ export class TextBuffer {
     bgColor?: RGBA,
     fgColor?: RGBA,
   ): boolean {
+    this.guard()
     return this.lib.textBufferSetLocalSelection(
       this.bufferPtr,
       anchorX,
@@ -138,18 +160,22 @@ export class TextBuffer {
   }
 
   public resetLocalSelection(): void {
+    this.guard()
     this.lib.textBufferResetLocalSelection(this.bufferPtr)
   }
 
   public getSelection(): { start: number; end: number } | null {
+    this.guard()
     return this.lib.textBufferGetSelection(this.bufferPtr)
   }
 
   public hasSelection(): boolean {
+    this.guard()
     return this.getSelection() !== null
   }
 
   public insertChunkGroup(index: number, text: string, fg?: RGBA, bg?: RGBA, attributes?: number): void {
+    this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.insertEncodedChunkGroup(index, textBytes, fg, bg, attributes)
   }
@@ -161,6 +187,7 @@ export class TextBuffer {
     bg?: RGBA,
     attributes?: number,
   ): void {
+    this.guard()
     this._length = this.lib.textBufferInsertChunkGroup(
       this.bufferPtr,
       index,
@@ -173,11 +200,13 @@ export class TextBuffer {
   }
 
   public removeChunkGroup(index: number): void {
+    this.guard()
     this._length = this.lib.textBufferRemoveChunkGroup(this.bufferPtr, index)
     this._lineInfo = undefined
   }
 
   public replaceChunkGroup(index: number, text: string, fg?: RGBA, bg?: RGBA, attributes?: number): void {
+    this.guard()
     const textBytes = this.lib.encoder.encode(text)
     this.replaceEncodedChunkGroup(index, textBytes, fg, bg, attributes)
   }
@@ -189,6 +218,7 @@ export class TextBuffer {
     bg?: RGBA,
     attributes?: number,
   ): void {
+    this.guard()
     this._length = this.lib.textBufferReplaceChunkGroup(
       this.bufferPtr,
       index,
@@ -201,10 +231,13 @@ export class TextBuffer {
   }
 
   public get chunkGroupCount(): number {
+    this.guard()
     return this.lib.textBufferGetChunkGroupCount(this.bufferPtr)
   }
 
   public destroy(): void {
+    if (this._destroyed) return
+    this._destroyed = true
     this.lib.destroyTextBuffer(this.bufferPtr)
   }
 }

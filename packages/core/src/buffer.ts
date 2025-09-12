@@ -52,9 +52,17 @@ export class OptimizedBuffer {
     bg: Float32Array
     attributes: Uint8Array
   } | null = null
+  private _destroyed: boolean = false
 
   get ptr(): Pointer {
     return this.bufferPtr
+  }
+
+  // Fail loud and clear
+  // Instead of trying to return values that could work or not,
+  // this at least will show a stack trace to know where the call to a destroyed Buffer was made
+  private guard(): void {
+    if (this._destroyed) throw new Error(`Buffer ${this.id} is destroyed`)
   }
 
   get buffers(): {
@@ -63,6 +71,7 @@ export class OptimizedBuffer {
     bg: Float32Array
     attributes: Uint8Array
   } {
+    this.guard()
     if (this._rawBuffers === null) {
       const size = this._width * this._height
       const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
@@ -108,10 +117,6 @@ export class OptimizedBuffer {
     return lib.createOptimizedBuffer(width, height, widthMethod, respectAlpha, id)
   }
 
-  private coordsToIndex(x: number, y: number): number {
-    return y * this._width + x
-  }
-
   public get width(): number {
     return this._width
   }
@@ -121,19 +126,23 @@ export class OptimizedBuffer {
   }
 
   public setRespectAlpha(respectAlpha: boolean): void {
+    this.guard()
     this.lib.bufferSetRespectAlpha(this.bufferPtr, respectAlpha)
     this.respectAlpha = respectAlpha
   }
 
   public getNativeId(): string {
+    this.guard()
     return this.lib.bufferGetId(this.bufferPtr)
   }
 
   public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
+    this.guard()
     this.lib.bufferClear(this.bufferPtr, bg)
   }
 
   public setCell(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes: number = 0): void {
+    this.guard()
     this.lib.bufferSetCell(this.bufferPtr, x, y, char, fg, bg, attributes)
   }
 
@@ -145,6 +154,7 @@ export class OptimizedBuffer {
     bg: RGBA,
     attributes: number = 0,
   ): void {
+    this.guard()
     this.lib.bufferSetCellWithAlphaBlending(this.bufferPtr, x, y, char, fg, bg, attributes)
   }
 
@@ -157,6 +167,7 @@ export class OptimizedBuffer {
     attributes: number = 0,
     selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA } | null,
   ): void {
+    this.guard()
     if (!selection) {
       this.lib.bufferDrawText(this.bufferPtr, text, x, y, fg, bg, attributes)
       return
@@ -205,10 +216,13 @@ export class OptimizedBuffer {
     sourceWidth?: number,
     sourceHeight?: number,
   ): void {
+    this.guard()
     this.lib.drawFrameBuffer(this.bufferPtr, destX, destY, frameBuffer.ptr, sourceX, sourceY, sourceWidth, sourceHeight)
   }
 
   public destroy(): void {
+    if (this._destroyed) return
+    this._destroyed = true
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 
@@ -218,7 +232,7 @@ export class OptimizedBuffer {
     y: number,
     clipRect?: { x: number; y: number; width: number; height: number },
   ): void {
-    // Use native implementation
+    this.guard()
     this.lib.bufferDrawTextBuffer(this.bufferPtr, textBuffer.ptr, x, y, clipRect)
   }
 
@@ -230,6 +244,7 @@ export class OptimizedBuffer {
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
   ): void {
+    this.guard()
     this.lib.bufferDrawSuperSampleBuffer(
       this.bufferPtr,
       x,
@@ -249,6 +264,7 @@ export class OptimizedBuffer {
     terminalWidthCells: number,
     terminalHeightCells: number,
   ): void {
+    this.guard()
     this.lib.bufferDrawPackedBuffer(
       this.bufferPtr,
       dataPtr,
@@ -261,6 +277,7 @@ export class OptimizedBuffer {
   }
 
   public resize(width: number, height: number): void {
+    this.guard()
     if (this._width === width && this._height === height) return
 
     this._width = width
@@ -284,6 +301,7 @@ export class OptimizedBuffer {
     title?: string
     titleAlignment?: "left" | "center" | "right"
   }): void {
+    this.guard()
     const style = options.borderStyle || "single"
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
@@ -304,14 +322,17 @@ export class OptimizedBuffer {
   }
 
   public pushScissorRect(x: number, y: number, width: number, height: number): void {
+    this.guard()
     this.lib.bufferPushScissorRect(this.bufferPtr, x, y, width, height)
   }
 
   public popScissorRect(): void {
+    this.guard()
     this.lib.bufferPopScissorRect(this.bufferPtr)
   }
 
   public clearScissorRects(): void {
+    this.guard()
     this.lib.bufferClearScissorRects(this.bufferPtr)
   }
 }

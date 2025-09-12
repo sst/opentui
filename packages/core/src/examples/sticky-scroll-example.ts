@@ -120,16 +120,8 @@ export function run(rendererInstance: CliRenderer): void {
 export function destroy(rendererInstance: CliRenderer): void {
   if (mainContainer) {
     rendererInstance.root.remove(mainContainer.id)
-    mainContainer.destroy()
+    mainContainer.destroyRecursively()
     mainContainer = null
-  }
-  if (scrollBox) {
-    scrollBox.destroy()
-    scrollBox = null
-  }
-  if (instructionsBox) {
-    instructionsBox.destroy()
-    instructionsBox = null
   }
   renderer = null
 }

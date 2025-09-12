@@ -1,4 +1,5 @@
 import { TextAttributes } from "./types"
+import { Renderable } from "./Renderable"
 
 export function createTextAttributes({
   bold = false,
@@ -31,4 +32,42 @@ export function createTextAttributes({
   if (strikethrough) attributes |= TextAttributes.STRIKETHROUGH
 
   return attributes
+}
+
+// For debugging purposes
+export function visualizeRenderableTree(renderable: Renderable, maxDepth: number = 10): void {
+  function buildTreeLines(
+    node: Renderable,
+    prefix: string = "",
+    parentPrefix: string = "",
+    isLastChild: boolean = true,
+    depth: number = 0,
+  ): string[] {
+    if (depth >= maxDepth) {
+      return [`${prefix}${node.id} ... (max depth reached)`]
+    }
+
+    const lines: string[] = []
+    const children = node.getChildren()
+
+    // Add current node
+    lines.push(`${prefix}${node.id}`)
+
+    if (children.length > 0) {
+      const lastChildIndex = children.length - 1
+
+      children.forEach((child, index) => {
+        const childIsLast = index === lastChildIndex
+        const connector = childIsLast ? "└── " : "├── "
+        const childPrefix = parentPrefix + (isLastChild ? "    " : "│   ")
+        const childLines = buildTreeLines(child, childPrefix + connector, childPrefix, childIsLast, depth + 1)
+        lines.push(...childLines)
+      })
+    }
+
+    return lines
+  }
+
+  const treeLines = buildTreeLines(renderable)
+  console.log("Renderable Tree:\n" + treeLines.join("\n"))
 }
