@@ -5,6 +5,7 @@ import {
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
+  TextAttributes,
   TextNodeRenderable,
   TextRenderable,
   type RenderContext,
@@ -22,6 +23,42 @@ class SpanRenderable extends TextNodeRenderable {
   }
 }
 
+export const textNodeKeys = ["span", "b", "strong", "i", "em", "u"] as const
+export type TextNodeKey = (typeof textNodeKeys)[number]
+
+class TextModifierRenderable extends SpanRenderable {
+  constructor(options: any, modifier?: TextNodeKey) {
+    super(null, options)
+
+    // Set appropriate attributes based on modifier type
+    if (modifier === "b" || modifier === "strong") {
+      this.attributes = (this.attributes || 0) | TextAttributes.BOLD
+    } else if (modifier === "i" || modifier === "em") {
+      this.attributes = (this.attributes || 0) | TextAttributes.ITALIC
+    } else if (modifier === "u") {
+      this.attributes = (this.attributes || 0) | TextAttributes.UNDERLINE
+    }
+  }
+}
+
+export class BoldSpanRenderable extends TextModifierRenderable {
+  constructor(options: any) {
+    super(options, "b")
+  }
+}
+
+export class ItalicSpanRenderable extends TextModifierRenderable {
+  constructor(options: any) {
+    super(options, "i")
+  }
+}
+
+export class UnderlineSpanRenderable extends TextModifierRenderable {
+  constructor(options: any) {
+    super(options, "u")
+  }
+}
+
 export const baseComponents = {
   box: BoxRenderable,
   text: TextRenderable,
@@ -32,6 +69,11 @@ export const baseComponents = {
   scrollbox: ScrollBoxRenderable,
 
   span: SpanRenderable,
+  strong: BoldSpanRenderable,
+  b: BoldSpanRenderable,
+  em: ItalicSpanRenderable,
+  i: ItalicSpanRenderable,
+  u: UnderlineSpanRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

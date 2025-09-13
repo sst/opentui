@@ -17,7 +17,13 @@ export default function TextStyleScene() {
 
   return (
     <box>
-      <text style={{ bg: "red", fg: "black" }}>Simple text works! {counter()} times</text>
+      <text>
+        <b>
+          <i>Simple</i>
+        </b>{" "}
+        text works! {counter()} times
+      </text>
+      {/* <text style={{ bg: "red", fg: "black" }}>Simple text works! {counter()} times</text> */}
       <text style={{ bg: "red", fg: "black" }}>
         Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
         <span style={{ bg: "blue", fg: "yellow", underline: true }}>{counter()}</span>
@@ -26,7 +32,9 @@ export default function TextStyleScene() {
       <text>
         Toggle{" "}
         <Show when={counter() % 2 === 0}>
-          <span style={{ underline: true, fg: "red" }}>text</span>
+          <b>
+            <u>text</u>
+          </b>
         </Show>
       </text>
       <text>

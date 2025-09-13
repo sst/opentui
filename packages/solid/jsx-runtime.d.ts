@@ -28,6 +28,12 @@ declare namespace JSX {
     ascii_font: AsciiFontProps
     tab_select: TabSelectProps
     scrollbox: ScrollBoxProps
+
+    b: SpanProps
+    strong: SpanProps
+    i: SpanProps
+    em: SpanProps
+    u: SpanProps
   }
 
   interface ElementChildrenAttribute {
