@@ -202,7 +202,9 @@ function App() {
       <text>Hello World</text>
 
       {/* Rich text with children */}
-      <text><span fg="red">Red Text</span></text>
+      <text>
+        <span fg="red">Red Text</span>
+      </text>
 
       {/* Text modifiers */}
       <text>
