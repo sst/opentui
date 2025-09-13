@@ -342,18 +342,9 @@ pub const TextBuffer = struct {
                 const width: u32 = @intCast(width_u16);
                 required = width;
 
-                // Try to decode single-width characters as UTF-8 codepoints first
-                if (width == 1) {
-                    if (std.unicode.utf8Decode(bytes)) |codepoint| {
-                        encoded_char = codepoint;
-                    } else |_| {
-                        // If UTF-8 decode fails, treat as a grapheme cluster
-                        const gid = self.pool.alloc(bytes) catch return TextBufferError.OutOfMemory;
-                        encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, width);
-                        self.grapheme_tracker.add(gid);
-                    }
+                if (bytes.len == 1 and width == 1 and bytes[0] >= 32) {
+                    encoded_char = @as(u32, bytes[0]);
                 } else {
-                    // Handle wide characters as grapheme clusters
                     const gid = self.pool.alloc(bytes) catch return TextBufferError.OutOfMemory;
                     encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, width);
                     self.grapheme_tracker.add(gid);
