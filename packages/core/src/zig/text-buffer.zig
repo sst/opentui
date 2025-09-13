@@ -342,11 +342,8 @@ pub const TextBuffer = struct {
                 const width: u32 = @intCast(width_u16);
                 required = width;
 
-                if (width == 1) {
-                    const codepoint = std.unicode.utf8Decode(bytes) catch {
-                        continue;
-                    };
-                    encoded_char = codepoint;
+                if (bytes.len == 1 and width == 1 and bytes[0] >= 32) {
+                    encoded_char = @as(u32, bytes[0]);
                 } else {
                     const gid = self.pool.alloc(bytes) catch return TextBufferError.OutOfMemory;
                     encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, width);
