@@ -22,6 +22,8 @@ This monorepo contains the following packages:
 
 ### TypeScript/JavaScript
 
+Requires running a build script first. (`build`, `build:dev`, `build:prod`)
+
 ```bash
 bun install @opentui/core
 ```
