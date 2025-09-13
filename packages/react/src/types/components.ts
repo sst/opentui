@@ -102,6 +102,8 @@ export type SpanProps = ComponentProps<TextNodeOptions, TextNodeRenderable> & {
   children?: TextChildren
 }
 
+export type LineBreakProps = Pick<SpanProps, "id">
+
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {

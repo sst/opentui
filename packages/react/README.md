@@ -61,6 +61,10 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 - **`<tab-select>`** - Tab-based selection
 - **`<ascii-font>`** - Display ASCII art text with different font styles
 
+Helpers:
+
+- **`<span>`, `<strong>`, `<em>`, `<u>`, `<b>`, `<i>`, `<br>`** - Text modifiers (_must be used inside of the text component_)
+
 ### Styling
 
 Components can be styled using props or the `style` prop:
@@ -191,8 +195,6 @@ function App() {
 Display text with rich formatting.
 
 ```tsx
-import { bold, fg, t } from "@opentui/core"
-
 function App() {
   return (
     <box>
@@ -200,10 +202,14 @@ function App() {
       <text>Hello World</text>
 
       {/* Rich text with children */}
-      <text>{bold(fg("red")("Bold Red Text"))}</text>
+      <text>
+        <span fg="red">Red Text</span>
+      </text>
 
-      {/* Template literals */}
-      <text>{t`${bold("Bold")} and ${fg("blue")("Blue")}`}</text>
+      {/* Text modifiers */}
+      <text>
+        <strong>Bold</strong>, <em>Italic</em>, and <u>Underlined</u>
+      </text>
     </box>
   )
 }
@@ -501,20 +507,31 @@ render(<App />)
 ### Styled Text Showcase
 
 ```tsx
-import { blue, bold, red, t, underline } from "@opentui/core"
 import { render } from "@opentui/react"
 
 function App() {
   return (
-    <box style={{ flexDirection: "column" }}>
+    <>
       <text>Simple text</text>
-      <text>{bold("Bold text")}</text>
-      <text>{underline("Underlined text")}</text>
-      <text>{red("Red text")}</text>
-      <text>{blue("Blue text")}</text>
-      <text>{bold(red("Bold red text"))}</text>
-      <text>{t`${bold("Bold")} and ${blue("blue")} combined`}</text>
-    </box>
+      <text>
+        <strong>Bold text</strong>
+      </text>
+      <text>
+        <u>Underlined text</u>
+      </text>
+      <text>
+        <span fg="red">Red text</span>
+      </text>
+      <text>
+        <span fg="blue">Blue text</span>
+      </text>
+      <text>
+        <strong fg="red">Bold red text</strong>
+      </text>
+      <text>
+        <strong>Bold</strong> and <span fg="blue">blue</span> combined
+      </text>
+    </>
   )
 }
 

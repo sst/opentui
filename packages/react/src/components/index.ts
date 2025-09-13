@@ -8,7 +8,13 @@ import {
   TextRenderable,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/components"
-import { BoldSpanRenderable, ItalicSpanRenderable, SpanRenderable, UnderlineSpanRenderable } from "./text"
+import {
+  BoldSpanRenderable,
+  ItalicSpanRenderable,
+  LineBreakRenderable,
+  SpanRenderable,
+  UnderlineSpanRenderable,
+} from "./text"
 
 export const baseComponents = {
   box: BoxRenderable,
@@ -21,6 +27,7 @@ export const baseComponents = {
 
   // Text modifiers
   span: SpanRenderable,
+  br: LineBreakRenderable,
   b: BoldSpanRenderable,
   strong: BoldSpanRenderable,
   i: ItalicSpanRenderable,
