@@ -1,6 +1,6 @@
 import { TextAttributes, TextNodeRenderable, type RenderContext, type TextNodeOptions } from "@opentui/core"
 
-export const textNodeKeys = ["span", "b", "strong", "i", "em", "u"] as const
+export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "br"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
 export class SpanRenderable extends TextNodeRenderable {
@@ -14,7 +14,7 @@ export class SpanRenderable extends TextNodeRenderable {
 
 // Custom TextNode component for text modifiers
 class TextModifierRenderable extends SpanRenderable {
-  constructor(options: any, modifier?: TextNodeKey) {
+  constructor(options: TextNodeOptions, modifier?: TextNodeKey) {
     super(null, options)
 
     // Set appropriate attributes based on modifier type
@@ -29,19 +29,30 @@ class TextModifierRenderable extends SpanRenderable {
 }
 
 export class BoldSpanRenderable extends TextModifierRenderable {
-  constructor(options: any) {
+  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
     super(options, "b")
   }
 }
 
 export class ItalicSpanRenderable extends TextModifierRenderable {
-  constructor(options: any) {
+  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
     super(options, "i")
   }
 }
 
 export class UnderlineSpanRenderable extends TextModifierRenderable {
-  constructor(options: any) {
+  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
     super(options, "u")
+  }
+}
+
+export class LineBreakRenderable extends SpanRenderable {
+  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
+    super(null, options)
+    this.add() // Add a newline
+  }
+
+  public override add(): number {
+    return super.add("\n")
   }
 }

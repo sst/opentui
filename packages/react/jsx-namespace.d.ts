@@ -4,6 +4,7 @@ import type {
   BoxProps,
   ExtendedIntrinsicElements,
   InputProps,
+  LineBreakProps,
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
@@ -42,5 +43,6 @@ export namespace JSX {
     u: SpanProps
     strong: SpanProps
     em: SpanProps
+    br: LineBreakProps
   }
 }
