@@ -16,7 +16,7 @@ export * from "./hooks"
 
 class SpanRenderable extends TextNodeRenderable {
   constructor(
-    private readonly _ctx: RenderContext,
+    private readonly _ctx: RenderContext | null,
     options: TextNodeOptions,
   ) {
     super(options)
@@ -59,6 +59,17 @@ export class UnderlineSpanRenderable extends TextModifierRenderable {
   }
 }
 
+export class LineBreakRenderable extends SpanRenderable {
+  constructor(_ctx: RenderContext | null, options: TextNodeOptions) {
+    super(null, options)
+    this.add()
+  }
+
+  public override add(): number {
+    return super.add("\n")
+  }
+}
+
 export const baseComponents = {
   box: BoxRenderable,
   text: TextRenderable,
@@ -74,6 +85,7 @@ export const baseComponents = {
   em: ItalicSpanRenderable,
   i: ItalicSpanRenderable,
   u: UnderlineSpanRenderable,
+  br: LineBreakRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

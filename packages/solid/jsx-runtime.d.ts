@@ -34,6 +34,7 @@ declare namespace JSX {
     i: SpanProps
     em: SpanProps
     u: SpanProps
+    br: {}
   }
 
   interface ElementChildrenAttribute {

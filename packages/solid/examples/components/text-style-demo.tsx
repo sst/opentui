@@ -21,14 +21,14 @@ export default function TextStyleScene() {
         <b>
           <i>Simple</i>
         </b>{" "}
-        text works! {counter()} times
+        text works!
+        <br />
+        {counter()} times
       </text>
-      {/* <text style={{ bg: "red", fg: "black" }}>Simple text works! {counter()} times</text> */}
       <text style={{ bg: "red", fg: "black" }}>
         Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
-        <span style={{ bg: "blue", fg: "yellow", underline: true }}>{counter()}</span>
+        <span style={{ bg: "blue", fg: "yellow" }}>{counter()}</span>
       </text>
-
       <text>
         Toggle{" "}
         <Show when={counter() % 2 === 0}>
