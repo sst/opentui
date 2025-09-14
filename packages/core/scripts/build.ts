@@ -40,7 +40,6 @@ const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
-const isCi = args.includes("--ci")
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -255,11 +254,8 @@ if (buildLib) {
   })
 
   if (tscResult.status !== 0) {
-    if (isCi) {
-      console.error("Error: TypeScript declaration generation failed")
-      process.exit(1)
-    }
-    console.warn("Warning: TypeScript declaration generation failed")
+    console.error("Error: TypeScript declaration generation failed")
+    process.exit(1)
   } else {
     console.log("TypeScript declarations generated")
   }
