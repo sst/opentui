@@ -1,3 +1,4 @@
+import { TextAttributes } from "@opentui/core"
 import { createSignal, onCleanup, onMount, Show } from "solid-js"
 
 export default function TextStyleScene() {
@@ -17,16 +18,24 @@ export default function TextStyleScene() {
 
   return (
     <box>
-      <text style={{ bg: "red", fg: "black" }}>Simple text works! {counter()} times</text>
+      <text>Simple text works! {counter()} times</text>
+      <text>
+        line break
+        <br />
+        works! {counter()} times
+      </text>
       <text style={{ bg: "red", fg: "black" }}>
         Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
-        <span style={{ bg: "blue", fg: "yellow", underline: true }}>{counter()}</span>
+        <span attributes={TextAttributes.UNDERLINE} style={{ bg: "blue", fg: "yellow" }}>
+          {counter()}
+        </span>
       </text>
-
       <text>
         Toggle{" "}
         <Show when={counter() % 2 === 0}>
-          <span style={{ underline: true, fg: "red" }}>text</span>
+          <b>
+            <u>text</u>
+          </b>
         </Show>
       </text>
       <text>
