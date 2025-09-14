@@ -103,6 +103,7 @@ pub const TextBuffer = struct {
     default_attributes: ?u8,
 
     allocator: Allocator,
+    global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
 
     lines: std.ArrayList(TextLine),
@@ -157,6 +158,7 @@ pub const TextBuffer = struct {
             .default_bg = null,
             .default_attributes = null,
             .allocator = internal_allocator,
+            .global_allocator = global_allocator,
             .arena = internal_arena,
             .lines = lines,
             .current_line = 0,
@@ -177,6 +179,8 @@ pub const TextBuffer = struct {
     pub fn deinit(self: *TextBuffer) void {
         self.grapheme_tracker.deinit();
         self.arena.deinit();
+        self.global_allocator.destroy(self.arena);
+        self.global_allocator.destroy(self);
     }
 
     pub fn getCharPtr(self: *TextBuffer) [*]u32 {

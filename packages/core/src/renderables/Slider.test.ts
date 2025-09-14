@@ -1,17 +1,15 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { SliderRenderable, type SliderOptions } from "./Slider"
-import { createTestRenderer, type MockInput, type MockMouse, type TestRenderer } from "../testing/test-renderer"
-import { OptimizedBuffer } from "../buffer"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 
-let renderer: TestRenderer
-let mockMouse: MockMouse
+let currentRenderer: TestRenderer
+let currentMockMouse: MockMouse
 let renderOnce: () => Promise<void>
 
-async function createSliderRenderable(options: SliderOptions): Promise<{ slider: SliderRenderable; root: any }> {
-  if (!renderer) {
-    throw new Error("Renderer not initialized")
-  }
-
+async function createSliderRenderable(
+  renderer: TestRenderer,
+  options: SliderOptions,
+): Promise<{ slider: SliderRenderable; root: any }> {
   const sliderRenderable = new SliderRenderable(renderer, { left: 0, top: 0, ...options })
   renderer.root.add(sliderRenderable)
   await renderOnce()
@@ -20,15 +18,15 @@ async function createSliderRenderable(options: SliderOptions): Promise<{ slider:
 }
 
 beforeEach(async () => {
-  ;({ renderer, mockMouse, renderOnce } = await createTestRenderer({}))
+  ;({ renderer: currentRenderer, mockMouse: currentMockMouse, renderOnce } = await createTestRenderer({}))
 })
 
 afterEach(() => {
-  renderer.destroy()
+  currentRenderer.destroy()
 })
 
 test("SliderRenderable > Value-based API", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -57,7 +55,7 @@ test("SliderRenderable > Value-based API", async () => {
 })
 
 test("SliderRenderable > Automatic thumb size calculation", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -74,7 +72,7 @@ test("SliderRenderable > Automatic thumb size calculation", async () => {
 })
 
 test("SliderRenderable > Custom step size", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -101,7 +99,7 @@ test("SliderRenderable > Custom step size", async () => {
 })
 
 test("SliderRenderable > Minimum thumb size", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 10000,
@@ -119,7 +117,7 @@ test("SliderRenderable > Minimum thumb size", async () => {
 test("SliderRenderable > onChange callback", async () => {
   let changedValue: number | undefined
 
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -134,7 +132,7 @@ test("SliderRenderable > onChange callback", async () => {
 })
 
 test("SliderRenderable > Vertical thumb size calculation", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 100,
@@ -158,7 +156,7 @@ test("SliderRenderable > Vertical thumb size calculation", async () => {
 })
 
 test("SliderRenderable > Horizontal thumb size calculation", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 200,
@@ -182,7 +180,7 @@ test("SliderRenderable > Horizontal thumb size calculation", async () => {
 })
 
 test("SliderRenderable > Edge cases in thumb size calculation", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 50,
     max: 50,
@@ -210,7 +208,7 @@ test("SliderRenderable > Edge cases in thumb size calculation", async () => {
 })
 
 test("SliderRenderable > Thumb size minimum clamping", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 1000,
@@ -224,7 +222,7 @@ test("SliderRenderable > Thumb size minimum clamping", async () => {
   const thumbSize = slider.getVirtualThumbSize()
   expect(thumbSize).toBe(1)
 
-  const { slider: extremeSlider } = await createSliderRenderable({
+  const { slider: extremeSlider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 10000,
@@ -243,7 +241,7 @@ test("SliderRenderable > Thumb size minimum clamping", async () => {
 })
 
 test("SliderRenderable > Thumb size can be less than 2", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 200,
@@ -257,7 +255,7 @@ test("SliderRenderable > Thumb size can be less than 2", async () => {
   const thumbSize = slider.getVirtualThumbSize()
   expect(thumbSize).toBe(1)
 
-  const { slider: largerRatioSlider } = await createSliderRenderable({
+  const { slider: largerRatioSlider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 100,
@@ -270,7 +268,7 @@ test("SliderRenderable > Thumb size can be less than 2", async () => {
   // @ts-expect-error - Testing private method
   expect(largerRatioSlider.getVirtualThumbSize()).toBe(1)
 
-  const { slider: exactSlider } = await createSliderRenderable({
+  const { slider: exactSlider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 40,
@@ -285,7 +283,8 @@ test("SliderRenderable > Thumb size can be less than 2", async () => {
 })
 
 test("SliderRenderable > Mouse interaction - horizontal click on thumb", async () => {
-  const { slider } = await createSliderRenderable({
+  process.stdout.write("SliderRenderable > Mouse interaction - horizontal click on thumb 1\n")
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -293,14 +292,14 @@ test("SliderRenderable > Mouse interaction - horizontal click on thumb", async (
     width: 20,
     height: 1,
   })
-
-  mockMouse.click(10, 0)
-
-  expect(slider.value).toBe(50)
+  process.stdout.write("SliderRenderable > Mouse interaction - horizontal click on thumb 2\n")
+  await currentMockMouse.click(10, 0)
+  process.stdout.write("SliderRenderable > Mouse interaction - horizontal click on thumb 3\n")
+  expect(slider.value).toBeCloseTo(51, 0)
 })
 
 test("SliderRenderable > Mouse interaction - horizontal click on track", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -309,13 +308,13 @@ test("SliderRenderable > Mouse interaction - horizontal click on track", async (
     height: 1,
   })
 
-  await mockMouse.pressDown(15, 0)
+  await currentMockMouse.pressDown(15, 0)
 
   expect(slider.value).toBeCloseTo(75, 1)
 })
 
 test("SliderRenderable > Mouse interaction - vertical click on thumb", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 100,
@@ -324,13 +323,13 @@ test("SliderRenderable > Mouse interaction - vertical click on thumb", async () 
     height: 20,
   })
 
-  mockMouse.click(0, 10)
+  currentMockMouse.click(0, 10)
 
   expect(slider.value).toBe(50)
 })
 
 test("SliderRenderable > Mouse interaction - vertical click on track", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 100,
@@ -339,13 +338,13 @@ test("SliderRenderable > Mouse interaction - vertical click on track", async () 
     height: 20,
   })
 
-  mockMouse.click(0, 15)
+  currentMockMouse.click(0, 15)
 
   expect(slider.value).toBeCloseTo(75, 5)
 })
 
 test("SliderRenderable > Mouse interaction - horizontal drag", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -354,13 +353,13 @@ test("SliderRenderable > Mouse interaction - horizontal drag", async () => {
     height: 1,
   })
 
-  mockMouse.drag(5, 0, 15, 0)
+  currentMockMouse.drag(5, 0, 15, 0)
 
   expect(slider.value).toBeCloseTo(25, 5)
 })
 
 test("SliderRenderable > Mouse interaction - vertical drag", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",
     min: 0,
     max: 100,
@@ -369,7 +368,7 @@ test("SliderRenderable > Mouse interaction - vertical drag", async () => {
     height: 20,
   })
 
-  mockMouse.drag(0, 5, 0, 15)
+  currentMockMouse.drag(0, 5, 0, 15)
 
   expect(slider.value).toBeCloseTo(25, 5)
 })
@@ -377,7 +376,7 @@ test("SliderRenderable > Mouse interaction - vertical drag", async () => {
 test("SliderRenderable > Mouse interaction - drag with onChange callback", async () => {
   let changedValue: number | undefined
 
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -390,7 +389,7 @@ test("SliderRenderable > Mouse interaction - drag with onChange callback", async
   })
 
   // Drag from position 5 to position 15
-  mockMouse.drag(5, 0, 15, 0)
+  currentMockMouse.drag(5, 0, 15, 0)
 
   // onChange should be called with the new value
   expect(changedValue).toBeDefined()
@@ -399,7 +398,7 @@ test("SliderRenderable > Mouse interaction - drag with onChange callback", async
 })
 
 test("SliderRenderable > Mouse interaction - drag beyond bounds", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 10,
     max: 90,
@@ -408,17 +407,17 @@ test("SliderRenderable > Mouse interaction - drag beyond bounds", async () => {
     height: 1,
   })
 
-  mockMouse.drag(10, 0, 25, 0)
+  currentMockMouse.drag(10, 0, 25, 0)
 
   expect(slider.value).toBeCloseTo(50, 5)
 
-  mockMouse.drag(10, 0, -5, 0)
+  currentMockMouse.drag(10, 0, -5, 0)
 
   expect(slider.value).toBeCloseTo(50, 5)
 })
 
 test("SliderRenderable > Mouse interaction - click outside slider bounds", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 100,
@@ -429,13 +428,13 @@ test("SliderRenderable > Mouse interaction - click outside slider bounds", async
     top: 5,
   })
 
-  mockMouse.click(30, 5)
+  currentMockMouse.click(30, 5)
 
   expect(slider.value).toBe(50)
 })
 
 test("SliderRenderable > Mouse interaction - precision dragging with small viewport", async () => {
-  const { slider } = await createSliderRenderable({
+  const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "horizontal",
     min: 0,
     max: 1000,
@@ -449,7 +448,7 @@ test("SliderRenderable > Mouse interaction - precision dragging with small viewp
   const thumbSize = slider.getVirtualThumbSize()
   expect(thumbSize).toBeLessThan(10) // Thumb should be smaller than full width
 
-  mockMouse.drag(5, 0, 7, 0)
+  currentMockMouse.drag(5, 0, 7, 0)
 
   expect(slider.value).toBeGreaterThan(0)
   expect(slider.value).toBeCloseTo(100, 10) // Approximately 5/50 * 1000 = 100

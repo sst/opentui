@@ -236,19 +236,41 @@ export class TextNodeRenderable extends BaseRenderable {
     return this._children.find((child): child is TextNodeRenderable => typeof child !== "string" && child.id === id)
   }
 
-  public set fg(fg: RGBA) {
+  public get fg(): RGBA | undefined {
+    return this._fg
+  }
+
+  public set fg(fg: RGBA | string | undefined) {
+    if (!fg) {
+      this._fg = undefined
+      this.requestRender()
+      return
+    }
     this._fg = parseColor(fg)
     this.requestRender()
   }
 
-  public set bg(bg: RGBA) {
+  public set bg(bg: RGBA | string | undefined) {
+    if (!bg) {
+      this._bg = undefined
+      this.requestRender()
+      return
+    }
     this._bg = parseColor(bg)
     this.requestRender()
+  }
+
+  public get bg(): RGBA | undefined {
+    return this._bg
   }
 
   public set attributes(attributes: number) {
     this._attributes = attributes
     this.requestRender()
+  }
+
+  public get attributes(): number {
+    return this._attributes
   }
 }
 

@@ -244,12 +244,54 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _useConsole: boolean = true
   private mouseParser: MouseParser = new MouseParser()
-  private sigwinchHandler: (() => void) | null = null
+  private sigwinchHandler: () => void = (() => {
+    const width = this.stdout.columns || 80
+    const height = this.stdout.rows || 24
+    this.handleResize(width, height)
+  }).bind(this)
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
+
+  private handleError: (error: Error) => void = ((error: Error) => {
+    this.stop()
+    this.destroy()
+
+    new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(true)
+      }, 100)
+    }).then(() => {
+      // TODO: Fix friggin shut down sequence to not splurt into scrollback
+      this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
+
+      this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
+      this.realStdoutWrite.call(this.stdout, "Console cache:\n")
+      this.realStdoutWrite.call(this.stdout, this.console.getCachedLogs())
+      this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
+      const capturedOutput = capture.claimOutput()
+      if (capturedOutput) {
+        this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
+      }
+      this.realStdoutWrite.call(this.stdout, "\nError details:\n")
+      this.realStdoutWrite.call(this.stdout, error.message || "unknown error")
+      this.realStdoutWrite.call(this.stdout, "\n")
+      this.realStdoutWrite.call(this.stdout, error.stack || error.toString())
+      this.realStdoutWrite.call(this.stdout, "\n")
+
+      process.exit(1)
+    })
+  }).bind(this)
+
+  private exitHandler: () => void = (() => {
+    this.destroy()
+  }).bind(this)
+
+  private warningHandler: (warning: any) => void = ((warning: any) => {
+    console.warn(JSON.stringify(warning.message, null, 2))
+  }).bind(this)
 
   constructor(
     lib: RenderLib,
@@ -305,52 +347,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout.write = this.interceptStdoutWrite.bind(this)
 
     // Handle terminal resize
-    this.sigwinchHandler = () => {
-      const width = this.stdout.columns || 80
-      const height = this.stdout.rows || 24
-      this.handleResize(width, height)
-    }
     process.on("SIGWINCH", this.sigwinchHandler)
 
-    const handleError = (error: Error) => {
-      this.stop()
-      this.destroy()
+    process.on("warning", this.warningHandler)
 
-      new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(true)
-        }, 100)
-      }).then(() => {
-        // TODO: Fix friggin shut down sequence to not splurt into scrollback
-        this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
-
-        this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
-        this.realStdoutWrite.call(this.stdout, "Console cache:\n")
-        this.realStdoutWrite.call(this.stdout, this.console.getCachedLogs())
-        this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
-        const capturedOutput = capture.claimOutput()
-        if (capturedOutput) {
-          this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
-        }
-        this.realStdoutWrite.call(this.stdout, "\nError details:\n")
-        this.realStdoutWrite.call(this.stdout, error.message || "unknown error")
-        this.realStdoutWrite.call(this.stdout, "\n")
-        this.realStdoutWrite.call(this.stdout, error.stack || error.toString())
-        this.realStdoutWrite.call(this.stdout, "\n")
-
-        process.exit(1)
-      })
-    }
-
-    process.on("warning", (warning) => {
-      console.warn(JSON.stringify(warning.message, null, 2))
-    })
-
-    process.on("uncaughtException", handleError)
-    process.on("unhandledRejection", handleError)
-    process.on("exit", () => {
-      this.destroy()
-    })
+    process.on("uncaughtException", this.handleError)
+    process.on("unhandledRejection", this.handleError)
+    process.on("exit", this.exitHandler)
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -655,37 +658,39 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
   }
 
-  private setupInput(): void {
-    this.stdin.on("data", (data: Buffer) => {
-      const str = data.toString()
+  private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
+    const str = data.toString()
 
-      if (this.waitingForPixelResolution && /\x1b\[4;\d+;\d+t/.test(str)) {
-        const match = str.match(/\x1b\[4;(\d+);(\d+)t/)
-        if (match) {
-          const resolution: PixelResolution = {
-            width: parseInt(match[2]),
-            height: parseInt(match[1]),
-          }
-
-          this._resolution = resolution
-          this.waitingForPixelResolution = false
-          return
+    if (this.waitingForPixelResolution && /\x1b\[4;\d+;\d+t/.test(str)) {
+      const match = str.match(/\x1b\[4;(\d+);(\d+)t/)
+      if (match) {
+        const resolution: PixelResolution = {
+          width: parseInt(match[2]),
+          height: parseInt(match[1]),
         }
-      }
 
-      if (this.exitOnCtrlC && str === "\u0003") {
-        process.nextTick(() => {
-          process.exit()
-        })
+        this._resolution = resolution
+        this.waitingForPixelResolution = false
         return
       }
+    }
 
-      if (this._useMouse && this.handleMouseData(data)) {
-        return
-      }
+    if (this.exitOnCtrlC && str === "\u0003") {
+      process.nextTick(() => {
+        process.exit()
+      })
+      return
+    }
 
-      this.emit("key", data)
-    })
+    if (this._useMouse && this.handleMouseData(data)) {
+      return
+    }
+
+    this.emit("key", data)
+  }).bind(this)
+
+  private setupInput(): void {
+    this.stdin.on("data", this.stdinListener)
   }
 
   private handleMouseData(data: Buffer): boolean {
@@ -1107,6 +1112,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
+    this.stdin.removeListener("data", this.stdinListener)
+    process.removeListener("SIGWINCH", this.sigwinchHandler)
+    process.removeListener("uncaughtException", this.handleError)
+    process.removeListener("unhandledRejection", this.handleError)
+    process.removeListener("exit", this.exitHandler)
+    process.removeListener("warning", this.warningHandler)
+    capture.removeListener("write", this.captureCallback)
+
     this.stdin.setRawMode(false)
 
     if (this.isDestroyed) return
@@ -1114,11 +1127,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
-
-    if (this.sigwinchHandler) {
-      process.removeListener("SIGWINCH", this.sigwinchHandler)
-      this.sigwinchHandler = null
-    }
 
     this._console.deactivate()
     this.disableStdoutInterception()

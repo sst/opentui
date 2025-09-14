@@ -365,7 +365,6 @@ export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffe
 
 export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
     tb.deinit();
-    std.heap.page_allocator.destroy(tb);
 }
 
 export fn textBufferGetCharPtr(tb: *text_buffer.TextBuffer) [*]u32 {

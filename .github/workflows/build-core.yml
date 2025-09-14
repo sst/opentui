@@ -1,10 +1,12 @@
 name: Build
 
 on:
+  push:
+    paths:
+      - "packages/core/**"
   pull_request:
     paths:
       - "packages/core/**"
-    branches: [main]
 
 jobs:
   build:
@@ -26,3 +28,8 @@ jobs:
         run: |
           cd packages/core
           bun run build:lib --ci
+
+      - name: Run tests
+        run: |
+          cd packages/core
+          bun run test
