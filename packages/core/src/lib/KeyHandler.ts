@@ -10,6 +10,7 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   constructor() {
     super()
 
+    // TODO: KeyHandler should use the renderer's stdin
     if (process.stdin.setRawMode) {
       process.stdin.setRawMode(true)
     }

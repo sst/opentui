@@ -59,13 +59,6 @@ export function run(rendererInstance: CliRenderer): void {
   // Reset scroll position
   scrollY = 0
 
-  // Set up keyboard handling
-  if (!process.stdin.listenerCount("data")) {
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.setEncoding("utf8")
-  }
-
   process.stdin.on("data", handleKeyPress)
 
   // Large title with block font (multi-color)

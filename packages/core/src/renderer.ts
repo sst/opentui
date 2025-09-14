@@ -1120,7 +1120,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("warning", this.warningHandler)
     capture.removeListener("write", this.captureCallback)
 
-    this.stdin.setRawMode(false)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
 
     if (this.isDestroyed) return
     this.isDestroyed = true
