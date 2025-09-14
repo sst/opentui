@@ -18,9 +18,11 @@ export default function TextStyleScene() {
 
   return (
     <box>
-      <text> Simple text works! {counter()} times</text>
+      <text>Simple text works! {counter()} times</text>
       <text>
-        line break <br /> works! {counter()} times
+        line break
+        <br />
+        works! {counter()} times
       </text>
       <text style={{ bg: "red", fg: "black" }}>
         Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
