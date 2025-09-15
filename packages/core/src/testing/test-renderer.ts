@@ -8,11 +8,14 @@ export interface TestRenderer extends CliRenderer {}
 export type MockInput = ReturnType<typeof createMockKeys>
 export type MockMouse = ReturnType<typeof createMockMouse>
 
+const decoder = new TextDecoder()
+
 export async function createTestRenderer(options: TestRendererOptions): Promise<{
   renderer: TestRenderer
   mockInput: MockInput
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
+  captureFrame: () => string
 }> {
   const renderer = await setupTestRenderer({
     ...options,
@@ -31,6 +34,11 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
     renderOnce: async () => {
       //@ts-expect-error - this is a test renderer
       await renderer.loop()
+    },
+    captureFrame: () => {
+      const currentBuffer = renderer.currentRenderBuffer
+      const frameBytes = currentBuffer.getRealCharBytes(true)
+      return decoder.decode(frameBytes)
     },
   }
 }
