@@ -9,6 +9,7 @@ import { Selection } from "../lib/selection"
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
+let captureFrame: () => string
 
 // Helper function to setup TextRenderable with proper layout
 async function createTextRenderable(
@@ -20,20 +21,6 @@ async function createTextRenderable(
   await renderOnce()
 
   return { text: textRenderable, root: renderer.root }
-}
-
-// Helper function to create Selection objects for testing
-function createSelection(
-  textRenderable: TextRenderable,
-  anchor: { x: number; y: number },
-  focus: { x: number; y: number },
-  isActive: boolean = true,
-  isSelecting: boolean = false,
-): Selection {
-  const selection = new Selection(textRenderable, anchor, focus)
-  selection.isActive = isActive
-  selection.isSelecting = isSelecting
-  return selection
 }
 
 describe("TextRenderable Selection", () => {
@@ -68,7 +55,12 @@ describe("TextRenderable Selection", () => {
   })
 
   beforeEach(async () => {
-    ;({ renderer: currentRenderer, renderOnce, mockMouse: currentMouse } = await createTestRenderer({}))
+    ;({
+      renderer: currentRenderer,
+      renderOnce,
+      mockMouse: currentMouse,
+      captureCharFrame: captureFrame,
+    } = await createTestRenderer({}))
   })
 
   afterEach(() => {
@@ -1247,6 +1239,117 @@ describe("TextRenderable Selection", () => {
       await currentMouse.drag(text.x + 5, text.y, text.x + 11, text.y)
       await renderOnce()
       expect(text.getSelectedText()).toBe("Styled")
+    })
+  })
+
+  describe("Visual Snapshots", () => {
+    it("should render basic text correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello World",
+        left: 5,
+        top: 3,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render styled text correctly", async () => {
+      const styledText = new StyledText([
+        { __isChunk: true, text: "Red", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 1 },
+        { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
+        { __isChunk: true, text: "Green", fg: RGBA.fromValues(0, 1, 0, 1), attributes: 2 },
+        { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
+        { __isChunk: true, text: "Blue", fg: RGBA.fromValues(0, 0, 1, 1), attributes: 0 },
+      ])
+
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: styledText,
+        left: 2,
+        top: 1,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with selection correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "The quick brown fox jumps over the lazy dog",
+        selectable: true,
+        left: 0,
+        top: 2,
+        selectionBg: RGBA.fromValues(1, 1, 0, 1),
+        selectionFg: RGBA.fromValues(0, 0, 0, 1),
+      })
+
+      // Select "brown fox"
+      await currentMouse.drag(text.x + 10, text.y, text.x + 19, text.y)
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render multiline text correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1: Hello\nLine 2: World\nLine 3: Testing\nLine 4: Multiline",
+        left: 1,
+        top: 1,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with graphemes correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello 🌍 World 👋 Test 🚀 Emoji",
+        left: 3,
+        top: 5,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render TextNode composition correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "",
+        left: 0,
+        top: 0,
+      })
+
+      // Create nested TextNode structure
+      const redNode = new TextNodeRenderable({
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+      redNode.add("Red Text")
+
+      const greenNode = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 1, 0, 1),
+      })
+      greenNode.add(" Green Text")
+
+      const blueNode = new TextNodeRenderable({
+        fg: RGBA.fromValues(0, 0, 1, 1),
+      })
+      blueNode.add(" Blue Text")
+
+      text.add(redNode)
+      text.add(greenNode)
+      text.add(blueNode)
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render empty buffer correctly", async () => {
+      // Just render without adding any text
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
     })
   })
 })
