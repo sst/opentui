@@ -15,7 +15,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   mockInput: MockInput
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
-  captureFrame: () => string
+  captureCharFrame: () => string
 }> {
   const renderer = await setupTestRenderer({
     ...options,
@@ -35,7 +35,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
       //@ts-expect-error - this is a test renderer
       await renderer.loop()
     },
-    captureFrame: () => {
+    captureCharFrame: () => {
       const currentBuffer = renderer.currentRenderBuffer
       const frameBytes = currentBuffer.getRealCharBytes(true)
       return decoder.decode(frameBytes)
