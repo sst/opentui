@@ -1,13 +1,11 @@
-name: Build
+name: Build Core
 
 on:
   push:
-    paths:
-      - "packages/core/**"
 
 jobs:
   build:
-    name: Core - Build and Type Check
+    name: Core - Build and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
