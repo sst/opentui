@@ -596,12 +596,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const outputLine = this._terminalHeight - this._splitHeight
     const move = ANSI.moveCursor(outputLine, 1)
 
-    const backgroundColor = this.backgroundColor.toInts()
-    const newlines = " ".repeat(this.width) + "\n".repeat(space)
-    const clear =
-      ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
-      newlines +
-      ANSI.resetBackground
+    let clear = ""
+    if (space > 0) {
+      const backgroundColor = this.backgroundColor.toInts()
+      const newlines = " ".repeat(this.width) + "\n".repeat(space)
+      clear =
+        ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
+        newlines +
+        ANSI.resetBackground
+    }
 
     this.writeOut(flush + move + output + clear)
 
