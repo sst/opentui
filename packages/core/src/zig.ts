@@ -120,7 +120,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     bufferWriteResolvedChars: {
-      args: ["ptr", "ptr", "usize"],
+      args: ["ptr", "ptr", "usize", "bool"],
       returns: "u32",
     },
 
@@ -589,7 +589,7 @@ export interface RenderLib {
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
   bufferGetId: (buffer: Pointer) => string
   bufferGetRealCharSize: (buffer: Pointer) => number
-  bufferWriteResolvedChars: (buffer: Pointer, outputBuffer: Uint8Array) => number
+  bufferWriteResolvedChars: (buffer: Pointer, outputBuffer: Uint8Array, addLineBreaks: boolean) => number
   bufferDrawText: (
     buffer: Pointer,
     text: string,
@@ -922,8 +922,13 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.bufferGetRealCharSize(buffer)
   }
 
-  public bufferWriteResolvedChars(buffer: Pointer, outputBuffer: Uint8Array): number {
-    const bytesWritten = this.opentui.symbols.bufferWriteResolvedChars(buffer, outputBuffer, outputBuffer.length)
+  public bufferWriteResolvedChars(buffer: Pointer, outputBuffer: Uint8Array, addLineBreaks: boolean): number {
+    const bytesWritten = this.opentui.symbols.bufferWriteResolvedChars(
+      buffer,
+      outputBuffer,
+      outputBuffer.length,
+      addLineBreaks,
+    )
     return typeof bytesWritten === "bigint" ? Number(bytesWritten) : bytesWritten
   }
 

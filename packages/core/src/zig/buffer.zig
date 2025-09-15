@@ -441,7 +441,7 @@ pub const OptimizedBuffer = struct {
 
     /// Write all resolved character bytes to the given output buffer
     /// Returns the number of bytes written, or 0 if the output buffer is too small
-    pub fn writeResolvedChars(self: *const OptimizedBuffer, output_buffer: []u8) BufferError!u32 {
+    pub fn writeResolvedChars(self: *const OptimizedBuffer, output_buffer: []u8, addLineBreaks: bool) BufferError!u32 {
         var bytes_written: u32 = 0;
         const total_cells = self.width * self.height;
 
@@ -493,6 +493,14 @@ pub const OptimizedBuffer = struct {
                 }
                 @memcpy(output_buffer[bytes_written .. bytes_written + utf8_len], utf8_bytes[0..utf8_len]);
                 bytes_written += @intCast(utf8_len);
+            }
+
+            if (addLineBreaks and (i + 1) % self.width == 0) {
+                if (bytes_written + 1 > output_buffer.len) {
+                    return BufferError.BufferTooSmall;
+                }
+                output_buffer[bytes_written] = '\n';
+                bytes_written += 1;
             }
         }
 
