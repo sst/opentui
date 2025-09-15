@@ -2,6 +2,7 @@ import type { RGBA } from "./lib/RGBA"
 import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection"
 import type { Renderable } from "./Renderable"
+import type { KeyHandler } from "./lib"
 
 export const TextAttributes = {
   NONE: 0,
@@ -54,6 +55,7 @@ export interface RenderContext extends EventEmitter {
   registerLifecyclePass: (renderable: Renderable) => void
   unregisterLifecyclePass: (renderable: Renderable) => void
   getLifecyclePasses: () => Set<Renderable>
+  keyInput: KeyHandler
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

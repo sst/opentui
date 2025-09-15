@@ -17,6 +17,7 @@ import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
+import { KeyHandler } from "./lib/KeyHandler"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -35,6 +36,7 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
+  useKittyKeyboard?: boolean
 }
 
 export type PixelResolution = {
@@ -212,6 +214,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
+  private _keyHandler: KeyHandler
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -326,7 +329,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
-    this.memorySnapshotInterval = config.memorySnapshotInterval || 5000
+    this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement || true
@@ -357,6 +360,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
+
+    this._keyHandler = new KeyHandler(this.stdin, config.useKittyKeyboard ?? false)
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
@@ -460,6 +465,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get console(): TerminalConsole {
     return this._console
+  }
+
+  public get keyInput(): KeyHandler {
+    return this._keyHandler
   }
 
   public get terminalWidth(): number {
@@ -838,6 +847,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private takeMemorySnapshot(): void {
+    if (this.isDestroyed) return
+
     const memoryUsage = process.memoryUsage()
     this.lastMemorySnapshot = {
       heapUsed: memoryUsage.heapUsed,
@@ -1120,6 +1131,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("warning", this.warningHandler)
     capture.removeListener("write", this.captureCallback)
 
+    if (this.memorySnapshotTimer) {
+      clearInterval(this.memorySnapshotTimer)
+    }
+
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
@@ -1130,9 +1145,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
 
+    this._keyHandler.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
-    this.lib.destroyRenderer(this.rendererPtr, this._useAlternateScreen, this._splitHeight)
+    this.lib.destroyRenderer(this.rendererPtr)
   }
 
   private startRenderLoop(): void {
