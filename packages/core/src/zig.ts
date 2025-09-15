@@ -14,7 +14,7 @@ if (!existsSync(targetLibPath)) {
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
 
-  return dlopen(resolvedLibPath, {
+  const rawSymbols = dlopen(resolvedLibPath, {
     // Logging
     setLogCallback: {
       args: ["ptr"],
@@ -26,7 +26,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     destroyRenderer: {
-      args: ["ptr", "bool", "u32"],
+      args: ["ptr"],
       returns: "void",
     },
     setUseThread: {
@@ -365,6 +365,172 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
   })
+
+  if (process.env.DEBUG_FFI === "true" || process.env.TRACE_FFI === "true") {
+    return {
+      symbols: convertToDebugSymbols(rawSymbols.symbols),
+    }
+  }
+
+  return rawSymbols
+}
+
+function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
+  const debugSymbols: Record<string, any> = {}
+  const traceSymbols: Record<string, any> = {}
+  let hasTracing = false
+
+  Object.entries(symbols).forEach(([key, value]) => {
+    debugSymbols[key] = value
+  })
+
+  if (process.env.DEBUG_FFI === "true") {
+    Object.entries(symbols).forEach(([key, value]) => {
+      if (typeof value === "function") {
+        debugSymbols[key] = (...args: any[]) => {
+          console.log(`${key}(${args.map((arg) => String(arg)).join(", ")})`)
+          const result = value(...args)
+          console.log(`${key} returned:`, String(result))
+          return result
+        }
+      }
+    })
+  }
+
+  if (process.env.TRACE_FFI === "true") {
+    hasTracing = true
+    Object.entries(symbols).forEach(([key, value]) => {
+      if (typeof value === "function") {
+        traceSymbols[key] = []
+        const originalFunc = debugSymbols[key]
+        debugSymbols[key] = (...args: any[]) => {
+          const start = performance.now()
+          const result = originalFunc(...args)
+          const end = performance.now()
+          traceSymbols[key].push(end - start)
+          return result
+        }
+      }
+    })
+  }
+
+  if (hasTracing) {
+    process.on("exit", () => {
+      const allStats: Array<{
+        name: string
+        count: number
+        total: number
+        average: number
+        min: number
+        max: number
+        median: number
+        p90: number
+        p99: number
+      }> = []
+
+      for (const [key, timings] of Object.entries(traceSymbols)) {
+        if (!Array.isArray(timings) || timings.length === 0) {
+          continue
+        }
+
+        const sortedTimings = [...timings].sort((a, b) => a - b)
+        const count = sortedTimings.length
+
+        const total = sortedTimings.reduce((acc, t) => acc + t, 0)
+        const average = total / count
+        const min = sortedTimings[0]
+        const max = sortedTimings[count - 1]
+
+        const medianIndex = Math.floor(count / 2)
+        const p90Index = Math.floor(count * 0.9)
+        const p99Index = Math.floor(count * 0.99)
+
+        const median = sortedTimings[medianIndex]
+        const p90 = sortedTimings[Math.min(p90Index, count - 1)]
+        const p99 = sortedTimings[Math.min(p99Index, count - 1)]
+
+        allStats.push({
+          name: key,
+          count,
+          total,
+          average,
+          min,
+          max,
+          median,
+          p90,
+          p99,
+        })
+      }
+
+      allStats.sort((a, b) => b.total - a.total)
+
+      console.log("\n--- OpenTUI FFI Call Performance ---")
+      console.log("Sorted by total time spent (descending)")
+      console.log(
+        "-------------------------------------------------------------------------------------------------------------------------",
+      )
+
+      if (allStats.length === 0) {
+        console.log("No trace data collected or all symbols had zero calls.")
+      } else {
+        const nameHeader = "Symbol"
+        const callsHeader = "Calls"
+        const totalHeader = "Total (ms)"
+        const avgHeader = "Avg (ms)"
+        const minHeader = "Min (ms)"
+        const maxHeader = "Max (ms)"
+        const medHeader = "Med (ms)"
+        const p90Header = "P90 (ms)"
+        const p99Header = "P99 (ms)"
+
+        const nameWidth = Math.max(nameHeader.length, ...allStats.map((s) => s.name.length))
+        const countWidth = Math.max(callsHeader.length, ...allStats.map((s) => String(s.count).length))
+        const totalWidth = Math.max(totalHeader.length, ...allStats.map((s) => s.total.toFixed(2).length))
+        const avgWidth = Math.max(avgHeader.length, ...allStats.map((s) => s.average.toFixed(2).length))
+        const minWidth = Math.max(minHeader.length, ...allStats.map((s) => s.min.toFixed(2).length))
+        const maxWidth = Math.max(maxHeader.length, ...allStats.map((s) => s.max.toFixed(2).length))
+        const medianWidth = Math.max(medHeader.length, ...allStats.map((s) => s.median.toFixed(2).length))
+        const p90Width = Math.max(p90Header.length, ...allStats.map((s) => s.p90.toFixed(2).length))
+        const p99Width = Math.max(p99Header.length, ...allStats.map((s) => s.p99.toFixed(2).length))
+
+        // Header
+        console.log(
+          `${nameHeader.padEnd(nameWidth)} | ` +
+            `${callsHeader.padStart(countWidth)} | ` +
+            `${totalHeader.padStart(totalWidth)} | ` +
+            `${avgHeader.padStart(avgWidth)} | ` +
+            `${minHeader.padStart(minWidth)} | ` +
+            `${maxHeader.padStart(maxWidth)} | ` +
+            `${medHeader.padStart(medianWidth)} | ` +
+            `${p90Header.padStart(p90Width)} | ` +
+            `${p99Header.padStart(p99Width)}`,
+        )
+        // Separator
+        console.log(
+          `${"-".repeat(nameWidth)}-+-${"-".repeat(countWidth)}-+-${"-".repeat(totalWidth)}-+-${"-".repeat(avgWidth)}-+-${"-".repeat(minWidth)}-+-${"-".repeat(maxWidth)}-+-${"-".repeat(medianWidth)}-+-${"-".repeat(p90Width)}-+-${"-".repeat(p99Width)}`,
+        )
+
+        allStats.forEach((stat) => {
+          console.log(
+            `${stat.name.padEnd(nameWidth)} | ` +
+              `${String(stat.count).padStart(countWidth)} | ` +
+              `${stat.total.toFixed(2).padStart(totalWidth)} | ` +
+              `${stat.average.toFixed(2).padStart(avgWidth)} | ` +
+              `${stat.min.toFixed(2).padStart(minWidth)} | ` +
+              `${stat.max.toFixed(2).padStart(maxWidth)} | ` +
+              `${stat.median.toFixed(2).padStart(medianWidth)} | ` +
+              `${stat.p90.toFixed(2).padStart(p90Width)} | ` +
+              `${stat.p99.toFixed(2).padStart(p99Width)}`,
+          )
+        })
+      }
+      console.log(
+        "-------------------------------------------------------------------------------------------------------------------------",
+      )
+    })
+  }
+
+  return debugSymbols as T
 }
 
 // Log levels matching Zig's LogLevel enum
@@ -377,7 +543,7 @@ export enum LogLevel {
 
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
-  destroyRenderer: (renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) => void
+  destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
   setRenderOffset: (renderer: Pointer, offset: number) => void
@@ -646,8 +812,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.createRenderer(width, height, options.testing)
   }
 
-  public destroyRenderer(renderer: Pointer, useAlternateScreen: boolean, splitHeight: number) {
-    this.opentui.symbols.destroyRenderer(renderer, useAlternateScreen, splitHeight)
+  public destroyRenderer(renderer: Pointer): void {
+    this.opentui.symbols.destroyRenderer(renderer)
   }
 
   public setUseThread(renderer: Pointer, useThread: boolean) {

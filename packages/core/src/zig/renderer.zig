@@ -49,6 +49,8 @@ pub const CliRenderer = struct {
     renderOffset: u32,
     terminal: Terminal,
     testing: bool = false,
+    useAlternateScreen: bool = true,
+    terminalSetup: bool = false,
 
     renderStats: struct {
         lastFrameTime: f64,
@@ -225,7 +227,7 @@ pub const CliRenderer = struct {
         return self;
     }
 
-    pub fn destroy(self: *CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
+    pub fn destroy(self: *CliRenderer) void {
         self.renderMutex.lock();
         while (self.renderInProgress) {
             self.renderCondition.wait(&self.renderMutex);
@@ -240,7 +242,7 @@ pub const CliRenderer = struct {
             thread.join();
         }
 
-        self.performShutdownSequence(useAlternateScreen, splitHeight);
+        self.performShutdownSequence();
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
@@ -261,6 +263,9 @@ pub const CliRenderer = struct {
     }
 
     pub fn setupTerminal(self: *CliRenderer, useAlternateScreen: bool) void {
+        self.useAlternateScreen = useAlternateScreen;
+        self.terminalSetup = true;
+
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
@@ -281,20 +286,22 @@ pub const CliRenderer = struct {
         bufferedWriter.flush() catch {};
     }
 
-    fn performShutdownSequence(self: *CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
+    pub fn performShutdownSequence(self: *CliRenderer) void {
+        if (!self.terminalSetup) return;
+
         const direct = self.stdoutWriter.writer();
 
         self.disableMouse();
 
         self.terminal.resetState(direct.any()) catch {};
 
-        if (useAlternateScreen) {
+        if (self.useAlternateScreen) {
             self.stdoutWriter.flush() catch {};
-        } else if (splitHeight == 0) {
+        } else if (self.renderOffset == 0) {
             ansi.ANSI.clearRendererSpaceOutput(direct, self.height) catch {};
-        } else if (splitHeight > 0) {
+        } else if (self.renderOffset > 0) {
             // Currently still handled in typescript
-            // const consoleEndLine = self.height - splitHeight;
+            // const consoleEndLine = self.height - self.renderOffset;
             // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
         }
 

@@ -1,7 +1,6 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
-import { getKeyHandler, type KeyHandler } from "./lib/KeyHandler"
 import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import type { MouseEventType } from "./lib/parse.mouse"
@@ -271,7 +270,6 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
-  protected keyHandler: KeyHandler = getKeyHandler()
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
   private _live: boolean = false
   protected _liveCount: number = 0
@@ -408,7 +406,7 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
-    this.keyHandler.on("keypress", this.keypressHandler)
+    this.ctx.keyInput.on("keypress", this.keypressHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -419,7 +417,7 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
 
     if (this.keypressHandler) {
-      this.keyHandler.off("keypress", this.keypressHandler)
+      this.ctx.keyInput.off("keypress", this.keypressHandler)
       this.keypressHandler = null
     }
 

@@ -50,8 +50,8 @@ export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void
     rendererPtr.setUseThread(useThread);
 }
 
-export fn destroyRenderer(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
-    rendererPtr.destroy(useAlternateScreen, splitHeight);
+export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.destroy();
 }
 
 export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
