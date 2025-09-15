@@ -9,6 +9,7 @@ import { Selection } from "../lib/selection"
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
+let captureFrame: () => string
 
 // Helper function to setup TextRenderable with proper layout
 async function createTextRenderable(
@@ -20,20 +21,6 @@ async function createTextRenderable(
   await renderOnce()
 
   return { text: textRenderable, root: renderer.root }
-}
-
-// Helper function to create Selection objects for testing
-function createSelection(
-  textRenderable: TextRenderable,
-  anchor: { x: number; y: number },
-  focus: { x: number; y: number },
-  isActive: boolean = true,
-  isSelecting: boolean = false,
-): Selection {
-  const selection = new Selection(textRenderable, anchor, focus)
-  selection.isActive = isActive
-  selection.isSelecting = isSelecting
-  return selection
 }
 
 describe("TextRenderable Selection", () => {
@@ -68,7 +55,15 @@ describe("TextRenderable Selection", () => {
   })
 
   beforeEach(async () => {
-    ;({ renderer: currentRenderer, renderOnce, mockMouse: currentMouse } = await createTestRenderer({}))
+    ;({
+      renderer: currentRenderer,
+      renderOnce,
+      mockMouse: currentMouse,
+      captureCharFrame: captureFrame,
+    } = await createTestRenderer({
+      width: 20,
+      height: 5,
+    }))
   })
 
   afterEach(() => {
@@ -342,27 +337,27 @@ describe("TextRenderable Selection", () => {
 
     it("should handle multiple selection changes", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
-        content: "The quick brown fox jumps over the lazy dog",
+        content: "Hello World Test",
         selectable: true,
       })
 
-      // First selection: "quick"
-      await currentMouse.drag(text.x + 4, text.y, text.x + 9, text.y)
+      // First selection: "Hello"
+      await currentMouse.drag(text.x + 0, text.y, text.x + 5, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("quick")
-      expect(text.getSelection()).toEqual({ start: 4, end: 9 })
+      expect(text.getSelectedText()).toBe("Hello")
+      expect(text.getSelection()).toEqual({ start: 0, end: 5 })
 
-      // Second selection: "brown fox"
-      await currentMouse.drag(text.x + 10, text.y, text.x + 19, text.y)
+      // Second selection: "World"
+      await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("brown fox")
-      expect(text.getSelection()).toEqual({ start: 10, end: 19 })
+      expect(text.getSelectedText()).toBe("World")
+      expect(text.getSelection()).toEqual({ start: 6, end: 11 })
 
-      // Third selection: "lazy dog"
-      await currentMouse.drag(text.x + 35, text.y, text.x + 43, text.y)
+      // Third selection: "Test"
+      await currentMouse.drag(text.x + 12, text.y, text.x + 16, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("lazy dog")
-      expect(text.getSelection()).toEqual({ start: 35, end: 43 })
+      expect(text.getSelectedText()).toBe("Test")
+      expect(text.getSelection()).toEqual({ start: 12, end: 16 })
     })
   })
 
@@ -1247,6 +1242,99 @@ describe("TextRenderable Selection", () => {
       await currentMouse.drag(text.x + 5, text.y, text.x + 11, text.y)
       await renderOnce()
       expect(text.getSelectedText()).toBe("Styled")
+    })
+  })
+
+  describe("Text Content Snapshots", () => {
+    it("should render basic text content correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello World",
+        left: 5,
+        top: 3,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render multiline text content correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1: Hello\nLine 2: World\nLine 3: Testing\nLine 4: Multiline",
+        left: 1,
+        top: 1,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with graphemes/emojis correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello 🌍 World 👋\n Test 🚀 Emoji",
+        left: 0,
+        top: 2,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render TextNode text composition correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "",
+        left: 0,
+        top: 0,
+      })
+
+      const node1 = new TextNodeRenderable({})
+      node1.add("First")
+
+      const node2 = new TextNodeRenderable({})
+      node2.add(" Second")
+
+      const node3 = new TextNodeRenderable({})
+      node3.add(" Third")
+
+      text.add(node1)
+      text.add(node2)
+      text.add(node3)
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text positioning correctly", async () => {
+      const { text: text1 } = await createTextRenderable(currentRenderer, {
+        content: "Top",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      })
+
+      const { text: text2 } = await createTextRenderable(currentRenderer, {
+        content: "Mid",
+        position: "absolute",
+        left: 8,
+        top: 2,
+      })
+
+      const { text: text3 } = await createTextRenderable(currentRenderer, {
+        content: "Bot",
+        position: "absolute",
+        left: 16,
+        top: 4,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render empty buffer correctly", async () => {
+      currentRenderer.currentRenderBuffer.clear()
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
     })
   })
 })

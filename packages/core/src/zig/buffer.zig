@@ -429,6 +429,84 @@ pub const OptimizedBuffer = struct {
         return self.id;
     }
 
+    /// Calculate the real byte size of the character buffer including grapheme pool data
+    pub fn getRealCharSize(self: *const OptimizedBuffer) u32 {
+        const total_chars = self.width * self.height;
+        const grapheme_count = self.grapheme_tracker.getGraphemeCount();
+        const total_grapheme_bytes = self.grapheme_tracker.getTotalGraphemeBytes();
+
+        const regular_char_bytes = (total_chars - grapheme_count) * @sizeOf(u32);
+        return regular_char_bytes + total_grapheme_bytes;
+    }
+
+    /// Write all resolved character bytes to the given output buffer
+    /// Returns the number of bytes written, or 0 if the output buffer is too small
+    pub fn writeResolvedChars(self: *const OptimizedBuffer, output_buffer: []u8, addLineBreaks: bool) BufferError!u32 {
+        var bytes_written: u32 = 0;
+        const total_cells = self.width * self.height;
+
+        var i: u32 = 0;
+        while (i < total_cells) : (i += 1) {
+            const char_code = self.buffer.char[i];
+
+            if (gp.isGraphemeChar(char_code)) {
+                const gid = gp.graphemeIdFromChar(char_code);
+                if (self.pool.get(gid)) |grapheme_bytes| {
+                    if (bytes_written + grapheme_bytes.len > output_buffer.len) {
+                        return BufferError.BufferTooSmall;
+                    }
+                    @memcpy(output_buffer[bytes_written .. bytes_written + grapheme_bytes.len], grapheme_bytes);
+                    bytes_written += @intCast(grapheme_bytes.len);
+                } else |_| {
+                    if (bytes_written + 1 > output_buffer.len) {
+                        return BufferError.BufferTooSmall;
+                    }
+                    output_buffer[bytes_written] = ' ';
+                    bytes_written += 1;
+                }
+            } else if (gp.isContinuationChar(char_code)) {
+                continue;
+            } else {
+                const codepoint = char_code;
+
+                if (codepoint > 0x10FFFF) {
+                    if (bytes_written + 1 > output_buffer.len) {
+                        return BufferError.BufferTooSmall;
+                    }
+                    output_buffer[bytes_written] = ' ';
+                    bytes_written += 1;
+                    continue;
+                }
+
+                var utf8_bytes: [4]u8 = undefined;
+                const utf8_len = std.unicode.utf8Encode(@intCast(codepoint), &utf8_bytes) catch {
+                    if (bytes_written + 1 > output_buffer.len) {
+                        return BufferError.BufferTooSmall;
+                    }
+                    output_buffer[bytes_written] = ' ';
+                    bytes_written += 1;
+                    continue;
+                };
+
+                if (bytes_written + utf8_len > output_buffer.len) {
+                    return BufferError.BufferTooSmall;
+                }
+                @memcpy(output_buffer[bytes_written .. bytes_written + utf8_len], utf8_bytes[0..utf8_len]);
+                bytes_written += @intCast(utf8_len);
+            }
+
+            if (addLineBreaks and (i + 1) % self.width == 0) {
+                if (bytes_written + 1 > output_buffer.len) {
+                    return BufferError.BufferTooSmall;
+                }
+                output_buffer[bytes_written] = '\n';
+                bytes_written += 1;
+            }
+        }
+
+        return bytes_written;
+    }
+
     pub fn blendCells(overlayCell: Cell, destCell: Cell) Cell {
         const hasBgAlpha = isRGBAWithAlpha(overlayCell.bg);
         const hasFgAlpha = isRGBAWithAlpha(overlayCell.fg);

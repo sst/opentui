@@ -212,6 +212,15 @@ export fn bufferGetId(bufferPtr: *buffer.OptimizedBuffer, outPtr: [*]u8, maxLen:
     return copyLen;
 }
 
+export fn bufferGetRealCharSize(bufferPtr: *buffer.OptimizedBuffer) u32 {
+    return bufferPtr.getRealCharSize();
+}
+
+export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr: [*]u8, outputLen: usize, addLineBreaks: bool) u32 {
+    const output_slice = outputPtr[0..outputLen];
+    return bufferPtr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
+}
+
 export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
     const rgbaFg = f32PtrToRGBA(fg);
     const rgbaBg = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;

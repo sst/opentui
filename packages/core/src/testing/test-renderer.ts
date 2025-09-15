@@ -3,16 +3,22 @@ import { resolveRenderLib } from "../zig"
 import { createMockKeys } from "./mock-keys"
 import { createMockMouse } from "./mock-mouse"
 
-export interface TestRendererOptions extends CliRendererConfig {}
+export interface TestRendererOptions extends CliRendererConfig {
+  width?: number
+  height?: number
+}
 export interface TestRenderer extends CliRenderer {}
 export type MockInput = ReturnType<typeof createMockKeys>
 export type MockMouse = ReturnType<typeof createMockMouse>
+
+const decoder = new TextDecoder()
 
 export async function createTestRenderer(options: TestRendererOptions): Promise<{
   renderer: TestRenderer
   mockInput: MockInput
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
+  captureCharFrame: () => string
 }> {
   const renderer = await setupTestRenderer({
     ...options,
@@ -32,15 +38,20 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
       //@ts-expect-error - this is a test renderer
       await renderer.loop()
     },
+    captureCharFrame: () => {
+      const currentBuffer = renderer.currentRenderBuffer
+      const frameBytes = currentBuffer.getRealCharBytes(true)
+      return decoder.decode(frameBytes)
+    },
   }
 }
 
-async function setupTestRenderer(config: CliRendererConfig) {
+async function setupTestRenderer(config: TestRendererOptions) {
   const stdin = config.stdin || process.stdin
   const stdout = config.stdout || process.stdout
 
-  const width = stdout.columns || 80
-  const height = stdout.rows || 24
+  const width = config.width || stdout.columns || 80
+  const height = config.height || stdout.rows || 24
   const renderHeight =
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 

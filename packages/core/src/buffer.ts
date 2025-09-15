@@ -136,6 +136,14 @@ export class OptimizedBuffer {
     return this.lib.bufferGetId(this.bufferPtr)
   }
 
+  public getRealCharBytes(addLineBreaks: boolean = false): Uint8Array {
+    this.guard()
+    const realSize = this.lib.bufferGetRealCharSize(this.bufferPtr)
+    const outputBuffer = new Uint8Array(realSize)
+    const bytesWritten = this.lib.bufferWriteResolvedChars(this.bufferPtr, outputBuffer, addLineBreaks)
+    return outputBuffer.slice(0, bytesWritten)
+  }
+
   public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
     this.guard()
     this.lib.bufferClear(this.bufferPtr, bg)
