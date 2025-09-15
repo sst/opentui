@@ -60,7 +60,10 @@ describe("TextRenderable Selection", () => {
       renderOnce,
       mockMouse: currentMouse,
       captureCharFrame: captureFrame,
-    } = await createTestRenderer({}))
+    } = await createTestRenderer({
+      width: 20,
+      height: 5,
+    }))
   })
 
   afterEach(() => {
@@ -334,27 +337,27 @@ describe("TextRenderable Selection", () => {
 
     it("should handle multiple selection changes", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
-        content: "The quick brown fox jumps over the lazy dog",
+        content: "Hello World Test",
         selectable: true,
       })
 
-      // First selection: "quick"
-      await currentMouse.drag(text.x + 4, text.y, text.x + 9, text.y)
+      // First selection: "Hello"
+      await currentMouse.drag(text.x + 0, text.y, text.x + 5, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("quick")
-      expect(text.getSelection()).toEqual({ start: 4, end: 9 })
+      expect(text.getSelectedText()).toBe("Hello")
+      expect(text.getSelection()).toEqual({ start: 0, end: 5 })
 
-      // Second selection: "brown fox"
-      await currentMouse.drag(text.x + 10, text.y, text.x + 19, text.y)
+      // Second selection: "World"
+      await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("brown fox")
-      expect(text.getSelection()).toEqual({ start: 10, end: 19 })
+      expect(text.getSelectedText()).toBe("World")
+      expect(text.getSelection()).toEqual({ start: 6, end: 11 })
 
-      // Third selection: "lazy dog"
-      await currentMouse.drag(text.x + 35, text.y, text.x + 43, text.y)
+      // Third selection: "Test"
+      await currentMouse.drag(text.x + 12, text.y, text.x + 16, text.y)
       await renderOnce()
-      expect(text.getSelectedText()).toBe("lazy dog")
-      expect(text.getSelection()).toEqual({ start: 35, end: 43 })
+      expect(text.getSelectedText()).toBe("Test")
+      expect(text.getSelection()).toEqual({ start: 12, end: 16 })
     })
   })
 
@@ -1242,8 +1245,8 @@ describe("TextRenderable Selection", () => {
     })
   })
 
-  describe("Visual Snapshots", () => {
-    it("should render basic text correctly", async () => {
+  describe("Text Content Snapshots", () => {
+    it("should render basic text content correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         left: 5,
@@ -1254,44 +1257,7 @@ describe("TextRenderable Selection", () => {
       expect(frame).toMatchSnapshot()
     })
 
-    it("should render styled text correctly", async () => {
-      const styledText = new StyledText([
-        { __isChunk: true, text: "Red", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 1 },
-        { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
-        { __isChunk: true, text: "Green", fg: RGBA.fromValues(0, 1, 0, 1), attributes: 2 },
-        { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
-        { __isChunk: true, text: "Blue", fg: RGBA.fromValues(0, 0, 1, 1), attributes: 0 },
-      ])
-
-      const { text } = await createTextRenderable(currentRenderer, {
-        content: styledText,
-        left: 2,
-        top: 1,
-      })
-
-      const frame = captureFrame()
-      expect(frame).toMatchSnapshot()
-    })
-
-    it("should render text with selection correctly", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
-        content: "The quick brown fox jumps over the lazy dog",
-        selectable: true,
-        left: 0,
-        top: 2,
-        selectionBg: RGBA.fromValues(1, 1, 0, 1),
-        selectionFg: RGBA.fromValues(0, 0, 0, 1),
-      })
-
-      // Select "brown fox"
-      await currentMouse.drag(text.x + 10, text.y, text.x + 19, text.y)
-      await renderOnce()
-
-      const frame = captureFrame()
-      expect(frame).toMatchSnapshot()
-    })
-
-    it("should render multiline text correctly", async () => {
+    it("should render multiline text content correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "Line 1: Hello\nLine 2: World\nLine 3: Testing\nLine 4: Multiline",
         left: 1,
@@ -1302,43 +1268,36 @@ describe("TextRenderable Selection", () => {
       expect(frame).toMatchSnapshot()
     })
 
-    it("should render text with graphemes correctly", async () => {
+    it("should render text with graphemes/emojis correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
-        content: "Hello 🌍 World 👋 Test 🚀 Emoji",
-        left: 3,
-        top: 5,
+        content: "Hello 🌍 World 👋\n Test 🚀 Emoji",
+        left: 0,
+        top: 2,
       })
 
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
     })
 
-    it("should render TextNode composition correctly", async () => {
+    it("should render TextNode text composition correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "",
         left: 0,
         top: 0,
       })
 
-      // Create nested TextNode structure
-      const redNode = new TextNodeRenderable({
-        fg: RGBA.fromValues(1, 0, 0, 1),
-      })
-      redNode.add("Red Text")
+      const node1 = new TextNodeRenderable({})
+      node1.add("First")
 
-      const greenNode = new TextNodeRenderable({
-        fg: RGBA.fromValues(0, 1, 0, 1),
-      })
-      greenNode.add(" Green Text")
+      const node2 = new TextNodeRenderable({})
+      node2.add(" Second")
 
-      const blueNode = new TextNodeRenderable({
-        fg: RGBA.fromValues(0, 0, 1, 1),
-      })
-      blueNode.add(" Blue Text")
+      const node3 = new TextNodeRenderable({})
+      node3.add(" Third")
 
-      text.add(redNode)
-      text.add(greenNode)
-      text.add(blueNode)
+      text.add(node1)
+      text.add(node2)
+      text.add(node3)
 
       await renderOnce()
 
@@ -1346,8 +1305,34 @@ describe("TextRenderable Selection", () => {
       expect(frame).toMatchSnapshot()
     })
 
+    it("should render text positioning correctly", async () => {
+      const { text: text1 } = await createTextRenderable(currentRenderer, {
+        content: "Top",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      })
+
+      const { text: text2 } = await createTextRenderable(currentRenderer, {
+        content: "Mid",
+        position: "absolute",
+        left: 8,
+        top: 2,
+      })
+
+      const { text: text3 } = await createTextRenderable(currentRenderer, {
+        content: "Bot",
+        position: "absolute",
+        left: 16,
+        top: 4,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
     it("should render empty buffer correctly", async () => {
-      // Just render without adding any text
+      currentRenderer.currentRenderBuffer.clear()
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
     })

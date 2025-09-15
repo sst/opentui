@@ -1,0 +1,55 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`TextRenderable Selection Text Content Snapshots should render basic text content correctly 1`] = `
+"                    
+                    
+                    
+     Hello World    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render multiline text content correctly 1`] = `
+"                    
+ Line 1: Hello      
+ Line 2: World      
+ Line 3: Testing    
+ Line 4: Multiline  
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with graphemes/emojis correctly 1`] = `
+"                    
+                    
+Hello 🌍 World 👋   
+ Test 🚀 Emoji      
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render TextNode text composition correctly 1`] = `
+"First Second Third  
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text positioning correctly 1`] = `
+"Top                 
+                    
+        Mid         
+                    
+                Bot 
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render empty buffer correctly 1`] = `
+"                    
+                    
+                    
+                    
+                    
+"
+`;
