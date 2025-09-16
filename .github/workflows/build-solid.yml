@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Solid - Build and Type Check
+    name: Solid - Build and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -32,3 +32,8 @@ jobs:
         run: |
           cd packages/solid
           bun run build --ci
+
+      - name: Run tests
+        run: |
+          cd packages/solid
+          bun run test
