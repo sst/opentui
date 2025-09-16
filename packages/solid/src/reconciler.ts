@@ -2,6 +2,7 @@
 import {
   BaseRenderable,
   createTextAttributes,
+  createTrackedNode,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
@@ -14,6 +15,9 @@ import {
   TabSelectRenderableEvents,
   TextNodeRenderable,
   TextRenderable,
+  TrackedNode,
+  type RenderableOptions,
+  type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
@@ -21,12 +25,29 @@ import { createRenderer } from "solid-js/universal"
 import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
+import type { JSX } from "../jsx-runtime.d.ts"
+import { useRenderer } from "./elements/hooks"
+import { getOwner } from "solid-js"
+import { createEffect } from "solid-js"
+import { runWithOwner } from "solid-js"
+import { createMemo } from "solid-js"
+import { onCleanup } from "solid-js"
+import type { ValidComponent } from "solid-js"
+import type { ComponentProps } from "solid-js"
+import { splitProps } from "solid-js"
+import { untrack } from "solid-js"
 
 class TextNode extends TextNodeRenderable {
   public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
     const node = new TextNode(options)
     node.add(text)
     return node
+  }
+}
+
+class AnchorNode extends Renderable {
+  constructor(context: RenderContext, opts: RenderableOptions) {
+    super(context, opts)
   }
 }
 
@@ -68,14 +89,22 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
       // TODO this can happen naturally with match and show, probably should handle better
       log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
+      // TODO: Workaround for now, final implementation to be decided
+      let anchorIndex = undefined
+      if (anchor) {
+        anchorIndex = getNodeChildren(parent).findIndex((el) => el.id === anchor.id)
+      }
+      const renderer = useRenderer()
+      parent.add(createAnchorNode(renderer), anchorIndex)
       return
     }
   }
 
   // Renderable nodes
   if (!(parent instanceof BaseRenderable)) {
-    log("[INSERT]", "Tried to mount a non base renderable")
-    return
+    console.error("[INSERT]", "Tried to mount a non base renderable")
+    // Can't be a noop, have to panic
+    throw new Error("Tried to mount a non base renderable")
   }
 
   if (!anchor) {
@@ -116,6 +145,10 @@ function _createTextNode(value: string | number): TextNode {
   }
 
   return TextNode.fromString(value, { id })
+}
+
+function createAnchorNode(ctx: RenderContext): AnchorNode {
+  return new AnchorNode(ctx, { id: getNextId("anchor-node") })
 }
 
 function _getParentNode(childNode: DomNode): DomNode | undefined {
@@ -332,3 +365,89 @@ export const {
     return nextSibling
   },
 })
+
+export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; children: JSX.Element }) {
+  const renderer = useRenderer()
+
+  const marker = createAnchorNode(renderer),
+    mount = () => props.mount || renderer.root,
+    owner = getOwner()
+  let content: undefined | (() => JSX.Element)
+
+  createEffect(
+    () => {
+      // basically we backdoor into a sort of renderEffect here
+      content || (content = runWithOwner(owner, () => createMemo(() => props.children)))
+      const el = mount()
+      const container = createElement("box"),
+        renderRoot = container
+
+      Object.defineProperty(container, "_$host", {
+        get() {
+          return marker.parent
+        },
+        configurable: true,
+      })
+      insert(renderRoot, content)
+      el.add(container)
+      props.ref && (props as any).ref(container)
+      onCleanup(() => el.remove(container.id))
+    },
+    undefined,
+    { render: true },
+  )
+  return marker
+}
+
+export type DynamicProps<T extends ValidComponent, P = ComponentProps<T>> = {
+  [K in keyof P]: P[K]
+} & {
+  component: T | undefined
+}
+
+/**
+ * Renders an arbitrary component or element with the given props
+ *
+ * This is a lower level version of the `Dynamic` component, useful for
+ * performance optimizations in libraries. Do not use this unless you know
+ * what you are doing.
+ * ```typescript
+ * const element = () => multiline() ? 'textarea' : 'input';
+ * createDynamic(element, { value: value() });
+ * ```
+ * @description https://docs.solidjs.com/reference/components/dynamic
+ */
+export function createDynamic<T extends ValidComponent>(
+  component: () => T | undefined,
+  props: ComponentProps<T>,
+): JSX.Element {
+  const cached = createMemo<Function | string | undefined>(component)
+  return createMemo(() => {
+    const component = cached()
+    switch (typeof component) {
+      case "function":
+        // if (isDev) Object.assign(component, { [$DEVCOMP]: true })
+        return untrack(() => component(props))
+
+      case "string":
+        const el = createElement(component)
+        spread(el, props)
+        return el
+
+      default:
+        break
+    }
+  }) as unknown as JSX.Element
+}
+
+/**
+ * Renders an arbitrary custom or native component and passes the other props
+ * ```typescript
+ * <Dynamic component={multiline() ? 'textarea' : 'input'} value={value()} />
+ * ```
+ * @description https://docs.solidjs.com/reference/components/dynamic
+ */
+export function Dynamic<T extends ValidComponent>(props: DynamicProps<T>): JSX.Element {
+  const [, others] = splitProps(props, ["component"])
+  return createDynamic(() => props.component, others as ComponentProps<T>)
+}
