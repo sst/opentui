@@ -1,11 +1,7 @@
 name: Build Solid
 
 on:
-  pull_request:
-    paths:
-      - "packages/core/**"
-      - "packages/solid/**"
-    branches: [main]
+  push:
 
 jobs:
   build:
