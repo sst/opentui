@@ -256,6 +256,41 @@ describe("SolidJS Renderer Integration Tests", () => {
       const frame = testSetup.captureCharFrame()
       expect(frame).toMatchSnapshot()
     })
+
+    // Not working yet, needs https://github.com/sst/opentui/pull/164
+    it.skip("should render scrollbox with sticky scroll and spacer", async () => {
+      testSetup = await testRender(
+        () => (
+          <box maxHeight={"100%"} maxWidth={"100%"}>
+            <scrollbox
+              scrollbarOptions={{ visible: false }}
+              stickyScroll={true}
+              stickyStart="bottom"
+              paddingTop={1}
+              paddingBottom={1}
+              title="scroll area"
+              rootOptions={{
+                flexGrow: 0,
+              }}
+              border
+            >
+              <box border height={10} title="hi" />
+            </scrollbox>
+            <box border height={10} title="spacer">
+              <text>spacer</text>
+            </box>
+          </box>
+        ),
+        {
+          width: 30,
+          height: 25,
+        },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
   })
 
   describe("Empty and Edge Cases", () => {
