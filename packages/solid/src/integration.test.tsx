@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
+import { createSignal, Show } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -150,9 +151,9 @@ describe("SolidJS Renderer Integration Tests", () => {
 
   describe("Reactive Updates", () => {
     it("should handle reactive state changes", async () => {
-      let counter = 0
+      const [counter, setCounter] = createSignal(0)
 
-      testSetup = await testRender(() => <text>Counter: {counter}</text>, {
+      testSetup = await testRender(() => <text>Counter: {counter()}</text>, {
         width: 15,
         height: 3,
       })
@@ -160,24 +161,25 @@ describe("SolidJS Renderer Integration Tests", () => {
       await testSetup.renderOnce()
       const initialFrame = testSetup.captureCharFrame()
 
-      // Simulate reactive update by changing the counter
-      counter = 5
+      setCounter(5)
       await testSetup.renderOnce()
       const updatedFrame = testSetup.captureCharFrame()
 
       expect(initialFrame).toMatchSnapshot()
       expect(updatedFrame).toMatchSnapshot()
-      expect(updatedFrame).not.toBe(initialFrame) // Should be different
+      expect(updatedFrame).not.toBe(initialFrame)
     })
 
     it("should handle conditional rendering", async () => {
-      let showText = true
+      const [showText, setShowText] = createSignal(true)
 
       testSetup = await testRender(
         () => (
           <text>
             Always visible
-            {showText ? <span> - Conditional text</span> : null}
+            <Show when={showText()} fallback="">
+              {" - Conditional text"}
+            </Show>
           </text>
         ),
         {
@@ -189,14 +191,13 @@ describe("SolidJS Renderer Integration Tests", () => {
       await testSetup.renderOnce()
       const visibleFrame = testSetup.captureCharFrame()
 
-      // Hide the conditional text
-      showText = false
+      setShowText(false)
       await testSetup.renderOnce()
       const hiddenFrame = testSetup.captureCharFrame()
 
       expect(visibleFrame).toMatchSnapshot()
       expect(hiddenFrame).toMatchSnapshot()
-      expect(hiddenFrame).not.toBe(visibleFrame) // Should be different
+      expect(hiddenFrame).not.toBe(visibleFrame)
     })
   })
 

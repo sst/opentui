@@ -73,7 +73,7 @@ exports[`SolidJS Renderer Integration Tests Reactive Updates should handle react
 `;
 
 exports[`SolidJS Renderer Integration Tests Reactive Updates should handle reactive state changes 2`] = `
-"Counter: 0     
+"Counter: 5     
                
                
 "
@@ -87,7 +87,7 @@ exports[`SolidJS Renderer Integration Tests Reactive Updates should handle condi
 `;
 
 exports[`SolidJS Renderer Integration Tests Reactive Updates should handle conditional rendering 2`] = `
-"Always visible - Conditional t
+"Always visible                
                               
                               
 "
