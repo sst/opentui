@@ -257,8 +257,7 @@ describe("SolidJS Renderer Integration Tests", () => {
       expect(frame).toMatchSnapshot()
     })
 
-    // Not working yet, needs https://github.com/sst/opentui/pull/164
-    it.skip("should render scrollbox with sticky scroll and spacer", async () => {
+    it("should render scrollbox with sticky scroll and spacer", async () => {
       testSetup = await testRender(
         () => (
           <box maxHeight={"100%"} maxWidth={"100%"}>

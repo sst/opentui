@@ -156,3 +156,32 @@ exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle v
      
 "
 `;
+
+exports[`SolidJS Renderer Integration Tests Complex Layouts should render scrollbox with sticky scroll and spacer 1`] = `
+"┌─scroll area────────────────┐
+│                            │
+│┌─hi───────────────────────┐│
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+│└──────────────────────────┘│
+│                            │
+│                            │
+└────────────────────────────┘
+┌─spacer─────────────────────┐
+│spacer                      │
+│                            │
+│                            │
+│                            │
+│                            │
+│                            │
+│                            │
+│                            │
+└────────────────────────────┘
+"
+`;
