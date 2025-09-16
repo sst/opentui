@@ -1,21 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal, Show } from "solid-js"
-
-// Simple spy utility for testing
-function createSpy() {
-  const calls: any[][] = []
-  const spy = (...args: any[]) => {
-    calls.push(args)
-  }
-  spy.calls = calls
-  spy.callCount = () => calls.length
-  spy.calledWith = (...expected: any[]) => {
-    return calls.some((call) => JSON.stringify(call) === JSON.stringify(expected))
-  }
-  spy.reset = () => (calls.length = 0)
-  return spy
-}
+import { createSpy } from "./utils/spy"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
