@@ -16,11 +16,29 @@ import {
   TextRenderable,
   type TextNodeOptions,
 } from "@opentui/core"
-import { useContext } from "solid-js"
+import { untrack, useContext, mergeProps as _mergeProps, createComponent as _createComponent } from "solid-js"
 import { createRenderer } from "solid-js/universal"
 import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
+import S from "s-js"
+
+export const {
+  memo: _memo,
+  effect: _effect,
+  render: _render,
+} = createRenderer<DomNode>({
+  createElement: (() => {}) as any,
+  createTextNode: (() => {}) as any,
+  insertNode: (() => {}) as any,
+  setProperty: (() => {}) as any,
+  replaceText: (() => {}) as any,
+  isTextNode: (() => {}) as any,
+  removeNode: (() => {}) as any,
+  getParentNode: (() => {}) as any,
+  getFirstChild: (() => {}) as any,
+  getNextSibling: (() => {}) as any,
+})
 
 class TextNode extends TextNodeRenderable {
   public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
@@ -68,18 +86,25 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
       // TODO this can happen naturally with match and show, probably should handle better
       log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
-      return
+      throw new Error(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
     }
   }
 
   // Renderable nodes
   if (!(parent instanceof BaseRenderable)) {
     log("[INSERT]", "Tried to mount a non base renderable")
-    return
+    throw new Error(`Tried to mount a non base renderable ${JSON.stringify(parent)} :: ${JSON.stringify(node)}`)
   }
 
   if (!anchor) {
     parent.add(node)
+    return
+  }
+
+  // Special handling for TextNodeRenderables which use insertBefore differently
+  if (isTextNodeRenderable(node) && isTextNodeRenderable(parent)) {
+    // TextNodeRenderable.insertBefore expects the actual anchor node
+    ;(parent as any).insertBefore(node, anchor)
     return
   }
 
@@ -96,11 +121,23 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
 
-  parent.remove(node.id)
+  // Handle TextNodeRenderable removal differently
+  if (isTextNodeRenderable(node) && isTextNodeRenderable(parent)) {
+    // TextNodeRenderable.remove expects the actual child object
+    ;(parent as any).remove(node)
+  } else {
+    // Regular renderables use ID-based removal
+    parent.remove(node.id)
+  }
 
   process.nextTick(() => {
-    if (node instanceof Renderable && !node.parent) {
-      node.destroyRecursively()
+    if ((node instanceof Renderable || isTextNodeRenderable(node)) && !node.parent) {
+      if (node instanceof Renderable) {
+        node.destroyRecursively()
+      } else {
+        // TextNodeRenderables need cleanup too
+        node.destroy?.()
+      }
       return
     }
   })
@@ -128,8 +165,146 @@ function _getParentNode(childNode: DomNode): DomNode | undefined {
   return parent
 }
 
+function _insert(
+  parent: BaseRenderable,
+  accessor: BaseRenderable,
+  marker: BaseRenderable | undefined,
+  initial: any | undefined,
+) {
+  console.log("insert", parent.id, accessor.id, marker?.id, initial)
+}
+
+function _createElement(tagName: string): DomNode {
+  log("Creating element:", tagName)
+  const id = getNextId(tagName)
+  const solidRenderer = useContext(RendererContext)
+  if (!solidRenderer) {
+    throw new Error("No renderer found")
+  }
+  const elements = getComponentCatalogue()
+
+  if (!elements[tagName]) {
+    throw new Error(`[Reconciler] Unknown component type: ${tagName}`)
+  }
+
+  const element = new elements[tagName](solidRenderer, { id })
+  log("Element created with id:", id)
+  return element
+}
+
+function _setProperty(node: DomNode, name: string, value: any, prev: any): void {
+  if (name.startsWith("on:")) {
+    const eventName = name.slice(3)
+    if (value) {
+      node.on(eventName, value)
+    }
+    if (prev) {
+      node.off(eventName, prev)
+    }
+
+    return
+  }
+
+  if (isTextNodeRenderable(node)) {
+    if (name !== "style") {
+      return
+    }
+    node.attributes |= createTextAttributes(value)
+    node.fg = value.fg ? parseColor(value.fg) : node.fg
+    node.bg = value.bg ? parseColor(value.bg) : node.bg
+    return
+  }
+
+  switch (name) {
+    case "focused":
+      if (!(node instanceof Renderable)) return
+      if (value) {
+        node.focus()
+      } else {
+        node.blur()
+      }
+      break
+    case "onChange":
+      let event: string | undefined = undefined
+      if (node instanceof SelectRenderable) {
+        event = SelectRenderableEvents.SELECTION_CHANGED
+      } else if (node instanceof TabSelectRenderable) {
+        event = TabSelectRenderableEvents.SELECTION_CHANGED
+      } else if (node instanceof InputRenderable) {
+        event = InputRenderableEvents.CHANGE
+      }
+      if (!event) break
+
+      if (value) {
+        node.on(event, value)
+      }
+      if (prev) {
+        node.off(event, prev)
+      }
+      break
+    case "onInput":
+      if (node instanceof InputRenderable) {
+        if (value) {
+          node.on(InputRenderableEvents.INPUT, value)
+        }
+
+        if (prev) {
+          node.off(InputRenderableEvents.INPUT, prev)
+        }
+      }
+
+      break
+    case "onSubmit":
+      if (node instanceof InputRenderable) {
+        if (value) {
+          node.on(InputRenderableEvents.ENTER, value)
+        }
+
+        if (prev) {
+          node.off(InputRenderableEvents.ENTER, prev)
+        }
+      }
+      break
+    case "onSelect":
+      if (node instanceof SelectRenderable) {
+        if (value) {
+          node.on(SelectRenderableEvents.ITEM_SELECTED, value)
+        }
+
+        if (prev) {
+          node.off(SelectRenderableEvents.ITEM_SELECTED, prev)
+        }
+      } else if (node instanceof TabSelectRenderable) {
+        if (value) {
+          node.on(TabSelectRenderableEvents.ITEM_SELECTED, value)
+        }
+
+        if (prev) {
+          node.off(TabSelectRenderableEvents.ITEM_SELECTED, prev)
+        }
+      }
+      break
+    case "style":
+      for (const prop in value) {
+        const propVal = value[prop]
+        if (prev !== undefined && propVal === prev[prop]) continue
+        // @ts-expect-error todo validate if prop is actually settable
+        node[prop] = propVal
+      }
+      break
+    case "text":
+    case "content":
+      // @ts-expect-error todo validate if prop is actually settable
+      node[name] = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
+      break
+    default:
+      // @ts-expect-error todo validate if prop is actually settable
+      node[name] = value
+  }
+}
+
 export const {
-  render: _render,
+  render,
   effect,
   memo,
   createComponent,
@@ -141,194 +316,95 @@ export const {
   setProp,
   mergeProps,
   use,
-} = createRenderer<DomNode>({
-  createElement(tagName: string): DomNode {
-    log("Creating element:", tagName)
-    const id = getNextId(tagName)
-    const solidRenderer = useContext(RendererContext)
-    if (!solidRenderer) {
-      throw new Error("No renderer found")
-    }
-    const elements = getComponentCatalogue()
-
-    if (!elements[tagName]) {
-      throw new Error(`[Reconciler] Unknown component type: ${tagName}`)
-    }
-
-    const element = new elements[tagName](solidRenderer, { id })
-    log("Element created with id:", id)
-    return element
+} = {
+  render(code: any, element: any) {
+    let disposer
+    S.root((dispose: any) => {
+      disposer = dispose
+      _insert(element, code(), undefined, undefined)
+    })
+    return disposer
   },
-
+  insert: _insert,
+  spread(node: any, accessor: any, skipChildren: any) {
+    console.log("spread", node, accessor, skipChildren)
+  },
+  createElement: _createElement,
   createTextNode: _createTextNode,
-
-  replaceText(textNode: TextNode, value: string): void {
-    log("Replacing text:", value, "in node:", logId(textNode))
-
-    if (!(textNode instanceof TextNode)) return
-    textNode.replace(value, 0)
-  },
-
-  setProperty(node: DomNode, name: string, value: any, prev: any): void {
-    if (name.startsWith("on:")) {
-      const eventName = name.slice(3)
-      if (value) {
-        node.on(eventName, value)
-      }
-      if (prev) {
-        node.off(eventName, prev)
-      }
-
-      return
-    }
-
-    if (isTextNodeRenderable(node)) {
-      if (name !== "style") {
-        return
-      }
-      node.attributes |= createTextAttributes(value)
-      node.fg = value.fg ? parseColor(value.fg) : node.fg
-      node.bg = value.bg ? parseColor(value.bg) : node.bg
-      return
-    }
-
-    switch (name) {
-      case "focused":
-        if (!(node instanceof Renderable)) return
-        if (value) {
-          node.focus()
-        } else {
-          node.blur()
-        }
-        break
-      case "onChange":
-        let event: string | undefined = undefined
-        if (node instanceof SelectRenderable) {
-          event = SelectRenderableEvents.SELECTION_CHANGED
-        } else if (node instanceof TabSelectRenderable) {
-          event = TabSelectRenderableEvents.SELECTION_CHANGED
-        } else if (node instanceof InputRenderable) {
-          event = InputRenderableEvents.CHANGE
-        }
-        if (!event) break
-
-        if (value) {
-          node.on(event, value)
-        }
-        if (prev) {
-          node.off(event, prev)
-        }
-        break
-      case "onInput":
-        if (node instanceof InputRenderable) {
-          if (value) {
-            node.on(InputRenderableEvents.INPUT, value)
-          }
-
-          if (prev) {
-            node.off(InputRenderableEvents.INPUT, prev)
-          }
-        }
-
-        break
-      case "onSubmit":
-        if (node instanceof InputRenderable) {
-          if (value) {
-            node.on(InputRenderableEvents.ENTER, value)
-          }
-
-          if (prev) {
-            node.off(InputRenderableEvents.ENTER, prev)
-          }
-        }
-        break
-      case "onSelect":
-        if (node instanceof SelectRenderable) {
-          if (value) {
-            node.on(SelectRenderableEvents.ITEM_SELECTED, value)
-          }
-
-          if (prev) {
-            node.off(SelectRenderableEvents.ITEM_SELECTED, prev)
-          }
-        } else if (node instanceof TabSelectRenderable) {
-          if (value) {
-            node.on(TabSelectRenderableEvents.ITEM_SELECTED, value)
-          }
-
-          if (prev) {
-            node.off(TabSelectRenderableEvents.ITEM_SELECTED, prev)
-          }
-        }
-        break
-      case "style":
-        for (const prop in value) {
-          const propVal = value[prop]
-          if (prev !== undefined && propVal === prev[prop]) continue
-          // @ts-expect-error todo validate if prop is actually settable
-          node[prop] = propVal
-        }
-        break
-      case "text":
-      case "content":
-        // @ts-expect-error todo validate if prop is actually settable
-        node[name] = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
-        break
-      default:
-        // @ts-expect-error todo validate if prop is actually settable
-        node[name] = value
-    }
-  },
-
-  isTextNode(node: DomNode): boolean {
-    return node instanceof TextNode
-  },
-
   insertNode: _insertNode,
-
-  removeNode: _removeNode,
-
-  getParentNode: _getParentNode,
-
-  getFirstChild(node: DomNode): DomNode | undefined {
-    log("Getting first child of node:", logId(node))
-
-    const firstChild = getNodeChildren(node)[0]
-
-    if (!firstChild) {
-      log("No first child found for node:", logId(node))
-      return undefined
-    }
-
-    log("First child found:", logId(firstChild), "for node:", logId(node))
-    return firstChild
+  setProp: _setProperty,
+  mergeProps: _mergeProps,
+  effect: _effect,
+  memo: _memo,
+  createComponent: _createComponent,
+  use(fn: any, element: any, arg: any) {
+    return untrack(() => fn(element, arg))
   },
+}
 
-  getNextSibling(node: DomNode): DomNode | undefined {
-    log("Getting next sibling of node:", logId(node))
+// createRenderer<DomNode>({
+//   ,
 
-    const parent = _getParentNode(node)
-    if (!parent) {
-      log("No parent found for node:", logId(node))
-      return undefined
-    }
-    const siblings = getNodeChildren(node)
+//   createTextNode: _createTextNode,
 
-    const index = siblings.indexOf(node)
+//   replaceText(textNode: TextNode, value: string): void {
+//     log("Replacing text:", value, "in node:", logId(textNode))
 
-    if (index === -1 || index === siblings.length - 1) {
-      log("No next sibling found for node:", logId(node))
-      return undefined
-    }
+//     if (!(textNode instanceof TextNode)) return
+//     textNode.replace(value, 0)
+//   },
 
-    const nextSibling = siblings[index + 1]
+//   ,
 
-    if (!nextSibling) {
-      log("Next sibling is null for node:", logId(node))
-      return undefined
-    }
+//   isTextNode(node: DomNode): boolean {
+//     return node instanceof TextNode
+//   },
 
-    log("Next sibling found:", logId(nextSibling), "for node:", logId(node))
-    return nextSibling
-  },
-})
+//   insertNode: _insertNode,
+
+//   removeNode: _removeNode,
+
+//   getParentNode: _getParentNode,
+
+//   getFirstChild(node: DomNode): DomNode | undefined {
+//     log("Getting first child of node:", logId(node))
+
+//     const firstChild = getNodeChildren(node)[0]
+
+//     if (!firstChild) {
+//       log("No first child found for node:", logId(node))
+//       return undefined
+//     }
+
+//     log("First child found:", logId(firstChild), "for node:", logId(node))
+//     return firstChild
+//   },
+
+//   getNextSibling(node: DomNode): DomNode | undefined {
+//     log("Getting next sibling of node:", logId(node))
+//     if (!node) throw new Error("Node is undefined")
+//     const parent = _getParentNode(node)
+//     if (!parent) {
+//       log("No parent found for node:", logId(node))
+//       return undefined
+//     }
+//     const siblings = getNodeChildren(parent)
+
+//     const index = siblings.indexOf(node)
+
+//     if (index === -1 || index === siblings.length - 1) {
+//       log("No next sibling found for node:", logId(node))
+//       return undefined
+//     }
+
+//     const nextSibling = siblings[index + 1]
+
+//     if (!nextSibling) {
+//       log("Next sibling is null for node:", logId(node))
+//       return undefined
+//     }
+
+//     log("Next sibling found:", logId(nextSibling), "for node:", logId(node))
+//     return nextSibling
+//   },
+// })
