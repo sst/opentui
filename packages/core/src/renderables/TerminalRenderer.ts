@@ -2,7 +2,7 @@ import { type RenderableOptions, Renderable } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
 import type { RenderContext } from "../types"
 import type { MouseEvent } from "../renderer"
-import { RGBA, parseColor} from "../lib/RGBA"
+import { RGBA, parseColor } from "../lib/RGBA"
 import { type ParsedKey } from "../lib/parse.keypress"
 import { resolveRenderLib } from "../zig"
 import { type Selection as GlobalSelection, convertGlobalToLocalSelection } from "../lib/selection"
@@ -25,7 +25,7 @@ export interface CommandResult {
 export interface TerminalRendererOptions extends RenderableOptions<TerminalRenderer> {
   cols?: number
   rows?: number
-  shell?: 'bash' | 'zsh' | 'fish' | 'sh' | 'cmd' | 'powershell'
+  shell?: "bash" | "zsh" | "fish" | "sh" | "cmd" | "powershell"
   cwd?: string
   env?: Record<string, string>
   backgroundColor?: string | RGBA
@@ -45,7 +45,7 @@ export class TerminalRenderer extends Renderable {
   private ptySession: any
   private _cols: number
   private _rows: number
-  private _shell: 'bash' | 'zsh' | 'fish' | 'sh' | 'cmd' | 'powershell'
+  private _shell: "bash" | "zsh" | "fish" | "sh" | "cmd" | "powershell"
   private _cwd?: string
   private _env?: Record<string, string>
   private _backgroundColor: RGBA
@@ -84,10 +84,10 @@ export class TerminalRenderer extends Renderable {
 
     this._hasLibvtermSupport = this.checkLibvtermSupport()
 
-    this.initializeLibvterm().catch(error => {
+    this.initializeLibvterm().catch((error) => {
       console.error("Failed to initialize terminal:", error)
     })
-    
+
     this.live = true
 
     this.onSizeChange = () => {
@@ -102,7 +102,7 @@ export class TerminalRenderer extends Renderable {
   private checkLibvtermSupport(): boolean {
     try {
       const renderLib = resolveRenderLib()
-      return renderLib && typeof renderLib.libvtermRendererCreate === 'function'
+      return renderLib && typeof renderLib.libvtermRendererCreate === "function"
     } catch {
       return false
     }
@@ -111,18 +111,18 @@ export class TerminalRenderer extends Renderable {
   private async initializeLibvterm(): Promise<void> {
     try {
       const renderLib = resolveRenderLib()
-      
+
       this.ptySession = renderLib.terminalSessionCreate(this._cols, this._rows)
       if (!this.ptySession) {
         throw new Error("Failed to create PTY session")
       }
-      
+
       setTimeout(() => {
         if (this.width > 0 && this.height > 0) {
           this.onResize(this.width, this.height)
         }
       }, 100)
-      
+
       setTimeout(() => {
         if (this.ptySession) {
           for (let i = 0; i < 5; i++) {
@@ -131,21 +131,19 @@ export class TerminalRenderer extends Renderable {
           this.requestRender()
         }
       }, 200)
-
     } catch (error) {
       throw new Error(`Failed to initialize terminal: ${error}`)
     }
   }
 
-
   // Terminal interaction methods
   public write(data: string | Uint8Array): number {
     try {
       const renderLib = resolveRenderLib()
-      const dataBuffer = typeof data === 'string' ? TerminalRenderer.textEncoder.encode(data) : data
+      const dataBuffer = typeof data === "string" ? TerminalRenderer.textEncoder.encode(data) : data
 
       this.clearSelectionHighlight()
-      
+
       if (this.ptySession) {
         return renderLib.terminalSessionWrite(this.ptySession, dataBuffer)
       } else {
@@ -191,13 +189,13 @@ export class TerminalRenderer extends Renderable {
   }
 
   public set backgroundColor(value: RGBA | string) {
-    this._backgroundColor = typeof value === 'string' ? parseColor(value) : value
+    this._backgroundColor = typeof value === "string" ? parseColor(value) : value
   }
 
   public get hasLibvtermSupport(): boolean {
     return this._hasLibvtermSupport
   }
-  
+
   public get focused(): boolean {
     return this._focused
   }
@@ -205,7 +203,7 @@ export class TerminalRenderer extends Renderable {
   private resizePty(): void {
     try {
       const renderLib = resolveRenderLib()
-      
+
       if (this.ptySession) {
         renderLib.terminalSessionResize(this.ptySession, this._cols, this._rows)
       }
@@ -217,12 +215,12 @@ export class TerminalRenderer extends Renderable {
   protected onResize(width: number, height: number): void {
     const contentWidth = Math.max(1, width)
     const contentHeight = Math.max(1, height)
-    
+
     // Assume each character is 1 unit wide/tall for now
     // In a real implementation, this would depend on font metrics
     const newCols = Math.max(1, contentWidth)
     const newRows = Math.max(1, contentHeight)
-    
+
     if (newCols !== this._cols || newRows !== this._rows) {
       this._cols = newCols
       this._rows = newRows
@@ -233,7 +231,7 @@ export class TerminalRenderer extends Renderable {
   protected onUpdate(deltaTime: number): void {
     try {
       const renderLib = resolveRenderLib()
-      
+
       // Tick PTY session to read shell output and process it
       // The terminal session internally uses libvterm when available
       if (this.ptySession) {
@@ -265,12 +263,11 @@ export class TerminalRenderer extends Renderable {
     return -1
   }
 
-  public removeChild(obj: any): void {
-  }
+  public removeChild(obj: any): void {}
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     const { x, y, width, height } = this.getScissorRect()
-    
+
     if (width <= 0 || height <= 0) {
       return
     }
@@ -280,7 +277,6 @@ export class TerminalRenderer extends Renderable {
     try {
       buffer.fillRect(x, y, width, height, this._backgroundColor)
       this.renderTerminalContent(buffer)
-
     } finally {
       buffer.popScissorRect()
     }
@@ -322,15 +318,15 @@ export class TerminalRenderer extends Renderable {
     // we can use Ctrl+Shift+C/V like other terminals (iTerm2, Terminal.app with settings)
     // Or use ESC+c/v as an alternative
     const isCopyShortcut =
-      (key.ctrl && key.shift && key.name === "c") ||  // Works on all platforms
-      (key.meta && key.name === "c") ||  // In case meta works
-      (key.sequence === "\x1bc")  // ESC+c as alternative on Mac
+      (key.ctrl && key.shift && key.name === "c") || // Works on all platforms
+      (key.meta && key.name === "c") || // In case meta works
+      key.sequence === "\x1bc" // ESC+c as alternative on Mac
 
     const isPasteShortcut =
-      (key.ctrl && key.shift && key.name === "v") ||  // Works on all platforms
-      (key.meta && key.name === "v") ||  // In case meta works
+      (key.ctrl && key.shift && key.name === "v") || // Works on all platforms
+      (key.meta && key.name === "v") || // In case meta works
       (key.shift && key.name === "insert") ||
-      (key.sequence === "\x1bv")  // ESC+v as alternative on Mac
+      key.sequence === "\x1bv" // ESC+v as alternative on Mac
 
     if (isCopyShortcut) {
       const selected = this.getSelectedText()
@@ -372,15 +368,8 @@ export class TerminalRenderer extends Renderable {
       }
     } catch (error) {
       console.error("Failed to render terminal content:", error)
-      
-      buffer.drawText(
-        "Terminal Error",
-        contentX,
-        contentY,
-        RGBA.fromInts(255, 0, 0, 255),
-        undefined,
-        0
-      )
+
+      buffer.drawText("Terminal Error", contentX, contentY, RGBA.fromInts(255, 0, 0, 255), undefined, 0)
     }
   }
 
@@ -429,7 +418,7 @@ export class TerminalRenderer extends Renderable {
       bufferSize,
     )
 
-    const lengthNum = typeof length === 'bigint' ? Number(length) : length
+    const lengthNum = typeof length === "bigint" ? Number(length) : length
     if (lengthNum === 0) return ""
     const text = TerminalRenderer.textDecoder.decode(buffer.slice(0, lengthNum))
     return text
@@ -438,7 +427,7 @@ export class TerminalRenderer extends Renderable {
   protected getScissorRect(): { x: number; y: number; width: number; height: number } {
     const computedWidth = this.width
     const computedHeight = this.height
-    
+
     return {
       x: this.x,
       y: this.y,
@@ -451,12 +440,11 @@ export class TerminalRenderer extends Renderable {
     this.clearSelectionHighlight()
     try {
       const renderLib = resolveRenderLib()
-      
+
       if (this.ptySession) {
         renderLib.terminalSessionDestroy(this.ptySession)
         this.ptySession = null
       }
-
     } catch (error) {
       console.error("Failed to destroy terminal:", error)
     }
@@ -506,11 +494,14 @@ export class TerminalRenderer extends Renderable {
   }
 
   private applySelectionRect(rect: SelectionRect | null): boolean {
-    if (rect && this.selectionRect &&
+    if (
+      rect &&
+      this.selectionRect &&
       rect.startRow === this.selectionRect.startRow &&
       rect.endRow === this.selectionRect.endRow &&
       rect.startCol === this.selectionRect.startCol &&
-      rect.endCol === this.selectionRect.endCol) {
+      rect.endCol === this.selectionRect.endCol
+    ) {
       return false
     }
 
@@ -518,7 +509,7 @@ export class TerminalRenderer extends Renderable {
     if (this.ptySession) {
       if (rect) {
         if ((renderLib as any).terminalSessionSetSelection) {
-          (renderLib as any).terminalSessionSetSelection(
+          ;(renderLib as any).terminalSessionSetSelection(
             this.ptySession,
             rect.startRow,
             rect.startCol,
@@ -531,7 +522,7 @@ export class TerminalRenderer extends Renderable {
         this.selectionRect = rect
       } else {
         if ((renderLib as any).terminalSessionClearSelection) {
-          (renderLib as any).terminalSessionClearSelection(this.ptySession)
+          ;(renderLib as any).terminalSessionClearSelection(this.ptySession)
         }
         this.selectionRect = null
       }
@@ -544,7 +535,7 @@ export class TerminalRenderer extends Renderable {
     if (!this.selectionRect || !this.ptySession) return
     const renderLib = resolveRenderLib()
     if ((renderLib as any).terminalSessionClearSelection) {
-      (renderLib as any).terminalSessionClearSelection(this.ptySession)
+      ;(renderLib as any).terminalSessionClearSelection(this.ptySession)
     }
     this.selectionRect = null
     this.requestRender()

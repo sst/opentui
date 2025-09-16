@@ -333,7 +333,7 @@ export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
 // ========================
 
 export fn terminalSessionCreate(cols: u16, rows: u16) ?*ts.TerminalSession {
-    return ts.TerminalSession.create(allocator, cols, rows) catch null;
+    return ts.TerminalSession.create(globalArena, cols, rows) catch null;
 }
 
 export fn terminalSessionDestroy(session: *ts.TerminalSession) void {

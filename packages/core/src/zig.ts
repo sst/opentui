@@ -911,8 +911,22 @@ export interface RenderLib {
   libvtermRendererWrite: (renderer: Pointer, dataPtr: Pointer, len: number) => number
   libvtermRendererKeyboardUnichar: (renderer: Pointer, char: number, shift: number, alt: number, ctrl: number) => void
   libvtermRendererKeyboardKey: (renderer: Pointer, key: number, shift: number, alt: number, ctrl: number) => void
-  libvtermRendererMouseMove: (renderer: Pointer, row: number, col: number, shift: number, alt: number, ctrl: number) => void
-  libvtermRendererMouseButton: (renderer: Pointer, button: number, pressed: number, shift: number, alt: number, ctrl: number) => void
+  libvtermRendererMouseMove: (
+    renderer: Pointer,
+    row: number,
+    col: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ) => void
+  libvtermRendererMouseButton: (
+    renderer: Pointer,
+    button: number,
+    pressed: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ) => void
   libvtermRendererRender: (renderer: Pointer, buffer: Pointer, x: number, y: number) => void
   libvtermRendererFlushDamage: (renderer: Pointer) => void
   libvtermRendererGetCursorPos: (renderer: Pointer, rowPtr: Pointer, colPtr: Pointer) => void
@@ -1764,16 +1778,36 @@ class FFIRenderLib implements RenderLib {
   public libvtermRendererWrite(renderer: Pointer, dataPtr: Pointer, len: number): number {
     return Number(this.opentui.symbols.libvtermRendererWrite(renderer, dataPtr, len))
   }
-  public libvtermRendererKeyboardUnichar(renderer: Pointer, char: number, shift: number, alt: number, ctrl: number): void {
+  public libvtermRendererKeyboardUnichar(
+    renderer: Pointer,
+    char: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ): void {
     this.opentui.symbols.libvtermRendererKeyboardUnichar(renderer, char, shift, alt, ctrl)
   }
   public libvtermRendererKeyboardKey(renderer: Pointer, key: number, shift: number, alt: number, ctrl: number): void {
     this.opentui.symbols.libvtermRendererKeyboardKey(renderer, key, shift, alt, ctrl)
   }
-  public libvtermRendererMouseMove(renderer: Pointer, row: number, col: number, shift: number, alt: number, ctrl: number): void {
+  public libvtermRendererMouseMove(
+    renderer: Pointer,
+    row: number,
+    col: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ): void {
     this.opentui.symbols.libvtermRendererMouseMove(renderer, row, col, shift, alt, ctrl)
   }
-  public libvtermRendererMouseButton(renderer: Pointer, button: number, pressed: number, shift: number, alt: number, ctrl: number): void {
+  public libvtermRendererMouseButton(
+    renderer: Pointer,
+    button: number,
+    pressed: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ): void {
     this.opentui.symbols.libvtermRendererMouseButton(renderer, button, pressed, shift, alt, ctrl)
   }
   public libvtermRendererRender(renderer: Pointer, buffer: Pointer, x: number, y: number): void {
