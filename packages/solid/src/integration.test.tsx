@@ -205,19 +205,19 @@ describe("SolidJS Renderer Integration Tests", () => {
     it("should render complex nested layout correctly", async () => {
       testSetup = await testRender(
         () => (
-          <box style={{ width: 40, height: 15, border: true }} title="Complex Layout">
-            <box style={{ left: 2, top: 2, width: 15, height: 5, border: true, backgroundColor: "#333" }}>
+          <box style={{ width: 40, border: true }} title="Complex Layout">
+            <box style={{ left: 2, width: 15, height: 5, border: true, backgroundColor: "#333" }}>
               <text style={{ fg: "cyan" }}>Header Section</text>
-              <text style={{ fg: "yellow", top: 2 }}>Menu Item 1</text>
-              <text style={{ fg: "yellow", top: 3 }}>Menu Item 2</text>
+              <text style={{ fg: "yellow" }}>Menu Item 1</text>
+              <text style={{ fg: "yellow" }}>Menu Item 2</text>
             </box>
-            <box style={{ left: 18, top: 2, width: 18, height: 8, border: true, backgroundColor: "#222" }}>
-              <text style={{ fg: "green", top: 1 }}>Content Area</text>
-              <text style={{ fg: "white", top: 3 }}>Some content here</text>
-              <text style={{ fg: "white", top: 4 }}>More content</text>
-              <text style={{ fg: "magenta", top: 6 }}>Footer text</text>
+            <box style={{ left: 18, width: 18, height: 8, border: true, backgroundColor: "#222" }}>
+              <text style={{ fg: "green" }}>Content Area</text>
+              <text style={{ fg: "white" }}>Some content here</text>
+              <text style={{ fg: "white" }}>More content</text>
+              <text style={{ fg: "magenta" }}>Footer text</text>
             </box>
-            <text style={{ left: 2, top: 10, fg: "gray" }}>Status: Ready</text>
+            <text style={{ left: 2, fg: "gray" }}>Status: Ready</text>
           </box>
         ),
         {
@@ -238,10 +238,10 @@ describe("SolidJS Renderer Integration Tests", () => {
             <text>
               <span style={{ fg: "red", bold: true }}>ERROR:</span> Something went wrong
             </text>
-            <text style={{ top: 2 }}>
+            <text>
               <span style={{ fg: "yellow" }}>WARNING:</span> Check your settings
             </text>
-            <text style={{ top: 4 }}>
+            <text>
               <span style={{ fg: "green" }}>SUCCESS:</span> All systems operational
             </text>
           </box>

@@ -95,21 +95,21 @@ exports[`SolidJS Renderer Integration Tests Reactive Updates should handle condi
 
 exports[`SolidJS Renderer Integration Tests Complex Layouts should render complex nested layout correctly 1`] = `
 "┌─Complex Layout───────────────────────┐     
-│                                      │     
-│                                      │     
 │  ┌─────────────┐                     │     
 │  │Header Sectio│                     │     
-│  │             │                     │     
-│  │             │                     │     
-│  └Menu─Item─1──┘                     │     
+│  │Menu Item 1  │                     │     
+│  │Menu Item 2  │                     │     
+│  └─────────────┘                     │     
 │                  ┌────────────────┐  │     
-│   Menu Item 2    │                │  │     
 │                  │Content Area    │  │     
-│                  │                │  │     
-│                  │                │  │     
 │                  │Some content her│  │     
-└──────────────────│                │──┘     
-                   └More─content────┘        
+│                  │More content    │  │     
+│                  │Footer text     │  │     
+│                  │                │  │     
+│                  │                │  │     
+│                  └────────────────┘  │     
+│  Status: Ready                       │     
+└──────────────────────────────────────┘     
                                              
                                              
 "
@@ -118,42 +118,14 @@ exports[`SolidJS Renderer Integration Tests Complex Layouts should render comple
 exports[`SolidJS Renderer Integration Tests Complex Layouts should render text with mixed styling and layout 1`] = `
 "┌─────────────────────────────────┐     
 │ERROR: Something went wrong      │     
-│                                 │     
-│                                 │     
 │WARNING: Check your settings     │     
+│SUCCESS: All systems operational │     
 │                                 │     
 │                                 │     
-└SUCCESS:─All─systems─operational─┘     
+│                                 │     
+└─────────────────────────────────┘     
                                         
                                         
-"
-`;
-
-exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle empty component 1`] = `
-"          
-          
-          
-          
-          
-"
-`;
-
-exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle component with no children 1`] = `
-"               
-               
-               
-               
-               
-               
-               
-               
-"
-`;
-
-exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle very small dimensions 1`] = `
-"Hi   
-     
-     
 "
 `;
 
@@ -183,5 +155,33 @@ exports[`SolidJS Renderer Integration Tests Complex Layouts should render scroll
 │                            │
 │                            │
 └────────────────────────────┘
+"
+`;
+
+exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle empty component 1`] = `
+"          
+          
+          
+          
+          
+"
+`;
+
+exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle component with no children 1`] = `
+"               
+               
+               
+               
+               
+               
+               
+               
+"
+`;
+
+exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle very small dimensions 1`] = `
+"Hi   
+     
+     
 "
 `;
