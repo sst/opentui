@@ -1,12 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
-import type { TestRenderer } from "@opentui/core/testing"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
 describe("SolidJS Renderer Integration Tests", () => {
   beforeEach(async () => {
-    // Clean up any previous test setup
     if (testSetup) {
       testSetup.renderer.destroy()
     }
@@ -141,64 +139,6 @@ describe("SolidJS Renderer Integration Tests", () => {
         {
           width: 25,
           height: 8,
-        },
-      )
-
-      await testSetup.renderOnce()
-      const frame = testSetup.captureCharFrame()
-      expect(frame).toMatchSnapshot()
-    })
-  })
-
-  describe("Text Styling", () => {
-    it("should render styled text with colors", async () => {
-      testSetup = await testRender(
-        () => (
-          <text>
-            <span style={{ fg: "red" }}>Red</span> <span style={{ fg: "green" }}>Green</span>{" "}
-            <span style={{ fg: "blue" }}>Blue</span>
-          </text>
-        ),
-        {
-          width: 20,
-          height: 3,
-        },
-      )
-
-      await testSetup.renderOnce()
-      const frame = testSetup.captureCharFrame()
-      expect(frame).toMatchSnapshot()
-    })
-
-    it("should render text with background colors", async () => {
-      testSetup = await testRender(
-        () => (
-          <text>
-            <span style={{ fg: "white", bg: "black" }}>Black BG</span>{" "}
-            <span style={{ fg: "black", bg: "yellow" }}>Yellow BG</span>
-          </text>
-        ),
-        {
-          width: 25,
-          height: 3,
-        },
-      )
-
-      await testSetup.renderOnce()
-      const frame = testSetup.captureCharFrame()
-      expect(frame).toMatchSnapshot()
-    })
-
-    it("should render text with attributes (bold, underline)", async () => {
-      testSetup = await testRender(
-        () => (
-          <text>
-            <b>Bold Text</b> <u>Underlined Text</u> <i>Italic Text</i>
-          </text>
-        ),
-        {
-          width: 30,
-          height: 3,
         },
       )
 

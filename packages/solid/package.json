@@ -14,7 +14,8 @@
   "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
-    "publish": "bun scripts/publish.ts"
+    "publish": "bun scripts/publish.ts",
+    "test": "bun --conditions=browser --preload=./scripts/preload.ts test"
   },
   "exports": {
     ".": {
