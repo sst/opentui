@@ -1,7 +1,7 @@
 import { createSignal, For, Match, onMount, Switch } from "solid-js"
 import { EventEmitter } from "events"
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
-import { ConsolePosition } from "@opentui/core/src/console"
+import { ConsolePosition } from "@opentui/core"
 
 const Tab = (props: { title: string; active: boolean; index: number }) => {
   return (

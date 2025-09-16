@@ -26,9 +26,7 @@ export default function TextStyleScene() {
       </text>
       <text style={{ bg: "red", fg: "black" }}>
         Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
-        <span attributes={TextAttributes.UNDERLINE} style={{ bg: "blue", fg: "yellow" }}>
-          {counter()}
-        </span>
+        <span style={{ attributes: TextAttributes.UNDERLINE, bg: "blue", fg: "yellow" }}>{counter()}</span>
       </text>
       <text>
         Toggle{" "}

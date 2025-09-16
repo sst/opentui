@@ -384,6 +384,11 @@ export function render(code: () => any, rootRenderable: BaseRenderable): Dispose
   return disposer
 }
 
+export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any): any {
+  setProperty(renderable, name, value, prev)
+  return value
+}
+
 // UNUSED
 // The universal renderer exposes such methods, but we are not using them anywhere,
 // where would these be needed?
@@ -428,11 +433,6 @@ export function render(code: () => any, rootRenderable: BaseRenderable): Dispose
 //   } else {
 //     spreadProps(renderable, accessor, {}, skipChildren)
 //   }
-// }
-
-// export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any): any {
-//   setProperty(renderable, name, value, prev)
-//   return value
 // }
 
 // export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {

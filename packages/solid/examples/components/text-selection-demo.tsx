@@ -1,5 +1,5 @@
 import { Selection } from "@opentui/core"
-import { ConsolePosition } from "@opentui/core/src/console"
+import { ConsolePosition } from "@opentui/core"
 import { render, useRenderer, useSelectionHandler, type TextProps } from "@opentui/solid"
 import { createEffect, createSignal, onMount } from "solid-js"
 
