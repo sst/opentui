@@ -182,9 +182,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     // Root
     super(ctx, {
       flexShrink: 1,
-      flexGrow: 1,
       flexDirection: "row",
-      flexWrap: "wrap",
       alignItems: "stretch",
       ...(options as BoxOptions),
       ...(rootOptions as BoxOptions),
@@ -198,9 +196,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       flexDirection: "column",
       flexGrow: 1,
       flexShrink: 1,
-      flexBasis: "auto",
-      maxHeight: "100%",
-      maxWidth: "100%",
       ...wrapperOptions,
       id: `scroll-box-wrapper-${this.internalId}`,
     })
@@ -210,10 +205,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       flexDirection: "column",
       flexGrow: 1,
       flexShrink: 1,
-      flexBasis: "auto",
-      maxHeight: "100%",
-      maxWidth: "100%",
-      overflow: "scroll",
+      // NOTE: Overflow scroll makes the content size behave weird
+      // when the scrollbox is in a container with max-width/height
+      overflow: "hidden",
       onSizeChange: () => {
         this.recalculateBarProps()
       },

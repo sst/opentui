@@ -26,7 +26,7 @@ function addBox(i: number) {
 
   const box = new BoxRenderable(renderer, {
     id: `box-${i + 1}`,
-    width: "100%",
+    width: "auto",
     padding: 1,
     marginBottom: 1,
     backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449",

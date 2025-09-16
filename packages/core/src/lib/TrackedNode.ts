@@ -106,12 +106,12 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     this.children.push(childNode)
     this.yogaNode.insertChild(childNode.yogaNode, index)
 
-    try {
-      childNode.yogaNode.setWidth(childNode.parseWidth(childNode._width))
-      childNode.yogaNode.setHeight(childNode.parseHeight(childNode._height))
-    } catch (e) {
-      console.error("Error setting width and height", e)
-    }
+    // try {
+    //   childNode.yogaNode.setWidth(childNode.parseWidth(childNode._width))
+    //   childNode.yogaNode.setHeight(childNode.parseHeight(childNode._height))
+    // } catch (e) {
+    //   console.error("Error setting width and height", e)
+    // }
 
     return index
   }
@@ -181,12 +181,12 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     this.children.splice(boundedIndex, 0, childNode)
     this.yogaNode.insertChild(childNode.yogaNode, boundedIndex)
 
-    try {
-      childNode.yogaNode.setWidth(childNode.parseWidth(childNode._width))
-      childNode.yogaNode.setHeight(childNode.parseHeight(childNode._height))
-    } catch (e) {
-      console.error("Error setting width and height", e)
-    }
+    // try {
+    //   childNode.yogaNode.setWidth(childNode.parseWidth(childNode._width))
+    //   childNode.yogaNode.setHeight(childNode.parseHeight(childNode._height))
+    // } catch (e) {
+    //   console.error("Error setting width and height", e)
+    // }
 
     return boundedIndex
   }

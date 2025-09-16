@@ -246,7 +246,7 @@ export class SliderRenderable extends Renderable {
     buffer.fillRect(this.x, this.y, this.width, this.height, this._backgroundColor)
 
     const realStartCell = Math.floor(virtualThumbStart / 2)
-    const realEndCell = Math.floor((virtualThumbEnd - 1) / 2)
+    const realEndCell = Math.ceil(virtualThumbEnd / 2) - 1
     const startX = Math.max(0, realStartCell)
     const endX = Math.min(this.width - 1, realEndCell)
 
@@ -285,7 +285,7 @@ export class SliderRenderable extends Renderable {
     buffer.fillRect(this.x, this.y, this.width, this.height, this._backgroundColor)
 
     const realStartCell = Math.floor(virtualThumbStart / 2)
-    const realEndCell = Math.floor((virtualThumbEnd - 1) / 2)
+    const realEndCell = Math.ceil(virtualThumbEnd / 2) - 1
     const startY = Math.max(0, realStartCell)
     const endY = Math.min(this.height - 1, realEndCell)
 
