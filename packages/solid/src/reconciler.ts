@@ -386,52 +386,48 @@ export function setProp(renderable: BaseRenderable, name: string, value: any, pr
   return value
 }
 
-// UNUSED
-// The universal renderer exposes such methods, but we are not using them anywhere,
-// where would these be needed?
+export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {
+  return untrack(() => fn(element, arg))
+}
 
-// function spreadProps(renderable: BaseRenderable, props: Props, prevProps: Props = {}, skipChildren?: boolean): Props {
-//   if (!props) return prevProps
+function spreadProps(renderable: BaseRenderable, props: Props, prevProps: Props = {}, skipChildren?: boolean): Props {
+  if (!props) return prevProps
 
-//   // Handle children with proper tracking
-//   if (!skipChildren && props.children !== undefined) {
-//     createEffect((current: EffectValue) => {
-//       prevProps.children = insertExpression(renderable, props.children, current)
-//       return prevProps.children
-//     }, prevProps.children)
-//   }
+  // Handle children with proper tracking
+  if (!skipChildren && props.children !== undefined) {
+    createEffect((current: EffectValue) => {
+      prevProps.children = insertExpression(renderable, props.children, current)
+      return prevProps.children
+    }, prevProps.children)
+  }
 
-//   // Handle ref
-//   if (props.ref) {
-//     const ref = props.ref as (el: BaseRenderable) => void
-//     createEffect(() => ref(renderable))
-//   }
+  // Handle ref
+  if (props.ref) {
+    const ref = props.ref as (el: BaseRenderable) => void
+    createEffect(() => ref(renderable))
+  }
 
-//   // Handle other props with tracking
-//   createEffect(() => {
-//     Object.entries(props).forEach(([key, value]) => {
-//       if (key === "children" || key === "ref") return
-//       if (value !== prevProps[key]) {
-//         setProperty(renderable, key, value, prevProps[key])
-//         prevProps[key] = value
-//       }
-//     })
-//   })
+  // Handle other props with tracking
+  createEffect(() => {
+    Object.entries(props).forEach(([key, value]) => {
+      if (key === "children" || key === "ref") return
+      if (value !== prevProps[key]) {
+        setProperty(renderable, key, value, prevProps[key])
+        prevProps[key] = value
+      }
+    })
+  })
 
-//   return prevProps
-// }
+  return prevProps
+}
 
-// export function spread(renderable: BaseRenderable, accessor: Accessor<Props>, skipChildren?: boolean): void {
-//   if (typeof accessor === "function") {
-//     createEffect((current: Props | undefined) => {
-//       const props = accessor()
-//       return spreadProps(renderable, props, current || {}, skipChildren)
-//     })
-//   } else {
-//     spreadProps(renderable, accessor, {}, skipChildren)
-//   }
-// }
-
-// export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {
-//   return untrack(() => fn(element, arg))
-// }
+export function spread(renderable: BaseRenderable, accessor: Accessor<Props>, skipChildren?: boolean): void {
+  if (typeof accessor === "function") {
+    createEffect((current: Props | undefined) => {
+      const props = accessor()
+      return spreadProps(renderable, props, current || {}, skipChildren)
+    })
+  } else {
+    spreadProps(renderable, accessor, {}, skipChildren)
+  }
+}
