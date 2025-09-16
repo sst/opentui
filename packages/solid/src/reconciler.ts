@@ -5,7 +5,6 @@ import {
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
-  parseColor,
   Renderable,
   RootTextNodeRenderable,
   SelectRenderable,
@@ -136,8 +135,8 @@ function setProperty(renderable: BaseRenderable, name: string, value: any, prev:
   if (isTextNodeRenderable(renderable) && name === "style") {
     const styleValue = value as StyleObject
     renderable.attributes |= createTextAttributes(styleValue)
-    renderable.fg = styleValue.fg ? parseColor(styleValue.fg) : renderable.fg
-    renderable.bg = styleValue.bg ? parseColor(styleValue.bg) : renderable.bg
+    renderable.fg = styleValue.fg ?? renderable.fg
+    renderable.bg = styleValue.bg ?? renderable.bg
     return
   }
 
