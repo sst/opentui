@@ -9,6 +9,7 @@ import type {
   SelectProps,
   SpanProps,
   TabSelectProps,
+  TerminalProps,
   TextProps,
 } from "./src/types/elements"
 import type { DomNode } from "./dist"
@@ -28,6 +29,7 @@ declare namespace JSX {
     ascii_font: AsciiFontProps
     tab_select: TabSelectProps
     scrollbox: ScrollBoxProps
+    terminal: TerminalProps
 
     b: SpanProps
     strong: SpanProps

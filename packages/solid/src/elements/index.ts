@@ -8,6 +8,7 @@ import {
   TextAttributes,
   TextNodeRenderable,
   TextRenderable,
+  TerminalRenderer,
   type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
@@ -78,6 +79,7 @@ export const baseComponents = {
   ascii_font: ASCIIFontRenderable,
   tab_select: TabSelectRenderable,
   scrollbox: ScrollBoxRenderable,
+  terminal: TerminalRenderer,
 
   span: SpanRenderable,
   strong: BoldSpanRenderable,

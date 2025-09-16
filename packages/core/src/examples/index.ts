@@ -42,7 +42,6 @@ import * as mouseInteractionExample from "./mouse-interaction-demo"
 import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
 import * as splitModeExample from "./split-mode-demo"
-import * as ptyTwoPaneDemo from "./pty-two-pane-demo"
 import * as consoleExample from "./console-demo"
 import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
@@ -265,12 +264,6 @@ const examples: Example[] = [
     description: "Renderer confined to bottom area with normal terminal output above",
     run: splitModeExample.run,
     destroy: splitModeExample.destroy,
-  },
-  {
-    name: "PTY Two-Pane Demo",
-    description: "Two side-by-side native PTY shells; Tab switches focus",
-    run: ptyTwoPaneDemo.run,
-    destroy: ptyTwoPaneDemo.destroy,
   },
 ]
 
