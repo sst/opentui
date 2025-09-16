@@ -177,99 +177,123 @@ function updateEvent(renderable: Renderable, event: string, value: any, prev: an
 // Simple insert for OpenTUI
 function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable): void {
   if (typeof accessor !== "function") {
-    insertValue(parent, accessor, undefined, anchor)
+    // Static value - insert once
+    insertExpression(parent, accessor, undefined, anchor)
   } else {
-    createEffect(() => {
-      const value = accessor()
-      insertValue(parent, value, undefined, anchor)
-    })
+    // Reactive value - track changes
+    createEffect((current: any) => insertExpression(parent, accessor(), current, anchor))
   }
 }
 
-// Insert a value into parent
-function insertValue(parent: BaseRenderable, value: any, current: any, anchor?: BaseRenderable): any {
-  // Skip functions (resolve them)
+// Insert/update expression in parent
+function insertExpression(parent: BaseRenderable, value: any, current: any, anchor?: BaseRenderable): any {
+  // Resolve functions
   while (typeof value === "function") value = value()
 
   // Skip if unchanged
   if (value === current) return current
 
-  // Clean up current content if needed
-  if (current && current !== value) {
-    cleanContent(parent, current, anchor)
+  // Clean up old content first
+  if (current != null) {
+    cleanContent(parent, current)
   }
 
-  // Handle different value types
+  // Handle null/undefined/false
   if (value == null || value === false) {
     return null
   }
 
+  // Handle text content
   if (typeof value === "string" || typeof value === "number") {
-    // Text content - needs wrapping if parent isn't text-compatible
+    const text = String(value)
     const canAcceptText = parent instanceof TextRenderable || isTextNodeRenderable(parent)
 
     if (canAcceptText) {
-      const textNode = createTextNode(value)
+      // Update existing text node if possible
+      if (current && isTextNodeRenderable(current)) {
+        current.replace(text, 0)
+        return current
+      }
+      // Create new text node
+      const textNode = createTextNode(text)
       addChild(parent, textNode, anchor)
       return textNode
     } else {
-      // Auto-wrap in TextRenderable
+      // Need to wrap in TextRenderable
+      if (current && current instanceof TextRenderable && (current as any)._autoWrapped) {
+        // Update existing wrapper's text
+        const firstChild = getChildren(current)[0]
+        if (firstChild && isTextNodeRenderable(firstChild)) {
+          firstChild.replace(text, 0)
+        }
+        return current
+      }
+      // Create new wrapper
       const wrapper = createRenderable("text")
-      const textNode = createTextNode(value)
+      ;(wrapper as any)._autoWrapped = true
+      const textNode = createTextNode(text)
       addChild(wrapper, textNode)
       addChild(parent, wrapper, anchor)
       return wrapper
     }
   }
 
+  // Handle arrays
   if (Array.isArray(value)) {
-    // Simple array handling - just add all items
     const nodes: BaseRenderable[] = []
+
+    // Simple approach: remove all old array items, add new ones
+    if (Array.isArray(current)) {
+      current.forEach((node) => {
+        if (node instanceof BaseRenderable) {
+          removeChild(parent, node)
+        }
+      })
+    }
+
+    // Add new items
     for (const item of value) {
-      const node = insertValue(parent, item, undefined, anchor)
+      const node = insertExpression(parent, item, undefined, anchor)
       if (node) nodes.push(node)
     }
+
     return nodes
   }
 
-  // Must be a renderable
+  // Handle renderables
   if (value instanceof BaseRenderable) {
     addChild(parent, value, anchor)
     return value
   }
 
-  return current
+  return null
 }
 
-// Clean up content
-function cleanContent(parent: BaseRenderable, content: any, anchor?: BaseRenderable): void {
+// Clean up content from parent
+function cleanContent(parent: BaseRenderable, content: any): void {
   if (!content) return
 
   if (Array.isArray(content)) {
     content.forEach((item) => {
-      if (item instanceof BaseRenderable) {
+      if (item instanceof BaseRenderable && item.parent === parent) {
         removeChild(parent, item)
       }
     })
-  } else if (content instanceof BaseRenderable) {
+  } else if (content instanceof BaseRenderable && content.parent === parent) {
     removeChild(parent, content)
   }
 }
 
 // Spread props onto a renderable
-function spreadProps(renderable: BaseRenderable, props: any, skipChildren?: boolean): void {
-  if (!props) return
+function spreadProps(renderable: BaseRenderable, props: any, prevProps: any = {}, skipChildren?: boolean): any {
+  if (!props) return prevProps
 
-  // Handle children
+  // Handle children with proper tracking
   if (!skipChildren && props.children !== undefined) {
-    createEffect(() => {
-      // Clear existing children first
-      const children = getChildren(renderable)
-      children.forEach((child) => removeChild(renderable, child))
-
-      // Add new children
-      insert(renderable, props.children)
-    })
+    createEffect((current) => {
+      prevProps.children = insertExpression(renderable, props.children, current)
+      return prevProps.children
+    }, prevProps.children)
   }
 
   // Handle ref
@@ -277,13 +301,18 @@ function spreadProps(renderable: BaseRenderable, props: any, skipChildren?: bool
     createEffect(() => props.ref(renderable))
   }
 
-  // Handle other props
+  // Handle other props with tracking
   createEffect(() => {
     Object.entries(props).forEach(([key, value]) => {
       if (key === "children" || key === "ref") return
-      setProperty(renderable, key, value, undefined)
+      if (value !== prevProps[key]) {
+        setProperty(renderable, key, value, prevProps[key])
+        prevProps[key] = value
+      }
     })
   })
+
+  return prevProps
 }
 
 // Public API
@@ -308,8 +337,11 @@ export function render(code: () => any, rootRenderable: BaseRenderable) {
 }
 
 export function spread(renderable: BaseRenderable, accessor: any, skipChildren?: boolean) {
-  const props = typeof accessor === "function" ? accessor() : accessor
-  spreadProps(renderable, props, skipChildren)
+  if (typeof accessor === "function") {
+    createEffect((current) => spreadProps(renderable, accessor(), current, skipChildren))
+  } else {
+    spreadProps(renderable, accessor, undefined, skipChildren)
+  }
 }
 
 export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any) {
