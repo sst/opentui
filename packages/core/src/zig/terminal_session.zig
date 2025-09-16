@@ -1,7 +1,8 @@
 const std = @import("std");
 const buffer = @import("buffer.zig");
 const Pty = @import("pty.zig").Pty;
-const TerminalEmu = @import("termemu.zig").TerminalEmu;
+const TerminalEmu = @import("libvterm_emu.zig").LibVTermEmu;
+const libvterm = @import("libvterm.zig");
 
 /// TerminalSession combines a PTY (pseudo-terminal) with a terminal emulator.
 /// It manages the lifecycle of spawning a shell, reading its output, processing
@@ -29,6 +30,8 @@ pub const TerminalSession = struct {
     }
 
     pub fn write(self: *TerminalSession, data: []const u8) usize {
+        // Write only to PTY, not to emulator
+        // The PTY will echo back and we'll display that
         return self.pty.write(data);
     }
 
@@ -61,5 +64,26 @@ pub const TerminalSession = struct {
         const view = self.emu.packedView();
         if (view.len == 0) return;
         target.drawPackedBuffer(view.ptr, view.len, x, y, self.emu.cols, self.emu.rows);
+    }
+
+    pub fn setSelection(
+        self: *TerminalSession,
+        rect: ?libvterm.SelectionRect,
+        fg: buffer.RGBA,
+        bg: buffer.RGBA,
+    ) void {
+        self.emu.setSelection(rect, fg, bg);
+    }
+
+    pub fn clearSelection(self: *TerminalSession) void {
+        self.emu.clearSelection();
+    }
+
+    pub fn hasSelection(self: *TerminalSession) bool {
+        return self.emu.hasSelection();
+    }
+
+    pub fn copySelection(self: *TerminalSession, rect: libvterm.SelectionRect, out_buffer: []u8) usize {
+        return self.emu.copySelection(rect, out_buffer);
     }
 };

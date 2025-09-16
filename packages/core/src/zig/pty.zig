@@ -62,6 +62,10 @@ pub const Pty = if (builtin.os.tag == .windows) struct {
             _ = c.fcntl(master, c.F_SETFL, cur_flags | c.O_NONBLOCK);
         }
 
+        // Note: We don't configure terminal modes on the master side
+        // The slave side (shell) handles echo, and we display what comes back
+        // Setting modes on master can cause issues with some shells
+
         // Fork child process to exec shell
         const pid: i32 = @intCast(c.fork());
         if (pid < 0) {
@@ -88,6 +92,21 @@ pub const Pty = if (builtin.os.tag == .windows) struct {
             // Set window size
             var ws: c.struct_winsize = .{ .ws_row = rows, .ws_col = cols, .ws_xpixel = 0, .ws_ypixel = 0 };
             _ = c.ioctl(slave, c.TIOCSWINSZ, &ws);
+            
+            // Set terminal to sane defaults before the shell starts
+            // DISABLE ECHO to prevent double character issue
+            var tios: c.struct_termios = undefined;
+            if (c.tcgetattr(slave, &tios) == 0) {
+                // Enable canonical mode WITHOUT echo
+                tios.c_lflag = c.ICANON | c.ISIG;  // No ECHO flags
+                // Set input flags
+                tios.c_iflag = c.ICRNL | c.IXON;
+                // Set output flags  
+                tios.c_oflag = c.OPOST | c.ONLCR;
+                // Set control flags
+                tios.c_cflag |= c.CREAD | c.CS8;
+                _ = c.tcsetattr(slave, c.TCSANOW, &tios);
+            }
 
             // Duplicate stdio
             _ = c.dup2(slave, 0);

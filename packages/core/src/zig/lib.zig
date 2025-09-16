@@ -10,6 +10,7 @@ const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
 const ts = @import("terminal_session.zig");
+const libvterm = @import("libvterm.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -355,6 +356,57 @@ export fn terminalSessionRender(session: *ts.TerminalSession, bufferPtr: *buffer
     session.render(bufferPtr, x, y);
 }
 
+fn rgbaFromPtr(ptr: ?*const [4]f32, default: buffer.RGBA) buffer.RGBA {
+    if (ptr) |p| {
+        return p.*;
+    }
+    return default;
+}
+
+export fn terminalSessionSetSelection(
+    session: *ts.TerminalSession,
+    start_row: c_int,
+    start_col: c_int,
+    end_row: c_int,
+    end_col: c_int,
+    fg_ptr: ?*const [4]f32,
+    bg_ptr: ?*const [4]f32,
+) void {
+    const rect = libvterm.SelectionRect{
+        .start_row = start_row,
+        .end_row = end_row,
+        .start_col = start_col,
+        .end_col = end_col,
+    };
+
+    const fg = rgbaFromPtr(fg_ptr, buffer.RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    const bg = rgbaFromPtr(bg_ptr, buffer.RGBA{ 0.7, 0.7, 0.9, 1.0 });
+
+    session.setSelection(rect, fg, bg);
+}
+
+export fn terminalSessionClearSelection(session: *ts.TerminalSession) void {
+    session.clearSelection();
+}
+
+export fn terminalSessionCopySelection(
+    session: *ts.TerminalSession,
+    start_row: c_int,
+    start_col: c_int,
+    end_row: c_int,
+    end_col: c_int,
+    out_ptr: [*]u8,
+    out_len: usize,
+) usize {
+    const rect = libvterm.SelectionRect{
+        .start_row = start_row,
+        .end_row = end_row,
+        .start_col = start_col,
+        .end_col = end_col,
+    };
+    return session.copySelection(rect, out_ptr[0..out_len]);
+}
+
 export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.dumpHitGrid();
 }
@@ -550,4 +602,56 @@ export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
         else => .char,
     };
     tb.setWrapMode(wrapMode);
+}
+
+// ========================
+// LibVTerm Terminal Renderer API
+// ========================
+
+export fn libvtermRendererCreate(rows: u16, cols: u16) ?*libvterm.LibVTermRenderer {
+    return libvterm.libvterm_create(cols, rows);
+}
+
+export fn libvtermRendererDestroy(vterm_renderer: *libvterm.LibVTermRenderer) void {
+    libvterm.libvterm_destroy(vterm_renderer);
+}
+
+export fn libvtermRendererResize(vterm_renderer: *libvterm.LibVTermRenderer, cols: u16, rows: u16) void {
+    libvterm.libvterm_resize(vterm_renderer, cols, rows);
+}
+
+export fn libvtermRendererWrite(vterm_renderer: *libvterm.LibVTermRenderer, data: [*]const u8, len: usize) usize {
+    return libvterm.libvterm_write(vterm_renderer, data, len);
+}
+
+export fn libvtermRendererKeyboardUnichar(vterm_renderer: *libvterm.LibVTermRenderer, char: u32, shift: u8, alt: u8, ctrl: u8) void {
+    libvterm.libvterm_keyboard_unichar(vterm_renderer, char, shift, alt, ctrl);
+}
+
+export fn libvtermRendererKeyboardKey(vterm_renderer: *libvterm.LibVTermRenderer, key: i32, shift: u8, alt: u8, ctrl: u8) void {
+    libvterm.libvterm_keyboard_key(vterm_renderer, key, shift, alt, ctrl);
+}
+
+export fn libvtermRendererMouseMove(vterm_renderer: *libvterm.LibVTermRenderer, row: i32, col: i32, shift: u8, alt: u8, ctrl: u8) void {
+    libvterm.libvterm_mouse_move(vterm_renderer, row, col, shift, alt, ctrl);
+}
+
+export fn libvtermRendererMouseButton(vterm_renderer: *libvterm.LibVTermRenderer, button: i32, pressed: u8, shift: u8, alt: u8, ctrl: u8) void {
+    libvterm.libvterm_mouse_button(vterm_renderer, button, pressed, shift, alt, ctrl);
+}
+
+export fn libvtermRendererRender(vterm_renderer: *libvterm.LibVTermRenderer, target: *buffer.OptimizedBuffer, x: u32, y: u32) void {
+    libvterm.libvterm_render(vterm_renderer, target, x, y);
+}
+
+export fn libvtermRendererFlushDamage(vterm_renderer: *libvterm.LibVTermRenderer) void {
+    libvterm.libvterm_flush_damage(vterm_renderer);
+}
+
+export fn libvtermRendererGetCursorPos(vterm_renderer: *libvterm.LibVTermRenderer, row: *i32, col: *i32) void {
+    libvterm.libvterm_get_cursor_pos(vterm_renderer, row, col);
+}
+
+export fn libvtermRendererGetCursorVisible(vterm_renderer: *libvterm.LibVTermRenderer) u8 {
+    return libvterm.libvterm_get_cursor_visible(vterm_renderer);
 }
