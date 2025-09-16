@@ -6,7 +6,6 @@ import {
   InputRenderableEvents,
   isTextNodeRenderable,
   Renderable,
-  RootTextNodeRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TabSelectRenderable,
@@ -362,38 +361,6 @@ function cleanContent(parent: BaseRenderable, content: EffectValue): void {
   }
 }
 
-// Spread props onto a renderable
-function spreadProps(renderable: BaseRenderable, props: Props, prevProps: Props = {}, skipChildren?: boolean): Props {
-  if (!props) return prevProps
-
-  // Handle children with proper tracking
-  if (!skipChildren && props.children !== undefined) {
-    createEffect((current: EffectValue) => {
-      prevProps.children = insertExpression(renderable, props.children, current)
-      return prevProps.children
-    }, prevProps.children)
-  }
-
-  // Handle ref
-  if (props.ref) {
-    const ref = props.ref as (el: BaseRenderable) => void
-    createEffect(() => ref(renderable))
-  }
-
-  // Handle other props with tracking
-  createEffect(() => {
-    Object.entries(props).forEach(([key, value]) => {
-      if (key === "children" || key === "ref") return
-      if (value !== prevProps[key]) {
-        setProperty(renderable, key, value, prevProps[key])
-        prevProps[key] = value
-      }
-    })
-  })
-
-  return prevProps
-}
-
 // Public API
 export {
   createRenderable as createElement,
@@ -417,22 +384,57 @@ export function render(code: () => any, rootRenderable: BaseRenderable): Dispose
   return disposer
 }
 
-export function spread(renderable: BaseRenderable, accessor: Accessor<Props>, skipChildren?: boolean): void {
-  if (typeof accessor === "function") {
-    createEffect((current: Props | undefined) => {
-      const props = accessor()
-      return spreadProps(renderable, props, current || {}, skipChildren)
-    })
-  } else {
-    spreadProps(renderable, accessor, {}, skipChildren)
-  }
-}
+// UNUSED
+// The universal renderer exposes such methods, but we are not using them anywhere,
+// where would these be needed?
 
-export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any): any {
-  setProperty(renderable, name, value, prev)
-  return value
-}
+// function spreadProps(renderable: BaseRenderable, props: Props, prevProps: Props = {}, skipChildren?: boolean): Props {
+//   if (!props) return prevProps
 
-export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {
-  return untrack(() => fn(element, arg))
-}
+//   // Handle children with proper tracking
+//   if (!skipChildren && props.children !== undefined) {
+//     createEffect((current: EffectValue) => {
+//       prevProps.children = insertExpression(renderable, props.children, current)
+//       return prevProps.children
+//     }, prevProps.children)
+//   }
+
+//   // Handle ref
+//   if (props.ref) {
+//     const ref = props.ref as (el: BaseRenderable) => void
+//     createEffect(() => ref(renderable))
+//   }
+
+//   // Handle other props with tracking
+//   createEffect(() => {
+//     Object.entries(props).forEach(([key, value]) => {
+//       if (key === "children" || key === "ref") return
+//       if (value !== prevProps[key]) {
+//         setProperty(renderable, key, value, prevProps[key])
+//         prevProps[key] = value
+//       }
+//     })
+//   })
+
+//   return prevProps
+// }
+
+// export function spread(renderable: BaseRenderable, accessor: Accessor<Props>, skipChildren?: boolean): void {
+//   if (typeof accessor === "function") {
+//     createEffect((current: Props | undefined) => {
+//       const props = accessor()
+//       return spreadProps(renderable, props, current || {}, skipChildren)
+//     })
+//   } else {
+//     spreadProps(renderable, accessor, {}, skipChildren)
+//   }
+// }
+
+// export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any): any {
+//   setProperty(renderable, name, value, prev)
+//   return value
+// }
+
+// export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {
+//   return untrack(() => fn(element, arg))
+// }
