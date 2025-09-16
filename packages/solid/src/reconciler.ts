@@ -31,17 +31,23 @@ function createRenderable(tagName: string): BaseRenderable {
     throw new Error(`Unknown component: ${tagName}`)
   }
 
-  return new components[tagName](renderer, { id })
+  const renderable = new components[tagName](renderer, { id })
+  log("[CREATE] Created renderable:", tagName, "with id:", id)
+  return renderable
 }
 
 // Create text nodes
 function createTextNode(value: string | number): TextNodeRenderable {
   const text = typeof value === "number" ? value.toString() : value
-  return TextNodeRenderable.fromString(text, { id: getNextId("text-node") })
+  const id = getNextId("text-node")
+  log("[CREATE] Creating text node:", text, "with id:", id)
+  return TextNodeRenderable.fromString(text, { id })
 }
 
 // Add child to parent
 function addChild(parent: BaseRenderable, child: BaseRenderable, anchor?: BaseRenderable): void {
+  log("[ADD] Adding child:", child.id, "to parent:", parent.id, "anchor:", anchor?.id)
+  
   if (!anchor) {
     parent.add(child)
     return
@@ -50,11 +56,14 @@ function addChild(parent: BaseRenderable, child: BaseRenderable, anchor?: BaseRe
   // Find anchor position
   const children = getChildren(parent)
   const index = children.findIndex((c) => c.id === anchor.id)
+  log("[ADD] Found anchor at index:", index)
   parent.add(child, index >= 0 ? index : undefined)
 }
 
 // Remove child from parent
 function removeChild(parent: BaseRenderable, child: BaseRenderable): void {
+  log("[REMOVE] Removing child:", child.id, "from parent:", parent.id)
+  
   // TextNodeRenderable special case
   if (isTextNodeRenderable(child) && isTextNodeRenderable(parent)) {
     ;(parent as any).remove(child)
@@ -65,6 +74,7 @@ function removeChild(parent: BaseRenderable, child: BaseRenderable): void {
   // Clean up if orphaned
   process.nextTick(() => {
     if (!child.parent) {
+      log("[DESTROY] Destroying orphaned node:", child.id)
       if (child instanceof Renderable) {
         child.destroyRecursively()
       } else {
@@ -176,30 +186,45 @@ function updateEvent(renderable: Renderable, event: string, value: any, prev: an
 
 // Simple insert for OpenTUI
 function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable): void {
+  log("[INSERT] Starting insert into parent:", parent.id, "accessor type:", typeof accessor)
+  
   if (typeof accessor !== "function") {
     // Static value - insert once
+    log("[INSERT] Static value")
     insertExpression(parent, accessor, undefined, anchor)
   } else {
     // Reactive value - track changes
-    createEffect((current: any) => insertExpression(parent, accessor(), current, anchor))
+    log("[INSERT] Reactive value - setting up effect")
+    createEffect((current: any) => {
+      log("[INSERT] Effect running, current:", current != null ? "exists" : "null")
+      const value = accessor()
+      return insertExpression(parent, value, current, anchor)
+    })
   }
 }
 
 // Insert/update expression in parent
 function insertExpression(parent: BaseRenderable, value: any, current: any, anchor?: BaseRenderable): any {
+  log("[INSERT] Expression in parent:", parent.id, "value type:", typeof value, "has current:", current != null)
+  
   // Resolve functions
   while (typeof value === "function") value = value()
 
   // Skip if unchanged
-  if (value === current) return current
+  if (value === current) {
+    log("[INSERT] Value unchanged, skipping")
+    return current
+  }
 
   // Clean up old content first
   if (current != null) {
+    log("[INSERT] Cleaning up old content before inserting new")
     cleanContent(parent, current)
   }
 
   // Handle null/undefined/false
   if (value == null || value === false) {
+    log("[INSERT] Value is null/undefined/false, returning null")
     return null
   }
 
@@ -207,14 +232,17 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
   if (typeof value === "string" || typeof value === "number") {
     const text = String(value)
     const canAcceptText = parent instanceof TextRenderable || isTextNodeRenderable(parent)
+    log("[INSERT] Text content:", text, "canAcceptText:", canAcceptText)
 
     if (canAcceptText) {
       // Update existing text node if possible
       if (current && isTextNodeRenderable(current)) {
+        log("[INSERT] Updating existing text node")
         current.replace(text, 0)
         return current
       }
       // Create new text node
+      log("[INSERT] Creating new text node")
       const textNode = createTextNode(text)
       addChild(parent, textNode, anchor)
       return textNode
@@ -222,6 +250,7 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
       // Need to wrap in TextRenderable
       if (current && current instanceof TextRenderable && (current as any)._autoWrapped) {
         // Update existing wrapper's text
+        log("[INSERT] Updating existing text wrapper")
         const firstChild = getChildren(current)[0]
         if (firstChild && isTextNodeRenderable(firstChild)) {
           firstChild.replace(text, 0)
@@ -229,6 +258,7 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
         return current
       }
       // Create new wrapper
+      log("[INSERT] Creating new text wrapper")
       const wrapper = createRenderable("text")
       ;(wrapper as any)._autoWrapped = true
       const textNode = createTextNode(text)
@@ -240,10 +270,12 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
 
   // Handle arrays
   if (Array.isArray(value)) {
+    log("[INSERT] Array with", value.length, "items")
     const nodes: BaseRenderable[] = []
 
     // Simple approach: remove all old array items, add new ones
     if (Array.isArray(current)) {
+      log("[INSERT] Removing", current.length, "old array items")
       current.forEach((node) => {
         if (node instanceof BaseRenderable) {
           removeChild(parent, node)
@@ -252,6 +284,7 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
     }
 
     // Add new items
+    log("[INSERT] Adding", value.length, "new array items")
     for (const item of value) {
       const node = insertExpression(parent, item, undefined, anchor)
       if (node) nodes.push(node)
@@ -262,25 +295,34 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
 
   // Handle renderables
   if (value instanceof BaseRenderable) {
+    log("[INSERT] Adding renderable:", value.id)
     addChild(parent, value, anchor)
     return value
   }
 
+  log("[INSERT] Unknown value type, returning null")
   return null
 }
 
 // Clean up content from parent
 function cleanContent(parent: BaseRenderable, content: any): void {
-  if (!content) return
+  if (!content) {
+    log("[CLEAN] No content to clean")
+    return
+  }
 
   if (Array.isArray(content)) {
+    log("[CLEAN] Cleaning array of", content.length, "items from parent:", parent.id)
     content.forEach((item) => {
       if (item instanceof BaseRenderable && item.parent === parent) {
         removeChild(parent, item)
       }
     })
   } else if (content instanceof BaseRenderable && content.parent === parent) {
+    log("[CLEAN] Cleaning single renderable:", content.id, "from parent:", parent.id)
     removeChild(parent, content)
+  } else {
+    log("[CLEAN] Content not cleanable, type:", typeof content)
   }
 }
 
@@ -328,11 +370,13 @@ export {
 }
 
 export function render(code: () => any, rootRenderable: BaseRenderable) {
+  log("[RENDER] Starting render into root:", rootRenderable.id)
   let disposer: any
   createRoot((dispose: any) => {
     disposer = dispose
     insert(rootRenderable, code())
   })
+  log("[RENDER] Render complete")
   return disposer
 }
 
