@@ -47,7 +47,7 @@ function createTextNode(value: string | number): TextNodeRenderable {
 // Add child to parent
 function addChild(parent: BaseRenderable, child: BaseRenderable, anchor?: BaseRenderable): void {
   log("[ADD] Adding child:", child.id, "to parent:", parent.id, "anchor:", anchor?.id)
-  
+
   if (!anchor) {
     parent.add(child)
     return
@@ -63,7 +63,7 @@ function addChild(parent: BaseRenderable, child: BaseRenderable, anchor?: BaseRe
 // Remove child from parent
 function removeChild(parent: BaseRenderable, child: BaseRenderable): void {
   log("[REMOVE] Removing child:", child.id, "from parent:", parent.id)
-  
+
   // TextNodeRenderable special case
   if (isTextNodeRenderable(child) && isTextNodeRenderable(parent)) {
     ;(parent as any).remove(child)
@@ -187,7 +187,7 @@ function updateEvent(renderable: Renderable, event: string, value: any, prev: an
 // Simple insert for OpenTUI
 function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable): void {
   log("[INSERT] Starting insert into parent:", parent.id, "accessor type:", typeof accessor)
-  
+
   if (typeof accessor !== "function") {
     // Static value - insert once
     log("[INSERT] Static value")
@@ -198,6 +198,11 @@ function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable):
     createEffect((current: any) => {
       log("[INSERT] Effect running, current:", current != null ? "exists" : "null")
       const value = accessor()
+      // Guard against undefined returns that might break the UI
+      if (value === undefined && current != null) {
+        log("[INSERT] WARNING: Effect returned undefined with existing content, keeping current")
+        return current
+      }
       return insertExpression(parent, value, current, anchor)
     })
   }
@@ -206,7 +211,7 @@ function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable):
 // Insert/update expression in parent
 function insertExpression(parent: BaseRenderable, value: any, current: any, anchor?: BaseRenderable): any {
   log("[INSERT] Expression in parent:", parent.id, "value type:", typeof value, "has current:", current != null)
-  
+
   // Resolve functions
   while (typeof value === "function") value = value()
 
@@ -216,16 +221,21 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
     return current
   }
 
-  // Clean up old content first
+  // Handle null/undefined/false
+  if (value == null || value === false) {
+    log("[INSERT] Value is null/undefined/false")
+    // Only clean up if we actually had content before
+    if (current != null) {
+      log("[INSERT] Cleaning up old content")
+      cleanContent(parent, current)
+    }
+    return null
+  }
+
+  // Clean up old content before inserting new content
   if (current != null) {
     log("[INSERT] Cleaning up old content before inserting new")
     cleanContent(parent, current)
-  }
-
-  // Handle null/undefined/false
-  if (value == null || value === false) {
-    log("[INSERT] Value is null/undefined/false, returning null")
-    return null
   }
 
   // Handle text content
@@ -271,6 +281,12 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
   // Handle arrays
   if (Array.isArray(value)) {
     log("[INSERT] Array with", value.length, "items")
+
+    // If the array is empty and we have content, check if it's intentional
+    if (value.length === 0 && Array.isArray(current) && current.length > 0) {
+      log("[INSERT] WARNING: Replacing non-empty array with empty array")
+    }
+
     const nodes: BaseRenderable[] = []
 
     // Simple approach: remove all old array items, add new ones
