@@ -208,12 +208,9 @@ function insert(parent: BaseRenderable, accessor: Accessor<any>, anchor?: BaseRe
     createEffect((current: EffectValue) => {
       log("[INSERT] Effect running, current:", current != null ? "exists" : "null")
       const value = accessor()
-      // Guard against undefined returns that might break the UI
-      if (value === undefined && current != null) {
-        log("[INSERT] WARNING: Effect returned undefined with existing content, keeping current")
-        return current
-      }
-      return insertExpression(parent, value, current, anchor)
+      const result = insertExpression(parent, value, current, anchor)
+
+      return result
     })
   }
 }

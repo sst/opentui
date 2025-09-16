@@ -174,21 +174,18 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).not.toContain("Count is high")
     })
 
-    it.skip("should handle <Show> without fallback", async () => {
+    it("should handle <Show> without fallback", async () => {
       const [visible, setVisible] = createSignal(true)
 
       testSetup = await testRender(
-        () => {
-          console.log("rendering", visible())
-          return (
-            <box>
-              <Show when={visible()}>
-                <text>Visible content</text>
-              </Show>
-              <text>Always visible</text>
-            </box>
-          )
-        },
+        () => (
+          <box>
+            <Show when={visible()}>
+              <text>Visible content</text>
+            </Show>
+            <text>Always visible</text>
+          </box>
+        ),
         { width: 20, height: 8 },
       )
 
@@ -201,7 +198,6 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain("Always visible")
 
       setVisible(false)
-      console.log("setting visible to false")
       await testSetup.renderOnce()
 
       children = testSetup.renderer.root.getChildren()[0]!.getChildren()
