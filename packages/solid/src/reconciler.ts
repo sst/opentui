@@ -112,15 +112,6 @@ function getChildren(renderable: BaseRenderable): BaseRenderable[] {
   }
 }
 
-// Get parent (handle RootTextNodeRenderable)
-function getParent(child: BaseRenderable): BaseRenderable | undefined {
-  let parent = child.parent ?? undefined
-  if (parent instanceof RootTextNodeRenderable) {
-    parent = parent.textParent ?? undefined
-  }
-  return parent
-}
-
 // Apply properties to renderables
 function setProperty(renderable: BaseRenderable, name: string, value: any, prev: any): void {
   // Handle events
