@@ -85,4 +85,3 @@ export class NativePtySession {
 export function createPtySession(cols: number, rows: number): NativePtySession {
   return NativePtySession.create(cols, rows)
 }
-

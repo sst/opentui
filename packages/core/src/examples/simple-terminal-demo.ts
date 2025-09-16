@@ -2,7 +2,7 @@
 
 /**
  * Simple Interactive Terminal Demo
- * 
+ *
  * A minimal terminal emulator using libvterm that provides a fully interactive shell.
  * You can type commands and interact with it like a normal terminal.
  */
@@ -25,7 +25,7 @@ async function main() {
 
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
-    targetFps: 30
+    targetFps: 30,
   })
 
   renderer.useMouse = true
@@ -48,9 +48,9 @@ async function main() {
 
   const terminalCols = Math.max(10, container.width - 2)
   const terminalRows = Math.max(5, container.height - 2)
-    
+
   const terminal = new TerminalRenderer(renderer, {
-    width: container.width - 2,  // Account for container border
+    width: container.width - 2, // Account for container border
     height: container.height - 2, // Account for container border
     cols: terminalCols,
     rows: terminalRows,
