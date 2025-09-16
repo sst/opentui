@@ -20,6 +20,23 @@ import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 
+// Type definitions for the reconciler
+type Accessor<T> = T | (() => T)
+type Props = Record<string, any>
+type Disposer = () => void
+type EffectValue = BaseRenderable | BaseRenderable[] | null | undefined
+
+// Event handler types
+type EventHandler<T = any> = (...args: T[]) => void
+type StyleObject = {
+  fg?: string
+  bg?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  [key: string]: any
+}
+
 // Create OpenTUI renderables
 function createRenderable(tagName: string): BaseRenderable {
   const id = getNextId(tagName)
@@ -27,11 +44,12 @@ function createRenderable(tagName: string): BaseRenderable {
   if (!renderer) throw new Error("No renderer context found")
 
   const components = getComponentCatalogue()
-  if (!components[tagName]) {
+  const ComponentClass = components[tagName]
+  if (!ComponentClass) {
     throw new Error(`Unknown component: ${tagName}`)
   }
 
-  const renderable = new components[tagName](renderer, { id })
+  const renderable = new ComponentClass(renderer, { id })
   log("[CREATE] Created renderable:", tagName, "with id:", id)
   return renderable
 }
@@ -66,7 +84,7 @@ function removeChild(parent: BaseRenderable, child: BaseRenderable): void {
 
   // TextNodeRenderable special case
   if (isTextNodeRenderable(child) && isTextNodeRenderable(parent)) {
-    ;(parent as any).remove(child)
+    parent.remove(child)
   } else {
     parent.remove(child.id)
   }
@@ -109,16 +127,17 @@ function setProperty(renderable: BaseRenderable, name: string, value: any, prev:
   // Handle events
   if (name.startsWith("on:")) {
     const eventName = name.slice(3)
-    if (value) renderable.on(eventName, value)
-    if (prev) renderable.off(eventName, prev)
+    if (value) renderable.on(eventName, value as EventHandler)
+    if (prev) renderable.off(eventName, prev as EventHandler)
     return
   }
 
   // Handle text node styles
   if (isTextNodeRenderable(renderable) && name === "style") {
-    renderable.attributes |= createTextAttributes(value)
-    renderable.fg = value.fg ? parseColor(value.fg) : renderable.fg
-    renderable.bg = value.bg ? parseColor(value.bg) : renderable.bg
+    const styleValue = value as StyleObject
+    renderable.attributes |= createTextAttributes(styleValue)
+    renderable.fg = styleValue.fg ? parseColor(styleValue.fg) : renderable.fg
+    renderable.bg = styleValue.bg ? parseColor(styleValue.bg) : renderable.bg
     return
   }
 
@@ -162,30 +181,32 @@ function setProperty(renderable: BaseRenderable, name: string, value: any, prev:
       break
 
     case "style":
-      Object.entries(value).forEach(([prop, val]) => {
-        if (!prev || val !== prev[prop]) {
-          ;(renderable as any)[prop] = val
+      const styles = value as Record<string, any>
+      const prevStyles = prev as Record<string, any> | undefined
+      Object.entries(styles).forEach(([prop, val]) => {
+        if (!prevStyles || val !== prevStyles[prop]) {
+          ;(renderable as Record<string, any>)[prop] = val
         }
       })
       break
 
     case "text":
     case "content":
-      ;(renderable as any)[name] = String(value)
+      ;(renderable as Record<string, any>)[name] = String(value)
       break
 
     default:
-      ;(renderable as any)[name] = value
+      ;(renderable as Record<string, any>)[name] = value
   }
 }
 
 function updateEvent(renderable: Renderable, event: string, value: any, prev: any): void {
-  if (value) renderable.on(event, value)
-  if (prev) renderable.off(event, prev)
+  if (value) renderable.on(event, value as EventHandler)
+  if (prev) renderable.off(event, prev as EventHandler)
 }
 
 // Simple insert for OpenTUI
-function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable): void {
+function insert(parent: BaseRenderable, accessor: Accessor<any>, anchor?: BaseRenderable): void {
   log("[INSERT] Starting insert into parent:", parent.id, "accessor type:", typeof accessor)
 
   if (typeof accessor !== "function") {
@@ -195,7 +216,7 @@ function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable):
   } else {
     // Reactive value - track changes
     log("[INSERT] Reactive value - setting up effect")
-    createEffect((current: any) => {
+    createEffect((current: EffectValue) => {
       log("[INSERT] Effect running, current:", current != null ? "exists" : "null")
       const value = accessor()
       // Guard against undefined returns that might break the UI
@@ -209,7 +230,12 @@ function insert(parent: BaseRenderable, accessor: any, anchor?: BaseRenderable):
 }
 
 // Insert/update expression in parent
-function insertExpression(parent: BaseRenderable, value: any, current: any, anchor?: BaseRenderable): any {
+function insertExpression(
+  parent: BaseRenderable,
+  value: any,
+  current: EffectValue,
+  anchor?: BaseRenderable,
+): EffectValue {
   log("[INSERT] Expression in parent:", parent.id, "value type:", typeof value, "has current:", current != null)
 
   // Resolve functions
@@ -258,7 +284,11 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
       return textNode
     } else {
       // Need to wrap in TextRenderable
-      if (current && current instanceof TextRenderable && (current as any)._autoWrapped) {
+      if (
+        current &&
+        current instanceof TextRenderable &&
+        (current as TextRenderable & { _autoWrapped?: boolean })._autoWrapped
+      ) {
         // Update existing wrapper's text
         log("[INSERT] Updating existing text wrapper")
         const firstChild = getChildren(current)[0]
@@ -270,7 +300,7 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
       // Create new wrapper
       log("[INSERT] Creating new text wrapper")
       const wrapper = createRenderable("text")
-      ;(wrapper as any)._autoWrapped = true
+      ;(wrapper as TextRenderable & { _autoWrapped?: boolean })._autoWrapped = true
       const textNode = createTextNode(text)
       addChild(wrapper, textNode)
       addChild(parent, wrapper, anchor)
@@ -303,7 +333,7 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
     log("[INSERT] Adding", value.length, "new array items")
     for (const item of value) {
       const node = insertExpression(parent, item, undefined, anchor)
-      if (node) nodes.push(node)
+      if (node && node instanceof BaseRenderable) nodes.push(node)
     }
 
     return nodes
@@ -321,7 +351,7 @@ function insertExpression(parent: BaseRenderable, value: any, current: any, anch
 }
 
 // Clean up content from parent
-function cleanContent(parent: BaseRenderable, content: any): void {
+function cleanContent(parent: BaseRenderable, content: EffectValue): void {
   if (!content) {
     log("[CLEAN] No content to clean")
     return
@@ -343,12 +373,12 @@ function cleanContent(parent: BaseRenderable, content: any): void {
 }
 
 // Spread props onto a renderable
-function spreadProps(renderable: BaseRenderable, props: any, prevProps: any = {}, skipChildren?: boolean): any {
+function spreadProps(renderable: BaseRenderable, props: Props, prevProps: Props = {}, skipChildren?: boolean): Props {
   if (!props) return prevProps
 
   // Handle children with proper tracking
   if (!skipChildren && props.children !== undefined) {
-    createEffect((current) => {
+    createEffect((current: EffectValue) => {
       prevProps.children = insertExpression(renderable, props.children, current)
       return prevProps.children
     }, prevProps.children)
@@ -356,7 +386,8 @@ function spreadProps(renderable: BaseRenderable, props: any, prevProps: any = {}
 
   // Handle ref
   if (props.ref) {
-    createEffect(() => props.ref(renderable))
+    const ref = props.ref as (el: BaseRenderable) => void
+    createEffect(() => ref(renderable))
   }
 
   // Handle other props with tracking
@@ -385,10 +416,10 @@ export {
   mergeProps,
 }
 
-export function render(code: () => any, rootRenderable: BaseRenderable) {
+export function render(code: () => any, rootRenderable: BaseRenderable): Disposer {
   log("[RENDER] Starting render into root:", rootRenderable.id)
-  let disposer: any
-  createRoot((dispose: any) => {
+  let disposer: Disposer = () => {}
+  createRoot((dispose: Disposer) => {
     disposer = dispose
     insert(rootRenderable, code())
   })
@@ -396,19 +427,22 @@ export function render(code: () => any, rootRenderable: BaseRenderable) {
   return disposer
 }
 
-export function spread(renderable: BaseRenderable, accessor: any, skipChildren?: boolean) {
+export function spread(renderable: BaseRenderable, accessor: Accessor<Props>, skipChildren?: boolean): void {
   if (typeof accessor === "function") {
-    createEffect((current) => spreadProps(renderable, accessor(), current, skipChildren))
+    createEffect((current: Props | undefined) => {
+      const props = accessor()
+      return spreadProps(renderable, props, current || {}, skipChildren)
+    })
   } else {
-    spreadProps(renderable, accessor, undefined, skipChildren)
+    spreadProps(renderable, accessor, {}, skipChildren)
   }
 }
 
-export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any) {
+export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any): any {
   setProperty(renderable, name, value, prev)
   return value
 }
 
-export function use(fn: any, element: any, arg: any) {
+export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {
   return untrack(() => fn(element, arg))
 }
