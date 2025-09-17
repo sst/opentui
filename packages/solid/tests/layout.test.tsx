@@ -62,10 +62,17 @@ describe("SolidJS Renderer Integration Tests", () => {
 
     it("should throw on rendering span without parent <text> element", async () => {
       expect(
-        testRender(() => <box><span>This text is not wrapped in a text element</span></box>, {
-          width: 30,
-          height: 5,
-        }),
+        testRender(
+          () => (
+            <box>
+              <span>This text is not wrapped in a text element</span>
+            </box>
+          ),
+          {
+            width: 30,
+            height: 5,
+          },
+        ),
       ).rejects.toThrow()
     })
 

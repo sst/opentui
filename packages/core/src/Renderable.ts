@@ -179,7 +179,6 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
-
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
