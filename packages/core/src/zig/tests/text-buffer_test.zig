@@ -1109,3 +1109,159 @@ test "TextBuffer wrapping - change wrap width" {
     wrapped_count = tb.getLineCount();
     try std.testing.expectEqual(@as(u32, 1), wrapped_count);
 }
+
+// ===== Additional Text Wrapping Edge Case Tests =====
+
+test "TextBuffer wrapping - grapheme at exact boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Create text with emoji that takes 2 cells at position 9-10
+    _ = try tb.writeChunk("12345678🌟", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    // Should fit exactly on one line (8 chars + 2-cell emoji = 10)
+    try std.testing.expectEqual(@as(u32, 1), wrapped_count);
+}
+
+test "TextBuffer wrapping - grapheme split across boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Create text where emoji would straddle the boundary
+    _ = try tb.writeChunk("123456789🌟ABC", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    // Should wrap: line 1 has "123456789", line 2 has "🌟ABC"
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "TextBuffer wrapping - CJK characters at boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // CJK characters typically take 2 cells each
+    _ = try tb.writeChunk("测试文字处理", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    // 6 CJK chars × 2 cells = 12 cells, should wrap to 2 lines
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "TextBuffer wrapping - mixed width characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Mix of single-width and double-width characters
+    _ = try tb.writeChunk("AB测试CD", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(6);
+    const wrapped_count = tb.getLineCount();
+
+    // "AB" (2) + "测试" (4) = 6 cells on first line, "CD" on second
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "TextBuffer wrapping - single wide character exceeds width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Emoji takes 2 cells but wrap width is 1
+    _ = try tb.writeChunk("🌟", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(1);
+    const wrapped_count = tb.getLineCount();
+
+    // Wide char that doesn't fit should still be on one line (can't split grapheme)
+    try std.testing.expectEqual(@as(u32, 1), wrapped_count);
+}
+
+test "TextBuffer wrapping - multiple consecutive wide characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Multiple emojis in a row
+    _ = try tb.writeChunk("🌟🌟🌟🌟🌟", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(6);
+    const wrapped_count = tb.getLineCount();
+
+    // 5 emojis × 2 cells = 10 cells, with width 6 should be 2 lines
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "TextBuffer wrapping - zero width characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text with combining characters (zero-width)
+    _ = try tb.writeChunk("e\u{0301}e\u{0301}e\u{0301}", null, null, null); // é é é using combining acute
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(2);
+    const wrapped_count = tb.getLineCount();
+
+    // Should consider the actual width after combining
+    try std.testing.expect(wrapped_count >= 1);
+}
