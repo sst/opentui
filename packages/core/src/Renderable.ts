@@ -1,7 +1,6 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, type Config } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
-import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
@@ -22,6 +21,17 @@ import {
 import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
 import type { MouseEvent } from "./renderer"
 import type { RenderContext } from "./types"
+import {
+  validateOptions,
+  isPositionType,
+  isDimensionType,
+  isFlexBasisType,
+  isSizeType,
+  isMarginType,
+  isPaddingType,
+  isPositionTypeType,
+  isOverflowType,
+} from "./lib/renderable.validations"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -108,87 +118,6 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   onKeyDown?: (key: ParsedKey) => void
 
   onSizeChange?: (this: T) => void
-}
-
-function validateOptions(id: string, options: RenderableOptions<Renderable>): void {
-  if (typeof options.width === "number") {
-    if (options.width < 0) {
-      throw new TypeError(`Invalid width for Renderable ${id}: ${options.width}`)
-    }
-  }
-  if (typeof options.height === "number") {
-    if (options.height < 0) {
-      throw new TypeError(`Invalid height for Renderable ${id}: ${options.height}`)
-    }
-  }
-}
-
-export function isValidPercentage(value: any): value is `${number}%` {
-  if (typeof value === "string" && value.endsWith("%")) {
-    const numPart = value.slice(0, -1)
-    const num = parseFloat(numPart)
-    return !Number.isNaN(num)
-  }
-  return false
-}
-
-export function isMarginType(value: any): value is number | "auto" | `${number}%` {
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return true
-  }
-  if (value === "auto") {
-    return true
-  }
-  return isValidPercentage(value)
-}
-
-export function isPaddingType(value: any): value is number | `${number}%` {
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return true
-  }
-  return isValidPercentage(value)
-}
-
-export function isPositionType(value: any): value is number | "auto" | `${number}%` {
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return true
-  }
-  if (value === "auto") {
-    return true
-  }
-  return isValidPercentage(value)
-}
-
-export function isPositionTypeType(value: any): value is PositionTypeString {
-  return value === "relative" || value === "absolute"
-}
-
-export function isOverflowType(value: any): value is OverflowString {
-  return value === "visible" || value === "hidden" || value === "scroll"
-}
-
-export function isDimensionType(value: any): value is number | "auto" | `${number}%` {
-  return isPositionType(value)
-}
-
-export function isFlexBasisType(value: any): value is number | "auto" | undefined {
-  if (value === undefined || value === "auto") {
-    return true
-  }
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return true
-  }
-  return false
-}
-
-export function isSizeType(value: any): value is number | `${number}%` | undefined {
-  if (value === undefined) {
-    return true
-  }
-  if (typeof value === "number" && !Number.isNaN(value)) {
-    return true
-  }
-  return isValidPercentage(value)
 }
 
 export function isRenderable(obj: any): obj is Renderable {
@@ -279,13 +208,14 @@ export abstract class Renderable extends BaseRenderable {
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
   private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
 
-  protected layoutNode: TrackedNode
+  protected yogaNode: YogaNode
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
 
-  private renderableMap: Map<string, Renderable> = new Map()
-  protected renderableArray: Renderable[] = []
+  private renderableMapById: Map<string, Renderable> = new Map()
+  protected _childrenInLayoutOrder: Renderable[] = []
+  protected _childrenInZIndexOrder: Renderable[] = []
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
 
@@ -325,8 +255,9 @@ export abstract class Renderable extends BaseRenderable {
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
 
-    this.layoutNode = createTrackedNode({ renderable: this } as any)
-    this.layoutNode.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
+    // TODO: use a global yoga config
+    this.yogaNode = Yoga.Node.create()
+    this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
     this.applyEventOptions(options)
@@ -349,7 +280,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public get primaryAxis(): "row" | "column" {
-    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    const dir = this.yogaNode.getFlexDirection()
     return dir === 2 || dir === 3 ? "row" : "column"
   }
 
@@ -358,7 +289,7 @@ export abstract class Renderable extends BaseRenderable {
 
     const wasVisible = this._visible
     this._visible = value
-    this.layoutNode.yogaNode.setDisplay(value ? Display.Flex : Display.None)
+    this.yogaNode.setDisplay(value ? Display.Flex : Display.None)
 
     if (this._live) {
       if (!wasVisible && value) {
@@ -455,7 +386,7 @@ export abstract class Renderable extends BaseRenderable {
   public handleKeyPress?(key: ParsedKey | string): boolean
 
   public findDescendantById(id: string): Renderable | undefined {
-    for (const child of this.renderableArray) {
+    for (const child of this._childrenInLayoutOrder) {
       if (child.id === id) return child
       const found = child.findDescendantById(id)
       if (found) return found
@@ -559,7 +490,7 @@ export abstract class Renderable extends BaseRenderable {
   public set width(value: number | "auto" | `${number}%`) {
     if (isDimensionType(value)) {
       this._width = value
-      this.layoutNode.setWidth(value)
+      this.yogaNode.setWidth(value)
       this.requestRender()
     }
   }
@@ -571,7 +502,7 @@ export abstract class Renderable extends BaseRenderable {
   public set height(value: number | "auto" | `${number}%`) {
     if (isDimensionType(value)) {
       this._height = value
-      this.layoutNode.setHeight(value)
+      this.yogaNode.setHeight(value)
       this.requestRender()
     }
   }
@@ -593,20 +524,23 @@ export abstract class Renderable extends BaseRenderable {
 
   private ensureZIndexSorted(): void {
     if (this.needsZIndexSort) {
-      this.renderableArray.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
+      this._childrenInZIndexOrder.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
       this.needsZIndexSort = false
     }
   }
 
   public getChildrenSortedByPrimaryAxis(): Renderable[] {
-    if (!this.childrenPrimarySortDirty && this.childrenSortedByPrimaryAxis.length === this.renderableArray.length) {
+    if (
+      !this.childrenPrimarySortDirty &&
+      this.childrenSortedByPrimaryAxis.length === this._childrenInLayoutOrder.length
+    ) {
       return this.childrenSortedByPrimaryAxis
     }
 
-    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    const dir = this.yogaNode.getFlexDirection()
     const axis: "x" | "y" = dir === 2 || dir === 3 ? "x" : "y"
 
-    const sorted = [...this.renderableArray]
+    const sorted = [...this._childrenInLayoutOrder]
     sorted.sort((a, b) => {
       const va = axis === "y" ? a.y : a.x
       const vb = axis === "y" ? b.y : b.x
@@ -619,7 +553,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   private setupYogaProperties(options: RenderableOptions<Renderable>): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
 
     if (isFlexBasisType(options.flexBasis)) {
       node.setFlexBasis(options.flexBasis)
@@ -663,11 +597,11 @@ export abstract class Renderable extends BaseRenderable {
 
     if (isDimensionType(options.width)) {
       this._width = options.width
-      this.layoutNode.setWidth(options.width)
+      this.yogaNode.setWidth(options.width)
     }
     if (isDimensionType(options.height)) {
       this._height = options.height
-      this.layoutNode.setHeight(options.height)
+      this.yogaNode.setHeight(options.height)
     }
 
     this._positionType = options.position === "absolute" ? "absolute" : "relative"
@@ -707,7 +641,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   private setupMarginAndPadding(options: RenderableOptions<Renderable>): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
 
     if (isMarginType(options.margin)) {
       node.setMargin(Edge.Top, options.margin)
@@ -754,7 +688,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!isPositionTypeType(positionType) || this._positionType === positionType) return
 
     this._positionType = positionType
-    this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
+    this.yogaNode.setPositionType(parsePositionType(positionType))
     this.requestRender()
   }
 
@@ -766,7 +700,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!isOverflowType(overflow) || this._overflow === overflow) return
 
     this._overflow = overflow
-    this.layoutNode.yogaNode.setOverflow(parseOverflow(overflow))
+    this.yogaNode.setOverflow(parseOverflow(overflow))
     this.requestRender()
   }
 
@@ -776,7 +710,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   private updateYogaPosition(position: Position): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
     const { top, right, bottom, left } = position
 
     if (isPositionType(top)) {
@@ -811,78 +745,78 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set flexGrow(grow: number) {
-    this.layoutNode.yogaNode.setFlexGrow(grow)
+    this.yogaNode.setFlexGrow(grow)
     this.requestRender()
   }
 
   public set flexShrink(shrink: number) {
-    this.layoutNode.yogaNode.setFlexShrink(shrink)
+    this.yogaNode.setFlexShrink(shrink)
     this.requestRender()
   }
 
   public set flexDirection(direction: FlexDirectionString) {
-    this.layoutNode.yogaNode.setFlexDirection(parseFlexDirection(direction))
+    this.yogaNode.setFlexDirection(parseFlexDirection(direction))
     this.requestRender()
   }
 
   public set flexWrap(wrap: WrapString) {
-    this.layoutNode.yogaNode.setFlexWrap(parseWrap(wrap))
+    this.yogaNode.setFlexWrap(parseWrap(wrap))
     this.requestRender()
   }
 
   public set alignItems(alignItems: AlignString) {
-    this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
+    this.yogaNode.setAlignItems(parseAlign(alignItems))
     this.requestRender()
   }
 
   public set justifyContent(justifyContent: JustifyString) {
-    this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
+    this.yogaNode.setJustifyContent(parseJustify(justifyContent))
     this.requestRender()
   }
 
   public set alignSelf(alignSelf: AlignString) {
-    this.layoutNode.yogaNode.setAlignSelf(parseAlign(alignSelf))
+    this.yogaNode.setAlignSelf(parseAlign(alignSelf))
     this.requestRender()
   }
 
   public set flexBasis(basis: number | "auto" | undefined) {
     if (isFlexBasisType(basis)) {
-      this.layoutNode.yogaNode.setFlexBasis(basis)
+      this.yogaNode.setFlexBasis(basis)
       this.requestRender()
     }
   }
 
   public set minWidth(minWidth: number | `${number}%` | undefined) {
     if (isSizeType(minWidth)) {
-      this.layoutNode.yogaNode.setMinWidth(minWidth)
+      this.yogaNode.setMinWidth(minWidth)
       this.requestRender()
     }
   }
 
   public set maxWidth(maxWidth: number | `${number}%` | undefined) {
     if (isSizeType(maxWidth)) {
-      this.layoutNode.yogaNode.setMaxWidth(maxWidth)
+      this.yogaNode.setMaxWidth(maxWidth)
       this.requestRender()
     }
   }
 
   public set minHeight(minHeight: number | `${number}%` | undefined) {
     if (isSizeType(minHeight)) {
-      this.layoutNode.yogaNode.setMinHeight(minHeight)
+      this.yogaNode.setMinHeight(minHeight)
       this.requestRender()
     }
   }
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
     if (isSizeType(maxHeight)) {
-      this.layoutNode.yogaNode.setMaxHeight(maxHeight)
+      this.yogaNode.setMaxHeight(maxHeight)
       this.requestRender()
     }
   }
 
   public set margin(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      const node = this.layoutNode.yogaNode
+      const node = this.yogaNode
       node.setMargin(Edge.Top, margin)
       node.setMargin(Edge.Right, margin)
       node.setMargin(Edge.Bottom, margin)
@@ -893,35 +827,35 @@ export abstract class Renderable extends BaseRenderable {
 
   public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Top, margin)
+      this.yogaNode.setMargin(Edge.Top, margin)
       this.requestRender()
     }
   }
 
   public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Right, margin)
+      this.yogaNode.setMargin(Edge.Right, margin)
       this.requestRender()
     }
   }
 
   public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Bottom, margin)
+      this.yogaNode.setMargin(Edge.Bottom, margin)
       this.requestRender()
     }
   }
 
   public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Left, margin)
+      this.yogaNode.setMargin(Edge.Left, margin)
       this.requestRender()
     }
   }
 
   public set padding(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      const node = this.layoutNode.yogaNode
+      const node = this.yogaNode
       node.setPadding(Edge.Top, padding)
       node.setPadding(Edge.Right, padding)
       node.setPadding(Edge.Bottom, padding)
@@ -932,38 +866,38 @@ export abstract class Renderable extends BaseRenderable {
 
   public set paddingTop(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Top, padding)
+      this.yogaNode.setPadding(Edge.Top, padding)
       this.requestRender()
     }
   }
 
   public set paddingRight(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Right, padding)
+      this.yogaNode.setPadding(Edge.Right, padding)
       this.requestRender()
     }
   }
 
   public set paddingBottom(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Bottom, padding)
+      this.yogaNode.setPadding(Edge.Bottom, padding)
       this.requestRender()
     }
   }
 
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
+      this.yogaNode.setPadding(Edge.Left, padding)
       this.requestRender()
     }
   }
 
-  public getLayoutNode(): TrackedNode {
-    return this.layoutNode
+  public getLayoutNode(): YogaNode {
+    return this.yogaNode
   }
 
   public updateFromLayout(): void {
-    const layout = this.layoutNode.yogaNode.getComputedLayout()
+    const layout = this.yogaNode.getComputedLayout()
 
     const oldX = this._x
     const oldY = this._y
@@ -1057,7 +991,7 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    if (this.renderableMap.has(renderable.id)) {
+    if (this.renderableMapById.has(renderable.id)) {
       console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
       this.remove(renderable.id)
     }
@@ -1067,16 +1001,20 @@ export abstract class Renderable extends BaseRenderable {
     const childLayoutNode = renderable.getLayoutNode()
     let insertedIndex: number
     if (index !== undefined) {
-      this.renderableArray.splice(index, 0, renderable)
-      this._forceLayoutUpdateFor = this.renderableArray.slice(index)
-      insertedIndex = this.layoutNode.insertChild(childLayoutNode, index)
+      insertedIndex = Math.max(0, Math.min(index, this._childrenInLayoutOrder.length))
+      this._childrenInLayoutOrder.splice(index, 0, renderable)
+      this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(index)
+      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
     } else {
-      this.renderableArray.push(renderable)
-      insertedIndex = this.layoutNode.addChild(childLayoutNode)
+      insertedIndex = this._childrenInLayoutOrder.length
+      this._childrenInLayoutOrder.push(renderable)
+      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
     }
+
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
-    this.renderableMap.set(renderable.id, renderable)
+    this.renderableMapById.set(renderable.id, renderable)
+    this._childrenInZIndexOrder.push(renderable)
 
     if (typeof renderable.onLifecyclePass === "function") {
       this._ctx.registerLifecyclePass(renderable)
@@ -1094,6 +1032,10 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+    if (!anchor) {
+      return this.add(obj)
+    }
+
     if (!obj) {
       return -1
     }
@@ -1103,31 +1045,62 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    if (!anchor) {
-      return this.add(renderable)
+    if (renderable.isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping insertBefore`)
+      }
+      return -1
     }
 
     if (!isRenderable(anchor)) {
       throw new Error("Anchor must be a Renderable")
     }
 
+    if (anchor.isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor with id ${anchor.id} was already destroyed, skipping insertBefore`)
+      }
+      return -1
+    }
+
     // Should we really throw for this? Maybe just log a warning in dev.
-    if (!this.renderableMap.has(anchor.id)) {
+    if (!this.renderableMapById.has(anchor.id)) {
       throw new Error("Anchor does not exist")
     }
 
-    const anchorIndex = this.renderableArray.indexOf(anchor)
-    // Same here: maybe just log a warning in dev.
-    if (anchorIndex === -1) {
-      throw new Error("Anchor does not exist")
+    if (renderable.parent === this) {
+      this.yogaNode.removeChild(renderable.getLayoutNode())
+      this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
+    } else if (renderable.parent) {
+      this.replaceParent(renderable)
+      this.needsZIndexSort = true
+      this.renderableMapById.set(renderable.id, renderable)
+
+      if (typeof renderable.onLifecyclePass === "function") {
+        this._ctx.registerLifecyclePass(renderable)
+      }
+
+      if (renderable._liveCount > 0) {
+        this.propagateLiveCount(renderable._liveCount)
+      }
     }
 
-    return this.add(renderable, anchorIndex)
+    this._newChildren.push(renderable)
+    this.childrenPrimarySortDirty = true
+
+    const anchorIndex = this._childrenInLayoutOrder.indexOf(anchor)
+    const insertedIndex = Math.max(0, Math.min(anchorIndex, this._childrenInLayoutOrder.length))
+
+    this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(insertedIndex)
+    this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
+    this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
+
+    return insertedIndex
   }
 
   // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
-    return this.renderableMap.get(id)
+    return this.renderableMapById.get(id)
   }
 
   public remove(id: string): void {
@@ -1135,28 +1108,34 @@ export abstract class Renderable extends BaseRenderable {
       return
     }
 
-    if (this.renderableMap.has(id)) {
-      const obj = this.renderableMap.get(id)
+    if (this.renderableMapById.has(id)) {
+      const obj = this.renderableMapById.get(id)
       if (obj) {
         if (obj._liveCount > 0) {
           this.propagateLiveCount(-obj._liveCount)
         }
 
         const childLayoutNode = obj.getLayoutNode()
-        this.layoutNode.removeChild(childLayoutNode)
+        this.yogaNode.removeChild(childLayoutNode)
         this.requestRender()
 
         obj.onRemove()
         obj.parent = null
         this._ctx.unregisterLifecyclePass(obj)
-      }
-      this.renderableMap.delete(id)
+        this.renderableMapById.delete(id)
 
-      const index = this.renderableArray.findIndex((obj) => obj.id === id)
-      if (index !== -1) {
-        this.renderableArray.splice(index, 1)
+        const index = this._childrenInLayoutOrder.findIndex((obj) => obj.id === id)
+        if (index !== -1) {
+          this._childrenInLayoutOrder.splice(index, 1)
+        }
+
+        const zIndexIndex = this._childrenInZIndexOrder.findIndex((obj) => obj.id === id)
+        if (zIndexIndex !== -1) {
+          this._childrenInZIndexOrder.splice(zIndexIndex, 1)
+        }
+
+        this.childrenPrimarySortDirty = true
       }
-      this.childrenPrimarySortDirty = true
     }
   }
 
@@ -1166,11 +1145,11 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public getChildren(): Renderable[] {
-    return [...this.renderableArray]
+    return [...this._childrenInLayoutOrder]
   }
 
   public getChildrenCount(): number {
-    return this.renderableArray.length
+    return this._childrenInLayoutOrder.length
   }
 
   public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
@@ -1257,7 +1236,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   protected _getChildren(): Renderable[] {
-    return this.renderableArray
+    return this._childrenInZIndexOrder
   }
 
   protected onUpdate(deltaTime: number): void {
@@ -1299,24 +1278,29 @@ export abstract class Renderable extends BaseRenderable {
       this.frameBuffer = null
     }
 
-    for (const child of this.renderableArray) {
+    for (const child of this._childrenInLayoutOrder) {
       this.remove(child.id)
     }
 
-    this.renderableArray = []
-    this.renderableMap.clear()
+    this._childrenInLayoutOrder = []
+    this.renderableMapById.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
     this.blur()
     this.removeAllListeners()
 
     this.destroySelf()
-    this.layoutNode.destroy()
+
+    try {
+      this.yogaNode.free()
+    } catch (e) {
+      // Might be already freed and will throw an error if we try to free it again
+    }
   }
 
   public destroyRecursively(): void {
     // Destroy children first to ensure removal as destroy clears child array
-    for (const child of this.renderableArray) {
+    for (const child of this._childrenInLayoutOrder) {
       child.destroyRecursively()
     }
     this.destroy()
@@ -1457,14 +1441,14 @@ export class RootRenderable extends Renderable {
     this.yogaConfig.setUseWebDefaults(false)
     this.yogaConfig.setPointScaleFactor(1)
 
-    if (this.layoutNode) {
-      this.layoutNode.destroy()
+    if (this.yogaNode) {
+      this.yogaNode.free()
     }
 
-    this.layoutNode = createTrackedNode({}, this.yogaConfig)
-    this.layoutNode.setWidth(ctx.width)
-    this.layoutNode.setHeight(ctx.height)
-    this.layoutNode.yogaNode.setFlexDirection(FlexDirection.Column)
+    this.yogaNode = Yoga.Node.create(this.yogaConfig)
+    this.yogaNode.setWidth(ctx.width)
+    this.yogaNode.setHeight(ctx.height)
+    this.yogaNode.setFlexDirection(FlexDirection.Column)
 
     this.calculateLayout()
   }
@@ -1485,7 +1469,7 @@ export class RootRenderable extends Renderable {
     // but that's only possible if we move the layout tree to native.
 
     // 1. Calculate layout from root
-    if (this.layoutNode.yogaNode.isDirty()) {
+    if (this.yogaNode.isDirty()) {
       this.calculateLayout()
     }
 
@@ -1522,7 +1506,7 @@ export class RootRenderable extends Renderable {
   }
 
   public calculateLayout(): void {
-    this.layoutNode.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
+    this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     this.emit(LayoutEvents.LAYOUT_CHANGED)
   }
 

@@ -235,7 +235,7 @@ export class TextRenderable extends Renderable {
       }
     }
 
-    this.layoutNode.yogaNode.markDirty()
+    this.yogaNode.markDirty()
     this.requestRender()
   }
 
@@ -270,7 +270,7 @@ export class TextRenderable extends Renderable {
       }
     }
 
-    this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
+    this.yogaNode.setMeasureFunc(measureFunc)
   }
 
   insertChunk(chunk: TextChunk, index?: number): void {

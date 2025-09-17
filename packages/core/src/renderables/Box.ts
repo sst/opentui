@@ -1,5 +1,6 @@
 import { Edge, Gutter } from "yoga-layout"
-import { type RenderableOptions, Renderable, isValidPercentage } from "../Renderable"
+import { type RenderableOptions, Renderable } from "../Renderable"
+import { isValidPercentage } from "../lib/renderable.validations"
 import type { OptimizedBuffer } from "../buffer"
 import {
   type BorderCharacters,
@@ -226,7 +227,7 @@ export class BoxRenderable extends Renderable {
   }
 
   private applyYogaBorders(): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
     node.setBorder(Edge.Left, this.borderSides.left ? 1 : 0)
     node.setBorder(Edge.Right, this.borderSides.right ? 1 : 0)
     node.setBorder(Edge.Top, this.borderSides.top ? 1 : 0)
@@ -235,7 +236,7 @@ export class BoxRenderable extends Renderable {
   }
 
   private applyYogaGap(options: BoxOptions): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
 
     if (isGapType(options.gap)) {
       node.setGap(Gutter.All, options.gap)
@@ -252,21 +253,21 @@ export class BoxRenderable extends Renderable {
 
   public set gap(gap: number | `${number}%` | undefined) {
     if (isGapType(gap)) {
-      this.layoutNode.yogaNode.setGap(Gutter.All, gap)
+      this.yogaNode.setGap(Gutter.All, gap)
       this.requestRender()
     }
   }
 
   public set rowGap(rowGap: number | `${number}%` | undefined) {
     if (isGapType(rowGap)) {
-      this.layoutNode.yogaNode.setGap(Gutter.Row, rowGap)
+      this.yogaNode.setGap(Gutter.Row, rowGap)
       this.requestRender()
     }
   }
 
   public set columnGap(columnGap: number | `${number}%` | undefined) {
     if (isGapType(columnGap)) {
-      this.layoutNode.yogaNode.setGap(Gutter.Column, columnGap)
+      this.yogaNode.setGap(Gutter.Column, columnGap)
       this.requestRender()
     }
   }
