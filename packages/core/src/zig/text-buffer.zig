@@ -509,7 +509,7 @@ pub const TextBuffer = struct {
 
                             current_vline = VirtualLine.init(self.allocator);
                             current_vline.char_offset = global_char_offset;
-                            current_vline.is_wrapped = true; // This is a wrapped continuation line
+                            current_vline.is_wrapped = !first_in_line;
                             line_position = 0;
                         }
                     }
@@ -528,7 +528,6 @@ pub const TextBuffer = struct {
 
     /// Write a UTF-8 encoded text chunk with styling to the buffer
     /// Creates a new chunk with the specified styling and adds it to the current line
-    /// Returns flags: bit 0 = resized during write, bits 1-31 = number of cells written
     pub fn writeChunk(self: *TextBuffer, textBytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
         // Empty text creates a single chunk group
         if (textBytes.len == 0) {
@@ -692,7 +691,6 @@ pub const TextBuffer = struct {
 
         self.chunk_groups.append(chunk_group) catch return TextBufferError.OutOfMemory;
 
-        // No longer need resize flag since we don't use a global buffer
         return cellCount << 1;
     }
 

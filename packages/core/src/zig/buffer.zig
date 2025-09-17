@@ -838,7 +838,7 @@ pub const OptimizedBuffer = struct {
 
         // Use virtual lines if wrapping is enabled
         if (text_buffer.wrap_width != null) {
-            logger.info("[buffer] Rendering using virtual lines");
+            // logger.info("[buffer] Rendering using virtual lines", .{});
             // Render using virtual lines
             for (text_buffer.virtual_lines.items) |vline| {
                 currentX = x; // Reset X at start of each line
