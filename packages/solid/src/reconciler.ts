@@ -2,7 +2,6 @@
 import {
   BaseRenderable,
   createTextAttributes,
-  createTrackedNode,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
@@ -15,13 +14,11 @@ import {
   TabSelectRenderableEvents,
   TextNodeRenderable,
   TextRenderable,
-  TrackedNode,
-  type RenderableOptions,
   type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
-import { createRenderer } from "solid-js/universal"
+import { createRenderer } from "./renderer"
 import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
@@ -90,16 +87,12 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
   if (isTextNodeRenderable(node)) {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
-      // TODO this can happen naturally with match and show, probably should handle better
-      log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
-      // TODO: Workaround for now, final implementation to be decided
-      let anchorIndex = undefined
-      if (anchor) {
-        anchorIndex = getNodeChildren(parent).findIndex((el) => el.id === anchor.id)
-      }
-      const renderer = useRenderer()
-      parent.add(createAnchorNode(renderer), anchorIndex)
-      return
+      throw new Error(
+        `Orphan text error: "${node
+          .toChunks()
+          .map((c) => c.text)
+          .join("")}" must have a <text> as a parent: ${parent.id} above ${node.id}`,
+      )
     }
   }
 
@@ -151,7 +144,9 @@ function _createTextNode(value: string | number): TextNode {
 }
 
 function createAnchorNode(ctx: RenderContext): AnchorNode {
-  return new AnchorNode(ctx, getNextId("anchor-node"))
+  const id = getNextId("anchor-node")
+  log("Creating anchor node", id)
+  return new AnchorNode(ctx, id)
 }
 
 function _getParentNode(childNode: DomNode): DomNode | undefined {
@@ -197,6 +192,11 @@ export const {
   },
 
   createTextNode: _createTextNode,
+
+  createAnchorNode: () => {
+    const renderer = useRenderer()
+    return createAnchorNode(renderer)
+  },
 
   replaceText(textNode: TextNode, value: string): void {
     log("Replacing text:", value, "in node:", logId(textNode))
