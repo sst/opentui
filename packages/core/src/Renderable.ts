@@ -213,8 +213,9 @@ export abstract class Renderable extends BaseRenderable {
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
 
-  private renderableMap: Map<string, Renderable> = new Map()
-  protected renderableArray: Renderable[] = []
+  private renderableMapById: Map<string, Renderable> = new Map()
+  protected _childrenInLayoutOrder: Renderable[] = []
+  protected _childrenInZIndexOrder: Renderable[] = []
   private needsZIndexSort: boolean = false
   public parent: Renderable | null = null
 
@@ -385,7 +386,7 @@ export abstract class Renderable extends BaseRenderable {
   public handleKeyPress?(key: ParsedKey | string): boolean
 
   public findDescendantById(id: string): Renderable | undefined {
-    for (const child of this.renderableArray) {
+    for (const child of this._childrenInLayoutOrder) {
       if (child.id === id) return child
       const found = child.findDescendantById(id)
       if (found) return found
@@ -523,20 +524,23 @@ export abstract class Renderable extends BaseRenderable {
 
   private ensureZIndexSorted(): void {
     if (this.needsZIndexSort) {
-      this.renderableArray.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
+      this._childrenInZIndexOrder.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
       this.needsZIndexSort = false
     }
   }
 
   public getChildrenSortedByPrimaryAxis(): Renderable[] {
-    if (!this.childrenPrimarySortDirty && this.childrenSortedByPrimaryAxis.length === this.renderableArray.length) {
+    if (
+      !this.childrenPrimarySortDirty &&
+      this.childrenSortedByPrimaryAxis.length === this._childrenInLayoutOrder.length
+    ) {
       return this.childrenSortedByPrimaryAxis
     }
 
     const dir = this.yogaNode.getFlexDirection()
     const axis: "x" | "y" = dir === 2 || dir === 3 ? "x" : "y"
 
-    const sorted = [...this.renderableArray]
+    const sorted = [...this._childrenInLayoutOrder]
     sorted.sort((a, b) => {
       const va = axis === "y" ? a.y : a.x
       const vb = axis === "y" ? b.y : b.x
@@ -986,8 +990,8 @@ export abstract class Renderable extends BaseRenderable {
       }
       return -1
     }
-    console.log("add", renderable.id, this.id)
-    if (this.renderableMap.has(renderable.id)) {
+
+    if (this.renderableMapById.has(renderable.id)) {
       console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
       this.remove(renderable.id)
     }
@@ -997,18 +1001,20 @@ export abstract class Renderable extends BaseRenderable {
     const childLayoutNode = renderable.getLayoutNode()
     let insertedIndex: number
     if (index !== undefined) {
-      insertedIndex = Math.max(0, Math.min(index, this.renderableArray.length))
-      this.renderableArray.splice(index, 0, renderable)
-      this._forceLayoutUpdateFor = this.renderableArray.slice(index)
+      insertedIndex = Math.max(0, Math.min(index, this._childrenInLayoutOrder.length))
+      this._childrenInLayoutOrder.splice(index, 0, renderable)
+      this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(index)
       this.yogaNode.insertChild(childLayoutNode, insertedIndex)
     } else {
-      insertedIndex = this.renderableArray.length
-      this.renderableArray.push(renderable)
+      insertedIndex = this._childrenInLayoutOrder.length
+      this._childrenInLayoutOrder.push(renderable)
       this.yogaNode.insertChild(childLayoutNode, insertedIndex)
     }
+
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
-    this.renderableMap.set(renderable.id, renderable)
+    this.renderableMapById.set(renderable.id, renderable)
+    this._childrenInZIndexOrder.push(renderable)
 
     if (typeof renderable.onLifecyclePass === "function") {
       this._ctx.registerLifecyclePass(renderable)
@@ -1026,6 +1032,10 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+    if (!anchor) {
+      return this.add(obj)
+    }
+
     if (!obj) {
       return -1
     }
@@ -1034,32 +1044,63 @@ export abstract class Renderable extends BaseRenderable {
     if (!renderable) {
       return -1
     }
-    if (!anchor) {
-      return this.add(renderable)
+
+    if (renderable.isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping insertBefore`)
+      }
+      return -1
     }
-    console.log("insertBefore", renderable.id, anchor.id, this.id)
 
     if (!isRenderable(anchor)) {
       throw new Error("Anchor must be a Renderable")
     }
 
+    if (anchor.isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor with id ${anchor.id} was already destroyed, skipping insertBefore`)
+      }
+      return -1
+    }
+
     // Should we really throw for this? Maybe just log a warning in dev.
-    if (!this.renderableMap.has(anchor.id)) {
+    if (!this.renderableMapById.has(anchor.id)) {
       throw new Error("Anchor does not exist")
     }
 
-    const anchorIndex = this.renderableArray.indexOf(anchor)
-    // Same here: maybe just log a warning in dev.
-    if (anchorIndex === -1) {
-      throw new Error("Anchor does not exist")
+    if (renderable.parent === this) {
+      this.yogaNode.removeChild(renderable.getLayoutNode())
+      this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
+    } else if (renderable.parent) {
+      this.replaceParent(renderable)
+      this.needsZIndexSort = true
+      this.renderableMapById.set(renderable.id, renderable)
+
+      if (typeof renderable.onLifecyclePass === "function") {
+        this._ctx.registerLifecyclePass(renderable)
+      }
+
+      if (renderable._liveCount > 0) {
+        this.propagateLiveCount(renderable._liveCount)
+      }
     }
 
-    return this.add(renderable, anchorIndex)
+    this._newChildren.push(renderable)
+    this.childrenPrimarySortDirty = true
+
+    const anchorIndex = this._childrenInLayoutOrder.indexOf(anchor)
+    const insertedIndex = Math.max(0, Math.min(anchorIndex, this._childrenInLayoutOrder.length))
+
+    this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(insertedIndex)
+    this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
+    this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
+
+    return insertedIndex
   }
 
   // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
-    return this.renderableMap.get(id)
+    return this.renderableMapById.get(id)
   }
 
   public remove(id: string): void {
@@ -1067,9 +1108,8 @@ export abstract class Renderable extends BaseRenderable {
       return
     }
 
-    console.log("remove", id, this.id)
-    if (this.renderableMap.has(id)) {
-      const obj = this.renderableMap.get(id)
+    if (this.renderableMapById.has(id)) {
+      const obj = this.renderableMapById.get(id)
       if (obj) {
         if (obj._liveCount > 0) {
           this.propagateLiveCount(-obj._liveCount)
@@ -1082,12 +1122,16 @@ export abstract class Renderable extends BaseRenderable {
         obj.onRemove()
         obj.parent = null
         this._ctx.unregisterLifecyclePass(obj)
-        this.renderableMap.delete(id)
+        this.renderableMapById.delete(id)
 
-        const index = this.renderableArray.findIndex((obj) => obj.id === id)
-
+        const index = this._childrenInLayoutOrder.findIndex((obj) => obj.id === id)
         if (index !== -1) {
-          this.renderableArray.splice(index, 1)
+          this._childrenInLayoutOrder.splice(index, 1)
+        }
+
+        const zIndexIndex = this._childrenInZIndexOrder.findIndex((obj) => obj.id === id)
+        if (zIndexIndex !== -1) {
+          this._childrenInZIndexOrder.splice(zIndexIndex, 1)
         }
 
         this.childrenPrimarySortDirty = true
@@ -1101,11 +1145,11 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public getChildren(): Renderable[] {
-    return [...this.renderableArray]
+    return [...this._childrenInLayoutOrder]
   }
 
   public getChildrenCount(): number {
-    return this.renderableArray.length
+    return this._childrenInLayoutOrder.length
   }
 
   public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
@@ -1192,7 +1236,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   protected _getChildren(): Renderable[] {
-    return this.renderableArray
+    return this._childrenInZIndexOrder
   }
 
   protected onUpdate(deltaTime: number): void {
@@ -1234,12 +1278,12 @@ export abstract class Renderable extends BaseRenderable {
       this.frameBuffer = null
     }
 
-    for (const child of this.renderableArray) {
+    for (const child of this._childrenInLayoutOrder) {
       this.remove(child.id)
     }
 
-    this.renderableArray = []
-    this.renderableMap.clear()
+    this._childrenInLayoutOrder = []
+    this.renderableMapById.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
     this.blur()
@@ -1256,7 +1300,7 @@ export abstract class Renderable extends BaseRenderable {
 
   public destroyRecursively(): void {
     // Destroy children first to ensure removal as destroy clears child array
-    for (const child of this.renderableArray) {
+    for (const child of this._childrenInLayoutOrder) {
       child.destroyRecursively()
     }
     this.destroy()
