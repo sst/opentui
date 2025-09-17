@@ -341,8 +341,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.root = new RootRenderable(this)
 
-    this.takeMemorySnapshot()
-
     if (this.memorySnapshotInterval > 0) {
       this.startMemorySnapshotTimer()
     }
