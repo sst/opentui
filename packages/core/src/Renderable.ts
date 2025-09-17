@@ -1,7 +1,6 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, type Config } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
-import { TrackedNode, createTrackedNode } from "./lib/TrackedNode"
 import type { ParsedKey } from "./lib/parse.keypress"
 import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
@@ -209,7 +208,7 @@ export abstract class Renderable extends BaseRenderable {
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
   private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
 
-  protected layoutNode: TrackedNode
+  protected yogaNode: YogaNode
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
@@ -255,8 +254,9 @@ export abstract class Renderable extends BaseRenderable {
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
 
-    this.layoutNode = createTrackedNode({ renderable: this } as any)
-    this.layoutNode.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
+    // TODO: use a global yoga config
+    this.yogaNode = Yoga.Node.create()
+    this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
     this.applyEventOptions(options)
@@ -279,7 +279,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public get primaryAxis(): "row" | "column" {
-    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    const dir = this.yogaNode.getFlexDirection()
     return dir === 2 || dir === 3 ? "row" : "column"
   }
 
@@ -288,7 +288,7 @@ export abstract class Renderable extends BaseRenderable {
 
     const wasVisible = this._visible
     this._visible = value
-    this.layoutNode.yogaNode.setDisplay(value ? Display.Flex : Display.None)
+    this.yogaNode.setDisplay(value ? Display.Flex : Display.None)
 
     if (this._live) {
       if (!wasVisible && value) {
@@ -489,7 +489,7 @@ export abstract class Renderable extends BaseRenderable {
   public set width(value: number | "auto" | `${number}%`) {
     if (isDimensionType(value)) {
       this._width = value
-      this.layoutNode.setWidth(value)
+      this.yogaNode.setWidth(value)
       this.requestRender()
     }
   }
@@ -501,7 +501,7 @@ export abstract class Renderable extends BaseRenderable {
   public set height(value: number | "auto" | `${number}%`) {
     if (isDimensionType(value)) {
       this._height = value
-      this.layoutNode.setHeight(value)
+      this.yogaNode.setHeight(value)
       this.requestRender()
     }
   }
@@ -533,7 +533,7 @@ export abstract class Renderable extends BaseRenderable {
       return this.childrenSortedByPrimaryAxis
     }
 
-    const dir = this.layoutNode.yogaNode.getFlexDirection()
+    const dir = this.yogaNode.getFlexDirection()
     const axis: "x" | "y" = dir === 2 || dir === 3 ? "x" : "y"
 
     const sorted = [...this.renderableArray]
@@ -549,7 +549,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   private setupYogaProperties(options: RenderableOptions<Renderable>): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
 
     if (isFlexBasisType(options.flexBasis)) {
       node.setFlexBasis(options.flexBasis)
@@ -593,11 +593,11 @@ export abstract class Renderable extends BaseRenderable {
 
     if (isDimensionType(options.width)) {
       this._width = options.width
-      this.layoutNode.setWidth(options.width)
+      this.yogaNode.setWidth(options.width)
     }
     if (isDimensionType(options.height)) {
       this._height = options.height
-      this.layoutNode.setHeight(options.height)
+      this.yogaNode.setHeight(options.height)
     }
 
     this._positionType = options.position === "absolute" ? "absolute" : "relative"
@@ -637,7 +637,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   private setupMarginAndPadding(options: RenderableOptions<Renderable>): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
 
     if (isMarginType(options.margin)) {
       node.setMargin(Edge.Top, options.margin)
@@ -684,7 +684,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!isPositionTypeType(positionType) || this._positionType === positionType) return
 
     this._positionType = positionType
-    this.layoutNode.yogaNode.setPositionType(parsePositionType(positionType))
+    this.yogaNode.setPositionType(parsePositionType(positionType))
     this.requestRender()
   }
 
@@ -696,7 +696,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!isOverflowType(overflow) || this._overflow === overflow) return
 
     this._overflow = overflow
-    this.layoutNode.yogaNode.setOverflow(parseOverflow(overflow))
+    this.yogaNode.setOverflow(parseOverflow(overflow))
     this.requestRender()
   }
 
@@ -706,7 +706,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   private updateYogaPosition(position: Position): void {
-    const node = this.layoutNode.yogaNode
+    const node = this.yogaNode
     const { top, right, bottom, left } = position
 
     if (isPositionType(top)) {
@@ -741,78 +741,78 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set flexGrow(grow: number) {
-    this.layoutNode.yogaNode.setFlexGrow(grow)
+    this.yogaNode.setFlexGrow(grow)
     this.requestRender()
   }
 
   public set flexShrink(shrink: number) {
-    this.layoutNode.yogaNode.setFlexShrink(shrink)
+    this.yogaNode.setFlexShrink(shrink)
     this.requestRender()
   }
 
   public set flexDirection(direction: FlexDirectionString) {
-    this.layoutNode.yogaNode.setFlexDirection(parseFlexDirection(direction))
+    this.yogaNode.setFlexDirection(parseFlexDirection(direction))
     this.requestRender()
   }
 
   public set flexWrap(wrap: WrapString) {
-    this.layoutNode.yogaNode.setFlexWrap(parseWrap(wrap))
+    this.yogaNode.setFlexWrap(parseWrap(wrap))
     this.requestRender()
   }
 
   public set alignItems(alignItems: AlignString) {
-    this.layoutNode.yogaNode.setAlignItems(parseAlign(alignItems))
+    this.yogaNode.setAlignItems(parseAlign(alignItems))
     this.requestRender()
   }
 
   public set justifyContent(justifyContent: JustifyString) {
-    this.layoutNode.yogaNode.setJustifyContent(parseJustify(justifyContent))
+    this.yogaNode.setJustifyContent(parseJustify(justifyContent))
     this.requestRender()
   }
 
   public set alignSelf(alignSelf: AlignString) {
-    this.layoutNode.yogaNode.setAlignSelf(parseAlign(alignSelf))
+    this.yogaNode.setAlignSelf(parseAlign(alignSelf))
     this.requestRender()
   }
 
   public set flexBasis(basis: number | "auto" | undefined) {
     if (isFlexBasisType(basis)) {
-      this.layoutNode.yogaNode.setFlexBasis(basis)
+      this.yogaNode.setFlexBasis(basis)
       this.requestRender()
     }
   }
 
   public set minWidth(minWidth: number | `${number}%` | undefined) {
     if (isSizeType(minWidth)) {
-      this.layoutNode.yogaNode.setMinWidth(minWidth)
+      this.yogaNode.setMinWidth(minWidth)
       this.requestRender()
     }
   }
 
   public set maxWidth(maxWidth: number | `${number}%` | undefined) {
     if (isSizeType(maxWidth)) {
-      this.layoutNode.yogaNode.setMaxWidth(maxWidth)
+      this.yogaNode.setMaxWidth(maxWidth)
       this.requestRender()
     }
   }
 
   public set minHeight(minHeight: number | `${number}%` | undefined) {
     if (isSizeType(minHeight)) {
-      this.layoutNode.yogaNode.setMinHeight(minHeight)
+      this.yogaNode.setMinHeight(minHeight)
       this.requestRender()
     }
   }
 
   public set maxHeight(maxHeight: number | `${number}%` | undefined) {
     if (isSizeType(maxHeight)) {
-      this.layoutNode.yogaNode.setMaxHeight(maxHeight)
+      this.yogaNode.setMaxHeight(maxHeight)
       this.requestRender()
     }
   }
 
   public set margin(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      const node = this.layoutNode.yogaNode
+      const node = this.yogaNode
       node.setMargin(Edge.Top, margin)
       node.setMargin(Edge.Right, margin)
       node.setMargin(Edge.Bottom, margin)
@@ -823,35 +823,35 @@ export abstract class Renderable extends BaseRenderable {
 
   public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Top, margin)
+      this.yogaNode.setMargin(Edge.Top, margin)
       this.requestRender()
     }
   }
 
   public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Right, margin)
+      this.yogaNode.setMargin(Edge.Right, margin)
       this.requestRender()
     }
   }
 
   public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Bottom, margin)
+      this.yogaNode.setMargin(Edge.Bottom, margin)
       this.requestRender()
     }
   }
 
   public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
     if (isMarginType(margin)) {
-      this.layoutNode.yogaNode.setMargin(Edge.Left, margin)
+      this.yogaNode.setMargin(Edge.Left, margin)
       this.requestRender()
     }
   }
 
   public set padding(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      const node = this.layoutNode.yogaNode
+      const node = this.yogaNode
       node.setPadding(Edge.Top, padding)
       node.setPadding(Edge.Right, padding)
       node.setPadding(Edge.Bottom, padding)
@@ -862,38 +862,38 @@ export abstract class Renderable extends BaseRenderable {
 
   public set paddingTop(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Top, padding)
+      this.yogaNode.setPadding(Edge.Top, padding)
       this.requestRender()
     }
   }
 
   public set paddingRight(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Right, padding)
+      this.yogaNode.setPadding(Edge.Right, padding)
       this.requestRender()
     }
   }
 
   public set paddingBottom(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Bottom, padding)
+      this.yogaNode.setPadding(Edge.Bottom, padding)
       this.requestRender()
     }
   }
 
   public set paddingLeft(padding: number | `${number}%` | undefined) {
     if (isPaddingType(padding)) {
-      this.layoutNode.yogaNode.setPadding(Edge.Left, padding)
+      this.yogaNode.setPadding(Edge.Left, padding)
       this.requestRender()
     }
   }
 
-  public getLayoutNode(): TrackedNode {
-    return this.layoutNode
+  public getLayoutNode(): YogaNode {
+    return this.yogaNode
   }
 
   public updateFromLayout(): void {
-    const layout = this.layoutNode.yogaNode.getComputedLayout()
+    const layout = this.yogaNode.getComputedLayout()
 
     const oldX = this._x
     const oldY = this._y
@@ -986,7 +986,7 @@ export abstract class Renderable extends BaseRenderable {
       }
       return -1
     }
-
+    console.log("add", renderable.id, this.id)
     if (this.renderableMap.has(renderable.id)) {
       console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
       this.remove(renderable.id)
@@ -997,12 +997,14 @@ export abstract class Renderable extends BaseRenderable {
     const childLayoutNode = renderable.getLayoutNode()
     let insertedIndex: number
     if (index !== undefined) {
+      insertedIndex = Math.max(0, Math.min(index, this.renderableArray.length))
       this.renderableArray.splice(index, 0, renderable)
       this._forceLayoutUpdateFor = this.renderableArray.slice(index)
-      insertedIndex = this.layoutNode.insertChild(childLayoutNode, index)
+      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
     } else {
+      insertedIndex = this.renderableArray.length
       this.renderableArray.push(renderable)
-      insertedIndex = this.layoutNode.addChild(childLayoutNode)
+      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
     }
     this.needsZIndexSort = true
     this.childrenPrimarySortDirty = true
@@ -1032,10 +1034,10 @@ export abstract class Renderable extends BaseRenderable {
     if (!renderable) {
       return -1
     }
-
     if (!anchor) {
       return this.add(renderable)
     }
+    console.log("insertBefore", renderable.id, anchor.id, this.id)
 
     if (!isRenderable(anchor)) {
       throw new Error("Anchor must be a Renderable")
@@ -1065,6 +1067,7 @@ export abstract class Renderable extends BaseRenderable {
       return
     }
 
+    console.log("remove", id, this.id)
     if (this.renderableMap.has(id)) {
       const obj = this.renderableMap.get(id)
       if (obj) {
@@ -1073,20 +1076,22 @@ export abstract class Renderable extends BaseRenderable {
         }
 
         const childLayoutNode = obj.getLayoutNode()
-        this.layoutNode.removeChild(childLayoutNode)
+        this.yogaNode.removeChild(childLayoutNode)
         this.requestRender()
 
         obj.onRemove()
         obj.parent = null
         this._ctx.unregisterLifecyclePass(obj)
-      }
-      this.renderableMap.delete(id)
+        this.renderableMap.delete(id)
 
-      const index = this.renderableArray.findIndex((obj) => obj.id === id)
-      if (index !== -1) {
-        this.renderableArray.splice(index, 1)
+        const index = this.renderableArray.findIndex((obj) => obj.id === id)
+
+        if (index !== -1) {
+          this.renderableArray.splice(index, 1)
+        }
+
+        this.childrenPrimarySortDirty = true
       }
-      this.childrenPrimarySortDirty = true
     }
   }
 
@@ -1241,7 +1246,12 @@ export abstract class Renderable extends BaseRenderable {
     this.removeAllListeners()
 
     this.destroySelf()
-    this.layoutNode.destroy()
+
+    try {
+      this.yogaNode.free()
+    } catch (e) {
+      // Might be already freed and will throw an error if we try to free it again
+    }
   }
 
   public destroyRecursively(): void {
@@ -1387,14 +1397,14 @@ export class RootRenderable extends Renderable {
     this.yogaConfig.setUseWebDefaults(false)
     this.yogaConfig.setPointScaleFactor(1)
 
-    if (this.layoutNode) {
-      this.layoutNode.destroy()
+    if (this.yogaNode) {
+      this.yogaNode.free()
     }
 
-    this.layoutNode = createTrackedNode({}, this.yogaConfig)
-    this.layoutNode.setWidth(ctx.width)
-    this.layoutNode.setHeight(ctx.height)
-    this.layoutNode.yogaNode.setFlexDirection(FlexDirection.Column)
+    this.yogaNode = Yoga.Node.create(this.yogaConfig)
+    this.yogaNode.setWidth(ctx.width)
+    this.yogaNode.setHeight(ctx.height)
+    this.yogaNode.setFlexDirection(FlexDirection.Column)
 
     this.calculateLayout()
   }
@@ -1415,7 +1425,7 @@ export class RootRenderable extends Renderable {
     // but that's only possible if we move the layout tree to native.
 
     // 1. Calculate layout from root
-    if (this.layoutNode.yogaNode.isDirty()) {
+    if (this.yogaNode.isDirty()) {
       this.calculateLayout()
     }
 
@@ -1452,7 +1462,7 @@ export class RootRenderable extends Renderable {
   }
 
   public calculateLayout(): void {
-    this.layoutNode.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
+    this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     this.emit(LayoutEvents.LAYOUT_CHANGED)
   }
 

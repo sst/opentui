@@ -8,6 +8,9 @@ interface NodeMetadata {
   [key: string]: any
 }
 
+/**
+ * @deprecated will be removed shortly, yogaNodes are now directly used in Renderable
+ */
 class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
   private static idCounter = 0
   id: number
@@ -31,41 +34,41 @@ class TrackedNode<T extends NodeMetadata = NodeMetadata> extends EventEmitter {
     this.children = []
   }
 
-  parseWidth(width: number | "auto" | `${number}%`): number | "auto" {
-    if (this._destroyed) {
-      // Fatal: Something is very wrong (debug why we are trying to parse width after destruction)
-      throw new Error("Node is destroyed")
-    }
-    if (typeof width === "number" || width === "auto") {
-      return width
-    }
-    if (!this.parent) {
-      return this.yogaNode.getComputedWidth()
-    }
-    if (this.parent._destroyed) {
-      // Fatal: Something is very wrong (debug why we are trying to parse width after destruction)
-      throw new Error("Parent node is destroyed")
-    }
-    return Math.floor((this.parent.yogaNode.getComputedWidth() * parseInt(width)) / 100)
-  }
+  // parseWidth(width: number | "auto" | `${number}%`): number | "auto" {
+  //   if (this._destroyed) {
+  //     // Fatal: Something is very wrong (debug why we are trying to parse width after destruction)
+  //     throw new Error("Node is destroyed")
+  //   }
+  //   if (typeof width === "number" || width === "auto") {
+  //     return width
+  //   }
+  //   if (!this.parent) {
+  //     return this.yogaNode.getComputedWidth()
+  //   }
+  //   if (this.parent._destroyed) {
+  //     // Fatal: Something is very wrong (debug why we are trying to parse width after destruction)
+  //     throw new Error("Parent node is destroyed")
+  //   }
+  //   return Math.floor((this.parent.yogaNode.getComputedWidth() * parseInt(width)) / 100)
+  // }
 
-  parseHeight(height: number | "auto" | `${number}%`): number | "auto" {
-    if (this._destroyed) {
-      // Fatal: Something is very wrong (debug why we are trying to parse height after destruction)
-      throw new Error("Node is destroyed")
-    }
-    if (typeof height === "number" || height === "auto") {
-      return height
-    }
-    if (!this.parent) {
-      return this.yogaNode.getComputedHeight()
-    }
-    if (this.parent._destroyed) {
-      // Fatal: Something is very wrong (debug why we are trying to parse height after destruction)
-      throw new Error("Parent node is destroyed")
-    }
-    return Math.floor((this.parent.yogaNode.getComputedHeight() * parseInt(height)) / 100)
-  }
+  // parseHeight(height: number | "auto" | `${number}%`): number | "auto" {
+  //   if (this._destroyed) {
+  //     // Fatal: Something is very wrong (debug why we are trying to parse height after destruction)
+  //     throw new Error("Node is destroyed")
+  //   }
+  //   if (typeof height === "number" || height === "auto") {
+  //     return height
+  //   }
+  //   if (!this.parent) {
+  //     return this.yogaNode.getComputedHeight()
+  //   }
+  //   if (this.parent._destroyed) {
+  //     // Fatal: Something is very wrong (debug why we are trying to parse height after destruction)
+  //     throw new Error("Parent node is destroyed")
+  //   }
+  //   return Math.floor((this.parent.yogaNode.getComputedHeight() * parseInt(height)) / 100)
+  // }
 
   setWidth(width: number | "auto" | `${number}%`): void {
     this._width = width
