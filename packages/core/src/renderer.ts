@@ -578,7 +578,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public disableStdoutInterception(): void {
-    this.flushStdoutCache(this._splitHeight)
     this.stdout.write = this.realStdoutWrite
   }
 
@@ -1151,6 +1150,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._keyHandler.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
+    if (this._splitHeight > 0) {
+      this.flushStdoutCache(this._splitHeight, true)
+    }
 
     this.lib.destroyRenderer(this.rendererPtr)
   }
