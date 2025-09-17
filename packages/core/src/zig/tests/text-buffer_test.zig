@@ -944,3 +944,168 @@ test "ChunkGroup - reset clears all groups" {
     tb.reset();
     try std.testing.expectEqual(@as(usize, 0), tb.getChunkGroupCount());
 }
+
+// ===== Text Wrapping Tests =====
+
+test "TextBuffer wrapping - no wrap returns same line count" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("Hello World", null, null, null);
+    tb.finalizeLineInfo();
+
+    const no_wrap_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 1), no_wrap_count);
+
+    tb.setWrapWidth(null);
+    const still_no_wrap = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 1), still_no_wrap);
+}
+
+test "TextBuffer wrapping - simple wrap splits line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
+    tb.finalizeLineInfo();
+
+    const no_wrap_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 1), no_wrap_count);
+
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "TextBuffer wrapping - wrap at exact boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("0123456789", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    try std.testing.expectEqual(@as(u32, 1), wrapped_count);
+}
+
+test "TextBuffer wrapping - multiple wrap lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(10);
+    tb.updateVirtualLines(); // Force update
+    const wrapped_count = tb.getLineCount();
+
+    try std.testing.expectEqual(@as(u32, 3), wrapped_count);
+}
+
+test "TextBuffer wrapping - preserves newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("Short\nAnother short line\nLast", null, null, null);
+    tb.finalizeLineInfo();
+
+    const no_wrap_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 3), no_wrap_count);
+
+    tb.setWrapWidth(50);
+    const wrapped_count = tb.getLineCount();
+
+    try std.testing.expectEqual(@as(u32, 3), wrapped_count);
+}
+
+test "TextBuffer wrapping - long line with newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST\nShort", null, null, null);
+    tb.finalizeLineInfo();
+
+    const no_wrap_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 2), no_wrap_count);
+
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    try std.testing.expectEqual(@as(u32, 3), wrapped_count);
+}
+
+test "TextBuffer wrapping - change wrap width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, 256, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
+    tb.finalizeLineInfo();
+
+    tb.setWrapWidth(10);
+    var wrapped_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+
+    tb.setWrapWidth(5);
+    wrapped_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 4), wrapped_count);
+
+    tb.setWrapWidth(20);
+    wrapped_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 1), wrapped_count);
+
+    tb.setWrapWidth(null);
+    wrapped_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 1), wrapped_count);
+}

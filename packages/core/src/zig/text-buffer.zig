@@ -305,7 +305,6 @@ pub const TextBuffer = struct {
 
     /// Set the wrap width for text wrapping. null means no wrapping.
     pub fn setWrapWidth(self: *TextBuffer, width: ?u32) void {
-        logger.info("setWrapWidth: {?d}", .{width});
         if (self.wrap_width != width) {
             self.wrap_width = width;
             self.virtual_lines_dirty = true;
@@ -510,7 +509,7 @@ pub const TextBuffer = struct {
 
                             current_vline = VirtualLine.init(self.allocator);
                             current_vline.char_offset = global_char_offset;
-                            current_vline.is_wrapped = !first_in_line;
+                            current_vline.is_wrapped = true; // This is a wrapped continuation line
                             line_position = 0;
                         }
                     }

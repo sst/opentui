@@ -61,6 +61,11 @@ export class TextRenderable extends Renderable {
     this._wrap = options.wrap ?? this._defaultOptions.wrap
 
     this.textBuffer = TextBuffer.create(64, this._ctx.widthMethod)
+    
+    // Set initial wrap width if wrapping is enabled
+    if (this._wrap) {
+      this.textBuffer.setWrapWidth(this.width > 0 ? this.width : 40) // Default to 40 if width not set yet
+    }
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
@@ -219,11 +224,13 @@ export class TextRenderable extends Renderable {
     // Update wrap width when resized (only if wrapping is enabled)
     if (this._wrap) {
       this.textBuffer.setWrapWidth(width)
+      // Force re-render when wrap width changes
+      this.requestRender()
     }
-
+    
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
-      if (changed) {
+      if (changed) {  
         this.requestRender()
       }
     }
@@ -231,10 +238,7 @@ export class TextRenderable extends Renderable {
 
   onUpdate(deltaTime: number): void {
     super.onUpdate(deltaTime)
-    if (this._wrap) {
-      console.log("onUpdate", this.width)
-      this.textBuffer.setWrapWidth(this.width)
-    }
+    // No need to set wrap width here, it's handled in onResize and wrap setter
   }
 
   private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
