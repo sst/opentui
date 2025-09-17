@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender, Dynamic, Portal } from "../index"
-import { createSignal, For, Show, type Ref } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import { createSpy } from "./utils/spy"
-import type { BoxRenderable, Renderable } from "@opentui/core"
+import type { BoxRenderable } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
