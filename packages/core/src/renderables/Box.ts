@@ -1,5 +1,6 @@
 import { Edge, Gutter } from "yoga-layout"
-import { type RenderableOptions, Renderable, isValidPercentage } from "../Renderable"
+import { type RenderableOptions, Renderable } from "../Renderable"
+import { isValidPercentage } from "../lib/renderable.validations"
 import type { OptimizedBuffer } from "../buffer"
 import {
   type BorderCharacters,

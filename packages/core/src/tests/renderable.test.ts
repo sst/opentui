@@ -11,7 +11,7 @@ import {
 import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
 import type { RenderContext } from "../types"
 
-class TestBaseRenderable extends BaseRenderable {
+export class TestBaseRenderable extends BaseRenderable {
   constructor(options: BaseRenderableOptions) {
     super(options)
   }
@@ -105,6 +105,15 @@ describe("Renderable", () => {
     expect(renderable.zIndex).toBe(0)
     expect(renderable.live).toBe(false)
     expect(renderable.liveCount).toBe(0)
+  })
+
+  test("isRenderable", () => {
+    const { isRenderable } = require("../Renderable")
+    const renderable = new TestBaseRenderable({})
+    expect(isRenderable(renderable)).toBe(true)
+    expect(isRenderable({})).toBe(false)
+    expect(isRenderable(null)).toBe(false)
+    expect(isRenderable(undefined)).toBe(false)
   })
 
   test("creates with width and height", () => {
@@ -338,91 +347,5 @@ describe("RootRenderable", () => {
 
     expect(root.width).toBe(newWidth)
     expect(root.height).toBe(newHeight)
-  })
-})
-
-describe("Utility Functions", () => {
-  test("isValidPercentage", () => {
-    const { isValidPercentage } = require("../Renderable")
-    expect(isValidPercentage("50%")).toBe(true)
-    expect(isValidPercentage("0%")).toBe(true)
-    expect(isValidPercentage("100.5%")).toBe(true)
-    expect(isValidPercentage("abc")).toBe(false)
-    expect(isValidPercentage("50")).toBe(false)
-    expect(isValidPercentage(50)).toBe(false)
-  })
-
-  test("isMarginType", () => {
-    const { isMarginType } = require("../Renderable")
-    expect(isMarginType(10)).toBe(true)
-    expect(isMarginType("auto")).toBe(true)
-    expect(isMarginType("50%")).toBe(true)
-    expect(isMarginType(NaN)).toBe(false)
-    expect(isMarginType("invalid")).toBe(false)
-  })
-
-  test("isPaddingType", () => {
-    const { isPaddingType } = require("../Renderable")
-    expect(isPaddingType(10)).toBe(true)
-    expect(isPaddingType("50%")).toBe(true)
-    expect(isPaddingType("auto")).toBe(false)
-    expect(isPaddingType(NaN)).toBe(false)
-  })
-
-  test("isPositionType", () => {
-    const { isPositionType } = require("../Renderable")
-    expect(isPositionType(10)).toBe(true)
-    expect(isPositionType("auto")).toBe(true)
-    expect(isPositionType("50%")).toBe(true)
-    expect(isPositionType(NaN)).toBe(false)
-  })
-
-  test("isDimensionType", () => {
-    const { isDimensionType } = require("../Renderable")
-    expect(isDimensionType(100)).toBe(true)
-    expect(isDimensionType("auto")).toBe(true)
-    expect(isDimensionType("50%")).toBe(true)
-    expect(isDimensionType(NaN)).toBe(false)
-  })
-
-  test("isFlexBasisType", () => {
-    const { isFlexBasisType } = require("../Renderable")
-    expect(isFlexBasisType(100)).toBe(true)
-    expect(isFlexBasisType("auto")).toBe(true)
-    expect(isFlexBasisType(undefined)).toBe(true)
-    expect(isFlexBasisType(NaN)).toBe(false)
-  })
-
-  test("isSizeType", () => {
-    const { isSizeType } = require("../Renderable")
-    expect(isSizeType(100)).toBe(true)
-    expect(isSizeType("50%")).toBe(true)
-    expect(isSizeType(undefined)).toBe(true)
-    expect(isSizeType(NaN)).toBe(false)
-  })
-
-  test("isRenderable", () => {
-    const { isRenderable } = require("../Renderable")
-    const renderable = new TestBaseRenderable({})
-    expect(isRenderable(renderable)).toBe(true)
-    expect(isRenderable({})).toBe(false)
-    expect(isRenderable(null)).toBe(false)
-    expect(isRenderable(undefined)).toBe(false)
-  })
-
-  test("isPositionTypeType", () => {
-    const { isPositionTypeType } = require("../Renderable")
-    expect(isPositionTypeType("relative")).toBe(true)
-    expect(isPositionTypeType("absolute")).toBe(true)
-    expect(isPositionTypeType("static")).toBe(false)
-    expect(isPositionTypeType("fixed")).toBe(false)
-  })
-
-  test("isOverflowType", () => {
-    const { isOverflowType } = require("../Renderable")
-    expect(isOverflowType("visible")).toBe(true)
-    expect(isOverflowType("hidden")).toBe(true)
-    expect(isOverflowType("scroll")).toBe(true)
-    expect(isOverflowType("auto")).toBe(false)
   })
 })
