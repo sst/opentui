@@ -1,16 +1,11 @@
-import { BaseRenderable } from ".."
+import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable } from ".."
 import Yoga, { Display, type Node as YogaNode } from "yoga-layout"
 
-export class SlotRenderable extends BaseRenderable {
-  protected yogaNode: YogaNode
-
+class Slot extends BaseRenderable {
   constructor(id: string) {
     super({
       id,
     })
-
-    this.yogaNode = Yoga.Node.create()
-    this.yogaNode.setDisplay(Display.None)
   }
 
   public add(obj: BaseRenderable | unknown, index?: number): number {
@@ -36,10 +31,41 @@ export class SlotRenderable extends BaseRenderable {
   }
 
   public requestRender(): void {}
+}
 
-  public replace(obj: BaseRenderable) {
-    this.parent?.insertBefore(obj, this)
-    this.parent?.remove(this.id)
+export class TextSlotRenderable extends TextNodeRenderable {
+  protected slotParent: Slot
+  protected destroyed: boolean = false
+
+  constructor(id: string, parent: Slot) {
+    super({ id: id })
+    this._visible = false
+    this.slotParent = parent
+  }
+
+  public override destroy(): void {
+    if (this.destroyed) {
+      return
+    }
+    this.destroyed = true
+
+    this.slotParent.destroy()
+    super.destroy()
+  }
+}
+
+export class LayoutSlotRenderable extends Slot {
+  protected yogaNode: YogaNode
+  protected slotParent: Slot
+  protected destroyed: boolean = false
+
+  constructor(id: string, parent: Slot) {
+    super(id)
+
+    this._visible = false
+    this.slotParent = parent
+    this.yogaNode = Yoga.Node.create()
+    this.yogaNode.setDisplay(Display.None)
   }
 
   public getLayoutNode(): YogaNode {
@@ -51,4 +77,54 @@ export class SlotRenderable extends BaseRenderable {
   public updateLayout() {}
 
   public onRemove() {}
+
+  public override destroy(): void {
+    if (this.destroyed) {
+      return
+    }
+    this.destroyed = true
+
+    super.destroy()
+    this.slotParent.destroy()
+  }
+}
+
+export class SlotRenderable extends Slot {
+  layoutNode: LayoutSlotRenderable | undefined
+  textNode: TextSlotRenderable | undefined
+  protected destroyed: boolean = false
+
+  constructor(id: string) {
+    super(id)
+
+    this._visible = false
+  }
+
+  getSlotChild(parent: BaseRenderable) {
+    if (isTextNodeRenderable(parent) || parent instanceof TextRenderable) {
+      if (!this.textNode) {
+        this.textNode = new TextSlotRenderable(`slot-text-${this.id}`, this)
+      }
+      return this.textNode
+    }
+
+    if (!this.layoutNode) {
+      this.layoutNode = new LayoutSlotRenderable(`slot-layout-${this.id}`, this)
+    }
+    return this.layoutNode
+  }
+
+  public destroy(): void {
+    if (this.destroyed) {
+      return
+    }
+    this.destroyed = true
+
+    if (this.layoutNode) {
+      this.layoutNode.destroy()
+    }
+    if (this.textNode) {
+      this.textNode.destroy()
+    }
+  }
 }

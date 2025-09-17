@@ -500,6 +500,48 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).not.toContain("Item: A")
     })
 
+    it("should handle <Show> inside <For>", async () => {
+      const items = ["A", "B", "C", "D"]
+      const [visibleItems, setVisibleItems] = createSignal(new Set(["A", "C"]))
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <For each={items}>
+              {(item) => (
+                <Show when={visibleItems().has(item)}>
+                  <text>Item: {item}</text>
+                </Show>
+              )}
+            </For>
+          </box>
+        ),
+        { width: 20, height: 10 },
+      )
+
+      await testSetup.renderOnce()
+      let children = testSetup.renderer.root.getChildren()[0]!.getChildren()
+      expect(children.length).toBe(2)
+
+      let frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Item: A")
+      expect(frame).toContain("Item: C")
+      expect(frame).not.toContain("Item: B")
+      expect(frame).not.toContain("Item: D")
+
+      setVisibleItems(new Set(["B", "D"]))
+      await testSetup.renderOnce()
+
+      children = testSetup.renderer.root.getChildren()[0]!.getChildren()
+      expect(children.length).toBe(2)
+
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Item: B")
+      expect(frame).toContain("Item: D")
+      expect(frame).not.toContain("Item: A")
+      expect(frame).not.toContain("Item: C")
+    })
+
     it("should handle <Switch> with <For> inside matches", async () => {
       const [mode, setMode] = createSignal<"list" | "grid">("list")
       const items = ["One", "Two", "Three"]

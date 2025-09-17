@@ -15,7 +15,6 @@ import {
   TabSelectRenderableEvents,
   TextNodeRenderable,
   TextRenderable,
-  type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
@@ -66,6 +65,14 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     node instanceof TextNode,
   )
 
+  if (node instanceof SlotRenderable) {
+    node = node.getSlotChild(parent)
+  }
+
+  if (anchor && anchor instanceof SlotRenderable) {
+    anchor = anchor.getSlotChild(parent)
+  }
+
   if (isTextNodeRenderable(node)) {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
       throw new Error(
@@ -101,6 +108,10 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
+
+  if (node instanceof SlotRenderable) {
+    node = node.getSlotChild(parent)
+  }
 
   parent.remove(node.id)
 

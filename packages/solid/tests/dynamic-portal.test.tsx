@@ -80,6 +80,26 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
       expect(onInputSpy.calls[0]?.[0]).toBe("t")
       expect(onInputSpy.calls[3]?.[0]).toBe("test")
     })
+
+    it("should handle false Show inside dynamic that switches between text and box", async () => {
+      const [componentType, setComponentType] = createSignal<"text" | "box">("text")
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <Dynamic component={componentType()}>
+              <Show when={false}>This should never render</Show>
+            </Dynamic>
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+
+      setComponentType("box")
+      await testSetup.renderOnce()
+    })
   })
 
   describe("<Portal> Component", () => {
