@@ -311,81 +311,64 @@ pub const TextBuffer = struct {
 
     /// Calculate how many characters from a chunk fit within the given width
     /// Returns the number of characters and their total width
-    /// TODO: This does not have to check char widths again, the chunk already knows its width
     fn calculateChunkFit(_: *const TextBuffer, chars: []const u32, max_width: u32) struct {
         char_count: u32,
         width: u32,
     } {
         if (max_width == 0) return .{ .char_count = 0, .width = 0 };
+        if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
 
-        var width: u32 = 0;
-        var i: u32 = 0;
+        // Newlines are ALWAYS the last character in a chunk (chunks are finalized on newline)
+        // So we only need to check if the last char is a newline
+        const has_newline = chars[chars.len - 1] == '\n';
+        const effective_len = if (has_newline) chars.len - 1 else chars.len;
 
-        while (i < chars.len) {
-            const char = chars[i];
-
-            // Newlines always end the fit calculation
-            if (char == '\n') {
-                return .{ .char_count = i + 1, .width = width };
+        // If everything up to the newline (or end) fits within max_width
+        if (effective_len <= max_width) {
+            // Include the newline in char_count if present, but not in width
+            if (has_newline) {
+                return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
             }
-
-            // Calculate width of this character
-            var char_width: u32 = 1;
-            if (gp.isGraphemeChar(char)) {
-                char_width = 1 + gp.charRightExtent(char);
-            } else if (gp.isContinuationChar(char)) {
-                // Continuation chars don't add width
-                // TODO: yeah they do
-                i += 1;
-                continue;
-            }
-
-            // Check if this char would exceed the width
-            if (width + char_width > max_width and width > 0) {
-                // This char would exceed width, stop here
-                return .{ .char_count = i, .width = width };
-            }
-
-            // Include this char
-            width += char_width;
-            i += 1;
-
-            // If it's a grapheme, skip its continuation chars
-            if (gp.isGraphemeChar(char)) {
-                const right = gp.charRightExtent(char);
-                var k: u32 = 0;
-                while (k < right and i < chars.len) : (k += 1) {
-                    if (i >= chars.len or !gp.isContinuationChar(chars[i])) break;
-                    i += 1;
-                }
-            }
+            return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
         }
 
-        return .{ .char_count = @intCast(i), .width = width };
+        // We need to wrap before the newline/end. Start at max_width position
+        var cut_pos = max_width;
+
+        // Check if we're in the middle of a grapheme's continuation characters
+        while (cut_pos > 0 and gp.isContinuationChar(chars[cut_pos])) {
+            cut_pos -= 1;
+        }
+
+        // If we landed on a grapheme start, check if it fits
+        if (cut_pos > 0 and gp.isGraphemeChar(chars[cut_pos])) {
+            const grapheme_width = 1 + gp.charRightExtent(chars[cut_pos]);
+            // If the grapheme would extend past max_width, exclude it
+            if (cut_pos + grapheme_width > max_width) {
+                // Don't include this grapheme
+                return .{ .char_count = cut_pos, .width = cut_pos };
+            }
+            // Otherwise include the full grapheme
+            return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+        }
+
+        return .{ .char_count = cut_pos, .width = cut_pos };
     }
 
     /// Calculate the visual width of a chunk of characters
-    /// TODO: The chunk already knows its width, which is the buffer size, so this is unnecessary
+    /// Since chars directly represent cells, width = chars.len
+    /// Newlines are ALWAYS the last char in a chunk (if present) and don't contribute to width
     fn calculateChunkWidth(_: *const TextBuffer, chars: []const u32) u32 {
-        var width: u32 = 0;
-        var i: u32 = 0;
+        if (chars.len == 0) return 0;
 
-        while (i < chars.len) : (i += 1) {
-            const char = chars[i];
-
-            if (char == '\n') {
-                // Newlines don't contribute to width
-                continue;
-            }
-
-            if (gp.isGraphemeChar(char)) {
-                width += 1 + gp.charRightExtent(char);
-            } else if (!gp.isContinuationChar(char)) {
-                width += 1;
-            }
+        // Check if last char is a newline (chunks are finalized on newline, so it's always last)
+        if (chars[chars.len - 1] == '\n') {
+            // Width is all chars except the newline
+            return @intCast(chars.len - 1);
         }
 
-        return width;
+        // Otherwise, width is the full length
+        return @intCast(chars.len);
     }
 
     /// Update virtual lines based on current wrap width
