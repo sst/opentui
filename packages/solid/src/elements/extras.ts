@@ -4,7 +4,14 @@ import type { JSX } from "../../jsx-runtime"
 import type { ValidComponent, ComponentProps } from "solid-js"
 import { useRenderer } from "./hooks"
 
-export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; children: JSX.Element }) {
+/**
+ * Renders components somewhere else in the DOM
+ *
+ * Useful for inserting modals and tooltips outside of an cropping layout. If no mount point is given, the portal is inserted on the root renderable; it is wrapped in a `<box>`
+ *
+ * @description https://docs.solidjs.com/reference/components/portal
+ */
+export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; children: JSX.Element }): DomNode {
   const renderer = useRenderer()
 
   const marker = createAnchorNode(renderer),
