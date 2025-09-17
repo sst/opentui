@@ -16,14 +16,12 @@ export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _length: number = 0
-  private _capacity: number
   private _lineInfo?: { lineStarts: number[]; lineWidths: number[] }
   private _destroyed: boolean = false
 
   constructor(lib: RenderLib, ptr: Pointer, capacity: number) {
     this.lib = lib
     this.bufferPtr = ptr
-    this._capacity = capacity
   }
 
   static create(capacity: number = 64, widthMethod: WidthMethod): TextBuffer {
@@ -53,10 +51,6 @@ export class TextBuffer {
         chunk.bg || null,
         chunk.attributes ?? null,
       )
-
-      if (result & 1) {
-        this._capacity = this.lib.textBufferGetCapacity(this.bufferPtr)
-      }
     }
 
     // TODO: textBufferFinalizeLineInfo can return the length of the text buffer, not another call to textBufferGetLength
@@ -87,11 +81,6 @@ export class TextBuffer {
   public get length(): number {
     this.guard()
     return this._length
-  }
-
-  public get capacity(): number {
-    this.guard()
-    return this._capacity
   }
 
   public get ptr(): Pointer {

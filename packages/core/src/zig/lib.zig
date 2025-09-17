@@ -376,16 +376,8 @@ export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
     tb.deinit();
 }
 
-export fn textBufferGetCharPtr(tb: *text_buffer.TextBuffer) [*]u32 {
-    return tb.getCharPtr();
-}
-
 export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLength();
-}
-
-export fn textBufferResize(tb: *text_buffer.TextBuffer, newLength: u32) void {
-    tb.resize(newLength) catch {};
 }
 
 export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
@@ -430,10 +422,6 @@ export fn textBufferWriteChunk(tb: *text_buffer.TextBuffer, textBytes: [*]const 
     return tb.writeChunk(textSlice, fgColor, bgColor, attrValue) catch 0;
 }
 
-export fn textBufferGetCapacity(tb: *text_buffer.TextBuffer) u32 {
-    return tb.getCapacity();
-}
-
 export fn textBufferFinalizeLineInfo(tb: *text_buffer.TextBuffer) void {
     tb.finalizeLineInfo();
 }
@@ -445,7 +433,7 @@ export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
 export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) void {
     const line_count = tb.getLineCount();
     for (0..line_count) |i| {
-        lineStartsPtr[i] = tb.lines.items[i].char_start;
+        lineStartsPtr[i] = tb.lines.items[i].char_offset;
         lineWidthsPtr[i] = tb.lines.items[i].width;
     }
 }

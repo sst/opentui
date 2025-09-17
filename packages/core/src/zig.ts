@@ -255,19 +255,11 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    textBufferGetCharPtr: {
-      args: ["ptr"],
-      returns: "ptr",
-    },
     textBufferGetLength: {
       args: ["ptr"],
       returns: "u32",
     },
 
-    textBufferResize: {
-      args: ["ptr", "u32"],
-      returns: "void",
-    },
     textBufferReset: {
       args: ["ptr"],
       returns: "void",
@@ -298,10 +290,6 @@ function getOpenTUILib(libPath?: string) {
     },
     textBufferWriteChunk: {
       args: ["ptr", "ptr", "u32", "ptr", "ptr", "ptr"],
-      returns: "u32",
-    },
-    textBufferGetCapacity: {
-      args: ["ptr"],
       returns: "u32",
     },
     textBufferFinalizeLineInfo: {
@@ -670,10 +658,8 @@ export interface RenderLib {
   // TextBuffer methods
   createTextBuffer: (capacity: number, widthMethod: WidthMethod) => TextBuffer
   destroyTextBuffer: (buffer: Pointer) => void
-  textBufferGetCharPtr: (buffer: Pointer) => Pointer
   textBufferGetLength: (buffer: Pointer) => number
 
-  textBufferResize: (buffer: Pointer, newLength: number) => void
   textBufferReset: (buffer: Pointer) => void
   textBufferSetSelection: (
     buffer: Pointer,
@@ -704,7 +690,6 @@ export interface RenderLib {
     bg: RGBA | null,
     attributes: number | null,
   ) => number
-  textBufferGetCapacity: (buffer: Pointer) => number
   textBufferFinalizeLineInfo: (buffer: Pointer) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   textBufferGetLineInfoDirect: (buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer) => void
@@ -1215,20 +1200,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.destroyTextBuffer(buffer)
   }
 
-  public textBufferGetCharPtr(buffer: Pointer): Pointer {
-    const ptr = this.opentui.symbols.textBufferGetCharPtr(buffer)
-    if (!ptr) {
-      throw new Error("Failed to get TextBuffer char pointer")
-    }
-    return ptr
-  }
-
   public textBufferGetLength(buffer: Pointer): number {
     return this.opentui.symbols.textBufferGetLength(buffer)
-  }
-
-  public textBufferResize(buffer: Pointer, newLength: number): void {
-    this.opentui.symbols.textBufferResize(buffer, newLength)
   }
 
   public textBufferReset(buffer: Pointer): void {
@@ -1287,10 +1260,6 @@ class FFIRenderLib implements RenderLib {
       bg ? bg.buffer : null,
       attrValue,
     )
-  }
-
-  public textBufferGetCapacity(buffer: Pointer): number {
-    return this.opentui.symbols.textBufferGetCapacity(buffer)
   }
 
   public textBufferFinalizeLineInfo(buffer: Pointer): void {

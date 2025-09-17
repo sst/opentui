@@ -35,7 +35,7 @@ test "TextBuffer line info - empty buffer" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].width);
 }
 
@@ -53,7 +53,7 @@ test "TextBuffer line info - simple text without newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
     try std.testing.expect(lineInfo.lines[0].width > 0);
 }
 
@@ -71,8 +71,8 @@ test "TextBuffer line info - single newline" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello\nWorld", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[1].char_start); // line_starts[1] ("Hello\n" = 6 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[1].char_offset); // line_starts[1] ("Hello\n" = 6 chars)
     try std.testing.expect(lineInfo.lines[0].width > 0);
     try std.testing.expect(lineInfo.lines[1].width > 0);
 }
@@ -91,9 +91,9 @@ test "TextBuffer line info - multiple lines separated by newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\nLine 2\nLine 3", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[1].char_start); // line_starts[1] ("Line 1\n" = 7 chars)
-    try std.testing.expectEqual(@as(u32, 14), lineInfo.lines[2].char_start); // line_starts[2] ("Line 1\nLine 2\n" = 14 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[1].char_offset); // line_starts[1] ("Line 1\n" = 7 chars)
+    try std.testing.expectEqual(@as(u32, 14), lineInfo.lines[2].char_offset); // line_starts[2] ("Line 1\nLine 2\n" = 14 chars)
 
     // All line widths should be > 0
     try std.testing.expect(lineInfo.lines[0].width > 0);
@@ -115,8 +115,8 @@ test "TextBuffer line info - text ending with newline" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World\n", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 12), lineInfo.lines[1].char_start); // line_starts[1] ("Hello World\n" = 12 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 12), lineInfo.lines[1].char_offset); // line_starts[1] ("Hello World\n" = 12 chars)
     try std.testing.expect(lineInfo.lines[0].width > 0);
     try std.testing.expect(lineInfo.lines[1].width >= 0); // line_widths[1] (second line may have width 0 or some default width)
 }
@@ -135,9 +135,9 @@ test "TextBuffer line info - consecutive newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\n\nLine 3", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[1].char_start); // line_starts[1] ("Line 1\n" = 7 chars)
-    try std.testing.expectEqual(@as(u32, 8), lineInfo.lines[2].char_start); // line_starts[2] ("Line 1\n\n" = 8 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[1].char_offset); // line_starts[1] ("Line 1\n" = 7 chars)
+    try std.testing.expectEqual(@as(u32, 8), lineInfo.lines[2].char_offset); // line_starts[2] ("Line 1\n\n" = 8 chars)
 }
 
 test "TextBuffer line info - text starting with newline" {
@@ -154,8 +154,8 @@ test "TextBuffer line info - text starting with newline" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "\nHello World", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start); // line_starts[0] (empty first line)
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.lines[1].char_start); // line_starts[1] ("\n" = 1 char)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset); // line_starts[0] (empty first line)
+    try std.testing.expectEqual(@as(u32, 1), lineInfo.lines[1].char_offset); // line_starts[1] ("\n" = 1 char)
 }
 
 test "TextBuffer line info - only newlines" {
@@ -172,10 +172,10 @@ test "TextBuffer line info - only newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "\n\n\n", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 4), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.lines[1].char_start);
-    try std.testing.expectEqual(@as(u32, 2), lineInfo.lines[2].char_start);
-    try std.testing.expectEqual(@as(u32, 3), lineInfo.lines[3].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 1), lineInfo.lines[1].char_offset);
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.lines[2].char_offset);
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.lines[3].char_offset);
     // All line widths should be >= 0
     try std.testing.expect(lineInfo.lines[0].width >= 0);
     try std.testing.expect(lineInfo.lines[1].width >= 0);
@@ -197,7 +197,7 @@ test "TextBuffer line info - wide characters (Unicode)" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
     try std.testing.expect(lineInfo.lines[0].width > 0);
 }
 
@@ -215,9 +215,9 @@ test "TextBuffer line info - empty lines between content" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "First\n\nThird", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[1].char_start); // line_starts[1] ("First\n")
-    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[2].char_start); // line_starts[2] ("First\n\n")
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[1].char_offset); // line_starts[1] ("First\n")
+    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[2].char_offset); // line_starts[2] ("First\n\n")
 }
 
 test "TextBuffer line info - very long lines" {
@@ -236,7 +236,7 @@ test "TextBuffer line info - very long lines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, &longText, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
     try std.testing.expect(lineInfo.lines[0].width > 0);
 }
 
@@ -290,8 +290,8 @@ test "TextBuffer line info - styled text with colors" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_start); // line_starts[1] ("Red\n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_offset); // line_starts[1] ("Red\n" = 4 chars)
 }
 
 test "TextBuffer line info - buffer with only whitespace" {
@@ -308,9 +308,9 @@ test "TextBuffer line info - buffer with only whitespace" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "   \n \n ", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_start); // line_starts[1] ("   \n" = 4 chars)
-    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[2].char_start); // line_starts[2] ("   \n \n" = 6 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_offset); // line_starts[1] ("   \n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[2].char_offset); // line_starts[2] ("   \n \n" = 6 chars)
 
     // Whitespace should still contribute to line widths
     try std.testing.expect(lineInfo.lines[0].width >= 0);
@@ -332,9 +332,9 @@ test "TextBuffer line info - single character lines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "A\nB\nC", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 2), lineInfo.lines[1].char_start); // line_starts[1] ("A\n" = 2 chars)
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[2].char_start); // line_starts[2] ("A\nB\n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.lines[1].char_offset); // line_starts[1] ("A\n" = 2 chars)
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[2].char_offset); // line_starts[2] ("A\nB\n" = 4 chars)
 
     // All widths should be > 0
     try std.testing.expect(lineInfo.lines[0].width > 0);
@@ -413,12 +413,12 @@ test "TextBuffer line info - thousands of lines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, text_builder.items, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1000), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
 
     // Check that line starts are monotonically increasing
     var line_idx: u32 = 1;
     while (line_idx < 1000) : (line_idx += 1) {
-        try std.testing.expect(lineInfo.lines[line_idx].char_start > lineInfo.lines[line_idx - 1].char_start);
+        try std.testing.expect(lineInfo.lines[line_idx].char_offset > lineInfo.lines[line_idx - 1].char_offset);
     }
 }
 
@@ -485,8 +485,8 @@ test "TextBuffer line info - default styles" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 5), lineInfo.lines[1].char_start); // line_starts[1] ("Test\n" = 5 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.lines[1].char_offset); // line_starts[1] ("Test\n" = 5 chars)
     // All line widths should be >= 0
     try std.testing.expect(lineInfo.lines[0].width >= 0);
     try std.testing.expect(lineInfo.lines[1].width >= 0);
@@ -511,8 +511,8 @@ test "TextBuffer line info - reset defaults" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 5), lineInfo.lines[1].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.lines[1].char_offset);
     // All line widths should be >= 0
     try std.testing.expect(lineInfo.lines[0].width >= 0);
     try std.testing.expect(lineInfo.lines[1].width >= 0);
@@ -532,7 +532,7 @@ test "TextBuffer line info - unicode width method" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
     try std.testing.expect(lineInfo.lines[0].width > 0);
 }
 
@@ -583,8 +583,8 @@ test "TextBuffer line info - unicode styled text with colors and attributes" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_start); // line_starts[1] ("Red\n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_offset); // line_starts[1] ("Red\n" = 4 chars)
     // All line widths should be >= 0
     try std.testing.expect(lineInfo.lines[0].width >= 0);
     try std.testing.expect(lineInfo.lines[1].width >= 0);
@@ -606,7 +606,7 @@ test "TextBuffer line info - extremely long single line" {
     const lineInfo = try testWriteAndGetLineInfo(tb, &extremelyLongText, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_start);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
     try std.testing.expect(lineInfo.lines[0].width > 0);
 }
 

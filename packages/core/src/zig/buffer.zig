@@ -830,6 +830,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y;
         const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
+        var globalCharPos: u32 = 0; // Track global char position across all chunks
 
         for (text_buffer.lines.items) |line| {
             for (line.chunks.items) |chunk| {
@@ -855,21 +856,27 @@ pub const OptimizedBuffer = struct {
                 }
 
                 var chunkCharIndex: u32 = 0;
-                while (chunkCharIndex < chunk.length) : (chunkCharIndex += 1) {
-                    const globalCharIndex = chunk.offset + chunkCharIndex;
-                    const charCode = text_buffer.char[globalCharIndex];
+                while (chunkCharIndex < chunk.chars.len) : (chunkCharIndex += 1) {
+                    const charCode = chunk.chars[chunkCharIndex];
 
                     if (charCode == '\n') {
+                        globalCharPos += 1;
                         currentY += 1;
                         currentX = x;
                         continue;
                     }
 
                     if (currentX < 0 or currentY < 0) {
+                        if (!gp.isContinuationChar(charCode)) {
+                            globalCharPos += 1;
+                        }
                         currentX += 1;
                         continue;
                     }
                     if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
+                        if (!gp.isContinuationChar(charCode)) {
+                            globalCharPos += 1;
+                        }
                         currentX += 1;
                         continue;
                     }
@@ -885,12 +892,18 @@ pub const OptimizedBuffer = struct {
                             currentX >= clip.x + @as(i32, @intCast(clip.width)) or
                             currentY >= clip.y + @as(i32, @intCast(clip.height)))
                         {
+                            if (!gp.isContinuationChar(charCode)) {
+                                globalCharPos += 1;
+                            }
                             currentX += 1;
                             continue;
                         }
                     }
 
                     if (!self.isPointInScissor(currentX, currentY)) {
+                        if (!gp.isContinuationChar(charCode)) {
+                            globalCharPos += 1;
+                        }
                         currentX += 1;
                         continue;
                     }
@@ -900,7 +913,7 @@ pub const OptimizedBuffer = struct {
                     const finalAttributes = chunkAttributes;
 
                     if (text_buffer.selection) |sel| {
-                        const isSelected = globalCharIndex >= sel.start and globalCharIndex < sel.end;
+                        const isSelected = globalCharPos >= sel.start and globalCharPos < sel.end;
                         if (isSelected) {
                             if (sel.bgColor) |selBg| {
                                 finalBg = selBg;
@@ -928,26 +941,19 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (graphemeAware) {
-                        if (gp.isContinuationChar(charCode)) {
-                            try self.setCellWithAlphaBlending(
-                                @intCast(currentX),
-                                @intCast(currentY),
-                                charCode,
-                                drawFg,
-                                drawBg,
-                                drawAttributes,
-                            );
-                        } else {
-                            try self.setCellWithAlphaBlending(
-                                @intCast(currentX),
-                                @intCast(currentY),
-                                charCode,
-                                drawFg,
-                                drawBg,
-                                drawAttributes,
-                            );
+                        if (!gp.isContinuationChar(charCode)) {
+                            globalCharPos += 1; // Only increment for non-continuation chars
                         }
+                        try self.setCellWithAlphaBlending(
+                            @intCast(currentX),
+                            @intCast(currentY),
+                            charCode,
+                            drawFg,
+                            drawBg,
+                            drawAttributes,
+                        );
                     } else {
+                        globalCharPos += 1;
                         self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), charCode, drawFg, drawBg, drawAttributes) catch {};
                     }
 
