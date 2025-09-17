@@ -53,3 +53,39 @@ exports[`TextRenderable Selection Text Content Snapshots should render empty buf
                     
 "
 `;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with character wrapping correctly 1`] = `
+"This is a very      
+long text that      
+should wrap to      
+multiple lines      
+when wrap is en     
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with different content 1`] = `
+"                    
+  ABCDEFGHIJ        
+  KLMNOPQRST        
+  UVWXYZ abc        
+  defghijklm        
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with emojis and graphemes 1`] = `
+" Hello 🌍 Wor       
+ ld 👋 This i       
+ s a test wit       
+ h emojis 🚀        
+ that should        
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped multiline text correctly 1`] = `
+"                    
+First li            
+ne with             
+long con            
+tent                
+"
+`;

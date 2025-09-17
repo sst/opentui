@@ -4,7 +4,6 @@ import { TextNodeRenderable } from "./TextNode"
 import { RGBA } from "../lib/RGBA"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
-import { Selection } from "../lib/selection"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1333,6 +1332,58 @@ describe("TextRenderable Selection", () => {
 
     it("should render empty buffer correctly", async () => {
       currentRenderer.currentRenderBuffer.clear()
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with character wrapping correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a very long text that should wrap to multiple lines when wrap is enabled",
+        wrap: true,
+        width: 15, // Force wrapping at 15 characters width
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render wrapped text with different content", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
+        wrap: true,
+        width: 10, // Force wrapping at 10 characters width
+        left: 2,
+        top: 1,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render wrapped text with emojis and graphemes", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello 🌍 World 👋 This is a test with emojis 🚀 that should wrap properly",
+        wrap: true,
+        width: 12, // Force wrapping at 12 characters width
+        left: 1,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render wrapped multiline text correctly", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "First line with long content\nSecond line also with content\nThird line",
+        wrap: true,
+        width: 8, // Force wrapping at 8 characters width
+        left: 0,
+        top: 1,
+      })
+
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
     })
