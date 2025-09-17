@@ -512,3 +512,12 @@ export fn textBufferGetChunkGroupCount(tb: *const text_buffer.TextBuffer) usize 
 export fn textBufferSetWrapWidth(tb: *text_buffer.TextBuffer, width: u32) void {
     tb.setWrapWidth(if (width == 0) null else width);
 }
+
+export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
+    const wrapMode: text_buffer.WrapMode = switch (mode) {
+        0 => .char,
+        1 => .word,
+        else => .char,
+    };
+    tb.setWrapMode(wrapMode);
+}

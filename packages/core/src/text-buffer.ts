@@ -229,6 +229,11 @@ export class TextBuffer {
     this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)
   }
 
+  public setWrapMode(mode: "char" | "word"): void {
+    this.guard()
+    this.lib.textBufferSetWrapMode(this.bufferPtr, mode)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

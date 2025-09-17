@@ -22,6 +22,16 @@ pub const TextBufferError = error{
     InvalidId,
 };
 
+pub const WrapMode = enum {
+    char,
+    word,
+};
+
+pub const ChunkFitResult = struct {
+    char_count: u32,
+    width: u32,
+};
+
 /// A chunk represents a contiguous sequence of characters with the same styling
 pub const TextChunk = struct {
     chars: []u32, // Chunk owns its character data
@@ -160,6 +170,7 @@ pub const TextBuffer = struct {
     chunk_groups: std.ArrayList(*ChunkGroup),
 
     wrap_width: ?u32,
+    wrap_mode: WrapMode,
     virtual_lines: std.ArrayList(VirtualLine),
     virtual_lines_dirty: bool,
 
@@ -220,6 +231,7 @@ pub const TextBuffer = struct {
             .current_line_width = 0,
             .chunk_groups = chunk_groups,
             .wrap_width = null,
+            .wrap_mode = .char,
             .virtual_lines = virtual_lines,
             .virtual_lines_dirty = true,
             .pool = pool,
@@ -307,12 +319,17 @@ pub const TextBuffer = struct {
         }
     }
 
+    /// Set the wrap mode for text wrapping.
+    pub fn setWrapMode(self: *TextBuffer, mode: WrapMode) void {
+        if (self.wrap_mode != mode) {
+            self.wrap_mode = mode;
+            self.virtual_lines_dirty = true;
+        }
+    }
+
     /// Calculate how many characters from a chunk fit within the given width
     /// Returns the number of characters and their total width
-    fn calculateChunkFit(_: *const TextBuffer, chars: []const u32, max_width: u32) struct {
-        char_count: u32,
-        width: u32,
-    } {
+    fn calculateChunkFit(_: *const TextBuffer, chars: []const u32, max_width: u32) ChunkFitResult {
         if (max_width == 0) return .{ .char_count = 0, .width = 0 };
         if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
 
@@ -347,6 +364,104 @@ pub const TextBuffer = struct {
             }
 
             return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+        }
+
+        return .{ .char_count = cut_pos, .width = cut_pos };
+    }
+
+    /// Helper function to check if a character is a word boundary
+    fn isWordBoundary(c: u32) bool {
+        // Check for common word boundaries: whitespace, dashes, hyphens, etc.
+        return switch (c) {
+            ' ', '\t', '\r', '\n' => true, // Whitespace
+            '-', '–', '—' => true, // Dashes and hyphens
+            '/', '\\' => true, // Slashes
+            '.', ',', ';', ':', '!', '?' => true, // Punctuation
+            '(', ')', '[', ']', '{', '}' => true, // Brackets
+            else => false,
+        };
+    }
+
+    /// Calculate how many characters from a chunk fit within the given width (word wrapping)
+    /// Returns the number of characters and their total width
+    fn calculateChunkFitWord(self: *const TextBuffer, chars: []const u32, max_width: u32) ChunkFitResult {
+        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
+        if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
+
+        const has_newline = chars[chars.len - 1] == '\n';
+        const effective_len = if (has_newline) chars.len - 1 else chars.len;
+
+        if (effective_len <= max_width) {
+            if (has_newline) {
+                return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
+            }
+            return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
+        }
+
+        // Start from max_width and walk backwards to find a word boundary
+        var cut_pos = max_width;
+        var found_boundary = false;
+
+        // Walk backwards to find the last word boundary before max_width
+        while (cut_pos > 0) : (cut_pos -= 1) {
+            const c = chars[cut_pos];
+
+            // Check if we're at a continuation character and skip the whole grapheme
+            if (gp.isContinuationChar(c)) {
+                const left_extent = gp.charLeftExtent(c);
+                cut_pos = cut_pos -| left_extent; // Saturating subtraction
+                if (cut_pos == 0) break;
+                continue;
+            }
+
+            if (isWordBoundary(c)) {
+                // Found a word boundary, include the boundary character
+                cut_pos += 1;
+                found_boundary = true;
+                break;
+            }
+        }
+
+        // If no word boundary was found
+        if (!found_boundary or cut_pos == 0) {
+            // Check if we're at the beginning of a word that could fit on next line
+            // First, find where this word ends
+            var word_end: u32 = 0;
+            while (word_end < chars.len and !isWordBoundary(chars[word_end])) : (word_end += 1) {}
+
+            // If we have wrap_width set, check against full line width, not remaining width
+            const line_width = if (self.wrap_width) |w| w else max_width;
+
+            // If the word is longer than a full line width, we have to break it
+            if (word_end > line_width) {
+                cut_pos = max_width;
+            } else {
+                // The word could fit on a new line, so don't break it
+                // Return 0 to signal that nothing fits, forcing a line break
+                return .{ .char_count = 0, .width = 0 };
+            }
+            const char_at_cut = chars[cut_pos];
+
+            // Handle grapheme boundaries like in calculateChunkFit
+            if (gp.isContinuationChar(char_at_cut)) {
+                const left_extent = gp.charLeftExtent(char_at_cut);
+                const grapheme_start = cut_pos - left_extent;
+                const grapheme_width = left_extent + 1 + gp.charRightExtent(char_at_cut);
+
+                if (grapheme_start + grapheme_width <= max_width) {
+                    return .{ .char_count = grapheme_start + grapheme_width, .width = grapheme_start + grapheme_width };
+                }
+
+                return .{ .char_count = grapheme_start, .width = grapheme_start };
+            } else if (gp.isGraphemeChar(char_at_cut)) {
+                const grapheme_width = 1 + gp.charRightExtent(char_at_cut);
+
+                if (cut_pos + grapheme_width > max_width) {
+                    return .{ .char_count = cut_pos, .width = cut_pos };
+                }
+
+                return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+            }
         }
 
         return .{ .char_count = cut_pos, .width = cut_pos };
@@ -439,8 +554,11 @@ pub const TextBuffer = struct {
                             continue;
                         }
 
-                        // Calculate how many chars fit
-                        const fit_result = self.calculateChunkFit(remaining_chars, remaining_width);
+                        // Calculate how many chars fit based on wrap mode
+                        const fit_result = switch (self.wrap_mode) {
+                            .char => self.calculateChunkFit(remaining_chars, remaining_width),
+                            .word => self.calculateChunkFitWord(remaining_chars, remaining_width),
+                        };
 
                         // If nothing fits and we have content on the line, wrap to next line
                         if (fit_result.char_count == 0 and line_position > 0) {

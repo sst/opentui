@@ -1340,6 +1340,7 @@ describe("TextRenderable Selection", () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "This is a very long text that should wrap to multiple lines when wrap is enabled",
         wrap: true,
+        wrapMode: "char", // Explicitly test character wrapping
         width: 15, // Force wrapping at 15 characters width
         left: 0,
         top: 0,
@@ -1353,6 +1354,7 @@ describe("TextRenderable Selection", () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
         wrap: true,
+        wrapMode: "char", // Explicitly test character wrapping
         width: 10, // Force wrapping at 10 characters width
         left: 2,
         top: 1,
@@ -1366,6 +1368,7 @@ describe("TextRenderable Selection", () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World 👋 This is a test with emojis 🚀 that should wrap properly",
         wrap: true,
+        wrapMode: "char", // Explicitly test character wrapping
         width: 12, // Force wrapping at 12 characters width
         left: 1,
         top: 0,
@@ -1379,6 +1382,7 @@ describe("TextRenderable Selection", () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "First line with long content\nSecond line also with content\nThird line",
         wrap: true,
+        wrapMode: "char", // Explicitly test character wrapping
         width: 8, // Force wrapping at 8 characters width
         left: 0,
         top: 1,
@@ -1386,6 +1390,171 @@ describe("TextRenderable Selection", () => {
 
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
+    })
+  })
+
+  describe("Word Wrapping", () => {
+    it("should default to word wrap mode", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello World",
+      })
+
+      expect(text.wrapMode).toBe("word")
+    })
+
+    it("should wrap at word boundaries when using word mode", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "The quick brown fox jumps over the lazy dog",
+        wrap: true,
+        wrapMode: "word",
+        width: 15,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should wrap at character boundaries when using char mode", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "The quick brown fox jumps over the lazy dog",
+        wrap: true,
+        wrapMode: "char",
+        width: 15,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should handle word wrapping with punctuation", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Hello,World.Test-Example/Path",
+        wrap: true,
+        wrapMode: "word",
+        width: 10,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should handle word wrapping with hyphens and dashes", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "self-contained multi-line text-wrapping example",
+        wrap: true,
+        wrapMode: "word",
+        width: 12,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should dynamically change wrap mode", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "The quick brown fox jumps",
+        wrap: true,
+        wrapMode: "char",
+        width: 10,
+        left: 0,
+        top: 0,
+      })
+
+      expect(text.wrapMode).toBe("char")
+
+      // Change to word mode
+      text.wrapMode = "word"
+      await renderOnce()
+
+      expect(text.wrapMode).toBe("word")
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should handle long words that exceed wrap width in word mode", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        wrap: true,
+        wrapMode: "word",
+        width: 10,
+        left: 0,
+        top: 0,
+      })
+
+      // Since there's no word boundary, it should fall back to character wrapping
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should preserve empty lines with word wrapping", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "First line\n\nThird line",
+        wrap: true,
+        wrapMode: "word",
+        width: 8,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should handle word wrapping with single character words", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "a b c d e f g h i j k l m n o p",
+        wrap: true,
+        wrapMode: "word",
+        width: 8,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should compare char vs word wrapping with same content", async () => {
+      const content = "Hello wonderful world of text wrapping"
+
+      // Test with char mode
+      const { text: charText } = await createTextRenderable(currentRenderer, {
+        content,
+        wrap: true,
+        wrapMode: "char",
+        width: 12,
+        left: 0,
+        top: 0,
+      })
+
+      const charFrame = captureFrame()
+
+      // Remove the char text and add word text
+      currentRenderer.root.remove(charText.id)
+      await renderOnce()
+
+      const { text: wordText } = await createTextRenderable(currentRenderer, {
+        content,
+        wrap: true,
+        wrapMode: "word",
+        width: 12,
+        left: 0,
+        top: 0,
+      })
+
+      const wordFrame = captureFrame()
+
+      // The frames should be different as word wrapping preserves word boundaries
+      expect(charFrame).not.toBe(wordFrame)
+      expect(wordFrame).toMatchSnapshot()
     })
   })
 })

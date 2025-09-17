@@ -17,6 +17,7 @@ export interface TextOptions extends RenderableOptions<TextRenderable> {
   selectable?: boolean
   attributes?: number
   wrap?: boolean
+  wrapMode?: "char" | "word"
 }
 
 export class TextRenderable extends Renderable {
@@ -28,6 +29,7 @@ export class TextRenderable extends Renderable {
   private _selectionBg: RGBA | undefined
   private _selectionFg: RGBA | undefined
   private _wrap: boolean = false
+  private _wrapMode: "char" | "word" = "word"
   private lastLocalSelection: LocalSelectionBounds | null = null
 
   private textBuffer: TextBuffer
@@ -44,6 +46,7 @@ export class TextRenderable extends Renderable {
     selectable: true,
     attributes: 0,
     wrap: false,
+    wrapMode: "word" as "char" | "word",
   } satisfies Partial<TextOptions>
 
   constructor(ctx: RenderContext, options: TextOptions) {
@@ -59,8 +62,12 @@ export class TextRenderable extends Renderable {
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._wrap = options.wrap ?? this._defaultOptions.wrap
+    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
+
+    // Set wrap mode
+    this.textBuffer.setWrapMode(this._wrapMode)
 
     // Set initial wrap width if wrapping is enabled
     if (this._wrap) {
@@ -216,6 +223,18 @@ export class TextRenderable extends Renderable {
       this._wrap = value
       // Set or clear wrap width based on current setting
       this.textBuffer.setWrapWidth(this._wrap ? this.width : null)
+      this.requestRender()
+    }
+  }
+
+  get wrapMode(): "char" | "word" {
+    return this._wrapMode
+  }
+
+  set wrapMode(value: "char" | "word") {
+    if (this._wrapMode !== value) {
+      this._wrapMode = value
+      this.textBuffer.setWrapMode(this._wrapMode)
       this.requestRender()
     }
   }

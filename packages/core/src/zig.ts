@@ -344,6 +344,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32"],
       returns: "void",
     },
+    textBufferSetWrapMode: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
 
     getArenaAllocatedBytes: {
       args: [],
@@ -733,6 +737,7 @@ export interface RenderLib {
   ) => number
   textBufferGetChunkGroupCount: (buffer: Pointer) => number
   textBufferSetWrapWidth: (buffer: Pointer, width: number) => void
+  textBufferSetWrapMode: (buffer: Pointer, mode: "char" | "word") => void
 
   getArenaAllocatedBytes: () => number
 
@@ -1404,6 +1409,11 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetWrapWidth(buffer: Pointer, width: number): void {
     this.opentui.symbols.textBufferSetWrapWidth(buffer, width)
+  }
+
+  public textBufferSetWrapMode(buffer: Pointer, mode: "char" | "word"): void {
+    const modeValue = mode === "char" ? 0 : 1
+    this.opentui.symbols.textBufferSetWrapMode(buffer, modeValue)
   }
 
   public getArenaAllocatedBytes(): number {

@@ -1500,3 +1500,240 @@ test "TextBuffer selection - no selection returns all bits set" {
     const packed_info = tb.packSelectionInfo();
     try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info);
 }
+
+// ===== Word Wrapping Tests =====
+
+test "TextBuffer word wrapping - basic word wrap at space" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("Hello World", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(8);
+    const wrapped_count = tb.getLineCount();
+
+    // Should wrap at the space: "Hello " and "World"
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "TextBuffer word wrapping - long word exceeds width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRSTUVWXYZ", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    // Since there's no word boundary, should fall back to character wrapping
+    try std.testing.expectEqual(@as(u32, 3), wrapped_count);
+}
+
+test "TextBuffer word wrapping - multiple words" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("The quick brown fox jumps", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(15);
+    const wrapped_count = tb.getLineCount();
+
+    // Should wrap intelligently at word boundaries
+    try std.testing.expect(wrapped_count >= 2);
+}
+
+test "TextBuffer word wrapping - hyphenated words" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("self-contained multi-line", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(12);
+    const wrapped_count = tb.getLineCount();
+
+    // Should break at hyphens
+    try std.testing.expect(wrapped_count >= 2);
+}
+
+test "TextBuffer word wrapping - punctuation boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("Hello,World.Test", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(8);
+    const wrapped_count = tb.getLineCount();
+
+    // Should break at punctuation
+    try std.testing.expect(wrapped_count >= 2);
+}
+
+test "TextBuffer word wrapping - compare char vs word mode" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("Hello wonderful world", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Test with char mode first
+    tb.setWrapMode(.char);
+    tb.setWrapWidth(10);
+    const char_wrapped_count = tb.getLineCount();
+
+    // Now test with word mode
+    tb.setWrapMode(.word);
+    const word_wrapped_count = tb.getLineCount();
+
+    // Both should wrap, but potentially differently
+    try std.testing.expect(char_wrapped_count >= 2);
+    try std.testing.expect(word_wrapped_count >= 2);
+}
+
+test "TextBuffer word wrapping - empty lines preserved" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("First line\n\nSecond line", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(8);
+    const wrapped_count = tb.getLineCount();
+
+    // Should preserve empty lines
+    try std.testing.expect(wrapped_count >= 3);
+}
+
+test "TextBuffer word wrapping - slash as boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("path/to/file", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(8);
+    const wrapped_count = tb.getLineCount();
+
+    // Should break at slashes
+    try std.testing.expect(wrapped_count >= 2);
+}
+
+test "TextBuffer word wrapping - brackets as boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("array[index]value", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(10);
+    const wrapped_count = tb.getLineCount();
+
+    // Should break at brackets
+    try std.testing.expect(wrapped_count >= 2);
+}
+
+test "TextBuffer word wrapping - single character at boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("a b c d e f", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set word wrap mode
+    tb.setWrapMode(.word);
+    tb.setWrapWidth(4);
+    const wrapped_count = tb.getLineCount();
+
+    // Should handle single character words properly
+    try std.testing.expect(wrapped_count >= 3);
+}
