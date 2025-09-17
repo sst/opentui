@@ -33,17 +33,6 @@ class TextNode extends TextNodeRenderable {
   }
 }
 
-class AnchorNode extends BaseRenderable {
-  protected override _visible: boolean = false
-  layoutNode: T
-
-  constructor(id: string) {
-    super({
-      id,
-    })
-  }
-}
-
 export type DomNode = BaseRenderable
 
 /**
