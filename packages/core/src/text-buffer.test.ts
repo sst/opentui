@@ -773,6 +773,120 @@ describe("TextBuffer", () => {
     })
   })
 
+  describe("lineInfo with text wrapping", () => {
+    it("should return virtual line info when text wrapping is enabled", () => {
+      const longText = "This is a very long text that should wrap when the text wrapping is enabled."
+      const styledText = stringToStyledText(longText)
+      buffer.setStyledText(styledText)
+
+      const unwrappedInfo = buffer.lineInfo
+      expect(unwrappedInfo.lineStarts).toEqual([0]) // Single line
+      expect(unwrappedInfo.lineWidths.length).toBe(1)
+      expect(unwrappedInfo.lineWidths[0]).toBe(76) // Full text width
+
+      buffer.setWrapWidth(20)
+
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const wrappedInfo = buffer.lineInfo
+
+      expect(wrappedInfo.lineStarts.length).toBeGreaterThan(1)
+      expect(wrappedInfo.lineWidths.length).toBeGreaterThan(1)
+
+      for (const width of wrappedInfo.lineWidths) {
+        expect(width).toBeLessThanOrEqual(20)
+      }
+
+      for (let i = 1; i < wrappedInfo.lineStarts.length; i++) {
+        expect(wrappedInfo.lineStarts[i]).toBeGreaterThan(wrappedInfo.lineStarts[i - 1])
+      }
+    })
+
+    it("should return correct lineInfo for word wrapping", () => {
+      const text = "Hello world this is a test"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      buffer.setWrapMode("word")
+      buffer.setWrapWidth(12)
+
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo = buffer.lineInfo
+
+      expect(lineInfo.lineStarts.length).toBeGreaterThan(1)
+
+      for (const width of lineInfo.lineWidths) {
+        expect(width).toBeLessThanOrEqual(12)
+      }
+    })
+
+    it("should return correct lineInfo for char wrapping", () => {
+      const text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      buffer.setWrapMode("char")
+      buffer.setWrapWidth(10)
+
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo = buffer.lineInfo
+
+      expect(lineInfo.lineStarts).toEqual([0, 10, 20])
+      expect(lineInfo.lineWidths).toEqual([10, 10, 6])
+    })
+
+    it("should update lineInfo when wrap width changes", () => {
+      const text = "The quick brown fox jumps over the lazy dog"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      buffer.setWrapWidth(15)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo1 = buffer.lineInfo
+      const lineCount1 = lineInfo1.lineStarts.length
+
+      buffer.setWrapWidth(30)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo2 = buffer.lineInfo
+      const lineCount2 = lineInfo2.lineStarts.length
+
+      expect(lineCount2).toBeLessThan(lineCount1)
+    })
+
+    it("should return original lineInfo when wrap is disabled", () => {
+      const text = "Line 1\nLine 2\nLine 3"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      const originalInfo = buffer.lineInfo
+      expect(originalInfo.lineStarts).toEqual([0, 7, 14])
+
+      buffer.setWrapWidth(5)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const wrappedInfo = buffer.lineInfo
+      expect(wrappedInfo.lineStarts.length).toBeGreaterThan(3)
+
+      buffer.setWrapWidth(null)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const unwrappedInfo = buffer.lineInfo
+      expect(unwrappedInfo.lineStarts).toEqual([0, 7, 14])
+      expect(unwrappedInfo).toEqual(originalInfo)
+    })
+  })
+
   describe("length property", () => {
     it("should return correct length for simple text", () => {
       const styledText = stringToStyledText("Hello World")

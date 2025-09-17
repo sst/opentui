@@ -890,7 +890,7 @@ pub const OptimizedBuffer = struct {
                     if (clip_rect) |clip| {
                         if (currentX < clip.x or currentY < clip.y or
                             currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                            currentY >= clip.y + @as(i32, @intCast(clip.height)))
+                            currentY > clip.y + @as(i32, @intCast(clip.height))) // inclusive
                         {
                             globalCharPos += 1;
                             currentX += 1;

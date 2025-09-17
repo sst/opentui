@@ -431,10 +431,20 @@ export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
 }
 
 export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) void {
+    tb.updateVirtualLines();
+
     const line_count = tb.getLineCount();
-    for (0..line_count) |i| {
-        lineStartsPtr[i] = tb.lines.items[i].char_offset;
-        lineWidthsPtr[i] = tb.lines.items[i].width;
+
+    if (tb.wrap_width != null) {
+        for (0..line_count) |i| {
+            lineStartsPtr[i] = tb.virtual_lines.items[i].char_offset;
+            lineWidthsPtr[i] = tb.virtual_lines.items[i].width;
+        }
+    } else {
+        for (0..line_count) |i| {
+            lineStartsPtr[i] = tb.lines.items[i].char_offset;
+            lineWidthsPtr[i] = tb.lines.items[i].width;
+        }
     }
 }
 
