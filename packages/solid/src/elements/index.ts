@@ -13,6 +13,7 @@ import {
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/elements"
 export * from "./hooks"
+export * from "./extras"
 
 class SpanRenderable extends TextNodeRenderable {
   constructor(
