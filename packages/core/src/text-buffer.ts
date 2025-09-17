@@ -224,6 +224,11 @@ export class TextBuffer {
     return this.lib.textBufferGetChunkGroupCount(this.bufferPtr)
   }
 
+  public setWrapWidth(width: number | null): void {
+    this.guard()
+    this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

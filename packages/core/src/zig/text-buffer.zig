@@ -5,6 +5,7 @@ const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
+const logger = @import("logger.zig");
 
 pub const RGBA = buffer.RGBA;
 pub const TextSelection = buffer.TextSelection;
@@ -62,6 +63,56 @@ pub const ChunkGroup = struct {
     }
 };
 
+/// A virtual chunk references a portion of a real TextChunk for text wrapping
+pub const VirtualChunk = struct {
+    source_line: usize, // Original line index
+    source_chunk: usize, // Original chunk index
+    char_start: u32, // Start index in source chunk's chars
+    char_count: u32, // Number of chars from source
+    width: u32, // Visual width of this virtual chunk
+
+    // Get the actual chars from the source chunk
+    pub fn getChars(self: *const VirtualChunk, text_buffer: *const TextBuffer) []const u32 {
+        const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
+        return chunk.chars[self.char_start .. self.char_start + self.char_count];
+    }
+
+    // Get the styling from the source chunk
+    pub fn getStyle(self: *const VirtualChunk, text_buffer: *const TextBuffer) struct {
+        fg: ?RGBA,
+        bg: ?RGBA,
+        attributes: u16,
+    } {
+        const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
+        return .{
+            .fg = chunk.fg,
+            .bg = chunk.bg,
+            .attributes = chunk.attributes,
+        };
+    }
+};
+
+/// A virtual line represents a display line after text wrapping
+pub const VirtualLine = struct {
+    chunks: std.ArrayList(VirtualChunk),
+    width: u32,
+    char_offset: u32, // For selection tracking
+    is_wrapped: bool, // True if this is a continuation of a wrapped line
+
+    pub fn init(allocator: Allocator) VirtualLine {
+        return .{
+            .chunks = std.ArrayList(VirtualChunk).init(allocator),
+            .width = 0,
+            .char_offset = 0,
+            .is_wrapped = false,
+        };
+    }
+
+    pub fn deinit(self: *VirtualLine) void {
+        self.chunks.deinit();
+    }
+};
+
 /// A line contains multiple chunks and tracks its total width
 pub const TextLine = struct {
     chunks: std.ArrayList(TextChunk),
@@ -109,6 +160,11 @@ pub const TextBuffer = struct {
 
     chunk_groups: std.ArrayList(*ChunkGroup),
 
+    // Text wrapping support
+    wrap_width: ?u32,
+    virtual_lines: std.ArrayList(VirtualLine),
+    virtual_lines_dirty: bool,
+
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
@@ -142,6 +198,14 @@ pub const TextBuffer = struct {
         var chunk_groups = std.ArrayList(*ChunkGroup).init(internal_allocator);
         errdefer chunk_groups.deinit();
 
+        var virtual_lines = std.ArrayList(VirtualLine).init(internal_allocator);
+        errdefer {
+            for (virtual_lines.items) |*vline| {
+                vline.deinit();
+            }
+            virtual_lines.deinit();
+        }
+
         const first_line = TextLine.init(internal_allocator);
         lines.append(first_line) catch return TextBufferError.OutOfMemory;
 
@@ -159,6 +223,9 @@ pub const TextBuffer = struct {
             .current_line = 0,
             .current_line_width = 0,
             .chunk_groups = chunk_groups,
+            .wrap_width = null,
+            .virtual_lines = virtual_lines,
+            .virtual_lines_dirty = true,
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
@@ -193,6 +260,9 @@ pub const TextBuffer = struct {
 
         self.lines = std.ArrayList(TextLine).init(self.allocator);
         self.chunk_groups = std.ArrayList(*ChunkGroup).init(self.allocator);
+        self.virtual_lines = std.ArrayList(VirtualLine).init(self.allocator);
+        self.virtual_lines_dirty = true;
+        // wrap_width is preserved across resets
 
         const first_line = TextLine.init(self.allocator);
         self.lines.append(first_line) catch {};
@@ -231,6 +301,230 @@ pub const TextBuffer = struct {
         self.default_fg = null;
         self.default_bg = null;
         self.default_attributes = null;
+    }
+
+    /// Set the wrap width for text wrapping. null means no wrapping.
+    pub fn setWrapWidth(self: *TextBuffer, width: ?u32) void {
+        logger.info("setWrapWidth: {?d}", .{width});
+        if (self.wrap_width != width) {
+            self.wrap_width = width;
+            self.virtual_lines_dirty = true;
+        }
+    }
+
+    /// Calculate how many characters from a chunk fit within the given width
+    /// Returns the number of characters and their total width
+    /// TODO: This does not have to check char widths again, the chunk already knows its width
+    fn calculateChunkFit(_: *const TextBuffer, chars: []const u32, max_width: u32) struct {
+        char_count: u32,
+        width: u32,
+    } {
+        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
+
+        var width: u32 = 0;
+        var i: u32 = 0;
+
+        while (i < chars.len) {
+            const char = chars[i];
+
+            // Newlines always end the fit calculation
+            if (char == '\n') {
+                return .{ .char_count = i + 1, .width = width };
+            }
+
+            // Calculate width of this character
+            var char_width: u32 = 1;
+            if (gp.isGraphemeChar(char)) {
+                char_width = 1 + gp.charRightExtent(char);
+            } else if (gp.isContinuationChar(char)) {
+                // Continuation chars don't add width
+                // TODO: yeah they do
+                i += 1;
+                continue;
+            }
+
+            // Check if this char would exceed the width
+            if (width + char_width > max_width and width > 0) {
+                // This char would exceed width, stop here
+                return .{ .char_count = i, .width = width };
+            }
+
+            // Include this char
+            width += char_width;
+            i += 1;
+
+            // If it's a grapheme, skip its continuation chars
+            if (gp.isGraphemeChar(char)) {
+                const right = gp.charRightExtent(char);
+                var k: u32 = 0;
+                while (k < right and i < chars.len) : (k += 1) {
+                    if (i >= chars.len or !gp.isContinuationChar(chars[i])) break;
+                    i += 1;
+                }
+            }
+        }
+
+        return .{ .char_count = @intCast(i), .width = width };
+    }
+
+    /// Calculate the visual width of a chunk of characters
+    /// TODO: The chunk already knows its width, which is the buffer size, so this is unnecessary
+    fn calculateChunkWidth(_: *const TextBuffer, chars: []const u32) u32 {
+        var width: u32 = 0;
+        var i: u32 = 0;
+
+        while (i < chars.len) : (i += 1) {
+            const char = chars[i];
+
+            if (char == '\n') {
+                // Newlines don't contribute to width
+                continue;
+            }
+
+            if (gp.isGraphemeChar(char)) {
+                width += 1 + gp.charRightExtent(char);
+            } else if (!gp.isContinuationChar(char)) {
+                width += 1;
+            }
+        }
+
+        return width;
+    }
+
+    /// Update virtual lines based on current wrap width
+    pub fn updateVirtualLines(self: *TextBuffer) void {
+        if (!self.virtual_lines_dirty) return;
+
+        // Clear existing virtual lines
+        for (self.virtual_lines.items) |*vline| {
+            vline.deinit();
+        }
+        self.virtual_lines.clearRetainingCapacity();
+
+        if (self.wrap_width == null) {
+            // No wrapping - create 1:1 mapping to real lines
+            for (self.lines.items, 0..) |*line, line_idx| {
+                var vline = VirtualLine.init(self.allocator);
+                vline.width = line.width;
+                vline.char_offset = line.char_offset;
+                vline.is_wrapped = false;
+
+                // Create virtual chunks that reference entire real chunks
+                for (line.chunks.items, 0..) |*chunk, chunk_idx| {
+                    vline.chunks.append(VirtualChunk{
+                        .source_line = line_idx,
+                        .source_chunk = chunk_idx,
+                        .char_start = 0,
+                        .char_count = @intCast(chunk.chars.len),
+                        .width = self.calculateChunkWidth(chunk.chars),
+                    }) catch {};
+                }
+
+                self.virtual_lines.append(vline) catch {};
+            }
+        } else {
+            // Wrap lines at wrap_width
+            const wrap_w = self.wrap_width.?;
+            var global_char_offset: u32 = 0;
+
+            for (self.lines.items, 0..) |*line, line_idx| {
+                var line_position: u32 = 0;
+                var current_vline = VirtualLine.init(self.allocator);
+                current_vline.char_offset = global_char_offset;
+                current_vline.is_wrapped = false;
+                var first_in_line = true;
+
+                for (line.chunks.items, 0..) |*chunk, chunk_idx| {
+                    var chunk_pos: u32 = 0;
+
+                    while (chunk_pos < chunk.chars.len) {
+                        const remaining_width = if (line_position < wrap_w) wrap_w - line_position else 0;
+                        const remaining_chars = chunk.chars[chunk_pos..];
+
+                        // Check if this is a newline at the start
+                        if (remaining_chars.len > 0 and remaining_chars[0] == '\n') {
+                            // Add the newline to current line and start a new line
+                            current_vline.chunks.append(VirtualChunk{
+                                .source_line = line_idx,
+                                .source_chunk = chunk_idx,
+                                .char_start = chunk_pos,
+                                .char_count = 1,
+                                .width = 0,
+                            }) catch {};
+
+                            current_vline.width = line_position;
+                            self.virtual_lines.append(current_vline) catch {};
+
+                            chunk_pos += 1;
+                            global_char_offset += 1;
+
+                            // Start new virtual line
+                            current_vline = VirtualLine.init(self.allocator);
+                            current_vline.char_offset = global_char_offset;
+                            current_vline.is_wrapped = false; // New line after \n is not wrapped
+                            line_position = 0;
+                            first_in_line = true;
+                            continue;
+                        }
+
+                        // Calculate how many chars fit
+                        const fit_result = self.calculateChunkFit(remaining_chars, remaining_width);
+
+                        // If nothing fits and we have content on the line, wrap to next line
+                        if (fit_result.char_count == 0 and line_position > 0) {
+                            current_vline.width = line_position;
+                            self.virtual_lines.append(current_vline) catch {};
+
+                            current_vline = VirtualLine.init(self.allocator);
+                            current_vline.char_offset = global_char_offset;
+                            current_vline.is_wrapped = true;
+                            line_position = 0;
+                            first_in_line = false;
+                            continue;
+                        }
+
+                        // If nothing fits even on empty line (char too wide), skip it
+                        if (fit_result.char_count == 0) {
+                            chunk_pos += 1;
+                            global_char_offset += 1;
+                            continue;
+                        }
+
+                        // Add virtual chunk
+                        current_vline.chunks.append(VirtualChunk{
+                            .source_line = line_idx,
+                            .source_chunk = chunk_idx,
+                            .char_start = chunk_pos,
+                            .char_count = fit_result.char_count,
+                            .width = fit_result.width,
+                        }) catch {};
+
+                        chunk_pos += fit_result.char_count;
+                        global_char_offset += fit_result.char_count;
+                        line_position += fit_result.width;
+
+                        // Check if we need to wrap
+                        if (line_position >= wrap_w and chunk_pos < chunk.chars.len) {
+                            current_vline.width = line_position;
+                            self.virtual_lines.append(current_vline) catch {};
+
+                            current_vline = VirtualLine.init(self.allocator);
+                            current_vline.char_offset = global_char_offset;
+                            current_vline.is_wrapped = !first_in_line;
+                            line_position = 0;
+                        }
+                    }
+                }
+
+                // Append the last virtual line if it has content or represents an empty line
+                if (current_vline.chunks.items.len > 0 or line.chunks.items.len == 0) {
+                    current_vline.width = line_position;
+                    self.virtual_lines.append(current_vline) catch {};
+                }
+            }
+        }
+
+        self.virtual_lines_dirty = false;
     }
 
     /// Write a UTF-8 encoded text chunk with styling to the buffer
@@ -408,9 +702,17 @@ pub const TextBuffer = struct {
         if (self.current_line < self.lines.items.len) {
             self.lines.items[self.current_line].width = self.current_line_width;
         }
+        // Mark virtual lines as dirty so they get recalculated
+        self.virtual_lines_dirty = true;
     }
 
-    pub fn getLineCount(self: *const TextBuffer) u32 {
+    pub fn getLineCount(self: *TextBuffer) u32 {
+        // Ensure virtual lines are up to date
+        self.updateVirtualLines();
+        // Return virtual line count if we have wrapping
+        if (self.wrap_width != null) {
+            return @intCast(self.virtual_lines.items.len);
+        }
         return @intCast(self.lines.items.len);
     }
 
@@ -483,9 +785,15 @@ pub const TextBuffer = struct {
 
     /// Calculate character positions from local selection coordinates
     /// Returns null if no valid selection
-    fn calculateMultiLineSelection(self: *const TextBuffer) ?struct { start: u32, end: u32 } {
+    fn calculateMultiLineSelection(self: *TextBuffer) ?struct { start: u32, end: u32 } {
         const local_sel = self.local_selection orelse return null;
         if (!local_sel.isActive) return null;
+
+        // Ensure virtual lines are up to date
+        self.updateVirtualLines();
+
+        // Use virtual lines if wrapping is enabled
+        const use_virtual = self.wrap_width != null;
 
         var selectionStart: ?u32 = null;
         var selectionEnd: ?u32 = null;
@@ -507,43 +815,89 @@ pub const TextBuffer = struct {
             selEndX = local_sel.anchorX;
         }
 
-        for (self.lines.items, 0..) |line, i| {
-            const lineY = @as(i32, @intCast(i));
+        // TODO: consolidate, should just always use virtual lines
+        if (use_virtual) {
+            // Use virtual lines for wrapped text
+            for (self.virtual_lines.items, 0..) |vline, i| {
+                const lineY = @as(i32, @intCast(i));
 
-            if (lineY < startY or lineY > endY) continue;
+                if (lineY < startY or lineY > endY) continue;
 
-            const lineStart = line.char_offset;
-            const lineWidth = line.width;
-            const lineEnd = if (i < self.lines.items.len - 1)
-                self.lines.items[i + 1].char_offset - 1
-            else
-                lineStart + lineWidth;
+                const lineStart = vline.char_offset;
+                const lineWidth = vline.width;
+                const lineEnd = if (i < self.virtual_lines.items.len - 1)
+                    self.virtual_lines.items[i + 1].char_offset - 1
+                else
+                    lineStart + lineWidth;
 
-            if (lineY > startY and lineY < endY) {
-                // Entire line is selected
-                if (selectionStart == null) selectionStart = lineStart;
-                selectionEnd = lineEnd;
-            } else if (lineY == startY and lineY == endY) {
-                // Selection starts and ends on this line
-                const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                if (localStartX != localEndX) {
-                    selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                    selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-                }
-            } else if (lineY == startY) {
-                // Selection starts on this line
-                const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                if (localStartX < lineWidth) {
-                    selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                    selectionEnd = lineEnd;
-                }
-            } else if (lineY == endY) {
-                // Selection ends on this line
-                const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                if (localEndX > 0) {
+                if (lineY > startY and lineY < endY) {
+                    // Entire line is selected
                     if (selectionStart == null) selectionStart = lineStart;
-                    selectionEnd = lineStart + @as(u32, @intCast(localEndX));
+                    selectionEnd = lineEnd;
+                } else if (lineY == startY and lineY == endY) {
+                    // Selection starts and ends on this line
+                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
+                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
+                    if (localStartX != localEndX) {
+                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
+                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
+                    }
+                } else if (lineY == startY) {
+                    // Selection starts on this line
+                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
+                    if (localStartX < lineWidth) {
+                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
+                        selectionEnd = lineEnd;
+                    }
+                } else if (lineY == endY) {
+                    // Selection ends on this line
+                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
+                    if (localEndX > 0) {
+                        if (selectionStart == null) selectionStart = lineStart;
+                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
+                    }
+                }
+            }
+        } else {
+            // Use real lines (original logic)
+            for (self.lines.items, 0..) |line, i| {
+                const lineY = @as(i32, @intCast(i));
+
+                if (lineY < startY or lineY > endY) continue;
+
+                const lineStart = line.char_offset;
+                const lineWidth = line.width;
+                const lineEnd = if (i < self.lines.items.len - 1)
+                    self.lines.items[i + 1].char_offset - 1
+                else
+                    lineStart + lineWidth;
+
+                if (lineY > startY and lineY < endY) {
+                    // Entire line is selected
+                    if (selectionStart == null) selectionStart = lineStart;
+                    selectionEnd = lineEnd;
+                } else if (lineY == startY and lineY == endY) {
+                    // Selection starts and ends on this line
+                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
+                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
+                    if (localStartX != localEndX) {
+                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
+                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
+                    }
+                } else if (lineY == startY) {
+                    // Selection starts on this line
+                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
+                    if (localStartX < lineWidth) {
+                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
+                        selectionEnd = lineEnd;
+                    }
+                } else if (lineY == endY) {
+                    // Selection ends on this line
+                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
+                    if (localEndX > 0) {
+                        if (selectionStart == null) selectionStart = lineStart;
+                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
+                    }
                 }
             }
         }

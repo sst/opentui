@@ -508,3 +508,7 @@ export fn textBufferReplaceChunkGroup(tb: *text_buffer.TextBuffer, index: usize,
 export fn textBufferGetChunkGroupCount(tb: *const text_buffer.TextBuffer) usize {
     return tb.getChunkGroupCount();
 }
+
+export fn textBufferSetWrapWidth(tb: *text_buffer.TextBuffer, width: u32) void {
+    tb.setWrapWidth(if (width == 0) null else width);
+}

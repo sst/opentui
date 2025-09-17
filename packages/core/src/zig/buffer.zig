@@ -822,7 +822,7 @@ pub const OptimizedBuffer = struct {
     /// Draw a TextBuffer to this OptimizedBuffer with selection support
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
-        text_buffer: *const TextBuffer,
+        text_buffer: *TextBuffer,
         x: i32,
         y: i32,
         clip_rect: ?ClipRect,
@@ -832,6 +832,148 @@ pub const OptimizedBuffer = struct {
         const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
         var globalCharPos: u32 = 0; // Track global char position across all chunks
 
+        // TODO: This too should just always use virtual lines
+        // Ensure virtual lines are up to date
+        text_buffer.updateVirtualLines();
+
+        // Use virtual lines if wrapping is enabled
+        if (text_buffer.wrap_width != null) {
+            logger.info("[buffer] Rendering using virtual lines");
+            // Render using virtual lines
+            for (text_buffer.virtual_lines.items) |vline| {
+                currentX = x; // Reset X at start of each line
+
+                for (vline.chunks.items) |vchunk| {
+                    // Get the actual chunk data and styling
+                    const source_chunk = &text_buffer.lines.items[vchunk.source_line].chunks.items[vchunk.source_chunk];
+                    const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
+
+                    var chunkFg = source_chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };
+                    var chunkBg = source_chunk.bg orelse text_buffer.default_bg orelse .{ 0.0, 0.0, 0.0, 0.0 };
+                    var chunkAttributes: u8 = @intCast(source_chunk.attributes & tb.ATTR_MASK);
+
+                    if (source_chunk.attributes & tb.USE_DEFAULT_ATTR != 0) {
+                        if (text_buffer.default_attributes) |defAttr| {
+                            chunkAttributes = defAttr;
+                        }
+                    }
+
+                    if (source_chunk.attributes & tb.USE_DEFAULT_FG != 0) {
+                        if (text_buffer.default_fg) |defFg| {
+                            chunkFg = defFg;
+                        }
+                    }
+                    if (source_chunk.attributes & tb.USE_DEFAULT_BG != 0) {
+                        if (text_buffer.default_bg) |defBg| {
+                            chunkBg = defBg;
+                        }
+                    }
+
+                    // Render the virtual chunk characters
+                    for (chars) |charCode| {
+                        if (charCode == '\n') {
+                            globalCharPos += 1;
+                            // Newlines in wrapped mode don't actually move to next line
+                            // because virtual lines handle that
+                            continue;
+                        }
+
+                        if (currentX < 0 or currentY < 0) {
+                            if (!gp.isContinuationChar(charCode)) {
+                                globalCharPos += 1;
+                            }
+                            currentX += 1;
+                            continue;
+                        }
+                        if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
+                            if (!gp.isContinuationChar(charCode)) {
+                                globalCharPos += 1;
+                            }
+                            currentX += 1;
+                            continue;
+                        }
+
+                        if (clip_rect) |clip| {
+                            if (currentX < clip.x or currentY < clip.y or
+                                currentX >= clip.x + @as(i32, @intCast(clip.width)) or
+                                currentY >= clip.y + @as(i32, @intCast(clip.height)))
+                            {
+                                if (!gp.isContinuationChar(charCode)) {
+                                    globalCharPos += 1;
+                                }
+                                currentX += 1;
+                                continue;
+                            }
+                        }
+
+                        if (!self.isPointInScissor(currentX, currentY)) {
+                            if (!gp.isContinuationChar(charCode)) {
+                                globalCharPos += 1;
+                            }
+                            currentX += 1;
+                            continue;
+                        }
+
+                        var finalFg = chunkFg;
+                        var finalBg = chunkBg;
+                        const finalAttributes = chunkAttributes;
+
+                        // Handle selection highlighting
+                        if (text_buffer.selection) |sel| {
+                            const isSelected = globalCharPos >= sel.start and globalCharPos < sel.end;
+                            if (isSelected) {
+                                if (sel.bgColor) |selBg| {
+                                    finalBg = selBg;
+                                    if (sel.fgColor) |selFg| {
+                                        finalFg = selFg;
+                                    }
+                                } else {
+                                    // Swap fg and bg for default selection style
+                                    const temp = finalFg;
+                                    finalFg = if (finalBg[3] > 0) finalBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                    finalBg = temp;
+                                }
+                            }
+                        }
+
+                        var drawFg = finalFg;
+                        var drawBg = finalBg;
+                        const drawAttributes = finalAttributes;
+
+                        // Handle reverse attribute
+                        if (drawAttributes & (1 << 5) != 0) { // reverse bit
+                            const temp = drawFg;
+                            drawFg = drawBg;
+                            drawBg = temp;
+                        }
+
+                        if (graphemeAware) {
+                            if (!gp.isContinuationChar(charCode)) {
+                                globalCharPos += 1;
+                            }
+                            try self.setCellWithAlphaBlending(
+                                @intCast(currentX),
+                                @intCast(currentY),
+                                charCode,
+                                drawFg,
+                                drawBg,
+                                drawAttributes,
+                            );
+                        } else {
+                            globalCharPos += 1;
+                            self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), charCode, drawFg, drawBg, drawAttributes) catch {};
+                        }
+
+                        currentX += 1;
+                    }
+                }
+
+                currentY += 1;
+            }
+            return; // Early return for virtual lines path
+        }
+
+        // Original code for non-wrapped rendering
         for (text_buffer.lines.items) |line| {
             for (line.chunks.items) |chunk| {
                 var chunkFg = chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };

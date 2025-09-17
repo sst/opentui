@@ -16,6 +16,7 @@ export interface TextOptions extends RenderableOptions<TextRenderable> {
   selectionFg?: string | RGBA
   selectable?: boolean
   attributes?: number
+  wrap?: boolean
 }
 
 export class TextRenderable extends Renderable {
@@ -26,6 +27,7 @@ export class TextRenderable extends Renderable {
   private _defaultAttributes: number
   private _selectionBg: RGBA | undefined
   private _selectionFg: RGBA | undefined
+  private _wrap: boolean = false
   private lastLocalSelection: LocalSelectionBounds | null = null
 
   private textBuffer: TextBuffer
@@ -41,6 +43,7 @@ export class TextRenderable extends Renderable {
     selectionFg: undefined,
     selectable: true,
     attributes: 0,
+    wrap: false,
   } satisfies Partial<TextOptions>
 
   constructor(ctx: RenderContext, options: TextOptions) {
@@ -55,6 +58,7 @@ export class TextRenderable extends Renderable {
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
+    this._wrap = options.wrap ?? this._defaultOptions.wrap
 
     this.textBuffer = TextBuffer.create(64, this._ctx.widthMethod)
 
@@ -198,12 +202,38 @@ export class TextRenderable extends Renderable {
     }
   }
 
+  get wrap(): boolean {
+    return this._wrap
+  }
+
+  set wrap(value: boolean) {
+    if (this._wrap !== value) {
+      this._wrap = value
+      // Set or clear wrap width based on current setting
+      this.textBuffer.setWrapWidth(this._wrap ? this.width : null)
+      this.requestRender()
+    }
+  }
+
   protected onResize(width: number, height: number): void {
+    // Update wrap width when resized (only if wrapping is enabled)
+    if (this._wrap) {
+      this.textBuffer.setWrapWidth(width)
+    }
+
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
         this.requestRender()
       }
+    }
+  }
+
+  onUpdate(deltaTime: number): void {
+    super.onUpdate(deltaTime)
+    if (this._wrap) {
+      console.log("onUpdate", this.width)
+      this.textBuffer.setWrapWidth(this.width)
     }
   }
 
