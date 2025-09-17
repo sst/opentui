@@ -318,37 +318,36 @@ pub const TextBuffer = struct {
         if (max_width == 0) return .{ .char_count = 0, .width = 0 };
         if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
 
-        // Newlines are ALWAYS the last character in a chunk (chunks are finalized on newline)
-        // So we only need to check if the last char is a newline
         const has_newline = chars[chars.len - 1] == '\n';
         const effective_len = if (has_newline) chars.len - 1 else chars.len;
 
-        // If everything up to the newline (or end) fits within max_width
         if (effective_len <= max_width) {
-            // Include the newline in char_count if present, but not in width
             if (has_newline) {
                 return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
             }
             return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
         }
 
-        // We need to wrap before the newline/end. Start at max_width position
-        var cut_pos = max_width;
+        const cut_pos = max_width;
+        const char_at_cut = chars[cut_pos];
 
-        // Check if we're in the middle of a grapheme's continuation characters
-        while (cut_pos > 0 and gp.isContinuationChar(chars[cut_pos])) {
-            cut_pos -= 1;
-        }
+        if (gp.isContinuationChar(char_at_cut)) {
+            const left_extent = gp.charLeftExtent(char_at_cut);
+            const grapheme_start = cut_pos - left_extent;
+            const grapheme_width = left_extent + 1 + gp.charRightExtent(char_at_cut);
 
-        // If we landed on a grapheme start, check if it fits
-        if (cut_pos > 0 and gp.isGraphemeChar(chars[cut_pos])) {
-            const grapheme_width = 1 + gp.charRightExtent(chars[cut_pos]);
-            // If the grapheme would extend past max_width, exclude it
+            if (grapheme_start + grapheme_width <= max_width) {
+                return .{ .char_count = grapheme_start + grapheme_width, .width = grapheme_start + grapheme_width };
+            }
+
+            return .{ .char_count = grapheme_start, .width = grapheme_start };
+        } else if (gp.isGraphemeChar(char_at_cut)) {
+            const grapheme_width = 1 + gp.charRightExtent(char_at_cut);
+
             if (cut_pos + grapheme_width > max_width) {
-                // Don't include this grapheme
                 return .{ .char_count = cut_pos, .width = cut_pos };
             }
-            // Otherwise include the full grapheme
+
             return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
         }
 
@@ -356,18 +355,13 @@ pub const TextBuffer = struct {
     }
 
     /// Calculate the visual width of a chunk of characters
-    /// Since chars directly represent cells, width = chars.len
-    /// Newlines are ALWAYS the last char in a chunk (if present) and don't contribute to width
     fn calculateChunkWidth(_: *const TextBuffer, chars: []const u32) u32 {
         if (chars.len == 0) return 0;
 
-        // Check if last char is a newline (chunks are finalized on newline, so it's always last)
         if (chars[chars.len - 1] == '\n') {
-            // Width is all chars except the newline
             return @intCast(chars.len - 1);
         }
 
-        // Otherwise, width is the full length
         return @intCast(chars.len);
     }
 
