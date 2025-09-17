@@ -248,7 +248,7 @@ function getOpenTUILib(libPath?: string) {
 
     // TextBuffer functions
     createTextBuffer: {
-      args: ["u32", "u8"],
+      args: ["u8"],
       returns: "ptr",
     },
     destroyTextBuffer: {
@@ -660,7 +660,7 @@ export interface RenderLib {
   setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
 
   // TextBuffer methods
-  createTextBuffer: (capacity: number, widthMethod: WidthMethod) => TextBuffer
+  createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
   destroyTextBuffer: (buffer: Pointer) => void
   textBufferGetLength: (buffer: Pointer) => number
 
@@ -1191,14 +1191,14 @@ class FFIRenderLib implements RenderLib {
   }
 
   // TextBuffer methods
-  public createTextBuffer(capacity: number, widthMethod: WidthMethod): TextBuffer {
+  public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createTextBuffer(capacity, widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
     if (!bufferPtr) {
-      throw new Error(`Failed to create TextBuffer with capacity ${capacity}`)
+      throw new Error(`Failed to create TextBuffer`)
     }
 
-    return new TextBuffer(this, bufferPtr, capacity)
+    return new TextBuffer(this, bufferPtr)
   }
 
   public destroyTextBuffer(buffer: Pointer): void {

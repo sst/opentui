@@ -358,14 +358,14 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
     rendererPtr.setupTerminal(useAlternateScreen);
 }
 
-export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffer {
+export fn createTextBuffer(widthMethod: u8) ?*text_buffer.TextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
 
-    const tb = text_buffer.TextBuffer.init(std.heap.page_allocator, length, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
+    const tb = text_buffer.TextBuffer.init(std.heap.page_allocator, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
         return null;
     };
 

@@ -19,14 +19,14 @@ export class TextBuffer {
   private _lineInfo?: { lineStarts: number[]; lineWidths: number[] }
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: Pointer, capacity: number) {
+  constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
     this.bufferPtr = ptr
   }
 
-  static create(capacity: number = 64, widthMethod: WidthMethod): TextBuffer {
+  static create(widthMethod: WidthMethod): TextBuffer {
     const lib = resolveRenderLib()
-    return lib.createTextBuffer(capacity, widthMethod)
+    return lib.createTextBuffer(widthMethod)
   }
 
   // Fail loud and clear

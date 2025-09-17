@@ -7,7 +7,7 @@ describe("TextBuffer", () => {
   let buffer: TextBuffer
 
   beforeEach(() => {
-    buffer = TextBuffer.create(256, "wcwidth")
+    buffer = TextBuffer.create("wcwidth")
   })
 
   afterEach(() => {
@@ -151,7 +151,7 @@ describe("TextBuffer", () => {
     it("should handle very long lines", () => {
       const longText = "A".repeat(1000)
       const styledText = stringToStyledText(longText)
-      buffer = TextBuffer.create(2000, "wcwidth") // Need larger capacity
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -164,7 +164,7 @@ describe("TextBuffer", () => {
 
     it("should handle lines with different widths", () => {
       const styledText = stringToStyledText("Short\n" + "A".repeat(50) + "\nMedium")
-      buffer = TextBuffer.create(1000, "wcwidth")
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -240,7 +240,7 @@ describe("TextBuffer", () => {
 
     it("should handle lineInfo after buffer resize operations", () => {
       // Create a small buffer that will need to resize
-      const smallBuffer = TextBuffer.create(16, "wcwidth")
+      const smallBuffer = TextBuffer.create("wcwidth")
 
       // Add text that will cause multiple resizes
       const longText = "A".repeat(100) + "\n" + "B".repeat(100)
@@ -259,7 +259,7 @@ describe("TextBuffer", () => {
     it("should handle extremely long single line", () => {
       const extremelyLongText = "A".repeat(10000)
       const styledText = stringToStyledText(extremelyLongText)
-      buffer = TextBuffer.create(20000, "wcwidth")
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -273,7 +273,7 @@ describe("TextBuffer", () => {
     it("should handle thousands of lines", () => {
       const manyLines = Array.from({ length: 1000 }, (_, i) => `Line ${i}`).join("\n")
       const styledText = stringToStyledText(manyLines)
-      buffer = TextBuffer.create(10000, "wcwidth")
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -343,7 +343,7 @@ describe("TextBuffer", () => {
     let unicodeBuffer: TextBuffer
 
     beforeEach(() => {
-      unicodeBuffer = TextBuffer.create(256, "unicode")
+      unicodeBuffer = TextBuffer.create("unicode")
     })
 
     afterEach(() => {
@@ -589,7 +589,7 @@ describe("TextBuffer", () => {
     it("should handle very long text", () => {
       const longText = "A".repeat(1000) + "\n" + "B".repeat(500)
       const styledText = stringToStyledText(longText)
-      const largeBuffer = TextBuffer.create(2000, "wcwidth")
+      const largeBuffer = TextBuffer.create("wcwidth")
       largeBuffer.setStyledText(styledText)
 
       const plainText = largeBuffer.getPlainText()

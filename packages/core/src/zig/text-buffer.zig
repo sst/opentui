@@ -171,9 +171,7 @@ pub const TextBuffer = struct {
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
 
-    pub fn init(global_allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
-        if (length == 0) return TextBufferError.InvalidDimensions;
-
+    pub fn init(global_allocator: Allocator, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
         const self = global_allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 
