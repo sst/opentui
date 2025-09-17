@@ -109,61 +109,96 @@ function handleTextBoxMouse(event: MouseEvent): void {
     }
 
     case "drag": {
+      // Resize is now handled by the global mouse handler
       if (isResizing && resizeDirection) {
-        const deltaX = event.x - resizeStartX
-        const deltaY = event.y - resizeStartY
-
-        let newWidth = resizeStartWidth
-        let newHeight = resizeStartHeight
-        let newLeft = resizeStartLeft
-        let newTop = resizeStartTop
-
-        // Handle different resize directions
-        switch (resizeDirection) {
-          case "nw":
-            newWidth = Math.max(10, resizeStartWidth - deltaX)
-            newHeight = Math.max(5, resizeStartHeight - deltaY)
-            newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
-            newTop = resizeStartTop + (resizeStartHeight - newHeight)
-            break
-          case "ne":
-            newWidth = Math.max(10, resizeStartWidth + deltaX)
-            newHeight = Math.max(5, resizeStartHeight - deltaY)
-            newTop = resizeStartTop + (resizeStartHeight - newHeight)
-            break
-          case "sw":
-            newWidth = Math.max(10, resizeStartWidth - deltaX)
-            newHeight = Math.max(5, resizeStartHeight + deltaY)
-            newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
-            break
-          case "se":
-            newWidth = Math.max(10, resizeStartWidth + deltaX)
-            newHeight = Math.max(5, resizeStartHeight + deltaY)
-            break
-          case "n":
-            newHeight = Math.max(5, resizeStartHeight - deltaY)
-            newTop = resizeStartTop + (resizeStartHeight - newHeight)
-            break
-          case "s":
-            newHeight = Math.max(5, resizeStartHeight + deltaY)
-            break
-          case "w":
-            newWidth = Math.max(10, resizeStartWidth - deltaX)
-            newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
-            break
-          case "e":
-            newWidth = Math.max(10, resizeStartWidth + deltaX)
-            break
-        }
-
-        // Apply the new dimensions and position
-        textBox.width = newWidth
-        textBox.height = newHeight
-        textBox.left = newLeft
-        textBox.top = newTop
-
         event.stopPropagation()
       }
+      break
+    }
+
+    case "up":
+    case "drag-end": {
+      // Resize end is now handled by the global mouse handler
+      if (isResizing) {
+        event.stopPropagation()
+      }
+      break
+    }
+
+    case "out": {
+      if (!isResizing) {
+        resizeDirection = null
+      }
+      // Don't handle "out" events during resizing - let the renderer handle them
+      // The captured renderable logic in the renderer will ensure we continue getting mouse events
+      break
+    }
+  }
+}
+
+const longText =
+  "This is a very long text that should wrap when the text wrapping is enabled. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. The text will automatically break into multiple lines based on the width of the container."
+
+// Global mouse handler for resize operations
+function handleGlobalMouse(event: MouseEvent): void {
+  if (!isResizing || !resizeDirection || !textBox) return
+
+  switch (event.type) {
+    case "move":
+    case "drag": {
+      const deltaX = event.x - resizeStartX
+      const deltaY = event.y - resizeStartY
+
+      let newWidth = resizeStartWidth
+      let newHeight = resizeStartHeight
+      let newLeft = resizeStartLeft
+      let newTop = resizeStartTop
+
+      // Handle different resize directions
+      switch (resizeDirection) {
+        case "nw":
+          newWidth = Math.max(10, resizeStartWidth - deltaX)
+          newHeight = Math.max(5, resizeStartHeight - deltaY)
+          newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
+          newTop = resizeStartTop + (resizeStartHeight - newHeight)
+          break
+        case "ne":
+          newWidth = Math.max(10, resizeStartWidth + deltaX)
+          newHeight = Math.max(5, resizeStartHeight - deltaY)
+          newTop = resizeStartTop + (resizeStartHeight - newHeight)
+          break
+        case "sw":
+          newWidth = Math.max(10, resizeStartWidth - deltaX)
+          newHeight = Math.max(5, resizeStartHeight + deltaY)
+          newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
+          break
+        case "se":
+          newWidth = Math.max(10, resizeStartWidth + deltaX)
+          newHeight = Math.max(5, resizeStartHeight + deltaY)
+          break
+        case "n":
+          newHeight = Math.max(5, resizeStartHeight - deltaY)
+          newTop = resizeStartTop + (resizeStartHeight - newHeight)
+          break
+        case "s":
+          newHeight = Math.max(5, resizeStartHeight + deltaY)
+          break
+        case "w":
+          newWidth = Math.max(10, resizeStartWidth - deltaX)
+          newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
+          break
+        case "e":
+          newWidth = Math.max(10, resizeStartWidth + deltaX)
+          break
+      }
+
+      // Apply the new dimensions and position
+      textBox.width = newWidth
+      textBox.height = newHeight
+      textBox.left = newLeft
+      textBox.top = newTop
+
+      event.stopPropagation()
       break
     }
 
@@ -176,21 +211,14 @@ function handleTextBoxMouse(event: MouseEvent): void {
       }
       break
     }
-
-    case "out": {
-      if (!isResizing) {
-        resizeDirection = null
-      }
-      break
-    }
   }
 }
 
-const longText =
-  "This is a very long text that should wrap when the text wrapping is enabled. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. The text will automatically break into multiple lines based on the width of the container."
-
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0d1117")
+
+  // Add global mouse handler for resize operations
+  renderer.root.onMouse = handleGlobalMouse
 
   // Create main container
   mainContainer = new BoxRenderable(renderer, {
