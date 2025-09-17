@@ -535,5 +535,29 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain("[Three]")
       expect(frame).not.toContain("• One")
     })
+
+    it("should be able to anchor to slot nodes", async () => {
+      testSetup = await testRender(
+        () => (
+          <box>
+            <box border title="A" />
+            <Show when={false}>
+              <box border title="C" />
+            </Show>
+            <Show when={true}>
+              <box border title="B" />
+            </Show>
+          </box>
+        ),
+        { width: 25, height: 10 },
+      )
+      await testSetup.renderOnce()
+      let frame = testSetup.captureCharFrame()
+      expect(frame).toContain("A")
+      expect(frame).toContain("B")
+      expect(frame).not.toContain("C")
+      // Consistent ordering
+      expect(frame).toMatchSnapshot()
+    })
   })
 })
