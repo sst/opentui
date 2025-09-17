@@ -5,429 +5,330 @@ import {
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
+  parseColor,
   Renderable,
+  RootTextNodeRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
   TextNodeRenderable,
   TextRenderable,
+  type TextNodeOptions,
 } from "@opentui/core"
-import { createRoot, createEffect, createMemo, untrack, useContext, mergeProps, createComponent } from "solid-js"
+import { useContext } from "solid-js"
+import { createRenderer } from "solid-js/universal"
 import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 
-// Type definitions for the reconciler
-type Accessor<T> = T | (() => T)
-type Props = Record<string, any>
-type Disposer = () => void
-type EffectValue = BaseRenderable | BaseRenderable[] | null | undefined
-
-// Event handler types
-type EventHandler<T = any> = (...args: T[]) => void
-type StyleObject = {
-  fg?: string
-  bg?: string
-  bold?: boolean
-  italic?: boolean
-  underline?: boolean
-  [key: string]: any
+class TextNode extends TextNodeRenderable {
+  public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
+    const node = new TextNode(options)
+    node.add(text)
+    return node
+  }
 }
 
-// Create OpenTUI renderables
-function createRenderable(tagName: string): BaseRenderable {
-  const id = getNextId(tagName)
-  const renderer = useContext(RendererContext)
-  if (!renderer) throw new Error("No renderer context found")
+export type DomNode = BaseRenderable
 
-  const components = getComponentCatalogue()
-  const ComponentClass = components[tagName]
-  if (!ComponentClass) {
-    throw new Error(`Unknown component: ${tagName}`)
+/**
+ * Gets the id of a node, or content if it's a text chunk.
+ * Intended for use in logging.
+ * @param node The node to get the id of.
+ * @returns Log-friendly id of the node.
+ */
+const logId = (node?: DomNode): string | undefined => {
+  if (!node) return undefined
+  return node.id
+}
+
+const getNodeChildren = (node: DomNode) => {
+  let children
+  if (node instanceof TextRenderable) {
+    children = node.getTextChildren()
+  } else {
+    children = node.getChildren()
+  }
+  return children
+}
+
+function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
+  log(
+    "Inserting node:",
+    logId(node),
+    "into parent:",
+    logId(parent),
+    "with anchor:",
+    logId(anchor),
+    node instanceof TextNode,
+  )
+
+  if (isTextNodeRenderable(node)) {
+    if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
+      // TODO this can happen naturally with match and show, probably should handle better
+      log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
+      return
+    }
   }
 
-  const renderable = new ComponentClass(renderer, { id })
-  log("[CREATE] Created renderable:", tagName, "with id:", id)
-  return renderable
-}
-
-// Create text nodes
-function createTextNode(value: string | number): TextNodeRenderable {
-  const text = typeof value === "number" ? value.toString() : value
-  const id = getNextId("text-node")
-  log("[CREATE] Creating text node:", text, "with id:", id)
-  return TextNodeRenderable.fromString(text, { id })
-}
-
-// Add child to parent
-function addChild(parent: BaseRenderable, child: BaseRenderable, anchor?: BaseRenderable): void {
-  log("[ADD] Adding child:", child.id, "to parent:", parent.id, "anchor:", anchor?.id)
+  // Renderable nodes
+  if (!(parent instanceof BaseRenderable)) {
+    log("[INSERT]", "Tried to mount a non base renderable")
+    return
+  }
 
   if (!anchor) {
-    parent.add(child)
+    parent.add(node)
     return
   }
 
-  // Find anchor position
-  const children = getChildren(parent)
-  const index = children.findIndex((c) => c.id === anchor.id)
-  log("[ADD] Found anchor at index:", index)
-  parent.add(child, index >= 0 ? index : undefined)
-}
+  const children = getNodeChildren(parent)
 
-// Remove child from parent
-function removeChild(parent: BaseRenderable, child: BaseRenderable): void {
-  log("[REMOVE] Removing child:", child.id, "from parent:", parent.id)
-
-  // TextNodeRenderable special case
-  if (isTextNodeRenderable(child) && isTextNodeRenderable(parent)) {
-    parent.remove(child)
-  } else {
-    parent.remove(child.id)
+  const anchorIndex = children.findIndex((el) => el.id === anchor.id)
+  if (anchorIndex === -1) {
+    log("[INSERT]", "Could not find anchor", logId(parent), logId(anchor), "[children]", ...children.map((c) => c.id))
   }
 
-  // Clean up if orphaned
+  parent.add(node, anchorIndex)
+}
+
+function _removeNode(parent: DomNode, node: DomNode): void {
+  log("Removing node:", logId(node), "from parent:", logId(parent))
+
+  parent.remove(node.id)
+
   process.nextTick(() => {
-    if (!child.parent) {
-      log("[DESTROY] Destroying orphaned node:", child.id)
-      if (child instanceof Renderable) {
-        child.destroyRecursively()
-      } else {
-        child.destroy?.()
-      }
+    if (node instanceof Renderable && !node.parent) {
+      node.destroyRecursively()
+      return
     }
   })
 }
 
-// Get children based on type
-function getChildren(renderable: BaseRenderable): BaseRenderable[] {
-  if (renderable instanceof TextRenderable) {
-    return renderable.getTextChildren()
-  } else if (isTextNodeRenderable(renderable)) {
-    return renderable.children.filter((c): c is TextNodeRenderable => isTextNodeRenderable(c))
-  } else {
-    return renderable.getChildren()
+function _createTextNode(value: string | number): TextNode {
+  log("Creating text node:", value)
+
+  const id = getNextId("text-node")
+
+  if (typeof value === "number") {
+    value = value.toString()
   }
+
+  return TextNode.fromString(value, { id })
 }
 
-// Apply properties to renderables
-function setProperty(renderable: BaseRenderable, name: string, value: any, prev: any): void {
-  // Handle events
-  if (name.startsWith("on:")) {
-    const eventName = name.slice(3)
-    if (value) renderable.on(eventName, value as EventHandler)
-    if (prev) renderable.off(eventName, prev as EventHandler)
-    return
+function _getParentNode(childNode: DomNode): DomNode | undefined {
+  log("Getting parent of node:", logId(childNode))
+
+  let parent = childNode.parent ?? undefined
+  if (parent instanceof RootTextNodeRenderable) {
+    parent = parent.textParent ?? undefined
   }
-
-  // Handle text node styles
-  if (isTextNodeRenderable(renderable) && name === "style") {
-    const styleValue = value as StyleObject
-    renderable.attributes |= createTextAttributes(styleValue)
-    renderable.fg = styleValue.fg ?? renderable.fg
-    renderable.bg = styleValue.bg ?? renderable.bg
-    return
-  }
-
-  // Only continue for actual Renderables
-  if (!(renderable instanceof Renderable)) return
-
-  // Handle common properties
-  switch (name) {
-    case "focused":
-      value ? renderable.focus() : renderable.blur()
-      break
-
-    case "onChange":
-      if (renderable instanceof SelectRenderable) {
-        updateEvent(renderable, SelectRenderableEvents.SELECTION_CHANGED, value, prev)
-      } else if (renderable instanceof TabSelectRenderable) {
-        updateEvent(renderable, TabSelectRenderableEvents.SELECTION_CHANGED, value, prev)
-      } else if (renderable instanceof InputRenderable) {
-        updateEvent(renderable, InputRenderableEvents.CHANGE, value, prev)
-      }
-      break
-
-    case "onInput":
-      if (renderable instanceof InputRenderable) {
-        updateEvent(renderable, InputRenderableEvents.INPUT, value, prev)
-      }
-      break
-
-    case "onSubmit":
-      if (renderable instanceof InputRenderable) {
-        updateEvent(renderable, InputRenderableEvents.ENTER, value, prev)
-      }
-      break
-
-    case "onSelect":
-      if (renderable instanceof SelectRenderable) {
-        updateEvent(renderable, SelectRenderableEvents.ITEM_SELECTED, value, prev)
-      } else if (renderable instanceof TabSelectRenderable) {
-        updateEvent(renderable, TabSelectRenderableEvents.ITEM_SELECTED, value, prev)
-      }
-      break
-
-    case "style":
-      const styles = value as Record<string, any>
-      const prevStyles = prev as Record<string, any> | undefined
-      Object.entries(styles).forEach(([prop, val]) => {
-        if (!prevStyles || val !== prevStyles[prop]) {
-          ;(renderable as Record<string, any>)[prop] = val
-        }
-      })
-      break
-
-    case "text":
-    case "content":
-      ;(renderable as Record<string, any>)[name] = String(value)
-      break
-
-    default:
-      ;(renderable as Record<string, any>)[name] = value
-  }
+  return parent
 }
 
-function updateEvent(renderable: Renderable, event: string, value: any, prev: any): void {
-  if (value) renderable.on(event, value as EventHandler)
-  if (prev) renderable.off(event, prev as EventHandler)
-}
-
-// Simple insert for OpenTUI
-function insert(parent: BaseRenderable, accessor: Accessor<any>, anchor?: BaseRenderable): void {
-  log("[INSERT] Starting insert into parent:", parent.id, "accessor type:", typeof accessor)
-
-  if (typeof accessor !== "function") {
-    // Static value - insert once
-    log("[INSERT] Static value")
-    insertExpression(parent, accessor, undefined, anchor)
-  } else {
-    // Reactive value - track changes
-    log("[INSERT] Reactive value - setting up effect")
-    createEffect((current: EffectValue) => {
-      log("[INSERT] Effect running, current:", current != null ? "exists" : "null")
-      const value = accessor()
-      const result = insertExpression(parent, value, current, anchor)
-
-      return result
-    })
-  }
-}
-
-// Insert/update expression in parent
-function insertExpression(
-  parent: BaseRenderable,
-  value: any,
-  current: EffectValue,
-  anchor?: BaseRenderable,
-): EffectValue {
-  log("[INSERT] Expression in parent:", parent.id, "value type:", typeof value, "has current:", current != null)
-
-  // Resolve functions
-  while (typeof value === "function") value = value()
-
-  // Skip if unchanged
-  if (value === current) {
-    log("[INSERT] Value unchanged, skipping")
-    return current
-  }
-
-  // Handle null/undefined/false
-  if (value == null || value === false) {
-    log("[INSERT] Value is null/undefined/false")
-    // Only clean up if we actually had content before
-    if (current != null) {
-      log("[INSERT] Cleaning up old content")
-      cleanContent(parent, current)
-    }
-    return null
-  }
-
-  // Clean up old content before inserting new content
-  if (current != null) {
-    log("[INSERT] Cleaning up old content before inserting new")
-    cleanContent(parent, current)
-  }
-
-  // Handle text content
-  if (typeof value === "string" || typeof value === "number") {
-    const text = String(value)
-    const canAcceptText = parent instanceof TextRenderable || isTextNodeRenderable(parent)
-    log("[INSERT] Text content:", text, "canAcceptText:", canAcceptText)
-
-    if (canAcceptText) {
-      // Update existing text node if possible
-      if (current && isTextNodeRenderable(current)) {
-        log("[INSERT] Updating existing text node")
-        current.replace(text, 0)
-        return current
-      }
-      // Create new text node
-      log("[INSERT] Creating new text node")
-      const textNode = createTextNode(text)
-      addChild(parent, textNode, anchor)
-      return textNode
-    } else {
-      // Need to wrap in TextRenderable
-      if (
-        current &&
-        current instanceof TextRenderable &&
-        (current as TextRenderable & { _autoWrapped?: boolean })._autoWrapped
-      ) {
-        // Update existing wrapper's text
-        log("[INSERT] Updating existing text wrapper")
-        const firstChild = getChildren(current)[0]
-        if (firstChild && isTextNodeRenderable(firstChild)) {
-          firstChild.replace(text, 0)
-        }
-        return current
-      }
-      // Create new wrapper
-      log("[INSERT] Creating new text wrapper")
-      const wrapper = createRenderable("text")
-      ;(wrapper as TextRenderable & { _autoWrapped?: boolean })._autoWrapped = true
-      const textNode = createTextNode(text)
-      addChild(wrapper, textNode)
-      addChild(parent, wrapper, anchor)
-      return wrapper
-    }
-  }
-
-  // Handle arrays
-  if (Array.isArray(value)) {
-    log("[INSERT] Array with", value.length, "items")
-
-    // If the array is empty and we have content, check if it's intentional
-    if (value.length === 0 && Array.isArray(current) && current.length > 0) {
-      log("[INSERT] WARNING: Replacing non-empty array with empty array")
-    }
-
-    const nodes: BaseRenderable[] = []
-
-    // Simple approach: remove all old array items, add new ones
-    if (Array.isArray(current)) {
-      log("[INSERT] Removing", current.length, "old array items")
-      current.forEach((node) => {
-        if (node instanceof BaseRenderable) {
-          removeChild(parent, node)
-        }
-      })
-    }
-
-    // Add new items
-    log("[INSERT] Adding", value.length, "new array items")
-    for (const item of value) {
-      const node = insertExpression(parent, item, undefined, anchor)
-      if (node && node instanceof BaseRenderable) nodes.push(node)
-    }
-
-    return nodes
-  }
-
-  // Handle renderables
-  if (value instanceof BaseRenderable) {
-    log("[INSERT] Adding renderable:", value.id)
-    addChild(parent, value, anchor)
-    return value
-  }
-
-  log("[INSERT] Unknown value type, returning null")
-  return null
-}
-
-// Clean up content from parent
-function cleanContent(parent: BaseRenderable, content: EffectValue): void {
-  if (!content) {
-    log("[CLEAN] No content to clean")
-    return
-  }
-
-  if (Array.isArray(content)) {
-    log("[CLEAN] Cleaning array of", content.length, "items from parent:", parent.id)
-    content.forEach((item) => {
-      if (item instanceof BaseRenderable && item.parent === parent) {
-        removeChild(parent, item)
-      }
-    })
-  } else if (content instanceof BaseRenderable && content.parent === parent) {
-    log("[CLEAN] Cleaning single renderable:", content.id, "from parent:", parent.id)
-    removeChild(parent, content)
-  } else {
-    log("[CLEAN] Content not cleanable, type:", typeof content)
-  }
-}
-
-// Public API
-export {
-  createRenderable as createElement,
-  createTextNode,
-  addChild as insertNode,
-  insert,
-  createEffect as effect,
-  createMemo as memo,
+export const {
+  render: _render,
+  effect,
+  memo,
   createComponent,
+  createElement,
+  createTextNode,
+  insertNode,
+  insert,
+  spread,
+  setProp,
   mergeProps,
-}
+  use,
+} = createRenderer<DomNode>({
+  createElement(tagName: string): DomNode {
+    log("Creating element:", tagName)
+    const id = getNextId(tagName)
+    const solidRenderer = useContext(RendererContext)
+    if (!solidRenderer) {
+      throw new Error("No renderer found")
+    }
+    const elements = getComponentCatalogue()
 
-export function render(code: () => any, rootRenderable: BaseRenderable): Disposer {
-  log("[RENDER] Starting render into root:", rootRenderable.id)
-  let disposer: Disposer = () => {}
-  createRoot((dispose: Disposer) => {
-    disposer = dispose
-    insert(rootRenderable, code())
-  })
-  log("[RENDER] Render complete")
-  return disposer
-}
+    if (!elements[tagName]) {
+      throw new Error(`[Reconciler] Unknown component type: ${tagName}`)
+    }
 
-export function setProp(renderable: BaseRenderable, name: string, value: any, prev: any): any {
-  setProperty(renderable, name, value, prev)
-  return value
-}
+    const element = new elements[tagName](solidRenderer, { id })
+    log("Element created with id:", id)
+    return element
+  },
 
-export function use<T>(fn: (element: BaseRenderable, arg: T) => any, element: BaseRenderable, arg: T): any {
-  return untrack(() => fn(element, arg))
-}
+  createTextNode: _createTextNode,
 
-function spreadProps(renderable: BaseRenderable, props: Props, prevProps: Props = {}, skipChildren?: boolean): Props {
-  if (!props) return prevProps
+  replaceText(textNode: TextNode, value: string): void {
+    log("Replacing text:", value, "in node:", logId(textNode))
 
-  // Handle children with proper tracking
-  if (!skipChildren && props.children !== undefined) {
-    createEffect((current: EffectValue) => {
-      prevProps.children = insertExpression(renderable, props.children, current)
-      return prevProps.children
-    }, prevProps.children)
-  }
+    if (!(textNode instanceof TextNode)) return
+    textNode.replace(value, 0)
+  },
 
-  // Handle ref
-  if (props.ref) {
-    const ref = props.ref as (el: BaseRenderable) => void
-    createEffect(() => ref(renderable))
-  }
-
-  // Handle other props with tracking
-  createEffect(() => {
-    Object.entries(props).forEach(([key, value]) => {
-      if (key === "children" || key === "ref") return
-      if (value !== prevProps[key]) {
-        setProperty(renderable, key, value, prevProps[key])
-        prevProps[key] = value
+  setProperty(node: DomNode, name: string, value: any, prev: any): void {
+    if (name.startsWith("on:")) {
+      const eventName = name.slice(3)
+      if (value) {
+        node.on(eventName, value)
       }
-    })
-  })
+      if (prev) {
+        node.off(eventName, prev)
+      }
 
-  return prevProps
-}
+      return
+    }
 
-export function spread(renderable: BaseRenderable, accessor: Accessor<Props>, skipChildren?: boolean): void {
-  if (typeof accessor === "function") {
-    createEffect((current: Props | undefined) => {
-      const props = accessor()
-      return spreadProps(renderable, props, current || {}, skipChildren)
-    })
-  } else {
-    spreadProps(renderable, accessor, {}, skipChildren)
-  }
-}
+    if (isTextNodeRenderable(node)) {
+      if (name !== "style") {
+        return
+      }
+      node.attributes |= createTextAttributes(value)
+      node.fg = value.fg ? parseColor(value.fg) : node.fg
+      node.bg = value.bg ? parseColor(value.bg) : node.bg
+      return
+    }
+
+    switch (name) {
+      case "focused":
+        if (!(node instanceof Renderable)) return
+        if (value) {
+          node.focus()
+        } else {
+          node.blur()
+        }
+        break
+      case "onChange":
+        let event: string | undefined = undefined
+        if (node instanceof SelectRenderable) {
+          event = SelectRenderableEvents.SELECTION_CHANGED
+        } else if (node instanceof TabSelectRenderable) {
+          event = TabSelectRenderableEvents.SELECTION_CHANGED
+        } else if (node instanceof InputRenderable) {
+          event = InputRenderableEvents.CHANGE
+        }
+        if (!event) break
+
+        if (value) {
+          node.on(event, value)
+        }
+        if (prev) {
+          node.off(event, prev)
+        }
+        break
+      case "onInput":
+        if (node instanceof InputRenderable) {
+          if (value) {
+            node.on(InputRenderableEvents.INPUT, value)
+          }
+
+          if (prev) {
+            node.off(InputRenderableEvents.INPUT, prev)
+          }
+        }
+
+        break
+      case "onSubmit":
+        if (node instanceof InputRenderable) {
+          if (value) {
+            node.on(InputRenderableEvents.ENTER, value)
+          }
+
+          if (prev) {
+            node.off(InputRenderableEvents.ENTER, prev)
+          }
+        }
+        break
+      case "onSelect":
+        if (node instanceof SelectRenderable) {
+          if (value) {
+            node.on(SelectRenderableEvents.ITEM_SELECTED, value)
+          }
+
+          if (prev) {
+            node.off(SelectRenderableEvents.ITEM_SELECTED, prev)
+          }
+        } else if (node instanceof TabSelectRenderable) {
+          if (value) {
+            node.on(TabSelectRenderableEvents.ITEM_SELECTED, value)
+          }
+
+          if (prev) {
+            node.off(TabSelectRenderableEvents.ITEM_SELECTED, prev)
+          }
+        }
+        break
+      case "style":
+        for (const prop in value) {
+          const propVal = value[prop]
+          if (prev !== undefined && propVal === prev[prop]) continue
+          // @ts-expect-error todo validate if prop is actually settable
+          node[prop] = propVal
+        }
+        break
+      case "text":
+      case "content":
+        // @ts-expect-error todo validate if prop is actually settable
+        node[name] = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
+        break
+      default:
+        // @ts-expect-error todo validate if prop is actually settable
+        node[name] = value
+    }
+  },
+
+  isTextNode(node: DomNode): boolean {
+    return node instanceof TextNode
+  },
+
+  insertNode: _insertNode,
+
+  removeNode: _removeNode,
+
+  getParentNode: _getParentNode,
+
+  getFirstChild(node: DomNode): DomNode | undefined {
+    log("Getting first child of node:", logId(node))
+
+    const firstChild = getNodeChildren(node)[0]
+
+    if (!firstChild) {
+      log("No first child found for node:", logId(node))
+      return undefined
+    }
+
+    log("First child found:", logId(firstChild), "for node:", logId(node))
+    return firstChild
+  },
+
+  getNextSibling(node: DomNode): DomNode | undefined {
+    log("Getting next sibling of node:", logId(node))
+
+    const parent = _getParentNode(node)
+    if (!parent) {
+      log("No parent found for node:", logId(node))
+      return undefined
+    }
+    const siblings = getNodeChildren(node)
+
+    const index = siblings.indexOf(node)
+
+    if (index === -1 || index === siblings.length - 1) {
+      log("No next sibling found for node:", logId(node))
+      return undefined
+    }
+
+    const nextSibling = siblings[index + 1]
+
+    if (!nextSibling) {
+      log("Next sibling is null for node:", logId(node))
+      return undefined
+    }
+
+    log("Next sibling found:", logId(nextSibling), "for node:", logId(node))
+    return nextSibling
+  },
+})

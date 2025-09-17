@@ -2,7 +2,7 @@ import { createCliRenderer, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import type { JSX } from "./jsx-runtime"
 import { RendererContext } from "./src/elements"
-import { render as renderInternal, createComponent } from "./src/reconciler"
+import { _render as renderInternal, createComponent } from "./src/reconciler"
 
 export const render = async (node: () => JSX.Element, renderConfig: CliRendererConfig = {}) => {
   const renderer = await createCliRenderer(renderConfig)
