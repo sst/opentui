@@ -3,7 +3,7 @@
  * Text wrapping example
  * Demonstrates automatic text wrapping when the wrap option is enabled
  */
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type MouseEvent } from ".."
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type MouseEvent, t, fg, bold } from ".."
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
@@ -70,8 +70,9 @@ function handleTextBoxMouse(event: MouseEvent): void {
     case "move":
     case "over": {
       if (!isResizing) {
-        const boxLeft = typeof textBox.left === "number" ? textBox.left : 0
-        const boxTop = typeof textBox.top === "number" ? textBox.top : 0
+        // Use the computed screen position of the textBox
+        const boxLeft = textBox.x
+        const boxTop = textBox.y
         const direction = getResizeDirection(event.x, event.y, boxLeft, boxTop, textBox.width, textBox.height)
         resizeDirection = direction
 
@@ -101,27 +102,23 @@ function handleTextBoxMouse(event: MouseEvent): void {
         resizeStartWidth = textBox.width
         resizeStartHeight = textBox.height
         // Store the original position for resize calculations
-        resizeStartLeft = typeof textBox.left === "number" ? textBox.left : 0
-        resizeStartTop = typeof textBox.top === "number" ? textBox.top : 0
+        resizeStartLeft = textBox.x
+        resizeStartTop = textBox.y
         event.stopPropagation()
       }
       break
     }
 
     case "drag": {
-      // Resize is now handled by the global mouse handler
-      if (isResizing && resizeDirection) {
-        event.stopPropagation()
-      }
+      // Don't handle drag here - let the global handler manage it
+      // Don't stop propagation so global handler can receive events
       break
     }
 
     case "up":
     case "drag-end": {
-      // Resize end is now handled by the global mouse handler
-      if (isResizing) {
-        event.stopPropagation()
-      }
+      // Don't handle resize end here - let the global handler manage it
+      // Don't stop propagation so global handler can receive events
       break
     }
 
@@ -129,109 +126,101 @@ function handleTextBoxMouse(event: MouseEvent): void {
       if (!isResizing) {
         resizeDirection = null
       }
-      // Don't handle "out" events during resizing - let the renderer handle them
-      // The captured renderable logic in the renderer will ensure we continue getting mouse events
+      // During resize, keep the original resizeDirection - don't clear it
+      break
+    }
+  }
+}
+
+// Global mouse handler for resize operations
+function handleGlobalMouse(event: MouseEvent): void {
+  switch (event.type) {
+    case "move":
+    case "drag": {
+      // Only handle if we're in a resize operation
+      if (isResizing && resizeDirection && textBox) {
+        const deltaX = event.x - resizeStartX
+        const deltaY = event.y - resizeStartY
+
+        let newWidth = resizeStartWidth
+        let newHeight = resizeStartHeight
+        let newLeft = resizeStartLeft
+        let newTop = resizeStartTop
+
+        // Handle different resize directions
+        switch (resizeDirection) {
+          case "nw":
+            newWidth = Math.max(10, resizeStartWidth - deltaX)
+            newHeight = Math.max(5, resizeStartHeight - deltaY)
+            newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
+            newTop = resizeStartTop + (resizeStartHeight - newHeight)
+            break
+          case "ne":
+            newWidth = Math.max(10, resizeStartWidth + deltaX)
+            newHeight = Math.max(5, resizeStartHeight - deltaY)
+            newTop = resizeStartTop + (resizeStartHeight - newHeight)
+            break
+          case "sw":
+            newWidth = Math.max(10, resizeStartWidth - deltaX)
+            newHeight = Math.max(5, resizeStartHeight + deltaY)
+            newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
+            break
+          case "se":
+            newWidth = Math.max(10, resizeStartWidth + deltaX)
+            newHeight = Math.max(5, resizeStartHeight + deltaY)
+            break
+          case "n":
+            newHeight = Math.max(5, resizeStartHeight - deltaY)
+            newTop = resizeStartTop + (resizeStartHeight - newHeight)
+            break
+          case "s":
+            newHeight = Math.max(5, resizeStartHeight + deltaY)
+            break
+          case "w":
+            newWidth = Math.max(10, resizeStartWidth - deltaX)
+            newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
+            break
+          case "e":
+            newWidth = Math.max(10, resizeStartWidth + deltaX)
+            break
+        }
+
+        // Apply the new dimensions and position
+        textBox.width = newWidth
+        textBox.height = newHeight
+        textBox.left = newLeft
+        textBox.top = newTop
+      }
+      break
+    }
+
+    case "up": {
+      // End resize operation on any mouse up
+      if (isResizing) {
+        isResizing = false
+        resizeDirection = null
+      }
       break
     }
   }
 }
 
 const longText =
-  "This is a very long text that should wrap when the text wrapping is enabled. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. The text will automatically break into multiple lines based on the width of the container."
-
-// Global mouse handler for resize operations
-function handleGlobalMouse(event: MouseEvent): void {
-  if (!isResizing || !resizeDirection || !textBox) return
-
-  switch (event.type) {
-    case "move":
-    case "drag": {
-      const deltaX = event.x - resizeStartX
-      const deltaY = event.y - resizeStartY
-
-      let newWidth = resizeStartWidth
-      let newHeight = resizeStartHeight
-      let newLeft = resizeStartLeft
-      let newTop = resizeStartTop
-
-      // Handle different resize directions
-      switch (resizeDirection) {
-        case "nw":
-          newWidth = Math.max(10, resizeStartWidth - deltaX)
-          newHeight = Math.max(5, resizeStartHeight - deltaY)
-          newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
-          newTop = resizeStartTop + (resizeStartHeight - newHeight)
-          break
-        case "ne":
-          newWidth = Math.max(10, resizeStartWidth + deltaX)
-          newHeight = Math.max(5, resizeStartHeight - deltaY)
-          newTop = resizeStartTop + (resizeStartHeight - newHeight)
-          break
-        case "sw":
-          newWidth = Math.max(10, resizeStartWidth - deltaX)
-          newHeight = Math.max(5, resizeStartHeight + deltaY)
-          newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
-          break
-        case "se":
-          newWidth = Math.max(10, resizeStartWidth + deltaX)
-          newHeight = Math.max(5, resizeStartHeight + deltaY)
-          break
-        case "n":
-          newHeight = Math.max(5, resizeStartHeight - deltaY)
-          newTop = resizeStartTop + (resizeStartHeight - newHeight)
-          break
-        case "s":
-          newHeight = Math.max(5, resizeStartHeight + deltaY)
-          break
-        case "w":
-          newWidth = Math.max(10, resizeStartWidth - deltaX)
-          newLeft = resizeStartLeft + (resizeStartWidth - newWidth)
-          break
-        case "e":
-          newWidth = Math.max(10, resizeStartWidth + deltaX)
-          break
-      }
-
-      // Apply the new dimensions and position
-      textBox.width = newWidth
-      textBox.height = newHeight
-      textBox.left = newLeft
-      textBox.top = newTop
-
-      event.stopPropagation()
-      break
-    }
-
-    case "up":
-    case "drag-end": {
-      if (isResizing) {
-        isResizing = false
-        resizeDirection = null
-        event.stopPropagation()
-      }
-      break
-    }
-  }
-}
+  "This is a very long text that should wrap when the text wrapping is enabled. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. The text will automatically break into multiple lines based on the width of the container. Try resizing the box by dragging its borders or corners to see how the wrapping adapts dynamically!"
 
 export function run(renderer: CliRenderer): void {
-  renderer.setBackgroundColor("#0d1117")
+  renderer.setBackgroundColor("#0a0a14")
 
   // Add global mouse handler for resize operations
   renderer.root.onMouse = handleGlobalMouse
 
-  // Create main container
+  // Create main container (no border, just layout)
   mainContainer = new BoxRenderable(renderer, {
     id: "mainContainer",
     flexGrow: 1,
     maxHeight: "100%",
     maxWidth: "100%",
-    backgroundColor: "#161b22",
-    zIndex: 1,
-    borderColor: "#50565d",
-    title: "Text Wrapping Demo",
-    titleAlignment: "center",
-    border: true,
+    backgroundColor: "#0f0f23",
     flexDirection: "column",
   })
   renderer.root.add(mainContainer)
@@ -240,7 +229,10 @@ export function run(renderer: CliRenderer): void {
   contentBox = new BoxRenderable(renderer, {
     id: "content-box",
     flexGrow: 1,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#1e1e2e",
+    border: true,
+    borderColor: "#565f89",
+    padding: 1,
   })
 
   // Create a box for text demonstration
@@ -252,42 +244,42 @@ export function run(renderer: CliRenderer): void {
     width: 80,
     height: 15,
     borderStyle: "rounded",
-    borderColor: "green",
-    backgroundColor: "#0f0f0f",
+    borderColor: "#9ece6a",
+    backgroundColor: "#11111b",
     onMouse: handleTextBoxMouse,
+    overflow: "hidden",
   })
   contentBox.add(textBox)
 
   textRenderable = new TextRenderable(renderer, {
     id: "text-renderable",
     content: longText,
-    fg: "white",
+    fg: "#c0caf5",
     wrapMode: "word",
     wrap: true, // Enable text wrapping
   })
   textBox.add(textRenderable)
 
-  // Create instructions box
+  // Create instructions box with border
   instructionsBox = new BoxRenderable(renderer, {
     id: "instructions-box",
     width: "100%",
     flexDirection: "column",
     backgroundColor: "#1e1e2e",
-    paddingLeft: 1,
+    border: true,
+    borderColor: "#565f89",
+    padding: 1,
   })
 
-  // Instructions
+  // Instructions with styled text
   instructionsText1 = new TextRenderable(renderer, {
     id: "instructions-1",
-    content:
-      "Press 'w' to toggle text wrapping | Press 'm' to switch wrap mode (char/word) | Drag borders/corners to resize",
-    fg: "yellow",
+    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Toggle wrapping")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Switch mode (char/word)")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
   })
 
   instructionsText2 = new TextRenderable(renderer, {
     id: "instructions-2",
-    content: "Current Status: Text (wrap: true, mode: word)",
-    fg: "c0caf5",
+    content: t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")("word")}${fg("#c0caf5")(")")}`,
   })
 
   instructionsBox.add(instructionsText1)
@@ -306,15 +298,15 @@ export function run(renderer: CliRenderer): void {
       if (textRenderable && instructionsText2) {
         textRenderable.wrap = !textRenderable.wrap
         if (textRenderable.wrap) {
-          instructionsText2.content = `Current Status: Text (wrap: true, mode: ${textRenderable.wrapMode})`
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
         } else {
-          instructionsText2.content = "Current Status: Text (wrap: false)"
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#f7768e")("false")}${fg("#c0caf5")(")")}`
         }
       }
     } else if (key === "m" || key === "M") {
       if (textRenderable && textRenderable.wrap && instructionsText2) {
         textRenderable.wrapMode = textRenderable.wrapMode === "char" ? "word" : "char"
-        instructionsText2.content = `Current Status: Text (wrap: true, mode: ${textRenderable.wrapMode})`
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
       }
     }
   })
