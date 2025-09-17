@@ -661,6 +661,13 @@ pub const TextBuffer = struct {
     pub fn insertChunkGroup(self: *TextBuffer, index: usize, text_bytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
         if (text_bytes.len == 0) return self.char_count;
 
+        // Save the current state to identify newly created chunks
+        const old_line_count = self.lines.items.len;
+        const old_last_line_chunk_count = if (old_line_count > 0)
+            self.lines.items[old_line_count - 1].chunks.items.len
+        else
+            0;
+
         // Use writeChunk to parse and create chunks, then pop the group
         _ = try self.writeChunk(text_bytes, fg, bg, attr);
         const new_chunk_group = self.chunk_groups.pop() orelse return TextBufferError.InvalidIndex;
@@ -670,8 +677,61 @@ pub const TextBuffer = struct {
             return self.char_count;
         }
 
-        // Simply insert the new chunk group at the specified index
-        // The chunks are already properly created with their own char data
+        // Move chunks from where writeChunk put them to the correct insertion point
+        const target_group = self.chunk_groups.items[index];
+        const insert_line_idx = if (target_group.chunk_refs.items.len > 0)
+            target_group.chunk_refs.items[0].line_index
+        else
+            0;
+        const insert_chunk_idx = if (target_group.chunk_refs.items.len > 0)
+            target_group.chunk_refs.items[0].chunk_index
+        else
+            0;
+
+        // Collect all newly created chunks
+        var new_chunks = std.ArrayList(TextChunk).init(self.allocator);
+        defer new_chunks.deinit();
+
+        // If writeChunk created new lines, those chunks are new
+        const current_line_count = self.lines.items.len;
+        if (current_line_count > old_line_count) {
+            for (old_line_count..current_line_count) |line_idx| {
+                for (self.lines.items[line_idx].chunks.items) |chunk| {
+                    try new_chunks.append(chunk);
+                }
+            }
+            // Remove the extra lines created by writeChunk
+            while (self.lines.items.len > old_line_count) {
+                var line = self.lines.pop() orelse break;
+                line.chunks.clearRetainingCapacity(); // Don't deinit, we moved the chunks
+            }
+        }
+
+        // Also get new chunks added to the last existing line
+        if (old_line_count > 0) {
+            var last_line = &self.lines.items[old_line_count - 1];
+            while (last_line.chunks.items.len > old_last_line_chunk_count) {
+                const chunk = last_line.chunks.pop() orelse break;
+                try new_chunks.insert(0, chunk); // Insert at beginning to maintain order
+            }
+        }
+
+        // Now insert the new chunks at the target location
+        if (insert_line_idx < self.lines.items.len and new_chunks.items.len > 0) {
+            var target_line = &self.lines.items[insert_line_idx];
+
+            // Insert all new chunks at the target position
+            for (new_chunks.items, 0..) |chunk, i| {
+                try target_line.chunks.insert(insert_chunk_idx + i, chunk);
+            }
+
+            // Update chunk refs to point to the newly inserted chunks
+            for (new_chunk_group.chunk_refs.items, 0..) |*ref, i| {
+                ref.line_index = insert_line_idx;
+                ref.chunk_index = insert_chunk_idx + i;
+            }
+        }
+
         self.chunk_groups.insert(index, new_chunk_group) catch return TextBufferError.OutOfMemory;
 
         return self.char_count;
