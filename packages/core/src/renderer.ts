@@ -1146,9 +1146,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
 
+    this.root.destroyRecursively()
+
     this._keyHandler.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
+
     this.lib.destroyRenderer(this.rendererPtr)
   }
 
