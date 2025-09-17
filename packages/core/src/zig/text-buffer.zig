@@ -141,7 +141,6 @@ pub const LocalSelection = struct {
 };
 
 /// TextBuffer holds chunks of styled text organized by lines
-/// Each chunk owns its character data, allocated from the arena
 pub const TextBuffer = struct {
     char_count: u32, // Total character count across all chunks
     selection: ?TextSelection,
@@ -160,7 +159,6 @@ pub const TextBuffer = struct {
 
     chunk_groups: std.ArrayList(*ChunkGroup),
 
-    // Text wrapping support
     wrap_width: ?u32,
     virtual_lines: std.ArrayList(VirtualLine),
     virtual_lines_dirty: bool,
@@ -259,8 +257,8 @@ pub const TextBuffer = struct {
         self.lines = std.ArrayList(TextLine).init(self.allocator);
         self.chunk_groups = std.ArrayList(*ChunkGroup).init(self.allocator);
         self.virtual_lines = std.ArrayList(VirtualLine).init(self.allocator);
-        self.virtual_lines_dirty = true;
         // wrap_width is preserved across resets
+        self.virtual_lines_dirty = true;
 
         const first_line = TextLine.init(self.allocator);
         self.lines.append(first_line) catch {};
