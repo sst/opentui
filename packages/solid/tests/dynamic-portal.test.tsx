@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender, Dynamic, Portal } from "../index"
-import { createSignal, For, type Ref } from "solid-js"
+import { createSignal, For, Show, type Ref } from "solid-js"
 import { createSpy } from "./utils/spy"
 import type { BoxRenderable, Renderable } from "@opentui/core"
 
@@ -103,10 +103,13 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
     })
 
     it("should render content to custom mount point", async () => {
+      let customMount!: BoxRenderable
+
       testSetup = await testRender(
         () => (
           <box>
-            <Portal>
+            <box ref={customMount} />
+            <Portal mount={customMount}>
               <box style={{ border: true }} title="Portal Box">
                 <text>Portal content</text>
               </box>
@@ -119,6 +122,7 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
       await testSetup.renderOnce()
       const frame = testSetup.captureCharFrame()
       expect(frame).toContain("Portal content")
+      expect(customMount.getChildren().length).toBe(1)
     })
 
     it("should handle complex nested content in portal", async () => {
@@ -126,10 +130,8 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
         () => (
           <box>
             <Portal>
-              <box style={{ border: true }} title="Portal Box">
-                <text>Nested text 1</text>
-                <text>Nested text 2</text>
-              </box>
+              <text>Nested text 1</text>
+              <text>Nested text 2</text>
             </Portal>
           </box>
         ),
@@ -138,7 +140,6 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
 
       await testSetup.renderOnce()
       const frame = testSetup.captureCharFrame()
-      expect(frame).toContain("Portal Box")
       expect(frame).toContain("Nested text 1")
       expect(frame).toContain("Nested text 2")
     })
@@ -149,11 +150,11 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
       testSetup = await testRender(
         () => (
           <box>
-            {showPortal() && (
+            <Show when={showPortal()}>
               <Portal>
                 <text>Portal content</text>
               </Portal>
-            )}
+            </Show>
           </box>
         ),
         { width: 20, height: 5 },
@@ -188,6 +189,7 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
       const frame = testSetup.captureCharFrame()
       expect(frame).toContain("First portal")
       expect(frame).toContain("Second portal")
+      expect(testSetup.renderer.root.getChildren().length).toBe(3)
     })
   })
 
@@ -251,6 +253,11 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
       frame = testSetup.captureCharFrame()
       expect(frame).toContain("Dynamic mount content")
       expect(ref.getChildren().length).toBe(2)
+
+      setUseCustomMount(false)
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Dynamic mount content")
+      expect(ref.getChildren().length).toBe(1)
     })
 
     it("should handle switching between Portal and non-Portal with Dynamic", async () => {
@@ -272,11 +279,13 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
       await testSetup.renderOnce()
       let frame = testSetup.captureCharFrame()
       expect(frame).toContain("Conditional portal content")
+      expect(testSetup.renderer.root.getChildren().length).toBe(2)
 
       setUsePortal(false)
       await testSetup.renderOnce()
       frame = testSetup.captureCharFrame()
       expect(frame).toContain("Conditional portal content")
+      expect(testSetup.renderer.root.getChildren().length).toBe(1)
     })
   })
 })
