@@ -761,11 +761,7 @@ pub const TextBuffer = struct {
         const local_sel = self.local_selection orelse return null;
         if (!local_sel.isActive) return null;
 
-        // Ensure virtual lines are up to date
         self.updateVirtualLines();
-
-        // Use virtual lines if wrapping is enabled
-        const use_virtual = self.wrap_width != null;
 
         var selectionStart: ?u32 = null;
         var selectionEnd: ?u32 = null;
@@ -787,89 +783,43 @@ pub const TextBuffer = struct {
             selEndX = local_sel.anchorX;
         }
 
-        // TODO: consolidate, should just always use virtual lines
-        if (use_virtual) {
-            // Use virtual lines for wrapped text
-            for (self.virtual_lines.items, 0..) |vline, i| {
-                const lineY = @as(i32, @intCast(i));
+        for (self.virtual_lines.items, 0..) |vline, i| {
+            const lineY = @as(i32, @intCast(i));
 
-                if (lineY < startY or lineY > endY) continue;
+            if (lineY < startY or lineY > endY) continue;
 
-                const lineStart = vline.char_offset;
-                const lineWidth = vline.width;
-                const lineEnd = if (i < self.virtual_lines.items.len - 1)
-                    self.virtual_lines.items[i + 1].char_offset - 1
-                else
-                    lineStart + lineWidth;
+            const lineStart = vline.char_offset;
+            const lineWidth = vline.width;
+            const lineEnd = if (i < self.virtual_lines.items.len - 1)
+                self.virtual_lines.items[i + 1].char_offset - 1
+            else
+                lineStart + lineWidth;
 
-                if (lineY > startY and lineY < endY) {
-                    // Entire line is selected
-                    if (selectionStart == null) selectionStart = lineStart;
-                    selectionEnd = lineEnd;
-                } else if (lineY == startY and lineY == endY) {
-                    // Selection starts and ends on this line
-                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                    if (localStartX != localEndX) {
-                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-                    }
-                } else if (lineY == startY) {
-                    // Selection starts on this line
-                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                    if (localStartX < lineWidth) {
-                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                        selectionEnd = lineEnd;
-                    }
-                } else if (lineY == endY) {
-                    // Selection ends on this line
-                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                    if (localEndX > 0) {
-                        if (selectionStart == null) selectionStart = lineStart;
-                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-                    }
+            if (lineY > startY and lineY < endY) {
+                // Entire line is selected
+                if (selectionStart == null) selectionStart = lineStart;
+                selectionEnd = lineEnd;
+            } else if (lineY == startY and lineY == endY) {
+                // Selection starts and ends on this line
+                const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
+                const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
+                if (localStartX != localEndX) {
+                    selectionStart = lineStart + @as(u32, @intCast(localStartX));
+                    selectionEnd = lineStart + @as(u32, @intCast(localEndX));
                 }
-            }
-        } else {
-            // Use real lines (original logic)
-            for (self.lines.items, 0..) |line, i| {
-                const lineY = @as(i32, @intCast(i));
-
-                if (lineY < startY or lineY > endY) continue;
-
-                const lineStart = line.char_offset;
-                const lineWidth = line.width;
-                const lineEnd = if (i < self.lines.items.len - 1)
-                    self.lines.items[i + 1].char_offset - 1
-                else
-                    lineStart + lineWidth;
-
-                if (lineY > startY and lineY < endY) {
-                    // Entire line is selected
-                    if (selectionStart == null) selectionStart = lineStart;
+            } else if (lineY == startY) {
+                // Selection starts on this line
+                const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
+                if (localStartX < lineWidth) {
+                    selectionStart = lineStart + @as(u32, @intCast(localStartX));
                     selectionEnd = lineEnd;
-                } else if (lineY == startY and lineY == endY) {
-                    // Selection starts and ends on this line
-                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                    if (localStartX != localEndX) {
-                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-                    }
-                } else if (lineY == startY) {
-                    // Selection starts on this line
-                    const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                    if (localStartX < lineWidth) {
-                        selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                        selectionEnd = lineEnd;
-                    }
-                } else if (lineY == endY) {
-                    // Selection ends on this line
-                    const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                    if (localEndX > 0) {
-                        if (selectionStart == null) selectionStart = lineStart;
-                        selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-                    }
+                }
+            } else if (lineY == endY) {
+                // Selection ends on this line
+                const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
+                if (localEndX > 0) {
+                    if (selectionStart == null) selectionStart = lineStart;
+                    selectionEnd = lineStart + @as(u32, @intCast(localEndX));
                 }
             }
         }

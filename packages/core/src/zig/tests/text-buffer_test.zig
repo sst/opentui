@@ -1322,7 +1322,7 @@ test "TextBuffer virtual lines - updated when wrap width set" {
 
     // First virtual line should be marked as not wrapped (it's the start of the real line)
     try std.testing.expectEqual(false, tb.virtual_lines.items[0].is_wrapped);
-    
+
     // Note: When text wraps exactly at the boundary (e.g., 20 chars with wrap at 10),
     // the current implementation doesn't mark the second line as wrapped.
     // This is because the wrap happens at a natural break point.
