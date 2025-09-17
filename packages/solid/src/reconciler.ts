@@ -2,6 +2,7 @@
 import {
   BaseRenderable,
   createTextAttributes,
+  SlotRenderable,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
@@ -18,7 +19,7 @@ import {
   type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
-import { createRenderer } from "./renderer"
+import { createRenderer } from "solid-js/universal"
 import { getComponentCatalogue, RendererContext } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
@@ -32,11 +33,13 @@ class TextNode extends TextNodeRenderable {
   }
 }
 
-class AnchorNode extends Renderable {
-  constructor(context: RenderContext, id: string) {
-    super(context, {
+class AnchorNode extends BaseRenderable {
+  protected override _visible: boolean = false
+  layoutNode: T
+
+  constructor(id: string) {
+    super({
       id,
-      visible: false,
     })
   }
 }
@@ -77,12 +80,18 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
   if (isTextNodeRenderable(node)) {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
-      throw new Error(
-        `Orphan text error: "${node
-          .toChunks()
-          .map((c) => c.text)
-          .join("")}" must have a <text> as a parent: ${parent.id} above ${node.id}`,
-      )
+      if (node.toChunks.length >= 1 && node.toChunks()[0]?.text !== "") {
+        console.error(
+          `Orphan text error: "${node
+            .toChunks()
+            .map((c) => c.text)
+            .join("")}" must have a <text> as a parent: ${parent.id} above ${node.id}`,
+        )
+      }
+      node.destroyRecursively()
+      const anchor = createSlotNode()
+      parent.add(anchor)
+      return
     }
   }
 
@@ -133,10 +142,10 @@ function _createTextNode(value: string | number): TextNode {
   return TextNode.fromString(value, { id })
 }
 
-export function createAnchorNode(ctx: RenderContext): AnchorNode {
-  const id = getNextId("anchor-node")
-  log("Creating anchor node", id)
-  return new AnchorNode(ctx, id)
+export function createSlotNode(): SlotRenderable {
+  const id = getNextId("slot-node")
+  log("Creating slot node", id)
+  return new SlotRenderable(id)
 }
 
 function _getParentNode(childNode: DomNode): DomNode | undefined {
@@ -182,11 +191,6 @@ export const {
   },
 
   createTextNode: _createTextNode,
-
-  createAnchorNode: () => {
-    const renderer = useRenderer()
-    return createAnchorNode(renderer)
-  },
 
   replaceText(textNode: TextNode, value: string): void {
     log("Replacing text:", value, "in node:", logId(textNode))
