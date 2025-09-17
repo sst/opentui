@@ -112,9 +112,7 @@ export class TextBuffer {
 
   public get lineInfo(): { lineStarts: number[]; lineWidths: number[] } {
     this.guard()
-    if (!this._lineInfo) {
-      this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
-    }
+    this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
     return this._lineInfo
   }
 

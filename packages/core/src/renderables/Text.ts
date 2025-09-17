@@ -240,24 +240,15 @@ export class TextRenderable extends Renderable {
   }
 
   protected onResize(width: number, height: number): void {
-    // Update wrap width when resized (only if wrapping is enabled)
     if (this._wrap) {
       this.textBuffer.setWrapWidth(width)
-      // Force re-render when wrap width changes
-      this.requestRender()
-    }
-
-    if (this.lastLocalSelection) {
+      this.updateTextInfo()
+    } else if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
         this.requestRender()
       }
     }
-  }
-
-  onUpdate(deltaTime: number): void {
-    super.onUpdate(deltaTime)
-    // No need to set wrap width here, it's handled in onResize and wrap setter
   }
 
   private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
