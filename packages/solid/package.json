@@ -14,7 +14,8 @@
   "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
-    "publish": "bun scripts/publish.ts"
+    "publish": "bun scripts/publish.ts",
+    "test": "bun --conditions=browser --preload=./scripts/preload.ts test"
   },
   "exports": {
     ".": {
@@ -32,11 +33,12 @@
     "@types/bun": "latest"
   },
   "dependencies": {
-    "@opentui/core": "workspace:*",
-    "babel-plugin-module-resolver": "5.0.2",
     "@babel/core": "7.28.0",
     "@babel/preset-typescript": "7.27.1",
-    "babel-preset-solid": "1.9.9"
+    "@opentui/core": "workspace:*",
+    "babel-plugin-module-resolver": "5.0.2",
+    "babel-preset-solid": "1.9.9",
+    "s-js": "^0.4.9"
   },
   "peerDependencies": {
     "solid-js": "1.9.9",
