@@ -4,6 +4,7 @@
  * Demonstrates automatic text wrapping when the wrap option is enabled
  */
 import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type MouseEvent, t, fg, bold } from ".."
+import { TextNodeRenderable } from "../renderables/TextNode"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
@@ -101,9 +102,11 @@ function handleTextBoxMouse(event: MouseEvent): void {
         resizeStartY = event.y
         resizeStartWidth = textBox.width
         resizeStartHeight = textBox.height
-        // Store the original position for resize calculations
-        resizeStartLeft = textBox.x
-        resizeStartTop = textBox.y
+        // Store the original position - convert from absolute screen coords to relative coords within contentBox
+        // contentBox has padding: 1, so subtract padding to get relative coordinates
+        const contentPadding = contentBox ? 1 : 0
+        resizeStartLeft = textBox.x - contentPadding
+        resizeStartTop = textBox.y - contentPadding
         event.stopPropagation()
       }
       break
@@ -185,6 +188,22 @@ function handleGlobalMouse(event: MouseEvent): void {
             break
         }
 
+        // Constrain to content box bounds (accounting for padding: 1)
+        if (contentBox) {
+          const contentPadding = 1
+          const maxWidth = contentBox.width - 2 * contentPadding
+          const maxHeight = contentBox.height - 2 * contentPadding
+          const minLeft = contentPadding
+          const minTop = contentPadding
+          const maxLeft = contentBox.width - newWidth - contentPadding
+          const maxTop = contentBox.height - newHeight - contentPadding
+
+          newWidth = Math.min(newWidth, maxWidth)
+          newHeight = Math.min(newHeight, maxHeight)
+          newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft))
+          newTop = Math.max(minTop, Math.min(newTop, maxTop))
+        }
+
         // Apply the new dimensions and position
         textBox.width = newWidth
         textBox.height = newHeight
@@ -205,8 +224,191 @@ function handleGlobalMouse(event: MouseEvent): void {
   }
 }
 
-const longText =
-  "This is a very long text that should wrap when the text wrapping is enabled. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. The text will automatically break into multiple lines based on the width of the container. Try resizing the box by dragging its borders or corners to see how the wrapping adapts dynamically!"
+// Create styled demo text using TextNodes
+function createDemoText(): TextNodeRenderable {
+  const titleNode = TextNodeRenderable.fromString("🎨 OpenTUI Text Wrapping Demo", {
+    fg: "#7aa2f7",
+    attributes: 1, // bold
+  })
+
+  const introNode = TextNodeRenderable.fromString("\n\nWelcome to the ", {
+    fg: "#c0caf5",
+  })
+
+  const highlightNode = TextNodeRenderable.fromString("text wrapping demonstration", {
+    fg: "#9ece6a",
+    attributes: 1, // bold
+  })
+
+  const introContNode = TextNodeRenderable.fromString(
+    ". This example showcases how OpenTUI handles automatic text wrapping with styled content using TextNodes.",
+    {
+      fg: "#c0caf5",
+    },
+  )
+
+  const featuresTitle = TextNodeRenderable.fromString("\n\n✨ Key Features:", {
+    fg: "#bb9af7",
+    attributes: 1,
+  })
+
+  const feature1Node = TextNodeRenderable.fromNodes([
+    TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
+    TextNodeRenderable.fromString("Word-based wrapping", { fg: "#c0caf5", attributes: 1 }),
+    TextNodeRenderable.fromString(" - Preserves word boundaries when breaking lines", { fg: "#565f89" }),
+  ])
+
+  const feature2Node = TextNodeRenderable.fromNodes([
+    TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
+    TextNodeRenderable.fromString("Character-based wrapping", { fg: "#c0caf5", attributes: 1 }),
+    TextNodeRenderable.fromString(" - Breaks at any character for precise control", { fg: "#565f89" }),
+  ])
+
+  const feature3Node = TextNodeRenderable.fromNodes([
+    TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
+    TextNodeRenderable.fromString("Dynamic resizing", { fg: "#c0caf5", attributes: 1 }),
+    TextNodeRenderable.fromString(" - Text reflows automatically as container dimensions change", { fg: "#565f89" }),
+  ])
+
+  const feature4Node = TextNodeRenderable.fromNodes([
+    TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
+    TextNodeRenderable.fromString("Rich styling", { fg: "#c0caf5", attributes: 1 }),
+    TextNodeRenderable.fromString(" - Individual text segments can have different colors and attributes", {
+      fg: "#565f89",
+    }),
+  ])
+
+  const demoTitle = TextNodeRenderable.fromString("\n\n🔧 How It Works:", {
+    fg: "#bb9af7",
+    attributes: 1,
+  })
+
+  const demoText = TextNodeRenderable.fromString(
+    "\n\nTextNodes are created with specific styling and then composed together to form rich, formatted text content. Each node can contain different foreground colors, background colors, and text attributes like ",
+    {
+      fg: "#c0caf5",
+    },
+  )
+
+  const boldExample = TextNodeRenderable.fromString("bold", {
+    fg: "#f7768e",
+    attributes: 1,
+  })
+
+  const demoCont = TextNodeRenderable.fromString(", ", {
+    fg: "#c0caf5",
+  })
+
+  const italicExample = TextNodeRenderable.fromString("italic", {
+    fg: "#f7768e",
+    attributes: 2,
+  })
+
+  const demoCont2 = TextNodeRenderable.fromString(", and ", {
+    fg: "#c0caf5",
+  })
+
+  const underlineExample = TextNodeRenderable.fromString("underline", {
+    fg: "#f7768e",
+    attributes: 4,
+  })
+
+  const demoCont3 = TextNodeRenderable.fromString(
+    ". When the container is resized, the text automatically reflows to fit the new dimensions while maintaining the specified wrapping mode.",
+    {
+      fg: "#c0caf5",
+    },
+  )
+
+  const codeTitle = TextNodeRenderable.fromString("\n\n💻 Example Code:", {
+    fg: "#bb9af7",
+    attributes: 1,
+  })
+
+  const codeBlock = TextNodeRenderable.fromString(
+    `\n\nconst styledText = TextNodeRenderable.fromNodes([
+  TextNodeRenderable.fromString("Hello ", { fg: "#9ece6a" }),
+  TextNodeRenderable.fromString("World", { fg: "#7aa2f7", attributes: 1 }),
+  TextNodeRenderable.fromString("!", { fg: "#f7768e" })
+]);
+
+textRenderable.add(styledText);`,
+    {
+      fg: "#c0caf5",
+      bg: "#1a1a2e",
+    },
+  )
+
+  const interactionTitle = TextNodeRenderable.fromString("\n\n🎮 Try It Out:", {
+    fg: "#bb9af7",
+    attributes: 1,
+  })
+
+  const interactionText = TextNodeRenderable.fromString(
+    "\n\nDrag the borders or corners of this text box to resize it and watch how the text wrapping adapts in real-time. Press ",
+    {
+      fg: "#c0caf5",
+    },
+  )
+
+  const keyW = TextNodeRenderable.fromString("W", {
+    fg: "#9ece6a",
+    attributes: 1,
+  })
+
+  const interactionCont = TextNodeRenderable.fromString(" to toggle wrapping on/off, and ", {
+    fg: "#c0caf5",
+  })
+
+  const keyM = TextNodeRenderable.fromString("M", {
+    fg: "#bb9af7",
+    attributes: 1,
+  })
+
+  const interactionCont2 = TextNodeRenderable.fromString(
+    " to switch between word and character wrapping modes. The text will reflow instantly to demonstrate the different wrapping behaviors.",
+    {
+      fg: "#c0caf5",
+    },
+  )
+
+  const conclusionNode = TextNodeRenderable.fromString(
+    "\n\n🚀 This demonstrates the power of OpenTUI's flexible text rendering system, combining rich styling with dynamic layout capabilities!",
+    {
+      fg: "#9ece6a",
+      attributes: 1,
+    },
+  )
+
+  return TextNodeRenderable.fromNodes([
+    titleNode,
+    introNode,
+    highlightNode,
+    introContNode,
+    featuresTitle,
+    feature1Node,
+    feature2Node,
+    feature3Node,
+    feature4Node,
+    demoTitle,
+    demoText,
+    boldExample,
+    demoCont,
+    italicExample,
+    demoCont2,
+    underlineExample,
+    demoCont3,
+    codeTitle,
+    codeBlock,
+    interactionTitle,
+    interactionText,
+    keyW,
+    interactionCont,
+    keyM,
+    interactionCont2,
+    conclusionNode,
+  ])
+}
 
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0a0a14")
@@ -253,11 +455,11 @@ export function run(renderer: CliRenderer): void {
 
   textRenderable = new TextRenderable(renderer, {
     id: "text-renderable",
-    content: longText,
     fg: "#c0caf5",
     wrapMode: "word",
     wrap: true, // Enable text wrapping
   })
+  textRenderable.add(createDemoText())
   textBox.add(textRenderable)
 
   // Create instructions box with border
