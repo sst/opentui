@@ -46,8 +46,11 @@ class TextNode extends TextNodeRenderable {
 }
 
 class AnchorNode extends Renderable {
-  constructor(context: RenderContext, opts: RenderableOptions) {
-    super(context, opts)
+  constructor(context: RenderContext, id: string) {
+    super(context, {
+      id,
+      visible: false,
+    })
   }
 }
 
@@ -148,7 +151,7 @@ function _createTextNode(value: string | number): TextNode {
 }
 
 function createAnchorNode(ctx: RenderContext): AnchorNode {
-  return new AnchorNode(ctx, { id: getNextId("anchor-node") })
+  return new AnchorNode(ctx, getNextId("anchor-node"))
 }
 
 function _getParentNode(childNode: DomNode): DomNode | undefined {

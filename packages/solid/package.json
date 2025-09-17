@@ -15,7 +15,7 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "publish": "bun scripts/publish.ts",
-    "test": "bun --conditions=browser --preload=./scripts/preload.ts test"
+    "test": "bun test"
   },
   "exports": {
     ".": {

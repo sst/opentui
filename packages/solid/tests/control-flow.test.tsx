@@ -201,7 +201,7 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       await testSetup.renderOnce()
 
       children = testSetup.renderer.root.getChildren()[0]!.getChildren()
-      expect(children.length).toBe(1)
+      expect(children.length).toBe(2)
 
       frame = testSetup.captureCharFrame()
       expect(frame).not.toContain("Visible content")
