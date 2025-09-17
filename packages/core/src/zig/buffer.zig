@@ -871,16 +871,12 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (currentX < 0 or currentY < 0) {
-                        if (!gp.isContinuationChar(charCode)) {
-                            globalCharPos += 1;
-                        }
+                        globalCharPos += 1;
                         currentX += 1;
                         continue;
                     }
                     if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
-                        if (!gp.isContinuationChar(charCode)) {
-                            globalCharPos += 1;
-                        }
+                        globalCharPos += 1;
                         currentX += 1;
                         continue;
                     }
@@ -896,18 +892,14 @@ pub const OptimizedBuffer = struct {
                             currentX >= clip.x + @as(i32, @intCast(clip.width)) or
                             currentY >= clip.y + @as(i32, @intCast(clip.height)))
                         {
-                            if (!gp.isContinuationChar(charCode)) {
-                                globalCharPos += 1;
-                            }
+                            globalCharPos += 1;
                             currentX += 1;
                             continue;
                         }
                     }
 
                     if (!self.isPointInScissor(currentX, currentY)) {
-                        if (!gp.isContinuationChar(charCode)) {
-                            globalCharPos += 1;
-                        }
+                        globalCharPos += 1;
                         currentX += 1;
                         continue;
                     }
