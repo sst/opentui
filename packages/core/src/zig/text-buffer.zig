@@ -369,9 +369,7 @@ pub const TextBuffer = struct {
         return .{ .char_count = cut_pos, .width = cut_pos };
     }
 
-    /// Helper function to check if a character is a word boundary
     fn isWordBoundary(c: u32) bool {
-        // Check for common word boundaries: whitespace, dashes, hyphens, etc.
         return switch (c) {
             ' ', '\t', '\r', '\n' => true, // Whitespace
             '-', '–', '—' => true, // Dashes and hyphens
@@ -398,15 +396,13 @@ pub const TextBuffer = struct {
             return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
         }
 
-        // Start from max_width and walk backwards to find a word boundary
-        var cut_pos = max_width;
+        var cut_pos = @min(max_width, @as(u32, @intCast(chars.len)));
         var found_boundary = false;
 
-        // Walk backwards to find the last word boundary before max_width
-        while (cut_pos > 0) : (cut_pos -= 1) {
+        while (cut_pos > 0) {
+            cut_pos -= 1;
             const c = chars[cut_pos];
 
-            // Check if we're at a continuation character and skip the whole grapheme
             if (gp.isContinuationChar(c)) {
                 const left_extent = gp.charLeftExtent(c);
                 cut_pos = cut_pos -| left_extent; // Saturating subtraction
@@ -415,34 +411,29 @@ pub const TextBuffer = struct {
             }
 
             if (isWordBoundary(c)) {
-                // Found a word boundary, include the boundary character
                 cut_pos += 1;
                 found_boundary = true;
                 break;
             }
         }
 
-        // If no word boundary was found
         if (!found_boundary or cut_pos == 0) {
             // Check if we're at the beginning of a word that could fit on next line
             // First, find where this word ends
             var word_end: u32 = 0;
             while (word_end < chars.len and !isWordBoundary(chars[word_end])) : (word_end += 1) {}
 
-            // If we have wrap_width set, check against full line width, not remaining width
+            // TODO: we always have wrap_width set at this point?
             const line_width = if (self.wrap_width) |w| w else max_width;
 
             // If the word is longer than a full line width, we have to break it
             if (word_end > line_width) {
                 cut_pos = max_width;
             } else {
-                // The word could fit on a new line, so don't break it
-                // Return 0 to signal that nothing fits, forcing a line break
                 return .{ .char_count = 0, .width = 0 };
             }
             const char_at_cut = chars[cut_pos];
 
-            // Handle grapheme boundaries like in calculateChunkFit
             if (gp.isContinuationChar(char_at_cut)) {
                 const left_extent = gp.charLeftExtent(char_at_cut);
                 const grapheme_start = cut_pos - left_extent;
@@ -554,7 +545,6 @@ pub const TextBuffer = struct {
                             continue;
                         }
 
-                        // Calculate how many chars fit based on wrap mode
                         const fit_result = switch (self.wrap_mode) {
                             .char => self.calculateChunkFit(remaining_chars, remaining_width),
                             .word => self.calculateChunkFitWord(remaining_chars, remaining_width),
@@ -573,6 +563,7 @@ pub const TextBuffer = struct {
                             continue;
                         }
 
+                        // TODO: what???
                         // If nothing fits even on empty line (char too wide), skip it
                         if (fit_result.char_count == 0) {
                             chunk_pos += 1;
@@ -580,7 +571,6 @@ pub const TextBuffer = struct {
                             continue;
                         }
 
-                        // Add virtual chunk
                         current_vline.chunks.append(VirtualChunk{
                             .source_line = line_idx,
                             .source_chunk = chunk_idx,
