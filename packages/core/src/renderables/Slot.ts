@@ -1,7 +1,7 @@
 import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable } from ".."
 import Yoga, { Display, type Node as YogaNode } from "yoga-layout"
 
-class Slot extends BaseRenderable {
+class SlotBaseRenderable extends BaseRenderable {
   constructor(id: string) {
     super({
       id,
@@ -34,10 +34,10 @@ class Slot extends BaseRenderable {
 }
 
 export class TextSlotRenderable extends TextNodeRenderable {
-  protected slotParent: Slot
+  protected slotParent?: SlotRenderable
   protected destroyed: boolean = false
 
-  constructor(id: string, parent: Slot) {
+  constructor(id: string, parent?: SlotRenderable) {
     super({ id: id })
     this._visible = false
     this.slotParent = parent
@@ -49,17 +49,17 @@ export class TextSlotRenderable extends TextNodeRenderable {
     }
     this.destroyed = true
 
-    this.slotParent.destroy()
+    this.slotParent?.destroy()
     super.destroy()
   }
 }
 
-export class LayoutSlotRenderable extends Slot {
+export class LayoutSlotRenderable extends SlotBaseRenderable {
   protected yogaNode: YogaNode
-  protected slotParent: Slot
+  protected slotParent?: SlotRenderable
   protected destroyed: boolean = false
 
-  constructor(id: string, parent: Slot) {
+  constructor(id: string, parent?: SlotRenderable) {
     super(id)
 
     this._visible = false
@@ -85,13 +85,13 @@ export class LayoutSlotRenderable extends Slot {
     this.destroyed = true
 
     super.destroy()
-    this.slotParent.destroy()
+    this.slotParent?.destroy()
   }
 }
 
-export class SlotRenderable extends Slot {
-  layoutNode: LayoutSlotRenderable | undefined
-  textNode: TextSlotRenderable | undefined
+export class SlotRenderable extends SlotBaseRenderable {
+  layoutNode?: LayoutSlotRenderable
+  textNode?: TextSlotRenderable
   protected destroyed: boolean = false
 
   constructor(id: string) {
