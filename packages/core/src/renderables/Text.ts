@@ -293,23 +293,13 @@ export class TextRenderable extends Renderable {
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
       const maxLineWidth = this._lineInfo.maxLineWidth
-      const numLines = this._lineInfo.lineStarts.length || 1
+      const numLines = this._lineInfo.lineStarts.length
 
       let measuredWidth = maxLineWidth
       let measuredHeight = numLines
 
-      if (widthMode === MeasureMode.Exactly) {
-        measuredWidth = width
-      } else if (widthMode === MeasureMode.AtMost) {
-        measuredWidth = Math.min(maxLineWidth, width)
-      }
-
-      if (heightMode === MeasureMode.Exactly) {
-        measuredHeight = height
-      } else if (heightMode === MeasureMode.AtMost) {
-        measuredHeight = Math.min(numLines, height)
-      }
-
+      // NOTE: Yoga may use these measurements or not.
+      // If the yoga node settings and the parent allow this node to grow, it will.
       return {
         width: Math.max(1, measuredWidth),
         height: Math.max(1, measuredHeight),

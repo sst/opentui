@@ -5,11 +5,12 @@
  */
 import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type MouseEvent, t, fg, bold } from ".."
 import { TextNodeRenderable } from "../renderables/TextNode"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let mainContainer: BoxRenderable | null = null
 let contentBox: BoxRenderable | null = null
-let textBox: BoxRenderable | null = null
+let textBox: ScrollBoxRenderable | null = null
 let textRenderable: TextRenderable | null = null
 let instructionsBox: BoxRenderable | null = null
 let instructionsText1: TextRenderable | null = null
@@ -437,8 +438,7 @@ export function run(renderer: CliRenderer): void {
     padding: 1,
   })
 
-  // Create a box for text demonstration
-  textBox = new BoxRenderable(renderer, {
+  textBox = new ScrollBoxRenderable(renderer, {
     id: "text-box",
     position: "absolute",
     left: 2,
@@ -449,7 +449,6 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#9ece6a",
     backgroundColor: "#11111b",
     onMouse: handleTextBoxMouse,
-    overflow: "hidden",
   })
   contentBox.add(textBox)
 

@@ -30,6 +30,8 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   horizontalScrollbarOptions?: Omit<ScrollBarOptions, "orientation">
   stickyScroll?: boolean
   stickyStart?: "bottom" | "top" | "left" | "right"
+  scrollX?: boolean
+  scrollY?: boolean
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -176,6 +178,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       horizontalScrollbarOptions,
       stickyScroll = false,
       stickyStart,
+      scrollX = false,
+      scrollY = true,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -218,8 +222,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     this.content = new ContentRenderable(ctx, this.viewport, {
       alignSelf: "flex-start",
-      minWidth: "100%",
-      minHeight: "100%",
+      ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
+      ...(scrollY ? { minHeight: "100%" } : { minHeight: "100%", maxHeight: "100%" }),
       onSizeChange: () => {
         this.recalculateBarProps()
       },
