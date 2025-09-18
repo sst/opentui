@@ -845,15 +845,11 @@ pub const OptimizedBuffer = struct {
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
 
-        var globalCharPos: u32 = 0;
-        if (firstVisibleLine > 0) {
-            // TODO: use cached lineInfo for this
-            for (text_buffer.virtual_lines.items[0..firstVisibleLine]) |vline| {
-                for (vline.chunks.items) |vchunk| {
-                    globalCharPos += vchunk.char_count;
-                }
-            }
-        }
+        const line_info = text_buffer.getCachedLineInfo();
+        var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)
+            line_info.starts[firstVisibleLine]
+        else
+            0;
 
         for (text_buffer.virtual_lines.items[firstVisibleLine..lastPossibleLine]) |vline| {
             if (currentY >= bufferBottomY) break;
