@@ -48,7 +48,6 @@ pub const ChunkRef = struct {
 /// A ChunkGroup tracks references to TextChunks that were created from a single writeChunk call
 /// This allows mapping StyledText operations to the native text buffer
 pub const ChunkGroup = struct {
-    /// References to TextChunks created from this group, in order
     chunk_refs: std.ArrayList(ChunkRef),
 
     pub fn init(allocator: Allocator) ChunkGroup {
@@ -75,19 +74,17 @@ pub const ChunkGroup = struct {
 
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
-    source_line: usize, // Original line index
-    source_chunk: usize, // Original chunk index
-    char_start: u32, // Start index in source chunk's chars
-    char_count: u32, // Number of chars from source
-    width: u32, // Visual width of this virtual chunk
+    source_line: usize,
+    source_chunk: usize,
+    char_start: u32,
+    char_count: u32,
+    width: u32,
 
-    // Get the actual chars from the source chunk
     pub fn getChars(self: *const VirtualChunk, text_buffer: *const TextBuffer) []const u32 {
         const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
         return chunk.chars[self.char_start .. self.char_start + self.char_count];
     }
 
-    // Get the styling from the source chunk
     pub fn getStyle(self: *const VirtualChunk, text_buffer: *const TextBuffer) struct {
         fg: ?RGBA,
         bg: ?RGBA,
@@ -106,15 +103,13 @@ pub const VirtualChunk = struct {
 pub const VirtualLine = struct {
     chunks: std.ArrayList(VirtualChunk),
     width: u32,
-    char_offset: u32, // For selection tracking
-    is_wrapped: bool, // True if this is a continuation of a wrapped line
+    char_offset: u32,
 
     pub fn init(allocator: Allocator) VirtualLine {
         return .{
             .chunks = std.ArrayList(VirtualChunk).init(allocator),
             .width = 0,
             .char_offset = 0,
-            .is_wrapped = false,
         };
     }
 
@@ -492,7 +487,6 @@ pub const TextBuffer = struct {
                 var vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                 vline.width = line.width;
                 vline.char_offset = line.char_offset;
-                vline.is_wrapped = false;
 
                 // Create virtual chunks that reference entire real chunks
                 for (line.chunks.items, 0..) |*chunk, chunk_idx| {
@@ -516,7 +510,6 @@ pub const TextBuffer = struct {
                 var line_position: u32 = 0;
                 var current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                 current_vline.char_offset = global_char_offset;
-                current_vline.is_wrapped = false;
                 var first_in_line = true;
 
                 for (line.chunks.items, 0..) |*chunk, chunk_idx| {
@@ -546,7 +539,6 @@ pub const TextBuffer = struct {
                             // Start new virtual line
                             current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                             current_vline.char_offset = global_char_offset;
-                            current_vline.is_wrapped = false; // New line after \n is not wrapped
                             line_position = 0;
                             first_in_line = true;
                             continue;
@@ -564,7 +556,6 @@ pub const TextBuffer = struct {
 
                             current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                             current_vline.char_offset = global_char_offset;
-                            current_vline.is_wrapped = true;
                             line_position = 0;
                             first_in_line = false;
                             continue;
@@ -597,7 +588,6 @@ pub const TextBuffer = struct {
 
                             current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                             current_vline.char_offset = global_char_offset;
-                            current_vline.is_wrapped = !first_in_line;
                             line_position = 0;
                         }
                     }

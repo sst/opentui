@@ -1293,7 +1293,6 @@ test "TextBuffer virtual lines - match real lines when no wrap" {
     for (tb.lines.items, tb.virtual_lines.items) |real_line, virtual_line| {
         try std.testing.expectEqual(real_line.width, virtual_line.width);
         try std.testing.expectEqual(real_line.char_offset, virtual_line.char_offset);
-        try std.testing.expectEqual(false, virtual_line.is_wrapped);
     }
 }
 
@@ -1319,15 +1318,6 @@ test "TextBuffer virtual lines - updated when wrap width set" {
     tb.setWrapWidth(10);
     tb.updateVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), tb.virtual_lines.items.len);
-
-    // First virtual line should be marked as not wrapped (it's the start of the real line)
-    try std.testing.expectEqual(false, tb.virtual_lines.items[0].is_wrapped);
-
-    // Note: When text wraps exactly at the boundary (e.g., 20 chars with wrap at 10),
-    // the current implementation doesn't mark the second line as wrapped.
-    // This is because the wrap happens at a natural break point.
-    // TODO: Consider whether this behavior should be changed.
-    try std.testing.expectEqual(false, tb.virtual_lines.items[1].is_wrapped);
 }
 
 test "TextBuffer virtual lines - reset to match real lines when wrap removed" {
@@ -1360,7 +1350,6 @@ test "TextBuffer virtual lines - reset to match real lines when wrap removed" {
     for (tb.lines.items, tb.virtual_lines.items) |real_line, virtual_line| {
         try std.testing.expectEqual(real_line.width, virtual_line.width);
         try std.testing.expectEqual(real_line.char_offset, virtual_line.char_offset);
-        try std.testing.expectEqual(false, virtual_line.is_wrapped);
     }
 }
 
@@ -1387,7 +1376,6 @@ test "TextBuffer virtual lines - multi-line text without wrap" {
     for (tb.lines.items, tb.virtual_lines.items, 0..) |real_line, virtual_line, i| {
         try std.testing.expectEqual(real_line.width, virtual_line.width);
         try std.testing.expectEqual(real_line.char_offset, virtual_line.char_offset);
-        try std.testing.expectEqual(false, virtual_line.is_wrapped);
 
         // Verify chunks match
         try std.testing.expectEqual(real_line.chunks.items.len, virtual_line.chunks.items.len);
