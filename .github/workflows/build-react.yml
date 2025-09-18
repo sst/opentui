@@ -1,11 +1,7 @@
 name: Build React
 
 on:
-  pull_request:
-    paths:
-      - "packages/core/**"
-      - "packages/react/**"
-    branches: [main]
+  push:
 
 jobs:
   build:
