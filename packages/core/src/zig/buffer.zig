@@ -827,19 +827,40 @@ pub const OptimizedBuffer = struct {
         y: i32,
         clip_rect: ?ClipRect,
     ) !void {
-        var currentX = x;
-        var currentY = y;
-        const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
-        var globalCharPos: u32 = 0; // Track global char position across all chunks
-
-        // Always use virtual lines - they represent original lines when no wrapping is set
         text_buffer.updateVirtualLines();
 
-        for (text_buffer.virtual_lines.items) |vline| {
-            currentX = x; // Reset X at start of each line
+        if (text_buffer.virtual_lines.items.len == 0) return;
+
+        const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
+        const bufferBottomY = self.height;
+        const lastPossibleLine = if (y >= bufferBottomY)
+            0
+        else
+            @min(text_buffer.virtual_lines.items.len, bufferBottomY - @as(u32, @intCast(y)));
+
+        if (firstVisibleLine >= text_buffer.virtual_lines.items.len or lastPossibleLine == 0) return;
+        if (firstVisibleLine >= lastPossibleLine) return;
+
+        var currentX = x;
+        var currentY = y + @as(i32, @intCast(firstVisibleLine));
+        const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
+
+        var globalCharPos: u32 = 0;
+        if (firstVisibleLine > 0) {
+            // TODO: use cached lineInfo for this
+            for (text_buffer.virtual_lines.items[0..firstVisibleLine]) |vline| {
+                for (vline.chunks.items) |vchunk| {
+                    globalCharPos += vchunk.char_count;
+                }
+            }
+        }
+
+        for (text_buffer.virtual_lines.items[firstVisibleLine..lastPossibleLine]) |vline| {
+            if (currentY >= bufferBottomY) break;
+
+            currentX = x;
 
             for (vline.chunks.items) |vchunk| {
-                // Get the actual chunk data and styling
                 const source_chunk = &text_buffer.lines.items[vchunk.source_line].chunks.items[vchunk.source_chunk];
                 const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
 
@@ -870,12 +891,12 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
-                    if (currentX < 0 or currentY < 0) {
+                    if (currentX < 0) {
                         globalCharPos += 1;
                         currentX += 1;
                         continue;
                     }
-                    if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
+                    if (currentX >= @as(i32, @intCast(self.width))) {
                         globalCharPos += 1;
                         currentX += 1;
                         continue;
