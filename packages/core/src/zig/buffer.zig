@@ -1177,6 +1177,7 @@ pub const OptimizedBuffer = struct {
         terminalWidthCells: u32,
         terminalHeightCells: u32,
     ) void {
+        _ = terminalHeightCells; // May be used for future optimizations
         const cellResultSize = 48;
         const numCells = dataLen / cellResultSize;
         const bufferWidthCells = terminalWidthCells;
@@ -1188,7 +1189,7 @@ pub const OptimizedBuffer = struct {
             const cellX = posX + @as(u32, @intCast(i % bufferWidthCells));
             const cellY = posY + @as(u32, @intCast(i / bufferWidthCells));
 
-            if (cellX >= terminalWidthCells or cellY >= terminalHeightCells) continue;
+            // Skip cells outside the render buffer bounds
             if (cellX >= self.width or cellY >= self.height) continue;
 
             if (!self.isPointInScissor(@intCast(cellX), @intCast(cellY))) continue;
