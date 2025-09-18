@@ -163,6 +163,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
   private targetFps: number = 30
+  private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: Timer | null = null
   private lastMemorySnapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number } = {
@@ -867,13 +868,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private startMemorySnapshotTimer(): void {
-    if (this.memorySnapshotTimer) {
-      clearInterval(this.memorySnapshotTimer)
-    }
+    this.stopMemorySnapshotTimer()
 
     this.memorySnapshotTimer = setInterval(() => {
       this.takeMemorySnapshot()
     }, this.memorySnapshotInterval)
+  }
+
+  private stopMemorySnapshotTimer(): void {
+    if (this.memorySnapshotTimer) {
+      clearInterval(this.memorySnapshotTimer)
+      this.memorySnapshotTimer = null
+    }
   }
 
   public setMemorySnapshotInterval(interval: number): void {
@@ -958,6 +964,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public toggleDebugOverlay(): void {
+    const willBeEnabled = !this.debugOverlay.enabled
+
+    if (willBeEnabled && !this.memorySnapshotInterval) {
+      this.memorySnapshotInterval = 3000
+      this.startMemorySnapshotTimer()
+      this.automaticMemorySnapshot = true
+    } else if (!willBeEnabled && this.automaticMemorySnapshot) {
+      this.stopMemorySnapshotTimer()
+      this.memorySnapshotInterval = 0
+      this.automaticMemorySnapshot = false
+    }
+
     this.debugOverlay.enabled = !this.debugOverlay.enabled
     this.lib.setDebugOverlay(this.rendererPtr, this.debugOverlay.enabled, this.debugOverlay.corner)
     this.emit(CliRenderEvents.DEBUG_OVERLAY_TOGGLE, this.debugOverlay.enabled)
