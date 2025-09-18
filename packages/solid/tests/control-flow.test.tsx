@@ -201,7 +201,7 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       await testSetup.renderOnce()
 
       children = testSetup.renderer.root.getChildren()[0]!.getChildren()
-      expect(children.length).toBe(1)
+      expect(children.length).toBe(2)
 
       frame = testSetup.captureCharFrame()
       expect(frame).not.toContain("Visible content")
@@ -500,6 +500,114 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).not.toContain("Item: A")
     })
 
+    it("should handle <Show> inside <text>", async () => {
+      const [showExtra, setShowExtra] = createSignal(true)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>
+              Base text
+              <Show when={showExtra()}>
+                <span style={{ fg: "red" }}> extra styled text</span>
+              </Show>
+            </text>
+          </box>
+        ),
+        { width: 30, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      let frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Base text")
+      expect(frame).toContain("extra styled text")
+
+      setShowExtra(false)
+      await testSetup.renderOnce()
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Base text")
+      expect(frame).not.toContain("extra styled text")
+    })
+
+    it("should handle <Show> inside <span>/<b>", async () => {
+      const [showExtra, setShowExtra] = createSignal(true)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>
+              Base text
+              <br />
+              <span style={{ fg: "red" }}>
+                <Show when={showExtra()}>extra styled text</Show>
+              </span>
+              <br />
+              <b>
+                <Show when={showExtra()}>extra bold text</Show>
+              </b>
+            </text>
+          </box>
+        ),
+        { width: 30, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      let frame = testSetup.captureCharFrame()
+      console.log(frame)
+      expect(frame).toContain("Base text")
+      expect(frame).toContain("extra styled text")
+      expect(frame).toContain("extra bold text")
+
+      setShowExtra(false)
+      await testSetup.renderOnce()
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Base text")
+      expect(frame).not.toContain("extra styled text")
+      expect(frame).not.toContain("extra bold text")
+    })
+
+    it("should handle <Show> inside <For>", async () => {
+      const items = ["A", "B", "C", "D"]
+      const [visibleItems, setVisibleItems] = createSignal(new Set(["A", "C"]))
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <For each={items}>
+              {(item) => (
+                <Show when={visibleItems().has(item)}>
+                  <text>Item: {item}</text>
+                </Show>
+              )}
+            </For>
+          </box>
+        ),
+        { width: 20, height: 10 },
+      )
+
+      await testSetup.renderOnce()
+      let children = testSetup.renderer.root.getChildren()[0]!.getChildren()
+      expect(children.length).toBe(2)
+
+      let frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Item: A")
+      expect(frame).toContain("Item: C")
+      expect(frame).not.toContain("Item: B")
+      expect(frame).not.toContain("Item: D")
+
+      setVisibleItems(new Set(["B", "D"]))
+      await testSetup.renderOnce()
+
+      children = testSetup.renderer.root.getChildren()[0]!.getChildren()
+      expect(children.length).toBe(2)
+
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Item: B")
+      expect(frame).toContain("Item: D")
+      expect(frame).not.toContain("Item: A")
+      expect(frame).not.toContain("Item: C")
+    })
+
     it("should handle <Switch> with <For> inside matches", async () => {
       const [mode, setMode] = createSignal<"list" | "grid">("list")
       const items = ["One", "Two", "Three"]
@@ -534,6 +642,30 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain("[Two]")
       expect(frame).toContain("[Three]")
       expect(frame).not.toContain("• One")
+    })
+
+    it("should be able to anchor to slot nodes", async () => {
+      testSetup = await testRender(
+        () => (
+          <box>
+            <box border title="A" />
+            <Show when={false}>
+              <box border title="C" />
+            </Show>
+            <Show when={true}>
+              <box border title="B" />
+            </Show>
+          </box>
+        ),
+        { width: 25, height: 10 },
+      )
+      await testSetup.renderOnce()
+      let frame = testSetup.captureCharFrame()
+      expect(frame).toContain("A")
+      expect(frame).toContain("B")
+      expect(frame).not.toContain("C")
+      // Consistent ordering
+      expect(frame).toMatchSnapshot()
     })
   })
 })

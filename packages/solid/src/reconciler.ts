@@ -17,8 +17,8 @@ import {
   type TextNodeOptions,
 } from "@opentui/core"
 import { useContext } from "solid-js"
-import { createRenderer } from "solid-js/universal"
-import { getComponentCatalogue, RendererContext } from "./elements"
+import { createRenderer } from "./renderer"
+import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 
@@ -64,18 +64,30 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
     node instanceof TextNode,
   )
 
+  if (node instanceof SlotRenderable) {
+    node = node.getSlotChild(parent)
+  }
+
+  if (anchor && anchor instanceof SlotRenderable) {
+    anchor = anchor.getSlotChild(parent)
+  }
+
   if (isTextNodeRenderable(node)) {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
-      // TODO this can happen naturally with match and show, probably should handle better
-      log(`Text must have a <text> as a parent: ${parent.id} above ${node.id}`)
-      return
+      throw new Error(
+        `Orphan text error: "${node
+          .toChunks()
+          .map((c) => c.text)
+          .join("")}" must have a <text> as a parent: ${parent.id} above ${node.id}`,
+      )
     }
   }
 
   // Renderable nodes
   if (!(parent instanceof BaseRenderable)) {
-    log("[INSERT]", "Tried to mount a non base renderable")
-    return
+    console.error("[INSERT]", "Tried to mount a non base renderable")
+    // Can't be a noop, have to panic
+    throw new Error("Tried to mount a non base renderable")
   }
 
   if (!anchor) {
@@ -96,10 +108,22 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
 
-  parent.remove(node.id)
+  if (node instanceof SlotRenderable) {
+    node = node.getSlotChild(parent)
+  }
+
+  if (isTextNodeRenderable(parent)) {
+    if (typeof node !== "string" && !isTextNodeRenderable(node)) {
+      console.warn("Node not a valid child of TextNode")
+    } else {
+      parent.remove(node)
+    }
+  } else {
+    parent.remove(node.id)
+  }
 
   process.nextTick(() => {
-    if (node instanceof Renderable && !node.parent) {
+    if (node instanceof BaseRenderable && !node.parent) {
       node.destroyRecursively()
       return
     }
@@ -116,6 +140,12 @@ function _createTextNode(value: string | number): TextNode {
   }
 
   return TextNode.fromString(value, { id })
+}
+
+export function createSlotNode(): SlotRenderable {
+  const id = getNextId("slot-node")
+  log("Creating slot node", id)
+  return new SlotRenderable(id)
 }
 
 function _getParentNode(childNode: DomNode): DomNode | undefined {
@@ -161,6 +191,8 @@ export const {
   },
 
   createTextNode: _createTextNode,
+
+  createSlotNode,
 
   replaceText(textNode: TextNode, value: string): void {
     log("Replacing text:", value, "in node:", logId(textNode))

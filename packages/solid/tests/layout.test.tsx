@@ -51,6 +51,31 @@ describe("SolidJS Renderer Integration Tests", () => {
       expect(frame).toMatchSnapshot()
     })
 
+    it("should throw on rendering text without parent <text> element", async () => {
+      expect(
+        testRender(() => <box>This text is not wrapped in a text element</box>, {
+          width: 30,
+          height: 5,
+        }),
+      ).rejects.toThrow()
+    })
+
+    it("should throw on rendering span without parent <text> element", async () => {
+      expect(
+        testRender(
+          () => (
+            <box>
+              <span>This text is not wrapped in a text element</span>
+            </box>
+          ),
+          {
+            width: 30,
+            height: 5,
+          },
+        ),
+      ).rejects.toThrow()
+    })
+
     it("should render text with dynamic content", async () => {
       const counter = () => 42
 
