@@ -1,4 +1,4 @@
-import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable } from ".."
+import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable } from "@opentui/core"
 import Yoga, { Display, type Node as YogaNode } from "yoga-layout"
 
 class SlotBaseRenderable extends BaseRenderable {
@@ -114,7 +114,7 @@ export class SlotRenderable extends SlotBaseRenderable {
     return this.layoutNode
   }
 
-  public destroy(): void {
+  public override destroy(): void {
     if (this.destroyed) {
       return
     }

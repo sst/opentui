@@ -2,7 +2,6 @@
 import {
   BaseRenderable,
   createTextAttributes,
-  SlotRenderable,
   InputRenderable,
   InputRenderableEvents,
   isTextNodeRenderable,
@@ -19,7 +18,7 @@ import {
 } from "@opentui/core"
 import { useContext } from "solid-js"
 import { createRenderer } from "./renderer"
-import { getComponentCatalogue, RendererContext } from "./elements"
+import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements"
 import { getNextId } from "./utils/id-counter"
 import { log } from "./utils/log"
 

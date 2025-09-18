@@ -82,6 +82,9 @@ describe("SolidJS Renderer - Dynamic and Portal Components", () => {
     })
 
     it("should handle false Show inside dynamic that switches between text and box", async () => {
+      /* Tests for slot renderable being able handle switching between a LayoutSlot and a TextSlot
+       * Expected to just run without crash
+       */
       const [componentType, setComponentType] = createSignal<"text" | "box">("text")
 
       testSetup = await testRender(
