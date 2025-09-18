@@ -162,6 +162,7 @@ pub const TextBuffer = struct {
     allocator: Allocator,
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
+    virtual_lines_arena: *std.heap.ArenaAllocator,
 
     lines: std.ArrayList(TextLine),
     current_line: usize,
@@ -186,9 +187,14 @@ pub const TextBuffer = struct {
 
         const internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(internal_arena);
-        internal_arena.* = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
+
+        const virtual_lines_internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        errdefer global_allocator.destroy(virtual_lines_internal_arena);
+        virtual_lines_internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
 
         const internal_allocator = internal_arena.allocator();
+        const virtual_lines_allocator = virtual_lines_internal_arena.allocator();
 
         const graph = graphemes_data.*;
         const dw = display_width.*;
@@ -205,7 +211,7 @@ pub const TextBuffer = struct {
         var chunk_groups = std.ArrayList(*ChunkGroup).init(internal_allocator);
         errdefer chunk_groups.deinit();
 
-        var virtual_lines = std.ArrayList(VirtualLine).init(internal_allocator);
+        var virtual_lines = std.ArrayList(VirtualLine).init(virtual_lines_allocator);
         errdefer {
             for (virtual_lines.items) |*vline| {
                 vline.deinit();
@@ -226,6 +232,7 @@ pub const TextBuffer = struct {
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
+            .virtual_lines_arena = virtual_lines_internal_arena,
             .lines = lines,
             .current_line = 0,
             .current_line_width = 0,
@@ -246,7 +253,9 @@ pub const TextBuffer = struct {
 
     pub fn deinit(self: *TextBuffer) void {
         self.grapheme_tracker.deinit();
+        self.virtual_lines_arena.deinit();
         self.arena.deinit();
+        self.global_allocator.destroy(self.virtual_lines_arena);
         self.global_allocator.destroy(self.arena);
         self.global_allocator.destroy(self);
     }
@@ -259,6 +268,7 @@ pub const TextBuffer = struct {
         self.grapheme_tracker.clear();
 
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
+        _ = self.virtual_lines_arena.reset(if (self.virtual_lines_arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.char_count = 0;
         self.current_line = 0;
@@ -268,7 +278,7 @@ pub const TextBuffer = struct {
 
         self.lines = std.ArrayList(TextLine).init(self.allocator);
         self.chunk_groups = std.ArrayList(*ChunkGroup).init(self.allocator);
-        self.virtual_lines = std.ArrayList(VirtualLine).init(self.allocator);
+        self.virtual_lines = std.ArrayList(VirtualLine).init(self.virtual_lines_arena.allocator());
         // wrap_width is preserved across resets
         self.virtual_lines_dirty = true;
 
@@ -473,16 +483,14 @@ pub const TextBuffer = struct {
     pub fn updateVirtualLines(self: *TextBuffer) void {
         if (!self.virtual_lines_dirty) return;
 
-        // Clear existing virtual lines
-        for (self.virtual_lines.items) |*vline| {
-            vline.deinit();
-        }
-        self.virtual_lines.clearRetainingCapacity();
+        _ = self.virtual_lines_arena.reset(.free_all);
+        self.virtual_lines.deinit();
+        self.virtual_lines = std.ArrayList(VirtualLine).init(self.virtual_lines_arena.allocator());
 
         if (self.wrap_width == null) {
             // No wrapping - create 1:1 mapping to real lines
             for (self.lines.items, 0..) |*line, line_idx| {
-                var vline = VirtualLine.init(self.allocator);
+                var vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                 vline.width = line.width;
                 vline.char_offset = line.char_offset;
                 vline.is_wrapped = false;
@@ -507,7 +515,7 @@ pub const TextBuffer = struct {
 
             for (self.lines.items, 0..) |*line, line_idx| {
                 var line_position: u32 = 0;
-                var current_vline = VirtualLine.init(self.allocator);
+                var current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                 current_vline.char_offset = global_char_offset;
                 current_vline.is_wrapped = false;
                 var first_in_line = true;
@@ -537,7 +545,7 @@ pub const TextBuffer = struct {
                             global_char_offset += 1;
 
                             // Start new virtual line
-                            current_vline = VirtualLine.init(self.allocator);
+                            current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                             current_vline.char_offset = global_char_offset;
                             current_vline.is_wrapped = false; // New line after \n is not wrapped
                             line_position = 0;
@@ -555,7 +563,7 @@ pub const TextBuffer = struct {
                             current_vline.width = line_position;
                             self.virtual_lines.append(current_vline) catch {};
 
-                            current_vline = VirtualLine.init(self.allocator);
+                            current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                             current_vline.char_offset = global_char_offset;
                             current_vline.is_wrapped = true;
                             line_position = 0;
@@ -588,7 +596,7 @@ pub const TextBuffer = struct {
                             current_vline.width = line_position;
                             self.virtual_lines.append(current_vline) catch {};
 
-                            current_vline = VirtualLine.init(self.allocator);
+                            current_vline = VirtualLine.init(self.virtual_lines_arena.allocator());
                             current_vline.char_offset = global_char_offset;
                             current_vline.is_wrapped = !first_in_line;
                             line_position = 0;
