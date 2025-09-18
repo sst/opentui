@@ -483,8 +483,7 @@ pub const TextBuffer = struct {
     pub fn updateVirtualLines(self: *TextBuffer) void {
         if (!self.virtual_lines_dirty) return;
 
-        _ = self.virtual_lines_arena.reset(.free_all);
-        self.virtual_lines.deinit();
+        _ = self.virtual_lines_arena.reset(.retain_capacity);
         self.virtual_lines = std.ArrayList(VirtualLine).init(self.virtual_lines_arena.allocator());
 
         if (self.wrap_width == null) {
