@@ -500,6 +500,72 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).not.toContain("Item: A")
     })
 
+    it("should handle <Show> inside <text>", async () => {
+      const [showExtra, setShowExtra] = createSignal(true)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>
+              Base text
+              <Show when={showExtra()}>
+                <span style={{ fg: "red" }}> extra styled text</span>
+              </Show>
+            </text>
+          </box>
+        ),
+        { width: 30, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      let frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Base text")
+      expect(frame).toContain("extra styled text")
+
+      setShowExtra(false)
+      await testSetup.renderOnce()
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Base text")
+      expect(frame).not.toContain("extra styled text")
+    })
+
+    it("should handle <Show> inside <span>/<b>", async () => {
+      const [showExtra, setShowExtra] = createSignal(true)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>
+              Base text
+              <br />
+              <span style={{ fg: "red" }}>
+                <Show when={showExtra()}>extra styled text</Show>
+              </span>
+              <br />
+              <b>
+                <Show when={showExtra()}>extra bold text</Show>
+              </b>
+            </text>
+          </box>
+        ),
+        { width: 30, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      let frame = testSetup.captureCharFrame()
+      console.log(frame)
+      expect(frame).toContain("Base text")
+      expect(frame).toContain("extra styled text")
+      expect(frame).toContain("extra bold text")
+
+      setShowExtra(false)
+      await testSetup.renderOnce()
+      frame = testSetup.captureCharFrame()
+      expect(frame).toContain("Base text")
+      expect(frame).not.toContain("extra styled text")
+      expect(frame).not.toContain("extra bold text")
+    })
+
     it("should handle <Show> inside <For>", async () => {
       const items = ["A", "B", "C", "D"]
       const [visibleItems, setVisibleItems] = createSignal(new Set(["A", "C"]))
