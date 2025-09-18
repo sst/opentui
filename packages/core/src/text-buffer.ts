@@ -1,6 +1,6 @@
 import type { StyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
 
@@ -16,7 +16,7 @@ export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _length: number = 0
-  private _lineInfo?: { lineStarts: number[]; lineWidths: number[] }
+  private _lineInfo?: LineInfo
   private _destroyed: boolean = false
 
   constructor(lib: RenderLib, ptr: Pointer) {
@@ -44,7 +44,7 @@ export class TextBuffer {
 
     for (const chunk of text.chunks) {
       const textBytes = this.lib.encoder.encode(chunk.text)
-      const result = this.lib.textBufferWriteChunk(
+      this.lib.textBufferWriteChunk(
         this.bufferPtr,
         textBytes,
         chunk.fg || null,
@@ -110,9 +110,11 @@ export class TextBuffer {
     return this.lib.decoder.decode(plainBytes)
   }
 
-  public get lineInfo(): { lineStarts: number[]; lineWidths: number[] } {
+  public get lineInfo(): LineInfo {
     this.guard()
-    this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
+    if (!this._lineInfo) {
+      this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
+    }
     return this._lineInfo
   }
 
@@ -225,11 +227,13 @@ export class TextBuffer {
   public setWrapWidth(width: number | null): void {
     this.guard()
     this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)
+    this._lineInfo = undefined
   }
 
   public setWrapMode(mode: "char" | "word"): void {
     this.guard()
     this.lib.textBufferSetWrapMode(this.bufferPtr, mode)
+    this._lineInfo = undefined
   }
 
   public destroy(): void {

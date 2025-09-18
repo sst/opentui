@@ -430,22 +430,27 @@ export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLineCount();
 }
 
-export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) void {
+export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
     tb.updateVirtualLines();
 
     const line_count = tb.getLineCount();
+    var max_width: u32 = 0;
 
     if (tb.wrap_width != null) {
         for (0..line_count) |i| {
             lineStartsPtr[i] = tb.virtual_lines.items[i].char_offset;
             lineWidthsPtr[i] = tb.virtual_lines.items[i].width;
+            max_width = @max(max_width, tb.virtual_lines.items[i].width);
         }
     } else {
         for (0..line_count) |i| {
             lineStartsPtr[i] = tb.lines.items[i].char_offset;
             lineWidthsPtr[i] = tb.lines.items[i].width;
+            max_width = @max(max_width, tb.lines.items[i].width);
         }
     }
+
+    return max_width;
 }
 
 export fn bufferDrawTextBuffer(

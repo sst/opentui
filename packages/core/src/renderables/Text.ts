@@ -7,6 +7,7 @@ import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { Direction, MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
+import type { LineInfo } from "../zig"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
   content?: StyledText | string
@@ -33,7 +34,7 @@ export class TextRenderable extends Renderable {
   private lastLocalSelection: LocalSelectionBounds | null = null
 
   private textBuffer: TextBuffer
-  private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
+  private _lineInfo: LineInfo = { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
 
   protected rootTextNode: RootTextNodeRenderable
 
@@ -271,6 +272,7 @@ export class TextRenderable extends Renderable {
     const lineInfo = this.textBuffer.lineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
+    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
 
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
@@ -290,7 +292,7 @@ export class TextRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      const maxLineWidth = Math.max(...this._lineInfo.lineWidths, 0)
+      const maxLineWidth = this._lineInfo.maxLineWidth
       const numLines = this._lineInfo.lineStarts.length || 1
 
       let measuredWidth = maxLineWidth

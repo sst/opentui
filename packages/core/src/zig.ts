@@ -302,7 +302,7 @@ function getOpenTUILib(libPath?: string) {
     },
     textBufferGetLineInfoDirect: {
       args: ["ptr", "ptr", "ptr"],
-      returns: "void",
+      returns: "u32",
     },
     textBufferGetSelectionInfo: {
       args: ["ptr"],
@@ -545,6 +545,12 @@ export enum LogLevel {
   Debug = 3,
 }
 
+export interface LineInfo {
+  lineStarts: number[]
+  lineWidths: number[]
+  maxLineWidth: number
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
@@ -701,7 +707,7 @@ export interface RenderLib {
   textBufferFinalizeLineInfo: (buffer: Pointer) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   textBufferGetLineInfoDirect: (buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer) => void
-  textBufferGetLineInfo: (buffer: Pointer) => { lineStarts: number[]; lineWidths: number[] }
+  textBufferGetLineInfo: (buffer: Pointer) => LineInfo
   textBufferGetSelection: (buffer: Pointer) => { start: number; end: number } | null
   getSelectedTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
   getPlainTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
@@ -1280,8 +1286,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferGetLineCount(buffer)
   }
 
-  public textBufferGetLineInfoDirect(buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): void {
-    this.opentui.symbols.textBufferGetLineInfoDirect(buffer, lineStartsPtr, lineWidthsPtr)
+  public textBufferGetLineInfoDirect(buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): number {
+    return this.opentui.symbols.textBufferGetLineInfoDirect(buffer, lineStartsPtr, lineWidthsPtr)
   }
 
   public textBufferGetSelection(buffer: Pointer): { start: number; end: number } | null {
@@ -1421,19 +1427,20 @@ class FFIRenderLib implements RenderLib {
     return typeof result === "bigint" ? Number(result) : result
   }
 
-  public textBufferGetLineInfo(buffer: Pointer): { lineStarts: number[]; lineWidths: number[] } {
+  public textBufferGetLineInfo(buffer: Pointer): LineInfo {
     const lineCount = this.textBufferGetLineCount(buffer)
 
     if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [] }
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
     }
 
     const lineStarts = new Uint32Array(lineCount)
     const lineWidths = new Uint32Array(lineCount)
 
-    this.textBufferGetLineInfoDirect(buffer, ptr(lineStarts), ptr(lineWidths))
+    const maxLineWidth = this.textBufferGetLineInfoDirect(buffer, ptr(lineStarts), ptr(lineWidths))
 
     return {
+      maxLineWidth,
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
     }
