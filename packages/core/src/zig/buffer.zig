@@ -860,6 +860,12 @@ pub const OptimizedBuffer = struct {
                 const source_chunk = &text_buffer.lines.items[vchunk.source_line].chunks.items[vchunk.source_chunk];
                 const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
 
+                if (currentX >= @as(i32, @intCast(self.width))) {
+                    globalCharPos += @intCast(chars.len);
+                    currentX += @intCast(chars.len);
+                    continue;
+                }
+
                 var chunkFg = source_chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };
                 var chunkBg = source_chunk.bg orelse text_buffer.default_bg orelse .{ 0.0, 0.0, 0.0, 0.0 };
                 var chunkAttributes: u8 = @intCast(source_chunk.attributes & tb.ATTR_MASK);
@@ -881,21 +887,25 @@ pub const OptimizedBuffer = struct {
                     }
                 }
 
+                var charIndex: u32 = 0;
                 for (chars) |charCode| {
                     if (charCode == '\n') {
                         globalCharPos += 1;
+                        charIndex += 1;
                         continue;
                     }
 
                     if (currentX < 0) {
                         globalCharPos += 1;
                         currentX += 1;
+                        charIndex += 1;
                         continue;
                     }
                     if (currentX >= @as(i32, @intCast(self.width))) {
-                        globalCharPos += 1;
-                        currentX += 1;
-                        continue;
+                        const remainingChars = chars.len - charIndex;
+                        globalCharPos += @intCast(remainingChars);
+                        currentX += @intCast(remainingChars);
+                        break;
                     }
 
                     // TODO: Clip rect is currently used in text buffer drawing and cannot be removed yet.
@@ -911,6 +921,7 @@ pub const OptimizedBuffer = struct {
                         {
                             globalCharPos += 1;
                             currentX += 1;
+                            charIndex += 1;
                             continue;
                         }
                     }
@@ -918,6 +929,7 @@ pub const OptimizedBuffer = struct {
                     if (!self.isPointInScissor(currentX, currentY)) {
                         globalCharPos += 1;
                         currentX += 1;
+                        charIndex += 1;
                         continue;
                     }
 
@@ -969,6 +981,7 @@ pub const OptimizedBuffer = struct {
 
                     globalCharPos += 1;
                     currentX += 1;
+                    charIndex += 1;
                 }
             }
 
