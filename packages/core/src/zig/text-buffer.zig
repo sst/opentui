@@ -478,7 +478,7 @@ pub const TextBuffer = struct {
     pub fn updateVirtualLines(self: *TextBuffer) void {
         if (!self.virtual_lines_dirty) return;
 
-        _ = self.virtual_lines_arena.reset(.retain_capacity);
+        _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
