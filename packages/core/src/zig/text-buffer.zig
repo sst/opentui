@@ -170,6 +170,11 @@ pub const TextBuffer = struct {
     virtual_lines: std.ArrayListUnmanaged(VirtualLine),
     virtual_lines_dirty: bool,
 
+    // Cached line info
+    cached_line_starts: std.ArrayListUnmanaged(u32),
+    cached_line_widths: std.ArrayListUnmanaged(u32),
+    cached_max_width: u32,
+
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
@@ -214,6 +219,12 @@ pub const TextBuffer = struct {
             virtual_lines.deinit(virtual_lines_allocator);
         }
 
+        var cached_line_starts: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cached_line_starts.deinit(virtual_lines_allocator);
+
+        var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cached_line_widths.deinit(virtual_lines_allocator);
+
         const first_line = TextLine.init();
         lines.append(internal_allocator, first_line) catch return TextBufferError.OutOfMemory;
 
@@ -236,6 +247,9 @@ pub const TextBuffer = struct {
             .wrap_mode = .char,
             .virtual_lines = virtual_lines,
             .virtual_lines_dirty = true,
+            .cached_line_starts = cached_line_starts,
+            .cached_line_widths = cached_line_widths,
+            .cached_max_width = 0,
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
@@ -274,6 +288,9 @@ pub const TextBuffer = struct {
         self.lines = .{};
         self.chunk_groups = .{};
         self.virtual_lines = .{};
+        self.cached_line_starts = .{};
+        self.cached_line_widths = .{};
+        self.cached_max_width = 0;
         // wrap_width is preserved across resets
         self.virtual_lines_dirty = true;
 
@@ -480,6 +497,9 @@ pub const TextBuffer = struct {
 
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
+        self.cached_line_starts = .{};
+        self.cached_line_widths = .{};
+        self.cached_max_width = 0;
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         if (self.wrap_width == null) {
@@ -501,6 +521,9 @@ pub const TextBuffer = struct {
                 }
 
                 self.virtual_lines.append(virtual_allocator, vline) catch {};
+                self.cached_line_starts.append(virtual_allocator, vline.char_offset) catch {};
+                self.cached_line_widths.append(virtual_allocator, vline.width) catch {};
+                self.cached_max_width = @max(self.cached_max_width, vline.width);
             }
         } else {
             // Wrap lines at wrap_width
@@ -533,6 +556,9 @@ pub const TextBuffer = struct {
 
                             current_vline.width = line_position;
                             self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
 
                             chunk_pos += 1;
                             global_char_offset += 1;
@@ -554,6 +580,9 @@ pub const TextBuffer = struct {
                         if (fit_result.char_count == 0 and line_position > 0) {
                             current_vline.width = line_position;
                             self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
 
                             current_vline = VirtualLine.init();
                             current_vline.char_offset = global_char_offset;
@@ -586,6 +615,9 @@ pub const TextBuffer = struct {
                         if (line_position >= wrap_w and chunk_pos < chunk.chars.len) {
                             current_vline.width = line_position;
                             self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
 
                             current_vline = VirtualLine.init();
                             current_vline.char_offset = global_char_offset;
@@ -598,6 +630,9 @@ pub const TextBuffer = struct {
                 if (current_vline.chunks.items.len > 0 or line.chunks.items.len == 0) {
                     current_vline.width = line_position;
                     self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                    self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                    self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                    self.cached_max_width = @max(self.cached_max_width, current_vline.width);
                 }
             }
         }
@@ -1161,5 +1196,21 @@ pub const TextBuffer = struct {
     pub fn getChunkGroup(self: *const TextBuffer, index: usize) ?*const ChunkGroup {
         if (index >= self.chunk_groups.items.len) return null;
         return self.chunk_groups.items[index];
+    }
+
+    /// Get cached line info (line starts and widths)
+    /// Returns the maximum line width
+    pub fn getCachedLineInfo(self: *TextBuffer) struct {
+        starts: []const u32,
+        widths: []const u32,
+        max_width: u32,
+    } {
+        self.updateVirtualLines();
+
+        return .{
+            .starts = self.cached_line_starts.items,
+            .widths = self.cached_line_widths.items,
+            .max_width = self.cached_max_width,
+        };
     }
 };
