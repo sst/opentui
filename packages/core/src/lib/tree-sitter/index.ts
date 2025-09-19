@@ -20,7 +20,6 @@ import type { TreeSitterClientOptions } from "./types"
 import { tmpdir } from "os"
 import { join } from "path"
 
-// TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
 export function getTreeSitterClient(): TreeSitterClient {
   const defaultOptions: TreeSitterClientOptions = {
     dataPath: join(tmpdir(), "opentui-tree-sitter"),

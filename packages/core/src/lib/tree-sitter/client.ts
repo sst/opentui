@@ -19,6 +19,8 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
+// TODO: load parsers/queries from filepath or URL
+// TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
 export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private initialized = false
   private worker: Worker | undefined
