@@ -515,6 +515,52 @@ export class ParserWorker {
 
     this.bufferParsers.delete(bufferId)
   }
+
+  async handleOneShotHighlight(content: string, filetype: string, messageId: string): Promise<void> {
+    const filetypeParser = await this.resolveFiletypeParser(filetype)
+
+    if (!filetypeParser) {
+      self.postMessage({
+        type: "ONESHOT_HIGHLIGHT_RESPONSE",
+        messageId,
+        hasParser: false,
+        warning: `No parser available for filetype ${filetype}`,
+      })
+      return
+    }
+
+    // Create temporary parser and tree (not stored)
+    const parser = new Parser()
+    parser.setLanguage(filetypeParser.language)
+    const tree = parser.parse(content)
+
+    if (!tree) {
+      self.postMessage({
+        type: "ONESHOT_HIGHLIGHT_RESPONSE",
+        messageId,
+        hasParser: false,
+        error: "Failed to parse content",
+      })
+      return
+    }
+
+    try {
+      // Get highlights
+      const matches = filetypeParser.queries.highlights.captures(tree.rootNode)
+      const highlights = this.getHighlights({ parser, tree, queries: filetypeParser.queries }, matches)
+
+      self.postMessage({
+        type: "ONESHOT_HIGHLIGHT_RESPONSE",
+        messageId,
+        hasParser: true,
+        ...highlights,
+      })
+    } finally {
+      // Clean up immediately - don't retain anything
+      tree.delete()
+      parser.delete()
+    }
+  }
 }
 
 const worker = new ParserWorker()
@@ -589,6 +635,10 @@ self.onmessage = async (e: MessageEvent) => {
       case "DISPOSE_BUFFER":
         worker.disposeBuffer(bufferId)
         self.postMessage({ type: "BUFFER_DISPOSED", bufferId })
+        break
+
+      case "ONESHOT_HIGHLIGHT":
+        await worker.handleOneShotHighlight(content, filetype, messageId)
         break
 
       default:

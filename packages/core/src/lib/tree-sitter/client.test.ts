@@ -242,6 +242,54 @@ describe("TreeSitterClient", () => {
     expect(client.isInitialized()).toBe(false)
     expect(client.getAllBuffers()).toHaveLength(0)
   })
+
+  test("should perform one-shot highlighting", async () => {
+    await client.initialize()
+
+    const jsCode = 'const hello = "world";\nfunction test() { return 42; }'
+    const result = await client.highlightOnce(jsCode, "javascript")
+
+    expect(result.highlights).toBeDefined()
+    expect(result.highlights!.length).toBeGreaterThan(0)
+
+    // Should have highlights for both lines
+    const lineNumbers = result.highlights!.map((h) => h.line)
+    expect(lineNumbers).toContain(0) // First line
+    expect(lineNumbers).toContain(1) // Second line
+
+    // Should have some highlight groups
+    const groups = result.highlights!.flatMap((h) => h.highlights.map((hl) => hl.group))
+    expect(groups.length).toBeGreaterThan(0)
+  })
+
+  test("should handle one-shot highlighting for unsupported filetype", async () => {
+    await client.initialize()
+
+    const result = await client.highlightOnce("some content", "unsupported-lang")
+
+    expect(result.highlights).toBeUndefined()
+    expect(result.warning).toContain("No parser available for filetype unsupported-lang")
+  }, 5000)
+
+  test("should perform multiple one-shot highlights independently", async () => {
+    await client.initialize()
+
+    const jsCode = 'const hello = "world";'
+    const tsCode = "interface Test { value: string }"
+
+    const [jsResult, tsResult] = await Promise.all([
+      client.highlightOnce(jsCode, "javascript"),
+      client.highlightOnce(tsCode, "typescript"),
+    ])
+
+    expect(jsResult.highlights).toBeDefined()
+    expect(tsResult.highlights).toBeDefined()
+    expect(jsResult.highlights!.length).toBeGreaterThan(0)
+    expect(tsResult.highlights!.length).toBeGreaterThan(0)
+
+    // Should not interfere with each other
+    expect(client.getAllBuffers()).toHaveLength(0) // No persistent buffers
+  })
 })
 
 describe("TreeSitterClient Edge Cases", () => {

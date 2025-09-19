@@ -9,6 +9,7 @@ import type {
   FiletypeParserOptions,
   Edit,
   PerformanceStats,
+  HighlightResponse,
 } from "./types"
 
 interface EditQueueItem {
@@ -134,6 +135,30 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     })
   }
 
+  public async highlightOnce(
+    content: string,
+    filetype: string,
+  ): Promise<{ highlights?: HighlightResponse[]; warning?: string; error?: string }> {
+    if (!this.initialized) {
+      try {
+        await this.initialize()
+      } catch (error) {
+        return { error: "Could not highlight because of initialization error" }
+      }
+    }
+
+    const messageId = `oneshot_${this.messageIdCounter++}`
+    return new Promise((resolve) => {
+      this.messageCallbacks.set(messageId, resolve)
+      this.worker?.postMessage({
+        type: "ONESHOT_HIGHLIGHT",
+        content,
+        filetype,
+        messageId,
+      })
+    })
+  }
+
   private handleWorkerMessage(event: MessageEvent) {
     const { type, bufferId, error, highlights, warning, messageId, hasParser, performance, version } = event.data
 
@@ -189,6 +214,24 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
+    if (type === "PERFORMANCE_RESPONSE") {
+      const callback = this.messageCallbacks.get(messageId)
+      if (callback) {
+        this.messageCallbacks.delete(messageId)
+        callback(performance)
+      }
+      return
+    }
+
+    if (type === "ONESHOT_HIGHLIGHT_RESPONSE") {
+      const callback = this.messageCallbacks.get(messageId)
+      if (callback) {
+        this.messageCallbacks.delete(messageId)
+        callback({ highlights, warning, error })
+      }
+      return
+    }
+
     if (warning) {
       this.emit("warning", warning, bufferId)
       return
@@ -197,14 +240,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (error) {
       this.emit("error", error, bufferId)
       return
-    }
-
-    if (type === "PERFORMANCE_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback(performance)
-      }
     }
 
     if (type === "WORKER_LOG") {
