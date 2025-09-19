@@ -5,6 +5,7 @@ const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
+const logger = @import("logger.zig");
 
 pub const RGBA = buffer.RGBA;
 pub const TextSelection = buffer.TextSelection;
@@ -21,10 +22,19 @@ pub const TextBufferError = error{
     InvalidId,
 };
 
+pub const WrapMode = enum {
+    char,
+    word,
+};
+
+pub const ChunkFitResult = struct {
+    char_count: u32,
+    width: u32,
+};
+
 /// A chunk represents a contiguous sequence of characters with the same styling
 pub const TextChunk = struct {
-    offset: u32,
-    length: u32,
+    chars: []u32, // Chunk owns its character data
     fg: ?RGBA,
     bg: ?RGBA,
     attributes: u16,
@@ -38,21 +48,20 @@ pub const ChunkRef = struct {
 /// A ChunkGroup tracks references to TextChunks that were created from a single writeChunk call
 /// This allows mapping StyledText operations to the native text buffer
 pub const ChunkGroup = struct {
-    /// References to TextChunks created from this group, in order
-    chunk_refs: std.ArrayList(ChunkRef),
+    chunk_refs: std.ArrayListUnmanaged(ChunkRef),
 
-    pub fn init(allocator: Allocator) ChunkGroup {
+    pub fn init() ChunkGroup {
         return .{
-            .chunk_refs = std.ArrayList(ChunkRef).init(allocator),
+            .chunk_refs = .{},
         };
     }
 
-    pub fn deinit(self: *ChunkGroup) void {
-        self.chunk_refs.deinit();
+    pub fn deinit(self: *ChunkGroup, allocator: Allocator) void {
+        self.chunk_refs.deinit(allocator);
     }
 
-    pub fn addChunkRef(self: *ChunkGroup, line_index: usize, chunk_index: usize) !void {
-        try self.chunk_refs.append(ChunkRef{
+    pub fn addChunkRef(self: *ChunkGroup, allocator: Allocator, line_index: usize, chunk_index: usize) !void {
+        try self.chunk_refs.append(allocator, ChunkRef{
             .line_index = line_index,
             .chunk_index = chunk_index,
         });
@@ -63,22 +72,68 @@ pub const ChunkGroup = struct {
     }
 };
 
-/// A line contains multiple chunks and tracks its total width and start position
-pub const TextLine = struct {
-    chunks: std.ArrayList(TextChunk),
-    width: u32,
+/// A virtual chunk references a portion of a real TextChunk for text wrapping
+pub const VirtualChunk = struct {
+    source_line: usize,
+    source_chunk: usize,
     char_start: u32,
+    char_count: u32,
+    width: u32,
 
-    pub fn init(allocator: Allocator) TextLine {
+    pub fn getChars(self: *const VirtualChunk, text_buffer: *const TextBuffer) []const u32 {
+        const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
+        return chunk.chars[self.char_start .. self.char_start + self.char_count];
+    }
+
+    pub fn getStyle(self: *const VirtualChunk, text_buffer: *const TextBuffer) struct {
+        fg: ?RGBA,
+        bg: ?RGBA,
+        attributes: u16,
+    } {
+        const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
         return .{
-            .chunks = std.ArrayList(TextChunk).init(allocator),
+            .fg = chunk.fg,
+            .bg = chunk.bg,
+            .attributes = chunk.attributes,
+        };
+    }
+};
+
+/// A virtual line represents a display line after text wrapping
+pub const VirtualLine = struct {
+    chunks: std.ArrayListUnmanaged(VirtualChunk),
+    width: u32,
+    char_offset: u32,
+
+    pub fn init() VirtualLine {
+        return .{
+            .chunks = .{},
             .width = 0,
-            .char_start = 0,
+            .char_offset = 0,
         };
     }
 
-    pub fn deinit(self: *TextLine) void {
-        self.chunks.deinit();
+    pub fn deinit(self: *VirtualLine, allocator: Allocator) void {
+        self.chunks.deinit(allocator);
+    }
+};
+
+/// A line contains multiple chunks and tracks its total width
+pub const TextLine = struct {
+    chunks: std.ArrayListUnmanaged(TextChunk),
+    width: u32,
+    char_offset: u32, // Cumulative char offset for selection tracking
+
+    pub fn init() TextLine {
+        return .{
+            .chunks = .{},
+            .width = 0,
+            .char_offset = 0,
+        };
+    }
+
+    pub fn deinit(self: *TextLine, allocator: Allocator) void {
+        self.chunks.deinit(allocator);
     }
 };
 
@@ -91,11 +146,8 @@ pub const LocalSelection = struct {
 };
 
 /// TextBuffer holds chunks of styled text organized by lines
-/// Only character codes are stored in a contiguous buffer, styling metadata is per-chunk
 pub const TextBuffer = struct {
-    char: []u32,
-    capacity: u32,
-    char_count: u32,
+    char_count: u32, // Total character count across all chunks
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
     default_fg: ?RGBA,
@@ -105,12 +157,23 @@ pub const TextBuffer = struct {
     allocator: Allocator,
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
+    virtual_lines_arena: *std.heap.ArenaAllocator,
 
-    lines: std.ArrayList(TextLine),
+    lines: std.ArrayListUnmanaged(TextLine),
     current_line: usize,
     current_line_width: u32,
 
-    chunk_groups: std.ArrayList(*ChunkGroup),
+    chunk_groups: std.ArrayListUnmanaged(*ChunkGroup),
+
+    wrap_width: ?u32,
+    wrap_mode: WrapMode,
+    virtual_lines: std.ArrayListUnmanaged(VirtualLine),
+    virtual_lines_dirty: bool,
+
+    // Cached line info
+    cached_line_starts: std.ArrayListUnmanaged(u32),
+    cached_line_widths: std.ArrayListUnmanaged(u32),
+    cached_max_width: u32,
 
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
@@ -118,39 +181,54 @@ pub const TextBuffer = struct {
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
 
-    pub fn init(global_allocator: Allocator, length: u32, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
-        if (length == 0) return TextBufferError.InvalidDimensions;
-
+    pub fn init(global_allocator: Allocator, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
         const self = global_allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 
         const internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(internal_arena);
-        internal_arena.* = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
+
+        const virtual_lines_internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+        errdefer global_allocator.destroy(virtual_lines_internal_arena);
+        virtual_lines_internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
 
         const internal_allocator = internal_arena.allocator();
+        const virtual_lines_allocator = virtual_lines_internal_arena.allocator();
 
         const graph = graphemes_data.*;
         const dw = display_width.*;
 
-        var lines = std.ArrayList(TextLine).init(internal_allocator);
+        var lines: std.ArrayListUnmanaged(TextLine) = .{};
 
         errdefer {
             for (lines.items) |*line| {
-                line.deinit();
+                line.deinit(internal_allocator);
             }
-            lines.deinit();
+            lines.deinit(internal_allocator);
         }
 
-        var chunk_groups = std.ArrayList(*ChunkGroup).init(internal_allocator);
-        errdefer chunk_groups.deinit();
+        var chunk_groups: std.ArrayListUnmanaged(*ChunkGroup) = .{};
+        errdefer chunk_groups.deinit(internal_allocator);
 
-        const first_line = TextLine.init(internal_allocator);
-        lines.append(first_line) catch return TextBufferError.OutOfMemory;
+        var virtual_lines: std.ArrayListUnmanaged(VirtualLine) = .{};
+        errdefer {
+            for (virtual_lines.items) |*vline| {
+                vline.deinit(virtual_lines_allocator);
+            }
+            virtual_lines.deinit(virtual_lines_allocator);
+        }
+
+        var cached_line_starts: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cached_line_starts.deinit(virtual_lines_allocator);
+
+        var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cached_line_widths.deinit(virtual_lines_allocator);
+
+        const first_line = TextLine.init();
+        lines.append(internal_allocator, first_line) catch return TextBufferError.OutOfMemory;
 
         self.* = .{
-            .char = internal_allocator.alloc(u32, length) catch return TextBufferError.OutOfMemory,
-            .capacity = length,
             .char_count = 0,
             .selection = null,
             .local_selection = null,
@@ -160,10 +238,18 @@ pub const TextBuffer = struct {
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
+            .virtual_lines_arena = virtual_lines_internal_arena,
             .lines = lines,
             .current_line = 0,
             .current_line_width = 0,
             .chunk_groups = chunk_groups,
+            .wrap_width = null,
+            .wrap_mode = .char,
+            .virtual_lines = virtual_lines,
+            .virtual_lines_dirty = true,
+            .cached_line_starts = cached_line_starts,
+            .cached_line_widths = cached_line_widths,
+            .cached_max_width = 0,
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
@@ -171,42 +257,27 @@ pub const TextBuffer = struct {
             .width_method = width_method,
         };
 
-        @memset(self.char, ' ');
-
         return self;
     }
 
     pub fn deinit(self: *TextBuffer) void {
         self.grapheme_tracker.deinit();
+        self.virtual_lines_arena.deinit();
         self.arena.deinit();
+        self.global_allocator.destroy(self.virtual_lines_arena);
         self.global_allocator.destroy(self.arena);
         self.global_allocator.destroy(self);
-    }
-
-    pub fn getCharPtr(self: *TextBuffer) [*]u32 {
-        return self.char.ptr;
     }
 
     pub fn getLength(self: *const TextBuffer) u32 {
         return self.char_count;
     }
 
-    pub fn getCapacity(self: *const TextBuffer) u32 {
-        return self.capacity;
-    }
-
-    fn ensureCapacity(self: *TextBuffer, additional_chars: u32) TextBufferError!void {
-        if (self.char_count + additional_chars > self.capacity) {
-            const new_capacity = @max(self.capacity * 2, self.char_count + additional_chars);
-            self.char = self.allocator.realloc(self.char, new_capacity) catch return TextBufferError.OutOfMemory;
-            self.capacity = new_capacity;
-        }
-    }
-
     pub fn reset(self: *TextBuffer) void {
         self.grapheme_tracker.clear();
 
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
+        _ = self.virtual_lines_arena.reset(if (self.virtual_lines_arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.char_count = 0;
         self.current_line = 0;
@@ -214,15 +285,17 @@ pub const TextBuffer = struct {
         self.local_selection = null;
         self.selection = null;
 
-        self.char = self.allocator.alloc(u32, self.capacity) catch {
-            @panic("TextBuffer.reset: alloc failed");
-        };
+        self.lines = .{};
+        self.chunk_groups = .{};
+        self.virtual_lines = .{};
+        self.cached_line_starts = .{};
+        self.cached_line_widths = .{};
+        self.cached_max_width = 0;
+        // wrap_width is preserved across resets
+        self.virtual_lines_dirty = true;
 
-        self.lines = std.ArrayList(TextLine).init(self.allocator);
-        self.chunk_groups = std.ArrayList(*ChunkGroup).init(self.allocator);
-
-        const first_line = TextLine.init(self.allocator);
-        self.lines.append(first_line) catch {};
+        const first_line = TextLine.init();
+        self.lines.append(self.allocator, first_line) catch {};
     }
 
     pub fn setSelection(self: *TextBuffer, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
@@ -260,40 +333,332 @@ pub const TextBuffer = struct {
         self.default_attributes = null;
     }
 
-    pub fn resize(self: *TextBuffer, newCapacity: u32) TextBufferError!void {
-        if (newCapacity == self.capacity) return;
-        if (newCapacity == 0) return TextBufferError.InvalidDimensions;
+    /// Set the wrap width for text wrapping. null means no wrapping.
+    pub fn setWrapWidth(self: *TextBuffer, width: ?u32) void {
+        if (self.wrap_width != width) {
+            self.wrap_width = width;
+            self.virtual_lines_dirty = true;
+        }
+    }
 
-        const old_capacity = self.capacity;
-        self.char = self.allocator.realloc(self.char, newCapacity) catch return TextBufferError.OutOfMemory;
+    /// Set the wrap mode for text wrapping.
+    pub fn setWrapMode(self: *TextBuffer, mode: WrapMode) void {
+        if (self.wrap_mode != mode) {
+            self.wrap_mode = mode;
+            self.virtual_lines_dirty = true;
+        }
+    }
 
-        if (newCapacity > old_capacity) {
-            @memset(self.char[old_capacity..newCapacity], ' ');
+    /// Calculate how many characters from a chunk fit within the given width
+    /// Returns the number of characters and their total width
+    fn calculateChunkFit(_: *const TextBuffer, chars: []const u32, max_width: u32) ChunkFitResult {
+        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
+        if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
+
+        const has_newline = chars[chars.len - 1] == '\n';
+        const effective_len = if (has_newline) chars.len - 1 else chars.len;
+
+        if (effective_len <= max_width) {
+            if (has_newline) {
+                return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
+            }
+            return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
         }
 
-        self.capacity = newCapacity;
+        const cut_pos = max_width;
+        const char_at_cut = chars[cut_pos];
+
+        if (gp.isContinuationChar(char_at_cut)) {
+            const left_extent = gp.charLeftExtent(char_at_cut);
+            const grapheme_start = cut_pos - left_extent;
+            const grapheme_width = left_extent + 1 + gp.charRightExtent(char_at_cut);
+
+            if (grapheme_start + grapheme_width <= max_width) {
+                return .{ .char_count = grapheme_start + grapheme_width, .width = grapheme_start + grapheme_width };
+            }
+
+            return .{ .char_count = grapheme_start, .width = grapheme_start };
+        } else if (gp.isGraphemeChar(char_at_cut)) {
+            const grapheme_width = 1 + gp.charRightExtent(char_at_cut);
+
+            if (cut_pos + grapheme_width > max_width) {
+                return .{ .char_count = cut_pos, .width = cut_pos };
+            }
+
+            return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+        }
+
+        return .{ .char_count = cut_pos, .width = cut_pos };
+    }
+
+    fn isWordBoundary(c: u32) bool {
+        return switch (c) {
+            ' ', '\t', '\r', '\n' => true, // Whitespace
+            '-', '–', '—' => true, // Dashes and hyphens
+            '/', '\\' => true, // Slashes
+            '.', ',', ';', ':', '!', '?' => true, // Punctuation
+            '(', ')', '[', ']', '{', '}' => true, // Brackets
+            else => false,
+        };
+    }
+
+    /// Calculate how many characters from a chunk fit within the given width (word wrapping)
+    /// Returns the number of characters and their total width
+    fn calculateChunkFitWord(self: *const TextBuffer, chars: []const u32, max_width: u32) ChunkFitResult {
+        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
+        if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
+
+        const has_newline = chars[chars.len - 1] == '\n';
+        const effective_len = if (has_newline) chars.len - 1 else chars.len;
+
+        if (effective_len <= max_width) {
+            if (has_newline) {
+                return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
+            }
+            return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
+        }
+
+        var cut_pos = @min(max_width, @as(u32, @intCast(chars.len)));
+        var found_boundary = false;
+
+        while (cut_pos > 0) {
+            cut_pos -= 1;
+            const c = chars[cut_pos];
+
+            if (gp.isContinuationChar(c)) {
+                const left_extent = gp.charLeftExtent(c);
+                cut_pos = cut_pos -| left_extent; // Saturating subtraction
+                if (cut_pos == 0) break;
+                continue;
+            }
+
+            if (isWordBoundary(c)) {
+                cut_pos += 1;
+                found_boundary = true;
+                break;
+            }
+        }
+
+        if (!found_boundary or cut_pos == 0) {
+            // Check if we're at the beginning of a word that could fit on next line
+            // First, find where this word ends
+            var word_end: u32 = 0;
+            while (word_end < chars.len and !isWordBoundary(chars[word_end])) : (word_end += 1) {}
+
+            // TODO: we always have wrap_width set at this point?
+            const line_width = if (self.wrap_width) |w| w else max_width;
+
+            // If the word is longer than a full line width, we have to break it
+            if (word_end > line_width) {
+                cut_pos = max_width;
+            } else {
+                return .{ .char_count = 0, .width = 0 };
+            }
+            const char_at_cut = chars[cut_pos];
+
+            if (gp.isContinuationChar(char_at_cut)) {
+                const left_extent = gp.charLeftExtent(char_at_cut);
+                const grapheme_start = cut_pos - left_extent;
+                const grapheme_width = left_extent + 1 + gp.charRightExtent(char_at_cut);
+
+                if (grapheme_start + grapheme_width <= max_width) {
+                    return .{ .char_count = grapheme_start + grapheme_width, .width = grapheme_start + grapheme_width };
+                }
+
+                return .{ .char_count = grapheme_start, .width = grapheme_start };
+            } else if (gp.isGraphemeChar(char_at_cut)) {
+                const grapheme_width = 1 + gp.charRightExtent(char_at_cut);
+
+                if (cut_pos + grapheme_width > max_width) {
+                    return .{ .char_count = cut_pos, .width = cut_pos };
+                }
+
+                return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+            }
+        }
+
+        return .{ .char_count = cut_pos, .width = cut_pos };
+    }
+
+    /// Calculate the visual width of a chunk of characters
+    fn calculateChunkWidth(_: *const TextBuffer, chars: []const u32) u32 {
+        if (chars.len == 0) return 0;
+
+        if (chars[chars.len - 1] == '\n') {
+            return @intCast(chars.len - 1);
+        }
+
+        return @intCast(chars.len);
+    }
+
+    /// Update virtual lines based on current wrap width
+    pub fn updateVirtualLines(self: *TextBuffer) void {
+        if (!self.virtual_lines_dirty) return;
+
+        _ = self.virtual_lines_arena.reset(.free_all);
+        self.virtual_lines = .{};
+        self.cached_line_starts = .{};
+        self.cached_line_widths = .{};
+        self.cached_max_width = 0;
+        const virtual_allocator = self.virtual_lines_arena.allocator();
+
+        if (self.wrap_width == null) {
+            // No wrapping - create 1:1 mapping to real lines
+            for (self.lines.items, 0..) |*line, line_idx| {
+                var vline = VirtualLine.init();
+                vline.width = line.width;
+                vline.char_offset = line.char_offset;
+
+                // Create virtual chunks that reference entire real chunks
+                for (line.chunks.items, 0..) |*chunk, chunk_idx| {
+                    vline.chunks.append(virtual_allocator, VirtualChunk{
+                        .source_line = line_idx,
+                        .source_chunk = chunk_idx,
+                        .char_start = 0,
+                        .char_count = @intCast(chunk.chars.len),
+                        .width = self.calculateChunkWidth(chunk.chars),
+                    }) catch {};
+                }
+
+                self.virtual_lines.append(virtual_allocator, vline) catch {};
+                self.cached_line_starts.append(virtual_allocator, vline.char_offset) catch {};
+                self.cached_line_widths.append(virtual_allocator, vline.width) catch {};
+                self.cached_max_width = @max(self.cached_max_width, vline.width);
+            }
+        } else {
+            // Wrap lines at wrap_width
+            const wrap_w = self.wrap_width.?;
+            var global_char_offset: u32 = 0;
+
+            for (self.lines.items, 0..) |*line, line_idx| {
+                var line_position: u32 = 0;
+                var current_vline = VirtualLine.init();
+                current_vline.char_offset = global_char_offset;
+                var first_in_line = true;
+
+                for (line.chunks.items, 0..) |*chunk, chunk_idx| {
+                    var chunk_pos: u32 = 0;
+
+                    while (chunk_pos < chunk.chars.len) {
+                        const remaining_width = if (line_position < wrap_w) wrap_w - line_position else 0;
+                        const remaining_chars = chunk.chars[chunk_pos..];
+
+                        // Check if this is a newline at the start
+                        if (remaining_chars.len > 0 and remaining_chars[0] == '\n') {
+                            // Add the newline to current line and start a new line
+                            current_vline.chunks.append(virtual_allocator, VirtualChunk{
+                                .source_line = line_idx,
+                                .source_chunk = chunk_idx,
+                                .char_start = chunk_pos,
+                                .char_count = 1,
+                                .width = 0,
+                            }) catch {};
+
+                            current_vline.width = line_position;
+                            self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
+
+                            chunk_pos += 1;
+                            global_char_offset += 1;
+
+                            // Start new virtual line
+                            current_vline = VirtualLine.init();
+                            current_vline.char_offset = global_char_offset;
+                            line_position = 0;
+                            first_in_line = true;
+                            continue;
+                        }
+
+                        const fit_result = switch (self.wrap_mode) {
+                            .char => self.calculateChunkFit(remaining_chars, remaining_width),
+                            .word => self.calculateChunkFitWord(remaining_chars, remaining_width),
+                        };
+
+                        // If nothing fits and we have content on the line, wrap to next line
+                        if (fit_result.char_count == 0 and line_position > 0) {
+                            current_vline.width = line_position;
+                            self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
+
+                            current_vline = VirtualLine.init();
+                            current_vline.char_offset = global_char_offset;
+                            line_position = 0;
+                            first_in_line = false;
+                            continue;
+                        }
+
+                        // TODO: what???
+                        // If nothing fits even on empty line (char too wide), skip it
+                        if (fit_result.char_count == 0) {
+                            chunk_pos += 1;
+                            global_char_offset += 1;
+                            continue;
+                        }
+
+                        current_vline.chunks.append(virtual_allocator, VirtualChunk{
+                            .source_line = line_idx,
+                            .source_chunk = chunk_idx,
+                            .char_start = chunk_pos,
+                            .char_count = fit_result.char_count,
+                            .width = fit_result.width,
+                        }) catch {};
+
+                        chunk_pos += fit_result.char_count;
+                        global_char_offset += fit_result.char_count;
+                        line_position += fit_result.width;
+
+                        // Check if we need to wrap
+                        if (line_position >= wrap_w and chunk_pos < chunk.chars.len) {
+                            current_vline.width = line_position;
+                            self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
+
+                            current_vline = VirtualLine.init();
+                            current_vline.char_offset = global_char_offset;
+                            line_position = 0;
+                        }
+                    }
+                }
+
+                // Append the last virtual line if it has content or represents an empty line
+                if (current_vline.chunks.items.len > 0 or line.chunks.items.len == 0) {
+                    current_vline.width = line_position;
+                    self.virtual_lines.append(virtual_allocator, current_vline) catch {};
+                    self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
+                    self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
+                    self.cached_max_width = @max(self.cached_max_width, current_vline.width);
+                }
+            }
+        }
+
+        self.virtual_lines_dirty = false;
     }
 
     /// Write a UTF-8 encoded text chunk with styling to the buffer
     /// Creates a new chunk with the specified styling and adds it to the current line
-    /// Returns flags: bit 0 = resized during write, bits 1-31 = number of cells written
     pub fn writeChunk(self: *TextBuffer, textBytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
         // Empty text creates a single chunk group
         if (textBytes.len == 0) {
             const chunk_group = self.allocator.create(ChunkGroup) catch return TextBufferError.OutOfMemory;
-            chunk_group.* = ChunkGroup.init(self.allocator);
+            chunk_group.* = ChunkGroup.init();
             errdefer {
-                chunk_group.deinit();
+                chunk_group.deinit(self.allocator);
                 self.allocator.destroy(chunk_group);
             }
-            self.chunk_groups.append(chunk_group) catch return TextBufferError.OutOfMemory;
+            self.chunk_groups.append(self.allocator, chunk_group) catch return TextBufferError.OutOfMemory;
             return 0;
         }
 
         const chunk_group = self.allocator.create(ChunkGroup) catch return TextBufferError.OutOfMemory;
-        chunk_group.* = ChunkGroup.init(self.allocator);
+        chunk_group.* = ChunkGroup.init();
         errdefer {
-            chunk_group.deinit();
+            chunk_group.deinit(self.allocator);
             self.allocator.destroy(chunk_group);
         }
 
@@ -314,14 +679,11 @@ pub const TextBuffer = struct {
 
         var iter = self.graphemes_data.iterator(textBytes);
         var cellCount: u32 = 0;
-        var wasResized: bool = false;
-        const estimatedCapacity = textBytes.len * 2;
-        try self.ensureCapacity(@intCast(estimatedCapacity));
-        if (self.capacity != self.char.len) {
-            wasResized = true;
-        }
-        var current_chunk_offset = self.char_count;
-        var current_chunk_chars: u32 = 0;
+
+        // Temporary buffer to collect characters for current chunk
+        var chunk_chars = std.ArrayList(u32).init(self.allocator);
+        defer chunk_chars.deinit();
+
         var current_chunk_width: u32 = 0;
 
         iter = self.graphemes_data.iterator(textBytes);
@@ -359,28 +721,28 @@ pub const TextBuffer = struct {
                 const right = gp.charRightExtent(encoded_char);
                 const gid: u32 = gp.graphemeIdFromChar(encoded_char);
 
-                self.char[self.char_count] = encoded_char;
+                try chunk_chars.append(encoded_char);
                 self.char_count += 1;
-                current_chunk_chars += 1;
 
                 var k: u32 = 1;
-                while (k <= right and self.char_count < self.capacity) : (k += 1) {
+                while (k <= right) : (k += 1) {
                     const cont = gp.packContinuation(k, right - k, gid);
-                    self.char[self.char_count] = cont;
+                    try chunk_chars.append(cont);
                     self.char_count += 1;
-                    current_chunk_chars += 1;
                 }
             } else {
-                self.char[self.char_count] = encoded_char;
+                try chunk_chars.append(encoded_char);
                 self.char_count += 1;
-                current_chunk_chars += 1;
             }
 
             if (is_newline) {
-                if (current_chunk_chars > 0) {
+                if (chunk_chars.items.len > 0) {
+                    // Allocate permanent storage for chunk chars from arena
+                    const chunk_data = self.allocator.alloc(u32, chunk_chars.items.len) catch return TextBufferError.OutOfMemory;
+                    @memcpy(chunk_data, chunk_chars.items);
+
                     const chunk = TextChunk{
-                        .offset = current_chunk_offset,
-                        .length = current_chunk_chars,
+                        .chars = chunk_data,
                         .fg = fg,
                         .bg = bg,
                         .attributes = attrValue,
@@ -388,14 +750,13 @@ pub const TextBuffer = struct {
 
                     if (self.current_line < self.lines.items.len) {
                         const chunk_index = self.lines.items[self.current_line].chunks.items.len;
-                        self.lines.items[self.current_line].chunks.append(chunk) catch return TextBufferError.OutOfMemory;
+                        self.lines.items[self.current_line].chunks.append(self.allocator, chunk) catch return TextBufferError.OutOfMemory;
                         self.lines.items[self.current_line].width += current_chunk_width;
 
-                        chunk_group.addChunkRef(self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
+                        chunk_group.addChunkRef(self.allocator, self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
                     }
 
-                    current_chunk_offset = self.char_count;
-                    current_chunk_chars = 0;
+                    chunk_chars.clearRetainingCapacity();
                     current_chunk_width = 0;
                 }
 
@@ -407,9 +768,9 @@ pub const TextBuffer = struct {
 
                 self.current_line += 1;
                 if (self.current_line >= self.lines.items.len) {
-                    var new_line = TextLine.init(self.allocator);
-                    new_line.char_start = self.char_count;
-                    self.lines.append(new_line) catch return TextBufferError.OutOfMemory;
+                    var new_line = TextLine.init();
+                    new_line.char_offset = self.char_count;
+                    self.lines.append(self.allocator, new_line) catch return TextBufferError.OutOfMemory;
                 }
 
                 cellCount += 1;
@@ -421,10 +782,13 @@ pub const TextBuffer = struct {
         }
 
         // Create final chunk if there's remaining content
-        if (current_chunk_chars > 0) {
+        if (chunk_chars.items.len > 0) {
+            // Allocate permanent storage for chunk chars from arena
+            const chunk_data = self.allocator.alloc(u32, chunk_chars.items.len) catch return TextBufferError.OutOfMemory;
+            @memcpy(chunk_data, chunk_chars.items);
+
             const chunk = TextChunk{
-                .offset = current_chunk_offset,
-                .length = current_chunk_chars,
+                .chars = chunk_data,
                 .fg = fg,
                 .bg = bg,
                 .attributes = attrValue,
@@ -432,17 +796,16 @@ pub const TextBuffer = struct {
 
             if (self.current_line < self.lines.items.len) {
                 const chunk_index = self.lines.items[self.current_line].chunks.items.len;
-                self.lines.items[self.current_line].chunks.append(chunk) catch return TextBufferError.OutOfMemory;
+                self.lines.items[self.current_line].chunks.append(self.allocator, chunk) catch return TextBufferError.OutOfMemory;
                 self.lines.items[self.current_line].width += current_chunk_width;
 
-                chunk_group.addChunkRef(self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
+                chunk_group.addChunkRef(self.allocator, self.current_line, chunk_index) catch return TextBufferError.OutOfMemory;
             }
         }
 
-        self.chunk_groups.append(chunk_group) catch return TextBufferError.OutOfMemory;
+        self.chunk_groups.append(self.allocator, chunk_group) catch return TextBufferError.OutOfMemory;
 
-        const resizeFlag: u32 = if (wasResized) 1 else 0;
-        return (cellCount << 1) | resizeFlag;
+        return cellCount << 1;
     }
 
     pub fn finalizeLineInfo(self: *TextBuffer) void {
@@ -450,9 +813,17 @@ pub const TextBuffer = struct {
         if (self.current_line < self.lines.items.len) {
             self.lines.items[self.current_line].width = self.current_line_width;
         }
+        // Mark virtual lines as dirty so they get recalculated
+        self.virtual_lines_dirty = true;
     }
 
-    pub fn getLineCount(self: *const TextBuffer) u32 {
+    pub fn getLineCount(self: *TextBuffer) u32 {
+        // Ensure virtual lines are up to date
+        self.updateVirtualLines();
+        // Return virtual line count if we have wrapping
+        if (self.wrap_width != null) {
+            return @intCast(self.virtual_lines.items.len);
+        }
         return @intCast(self.lines.items.len);
     }
 
@@ -525,9 +896,11 @@ pub const TextBuffer = struct {
 
     /// Calculate character positions from local selection coordinates
     /// Returns null if no valid selection
-    fn calculateMultiLineSelection(self: *const TextBuffer) ?struct { start: u32, end: u32 } {
+    fn calculateMultiLineSelection(self: *TextBuffer) ?struct { start: u32, end: u32 } {
         const local_sel = self.local_selection orelse return null;
         if (!local_sel.isActive) return null;
+
+        self.updateVirtualLines();
 
         var selectionStart: ?u32 = null;
         var selectionEnd: ?u32 = null;
@@ -549,15 +922,15 @@ pub const TextBuffer = struct {
             selEndX = local_sel.anchorX;
         }
 
-        for (self.lines.items, 0..) |line, i| {
+        for (self.virtual_lines.items, 0..) |vline, i| {
             const lineY = @as(i32, @intCast(i));
 
             if (lineY < startY or lineY > endY) continue;
 
-            const lineStart = line.char_start;
-            const lineWidth = line.width;
-            const lineEnd = if (i < self.lines.items.len - 1)
-                self.lines.items[i + 1].char_start - 1
+            const lineStart = vline.char_offset;
+            const lineWidth = vline.width;
+            const lineEnd = if (i < self.virtual_lines.items.len - 1)
+                self.virtual_lines.items[i + 1].char_offset - 1
             else
                 lineStart + lineWidth;
 
@@ -610,9 +983,8 @@ pub const TextBuffer = struct {
         for (self.lines.items) |line| {
             for (line.chunks.items) |chunk| {
                 var chunk_char_index: u32 = 0;
-                while (chunk_char_index < chunk.length and count < end and out_index < out_buffer.len) : (chunk_char_index += 1) {
-                    const global_char_index = chunk.offset + chunk_char_index;
-                    const c = self.char[global_char_index];
+                while (chunk_char_index < chunk.chars.len and count < end and out_index < out_buffer.len) : (chunk_char_index += 1) {
+                    const c = chunk.chars[chunk_char_index];
 
                     if (!gp.isContinuationChar(c)) {
                         if (count >= start) {
@@ -636,11 +1008,10 @@ pub const TextBuffer = struct {
                         if (gp.isGraphemeChar(c)) {
                             const right_extent = gp.charRightExtent(c);
                             var k: u32 = 0;
-                            while (k < right_extent and chunk_char_index + 1 < chunk.length) : (k += 1) {
+                            while (k < right_extent and chunk_char_index + 1 < chunk.chars.len) : (k += 1) {
                                 chunk_char_index += 1;
                                 // Verify the continuation character exists
-                                const cont_index = chunk.offset + chunk_char_index;
-                                if (cont_index >= self.char_count or !gp.isContinuationChar(self.char[cont_index])) {
+                                if (chunk_char_index >= chunk.chars.len or !gp.isContinuationChar(chunk.chars[chunk_char_index])) {
                                     break;
                                 }
                             }
@@ -662,9 +1033,8 @@ pub const TextBuffer = struct {
         for (self.lines.items) |line| {
             for (line.chunks.items) |chunk| {
                 var chunk_char_index: u32 = 0;
-                while (chunk_char_index < chunk.length and out_index < out_buffer.len) : (chunk_char_index += 1) {
-                    const global_char_index = chunk.offset + chunk_char_index;
-                    const c = self.char[global_char_index];
+                while (chunk_char_index < chunk.chars.len and out_index < out_buffer.len) : (chunk_char_index += 1) {
+                    const c = chunk.chars[chunk_char_index];
 
                     if (!gp.isContinuationChar(c)) {
                         if (gp.isGraphemeChar(c)) {
@@ -685,11 +1055,10 @@ pub const TextBuffer = struct {
                         if (gp.isGraphemeChar(c)) {
                             const right_extent = gp.charRightExtent(c);
                             var k: u32 = 0;
-                            while (k < right_extent and chunk_char_index + 1 < chunk.length) : (k += 1) {
+                            while (k < right_extent and chunk_char_index + 1 < chunk.chars.len) : (k += 1) {
                                 chunk_char_index += 1;
                                 // Verify the continuation character exists
-                                const cont_index = chunk.offset + chunk_char_index;
-                                if (cont_index >= self.char_count or !gp.isContinuationChar(self.char[cont_index])) {
+                                if (chunk_char_index >= chunk.chars.len or !gp.isContinuationChar(chunk.chars[chunk_char_index])) {
                                     break;
                                 }
                             }
@@ -707,22 +1076,23 @@ pub const TextBuffer = struct {
     pub fn insertChunkGroup(self: *TextBuffer, index: usize, text_bytes: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) TextBufferError!u32 {
         if (text_bytes.len == 0) return self.char_count;
 
-        // TODO: Inserts currently leak, as they only append
-        // - will be solved with a global text pool
+        // Save the current state to identify newly created chunks
+        const old_line_count = self.lines.items.len;
+        const old_last_line_chunk_count = if (old_line_count > 0)
+            self.lines.items[old_line_count - 1].chunks.items.len
+        else
+            0;
 
-        const old_char_count = self.char_count;
-        // TODO: Use a re-usable parseChunk function instead of writeChunk and .pop workaround
+        // Use writeChunk to parse and create chunks, then pop the group
         _ = try self.writeChunk(text_bytes, fg, bg, attr);
         const new_chunk_group = self.chunk_groups.pop() orelse return TextBufferError.InvalidIndex;
 
         if (index >= self.chunk_groups.items.len) {
-            self.chunk_groups.append(new_chunk_group) catch return TextBufferError.OutOfMemory;
+            self.chunk_groups.append(self.allocator, new_chunk_group) catch return TextBufferError.OutOfMemory;
             return self.char_count;
         }
 
-        // TODO: Everything form here on seems very inefficient, can be improved
-
-        // Move chunks from temporary lines to correct insertion point
+        // Move chunks from where writeChunk put them to the correct insertion point
         const target_group = self.chunk_groups.items[index];
         const insert_line_idx = if (target_group.chunk_refs.items.len > 0)
             target_group.chunk_refs.items[0].line_index
@@ -733,31 +1103,51 @@ pub const TextBuffer = struct {
         else
             0;
 
-        if (insert_line_idx < self.lines.items.len) {
-            var target_line = &self.lines.items[insert_line_idx];
+        // Collect all newly created chunks
+        var new_chunks: std.ArrayListUnmanaged(TextChunk) = .{};
+        defer new_chunks.deinit(self.allocator);
 
-            var inserted_chunk_idx: ?usize = null;
-            for (target_line.chunks.items, 0..) |chunk, i| {
-                if (chunk.offset >= old_char_count) {
-                    inserted_chunk_idx = i;
-                    break;
+        // If writeChunk created new lines, those chunks are new
+        const current_line_count = self.lines.items.len;
+        if (current_line_count > old_line_count) {
+            for (old_line_count..current_line_count) |line_idx| {
+                for (self.lines.items[line_idx].chunks.items) |chunk| {
+                    try new_chunks.append(self.allocator, chunk);
                 }
             }
-
-            if (inserted_chunk_idx) |idx| {
-                const inserted_chunk = target_line.chunks.orderedRemove(idx);
-
-                target_line.chunks.insert(insert_chunk_idx, inserted_chunk) catch return TextBufferError.OutOfMemory;
-
-                for (new_chunk_group.chunk_refs.items) |*ref| {
-                    if (ref.line_index == insert_line_idx) {
-                        ref.chunk_index = insert_chunk_idx;
-                    }
-                }
+            // Remove the extra lines created by writeChunk
+            while (self.lines.items.len > old_line_count) {
+                var line = self.lines.pop() orelse break;
+                line.chunks.clearRetainingCapacity(); // Don't deinit, we moved the chunks
             }
         }
 
-        self.chunk_groups.insert(index, new_chunk_group) catch return TextBufferError.OutOfMemory;
+        // Also get new chunks added to the last existing line
+        if (old_line_count > 0) {
+            var last_line = &self.lines.items[old_line_count - 1];
+            while (last_line.chunks.items.len > old_last_line_chunk_count) {
+                const chunk = last_line.chunks.pop() orelse break;
+                try new_chunks.insert(self.allocator, 0, chunk); // Insert at beginning to maintain order
+            }
+        }
+
+        // Now insert the new chunks at the target location
+        if (insert_line_idx < self.lines.items.len and new_chunks.items.len > 0) {
+            var target_line = &self.lines.items[insert_line_idx];
+
+            // Insert all new chunks at the target position
+            for (new_chunks.items, 0..) |chunk, i| {
+                try target_line.chunks.insert(self.allocator, insert_chunk_idx + i, chunk);
+            }
+
+            // Update chunk refs to point to the newly inserted chunks
+            for (new_chunk_group.chunk_refs.items, 0..) |*ref, i| {
+                ref.line_index = insert_line_idx;
+                ref.chunk_index = insert_chunk_idx + i;
+            }
+        }
+
+        self.chunk_groups.insert(self.allocator, index, new_chunk_group) catch return TextBufferError.OutOfMemory;
 
         return self.char_count;
     }
@@ -781,7 +1171,7 @@ pub const TextBuffer = struct {
         }
 
         _ = self.chunk_groups.orderedRemove(index);
-        chunk_group.deinit();
+        chunk_group.deinit(self.allocator);
         self.allocator.destroy(chunk_group);
 
         return self.char_count;
@@ -806,5 +1196,21 @@ pub const TextBuffer = struct {
     pub fn getChunkGroup(self: *const TextBuffer, index: usize) ?*const ChunkGroup {
         if (index >= self.chunk_groups.items.len) return null;
         return self.chunk_groups.items[index];
+    }
+
+    /// Get cached line info (line starts and widths)
+    /// Returns the maximum line width
+    pub fn getCachedLineInfo(self: *TextBuffer) struct {
+        starts: []const u32,
+        widths: []const u32,
+        max_width: u32,
+    } {
+        self.updateVirtualLines();
+
+        return .{
+            .starts = self.cached_line_starts.items,
+            .widths = self.cached_line_widths.items,
+            .max_width = self.cached_max_width,
+        };
     }
 };

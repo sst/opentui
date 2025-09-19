@@ -1,5 +1,86 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`TextRenderable Selection Word Wrapping should wrap at word boundaries when using word mode 1`] = `
+"The quick           
+brown fox           
+jumps over the      
+lazy dog            
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should wrap at character boundaries when using char mode 1`] = `
+"The quick brown     
+ fox jumps over     
+ the lazy dog       
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle word wrapping with punctuation 1`] = `
+"Hello,              
+World.              
+Test-               
+Example/            
+Path                
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle word wrapping with hyphens and dashes 1`] = `
+"self-               
+contained           
+multi-line          
+text-               
+wrapping            
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should dynamically change wrap mode 1`] = `
+"The quick           
+brown fox           
+jumps               
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle long words that exceed wrap width in word mode 1`] = `
+"ABCDEFGHIJ          
+KLMNOPQRST          
+UVWXYZ              
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should preserve empty lines with word wrapping 1`] = `
+"First               
+line                
+                    
+Third               
+line                
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle word wrapping with single character words 1`] = `
+"a b c d             
+e f g h             
+i j k l             
+m n o p             
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should compare char vs word wrapping with same content 1`] = `
+"Hello               
+wonderful           
+world of            
+text                
+wrapping            
+"
+`;
+
 exports[`TextRenderable Selection Text Content Snapshots should render basic text content correctly 1`] = `
 "                    
                     
@@ -51,5 +132,41 @@ exports[`TextRenderable Selection Text Content Snapshots should render empty buf
                     
                     
                     
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with character wrapping correctly 1`] = `
+"This is a very      
+long text that      
+should wrap to      
+multiple lines      
+when wrap is en     
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with different content 1`] = `
+"                    
+  ABCDEFGHIJ        
+  KLMNOPQRST        
+  UVWXYZ abc        
+  defghijklm        
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with emojis and graphemes 1`] = `
+" Hello 🌍 Wor       
+ ld 👋 This i       
+ s a test wit       
+ h emojis 🚀        
+ that should        
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped multiline text correctly 1`] = `
+"                    
+First li            
+ne with             
+long con            
+tent                
 "
 `;

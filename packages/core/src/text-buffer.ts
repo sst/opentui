@@ -1,6 +1,6 @@
 import type { StyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
 
@@ -16,19 +16,17 @@ export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _length: number = 0
-  private _capacity: number
-  private _lineInfo?: { lineStarts: number[]; lineWidths: number[] }
+  private _lineInfo?: LineInfo
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: Pointer, capacity: number) {
+  constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
     this.bufferPtr = ptr
-    this._capacity = capacity
   }
 
-  static create(capacity: number = 64, widthMethod: WidthMethod): TextBuffer {
+  static create(widthMethod: WidthMethod): TextBuffer {
     const lib = resolveRenderLib()
-    return lib.createTextBuffer(capacity, widthMethod)
+    return lib.createTextBuffer(widthMethod)
   }
 
   // Fail loud and clear
@@ -46,17 +44,13 @@ export class TextBuffer {
 
     for (const chunk of text.chunks) {
       const textBytes = this.lib.encoder.encode(chunk.text)
-      const result = this.lib.textBufferWriteChunk(
+      this.lib.textBufferWriteChunk(
         this.bufferPtr,
         textBytes,
         chunk.fg || null,
         chunk.bg || null,
         chunk.attributes ?? null,
       )
-
-      if (result & 1) {
-        this._capacity = this.lib.textBufferGetCapacity(this.bufferPtr)
-      }
     }
 
     // TODO: textBufferFinalizeLineInfo can return the length of the text buffer, not another call to textBufferGetLength
@@ -89,11 +83,6 @@ export class TextBuffer {
     return this._length
   }
 
-  public get capacity(): number {
-    this.guard()
-    return this._capacity
-  }
-
   public get ptr(): Pointer {
     this.guard()
     return this.bufferPtr
@@ -121,7 +110,7 @@ export class TextBuffer {
     return this.lib.decoder.decode(plainBytes)
   }
 
-  public get lineInfo(): { lineStarts: number[]; lineWidths: number[] } {
+  public get lineInfo(): LineInfo {
     this.guard()
     if (!this._lineInfo) {
       this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
@@ -233,6 +222,18 @@ export class TextBuffer {
   public get chunkGroupCount(): number {
     this.guard()
     return this.lib.textBufferGetChunkGroupCount(this.bufferPtr)
+  }
+
+  public setWrapWidth(width: number | null): void {
+    this.guard()
+    this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)
+    this._lineInfo = undefined
+  }
+
+  public setWrapMode(mode: "char" | "word"): void {
+    this.guard()
+    this.lib.textBufferSetWrapMode(this.bufferPtr, mode)
+    this._lineInfo = undefined
   }
 
   public destroy(): void {

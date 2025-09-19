@@ -200,7 +200,7 @@ describe("SolidJS Renderer Integration Tests", () => {
 
       testSetup = await testRender(
         () => (
-          <text>
+          <text wrap={false}>
             Always visible
             <Show when={showText()} fallback="">
               {" - Conditional text"}
@@ -232,15 +232,29 @@ describe("SolidJS Renderer Integration Tests", () => {
         () => (
           <box style={{ width: 40, border: true }} title="Complex Layout">
             <box style={{ left: 2, width: 15, height: 5, border: true, backgroundColor: "#333" }}>
-              <text style={{ fg: "cyan" }}>Header Section</text>
-              <text style={{ fg: "yellow" }}>Menu Item 1</text>
-              <text style={{ fg: "yellow" }}>Menu Item 2</text>
+              <text wrap={false} style={{ fg: "cyan" }}>
+                Header Section
+              </text>
+              <text wrap={false} style={{ fg: "yellow" }}>
+                Menu Item 1
+              </text>
+              <text wrap={false} style={{ fg: "yellow" }}>
+                Menu Item 2
+              </text>
             </box>
             <box style={{ left: 18, width: 18, height: 8, border: true, backgroundColor: "#222" }}>
-              <text style={{ fg: "green" }}>Content Area</text>
-              <text style={{ fg: "white" }}>Some content here</text>
-              <text style={{ fg: "white" }}>More content</text>
-              <text style={{ fg: "magenta" }}>Footer text</text>
+              <text wrap={false} style={{ fg: "green" }}>
+                Content Area
+              </text>
+              <text wrap={false} style={{ fg: "white" }}>
+                Some content here
+              </text>
+              <text wrap={false} style={{ fg: "white" }}>
+                More content
+              </text>
+              <text wrap={false} style={{ fg: "magenta" }}>
+                Footer text
+              </text>
             </box>
             <text style={{ left: 2, fg: "gray" }}>Status: Ready</text>
           </box>

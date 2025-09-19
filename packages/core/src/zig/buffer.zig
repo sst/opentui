@@ -822,76 +822,110 @@ pub const OptimizedBuffer = struct {
     /// Draw a TextBuffer to this OptimizedBuffer with selection support
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
-        text_buffer: *const TextBuffer,
+        text_buffer: *TextBuffer,
         x: i32,
         y: i32,
         clip_rect: ?ClipRect,
     ) !void {
+        text_buffer.updateVirtualLines();
+
+        if (text_buffer.virtual_lines.items.len == 0) return;
+
+        const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
+        const bufferBottomY = self.height;
+        const lastPossibleLine = if (y >= bufferBottomY)
+            0
+        else
+            @min(text_buffer.virtual_lines.items.len, bufferBottomY - @as(u32, @intCast(y)));
+
+        if (firstVisibleLine >= text_buffer.virtual_lines.items.len or lastPossibleLine == 0) return;
+        if (firstVisibleLine >= lastPossibleLine) return;
+
         var currentX = x;
-        var currentY = y;
+        var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
 
-        for (text_buffer.lines.items) |line| {
-            for (line.chunks.items) |chunk| {
-                var chunkFg = chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };
-                var chunkBg = chunk.bg orelse text_buffer.default_bg orelse .{ 0.0, 0.0, 0.0, 0.0 };
-                var chunkAttributes: u8 = @intCast(chunk.attributes & tb.ATTR_MASK);
+        const line_info = text_buffer.getCachedLineInfo();
+        var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)
+            line_info.starts[firstVisibleLine]
+        else
+            0;
 
-                if (chunk.attributes & tb.USE_DEFAULT_ATTR != 0) {
+        for (text_buffer.virtual_lines.items[firstVisibleLine..lastPossibleLine]) |vline| {
+            if (currentY >= bufferBottomY) break;
+
+            currentX = x;
+
+            for (vline.chunks.items) |vchunk| {
+                const source_chunk = &text_buffer.lines.items[vchunk.source_line].chunks.items[vchunk.source_chunk];
+                const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
+
+                if (currentX >= @as(i32, @intCast(self.width))) {
+                    globalCharPos += @intCast(chars.len);
+                    currentX += @intCast(chars.len);
+                    continue;
+                }
+
+                var chunkFg = source_chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };
+                var chunkBg = source_chunk.bg orelse text_buffer.default_bg orelse .{ 0.0, 0.0, 0.0, 0.0 };
+                var chunkAttributes: u8 = @intCast(source_chunk.attributes & tb.ATTR_MASK);
+
+                if (source_chunk.attributes & tb.USE_DEFAULT_ATTR != 0) {
                     if (text_buffer.default_attributes) |defAttr| {
                         chunkAttributes = defAttr;
                     }
                 }
 
-                if (chunk.attributes & tb.USE_DEFAULT_FG != 0) {
+                if (source_chunk.attributes & tb.USE_DEFAULT_FG != 0) {
                     if (text_buffer.default_fg) |defFg| {
                         chunkFg = defFg;
                     }
                 }
-                if (chunk.attributes & tb.USE_DEFAULT_BG != 0) {
+                if (source_chunk.attributes & tb.USE_DEFAULT_BG != 0) {
                     if (text_buffer.default_bg) |defBg| {
                         chunkBg = defBg;
                     }
                 }
 
-                var chunkCharIndex: u32 = 0;
-                while (chunkCharIndex < chunk.length) : (chunkCharIndex += 1) {
-                    const globalCharIndex = chunk.offset + chunkCharIndex;
-                    const charCode = text_buffer.char[globalCharIndex];
-
+                var charIndex: u32 = 0;
+                for (chars) |charCode| {
                     if (charCode == '\n') {
-                        currentY += 1;
-                        currentX = x;
+                        globalCharPos += 1;
+                        charIndex += 1;
                         continue;
                     }
 
-                    if (currentX < 0 or currentY < 0) {
+                    if (currentX < 0) {
+                        globalCharPos += 1;
                         currentX += 1;
+                        charIndex += 1;
                         continue;
                     }
-                    if (currentX >= @as(i32, @intCast(self.width)) or currentY >= @as(i32, @intCast(self.height))) {
-                        currentX += 1;
-                        continue;
+                    if (currentX >= @as(i32, @intCast(self.width))) {
+                        const remainingChars = chars.len - charIndex;
+                        globalCharPos += @intCast(remainingChars);
+                        currentX += @intCast(remainingChars);
+                        break;
                     }
 
                     // TODO: Clip rect is currently used in text buffer drawing and cannot be removed yet.
-                    // The scissor rect is pushed AFTER renderSelf() in Renderable.ts, but text
-                    // rendering happens INSIDE renderSelf(). For overflow="visible" (default),
-                    // no scissor rect is set, so clipRect is the only clipping mechanism.
-                    // For overflow="hidden", both are used (redundant). Need to figure out where
-                    // to push scissor rect to allow box drawing but clip children without border.
+                    // Using scissor only should work now.
                     if (clip_rect) |clip| {
                         if (currentX < clip.x or currentY < clip.y or
                             currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                            currentY >= clip.y + @as(i32, @intCast(clip.height)))
+                            currentY > clip.y + @as(i32, @intCast(clip.height))) // inclusive
                         {
+                            globalCharPos += 1;
                             currentX += 1;
+                            charIndex += 1;
                             continue;
                         }
                     }
 
                     if (!self.isPointInScissor(currentX, currentY)) {
+                        globalCharPos += 1;
                         currentX += 1;
+                        charIndex += 1;
                         continue;
                     }
 
@@ -899,8 +933,9 @@ pub const OptimizedBuffer = struct {
                     var finalBg = chunkBg;
                     const finalAttributes = chunkAttributes;
 
+                    // Handle selection highlighting
                     if (text_buffer.selection) |sel| {
-                        const isSelected = globalCharIndex >= sel.start and globalCharIndex < sel.end;
+                        const isSelected = globalCharPos >= sel.start and globalCharPos < sel.end;
                         if (isSelected) {
                             if (sel.bgColor) |selBg| {
                                 finalBg = selBg;
@@ -928,32 +963,25 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (graphemeAware) {
-                        if (gp.isContinuationChar(charCode)) {
-                            try self.setCellWithAlphaBlending(
-                                @intCast(currentX),
-                                @intCast(currentY),
-                                charCode,
-                                drawFg,
-                                drawBg,
-                                drawAttributes,
-                            );
-                        } else {
-                            try self.setCellWithAlphaBlending(
-                                @intCast(currentX),
-                                @intCast(currentY),
-                                charCode,
-                                drawFg,
-                                drawBg,
-                                drawAttributes,
-                            );
-                        }
+                        try self.setCellWithAlphaBlending(
+                            @intCast(currentX),
+                            @intCast(currentY),
+                            charCode,
+                            drawFg,
+                            drawBg,
+                            drawAttributes,
+                        );
                     } else {
                         self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), charCode, drawFg, drawBg, drawAttributes) catch {};
                     }
 
+                    globalCharPos += 1;
                     currentX += 1;
+                    charIndex += 1;
                 }
             }
+
+            currentY += 1;
         }
     }
 
