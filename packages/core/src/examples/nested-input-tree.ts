@@ -114,11 +114,10 @@ export function run(rendererInstance: CliRenderer): void {
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (parentContainer) {
-    rendererInstance.root.remove(parentContainer.id)
     parentContainer.destroyRecursively()
   }
 
-  if (footerBox) rendererInstance.root.remove(footerBox.id)
+  if (footerBox) footerBox.destroyRecursively()
 
   parentContainer = null
   footer = null
