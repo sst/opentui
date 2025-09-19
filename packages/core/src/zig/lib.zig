@@ -15,7 +15,6 @@ pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
-// Export the setLogCallback function from logger module
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
     logger.setLogCallback(callback);
 }
@@ -25,23 +24,23 @@ fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
 }
 
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-const allocator = arena.allocator();
+const globalArena = arena.allocator();
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
 
-export fn createRenderer(width: u32, height: u32) ?*renderer.CliRenderer {
+export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
-    const pool = gp.initGlobalPool(allocator);
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
+    const pool = gp.initGlobalPool(globalArena);
+    const unicode_data = gp.initGlobalUnicodeData(globalArena);
 
     const graphemes_ptr, const display_width_ptr = unicode_data;
-    return renderer.CliRenderer.create(allocator, width, height, pool, graphemes_ptr, display_width_ptr) catch |err| {
+    return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, graphemes_ptr, display_width_ptr, testing) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -51,8 +50,8 @@ export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void
     rendererPtr.setUseThread(useThread);
 }
 
-export fn destroyRenderer(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool, splitHeight: u32) void {
-    rendererPtr.destroy(useAlternateScreen, splitHeight);
+export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.destroy();
 }
 
 export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
@@ -97,14 +96,14 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
         return null;
     }
 
-    const pool = gp.initGlobalPool(allocator);
+    const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
-
+    const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
-    return buffer.OptimizedBuffer.init(allocator, width, height, .{
+
+    return buffer.OptimizedBuffer.init(std.heap.page_allocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
@@ -211,6 +210,15 @@ export fn bufferGetId(bufferPtr: *buffer.OptimizedBuffer, outPtr: [*]u8, maxLen:
     const copyLen = @min(id.len, maxLen);
     @memcpy(outPtr[0..copyLen], id[0..copyLen]);
     return copyLen;
+}
+
+export fn bufferGetRealCharSize(bufferPtr: *buffer.OptimizedBuffer) u32 {
+    return bufferPtr.getRealCharSize();
+}
+
+export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr: [*]u8, outputLen: usize, addLineBreaks: bool) u32 {
+    const output_slice = outputPtr[0..outputLen];
+    return bufferPtr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
 }
 
 export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
@@ -351,13 +359,16 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
 }
 
 export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffer {
-    const pool = gp.initGlobalPool(allocator);
+    const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
-
+    const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
-    const tb = text_buffer.TextBuffer.init(allocator, length, pool, wMethod, graphemes_ptr, display_width_ptr) catch return null;
+
+    const tb = text_buffer.TextBuffer.init(std.heap.page_allocator, length, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
+        return null;
+    };
+
     return tb;
 }
 

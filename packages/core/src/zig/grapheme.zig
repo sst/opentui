@@ -375,4 +375,23 @@ pub const GraphemeTracker = struct {
     pub fn hasAny(self: *const GraphemeTracker) bool {
         return self.used_ids.count() > 0;
     }
+
+    pub fn getGraphemeCount(self: *const GraphemeTracker) u32 {
+        return @intCast(self.used_ids.count());
+    }
+
+    pub fn getTotalGraphemeBytes(self: *const GraphemeTracker) u32 {
+        var total_bytes: u32 = 0;
+        var it = self.used_ids.keyIterator();
+        while (it.next()) |idp| {
+            const id = idp.*;
+            if (self.pool.get(id)) |bytes| {
+                total_bytes += @intCast(bytes.len);
+            } else |_| {
+                // If we can't get the bytes, this shouldn't happen but handle gracefully
+                continue;
+            }
+        }
+        return total_bytes;
+    }
 };

@@ -19,14 +19,14 @@ let scrollBox: ScrollBoxRenderable | null = null
 let renderer: CliRenderer | null = null
 let mainContainer: BoxRenderable | null = null
 let instructionsBox: BoxRenderable | null = null
-let nextIndex = 10000
+let nextIndex = 1000
 
 function addBox(i: number) {
   if (!renderer || !scrollBox) return
 
   const box = new BoxRenderable(renderer, {
     id: `box-${i + 1}`,
-    width: "100%",
+    width: "auto",
     padding: 1,
     marginBottom: 1,
     backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449",
@@ -129,7 +129,7 @@ export function run(rendererInstance: CliRenderer): void {
       backgroundColor: "#16161e",
     },
     scrollbarOptions: {
-      showArrows: true,
+      //   showArrows: true,
       trackOptions: {
         foregroundColor: "#7aa2f7",
         backgroundColor: "#414868",
@@ -174,32 +174,6 @@ export function run(rendererInstance: CliRenderer): void {
       addBox(index)
     }
   }
-}
-
-export function destroy(rendererInstance: CliRenderer): void {
-  if (mainContainer) {
-    rendererInstance.root.remove(mainContainer.id)
-    mainContainer.destroy()
-    mainContainer = null
-  }
-  if (scrollBox) {
-    scrollBox.destroy()
-    scrollBox = null
-  }
-  if (instructionsBox) {
-    instructionsBox.destroy()
-    instructionsBox = null
-  }
-  renderer = null
-}
-
-if (import.meta.main) {
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
-  })
-
-  run(renderer)
-  setupCommonDemoKeys(renderer)
 
   getKeyHandler().on("keypress", (key) => {
     if (key.name === "a" && scrollBox) {
@@ -220,4 +194,24 @@ if (import.meta.main) {
       nextIndex++
     }
   })
+}
+
+export function destroy(rendererInstance: CliRenderer): void {
+  if (mainContainer) {
+    rendererInstance.root.remove(mainContainer.id)
+    mainContainer.destroyRecursively()
+    mainContainer = null
+  }
+  scrollBox = null
+  instructionsBox = null
+  renderer = null
+}
+
+if (import.meta.main) {
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+  })
+
+  run(renderer)
+  setupCommonDemoKeys(renderer)
 }

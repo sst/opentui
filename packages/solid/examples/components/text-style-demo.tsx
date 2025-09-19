@@ -1,5 +1,5 @@
-import { bold, underline, t, fg, bg, italic } from "@opentui/core"
-import { createSignal, onCleanup, onMount } from "solid-js"
+import { TextAttributes } from "@opentui/core"
+import { createSignal, onCleanup, onMount, Show } from "solid-js"
 
 export default function TextStyleScene() {
   const [counter, setCounter] = createSignal(0)
@@ -19,15 +19,26 @@ export default function TextStyleScene() {
   return (
     <box>
       <text>Simple text works! {counter()} times</text>
-      <text>{underline(bold(`Chunk also works! ${counter()} times`))}</text>
-      <text>{t`${italic(fg("#adff2f")("Styled"))} ${bold(fg("#ff8c00")("Text"))} also works! ${counter()} times`}</text>
       <text>
-        And {bold("chunk arrays")} work {fg("#ff8c00")("as welll")}!! {italic(underline(`${counter()}`))} times
+        line break
+        <br />
+        works! {counter()} times
       </text>
-      You do not need to have a text node {counter()} as a parent when dealing with text {counter()} times
-      <box border>
-        {counter()} Mix in some {bold("more text")} {counter()} times
-      </box>
+      <text style={{ bg: "red", fg: "black" }}>
+        Hello {counter()} <span style={{ bg: "yellow", fg: "black" }}>World</span>{" "}
+        <span style={{ attributes: TextAttributes.UNDERLINE, bg: "blue", fg: "yellow" }}>{counter()}</span>
+      </text>
+      <text>
+        Toggle{" "}
+        <Show when={counter() % 2 === 0}>
+          <b>
+            <u>text</u>
+          </b>
+        </Show>
+      </text>
+      <text>
+        Toggle <Show when={counter() % 2 === 0}>text</Show>
+      </text>
     </box>
   )
 }

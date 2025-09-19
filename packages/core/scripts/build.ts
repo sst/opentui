@@ -40,7 +40,6 @@ const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
-const isCi = args.includes("--ci")
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -194,7 +193,7 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [packageJson.module, "src/3d.ts"]
+  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
 
   spawnSync(
     "bun",
@@ -217,7 +216,7 @@ if (buildLib) {
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js"]
+  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js"]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -255,11 +254,8 @@ if (buildLib) {
   })
 
   if (tscResult.status !== 0) {
-    if (isCi) {
-      console.error("Error: TypeScript declaration generation failed")
-      process.exit(1)
-    }
-    console.warn("Warning: TypeScript declaration generation failed")
+    console.error("Error: TypeScript declaration generation failed")
+    process.exit(1)
   } else {
     console.log("TypeScript declarations generated")
   }
@@ -275,6 +271,11 @@ if (buildLib) {
       import: "./3d.js",
       require: "./3d.js",
       types: "./3d.d.ts",
+    },
+    "./testing": {
+      import: "./testing.js",
+      require: "./testing.js",
+      types: "./testing.d.ts",
     },
   }
 

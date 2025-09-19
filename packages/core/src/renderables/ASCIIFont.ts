@@ -162,6 +162,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
   }
 
   private renderFontToBuffer(): void {
+    if (this.isDestroyed) return
     this.frameBuffer.clear(this._bg)
 
     renderFontToFrameBuffer(this.frameBuffer, {

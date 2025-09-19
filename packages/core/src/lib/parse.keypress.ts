@@ -1,5 +1,6 @@
 // Copied from https://github.com/enquirer/enquirer/blob/36785f3399a41cd61e9d28d1eb9c2fcd73d69b4c/lib/keypress.js
 import { Buffer } from "node:buffer"
+import { parseKittyKeyboard } from "./parse.keypress-kitty"
 
 const metaKeyCodeRe = /^(?:\x1b)([a-zA-Z0-9])$/
 
@@ -105,6 +106,8 @@ const isCtrlKey = (code: string) => {
   return ["Oa", "Ob", "Oc", "Od", "Oe", "[2^", "[3^", "[5^", "[6^", "[7^", "[8^"].includes(code)
 }
 
+export type KeyEventType = "press" | "repeat" | "release"
+
 export type ParsedKey = {
   name: string
   ctrl: boolean
@@ -114,10 +117,20 @@ export type ParsedKey = {
   sequence: string
   number: boolean
   raw: string
+  eventType: KeyEventType
   code?: string
+  super?: boolean
+  hyper?: boolean
+  capsLock?: boolean
+  numLock?: boolean
+  baseCode?: number
 }
 
-export const parseKeypress = (s: Buffer | string = ""): ParsedKey => {
+export type ParseKeypressOptions = {
+  useKittyKeyboard?: boolean
+}
+
+export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOptions = {}): ParsedKey => {
   let parts
 
   if (Buffer.isBuffer(s)) {
@@ -142,9 +155,18 @@ export const parseKeypress = (s: Buffer | string = ""): ParsedKey => {
     number: false,
     sequence: s,
     raw: s,
+    eventType: "press",
   }
 
   key.sequence = key.sequence || s || key.name
+
+  // Check for Kitty keyboard protocol if enabled
+  if (options.useKittyKeyboard && /^\x1b\[.*u$/.test(s)) {
+    const kittyResult = parseKittyKeyboard(s)
+    if (kittyResult) {
+      return kittyResult
+    }
+  }
 
   if (s === "\r") {
     // carriage return
@@ -202,18 +224,28 @@ export const parseKeypress = (s: Buffer | string = ""): ParsedKey => {
     // the modifier key bitflag and any meaningless "1;" sequence
     const code = [parts[1], parts[2], parts[4], parts[6]].filter(Boolean).join("")
 
-    const modifier = ((parts[3] || parts[5] || 1) as number) - 1
+    const modifier = parseInt(parts[3] || parts[5] || "1", 10) - 1
 
     // Parse the key modifier
+    // Terminal modifier bits: 1=Shift, 2=Alt/Option, 4=Ctrl, 8=Meta
+    // Note: meta flag is set if either Alt (2) OR Meta (8) bits are present
     key.ctrl = !!(modifier & 4)
-    key.meta = !!(modifier & 10)
+    key.meta = !!(modifier & 10) // 10 = 0x0A = bits 1 and 3 = Alt OR Meta
     key.shift = !!(modifier & 1)
-    key.option = !!(modifier & 2) // Add option/alt modifier detection
+    key.option = !!(modifier & 2) // Alt/Option modifier specifically
     key.code = code
 
-    key.name = keyName[code]!
-    key.shift = isShiftKey(code) || key.shift
-    key.ctrl = isCtrlKey(code) || key.ctrl
+    const keyNameResult = keyName[code]
+    if (keyNameResult) {
+      key.name = keyNameResult
+      key.shift = isShiftKey(code) || key.shift
+      key.ctrl = isCtrlKey(code) || key.ctrl
+    } else {
+      // If we matched the regex but didn't find a valid key name,
+      // reset the key to default state (unknown sequence)
+      key.name = ""
+      key.code = undefined
+    }
   } else if (s === "\x1b[3~") {
     // delete key
     key.name = "delete"

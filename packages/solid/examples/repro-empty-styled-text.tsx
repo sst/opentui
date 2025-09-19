@@ -34,10 +34,10 @@ const EmptyStyledTextTest = () => {
       <text>Press space to toggle box</text>
 
       {/* Forced instance of empty styled box. Doesn't work without fixes put in place previously */}
-      <text>{t``}</text>
+      <text></text>
 
       {/* Dynamically going null*/}
-      <text>{t``}</text>
+      <text></text>
     </box>
   )
 }

@@ -5,7 +5,7 @@ import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
-import { MeasureMode } from "yoga-layout"
+import { Direction, MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
@@ -64,12 +64,16 @@ export class TextRenderable extends Renderable {
 
     this.setupMeasureFunc()
 
-    this.rootTextNode = new RootTextNodeRenderable(ctx, {
-      id: `${this.id}-root`,
-      fg: this._defaultFg,
-      bg: this._defaultBg,
-      attributes: this._defaultAttributes,
-    })
+    this.rootTextNode = new RootTextNodeRenderable(
+      ctx,
+      {
+        id: `${this.id}-root`,
+        fg: this._defaultFg,
+        bg: this._defaultBg,
+        attributes: this._defaultAttributes,
+      },
+      this,
+    )
 
     this.updateTextBuffer(styledText)
     this._text.mount(this)
@@ -127,6 +131,7 @@ export class TextRenderable extends Renderable {
 
   set fg(value: RGBA | string | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.fg)
+    this.rootTextNode.fg = newColor
     if (this._defaultFg !== newColor) {
       this._defaultFg = newColor
       this.textBuffer.setDefaultFg(this._defaultFg)
@@ -171,6 +176,7 @@ export class TextRenderable extends Renderable {
 
   set bg(value: RGBA | string | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.bg)
+    this.rootTextNode.bg = newColor
     if (this._defaultBg !== newColor) {
       this._defaultBg = newColor
       this.textBuffer.setDefaultBg(this._defaultBg)
@@ -229,7 +235,7 @@ export class TextRenderable extends Renderable {
       }
     }
 
-    this.layoutNode.yogaNode.markDirty()
+    this.yogaNode.markDirty()
     this.requestRender()
   }
 
@@ -264,7 +270,7 @@ export class TextRenderable extends Renderable {
       }
     }
 
-    this.layoutNode.yogaNode.setMeasureFunc(measureFunc)
+    this.yogaNode.setMeasureFunc(measureFunc)
   }
 
   insertChunk(chunk: TextChunk, index?: number): void {
@@ -324,6 +330,10 @@ export class TextRenderable extends Renderable {
     return this.rootTextNode.children.indexOf(obj)
   }
 
+  public getTextChildren(): BaseRenderable[] {
+    return this.rootTextNode.getChildren()
+  }
+
   public clear(): void {
     this.rootTextNode.clear()
 
@@ -370,7 +380,7 @@ export class TextRenderable extends Renderable {
     return this.textBuffer.getSelection()
   }
 
-  protected onUpdate(deltaTime: number): void {
+  public onLifecyclePass = () => {
     this.updateTextFromNodes()
   }
 
