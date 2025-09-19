@@ -18,6 +18,7 @@
         "@types/bun": "latest",
         "@types/three": "0.177.0",
         "commander": "^13.1.0",
+        "typescript": "^5",
       },
       "optionalDependencies": {
         "@dimforge/rapier2d-simd-compat": "^0.17.3",
@@ -31,9 +32,6 @@
         "planck": "^1.4.2",
         "three": "0.177.0",
       },
-      "peerDependencies": {
-        "typescript": "^5",
-      },
     },
     "packages/react": {
       "name": "@opentui/react",
@@ -45,10 +43,10 @@
       "devDependencies": {
         "@types/bun": "latest",
         "@types/react-reconciler": "^0.32.0",
+        "typescript": "^5",
       },
       "peerDependencies": {
         "react": ">=19.0.0",
-        "typescript": "^5",
       },
     },
     "packages/solid": {
@@ -65,10 +63,10 @@
       "devDependencies": {
         "@types/babel__core": "7.20.5",
         "@types/bun": "latest",
+        "typescript": "^5",
       },
       "peerDependencies": {
         "solid-js": "1.9.9",
-        "typescript": "^5",
       },
     },
     "packages/vue": {
@@ -514,8 +512,6 @@
 
     "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
-    "@opentui/react/@types/bun": ["@types/bun@1.2.21", "", { "dependencies": { "bun-types": "1.2.21" } }, "sha512-NiDnvEqmbfQ6dmZ3EeUO577s4P5bf4HCTXtI6trMc6f6RzirY5IrF3aIookuSpyslFzrnvv2lmEWv5HyC1X79A=="],
-
     "@vue/compiler-core/entities": ["entities@4.5.0", "", {}, "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="],
 
     "babel-plugin-jsx-dom-expressions/@babel/helper-module-imports": ["@babel/helper-module-imports@7.18.6", "", { "dependencies": { "@babel/types": "^7.18.6" } }, "sha512-0NFvs3VkuSYbFi1x2Vd6tKrywq+z/cLeYC/RJNFrIX/30Bf5aiGYbtvGXolEktzJH8o5E5KJ3tT+nkxuuZFVlA=="],
@@ -527,7 +523,5 @@
     "path-scurry/minipass": ["minipass@7.1.2", "", {}, "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw=="],
 
     "pixelmatch/pngjs": ["pngjs@6.0.0", "", {}, "sha512-TRzzuFRRmEoSW/p1KVAmiOgPco2Irlah+bGFCeNfJXxxYGwSw7YwAOAcd7X28K/m5bjBWKsC29KyoMfHbypayg=="],
-
-    "@opentui/react/@types/bun/bun-types": ["bun-types@1.2.21", "", { "dependencies": { "@types/node": "*" }, "peerDependencies": { "@types/react": "^19" } }, "sha512-sa2Tj77Ijc/NTLS0/Odjq/qngmEPZfbfnOERi0KRUYhT9R8M4VBioWVmMWE5GrYbKMc+5lVybXygLdibHaqVqw=="],
   }
 }
