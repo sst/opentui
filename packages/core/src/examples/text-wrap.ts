@@ -357,7 +357,7 @@ textRenderable.add(styledText);`,
     attributes: 1,
   })
 
-  const interactionCont = TextNodeRenderable.fromString(" to toggle wrapping on/off, and ", {
+  const interactionCont = TextNodeRenderable.fromString(" to toggle wrapping on/off, ", {
     fg: "#c0caf5",
   })
 
@@ -366,8 +366,17 @@ textRenderable.add(styledText);`,
     attributes: 1,
   })
 
-  const interactionCont2 = TextNodeRenderable.fromString(
-    " to switch between word and character wrapping modes. The text will reflow instantly to demonstrate the different wrapping behaviors.",
+  const interactionCont2 = TextNodeRenderable.fromString(" to switch between word and character wrapping modes, and ", {
+    fg: "#c0caf5",
+  })
+
+  const keyD = TextNodeRenderable.fromString("D", {
+    fg: "#f7768e",
+    attributes: 1,
+  })
+
+  const interactionCont3 = TextNodeRenderable.fromString(
+    " to download and display the Babylon.js library source code. The text will reflow instantly to demonstrate the different wrapping behaviors.",
     {
       fg: "#c0caf5",
     },
@@ -407,6 +416,8 @@ textRenderable.add(styledText);`,
     interactionCont,
     keyM,
     interactionCont2,
+    keyD,
+    interactionCont3,
     conclusionNode,
   ])
 }
@@ -475,7 +486,7 @@ export function run(renderer: CliRenderer): void {
   // Instructions with styled text
   instructionsText1 = new TextRenderable(renderer, {
     id: "instructions-1",
-    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Toggle wrapping")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Switch mode (char/word)")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
+    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Toggle wrapping")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Switch mode (char/word)")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("D"))} ${fg("#c0caf5")("Download Babylon.js")} ${fg("#565f89")("|")} ${bold(fg("#ff9e64")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
   })
 
   instructionsText2 = new TextRenderable(renderer, {
@@ -491,7 +502,7 @@ export function run(renderer: CliRenderer): void {
   mainContainer.add(instructionsBox)
 
   // Handle keyboard input
-  renderer.on("key", (data) => {
+  renderer.on("key", async (data) => {
     const key = data.toString()
 
     if (key === "w" || key === "W") {
@@ -508,6 +519,47 @@ export function run(renderer: CliRenderer): void {
       if (textRenderable && textRenderable.wrap && instructionsText2) {
         textRenderable.wrapMode = textRenderable.wrapMode === "char" ? "word" : "char"
         instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+      }
+    } else if (key === "d" || key === "D") {
+      // Download Babylon.js and display it
+      if (textRenderable && instructionsText2) {
+        try {
+          // Update status to show downloading
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Downloading Babylon.js...")}`
+
+          // Download the file
+          const response = await fetch("https://cdnjs.cloudflare.com/ajax/libs/babylonjs/8.20.0/babylon.js")
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          }
+          const content = await response.text()
+
+          // Store in OS tmp directory
+          const tempDir = process.env.TMPDIR || process.env.TEMP || "/tmp"
+          const fileName = `babylon-${Date.now()}.js`
+          const filePath = `${tempDir}/${fileName}`
+
+          await Bun.write(filePath, content)
+
+          // Load it back using Bun.file().text()
+          const loadedContent = await Bun.file(filePath).text()
+
+          // Create a new TextNodeRenderable with the downloaded content
+          const babylonTextNode = TextNodeRenderable.fromString(`// Downloaded Babylon.js (${loadedContent.length} chars)\n// Stored at: ${filePath}\n\n${loadedContent}`, {
+            fg: "#c0caf5",
+          })
+
+          // Replace the current content
+          textRenderable.clear()
+          textRenderable.add(babylonTextNode)
+
+          // Update status
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Babylon.js loaded (")} ${fg("#9ece6a")(loadedContent.length.toString())}${fg("#c0caf5")(" chars, wrap:")} ${textRenderable.wrap ? fg("#9ece6a")("true") : fg("#f7768e")("false")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+
+        } catch (error) {
+          // Show error in status
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Download failed:")} ${fg("#c0caf5")(error instanceof Error ? error.message : "Unknown error")}`
+        }
       }
     }
   })
