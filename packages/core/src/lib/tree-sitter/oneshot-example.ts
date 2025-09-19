@@ -96,5 +96,50 @@ function convertHighlightsToChunks(content: string, highlights: HighlightRespons
   return chunks
 }
 
-// Uncomment to run the example
+// Example using the new treeSitterToStyledText function
+async function styledTextExample() {
+  const { TreeSitterClient, SyntaxStyle, treeSitterToStyledText } = await import("./index")
+  const { RGBA } = await import("../RGBA")
+  const { tmpdir } = await import("os")
+  const { join } = await import("path")
+
+  const client = new TreeSitterClient({
+    dataPath: join(tmpdir(), "tree-sitter-styled-demo"),
+  })
+
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromInts(255, 255, 255, 255) }, // white
+    keyword: { fg: RGBA.fromInts(255, 100, 100, 255), bold: true }, // red bold
+    string: { fg: RGBA.fromInts(100, 255, 100, 255) }, // green
+    number: { fg: RGBA.fromInts(100, 100, 255, 255) }, // blue
+    function: { fg: RGBA.fromInts(255, 255, 100, 255), italic: true }, // yellow italic
+    comment: { fg: RGBA.fromInts(128, 128, 128, 255), italic: true }, // gray italic
+  })
+
+  try {
+    const jsCode = `const greeting = "Hello, world!";
+function calculate(a, b) {
+  return a + b * 2;
+}
+
+const result = calculate(5, 10);
+console.log(greeting, result);`
+
+    console.log("Converting JavaScript to styled text...")
+    const styledText = await treeSitterToStyledText(jsCode, "javascript", syntaxStyle, client)
+
+    console.log(`Created ${styledText.chunks.length} styled chunks`)
+
+    // Show some of the chunks
+    for (let i = 0; i < Math.min(5, styledText.chunks.length); i++) {
+      const chunk = styledText.chunks[i]
+      console.log(`Chunk ${i}: "${chunk.text}" (fg: ${chunk.fg}, attrs: ${chunk.attributes})`)
+    }
+  } finally {
+    await client.destroy()
+  }
+}
+
+// Uncomment to run the examples
 // highlightCodeExample().catch(console.error)
+styledTextExample().catch(console.error)
