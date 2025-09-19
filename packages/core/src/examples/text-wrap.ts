@@ -545,9 +545,12 @@ export function run(renderer: CliRenderer): void {
           const loadedContent = await Bun.file(filePath).text()
 
           // Create a new TextNodeRenderable with the downloaded content
-          const babylonTextNode = TextNodeRenderable.fromString(`// Downloaded Babylon.js (${loadedContent.length} chars)\n// Stored at: ${filePath}\n\n${loadedContent}`, {
-            fg: "#c0caf5",
-          })
+          const babylonTextNode = TextNodeRenderable.fromString(
+            `// Downloaded Babylon.js (${loadedContent.length} chars)\n// Stored at: ${filePath}\n\n${loadedContent}`,
+            {
+              fg: "#c0caf5",
+            },
+          )
 
           // Replace the current content
           textRenderable.clear()
@@ -555,7 +558,6 @@ export function run(renderer: CliRenderer): void {
 
           // Update status
           instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Babylon.js loaded (")} ${fg("#9ece6a")(loadedContent.length.toString())}${fg("#c0caf5")(" chars, wrap:")} ${textRenderable.wrap ? fg("#9ece6a")("true") : fg("#f7768e")("false")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
-
         } catch (error) {
           // Show error in status
           instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Download failed:")} ${fg("#c0caf5")(error instanceof Error ? error.message : "Unknown error")}`
