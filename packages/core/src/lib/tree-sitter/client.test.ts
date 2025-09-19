@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:test"
 import { TreeSitterClient } from "./client"
 import { tmpdir } from "os"
 import { join } from "path"
@@ -8,11 +8,14 @@ describe("TreeSitterClient", () => {
   let client: TreeSitterClient
   let dataPath: string
 
-  beforeEach(async () => {
-    // Create a temporary directory for test data
-    dataPath = join(tmpdir(), "tree-sitter-test-" + Math.random().toString(36).slice(2))
-    await mkdir(dataPath, { recursive: true })
+  const sharedDataPath = join(tmpdir(), "tree-sitter-shared-test-data")
 
+  beforeAll(async () => {
+    await mkdir(sharedDataPath, { recursive: true })
+  })
+
+  beforeEach(async () => {
+    dataPath = sharedDataPath
     client = new TreeSitterClient({
       dataPath,
     })
@@ -244,9 +247,14 @@ describe("TreeSitterClient", () => {
 describe("TreeSitterClient Edge Cases", () => {
   let dataPath: string
 
+  const edgeCaseDataPath = join(tmpdir(), "tree-sitter-edge-case-test-data")
+
+  beforeAll(async () => {
+    await mkdir(edgeCaseDataPath, { recursive: true })
+  })
+
   beforeEach(async () => {
-    dataPath = join(tmpdir(), "tree-sitter-test-" + Math.random().toString(36).slice(2))
-    await mkdir(dataPath, { recursive: true })
+    dataPath = edgeCaseDataPath
   })
 
   test("should handle initialization timeout", async () => {
