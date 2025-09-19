@@ -1116,6 +1116,7 @@ export abstract class Renderable extends BaseRenderable {
 
     if (this.renderableMapById.has(id)) {
       const obj = this.renderableMapById.get(id)
+
       if (obj) {
         if (obj._liveCount > 0) {
           this.propagateLiveCount(-obj._liveCount)

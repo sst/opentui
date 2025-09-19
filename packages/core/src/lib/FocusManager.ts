@@ -67,6 +67,7 @@ export class FocusManager {
     this.keyUnsubscribe?.()
     this.keyUnsubscribe = null
     this.renderer.focusedRenderable = null
+    this.renderer.focusables = []
   }
 
   private initFocus(): void {

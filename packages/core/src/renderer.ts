@@ -441,12 +441,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public removeFocusable(node: Renderable): void {
-    const i = this._focusables.indexOf(node)
+    const i = this._focusables.findIndex((f) => f.id === node.id)
     if (i !== -1) this._focusables.splice(i, 1)
   }
 
   public get focusables(): Renderable[] {
     return this._focusables
+  }
+
+  public set focusables(node: Renderable | Renderable[]) {
+    if (Array.isArray(node)) {
+      this._focusables = node
+    } else {
+      this._focusables = [node]
+    }
   }
 
   public set focusedRenderable(renderable: Renderable | null) {
