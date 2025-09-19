@@ -37,10 +37,16 @@ interface PerformanceStats {
   queryTimes: number[]
 }
 
+interface ReusableParserState {
+  parser: Parser
+  filetypeParser: FiletypeParser
+}
+
 export class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
   private filetypeParsers: Map<string, FiletypeParser> = new Map()
+  private reusableParsers: Map<string, ReusableParserState> = new Map() // Reusable parsers by filetype
   private languageFiles: Set<string> = new Set()
   private initializePromise: Promise<void> | undefined
   public performance: PerformanceStats
@@ -250,6 +256,29 @@ export class ParserWorker {
 
   public async preloadParser(filetype: string) {
     return this.resolveFiletypeParser(filetype)
+  }
+
+  private async getReusableParser(filetype: string): Promise<ReusableParserState | undefined> {
+    if (this.reusableParsers.has(filetype)) {
+      return this.reusableParsers.get(filetype)
+    }
+
+    const filetypeParser = await this.resolveFiletypeParser(filetype)
+    if (!filetypeParser) {
+      return undefined
+    }
+
+    const parser = new Parser()
+    parser.setLanguage(filetypeParser.language)
+
+    const reusableState: ReusableParserState = {
+      parser,
+      filetypeParser,
+    }
+
+    this.reusableParsers.set(filetype, reusableState)
+
+    return reusableState
   }
 
   async handleInitializeParser(
@@ -517,9 +546,9 @@ export class ParserWorker {
   }
 
   async handleOneShotHighlight(content: string, filetype: string, messageId: string): Promise<void> {
-    const filetypeParser = await this.resolveFiletypeParser(filetype)
+    const reusableState = await this.getReusableParser(filetype)
 
-    if (!filetypeParser) {
+    if (!reusableState) {
       self.postMessage({
         type: "ONESHOT_HIGHLIGHT_RESPONSE",
         messageId,
@@ -529,10 +558,7 @@ export class ParserWorker {
       return
     }
 
-    // Create temporary parser and tree (not stored)
-    const parser = new Parser()
-    parser.setLanguage(filetypeParser.language)
-    const tree = parser.parse(content)
+    const tree = reusableState.parser.parse(content)
 
     if (!tree) {
       self.postMessage({
@@ -545,9 +571,15 @@ export class ParserWorker {
     }
 
     try {
-      // Get highlights
-      const matches = filetypeParser.queries.highlights.captures(tree.rootNode)
-      const highlights = this.getHighlights({ parser, tree, queries: filetypeParser.queries }, matches)
+      const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
+      const highlights = this.getHighlights(
+        {
+          parser: reusableState.parser,
+          tree,
+          queries: reusableState.filetypeParser.queries,
+        },
+        matches,
+      )
 
       self.postMessage({
         type: "ONESHOT_HIGHLIGHT_RESPONSE",
@@ -556,9 +588,7 @@ export class ParserWorker {
         ...highlights,
       })
     } finally {
-      // Clean up immediately - don't retain anything
       tree.delete()
-      parser.delete()
     }
   }
 }
