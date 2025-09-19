@@ -46,7 +46,7 @@ export class TextRenderable extends Renderable {
     selectionFg: undefined,
     selectable: true,
     attributes: 0,
-    wrap: false,
+    wrap: true,
     wrapMode: "word" as "char" | "word",
   } satisfies Partial<TextOptions>
 
