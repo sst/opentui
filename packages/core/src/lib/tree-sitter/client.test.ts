@@ -248,16 +248,17 @@ describe("TreeSitterClient Edge Cases", () => {
   })
 
   test("should handle initialization timeout", async () => {
-    // Create client with invalid worker path to simulate timeout
+    // Create client with invalid worker path and short timeout
     const client = new TreeSitterClient({
       dataPath,
       workerPath: "invalid-path",
+      initTimeout: 500,
     })
 
     await expect(client.initialize()).rejects.toThrow("Worker initialization timed out")
 
     await client.destroy()
-  }, 15000) // Increase timeout for this test
+  })
 
   test("should handle operations before initialization", async () => {
     const client = new TreeSitterClient({ dataPath })

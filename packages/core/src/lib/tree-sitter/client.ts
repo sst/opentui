@@ -75,10 +75,11 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
 
     this.initializePromise = new Promise((resolve, reject) => {
+      const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
         this.initializeResolvers = undefined
         reject(new Error("Worker initialization timed out"))
-      }, 10000) // 10 second timeout
+      }, timeoutMs)
 
       this.initializeResolvers = { resolve, reject, timeoutId }
       this.worker?.postMessage({ type: "INIT", dataPath: this.options.dataPath })

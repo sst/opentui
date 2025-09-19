@@ -41,6 +41,7 @@ export interface TreeSitterClientEvents {
 export interface TreeSitterClientOptions {
   dataPath: string
   workerPath?: string | URL
+  initTimeout?: number // Timeout in milliseconds for worker initialization, defaults to 10000
 }
 
 export interface Edit {
