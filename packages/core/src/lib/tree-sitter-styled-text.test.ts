@@ -1,6 +1,7 @@
 import { test, expect, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient } from "./tree-sitter/client"
-import { SyntaxStyle, treeSitterToStyledText } from "./tree-sitter-styled-text"
+import { treeSitterToStyledText } from "./tree-sitter-styled-text"
+import { SyntaxStyle } from "./syntax-style"
 import { RGBA } from "./RGBA"
 import { tmpdir } from "os"
 import { join } from "path"

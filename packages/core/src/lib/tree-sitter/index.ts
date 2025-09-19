@@ -1,5 +1,6 @@
 export { TreeSitterClient } from "./client"
-export { SyntaxStyle, treeSitterToStyledText } from "../tree-sitter-styled-text"
+export { treeSitterToStyledText } from "../tree-sitter-styled-text"
+export { SyntaxStyle } from "../syntax-style"
 export type {
   HighlightRange,
   HighlightResponse,
@@ -11,4 +12,4 @@ export type {
   Edit,
   PerformanceStats,
 } from "./types"
-export type { StyleDefinition } from "../tree-sitter-styled-text"
+export type { StyleDefinition } from "../syntax-style"
