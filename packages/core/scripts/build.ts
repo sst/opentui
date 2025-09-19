@@ -301,8 +301,8 @@ if (buildLib) {
         repository: packageJson.repository,
         bugs: packageJson.bugs,
         exports,
-        dependencies: packageJson.dependencies,
         devDependencies: packageJson.devDependencies,
+        peerDependencies: packageJson.peerDependencies,
         optionalDependencies: {
           ...packageJson.optionalDependencies,
           ...optionalDeps,

@@ -202,6 +202,22 @@ describe("Renderable - Child Management", () => {
     expect(result).toBe(-1)
     expect(parent.getChildrenCount()).toBe(0)
   })
+
+  test("can change renderable id and updates parent mapping", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+
+    parent.add(child)
+    expect(parent.getRenderable("child")).toBe(child)
+
+    // Change the child's id
+    child.id = "new-child-id"
+    expect(child.id).toBe("new-child-id")
+
+    // Verify parent mapping is updated
+    expect(parent.getRenderable("child")).toBeUndefined()
+    expect(parent.getRenderable("new-child-id")).toBe(child)
+  })
 })
 
 describe("Renderable - Events", () => {

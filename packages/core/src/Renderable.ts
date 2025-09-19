@@ -128,7 +128,7 @@ export abstract class BaseRenderable extends EventEmitter {
   [BrandedRenderable] = true
 
   private static renderableNumber = 1
-  public readonly id: string
+  protected _id: string
   public readonly num: number
   protected _dirty: boolean = false
   public parent: BaseRenderable | null = null
@@ -137,7 +137,7 @@ export abstract class BaseRenderable extends EventEmitter {
   constructor(options: BaseRenderableOptions) {
     super()
     this.num = BaseRenderable.renderableNumber++
-    this.id = options.id ?? `renderable-${this.num}`
+    this._id = options.id ?? `renderable-${this.num}`
   }
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
@@ -147,6 +147,14 @@ export abstract class BaseRenderable extends EventEmitter {
   public abstract getChildrenCount(): number
   public abstract getRenderable(id: string): BaseRenderable | undefined
   public abstract requestRender(): void
+
+  public get id(): string {
+    return this._id
+  }
+
+  public set id(value: string) {
+    this._id = value
+  }
 
   public get isDirty(): boolean {
     return this._dirty
@@ -265,6 +273,18 @@ export abstract class Renderable extends BaseRenderable {
     if (this.buffered) {
       this.createFrameBuffer()
     }
+  }
+
+  public override get id() {
+    return this._id
+  }
+
+  public override set id(value: string) {
+    if (this.parent) {
+      this.parent.renderableMapById.delete(this.id)
+      this.parent.renderableMapById.set(value, this)
+    }
+    super.id = value
   }
 
   public get focusable(): boolean {

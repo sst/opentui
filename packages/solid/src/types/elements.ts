@@ -82,10 +82,7 @@ export type GetNonStyledProperties<TConstructor> =
 type ContainerProps<TOptions> = TOptions & { children?: JSX.Element }
 
 /** Smart component props that automatically determine excluded properties */
-type ComponentProps<TOptions extends RenderableOptions<TRenderable>, TRenderable extends BaseRenderable> = Omit<
-  TOptions,
-  "id"
-> & {
+type ComponentProps<TOptions extends RenderableOptions<TRenderable>, TRenderable extends BaseRenderable> = TOptions & {
   style?: Partial<Omit<TOptions, GetNonStyledProperties<RenderableConstructor<TRenderable>>>>
 } & ElementProps<TRenderable>
 
