@@ -497,6 +497,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 0,
+        wrap: false,
       })
 
       const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
@@ -504,6 +505,7 @@ describe("TextRenderable Selection", () => {
         content: '"Hello"',
         selectable: true,
         fg: "#7dd3fc",
+        wrap: false,
       })
 
       const { text: debugText } = await createTextRenderable(currentRenderer, {
@@ -511,6 +513,7 @@ describe("TextRenderable Selection", () => {
         content: "Selected renderables: 2/5",
         selectable: true,
         fg: "#e6edf3",
+        wrap: false,
       })
 
       // Establish initial selection covering all renderables
@@ -552,6 +555,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 2,
+        wrap: false,
       })
 
       const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
@@ -559,6 +563,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 3,
+        wrap: false,
       })
 
       const { text: selectionEndText } = await createTextRenderable(currentRenderer, {
@@ -566,6 +571,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 4,
+        wrap: false,
       })
 
       const { text: debugText } = await createTextRenderable(currentRenderer, {
@@ -573,6 +579,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#e6edf3",
         top: 5,
+        wrap: false,
       })
 
       const allRenderables = [statusText, selectionStartText, selectionEndText, debugText]
