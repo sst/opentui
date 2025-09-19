@@ -13,7 +13,7 @@ export interface HighlightResponse {
 export interface FiletypeParserOptions {
   filetype: string
   queries: {
-    highlights: string
+    highlights: string // URL to fetch the highlight query from
   }
   language: string
 }

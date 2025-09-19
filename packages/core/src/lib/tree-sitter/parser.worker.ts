@@ -57,6 +57,20 @@ export class ParserWorker {
     }
   }
 
+  private async fetchHighlightQuery(url: string): Promise<string> {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch highlight query from ${url}: ${response.statusText}`)
+      }
+      return await response.text()
+    } catch (error) {
+      console.error(`Error fetching highlight query from ${url}:`, error)
+      // Return empty query as fallback
+      return ""
+    }
+  }
+
   async initialize({ dataPath }: { dataPath: string }) {
     if (this.initializePromise) {
       return this.initializePromise
@@ -90,16 +104,24 @@ export class ParserWorker {
     this.filetypeParserOptions.set(filetypeParser.filetype, filetypeParser)
   }
 
-  private createQueries(
+  private async createQueries(
     filetypeParser: FiletypeParserOptions,
     language: Language,
-  ):
+  ): Promise<
     | {
         highlights: Query
       }
-    | undefined {
+    | undefined
+  > {
     try {
-      const query = new Query(language, filetypeParser.queries.highlights)
+      // Fetch the highlight query from URL
+      const highlightQueryContent = await this.fetchHighlightQuery(filetypeParser.queries.highlights)
+      if (!highlightQueryContent) {
+        console.error("Failed to fetch highlight query for:", filetypeParser.filetype)
+        return undefined
+      }
+
+      const query = new Query(language, highlightQueryContent)
       return {
         highlights: query,
       }
@@ -146,7 +168,7 @@ export class ParserWorker {
     if (!language) {
       return undefined
     }
-    const queries = this.createQueries(filetypeParserOptions, language)
+    const queries = await this.createQueries(filetypeParserOptions, language)
     if (!queries) {
       console.error("Failed to create queries for:", filetype)
       return undefined

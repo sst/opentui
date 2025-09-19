@@ -97,9 +97,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       {
         filetype: "javascript",
         queries: {
-          highlights: await this.fetchHighlightQuery(
+          highlights:
             "https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/refs/heads/master/queries/highlights.scm",
-          ),
         },
         language:
           "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
@@ -107,9 +106,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       {
         filetype: "typescript",
         queries: {
-          highlights: await this.fetchHighlightQuery(
+          highlights:
             "https://raw.githubusercontent.com/tree-sitter/tree-sitter-typescript/refs/heads/master/queries/highlights.scm",
-          ),
         },
         language:
           "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
@@ -118,20 +116,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     for (const parser of defaultParsers) {
       this.addFiletypeParser(parser)
-    }
-  }
-
-  private async fetchHighlightQuery(url: string): Promise<string> {
-    try {
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch highlight query from ${url}: ${response.statusText}`)
-      }
-      return await response.text()
-    } catch (error) {
-      console.error(`Error fetching highlight query from ${url}:`, error)
-      // Return empty query as fallback
-      return ""
     }
   }
 
