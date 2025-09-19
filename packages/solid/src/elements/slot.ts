@@ -1,5 +1,4 @@
-import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable } from "@opentui/core"
-import Yoga, { Display, type Node as YogaNode } from "yoga-layout"
+import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable, Yoga } from "@opentui/core"
 
 class SlotBaseRenderable extends BaseRenderable {
   constructor(id: string) {
@@ -55,7 +54,7 @@ export class TextSlotRenderable extends TextNodeRenderable {
 }
 
 export class LayoutSlotRenderable extends SlotBaseRenderable {
-  protected yogaNode: YogaNode
+  protected yogaNode: Yoga.Node
   protected slotParent?: SlotRenderable
   protected destroyed: boolean = false
 
@@ -64,11 +63,11 @@ export class LayoutSlotRenderable extends SlotBaseRenderable {
 
     this._visible = false
     this.slotParent = parent
-    this.yogaNode = Yoga.Node.create()
-    this.yogaNode.setDisplay(Display.None)
+    this.yogaNode = Yoga.default.Node.create()
+    this.yogaNode.setDisplay(Yoga.Display.None)
   }
 
-  public getLayoutNode(): YogaNode {
+  public getLayoutNode(): Yoga.Node {
     return this.yogaNode
   }
 
