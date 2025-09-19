@@ -81,7 +81,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       }, timeoutMs)
 
       this.initializeResolvers = { resolve, reject, timeoutId }
-      this.worker?.postMessage({ type: "INIT", dataPath: this.options.dataPath })
+      this.worker?.postMessage({
+        type: "INIT",
+        dataPath: this.options.dataPath,
+      })
     })
 
     await this.initializePromise

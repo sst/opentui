@@ -39,7 +39,7 @@ export interface TreeSitterClientEvents {
 }
 
 export interface TreeSitterClientOptions {
-  dataPath: string
+  dataPath: string // Directory for storing downloaded parsers and queries
   workerPath?: string | URL
   initTimeout?: number // Timeout in milliseconds for worker initialization, defaults to 10000
 }

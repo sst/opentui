@@ -13,7 +13,9 @@ describe("TreeSitterClient", () => {
     dataPath = join(tmpdir(), "tree-sitter-test-" + Math.random().toString(36).slice(2))
     await mkdir(dataPath, { recursive: true })
 
-    client = new TreeSitterClient({ dataPath })
+    client = new TreeSitterClient({
+      dataPath,
+    })
   })
 
   afterEach(async () => {

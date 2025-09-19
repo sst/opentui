@@ -57,17 +57,59 @@ export class ParserWorker {
   }
 
   private async fetchHighlightQuery(url: string): Promise<string> {
+    if (!this.dataPath) {
+      throw new Error("Data path not initialized")
+    }
+
+    // Create a cache filename from the URL
+    const urlHash = this.hashUrl(url)
+    const cacheFile = path.join(this.dataPath, "queries", `${urlHash}.scm`)
+
+    // Try to load from cache first
     try {
+      const cachedContent = await Bun.file(cacheFile).text()
+      if (cachedContent) {
+        console.log(`Loaded highlight query from cache: ${url}`)
+        return cachedContent
+      }
+    } catch (error) {
+      // Cache miss, continue to fetch
+    }
+
+    // Fetch from URL
+    try {
+      console.log(`Fetching highlight query from URL: ${url}`)
       const response = await fetch(url)
       if (!response.ok) {
         throw new Error(`Failed to fetch highlight query from ${url}: ${response.statusText}`)
       }
-      return await response.text()
+      const content = await response.text()
+
+      // Cache the result
+      try {
+        await writeFile(cacheFile, content, "utf8")
+        console.log(`Cached highlight query: ${url}`)
+      } catch (cacheError) {
+        console.warn(`Failed to cache highlight query: ${cacheError}`)
+      }
+
+      return content
     } catch (error) {
       console.error(`Error fetching highlight query from ${url}:`, error)
       // Return empty query as fallback
       return ""
     }
+  }
+
+  private hashUrl(url: string): string {
+    // Simple hash function for URL to create cache filename
+    let hash = 0
+    for (let i = 0; i < url.length; i++) {
+      const char = url.charCodeAt(i)
+      hash = (hash << 5) - hash + char
+      hash = hash & hash // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(16)
   }
 
   async initialize({ dataPath }: { dataPath: string }) {
@@ -78,14 +120,12 @@ export class ParserWorker {
       this.dataPath = dataPath
 
       try {
-        const languagesPath = path.join(dataPath, "languages")
-        await mkdir(languagesPath, { recursive: true })
-        const languageFiles = await readdir(languagesPath, { withFileTypes: true })
-        for (const languageFile of languageFiles) {
-          if (languageFile.isFile()) {
-            this.languageFiles.add(languageFile.name)
-          }
-        }
+        // Create storage directories
+        await mkdir(path.join(dataPath, "languages"), { recursive: true })
+        await mkdir(path.join(dataPath, "queries"), { recursive: true })
+
+        // Load existing language files
+        await this.loadExistingLanguageFiles(path.join(dataPath, "languages"))
 
         // Let web-tree-sitter handle wasm loading internally
         await Parser.init()
@@ -97,6 +137,19 @@ export class ParserWorker {
       }
     })
     return this.initializePromise
+  }
+
+  private async loadExistingLanguageFiles(languagesPath: string) {
+    try {
+      const languageFiles = await readdir(languagesPath, { withFileTypes: true })
+      for (const languageFile of languageFiles) {
+        if (languageFile.isFile()) {
+          this.languageFiles.add(languageFile.name)
+        }
+      }
+    } catch (error) {
+      // Directory might not exist, that's fine
+    }
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions) {
@@ -134,25 +187,39 @@ export class ParserWorker {
     if (!this.initialized || !this.dataPath) {
       return undefined
     }
+
     const languageFileName = path.basename(languageSource)
+    const languagePath = path.join(this.dataPath, "languages", languageFileName)
+
+    // Check if we already have this language file
     if (this.languageFiles.has(languageFileName)) {
-      return Language.load(path.join(this.dataPath, "languages", languageFileName))
+      try {
+        return await Language.load(languagePath)
+      } catch (error) {
+        // File might have been deleted, remove from set and continue to download
+        this.languageFiles.delete(languageFileName)
+      }
     }
+
+    // Download and cache the language file
     try {
-      await fetch(languageSource)
-        .then((response) => response.arrayBuffer())
-        .then((buffer) => {
-          if (!this.dataPath) {
-            throw new Error("Data path not initialized")
-          }
-          return writeFile(path.join(this.dataPath, "languages", languageFileName), Buffer.from(buffer))
-        })
+      console.log(`Downloading language parser: ${languageSource}`)
+      const response = await fetch(languageSource)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch language from ${languageSource}: ${response.statusText}`)
+      }
+
+      const buffer = await response.arrayBuffer()
+      await writeFile(languagePath, Buffer.from(buffer))
+      console.log(`Cached language parser: ${languageFileName}`)
+
+      const language = await Language.load(languagePath)
+      this.languageFiles.add(languageFileName)
+      return language
     } catch (error) {
+      console.error(`Error loading language ${languageSource}:`, error)
       return undefined
     }
-    const language = await Language.load(path.join(this.dataPath, "languages", languageFileName))
-    this.languageFiles.add(languageFileName)
-    return language
   }
 
   private async resolveFiletypeParser(filetype: string): Promise<FiletypeParser | undefined> {
