@@ -13,3 +13,18 @@ export type {
   PerformanceStats,
 } from "./types"
 export type { StyleDefinition } from "../syntax-style"
+
+import { singleton } from "../../singleton"
+import { TreeSitterClient } from "./client"
+import type { TreeSitterClientOptions } from "./types"
+import { tmpdir } from "os"
+import { join } from "path"
+
+// TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
+export function getTreeSitterClient(): TreeSitterClient {
+  const defaultOptions: TreeSitterClientOptions = {
+    dataPath: join(tmpdir(), "opentui-tree-sitter"),
+  }
+
+  return singleton("tree-sitter-client", () => new TreeSitterClient(defaultOptions))
+}
