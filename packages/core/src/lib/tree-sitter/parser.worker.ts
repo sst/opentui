@@ -1,7 +1,6 @@
 import { Parser, Query, Tree, Language } from "web-tree-sitter"
 import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir, readdir, writeFile } from "fs/promises"
-import * as fs from "fs"
 import * as path from "path"
 import type { HighlightRange, HighlightResponse } from "./types"
 

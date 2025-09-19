@@ -7,7 +7,6 @@ import type {
   BufferState,
   ParsedBuffer,
   FiletypeParserOptions,
-  HighlightResponse,
   Edit,
   PerformanceStats,
 } from "./types"
