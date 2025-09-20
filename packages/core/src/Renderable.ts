@@ -138,7 +138,6 @@ export abstract class BaseRenderable extends EventEmitter {
     super()
     this.num = BaseRenderable.renderableNumber++
     this._id = options.id ?? `renderable-${this.num}`
-    console.log("==>>Created renderable", this._id)
   }
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
@@ -150,7 +149,6 @@ export abstract class BaseRenderable extends EventEmitter {
   public abstract requestRender(): void
 
   public get id(): string {
-    console.log("=>> get id", this._id)
     return this._id
   }
 
