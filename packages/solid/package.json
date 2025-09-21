@@ -1,6 +1,6 @@
 {
   "name": "@opentui/solid",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "SolidJS renderer for OpenTUI",
   "repository": {
     "type": "git",
@@ -30,7 +30,8 @@
   },
   "devDependencies": {
     "@types/babel__core": "7.20.5",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typescript": "^5"
   },
   "dependencies": {
     "@babel/core": "7.28.0",
@@ -41,7 +42,6 @@
     "s-js": "^0.4.9"
   },
   "peerDependencies": {
-    "solid-js": "1.9.9",
-    "typescript": "^5"
+    "solid-js": "1.9.9"
   }
 }

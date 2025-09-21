@@ -9,7 +9,7 @@
     },
     "packages/core": {
       "name": "@opentui/core",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "dependencies": {
         "jimp": "1.6.0",
         "yoga-layout": "3.2.1",
@@ -18,26 +18,24 @@
         "@types/bun": "latest",
         "@types/three": "0.177.0",
         "commander": "^13.1.0",
+        "typescript": "^5",
       },
       "optionalDependencies": {
         "@dimforge/rapier2d-simd-compat": "^0.17.3",
-        "@opentui/core-darwin-arm64": "0.1.23",
-        "@opentui/core-darwin-x64": "0.1.23",
-        "@opentui/core-linux-arm64": "0.1.23",
-        "@opentui/core-linux-x64": "0.1.23",
-        "@opentui/core-win32-arm64": "0.1.23",
-        "@opentui/core-win32-x64": "0.1.23",
+        "@opentui/core-darwin-arm64": "0.1.24",
+        "@opentui/core-darwin-x64": "0.1.24",
+        "@opentui/core-linux-arm64": "0.1.24",
+        "@opentui/core-linux-x64": "0.1.24",
+        "@opentui/core-win32-arm64": "0.1.24",
+        "@opentui/core-win32-x64": "0.1.24",
         "bun-webgpu": "0.1.3",
         "planck": "^1.4.2",
         "three": "0.177.0",
       },
-      "peerDependencies": {
-        "typescript": "^5",
-      },
     },
     "packages/react": {
       "name": "@opentui/react",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "dependencies": {
         "@opentui/core": "workspace:*",
         "react-reconciler": "^0.32.0",
@@ -45,15 +43,15 @@
       "devDependencies": {
         "@types/bun": "latest",
         "@types/react-reconciler": "^0.32.0",
+        "typescript": "^5",
       },
       "peerDependencies": {
         "react": ">=19.0.0",
-        "typescript": "^5",
       },
     },
     "packages/solid": {
       "name": "@opentui/solid",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "dependencies": {
         "@babel/core": "7.28.0",
         "@babel/preset-typescript": "7.27.1",
@@ -65,15 +63,15 @@
       "devDependencies": {
         "@types/babel__core": "7.20.5",
         "@types/bun": "latest",
+        "typescript": "^5",
       },
       "peerDependencies": {
         "solid-js": "1.9.9",
-        "typescript": "^5",
       },
     },
     "packages/vue": {
       "name": "@opentui/vue",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "dependencies": {
         "@opentui/core": "workspace:*",
         "@vue/runtime-core": "^3.5.18",
@@ -217,18 +215,6 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.30", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-GQ7Nw5G2lTu/BtHTKfXhKHok2WGetd4XYcVKGx00SjAk8GMwgJM3zr6zORiPGuOE+/vkc90KtTosSSvaCjKb2Q=="],
 
     "@opentui/core": ["@opentui/core@workspace:packages/core"],
-
-    "@opentui/core-darwin-arm64": ["@opentui/core-darwin-arm64@0.1.23", "", { "os": "darwin", "cpu": "arm64" }, "sha512-QkcM2zCM/lMzdNYP/HMpGgXlNU3aCm/07GKhXN0NybDdbatJygB+JEeFhncaXSDp9kmQMIb4Ei7Fha7iJRALxQ=="],
-
-    "@opentui/core-darwin-x64": ["@opentui/core-darwin-x64@0.1.23", "", { "os": "darwin", "cpu": "x64" }, "sha512-RA4NTvON8SBt5sVb9v+3fopW44xg4ggd0jIKAUprF048le4T4c4L1b/muJW2H4M99FtO9k8Se8Vsi/PW7hz49g=="],
-
-    "@opentui/core-linux-arm64": ["@opentui/core-linux-arm64@0.1.23", "", { "os": "linux", "cpu": "arm64" }, "sha512-s7ALmb0AKKQ4WAN41afmVFGmu6r6RRuqr7BvZlarTcnimSrYBoE6JInazyxHiDEGuBJnSo8sJsCrfG/7J7j8dQ=="],
-
-    "@opentui/core-linux-x64": ["@opentui/core-linux-x64@0.1.23", "", { "os": "linux", "cpu": "x64" }, "sha512-689s6ERr6BLlv4w8pr2dq5KCoo/uIm5p7+udgAUoPbl8y9HNaf4WGCu1BPF/Uxug5kNZg6Z4NmJrcEdXRZUaWA=="],
-
-    "@opentui/core-win32-arm64": ["@opentui/core-win32-arm64@0.1.23", "", { "os": "win32", "cpu": "arm64" }, "sha512-+a1knLlvN8SdjJiR4z7Tmhybnj2NbeU+lFo9stf/aZeO63iopGXnNuiMWJ2UsW5FxDgRVk73F2AVWrP4i/7GPg=="],
-
-    "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.1.23", "", { "os": "win32", "cpu": "x64" }, "sha512-yMXYWY6m9X4LThA3UmrXLQlwNoNTYRUGx3PaegqDhmINlFwgTYgw6GnLvOcIombKdXnhSgz9V3Uwi+teJKHg7Q=="],
 
     "@opentui/react": ["@opentui/react@workspace:packages/react"],
 
@@ -514,8 +500,6 @@
 
     "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
-    "@opentui/react/@types/bun": ["@types/bun@1.2.21", "", { "dependencies": { "bun-types": "1.2.21" } }, "sha512-NiDnvEqmbfQ6dmZ3EeUO577s4P5bf4HCTXtI6trMc6f6RzirY5IrF3aIookuSpyslFzrnvv2lmEWv5HyC1X79A=="],
-
     "@vue/compiler-core/entities": ["entities@4.5.0", "", {}, "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="],
 
     "babel-plugin-jsx-dom-expressions/@babel/helper-module-imports": ["@babel/helper-module-imports@7.18.6", "", { "dependencies": { "@babel/types": "^7.18.6" } }, "sha512-0NFvs3VkuSYbFi1x2Vd6tKrywq+z/cLeYC/RJNFrIX/30Bf5aiGYbtvGXolEktzJH8o5E5KJ3tT+nkxuuZFVlA=="],
@@ -527,7 +511,5 @@
     "path-scurry/minipass": ["minipass@7.1.2", "", {}, "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw=="],
 
     "pixelmatch/pngjs": ["pngjs@6.0.0", "", {}, "sha512-TRzzuFRRmEoSW/p1KVAmiOgPco2Irlah+bGFCeNfJXxxYGwSw7YwAOAcd7X28K/m5bjBWKsC29KyoMfHbypayg=="],
-
-    "@opentui/react/@types/bun/bun-types": ["bun-types@1.2.21", "", { "dependencies": { "@types/node": "*" }, "peerDependencies": { "@types/react": "^19" } }, "sha512-sa2Tj77Ijc/NTLS0/Odjq/qngmEPZfbfnOERi0KRUYhT9R8M4VBioWVmMWE5GrYbKMc+5lVybXygLdibHaqVqw=="],
   }
 }

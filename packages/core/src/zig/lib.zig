@@ -358,14 +358,14 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
     rendererPtr.setupTerminal(useAlternateScreen);
 }
 
-export fn createTextBuffer(length: u32, widthMethod: u8) ?*text_buffer.TextBuffer {
+export fn createTextBuffer(widthMethod: u8) ?*text_buffer.TextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
 
-    const tb = text_buffer.TextBuffer.init(std.heap.page_allocator, length, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
+    const tb = text_buffer.TextBuffer.init(std.heap.page_allocator, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
         return null;
     };
 
@@ -376,16 +376,8 @@ export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
     tb.deinit();
 }
 
-export fn textBufferGetCharPtr(tb: *text_buffer.TextBuffer) [*]u32 {
-    return tb.getCharPtr();
-}
-
 export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLength();
-}
-
-export fn textBufferResize(tb: *text_buffer.TextBuffer, newLength: u32) void {
-    tb.resize(newLength) catch {};
 }
 
 export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
@@ -430,10 +422,6 @@ export fn textBufferWriteChunk(tb: *text_buffer.TextBuffer, textBytes: [*]const 
     return tb.writeChunk(textSlice, fgColor, bgColor, attrValue) catch 0;
 }
 
-export fn textBufferGetCapacity(tb: *text_buffer.TextBuffer) u32 {
-    return tb.getCapacity();
-}
-
 export fn textBufferFinalizeLineInfo(tb: *text_buffer.TextBuffer) void {
     tb.finalizeLineInfo();
 }
@@ -442,12 +430,13 @@ export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLineCount();
 }
 
-export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) void {
-    const line_count = tb.getLineCount();
-    for (0..line_count) |i| {
-        lineStartsPtr[i] = tb.lines.items[i].char_start;
-        lineWidthsPtr[i] = tb.lines.items[i].width;
-    }
+export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = tb.getCachedLineInfo();
+
+    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
+    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+
+    return line_info.max_width;
 }
 
 export fn bufferDrawTextBuffer(
@@ -519,4 +508,17 @@ export fn textBufferReplaceChunkGroup(tb: *text_buffer.TextBuffer, index: usize,
 
 export fn textBufferGetChunkGroupCount(tb: *const text_buffer.TextBuffer) usize {
     return tb.getChunkGroupCount();
+}
+
+export fn textBufferSetWrapWidth(tb: *text_buffer.TextBuffer, width: u32) void {
+    tb.setWrapWidth(if (width == 0) null else width);
+}
+
+export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
+    const wrapMode: text_buffer.WrapMode = switch (mode) {
+        0 => .char,
+        1 => .word,
+        else => .char,
+    };
+    tb.setWrapMode(wrapMode);
 }

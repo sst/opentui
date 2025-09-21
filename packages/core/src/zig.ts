@@ -248,26 +248,18 @@ function getOpenTUILib(libPath?: string) {
 
     // TextBuffer functions
     createTextBuffer: {
-      args: ["u32", "u8"],
+      args: ["u8"],
       returns: "ptr",
     },
     destroyTextBuffer: {
       args: ["ptr"],
       returns: "void",
     },
-    textBufferGetCharPtr: {
-      args: ["ptr"],
-      returns: "ptr",
-    },
     textBufferGetLength: {
       args: ["ptr"],
       returns: "u32",
     },
 
-    textBufferResize: {
-      args: ["ptr", "u32"],
-      returns: "void",
-    },
     textBufferReset: {
       args: ["ptr"],
       returns: "void",
@@ -300,10 +292,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "u32", "ptr", "ptr", "ptr"],
       returns: "u32",
     },
-    textBufferGetCapacity: {
-      args: ["ptr"],
-      returns: "u32",
-    },
     textBufferFinalizeLineInfo: {
       args: ["ptr"],
       returns: "void",
@@ -314,7 +302,7 @@ function getOpenTUILib(libPath?: string) {
     },
     textBufferGetLineInfoDirect: {
       args: ["ptr", "ptr", "ptr"],
-      returns: "void",
+      returns: "u32",
     },
     textBufferGetSelectionInfo: {
       args: ["ptr"],
@@ -351,6 +339,14 @@ function getOpenTUILib(libPath?: string) {
     textBufferGetChunkGroupCount: {
       args: ["ptr"],
       returns: "usize",
+    },
+    textBufferSetWrapWidth: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    textBufferSetWrapMode: {
+      args: ["ptr", "u8"],
+      returns: "void",
     },
 
     getArenaAllocatedBytes: {
@@ -549,6 +545,12 @@ export enum LogLevel {
   Debug = 3,
 }
 
+export interface LineInfo {
+  lineStarts: number[]
+  lineWidths: number[]
+  maxLineWidth: number
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
@@ -668,12 +670,10 @@ export interface RenderLib {
   setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
 
   // TextBuffer methods
-  createTextBuffer: (capacity: number, widthMethod: WidthMethod) => TextBuffer
+  createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
   destroyTextBuffer: (buffer: Pointer) => void
-  textBufferGetCharPtr: (buffer: Pointer) => Pointer
   textBufferGetLength: (buffer: Pointer) => number
 
-  textBufferResize: (buffer: Pointer, newLength: number) => void
   textBufferReset: (buffer: Pointer) => void
   textBufferSetSelection: (
     buffer: Pointer,
@@ -704,11 +704,10 @@ export interface RenderLib {
     bg: RGBA | null,
     attributes: number | null,
   ) => number
-  textBufferGetCapacity: (buffer: Pointer) => number
   textBufferFinalizeLineInfo: (buffer: Pointer) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   textBufferGetLineInfoDirect: (buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer) => void
-  textBufferGetLineInfo: (buffer: Pointer) => { lineStarts: number[]; lineWidths: number[] }
+  textBufferGetLineInfo: (buffer: Pointer) => LineInfo
   textBufferGetSelection: (buffer: Pointer) => { start: number; end: number } | null
   getSelectedTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
   getPlainTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
@@ -743,6 +742,8 @@ export interface RenderLib {
     attributes: number | null,
   ) => number
   textBufferGetChunkGroupCount: (buffer: Pointer) => number
+  textBufferSetWrapWidth: (buffer: Pointer, width: number) => void
+  textBufferSetWrapMode: (buffer: Pointer, mode: "char" | "word") => void
 
   getArenaAllocatedBytes: () => number
 
@@ -1201,34 +1202,22 @@ class FFIRenderLib implements RenderLib {
   }
 
   // TextBuffer methods
-  public createTextBuffer(capacity: number, widthMethod: WidthMethod): TextBuffer {
+  public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createTextBuffer(capacity, widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
     if (!bufferPtr) {
-      throw new Error(`Failed to create TextBuffer with capacity ${capacity}`)
+      throw new Error(`Failed to create TextBuffer`)
     }
 
-    return new TextBuffer(this, bufferPtr, capacity)
+    return new TextBuffer(this, bufferPtr)
   }
 
   public destroyTextBuffer(buffer: Pointer): void {
     this.opentui.symbols.destroyTextBuffer(buffer)
   }
 
-  public textBufferGetCharPtr(buffer: Pointer): Pointer {
-    const ptr = this.opentui.symbols.textBufferGetCharPtr(buffer)
-    if (!ptr) {
-      throw new Error("Failed to get TextBuffer char pointer")
-    }
-    return ptr
-  }
-
   public textBufferGetLength(buffer: Pointer): number {
     return this.opentui.symbols.textBufferGetLength(buffer)
-  }
-
-  public textBufferResize(buffer: Pointer, newLength: number): void {
-    this.opentui.symbols.textBufferResize(buffer, newLength)
   }
 
   public textBufferReset(buffer: Pointer): void {
@@ -1289,10 +1278,6 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public textBufferGetCapacity(buffer: Pointer): number {
-    return this.opentui.symbols.textBufferGetCapacity(buffer)
-  }
-
   public textBufferFinalizeLineInfo(buffer: Pointer): void {
     this.opentui.symbols.textBufferFinalizeLineInfo(buffer)
   }
@@ -1301,8 +1286,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferGetLineCount(buffer)
   }
 
-  public textBufferGetLineInfoDirect(buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): void {
-    this.opentui.symbols.textBufferGetLineInfoDirect(buffer, lineStartsPtr, lineWidthsPtr)
+  public textBufferGetLineInfoDirect(buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): number {
+    return this.opentui.symbols.textBufferGetLineInfoDirect(buffer, lineStartsPtr, lineWidthsPtr)
   }
 
   public textBufferGetSelection(buffer: Pointer): { start: number; end: number } | null {
@@ -1428,24 +1413,34 @@ class FFIRenderLib implements RenderLib {
     return typeof result === "bigint" ? Number(result) : result
   }
 
+  public textBufferSetWrapWidth(buffer: Pointer, width: number): void {
+    this.opentui.symbols.textBufferSetWrapWidth(buffer, width)
+  }
+
+  public textBufferSetWrapMode(buffer: Pointer, mode: "char" | "word"): void {
+    const modeValue = mode === "char" ? 0 : 1
+    this.opentui.symbols.textBufferSetWrapMode(buffer, modeValue)
+  }
+
   public getArenaAllocatedBytes(): number {
     const result = this.opentui.symbols.getArenaAllocatedBytes()
     return typeof result === "bigint" ? Number(result) : result
   }
 
-  public textBufferGetLineInfo(buffer: Pointer): { lineStarts: number[]; lineWidths: number[] } {
+  public textBufferGetLineInfo(buffer: Pointer): LineInfo {
     const lineCount = this.textBufferGetLineCount(buffer)
 
     if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [] }
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
     }
 
     const lineStarts = new Uint32Array(lineCount)
     const lineWidths = new Uint32Array(lineCount)
 
-    this.textBufferGetLineInfoDirect(buffer, ptr(lineStarts), ptr(lineWidths))
+    const maxLineWidth = this.textBufferGetLineInfoDirect(buffer, ptr(lineStarts), ptr(lineWidths))
 
     return {
+      maxLineWidth,
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
     }

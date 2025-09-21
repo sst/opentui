@@ -7,6 +7,7 @@ import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { Direction, MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
+import type { LineInfo } from "../zig"
 
 export interface TextOptions extends RenderableOptions<TextRenderable> {
   content?: StyledText | string
@@ -16,6 +17,8 @@ export interface TextOptions extends RenderableOptions<TextRenderable> {
   selectionFg?: string | RGBA
   selectable?: boolean
   attributes?: number
+  wrap?: boolean
+  wrapMode?: "char" | "word"
 }
 
 export class TextRenderable extends Renderable {
@@ -26,10 +29,12 @@ export class TextRenderable extends Renderable {
   private _defaultAttributes: number
   private _selectionBg: RGBA | undefined
   private _selectionFg: RGBA | undefined
+  private _wrap: boolean = false
+  private _wrapMode: "char" | "word" = "word"
   private lastLocalSelection: LocalSelectionBounds | null = null
 
   private textBuffer: TextBuffer
-  private _lineInfo: { lineStarts: number[]; lineWidths: number[] } = { lineStarts: [], lineWidths: [] }
+  private _lineInfo: LineInfo = { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
 
   protected rootTextNode: RootTextNodeRenderable
 
@@ -41,6 +46,8 @@ export class TextRenderable extends Renderable {
     selectionFg: undefined,
     selectable: true,
     attributes: 0,
+    wrap: true,
+    wrapMode: "word" as "char" | "word",
   } satisfies Partial<TextOptions>
 
   constructor(ctx: RenderContext, options: TextOptions) {
@@ -55,8 +62,18 @@ export class TextRenderable extends Renderable {
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
+    this._wrap = options.wrap ?? this._defaultOptions.wrap
+    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
 
-    this.textBuffer = TextBuffer.create(64, this._ctx.widthMethod)
+    this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
+
+    // Set wrap mode
+    this.textBuffer.setWrapMode(this._wrapMode)
+
+    // Set initial wrap width if wrapping is enabled
+    if (this._wrap) {
+      this.textBuffer.setWrapWidth(this.width > 0 ? this.width : 40) // Default to 40 if width not set yet
+    }
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
@@ -198,8 +215,36 @@ export class TextRenderable extends Renderable {
     }
   }
 
+  get wrap(): boolean {
+    return this._wrap
+  }
+
+  set wrap(value: boolean) {
+    if (this._wrap !== value) {
+      this._wrap = value
+      // Set or clear wrap width based on current setting
+      this.textBuffer.setWrapWidth(this._wrap ? this.width : null)
+      this.requestRender()
+    }
+  }
+
+  get wrapMode(): "char" | "word" {
+    return this._wrapMode
+  }
+
+  set wrapMode(value: "char" | "word") {
+    if (this._wrapMode !== value) {
+      this._wrapMode = value
+      this.textBuffer.setWrapMode(this._wrapMode)
+      this.requestRender()
+    }
+  }
+
   protected onResize(width: number, height: number): void {
-    if (this.lastLocalSelection) {
+    if (this._wrap) {
+      this.textBuffer.setWrapWidth(width)
+      this.updateTextInfo()
+    } else if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
         this.requestRender()
@@ -227,6 +272,7 @@ export class TextRenderable extends Renderable {
     const lineInfo = this.textBuffer.lineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
+    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
 
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
@@ -246,24 +292,14 @@ export class TextRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      const maxLineWidth = Math.max(...this._lineInfo.lineWidths, 0)
-      const numLines = this._lineInfo.lineStarts.length || 1
+      const maxLineWidth = this._lineInfo.maxLineWidth
+      const numLines = this._lineInfo.lineStarts.length
 
       let measuredWidth = maxLineWidth
       let measuredHeight = numLines
 
-      if (widthMode === MeasureMode.Exactly) {
-        measuredWidth = width
-      } else if (widthMode === MeasureMode.AtMost) {
-        measuredWidth = Math.min(maxLineWidth, width)
-      }
-
-      if (heightMode === MeasureMode.Exactly) {
-        measuredHeight = height
-      } else if (heightMode === MeasureMode.AtMost) {
-        measuredHeight = Math.min(numLines, height)
-      }
-
+      // NOTE: Yoga may use these measurements or not.
+      // If the yoga node settings and the parent allow this node to grow, it will.
       return {
         width: Math.max(1, measuredWidth),
         height: Math.max(1, measuredHeight),

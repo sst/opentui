@@ -7,7 +7,7 @@ describe("TextBuffer", () => {
   let buffer: TextBuffer
 
   beforeEach(() => {
-    buffer = TextBuffer.create(256, "wcwidth")
+    buffer = TextBuffer.create("wcwidth")
   })
 
   afterEach(() => {
@@ -151,7 +151,7 @@ describe("TextBuffer", () => {
     it("should handle very long lines", () => {
       const longText = "A".repeat(1000)
       const styledText = stringToStyledText(longText)
-      buffer = TextBuffer.create(2000, "wcwidth") // Need larger capacity
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -164,7 +164,7 @@ describe("TextBuffer", () => {
 
     it("should handle lines with different widths", () => {
       const styledText = stringToStyledText("Short\n" + "A".repeat(50) + "\nMedium")
-      buffer = TextBuffer.create(1000, "wcwidth")
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -240,7 +240,7 @@ describe("TextBuffer", () => {
 
     it("should handle lineInfo after buffer resize operations", () => {
       // Create a small buffer that will need to resize
-      const smallBuffer = TextBuffer.create(16, "wcwidth")
+      const smallBuffer = TextBuffer.create("wcwidth")
 
       // Add text that will cause multiple resizes
       const longText = "A".repeat(100) + "\n" + "B".repeat(100)
@@ -259,7 +259,7 @@ describe("TextBuffer", () => {
     it("should handle extremely long single line", () => {
       const extremelyLongText = "A".repeat(10000)
       const styledText = stringToStyledText(extremelyLongText)
-      buffer = TextBuffer.create(20000, "wcwidth")
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -273,7 +273,7 @@ describe("TextBuffer", () => {
     it("should handle thousands of lines", () => {
       const manyLines = Array.from({ length: 1000 }, (_, i) => `Line ${i}`).join("\n")
       const styledText = stringToStyledText(manyLines)
-      buffer = TextBuffer.create(10000, "wcwidth")
+      buffer = TextBuffer.create("wcwidth")
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
@@ -343,7 +343,7 @@ describe("TextBuffer", () => {
     let unicodeBuffer: TextBuffer
 
     beforeEach(() => {
-      unicodeBuffer = TextBuffer.create(256, "unicode")
+      unicodeBuffer = TextBuffer.create("unicode")
     })
 
     afterEach(() => {
@@ -589,7 +589,7 @@ describe("TextBuffer", () => {
     it("should handle very long text", () => {
       const longText = "A".repeat(1000) + "\n" + "B".repeat(500)
       const styledText = stringToStyledText(longText)
-      const largeBuffer = TextBuffer.create(2000, "wcwidth")
+      const largeBuffer = TextBuffer.create("wcwidth")
       largeBuffer.setStyledText(styledText)
 
       const plainText = largeBuffer.getPlainText()
@@ -770,6 +770,120 @@ describe("TextBuffer", () => {
         expect(buffer.getPlainText()).toBe(initialText)
         expect(buffer.chunkGroupCount).toBe(initialCount)
       })
+    })
+  })
+
+  describe("lineInfo with text wrapping", () => {
+    it("should return virtual line info when text wrapping is enabled", () => {
+      const longText = "This is a very long text that should wrap when the text wrapping is enabled."
+      const styledText = stringToStyledText(longText)
+      buffer.setStyledText(styledText)
+
+      const unwrappedInfo = buffer.lineInfo
+      expect(unwrappedInfo.lineStarts).toEqual([0]) // Single line
+      expect(unwrappedInfo.lineWidths.length).toBe(1)
+      expect(unwrappedInfo.lineWidths[0]).toBe(76) // Full text width
+
+      buffer.setWrapWidth(20)
+
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const wrappedInfo = buffer.lineInfo
+
+      expect(wrappedInfo.lineStarts.length).toBeGreaterThan(1)
+      expect(wrappedInfo.lineWidths.length).toBeGreaterThan(1)
+
+      for (const width of wrappedInfo.lineWidths) {
+        expect(width).toBeLessThanOrEqual(20)
+      }
+
+      for (let i = 1; i < wrappedInfo.lineStarts.length; i++) {
+        expect(wrappedInfo.lineStarts[i]).toBeGreaterThan(wrappedInfo.lineStarts[i - 1])
+      }
+    })
+
+    it("should return correct lineInfo for word wrapping", () => {
+      const text = "Hello world this is a test"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      buffer.setWrapMode("word")
+      buffer.setWrapWidth(12)
+
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo = buffer.lineInfo
+
+      expect(lineInfo.lineStarts.length).toBeGreaterThan(1)
+
+      for (const width of lineInfo.lineWidths) {
+        expect(width).toBeLessThanOrEqual(12)
+      }
+    })
+
+    it("should return correct lineInfo for char wrapping", () => {
+      const text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      buffer.setWrapMode("char")
+      buffer.setWrapWidth(10)
+
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo = buffer.lineInfo
+
+      expect(lineInfo.lineStarts).toEqual([0, 10, 20])
+      expect(lineInfo.lineWidths).toEqual([10, 10, 6])
+    })
+
+    it("should update lineInfo when wrap width changes", () => {
+      const text = "The quick brown fox jumps over the lazy dog"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      buffer.setWrapWidth(15)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo1 = buffer.lineInfo
+      const lineCount1 = lineInfo1.lineStarts.length
+
+      buffer.setWrapWidth(30)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const lineInfo2 = buffer.lineInfo
+      const lineCount2 = lineInfo2.lineStarts.length
+
+      expect(lineCount2).toBeLessThan(lineCount1)
+    })
+
+    it("should return original lineInfo when wrap is disabled", () => {
+      const text = "Line 1\nLine 2\nLine 3"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      const originalInfo = buffer.lineInfo
+      expect(originalInfo.lineStarts).toEqual([0, 7, 14])
+
+      buffer.setWrapWidth(5)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const wrappedInfo = buffer.lineInfo
+      expect(wrappedInfo.lineStarts.length).toBeGreaterThan(3)
+
+      buffer.setWrapWidth(null)
+      // @ts-ignore
+      buffer._lineInfo = null
+
+      const unwrappedInfo = buffer.lineInfo
+      expect(unwrappedInfo.lineStarts).toEqual([0, 7, 14])
+      expect(unwrappedInfo).toEqual(originalInfo)
     })
   })
 
