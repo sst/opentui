@@ -50,6 +50,8 @@ import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
 import * as textWrapExample from "./text-wrap"
 import { getKeyHandler } from "../lib/KeyHandler"
+import { setRenderLibPath } from "../zig"
+import fs from "node:fs"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -487,6 +489,17 @@ class ExampleSelector {
     this.renderer.destroy()
   }
 }
+
+// Prefer local freshly-built native lib during development
+try {
+  const arch = process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch
+  const os = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux"
+  const ext = process.platform === "darwin" ? "dylib" : process.platform === "win32" ? "dll" : "so"
+  const url = new URL(`../zig/lib/${arch}-${os}/libopentui.${ext}`, import.meta.url)
+  if (fs.existsSync(url.pathname)) {
+    setRenderLibPath(url.pathname)
+  }
+} catch {}
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,

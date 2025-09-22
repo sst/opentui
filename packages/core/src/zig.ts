@@ -5,16 +5,41 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 
-const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
-const targetLibPath = module.default
-if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+let supportsSelectionSymbols = false
+
+// Try optional prebuilt native package first; fall back to local dev build
+let targetLibPath: string | undefined
+try {
+  const mod = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+  targetLibPath = (mod as any).default
+  if (targetLibPath && !existsSync(targetLibPath)) {
+    targetLibPath = undefined
+  }
+} catch {
+  targetLibPath = undefined
+}
+
+function devLocateLibPath(): string | undefined {
+  try {
+    const arch = process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch
+    const os = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux"
+    const ext = process.platform === "darwin" ? "dylib" : process.platform === "win32" ? "dll" : "so"
+    const url = new URL(`./zig/lib/${arch}-${os}/libopentui.${ext}`, import.meta.url)
+    const p = url.pathname
+    return existsSync(p) ? p : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function getOpenTUILib(libPath?: string) {
-  const resolvedLibPath = libPath || targetLibPath
+  const fallback = devLocateLibPath()
+  const resolvedLibPath = libPath || targetLibPath || fallback
+  if (!resolvedLibPath) {
+    throw new Error(`OpenTUI native library not found. Install platform package or build local Zig lib.`)
+  }
 
-  const rawSymbols = dlopen(resolvedLibPath, {
+  const symbolMap: Record<string, any> = {
     // Logging
     setLogCallback: {
       args: ["ptr"],
@@ -246,6 +271,82 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
+    // PTY Terminal Session
+    terminalSessionCreate: {
+      args: ["u16", "u16"],
+      returns: "ptr",
+    },
+    terminalSessionDestroy: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    terminalSessionWrite: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    terminalSessionResize: {
+      args: ["ptr", "u16", "u16"],
+      returns: "void",
+    },
+    terminalSessionTick: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    terminalSessionRender: {
+      args: ["ptr", "ptr", "u32", "u32"],
+      returns: "void",
+    },
+
+    // LibVTerm Terminal Renderer functions
+    libvtermRendererCreate: {
+      args: ["u16", "u16"],
+      returns: "ptr",
+    },
+    libvtermRendererDestroy: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    libvtermRendererResize: {
+      args: ["ptr", "u16", "u16"],
+      returns: "void",
+    },
+    libvtermRendererWrite: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    libvtermRendererKeyboardUnichar: {
+      args: ["ptr", "u32", "u8", "u8", "u8"],
+      returns: "void",
+    },
+    libvtermRendererKeyboardKey: {
+      args: ["ptr", "i32", "u8", "u8", "u8"],
+      returns: "void",
+    },
+    libvtermRendererMouseMove: {
+      args: ["ptr", "i32", "i32", "u8", "u8", "u8"],
+      returns: "void",
+    },
+    libvtermRendererMouseButton: {
+      args: ["ptr", "i32", "u8", "u8", "u8", "u8"],
+      returns: "void",
+    },
+    libvtermRendererRender: {
+      args: ["ptr", "ptr", "u32", "u32"],
+      returns: "void",
+    },
+    libvtermRendererFlushDamage: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    libvtermRendererGetCursorPos: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "void",
+    },
+    libvtermRendererGetCursorVisible: {
+      args: ["ptr"],
+      returns: "u8",
+    },
+
     // TextBuffer functions
     createTextBuffer: {
       args: ["u8"],
@@ -368,8 +469,34 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
-  })
+  }
 
+  const selectionSymbols = {
+    terminalSessionSetSelection: {
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      returns: "void",
+    },
+    terminalSessionClearSelection: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    terminalSessionCopySelection: {
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "usize"],
+      returns: "usize",
+    },
+  } as const
+
+  // Try to load with selection symbols first
+  let rawSymbols: any
+  try {
+    rawSymbols = dlopen(resolvedLibPath, { ...symbolMap, ...selectionSymbols })
+    supportsSelectionSymbols = true
+  } catch (error) {
+    supportsSelectionSymbols = false
+    rawSymbols = dlopen(resolvedLibPath, symbolMap)
+  }
+
+  // Apply debug/trace wrappers if enabled
   if (process.env.DEBUG_FFI === "true" || process.env.TRACE_FFI === "true") {
     return {
       symbols: convertToDebugSymbols(rawSymbols.symbols),
@@ -749,16 +876,73 @@ export interface RenderLib {
 
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
+
+  // PTY TerminalSession
+  terminalSessionCreate: (cols: number, rows: number) => Pointer | null
+  terminalSessionDestroy: (session: Pointer) => void
+  terminalSessionWrite: (session: Pointer, data: Uint8Array) => number
+  terminalSessionResize: (session: Pointer, cols: number, rows: number) => void
+  terminalSessionTick: (session: Pointer) => number
+  terminalSessionRender: (session: Pointer, buffer: Pointer, x: number, y: number) => void
+  terminalSessionSetSelection?: (
+    session: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    selectionFg: Float32Array | null,
+    selectionBg: Float32Array | null,
+  ) => void
+  terminalSessionClearSelection?: (session: Pointer) => void
+  terminalSessionCopySelection?: (
+    session: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    outBuffer: Uint8Array,
+    outLen: number,
+  ) => number
+
+  // LibVTerm Terminal Renderer
+  libvtermRendererCreate: (rows: number, cols: number) => Pointer | null
+  libvtermRendererDestroy: (renderer: Pointer) => void
+  libvtermRendererResize: (renderer: Pointer, cols: number, rows: number) => void
+  libvtermRendererWrite: (renderer: Pointer, dataPtr: Pointer, len: number) => number
+  libvtermRendererKeyboardUnichar: (renderer: Pointer, char: number, shift: number, alt: number, ctrl: number) => void
+  libvtermRendererKeyboardKey: (renderer: Pointer, key: number, shift: number, alt: number, ctrl: number) => void
+  libvtermRendererMouseMove: (
+    renderer: Pointer,
+    row: number,
+    col: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ) => void
+  libvtermRendererMouseButton: (
+    renderer: Pointer,
+    button: number,
+    pressed: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ) => void
+  libvtermRendererRender: (renderer: Pointer, buffer: Pointer, x: number, y: number) => void
+  libvtermRendererFlushDamage: (renderer: Pointer) => void
+  libvtermRendererGetCursorPos: (renderer: Pointer, rowPtr: Pointer, colPtr: Pointer) => void
+  libvtermRendererGetCursorVisible: (renderer: Pointer) => number
 }
 
 class FFIRenderLib implements RenderLib {
-  private opentui: ReturnType<typeof getOpenTUILib>
+  private opentui: any
+  private selectionSupported: boolean
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: any // Store the FFI callback wrapper
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
+    this.selectionSupported = supportsSelectionSymbols
     this.setupLogging()
   }
 
@@ -820,7 +1004,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public createRenderer(width: number, height: number, options: { testing: boolean } = { testing: false }) {
-    return this.opentui.symbols.createRenderer(width, height, options.testing)
+    return this.opentui.symbols.createRenderer(width, height, options.testing) as Pointer | null
   }
 
   public destroyRenderer(renderer: Pointer): void {
@@ -1512,6 +1696,132 @@ class FFIRenderLib implements RenderLib {
     const responseBytes = this.encoder.encode(response)
     this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
   }
+
+  // PTY TerminalSession wrappers
+  public terminalSessionCreate(cols: number, rows: number): Pointer | null {
+    return this.opentui.symbols.terminalSessionCreate(cols, rows)
+  }
+  public terminalSessionDestroy(session: Pointer): void {
+    this.opentui.symbols.terminalSessionDestroy(session)
+  }
+  public terminalSessionWrite(session: Pointer, data: Uint8Array): number {
+    return Number(this.opentui.symbols.terminalSessionWrite(session, ptr(data), data.length))
+  }
+  public terminalSessionResize(session: Pointer, cols: number, rows: number): void {
+    this.opentui.symbols.terminalSessionResize(session, cols, rows)
+  }
+  public terminalSessionTick(session: Pointer): number {
+    return this.opentui.symbols.terminalSessionTick(session) as number
+  }
+  public terminalSessionRender(session: Pointer, buffer: Pointer, x: number, y: number): void {
+    this.opentui.symbols.terminalSessionRender(session, buffer, x, y)
+  }
+
+  public terminalSessionSetSelection(
+    session: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    selectionFg: Float32Array | null,
+    selectionBg: Float32Array | null,
+  ): void {
+    if (!this.selectionSupported || !this.opentui.symbols.terminalSessionSetSelection) {
+      return
+    }
+    const fgPtr = selectionFg ? ptr(selectionFg) : null
+    const bgPtr = selectionBg ? ptr(selectionBg) : null
+    this.opentui.symbols.terminalSessionSetSelection(session, startRow, startCol, endRow, endCol, fgPtr, bgPtr)
+  }
+
+  public terminalSessionClearSelection(session: Pointer): void {
+    if (!this.selectionSupported || !this.opentui.symbols.terminalSessionClearSelection) {
+      return
+    }
+    this.opentui.symbols.terminalSessionClearSelection(session)
+  }
+
+  public terminalSessionCopySelection(
+    session: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    outBuffer: Uint8Array,
+    outLen: number,
+  ): number {
+    if (!this.selectionSupported || !this.opentui.symbols.terminalSessionCopySelection) {
+      return 0
+    }
+    const outPtr = ptr(outBuffer)
+    return this.opentui.symbols.terminalSessionCopySelection(
+      session,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      outPtr,
+      outLen,
+    )
+  }
+
+  // LibVTerm Terminal Renderer wrappers
+  public libvtermRendererCreate(rows: number, cols: number): Pointer | null {
+    return this.opentui.symbols.libvtermRendererCreate(rows, cols)
+  }
+  public libvtermRendererDestroy(renderer: Pointer): void {
+    this.opentui.symbols.libvtermRendererDestroy(renderer)
+  }
+  public libvtermRendererResize(renderer: Pointer, cols: number, rows: number): void {
+    this.opentui.symbols.libvtermRendererResize(renderer, cols, rows)
+  }
+  public libvtermRendererWrite(renderer: Pointer, dataPtr: Pointer, len: number): number {
+    return Number(this.opentui.symbols.libvtermRendererWrite(renderer, dataPtr, len))
+  }
+  public libvtermRendererKeyboardUnichar(
+    renderer: Pointer,
+    char: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ): void {
+    this.opentui.symbols.libvtermRendererKeyboardUnichar(renderer, char, shift, alt, ctrl)
+  }
+  public libvtermRendererKeyboardKey(renderer: Pointer, key: number, shift: number, alt: number, ctrl: number): void {
+    this.opentui.symbols.libvtermRendererKeyboardKey(renderer, key, shift, alt, ctrl)
+  }
+  public libvtermRendererMouseMove(
+    renderer: Pointer,
+    row: number,
+    col: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ): void {
+    this.opentui.symbols.libvtermRendererMouseMove(renderer, row, col, shift, alt, ctrl)
+  }
+  public libvtermRendererMouseButton(
+    renderer: Pointer,
+    button: number,
+    pressed: number,
+    shift: number,
+    alt: number,
+    ctrl: number,
+  ): void {
+    this.opentui.symbols.libvtermRendererMouseButton(renderer, button, pressed, shift, alt, ctrl)
+  }
+  public libvtermRendererRender(renderer: Pointer, buffer: Pointer, x: number, y: number): void {
+    this.opentui.symbols.libvtermRendererRender(renderer, buffer, x, y)
+  }
+  public libvtermRendererFlushDamage(renderer: Pointer): void {
+    this.opentui.symbols.libvtermRendererFlushDamage(renderer)
+  }
+  public libvtermRendererGetCursorPos(renderer: Pointer, rowPtr: Pointer, colPtr: Pointer): void {
+    this.opentui.symbols.libvtermRendererGetCursorPos(renderer, rowPtr, colPtr)
+  }
+  public libvtermRendererGetCursorVisible(renderer: Pointer): number {
+    return this.opentui.symbols.libvtermRendererGetCursorVisible(renderer) as number
+  }
 }
 
 let opentuiLibPath: string | undefined
@@ -1527,6 +1837,7 @@ export function setRenderLibPath(libPath: string) {
 export function resolveRenderLib(): RenderLib {
   if (!opentuiLib) {
     try {
+      console.log("Resolving render lib path:", opentuiLibPath)
       opentuiLib = new FFIRenderLib(opentuiLibPath)
     } catch (error) {
       throw new Error(

@@ -43,6 +43,107 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
+const LibvtermConfig = struct {
+    available: bool,
+    include_paths: []const []const u8,
+    library_paths: []const []const u8,
+    compile_flags: []const []const u8,
+};
+
+fn detectLibvterm(b: *std.Build, target: std.Build.ResolvedTarget) LibvtermConfig {
+    _ = b; // Suppress unused parameter warning
+    
+    switch (target.result.os.tag) {
+        .macos => {
+            // Only enable libvterm for native architecture to avoid cross-compilation issues
+            const native_arch = builtin.cpu.arch;
+            if (target.result.cpu.arch != native_arch) {
+                // Skip libvterm for cross-compilation targets
+                return LibvtermConfig{
+                    .available = false,
+                    .include_paths = &[_][]const u8{},
+                    .library_paths = &[_][]const u8{},
+                    .compile_flags = &[_][]const u8{},
+                };
+            }
+            
+            // Try Homebrew paths based on native architecture
+            switch (native_arch) {
+                .aarch64 => {
+                    // Apple Silicon Homebrew path
+                    if (std.fs.accessAbsolute("/opt/homebrew/opt/libvterm/include/vterm.h", .{})) {
+                        return LibvtermConfig{
+                            .available = true,
+                            .include_paths = &[_][]const u8{"/opt/homebrew/opt/libvterm/include"},
+                            .library_paths = &[_][]const u8{"/opt/homebrew/opt/libvterm/lib"},
+                            .compile_flags = &[_][]const u8{ "-I/opt/homebrew/opt/libvterm/include", "-std=c99" },
+                        };
+                    } else |_| {}
+                },
+                .x86_64 => {
+                    // Intel Homebrew path
+                    if (std.fs.accessAbsolute("/usr/local/opt/libvterm/include/vterm.h", .{})) {
+                        return LibvtermConfig{
+                            .available = true,
+                            .include_paths = &[_][]const u8{"/usr/local/opt/libvterm/include"},
+                            .library_paths = &[_][]const u8{"/usr/local/opt/libvterm/lib"},
+                            .compile_flags = &[_][]const u8{ "-I/usr/local/opt/libvterm/include", "-std=c99" },
+                        };
+                    } else |_| {}
+                },
+                else => {
+                    // Unsupported architecture for macOS
+                },
+            }
+            
+            // Try system paths as fallback
+            if (std.fs.accessAbsolute("/usr/include/vterm.h", .{})) {
+                return LibvtermConfig{
+                    .available = true,
+                    .include_paths = &[_][]const u8{"/usr/include"},
+                    .library_paths = &[_][]const u8{"/usr/lib"},
+                    .compile_flags = &[_][]const u8{ "-I/usr/include", "-std=c99" },
+                };
+            } else |_| {}
+        },
+        .linux => {
+            // Check common Linux package manager paths
+            if (std.fs.accessAbsolute("/usr/include/vterm.h", .{})) {
+                return LibvtermConfig{
+                    .available = true,
+                    .include_paths = &[_][]const u8{"/usr/include"},
+                    .library_paths = &[_][]const u8{"/usr/lib"},
+                    .compile_flags = &[_][]const u8{ "-I/usr/include", "-std=c99" },
+                };
+            } else |_| {}
+            
+            if (std.fs.accessAbsolute("/usr/local/include/vterm.h", .{})) {
+                return LibvtermConfig{
+                    .available = true,
+                    .include_paths = &[_][]const u8{"/usr/local/include"},
+                    .library_paths = &[_][]const u8{"/usr/local/lib"},
+                    .compile_flags = &[_][]const u8{ "-I/usr/local/include", "-std=c99" },
+                };
+            } else |_| {}
+        },
+        .windows => {
+            // Windows support would require vcpkg or manual installation
+            // For now, disable libvterm on Windows
+        },
+        else => {
+            // Other platforms not supported yet
+        },
+    }
+    
+    // libvterm not available
+    return LibvtermConfig{
+        .available = false,
+        .include_paths = &[_][]const u8{},
+        .library_paths = &[_][]const u8{},
+        .compile_flags = &[_][]const u8{},
+    };
+}
+
 fn checkZigVersion() void {
     const current_version = builtin.zig_version;
     var is_supported = false;
@@ -140,12 +241,50 @@ fn buildTargetFromQuery(
     const target = b.resolveTargetQuery(target_query);
     var target_output: *std.Build.Step.Compile = undefined;
 
+    const link_libc_needed = switch (target.result.os.tag) {
+        .macos, .linux => true,
+        else => false,
+    };
+
     const module = b.addModule(LIB_NAME, .{
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
-        .link_libc = false,
+        .link_libc = link_libc_needed,
     });
+
+    // Add libvterm support with cross-platform detection
+    const libvterm_config = detectLibvterm(b, target);
+    
+    // Create build options to inform Zig code about libvterm availability
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "has_libvterm", libvterm_config.available);
+    module.addOptions("build_options", build_options);
+    
+    if (libvterm_config.available) {
+        std.debug.print("Building with libvterm support for {s}\n", .{description});
+        
+        // Add include paths
+        for (libvterm_config.include_paths) |include_path| {
+            module.addIncludePath(.{ .cwd_relative = include_path });
+        }
+        
+        // Add library paths
+        for (libvterm_config.library_paths) |library_path| {
+            module.addLibraryPath(.{ .cwd_relative = library_path });
+        }
+        
+        // Link libvterm
+        module.linkSystemLibrary("vterm", .{});
+        
+        // Add our wrapper C file with appropriate flags
+        module.addCSourceFile(.{
+            .file = b.path("vterm_wrapper.c"),
+            .flags = libvterm_config.compile_flags,
+        });
+    } else {
+        std.debug.print("Building without libvterm support for {s} (not available)\n", .{description});
+    }
 
     applyZgDependencies(b, module, optimize, target);
 

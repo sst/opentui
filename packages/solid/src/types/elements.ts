@@ -16,6 +16,8 @@ import type {
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
+  TerminalRenderer,
+  TerminalRendererOptions,
   TextNodeRenderable,
   TextOptions,
   TextRenderable,
@@ -128,6 +130,11 @@ export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, Sc
   focused?: boolean
   stickyScroll?: boolean
   stickyStart?: "bottom" | "top" | "left" | "right"
+}
+
+export type TerminalProps = ComponentProps<TerminalRendererOptions, TerminalRenderer> & {
+  focused?: boolean
+  onData?: (data: string) => void
 }
 
 // ============================================================================
