@@ -13,6 +13,7 @@ type KeyHandlerEventMap = {
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   private stdin: NodeJS.ReadStream
   private useKittyKeyboard: boolean
+  private listener: (key: Buffer) => void
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
@@ -25,8 +26,7 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     }
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
-
-    this.stdin.on("data", (key: Buffer) => {
+    this.listener = (key: Buffer) => {
       const parsedKey = parseKeypress(key, { useKittyKeyboard: this.useKittyKeyboard })
 
       switch (parsedKey.eventType) {
@@ -43,11 +43,16 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
           this.emit("keypress", parsedKey)
           break
       }
-    })
+    }
+    this.stdin.on("data", this.listener)
   }
 
   public destroy(): void {
-    this.stdin.removeAllListeners("data")
+    this.stdin.removeListener("data", this.listener)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+    keyHandler = null
   }
 }
 
