@@ -11,8 +11,8 @@ import {
   BoxRenderable,
   type SelectOption,
   type ParsedKey,
+  ASCIIFontRenderable,
 } from "../index"
-import { resolveRenderLib } from "../zig"
 import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
@@ -281,7 +281,6 @@ class ExampleSelector {
     this.createStaticElements()
     this.createSelectElement()
     this.setupKeyboardHandling()
-    this.renderer.requestRender()
 
     this.renderer.on("resize", (width: number, height: number) => {
       this.handleResize(width, height)
@@ -291,28 +290,19 @@ class ExampleSelector {
   private createTitle(width: number, height: number): void {
     const titleText = "OPENTUI EXAMPLES"
     const titleFont = "tiny"
-    const { width: titleWidth, height: titleHeight } = measureText({ text: titleText, font: titleFont })
+    const { width: titleWidth } = measureText({ text: titleText, font: titleFont })
     const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
 
-    this.title = new FrameBufferRenderable(renderer, {
+    this.title = new ASCIIFontRenderable(renderer, {
       id: "title",
-      width: titleWidth,
-      height: titleHeight,
-      position: "absolute",
       left: centerX,
-      top: 1,
-    })
-    this.title.frameBuffer.clear(RGBA.fromInts(0, 17, 34, 0))
-    this.renderer.root.add(this.title)
-
-    renderFontToFrameBuffer(this.title.frameBuffer, {
+      margin: 1,
       text: titleText,
-      x: 0,
-      y: 0,
+      font: titleFont,
       fg: RGBA.fromInts(255, 255, 255, 255),
       bg: RGBA.fromInts(0, 17, 34, 255),
-      font: titleFont,
     })
+    this.renderer.root.add(this.title)
   }
 
   private createStaticElements(): void {
@@ -323,9 +313,8 @@ class ExampleSelector {
 
     this.instructions = new TextRenderable(renderer, {
       id: "instructions",
-      position: "absolute",
-      left: 2,
-      top: 4,
+      marginLeft: 2,
+      marginRight: 2,
       content:
         "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
       fg: "#AAAAAA",
@@ -334,9 +323,6 @@ class ExampleSelector {
   }
 
   private createSelectElement(): void {
-    const width = this.renderer.terminalWidth
-    const height = this.renderer.terminalHeight
-
     const selectOptions: SelectOption[] = examples.map((example) => ({
       name: example.name,
       description: example.description,
@@ -345,11 +331,8 @@ class ExampleSelector {
 
     this.selectBox = new BoxRenderable(renderer, {
       id: "example-selector-box",
-      position: "absolute",
-      left: 1,
-      top: 6,
-      width: width - 2,
-      height: height - 8,
+      margin: 1,
+      flexGrow: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
       focusedBorderColor: "#00AAFF",
@@ -362,8 +345,7 @@ class ExampleSelector {
 
     this.selectElement = new SelectRenderable(renderer, {
       id: "example-selector",
-      width: width - 4,
-      height: height - 10,
+      height: "100%",
       options: selectOptions,
       backgroundColor: "#001122",
       selectedBackgroundColor: "#334455",
@@ -381,8 +363,8 @@ class ExampleSelector {
       this.runSelected(option.value as Example)
     })
 
-    this.selectBox.add(this.selectElement)
     this.renderer.root.add(this.selectBox)
+    this.selectBox.add(this.selectElement)
     this.selectElement.focus()
   }
 
@@ -391,16 +373,6 @@ class ExampleSelector {
       const titleWidth = this.title.frameBuffer.width
       const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
       this.title.x = centerX
-    }
-
-    if (this.selectBox) {
-      this.selectBox.width = width - 2
-      this.selectBox.height = height - 8
-    }
-
-    if (this.selectElement) {
-      this.selectElement.width = width - 4
-      this.selectElement.height = height - 10
     }
 
     this.renderer.requestRender()

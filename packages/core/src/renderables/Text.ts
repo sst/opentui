@@ -67,12 +67,10 @@ export class TextRenderable extends Renderable {
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
 
-    // Set wrap mode
     this.textBuffer.setWrapMode(this._wrapMode)
 
-    // Set initial wrap width if wrapping is enabled
     if (this._wrap) {
-      this.textBuffer.setWrapWidth(this.width > 0 ? this.width : 40) // Default to 40 if width not set yet
+      this.textBuffer.setWrapWidth(this.width > 0 ? this.width : ctx.width)
     }
 
     this.textBuffer.setDefaultFg(this._defaultFg)
