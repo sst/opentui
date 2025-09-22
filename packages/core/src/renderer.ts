@@ -17,7 +17,7 @@ import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
-import { getKeyHandler, KeyHandler } from "./lib/KeyHandler"
+import { KeyHandler } from "./lib/KeyHandler"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -115,7 +115,6 @@ const rendererTracker = singleton("RendererTracker", () => {
     removeRenderer: (renderer: CliRenderer) => {
       renderers.delete(renderer)
       if (renderers.size === 0) {
-        getKeyHandler().destroy()
         process.stdin.pause()
       }
     },

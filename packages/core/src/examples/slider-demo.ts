@@ -1,7 +1,6 @@
 import { type CliRenderer, createCliRenderer, t, fg, bold, BoxRenderable, TextRenderable } from "../index"
 import { SliderRenderable } from "../renderables/Slider"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../lib/KeyHandler"
 
 let horizontalSlider1: SliderRenderable | null = null
 let horizontalSlider2: SliderRenderable | null = null
@@ -549,7 +548,7 @@ ${fg("#565f89")("2w")}`,
     }
   }
 
-  getKeyHandler().on("keypress", keyboardHandler)
+  rendererInstance.keyInput.on("keypress", keyboardHandler)
 
   // Set up animation frame callback for animated sliders
   frameCallback = async (deltaTime: number) => {
@@ -572,7 +571,7 @@ ${fg("#565f89")("2w")}`,
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (keyboardHandler) {
-    getKeyHandler().off("keypress", keyboardHandler)
+    rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
   }
 

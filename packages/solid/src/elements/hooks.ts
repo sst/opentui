@@ -1,5 +1,4 @@
 import {
-  getKeyHandler,
   Selection,
   Timeline,
   type AnimationOptions,
@@ -51,7 +50,8 @@ export const useTerminalDimensions = () => {
 }
 
 export const useKeyboard = (callback: (key: ParsedKey) => void) => {
-  const keyHandler = getKeyHandler()
+  const renderer = useRenderer()
+  const keyHandler = renderer.keyInput
   onMount(() => {
     keyHandler.on("keypress", callback)
   })

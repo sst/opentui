@@ -1,7 +1,6 @@
 import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable, t, fg, bold } from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../lib/KeyHandler"
 
 let scrollBox: ScrollBoxRenderable | null = null
 let renderer: CliRenderer | null = null
@@ -258,7 +257,7 @@ export function run(rendererInstance: CliRenderer): void {
     addItem(false)
   }
 
-  getKeyHandler().on("keypress", (key) => {
+  rendererInstance.keyInput.on("keypress", (key) => {
     if (key.name === "s" && scrollBox) {
       // Toggle sticky scroll
       const currentSticky = scrollBox.stickyScroll

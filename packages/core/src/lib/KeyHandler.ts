@@ -1,6 +1,5 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type ParsedKey } from "./parse.keypress"
-import { singleton } from "../singleton"
 
 export type { ParsedKey }
 
@@ -52,15 +51,5 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
-    keyHandler = null
   }
-}
-
-let keyHandler: KeyHandler | null = null
-
-export function getKeyHandler(useKittyKeyboard: boolean = false): KeyHandler {
-  if (!keyHandler) {
-    keyHandler = singleton("KeyHandler", () => new KeyHandler(process.stdin, useKittyKeyboard))
-  }
-  return keyHandler
 }
