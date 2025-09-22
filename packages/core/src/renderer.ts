@@ -17,7 +17,7 @@ import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
-import { KeyHandler } from "./lib/KeyHandler"
+import { getKeyHandler, KeyHandler } from "./lib/KeyHandler"
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -104,6 +104,22 @@ singleton("ProcessExitSignals", () => {
       process.exit()
     })
   })
+})
+
+const rendererTracker = singleton("RendererTracker", () => {
+  const renderers = new Set<CliRenderer>()
+  return {
+    addRenderer: (renderer: CliRenderer) => {
+      renderers.add(renderer)
+    },
+    removeRenderer: (renderer: CliRenderer) => {
+      renderers.delete(renderer)
+      if (renderers.size === 0) {
+        getKeyHandler().destroy()
+        process.stdin.pause()
+      }
+    },
+  }
 })
 
 export async function createCliRenderer(config: CliRendererConfig = {}): Promise<CliRenderer> {
@@ -272,13 +288,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
 
       this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
-      this.realStdoutWrite.call(this.stdout, "Console cache:\n")
-      this.realStdoutWrite.call(this.stdout, this.console.getCachedLogs())
-      this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
-      const capturedOutput = capture.claimOutput()
-      if (capturedOutput) {
-        this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
-      }
+      this.dumpOutputCache()
       this.realStdoutWrite.call(this.stdout, "\nError details:\n")
       this.realStdoutWrite.call(this.stdout, error.message || "unknown error")
       this.realStdoutWrite.call(this.stdout, "\n")
@@ -289,7 +299,29 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
   }).bind(this)
 
+  private dumpOutputCache(optionalMessage: string = ""): void {
+    const cachedLogs = this.console.getCachedLogs()
+    const capturedOutput = capture.claimOutput()
+
+    if (capturedOutput.length > 0 || cachedLogs.length > 0) {
+      this.realStdoutWrite.call(this.stdout, optionalMessage)
+    }
+
+    if (cachedLogs.length > 0) {
+      this.realStdoutWrite.call(this.stdout, "Console cache:\n")
+      this.realStdoutWrite.call(this.stdout, cachedLogs)
+    }
+
+    if (capturedOutput.length > 0) {
+      this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
+      this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
+    }
+  }
+
   private exitHandler: () => void = (() => {
+    if (process.env.NODE_ENV !== "production") {
+      this.dumpOutputCache("\n=== UNHANDLED OUTPUT (this is only printed in non-production environments) ===\n")
+    }
     this.destroy()
   }).bind(this)
 
@@ -307,6 +339,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     config: CliRendererConfig = {},
   ) {
     super()
+
+    rendererTracker.addRenderer(this)
 
     this.stdin = stdin
     this.stdout = stdout
@@ -687,7 +721,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.exitOnCtrlC && str === "\u0003") {
       process.nextTick(() => {
-        process.exit()
+        this.destroy()
       })
       return
     }
@@ -1145,7 +1179,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
-    process.removeListener("exit", this.exitHandler)
     process.removeListener("warning", this.warningHandler)
     capture.removeListener("write", this.captureCallback)
 
@@ -1173,6 +1206,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.lib.destroyRenderer(this.rendererPtr)
+    rendererTracker.removeRenderer(this)
   }
 
   private startRenderLoop(): void {

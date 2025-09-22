@@ -5,7 +5,7 @@ import { TextBuffer, type TextChunk } from "../text-buffer"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
-import { Direction, MeasureMode } from "yoga-layout"
+import { MeasureMode } from "yoga-layout"
 import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
 import type { LineInfo } from "../zig"
 

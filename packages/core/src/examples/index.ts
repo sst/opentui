@@ -397,8 +397,7 @@ class ExampleSelector {
       switch (key.raw) {
         case "\u0003":
           this.cleanup()
-          process.exit()
-          break
+          return
       }
       switch (key.name) {
         case "c":
@@ -485,13 +484,14 @@ class ExampleSelector {
     if (this.selectElement) {
       this.selectElement.blur()
     }
+    this.renderer.destroy()
   }
 }
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
   targetFps: 60,
-  useAlternateScreen: false,
+  // useAlternateScreen: false,
 })
 
 renderer.setBackgroundColor("#001122")
