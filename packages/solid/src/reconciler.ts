@@ -225,6 +225,10 @@ export const {
     }
 
     switch (name) {
+      case "id":
+        log("Id mapped", node.id, "=", value)
+        node[name] = value
+        break
       case "focused":
         if (!(node instanceof Renderable)) return
         if (value) {
@@ -344,7 +348,7 @@ export const {
       log("No parent found for node:", logId(node))
       return undefined
     }
-    const siblings = getNodeChildren(node)
+    const siblings = getNodeChildren(parent)
 
     const index = siblings.indexOf(node)
 

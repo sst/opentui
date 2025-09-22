@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach, test } from "bun:test"
 import { testRender } from "../index"
 import { createSignal, createEffect, createMemo, For, Show, Switch, Match, Index, ErrorBoundary } from "solid-js"
 
@@ -206,6 +206,78 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       frame = testSetup.captureCharFrame()
       expect(frame).not.toContain("Visible content")
       expect(frame).toContain("Always visible")
+    })
+
+    it("should conditionally render content with <Show> in the correct order", async () => {
+      const [showContent, setShowContent] = createSignal(false)
+
+      testSetup = await testRender(
+        () => {
+          return (
+            <box id="container">
+              <Show when={showContent()}>
+                <box id="before" />
+              </Show>
+              <box id="after"></box>
+            </box>
+          )
+        },
+        { width: 20, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+
+      console.log("Setting show content")
+      setShowContent(true)
+      await testSetup.renderOnce()
+
+      const children = testSetup.renderer.root.getChildren()[0]!.getChildren()
+
+      /*
+       * Should be [before, after]
+       * but is [slot-node, before, after]
+       */
+      test.todo("This is what it should be", () => {
+        expect(children.length).toBe(2)
+        expect(children[0]!.id).toBe("before")
+        expect(children[1]!.id).toBe("after")
+      })
+
+      expect(children.length).toBe(3)
+      expect(children[1]!.id).toBe("before")
+      expect(children[2]!.id).toBe("after")
+    })
+
+    it("should conditionally render content in root with <Show> in the correct order", async () => {
+      const [showContent, setShowContent] = createSignal(false)
+
+      testSetup = await testRender(
+        () => {
+          return (
+            <>
+              <box id="first"></box>
+              <Show when={showContent()}>
+                <box id="second" />
+              </Show>
+              <box id="third"></box>
+            </>
+          )
+        },
+        { width: 20, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+
+      console.log("Setting show content")
+      setShowContent(true)
+      await testSetup.renderOnce()
+
+      const children = testSetup.renderer.root.getChildren()
+
+      expect(children.length).toBe(3)
+      expect(children[0]!.id).toBe("first")
+      expect(children[1]!.id).toBe("second")
+      expect(children[2]!.id).toBe("third")
     })
   })
 

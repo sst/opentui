@@ -165,7 +165,7 @@ export function createRenderer({
       let removed
       while ((removed = getFirstChild(parent))) removeNode(parent, removed)
       replacement && insertNode(parent, replacement)
-      return ""
+      return replacement
     }
     const node = replacement || createSlotNode()
     if (current.length) {
