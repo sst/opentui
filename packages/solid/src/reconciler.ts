@@ -65,6 +65,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   )
 
   if (node instanceof SlotRenderable) {
+    node.parent = parent
     node = node.getSlotChild(parent)
   }
 
@@ -109,6 +110,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
 
   if (node instanceof SlotRenderable) {
+    node.parent = null
     node = node.getSlotChild(parent)
   }
 
