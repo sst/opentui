@@ -31,4 +31,8 @@ export const ANSI = {
   disableSGRMouseMode: "\x1b[?1006l",
 
   clearRendererSpace: (height: number) => `\x1b[${height}A\x1b[1G\x1b[J`,
+
+  // Bracketed paste mode
+  bracketedPasteStart: "\u001b[200~",
+  bracketedPasteEnd: "\u001b[201~",
 }

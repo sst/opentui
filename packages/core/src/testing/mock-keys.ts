@@ -1,4 +1,5 @@
 import type { CliRenderer } from "../renderer"
+import { ANSI } from "../ansi"
 
 export const KeyCodes = {
   // Control keys
@@ -150,6 +151,10 @@ export function createMockKeys(renderer: CliRenderer) {
     pressKey(KeyCodes.CTRL_C)
   }
 
+  const pasteBracketedText = (text: string): Promise<void> => {
+    return pressKeys([ANSI.bracketedPasteStart, text, ANSI.bracketedPasteEnd])
+  }
+
   return {
     pressKeys,
     pressKey,
@@ -160,5 +165,6 @@ export function createMockKeys(renderer: CliRenderer) {
     pressBackspace,
     pressArrow,
     pressCtrlC,
+    pasteBracketedText,
   }
 }

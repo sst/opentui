@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type ParsedKey } from "./parse.keypress"
+import { ANSI } from "../ansi"
 
 export type { ParsedKey }
 
@@ -30,12 +31,12 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.stdin.setEncoding("utf8")
     this.listener = (key: Buffer) => {
       let data = key.toString()
-      if (data.startsWith("\u001b[200~")) {
+      if (data.startsWith(ANSI.bracketedPasteStart)) {
         this.pasteMode = true
       }
       if (this.pasteMode) {
         this.pasteBuffer.push(Bun.stripANSI(data))
-        if (data.endsWith("\u001b[201~")) {
+        if (data.endsWith(ANSI.bracketedPasteEnd)) {
           this.pasteMode = false
           this.emit("paste", this.pasteBuffer.join(""))
           this.pasteBuffer = []
