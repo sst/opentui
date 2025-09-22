@@ -360,7 +360,8 @@ export class TextRenderable extends Renderable {
         attributes: this._defaultAttributes,
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
-      this.updateTextInfo()
+      this.updateLineInfo()
+      this.yogaNode.markDirty()
     }
   }
 
