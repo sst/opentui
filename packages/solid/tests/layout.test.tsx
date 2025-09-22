@@ -314,7 +314,7 @@ describe("SolidJS Renderer Integration Tests", () => {
             >
               <box border height={10} title="hi" />
             </scrollbox>
-            <box border height={10} title="spacer">
+            <box border height={10} title="spacer" flexShrink={0}>
               <text>spacer</text>
             </box>
           </box>

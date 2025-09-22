@@ -68,16 +68,11 @@ export class TextRenderable extends Renderable {
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
 
     this.textBuffer.setWrapMode(this._wrapMode)
-
-    if (this._wrap) {
-      this.textBuffer.setWrapWidth(this.width > 0 ? this.width : ctx.width)
-    }
+    this.setupMeasureFunc()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
-
-    this.setupMeasureFunc()
 
     this.rootTextNode = new RootTextNodeRenderable(
       ctx,
@@ -92,6 +87,11 @@ export class TextRenderable extends Renderable {
 
     this.updateTextBuffer(styledText)
     this._text.mount(this)
+
+    if (this._wrap && this.width > 0) {
+      this.updateWrapWidth(this.width)
+    }
+
     this.updateTextInfo()
   }
 
@@ -275,6 +275,18 @@ export class TextRenderable extends Renderable {
     this.requestRender()
   }
 
+  private updateLineInfo(): void {
+    const lineInfo = this.textBuffer.lineInfo
+    this._lineInfo.lineStarts = lineInfo.lineStarts
+    this._lineInfo.lineWidths = lineInfo.lineWidths
+    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
+  }
+
+  private updateWrapWidth(width: number): void {
+    this.textBuffer.setWrapWidth(width)
+    this.updateLineInfo()
+  }
+
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -284,27 +296,20 @@ export class TextRenderable extends Renderable {
     ): { width: number; height: number } => {
       if (this._wrap) {
         if (this.width !== width) {
-          this.textBuffer.setWrapWidth(width)
-          const lineInfo = this.textBuffer.lineInfo
-          this._lineInfo.lineStarts = lineInfo.lineStarts
-          this._lineInfo.lineWidths = lineInfo.lineWidths
-          this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
+          this.updateWrapWidth(width)
         }
-
-        const measuredWidth = this._lineInfo.maxLineWidth
-        const measuredHeight = this._lineInfo.lineStarts.length
-
-        // NOTE: Yoga may use these measurements or not.
-        // If the yoga node settings and the parent allow this node to grow, it will.
-        return {
-          width: Math.max(1, measuredWidth),
-          height: Math.max(1, measuredHeight),
-        }
+      } else {
+        this.updateLineInfo()
       }
 
+      const measuredWidth = this._lineInfo.maxLineWidth
+      const measuredHeight = this._lineInfo.lineStarts.length
+
+      // NOTE: Yoga may use these measurements or not.
+      // If the yoga node settings and the parent allow this node to grow, it will.
       return {
-        width,
-        height,
+        width: Math.max(1, measuredWidth),
+        height: Math.max(1, measuredHeight),
       }
     }
 
