@@ -239,10 +239,7 @@ export class TextRenderable extends Renderable {
   }
 
   protected onResize(width: number, height: number): void {
-    if (this._wrap) {
-      this.textBuffer.setWrapWidth(width)
-      this.updateTextInfo()
-    } else if (this.lastLocalSelection) {
+    if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
         this.requestRender()
@@ -267,11 +264,6 @@ export class TextRenderable extends Renderable {
   }
 
   private updateTextInfo(): void {
-    const lineInfo = this.textBuffer.lineInfo
-    this._lineInfo.lineStarts = lineInfo.lineStarts
-    this._lineInfo.lineWidths = lineInfo.lineWidths
-    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
-
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -290,17 +282,29 @@ export class TextRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      const maxLineWidth = this._lineInfo.maxLineWidth
-      const numLines = this._lineInfo.lineStarts.length
+      if (this._wrap) {
+        if (this.width !== width) {
+          this.textBuffer.setWrapWidth(width)
+          const lineInfo = this.textBuffer.lineInfo
+          this._lineInfo.lineStarts = lineInfo.lineStarts
+          this._lineInfo.lineWidths = lineInfo.lineWidths
+          this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
+        }
 
-      let measuredWidth = maxLineWidth
-      let measuredHeight = numLines
+        const measuredWidth = this._lineInfo.maxLineWidth
+        const measuredHeight = this._lineInfo.lineStarts.length
 
-      // NOTE: Yoga may use these measurements or not.
-      // If the yoga node settings and the parent allow this node to grow, it will.
+        // NOTE: Yoga may use these measurements or not.
+        // If the yoga node settings and the parent allow this node to grow, it will.
+        return {
+          width: Math.max(1, measuredWidth),
+          height: Math.max(1, measuredHeight),
+        }
+      }
+
       return {
-        width: Math.max(1, measuredWidth),
-        height: Math.max(1, measuredHeight),
+        width,
+        height,
       }
     }
 

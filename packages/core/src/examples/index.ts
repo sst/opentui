@@ -465,6 +465,7 @@ class ExampleSelector {
 
   private restart(): void {
     this.renderer.pause()
+    this.renderer.auto()
     this.showMenuElements()
     this.renderer.setBackgroundColor("#001122")
     this.renderer.requestRender()

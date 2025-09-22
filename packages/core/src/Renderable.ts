@@ -984,6 +984,11 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  /**
+   * This will be called during a render pass.
+   * Requesting a render during a render pass will drop the requested render.
+   * If you need to request a render during a render pass, use process.nextTick.
+   */
   protected onResize(width: number, height: number): void {
     this.onSizeChange?.()
     this.emit("resize")
