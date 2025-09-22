@@ -226,7 +226,7 @@ export const {
 
     switch (name) {
       case "id":
-        log("Id mapped", node.id, '=', value)
+        log("Id mapped", node.id, "=", value)
         node[name] = value
         break
       case "focused":
