@@ -48,6 +48,7 @@ import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
+import * as textWrapExample from "./text-wrap"
 import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -76,6 +77,12 @@ const examples: Example[] = [
     description: "Text selection with ASCII fonts - precise character-level selection across different font types",
     run: asciiFontSelectionExample.run,
     destroy: asciiFontSelectionExample.destroy,
+  },
+  {
+    name: "Text Wrap Demo",
+    description: "Text wrapping example",
+    run: textWrapExample.run,
+    destroy: textWrapExample.destroy,
   },
   {
     name: "Console Demo",
