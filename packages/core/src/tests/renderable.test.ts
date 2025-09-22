@@ -10,6 +10,8 @@ import {
 } from "../Renderable"
 import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
 import type { RenderContext } from "../types"
+import { TextNodeRenderable } from "../renderables/TextNode"
+import { TextRenderable } from "../renderables/Text"
 
 export class TestBaseRenderable extends BaseRenderable {
   constructor(options: BaseRenderableOptions) {
@@ -217,6 +219,51 @@ describe("Renderable - Child Management", () => {
     // Verify parent mapping is updated
     expect(parent.getRenderable("child")).toBeUndefined()
     expect(parent.getRenderable("new-child-id")).toBe(child)
+  })
+
+  test("findDescendantById finds direct children", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+
+    parent.add(child1)
+    parent.add(child2)
+
+    expect(parent.findDescendantById("child1")).toBe(child1)
+    expect(parent.findDescendantById("child2")).toBe(child2)
+    expect(parent.findDescendantById("nonexistent")).toBeUndefined()
+  })
+
+  test("findDescendantById finds nested descendants", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const grandchild = new TestRenderable(testRenderer, { id: "grandchild" })
+
+    parent.add(child1)
+    parent.add(child2)
+    child1.add(grandchild)
+
+    expect(parent.findDescendantById("grandchild")).toBe(grandchild)
+    expect(parent.findDescendantById("child1")).toBe(child1)
+    expect(parent.findDescendantById("child2")).toBe(child2)
+  })
+
+  test("findDescendantById handles TextNodeRenderable children without crashing", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const child3 = new TextRenderable(testRenderer, { id: "child3" })
+    const textNode = new TextNodeRenderable({ id: "text-node" })
+
+    parent.add(child1)
+    child1.add(child2)
+    child2.add(child3)
+    child3.add(textNode)
+
+    expect(parent.findDescendantById("child1")).toBe(child1)
+    expect(parent.findDescendantById("child2")).toBe(child2)
+    expect(parent.findDescendantById("text-node")).toBeUndefined()
   })
 })
 

@@ -431,8 +431,10 @@ export abstract class Renderable extends BaseRenderable {
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this._childrenInLayoutOrder) {
       if (child.id === id) return child
-      const found = child.findDescendantById(id)
-      if (found) return found
+      if (isRenderable(child)) {
+        const found = child.findDescendantById(id)
+        if (found) return found
+      }
     }
     return undefined
   }
