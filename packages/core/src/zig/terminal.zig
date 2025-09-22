@@ -188,6 +188,9 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
     defer env_map.deinit();
 
+    // Always just try to enable bracketed paste, even if it was reported as not supported
+    self.caps.bracketed_paste = true;
+
     if (env_map.get("TERM_PROGRAM")) |prog| {
         if (std.mem.eql(u8, prog, "vscode")) {
             // VSCode has limited capability

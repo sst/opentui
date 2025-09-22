@@ -49,7 +49,6 @@ import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
 import * as textWrapExample from "./text-wrap"
-import { getKeyHandler } from "../lib/KeyHandler"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -386,7 +385,7 @@ class ExampleSelector {
   }
 
   private setupKeyboardHandling(): void {
-    getKeyHandler().on("keypress", (key: ParsedKey) => {
+    this.renderer.keyInput.on("keypress", (key: ParsedKey) => {
       if (!this.inMenu) {
         switch (key.name) {
           case "escape":

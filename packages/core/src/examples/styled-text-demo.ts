@@ -14,7 +14,6 @@ import {
 } from "../index"
 import { TextRenderable } from "../renderables/Text"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../lib/KeyHandler"
 
 let parentContainer: BoxRenderable | null = null
 let counter = 0
@@ -199,7 +198,7 @@ ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit
       updateFrequency = Math.min(60, updateFrequency + 1)
     }
   }
-  getKeyHandler().on("keypress", keyboardHandler)
+  rendererInstance.keyInput.on("keypress", keyboardHandler)
 
   const instructionsText = t`${bold("Styled Text Demo")}
 ${fg("#888")("ESC to return, ↑/↓ to control speed")}
@@ -254,7 +253,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (keyboardHandler) {
-    getKeyHandler().off("keypress", keyboardHandler)
+    rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
   }
 

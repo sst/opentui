@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { getKeyHandler, RGBA, type ParsedKey } from "@opentui/core"
-import { computed, onUnmounted, ref } from "vue"
+import { RGBA, type ParsedKey } from "@opentui/core"
+import { onUnmounted, ref } from "vue"
+import { useCliRenderer } from ".."
 
 const count = ref(0)
 
@@ -22,10 +23,11 @@ function handleKeyPress(key: ParsedKey): void {
   }
 }
 
-getKeyHandler().on("keypress", handleKeyPress)
+const renderer = useCliRenderer()
+renderer.keyInput.on("keypress", handleKeyPress)
 
 onUnmounted(() => {
-  getKeyHandler().off("keypress", handleKeyPress)
+  renderer.keyInput.off("keypress", handleKeyPress)
 })
 
 const textStyles = { fg: RGBA.fromHex("#0000ff") }

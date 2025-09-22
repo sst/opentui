@@ -115,6 +115,8 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   onMouseOut?: (this: T, event: MouseEvent) => void
   onMouseScroll?: (this: T, event: MouseEvent) => void
 
+  onPaste?: (this: T, text: string) => void
+
   onKeyDown?: (key: ParsedKey) => void
 
   onSizeChange?: (this: T) => void
@@ -212,12 +214,15 @@ export abstract class Renderable extends BaseRenderable {
   protected _focusable: boolean = false
   protected _focused: boolean = false
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
+  protected pasteHandler: ((text: string) => void) | null = null
+
   private _live: boolean = false
   protected _liveCount: number = 0
 
   private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
+  private _pasteListener: ((text: string) => void) | undefined = undefined
   private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
 
   protected yogaNode: YogaNode
@@ -361,7 +366,15 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
+    this.pasteHandler = (text: string) => {
+      this._pasteListener?.call(this, text)
+      if (this.handlePaste) {
+        this.handlePaste(text)
+      }
+    }
+
     this.ctx.keyInput.on("keypress", this.keypressHandler)
+    this.ctx.keyInput.on("paste", this.pasteHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -374,6 +387,11 @@ export abstract class Renderable extends BaseRenderable {
     if (this.keypressHandler) {
       this.ctx.keyInput.off("keypress", this.keypressHandler)
       this.keypressHandler = null
+    }
+
+    if (this.pasteHandler) {
+      this.ctx.keyInput.off("paste", this.pasteHandler)
+      this.pasteHandler = null
     }
 
     this.emit(RenderableEvents.BLURRED)
@@ -408,6 +426,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public handleKeyPress?(key: ParsedKey | string): boolean
+  public handlePaste?(text: string): void
 
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this._childrenInLayoutOrder) {
@@ -1405,6 +1424,13 @@ export abstract class Renderable extends BaseRenderable {
     else delete this._mouseListeners["scroll"]
   }
 
+  public set onPaste(handler: ((text: string) => void) | undefined) {
+    this._pasteListener = handler
+  }
+  public get onPaste(): ((text: string) => void) | undefined {
+    return this._pasteListener
+  }
+
   public set onKeyDown(handler: ((key: ParsedKey) => void) | undefined) {
     if (handler) this._keyListeners["down"] = handler
     else delete this._keyListeners["down"]
@@ -1431,6 +1457,7 @@ export abstract class Renderable extends BaseRenderable {
     this.onMouseOver = options.onMouseOver
     this.onMouseOut = options.onMouseOut
     this.onMouseScroll = options.onMouseScroll
+    this.onPaste = options.onPaste
     this.onKeyDown = options.onKeyDown
     this.onSizeChange = options.onSizeChange
   }

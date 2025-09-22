@@ -1,6 +1,6 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type ParsedKey } from "./parse.keypress"
-import { singleton } from "../singleton"
+import { ANSI } from "../ansi"
 
 export type { ParsedKey }
 
@@ -8,12 +8,15 @@ type KeyHandlerEventMap = {
   keypress: [ParsedKey]
   keyrepeat: [ParsedKey]
   keyrelease: [ParsedKey]
+  paste: [string]
 }
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   private stdin: NodeJS.ReadStream
   private useKittyKeyboard: boolean
   private listener: (key: Buffer) => void
+  private pasteMode: boolean = false
+  private pasteBuffer: string[] = []
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
@@ -27,6 +30,19 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
     this.listener = (key: Buffer) => {
+      let data = key.toString()
+      if (data.startsWith(ANSI.bracketedPasteStart)) {
+        this.pasteMode = true
+      }
+      if (this.pasteMode) {
+        this.pasteBuffer.push(Bun.stripANSI(data))
+        if (data.endsWith(ANSI.bracketedPasteEnd)) {
+          this.pasteMode = false
+          this.emit("paste", this.pasteBuffer.join(""))
+          this.pasteBuffer = []
+        }
+        return
+      }
       const parsedKey = parseKeypress(key, { useKittyKeyboard: this.useKittyKeyboard })
 
       switch (parsedKey.eventType) {
@@ -52,15 +68,5 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
-    keyHandler = null
   }
-}
-
-let keyHandler: KeyHandler | null = null
-
-export function getKeyHandler(useKittyKeyboard: boolean = false): KeyHandler {
-  if (!keyHandler) {
-    keyHandler = singleton("KeyHandler", () => new KeyHandler(process.stdin, useKittyKeyboard))
-  }
-  return keyHandler
 }

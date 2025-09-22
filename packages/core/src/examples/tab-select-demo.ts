@@ -12,7 +12,6 @@ import {
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextRenderable } from "../renderables/Text"
-import { getKeyHandler } from "../lib/KeyHandler"
 
 let tabSelect: TabSelectRenderable | null = null
 let renderer: CliRenderer | null = null
@@ -183,13 +182,13 @@ export function run(rendererInstance: CliRenderer): void {
     }
   }
 
-  getKeyHandler().on("keypress", keyboardHandler)
+  rendererInstance.keyInput.on("keypress", keyboardHandler)
   tabSelect.focus()
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (keyboardHandler) {
-    getKeyHandler().off("keypress", keyboardHandler)
+    rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
   }
 

@@ -190,7 +190,7 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  private insertText(text: string): void {
+  public insertText(text: string): void {
     if (this._value.length + text.length > this._maxLength) {
       return
     }
@@ -204,7 +204,7 @@ export class InputRenderable extends Renderable {
     this.emit(InputRenderableEvents.INPUT, this._value)
   }
 
-  private deleteCharacter(direction: "backward" | "forward"): void {
+  public deleteCharacter(direction: "backward" | "forward"): void {
     if (direction === "backward" && this._cursorPosition > 0) {
       const beforeCursor = this._value.substring(0, this._cursorPosition - 1)
       const afterCursor = this._value.substring(this._cursorPosition)

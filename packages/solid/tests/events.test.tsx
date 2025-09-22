@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal } from "solid-js"
 import { createSpy } from "./utils/spy"
+import { usePaste } from "../src/elements/hooks"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -316,6 +317,32 @@ describe("SolidJS Renderer Integration Tests", () => {
       frame = testSetup.captureCharFrame()
       expect(frame).toContain("Static: Updated")
       expect(frame).toContain("Direct content")
+    })
+
+    it("should handle usePaste hook", async () => {
+      const pasteSpy = createSpy()
+      const [pastedText, setPastedText] = createSignal("")
+
+      const TestComponent = () => {
+        usePaste((text) => {
+          pasteSpy(text)
+          setPastedText(text)
+        })
+
+        return (
+          <box>
+            <text>Pasted: {pastedText()}</text>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <TestComponent />, { width: 30, height: 5 })
+
+      await testSetup.mockInput.pasteBracketedText("pasted content")
+
+      expect(pasteSpy.callCount()).toBe(1)
+      expect(pasteSpy.calls[0]?.[0]).toBe("pasted content")
+      expect(pastedText()).toBe("pasted content")
     })
   })
 })
