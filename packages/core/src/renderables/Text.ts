@@ -24,6 +24,11 @@ export interface TextOptions extends RenderableOptions<TextRenderable> {
 export class TextRenderable extends Renderable {
   public selectable: boolean = true
   private _text: StyledText
+
+  // TODO: The TextRenderable is currently juggling both a StyledText and a RootTextNodeRenderable.
+  // We should refactor this to only use the RootTextNodeRenderable here and have a separate StyledTextRenderable with `content`.
+  private _hasManualStyledText: boolean = false
+
   private _defaultFg: RGBA
   private _defaultBg: RGBA
   private _defaultAttributes: number
@@ -56,6 +61,7 @@ export class TextRenderable extends Renderable {
     const content = options.content ?? this._defaultOptions.content
     const styledText = typeof content === "string" ? stringToStyledText(content) : content
     this._text = styledText
+    this._hasManualStyledText = !!options.content
     this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
     this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
     this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
@@ -131,6 +137,7 @@ export class TextRenderable extends Renderable {
   }
 
   set content(value: StyledText | string) {
+    this._hasManualStyledText = true
     const styledText = typeof value === "string" ? stringToStyledText(value) : value
     if (this._text !== styledText) {
       this._text = styledText
@@ -346,7 +353,7 @@ export class TextRenderable extends Renderable {
   }
 
   private updateTextFromNodes(): void {
-    if (this.rootTextNode.isDirty) {
+    if (this.rootTextNode.isDirty && !this._hasManualStyledText) {
       const chunks = this.rootTextNode.gatherWithInheritedStyle({
         fg: this._defaultFg,
         bg: this._defaultBg,
