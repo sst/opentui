@@ -67,12 +67,13 @@ class TerminalConsoleCache extends EventEmitter {
   }
 
   public activate(): void {
-    if (process.env.OTUI_USE_CONSOLE === "false") return
     this.setupConsoleCapture()
     this.overrideConsoleMethods()
   }
 
   private setupConsoleCapture(): void {
+    if (process.env.OTUI_USE_CONSOLE === "false") return
+
     const mockStdout = new CapturedWritableStream("stdout", capture)
     const mockStderr = new CapturedWritableStream("stderr", capture)
 

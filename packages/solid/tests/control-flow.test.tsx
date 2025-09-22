@@ -215,40 +215,29 @@ describe("SolidJS Renderer - Control Flow Components", () => {
         () => {
           return (
             <box id="container">
+              <box id="first"></box>
               <Show when={showContent()}>
-                <box id="before" />
+                <box id="second" />
               </Show>
-              <box id="after"></box>
+              <box id="third"></box>
             </box>
           )
         },
         { width: 20, height: 5 },
       )
 
-      await testSetup.renderOnce()
-
-      console.log("Setting show content")
       setShowContent(true)
       await testSetup.renderOnce()
 
       const children = testSetup.renderer.root.getChildren()[0]!.getChildren()
 
-      /*
-       * Should be [before, after]
-       * but is [slot-node, before, after]
-       */
-      test.todo("This is what it should be", () => {
-        expect(children.length).toBe(2)
-        expect(children[0]!.id).toBe("before")
-        expect(children[1]!.id).toBe("after")
-      })
-
       expect(children.length).toBe(3)
-      expect(children[1]!.id).toBe("before")
-      expect(children[2]!.id).toBe("after")
+      expect(children[0]!.id).toBe("first")
+      expect(children[1]!.id).toBe("second")
+      expect(children[2]!.id).toBe("third")
     })
 
-    it("should conditionally render content in root with <Show> in the correct order", async () => {
+    it("should conditionally render content in fragment with <Show> in the correct order", async () => {
       const [showContent, setShowContent] = createSignal(false)
 
       testSetup = await testRender(
@@ -266,9 +255,6 @@ describe("SolidJS Renderer - Control Flow Components", () => {
         { width: 20, height: 5 },
       )
 
-      await testSetup.renderOnce()
-
-      console.log("Setting show content")
       setShowContent(true)
       await testSetup.renderOnce()
 
