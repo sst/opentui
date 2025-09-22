@@ -1,18 +1,24 @@
-import { useRenderer } from "@opentui/solid"
+import type { InputRenderable } from "@opentui/core"
+import { usePaste, useRenderer } from "@opentui/solid"
 import { createSignal, onMount } from "solid-js"
 
 const InputScene = () => {
   const renderer = useRenderer()
+  const [nameValue, setNameValue] = createSignal("")
+  let inputRef: InputRenderable | null = null
+
+  usePaste((text) => {
+    inputRef?.insertText(text)
+  })
+
   onMount(() => {
     renderer.setBackgroundColor("#001122")
   })
 
-  const [nameValue, setNameValue] = createSignal("")
-
   return (
     <box height={4} border>
       <text>Name: {nameValue()}</text>
-      <input focused onInput={(value) => setNameValue(value)} />
+      <input ref={(r) => (inputRef = r)} focused onInput={(value) => setNameValue(value)} />
     </box>
   )
 }
