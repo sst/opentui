@@ -33,7 +33,7 @@ export class SliderRenderable extends Renderable {
   private _onChange?: (value: number) => void
 
   constructor(ctx: RenderContext, options: SliderOptions) {
-    super(ctx, options)
+    super(ctx, { flexShrink: 0, ...options })
     this.orientation = options.orientation
     this._min = options.min ?? 0
     this._max = options.max ?? 100

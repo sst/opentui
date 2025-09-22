@@ -24,6 +24,11 @@ export interface TextOptions extends RenderableOptions<TextRenderable> {
 export class TextRenderable extends Renderable {
   public selectable: boolean = true
   private _text: StyledText
+
+  // TODO: The TextRenderable is currently juggling both a StyledText and a RootTextNodeRenderable.
+  // We should refactor this to only use the RootTextNodeRenderable here and have a separate StyledTextRenderable with `content`.
+  private _hasManualStyledText: boolean = false
+
   private _defaultFg: RGBA
   private _defaultBg: RGBA
   private _defaultAttributes: number
@@ -56,6 +61,7 @@ export class TextRenderable extends Renderable {
     const content = options.content ?? this._defaultOptions.content
     const styledText = typeof content === "string" ? stringToStyledText(content) : content
     this._text = styledText
+    this._hasManualStyledText = !!options.content
     this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
     this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
     this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
@@ -67,19 +73,12 @@ export class TextRenderable extends Renderable {
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
 
-    // Set wrap mode
     this.textBuffer.setWrapMode(this._wrapMode)
-
-    // Set initial wrap width if wrapping is enabled
-    if (this._wrap) {
-      this.textBuffer.setWrapWidth(this.width > 0 ? this.width : 40) // Default to 40 if width not set yet
-    }
+    this.setupMeasureFunc()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
-
-    this.setupMeasureFunc()
 
     this.rootTextNode = new RootTextNodeRenderable(
       ctx,
@@ -94,6 +93,11 @@ export class TextRenderable extends Renderable {
 
     this.updateTextBuffer(styledText)
     this._text.mount(this)
+
+    if (this._wrap && this.width > 0) {
+      this.updateWrapWidth(this.width)
+    }
+
     this.updateTextInfo()
   }
 
@@ -133,6 +137,7 @@ export class TextRenderable extends Renderable {
   }
 
   set content(value: StyledText | string) {
+    this._hasManualStyledText = true
     const styledText = typeof value === "string" ? stringToStyledText(value) : value
     if (this._text !== styledText) {
       this._text = styledText
@@ -241,10 +246,7 @@ export class TextRenderable extends Renderable {
   }
 
   protected onResize(width: number, height: number): void {
-    if (this._wrap) {
-      this.textBuffer.setWrapWidth(width)
-      this.updateTextInfo()
-    } else if (this.lastLocalSelection) {
+    if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
         this.requestRender()
@@ -269,11 +271,6 @@ export class TextRenderable extends Renderable {
   }
 
   private updateTextInfo(): void {
-    const lineInfo = this.textBuffer.lineInfo
-    this._lineInfo.lineStarts = lineInfo.lineStarts
-    this._lineInfo.lineWidths = lineInfo.lineWidths
-    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
-
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -285,6 +282,18 @@ export class TextRenderable extends Renderable {
     this.requestRender()
   }
 
+  private updateLineInfo(): void {
+    const lineInfo = this.textBuffer.lineInfo
+    this._lineInfo.lineStarts = lineInfo.lineStarts
+    this._lineInfo.lineWidths = lineInfo.lineWidths
+    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
+  }
+
+  private updateWrapWidth(width: number): void {
+    this.textBuffer.setWrapWidth(width)
+    this.updateLineInfo()
+  }
+
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -292,11 +301,16 @@ export class TextRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      const maxLineWidth = this._lineInfo.maxLineWidth
-      const numLines = this._lineInfo.lineStarts.length
+      if (this._wrap) {
+        if (this.width !== width) {
+          this.updateWrapWidth(width)
+        }
+      } else {
+        this.updateLineInfo()
+      }
 
-      let measuredWidth = maxLineWidth
-      let measuredHeight = numLines
+      const measuredWidth = this._lineInfo.maxLineWidth
+      const measuredHeight = this._lineInfo.lineStarts.length
 
       // NOTE: Yoga may use these measurements or not.
       // If the yoga node settings and the parent allow this node to grow, it will.
@@ -339,7 +353,7 @@ export class TextRenderable extends Renderable {
   }
 
   private updateTextFromNodes(): void {
-    if (this.rootTextNode.isDirty) {
+    if (this.rootTextNode.isDirty && !this._hasManualStyledText) {
       const chunks = this.rootTextNode.gatherWithInheritedStyle({
         fg: this._defaultFg,
         bg: this._defaultBg,

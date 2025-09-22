@@ -103,9 +103,6 @@ export function run(rendererInstance: CliRenderer): void {
 
   mainContainer = new BoxRenderable(renderer, {
     id: "main-container",
-    // TODO: Using 100% sets the width and height once as absolute values and does not update when the window is resized
-    // width: "100%",
-    // height: "100%",
     flexGrow: 1,
     maxHeight: "100%",
     maxWidth: "100%",
@@ -143,6 +140,7 @@ export function run(rendererInstance: CliRenderer): void {
     flexDirection: "column",
     backgroundColor: "#2a2b3a",
     paddingLeft: 1,
+    flexShrink: 0,
   })
 
   const instructionsText1 = new TextRenderable(renderer, {

@@ -227,6 +227,7 @@ export function run(rendererInstance: CliRenderer): void {
     flexDirection: "column",
     backgroundColor: "#1e1e2e",
     paddingLeft: 1,
+    flexShrink: 0,
   })
 
   const instructionsText1 = new TextRenderable(renderer, {

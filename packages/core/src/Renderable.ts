@@ -187,6 +187,10 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
+const yogaConfig: Config = Yoga.Config.create()
+yogaConfig.setUseWebDefaults(false)
+yogaConfig.setPointScaleFactor(1)
+
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
@@ -264,7 +268,7 @@ export abstract class Renderable extends BaseRenderable {
     this._liveCount = this._live && this._visible ? 1 : 0
 
     // TODO: use a global yoga config
-    this.yogaNode = Yoga.Node.create()
+    this.yogaNode = Yoga.Node.create(yogaConfig)
     this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
@@ -595,8 +599,8 @@ export abstract class Renderable extends BaseRenderable {
     if (options.flexShrink !== undefined) {
       node.setFlexShrink(options.flexShrink)
     } else {
-      const shrinkValue = options.flexGrow && options.flexGrow > 0 ? 1 : 0
-      node.setFlexShrink(shrinkValue)
+      // Yoga defaults to 0, web defaults to 1
+      node.setFlexShrink(1)
     }
 
     if (options.flexDirection !== undefined) {
@@ -980,6 +984,11 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  /**
+   * This will be called during a render pass.
+   * Requesting a render during a render pass will drop the requested render.
+   * If you need to request a render during a render pass, use process.nextTick.
+   */
   protected onResize(width: number, height: number): void {
     this.onSizeChange?.()
     this.emit("resize")
@@ -1451,21 +1460,16 @@ interface RenderCommandRender extends RenderCommandBase {
 export type RenderCommand = RenderCommandPushScissorRect | RenderCommandPopScissorRect | RenderCommandRender
 
 export class RootRenderable extends Renderable {
-  private yogaConfig: Config
   private renderList: RenderCommand[] = []
 
   constructor(ctx: RenderContext) {
     super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
 
-    this.yogaConfig = Yoga.Config.create()
-    this.yogaConfig.setUseWebDefaults(false)
-    this.yogaConfig.setPointScaleFactor(1)
-
     if (this.yogaNode) {
       this.yogaNode.free()
     }
 
-    this.yogaNode = Yoga.Node.create(this.yogaConfig)
+    this.yogaNode = Yoga.Node.create(yogaConfig)
     this.yogaNode.setWidth(ctx.width)
     this.yogaNode.setHeight(ctx.height)
     this.yogaNode.setFlexDirection(FlexDirection.Column)
@@ -1475,7 +1479,7 @@ export class RootRenderable extends Renderable {
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
-
+    // console.log("RootRenderable render", this.width, this.height)
     // 0. Run lifecycle pass
     for (const renderable of this._ctx.getLifecyclePasses()) {
       renderable.onLifecyclePass?.call(renderable)
@@ -1535,13 +1539,5 @@ export class RootRenderable extends Renderable {
     this.height = height
 
     this.emit(LayoutEvents.RESIZED, { width, height })
-  }
-
-  protected destroySelf(): void {
-    try {
-      this.yogaConfig.free()
-    } catch (error) {
-      // Config might already be freed
-    }
   }
 }

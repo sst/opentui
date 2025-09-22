@@ -16,7 +16,7 @@ import { RGBA, parseColor } from "../lib/RGBA"
 import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer"
 import type { RenderContext } from "../types"
 
-export interface ASCIIFontOptions extends RenderableOptions<ASCIIFontRenderable> {
+export interface ASCIIFontOptions extends Omit<RenderableOptions<ASCIIFontRenderable>, "width" | "height"> {
   text?: string
   font?: ASCIIFontName
   fg?: RGBA | RGBA[]
@@ -44,6 +44,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     const measurements = measureText({ text: text, font })
 
     super(ctx, {
+      flexShrink: 0,
       ...options,
       width: measurements.width || 1,
       height: measurements.height || 1,
