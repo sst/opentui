@@ -6,8 +6,8 @@ import StyledText from "./Styled-Text.vue"
 import TabSelect from "./TabSelect.vue"
 import ScrollBox from "./ScrollBox.vue"
 import { ref } from "vue"
-import { getKeyHandler } from "@opentui/core"
 import ExtendExample from "./ExtendExample.vue"
+import { useCliRenderer } from ".."
 
 const exampleOptions = [
   { name: "ASCII", description: "Assci text example", value: "ascii" },
@@ -29,7 +29,8 @@ const onSelectExample = (i: number) => {
   selectedExample.value = selectedOption
 }
 
-getKeyHandler().on("keypress", (key) => {
+const renderer = useCliRenderer()
+renderer.keyInput.on("keypress", (key) => {
   if (key.name === "escape") {
     selectedExample.value = null
   }

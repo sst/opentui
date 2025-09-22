@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { bold, fg, italic, t, TextAttributes, getKeyHandler, type ParsedKey } from "@opentui/core"
+import { bold, fg, italic, t, TextAttributes, type ParsedKey } from "@opentui/core"
 import { ref, onMounted, onUnmounted, computed } from "vue"
+import { useCliRenderer } from ".."
 
 const username = ref("")
 const password = ref("")
@@ -29,12 +30,13 @@ const handleSubmit = () => {
   }
 }
 
+const renderer = useCliRenderer()
 onMounted(() => {
-  getKeyHandler().on("keypress", handleKeyPress)
+  renderer.keyInput.on("keypress", handleKeyPress)
 })
 
 onUnmounted(() => {
-  getKeyHandler().off("keypress", handleKeyPress)
+  renderer.keyInput.off("keypress", handleKeyPress)
 })
 
 const titleTextStyles = {
