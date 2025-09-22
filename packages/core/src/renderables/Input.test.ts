@@ -263,6 +263,29 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("hexllo")
       expect(input.cursorPosition).toBe(3)
     })
+
+    it("should handle onPaste option", () => {
+      let pasteText = ""
+      let pasteCalled = false
+
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        onPaste: (text: string) => {
+          pasteText = text
+          pasteCalled = true
+        },
+      })
+
+      input.focus()
+
+      mockInput.pasteBracketedText("pasted text")
+      // NOTE: The input itself does not automatically insert the pasted text for now,
+      // as the whole InputRenderable will get replaced by and EditBuffer that handles it
+      expect(input.value).toBe("")
+      expect(pasteCalled).toBe(true)
+      expect(pasteText).toBe("pasted text")
+    })
   })
 
   describe("Multiple Input Focus Management", () => {

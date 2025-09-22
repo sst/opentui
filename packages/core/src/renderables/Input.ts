@@ -277,10 +277,6 @@ export class InputRenderable extends Renderable {
     return false
   }
 
-  public handlePaste(text: string): void {
-    this.insertText(text)
-  }
-
   public set maxLength(maxLength: number) {
     this._maxLength = maxLength
     if (this._value.length > maxLength) {

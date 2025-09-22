@@ -115,6 +115,8 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   onMouseOut?: (this: T, event: MouseEvent) => void
   onMouseScroll?: (this: T, event: MouseEvent) => void
 
+  onPaste?: (this: T, text: string) => void
+
   onKeyDown?: (key: ParsedKey) => void
 
   onSizeChange?: (this: T) => void
@@ -220,6 +222,7 @@ export abstract class Renderable extends BaseRenderable {
   private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
+  private _pasteListener: ((text: string) => void) | undefined = undefined
   private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
 
   protected yogaNode: YogaNode
@@ -364,6 +367,7 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this.pasteHandler = (text: string) => {
+      this._pasteListener?.call(this, text)
       if (this.handlePaste) {
         this.handlePaste(text)
       }
@@ -1420,6 +1424,13 @@ export abstract class Renderable extends BaseRenderable {
     else delete this._mouseListeners["scroll"]
   }
 
+  public set onPaste(handler: ((text: string) => void) | undefined) {
+    this._pasteListener = handler
+  }
+  public get onPaste(): ((text: string) => void) | undefined {
+    return this._pasteListener
+  }
+
   public set onKeyDown(handler: ((key: ParsedKey) => void) | undefined) {
     if (handler) this._keyListeners["down"] = handler
     else delete this._keyListeners["down"]
@@ -1446,6 +1457,7 @@ export abstract class Renderable extends BaseRenderable {
     this.onMouseOver = options.onMouseOver
     this.onMouseOut = options.onMouseOut
     this.onMouseScroll = options.onMouseScroll
+    this.onPaste = options.onPaste
     this.onKeyDown = options.onKeyDown
     this.onSizeChange = options.onSizeChange
   }
