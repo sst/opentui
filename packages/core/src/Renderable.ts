@@ -346,7 +346,8 @@ export abstract class Renderable extends BaseRenderable {
   public focus(): void {
     if (this._focused || !this._focusable) return
 
-    this._ctx.focusRenderable(this)
+    this.ctx.focusedRenderable?.blur()
+    this.ctx.focusedRenderable = this
     this._focused = true
     this.requestRender()
 
@@ -364,6 +365,7 @@ export abstract class Renderable extends BaseRenderable {
   public blur(): void {
     if (!this._focused || !this._focusable) return
 
+    this.ctx.focusedRenderable = null
     this._focused = false
     this.requestRender()
 
@@ -1046,6 +1048,10 @@ export abstract class Renderable extends BaseRenderable {
       this.propagateLiveCount(renderable._liveCount)
     }
 
+    if (isRenderable(obj) && obj.focusable) {
+      this.ctx.addFocusable(obj)
+    }
+
     this.requestRender()
 
     return insertedIndex
@@ -1130,12 +1136,14 @@ export abstract class Renderable extends BaseRenderable {
 
     if (this.renderableMapById.has(id)) {
       const obj = this.renderableMapById.get(id)
+
       if (obj) {
         if (obj._liveCount > 0) {
           this.propagateLiveCount(-obj._liveCount)
         }
 
         const childLayoutNode = obj.getLayoutNode()
+        this.ctx.removeFocusable(obj)
         this.yogaNode.removeChild(childLayoutNode)
         this.requestRender()
 

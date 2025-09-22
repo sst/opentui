@@ -16,6 +16,7 @@ import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo }
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton"
+import { FocusManager, type FocusKeyHandler } from "./lib/FocusManager"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler } from "./lib/KeyHandler"
 
@@ -36,6 +37,8 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
+  focusKeyHandler?: FocusKeyHandler
+  useFocusManager?: boolean
   useKittyKeyboard?: boolean
 }
 
@@ -136,6 +139,11 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
+
+  if (config.useFocusManager ?? true) {
+    FocusManager.install(renderer, { onKey: config.focusKeyHandler })
+  }
+
   return renderer
 }
 
@@ -218,6 +226,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _keyHandler: KeyHandler
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
+
+  private _focusedRenderable: Renderable | null = null
+  private _focusables: Renderable[] = []
 
   private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
   private resizeDebounceDelay: number = 100
@@ -402,18 +413,55 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.lifecyclePasses
   }
 
-  public get currentFocusedRenderable(): Renderable | null {
-    return this._currentFocusedRenderable
+  private findParentInList(node: Renderable, list: Renderable[]): Renderable | undefined {
+    let current = node.parent
+    while (current) {
+      if (list.includes(current)) {
+        return current
+      }
+      current = current.parent
+    }
+    return undefined
   }
 
-  public focusRenderable(renderable: Renderable) {
-    if (this._currentFocusedRenderable === renderable) return
+  public addFocusable(node: Renderable): void {
+    if (this._focusables.includes(node)) return
 
-    if (this._currentFocusedRenderable) {
-      this._currentFocusedRenderable.blur()
+    let index = 0
+
+    const parent = this.findParentInList(node, this._focusables)
+    if (parent) {
+      index = this._focusables.indexOf(parent) + 1
+    } else {
+      index = this._focusables.length
     }
 
-    this._currentFocusedRenderable = renderable
+    this._focusables.splice(index, 0, node)
+  }
+
+  public removeFocusable(node: Renderable): void {
+    const i = this._focusables.findIndex((f) => f.id === node.id)
+    if (i !== -1) this._focusables.splice(i, 1)
+  }
+
+  public get focusables(): Renderable[] {
+    return this._focusables
+  }
+
+  public set focusables(node: Renderable | Renderable[]) {
+    if (Array.isArray(node)) {
+      this._focusables = node
+    } else {
+      this._focusables = [node]
+    }
+  }
+
+  public set focusedRenderable(renderable: Renderable | null) {
+    this._focusedRenderable = renderable
+  }
+
+  public get focusedRenderable(): Renderable | null {
+    return this._focusedRenderable
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
@@ -1163,6 +1211,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
 
+    FocusManager.uninstall()
     this.root.destroyRecursively()
 
     this._keyHandler.destroy()

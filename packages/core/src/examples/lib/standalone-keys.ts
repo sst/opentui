@@ -5,6 +5,10 @@ export function setupCommonDemoKeys(renderer: CliRenderer) {
   getKeyHandler().on("keypress", (key: ParsedKey) => {
     if (key.name === "`" || key.name === '"') {
       renderer.console.toggle()
+    } else if (key.name === "f") {
+      renderer.console.focus()
+    } else if (key.name === "b") {
+      renderer.console.blur()
     } else if (key.name === ".") {
       renderer.toggleDebugOverlay()
     } else if (key.name === "g" && key.ctrl) {

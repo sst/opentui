@@ -47,11 +47,13 @@ export interface RenderContext extends EventEmitter {
   capabilities: any | null
   requestLive: () => void
   dropLive: () => void
+  focusedRenderable: Renderable | null
   hasSelection: boolean
   getSelection: () => Selection | null
   requestSelectionUpdate: () => void
-  currentFocusedRenderable: Renderable | null
-  focusRenderable: (renderable: Renderable) => void
+  focusables: Renderable[]
+  removeFocusable: (renderable: Renderable) => void
+  addFocusable: (node: Renderable) => void
   registerLifecyclePass: (renderable: Renderable) => void
   unregisterLifecyclePass: (renderable: Renderable) => void
   getLifecyclePasses: () => Set<Renderable>
