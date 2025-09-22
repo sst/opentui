@@ -7,12 +7,15 @@ type KeyHandlerEventMap = {
   keypress: [ParsedKey]
   keyrepeat: [ParsedKey]
   keyrelease: [ParsedKey]
+  paste: [string]
 }
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   private stdin: NodeJS.ReadStream
   private useKittyKeyboard: boolean
   private listener: (key: Buffer) => void
+  private pasteMode: boolean = false
+  private pasteBuffer: string[] = []
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
@@ -26,6 +29,19 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
     this.listener = (key: Buffer) => {
+      let data = key.toString()
+      if (data.startsWith("\u001b[200~")) {
+        this.pasteMode = true
+      }
+      if (this.pasteMode) {
+        this.pasteBuffer.push(Bun.stripANSI(data))
+        if (data.endsWith("\u001b[201~")) {
+          this.pasteMode = false
+          this.emit("paste", this.pasteBuffer.join(""))
+          this.pasteBuffer = []
+        }
+        return
+      }
       const parsedKey = parseKeypress(key, { useKittyKeyboard: this.useKittyKeyboard })
 
       switch (parsedKey.eventType) {

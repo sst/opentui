@@ -212,6 +212,8 @@ export abstract class Renderable extends BaseRenderable {
   protected _focusable: boolean = false
   protected _focused: boolean = false
   protected keypressHandler: ((key: ParsedKey) => void) | null = null
+  protected pasteHandler: ((text: string) => void) | null = null
+
   private _live: boolean = false
   protected _liveCount: number = 0
 
@@ -361,7 +363,14 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
+    this.pasteHandler = (text: string) => {
+      if (this.handlePaste) {
+        this.handlePaste(text)
+      }
+    }
+
     this.ctx.keyInput.on("keypress", this.keypressHandler)
+    this.ctx.keyInput.on("paste", this.pasteHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -374,6 +383,11 @@ export abstract class Renderable extends BaseRenderable {
     if (this.keypressHandler) {
       this.ctx.keyInput.off("keypress", this.keypressHandler)
       this.keypressHandler = null
+    }
+
+    if (this.pasteHandler) {
+      this.ctx.keyInput.off("paste", this.pasteHandler)
+      this.pasteHandler = null
     }
 
     this.emit(RenderableEvents.BLURRED)
@@ -408,6 +422,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public handleKeyPress?(key: ParsedKey | string): boolean
+  public handlePaste?(text: string): void
 
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this._childrenInLayoutOrder) {
