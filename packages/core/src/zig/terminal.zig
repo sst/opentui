@@ -132,6 +132,7 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
 
     try tty.writeAll(ansi.ANSI.hideCursor ++
+        ansi.ANSI.saveCursorState ++
         ansi.ANSI.decrqmSgrPixels ++
         ansi.ANSI.decrqmUnicode ++
         ansi.ANSI.decrqmColorScheme ++
@@ -153,7 +154,8 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery ++
         ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.primaryDeviceAttrs
+        ansi.ANSI.primaryDeviceAttrs ++
+        ansi.ANSI.restoreCursorState
             // ++ ansi.ANSI.sixelGeometryQuery
     );
 }

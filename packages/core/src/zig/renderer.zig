@@ -269,6 +269,10 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
+        self.terminal.queryTerminalSend(writer) catch {
+            logger.warn("Failed to query terminal capabilities", .{});
+        };
+
         writer.writeAll(ansi.ANSI.saveCursorState) catch {};
 
         if (useAlternateScreen) {
@@ -280,10 +284,6 @@ pub const CliRenderer = struct {
         self.terminal.setCursorPosition(1, 1, false);
 
         bufferedWriter.flush() catch {};
-
-        self.terminal.queryTerminalSend(writer) catch {
-            logger.warn("Failed to query terminal capabilities", .{});
-        };
     }
 
     pub fn performShutdownSequence(self: *CliRenderer) void {
