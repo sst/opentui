@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*"
+      - "vv*"
       - "!v*-snapshot*"
   workflow_dispatch:
 
