@@ -102,9 +102,6 @@ pub const CliRenderer = struct {
     hitGridWidth: u32,
     hitGridHeight: u32,
 
-    mouseEnabled: bool,
-    mouseMovementEnabled: bool,
-
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
     var outputBufferLen: usize = 0;
@@ -217,8 +214,6 @@ pub const CliRenderer = struct {
             .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
             .hitGridHeight = height,
-            .mouseEnabled = false,
-            .mouseMovementEnabled = false,
         };
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, CLEAR_CHAR);
@@ -269,16 +264,16 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        writer.writeAll(ansi.ANSI.saveCursorState) catch {};
-
-        self.terminal.queryTerminalSend(writer.any()) catch {
-            // If capability detection fails, continue with defaults
+        self.terminal.queryTerminalSend(writer) catch {
+            logger.warn("Failed to query terminal capabilities", .{});
         };
 
+        writer.writeAll(ansi.ANSI.saveCursorState) catch {};
+
         if (useAlternateScreen) {
-            self.terminal.enterAltScreen(writer.any()) catch {};
+            self.terminal.enterAltScreen(writer) catch {};
         } else {
-            ansi.ANSI.makeRoomForRendererOutput(writer, self.height) catch {};
+            ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
         }
 
         self.terminal.setCursorPosition(1, 1, false);
@@ -290,26 +285,27 @@ pub const CliRenderer = struct {
         if (!self.terminalSetup) return;
 
         const direct = self.stdoutWriter.writer();
-
-        self.disableMouse();
-
-        self.terminal.resetState(direct.any()) catch {};
+        self.terminal.resetState(direct) catch {
+            logger.warn("Failed to reset terminal state", .{});
+        };
 
         if (self.useAlternateScreen) {
             self.stdoutWriter.flush() catch {};
         } else if (self.renderOffset == 0) {
-            ansi.ANSI.clearRendererSpaceOutput(direct, self.height) catch {};
+            direct.writeAll("\x1b[H\x1b[J") catch {};
+            self.stdoutWriter.flush() catch {};
         } else if (self.renderOffset > 0) {
             // Currently still handled in typescript
             // const consoleEndLine = self.height - self.renderOffset;
             // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
         }
 
+        // NOTE: This messes up state after shutdown, but might be necessary for windows?
+        // direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
+
         direct.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
         direct.writeAll(ansi.ANSI.resetCursorColor) catch {};
-        direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
         direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
-
         // Workaround for Ghostty not showing the cursor after shutdown for some reason
         direct.writeAll(ansi.ANSI.showCursor) catch {};
         self.stdoutWriter.flush() catch {};
@@ -842,13 +838,11 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        self.mouseEnabled = true;
-        self.mouseMovementEnabled = enableMovement;
-
+        _ = enableMovement; // TODO: Use this to control motion tracking levels
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setMouseMode(writer.any(), true) catch {};
+        self.terminal.setMouseMode(writer, true) catch {};
 
         bufferedWriter.flush() catch {};
     }
@@ -863,15 +857,10 @@ pub const CliRenderer = struct {
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        if (!self.mouseEnabled) return;
-
-        self.mouseEnabled = false;
-        self.mouseMovementEnabled = false;
-
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setMouseMode(writer.any(), false) catch {};
+        self.terminal.setMouseMode(writer, false) catch {};
 
         bufferedWriter.flush() catch {};
     }
@@ -880,7 +869,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setKittyKeyboard(writer.any(), true, flags) catch {};
+        self.terminal.setKittyKeyboard(writer, true, flags) catch {};
         bufferedWriter.flush() catch {};
     }
 
@@ -888,7 +877,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setKittyKeyboard(writer.any(), false, 0) catch {};
+        self.terminal.setKittyKeyboard(writer, false, 0) catch {};
         bufferedWriter.flush() catch {};
     }
 
@@ -899,7 +888,7 @@ pub const CliRenderer = struct {
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
         const writer = self.stdoutWriter.writer();
-        self.terminal.enableDetectedFeatures(writer.any()) catch {};
+        self.terminal.enableDetectedFeatures(writer) catch {};
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {

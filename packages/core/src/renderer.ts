@@ -315,13 +315,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
       this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
     }
+
+    this.realStdoutWrite.call(this.stdout, ANSI.reset)
   }
 
   private exitHandler: () => void = (() => {
-    if (process.env.NODE_ENV !== "production") {
-      this.dumpOutputCache("\n=== UNHANDLED OUTPUT (this is only printed in non-production environments) ===\n")
-    }
     this.destroy()
+    if (process.env.NODE_ENV !== "production") {
+      this.dumpOutputCache("=== UNHANDLED OUTPUT (this is only printed in non-production environments) ===\n")
+    }
   }).bind(this)
 
   private warningHandler: (warning: any) => void = ((warning: any) => {
@@ -1020,10 +1022,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.requestRender()
   }
 
-  public clearTerminal(): void {
-    this.lib.clearTerminal(this.rendererPtr)
-  }
-
   public setTerminalTitle(title: string): void {
     this.lib.setTerminalTitle(this.rendererPtr, title)
   }
@@ -1185,6 +1183,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.isDestroyed) return
     this.isDestroyed = true
 
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+    this._isRunning = false
+
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
 
@@ -1193,6 +1197,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._keyHandler.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
+
     if (this._splitHeight > 0) {
       this.flushStdoutCache(this._splitHeight, true)
     }
@@ -1273,7 +1278,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console.renderToBuffer(this.nextRenderBuffer)
 
-    this.renderNative()
+    if (!this.isDestroyed) {
+      this.renderNative()
+    }
 
     const overallFrameTime = performance.now() - overallStart
     // TODO: Add animationRequestTime to stats
