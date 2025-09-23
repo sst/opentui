@@ -7,7 +7,7 @@ import type { CliRenderer, ColorInput } from "."
 import { OptimizedBuffer } from "./buffer"
 import { Capture, CapturedWritableStream } from "./lib/output.capture"
 import { parseColor, RGBA } from "./lib/RGBA"
-import { singleton } from "./singleton"
+import { singleton } from "./lib/singleton"
 
 interface CallerInfo {
   functionName: string

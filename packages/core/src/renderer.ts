@@ -15,7 +15,7 @@ import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
-import { singleton } from "./singleton"
+import { singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler } from "./lib/KeyHandler"
 
@@ -283,7 +283,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         resolve(true)
       }, 100)
     }).then(() => {
-      // TODO: Fix friggin shut down sequence to not splurt into scrollback
       this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
 
       this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
@@ -321,8 +320,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private exitHandler: () => void = (() => {
     this.destroy()
-    if (process.env.NODE_ENV !== "production") {
-      this.dumpOutputCache("=== UNHANDLED OUTPUT (this is only printed in non-production environments) ===\n")
+    if (process.env.OTUI_DUMP_CAPTURES === "true") {
+      this.dumpOutputCache("=== CAPTURED OUTPUT ===\n")
     }
   }).bind(this)
 
