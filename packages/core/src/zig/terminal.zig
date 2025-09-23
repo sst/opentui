@@ -235,6 +235,8 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
 pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool) !void {
+    if (self.state.mouse == enable) return;
+
     if (enable) {
         self.state.mouse = true;
         try tty.writeAll(ansi.ANSI.enableMouseTracking);

@@ -102,9 +102,6 @@ pub const CliRenderer = struct {
     hitGridWidth: u32,
     hitGridHeight: u32,
 
-    mouseEnabled: bool,
-    mouseMovementEnabled: bool,
-
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
     var outputBufferLen: usize = 0;
@@ -217,8 +214,6 @@ pub const CliRenderer = struct {
             .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
             .hitGridHeight = height,
-            .mouseEnabled = false,
-            .mouseMovementEnabled = false,
         };
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, CLEAR_CHAR);
@@ -843,9 +838,7 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        self.mouseEnabled = true;
-        self.mouseMovementEnabled = enableMovement;
-
+        _ = enableMovement; // TODO: Use this to control motion tracking levels
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
@@ -864,11 +857,6 @@ pub const CliRenderer = struct {
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        if (!self.mouseEnabled) return;
-
-        self.mouseEnabled = false;
-        self.mouseMovementEnabled = false;
-
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
