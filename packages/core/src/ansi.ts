@@ -9,8 +9,6 @@ export const ANSI = {
   saveCursorState: "\x1b[s",
   restoreCursorState: "\x1b[u",
 
-  queryPixelSize: "\u001b[14t",
-
   scrollDown: (lines: number) => `\x1b[${lines}T`,
   scrollUp: (lines: number) => `\x1b[${lines}S`,
 
@@ -20,15 +18,6 @@ export const ANSI = {
 
   setRgbBackground: (r: number, g: number, b: number) => `\x1b[48;2;${r};${g};${b}m`,
   resetBackground: "\x1b[49m",
-
-  enableMouseTracking: "\x1b[?1000h",
-  disableMouseTracking: "\x1b[?1000l",
-  enableButtonEventTracking: "\x1b[?1002h",
-  disableButtonEventTracking: "\x1b[?1002l",
-  enableAnyEventTracking: "\x1b[?1003h",
-  disableAnyEventTracking: "\x1b[?1003l",
-  enableSGRMouseMode: "\x1b[?1006h",
-  disableSGRMouseMode: "\x1b[?1006l",
 
   clearRendererSpace: (height: number) => `\x1b[${height}A\x1b[1G\x1b[J`,
 

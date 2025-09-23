@@ -671,12 +671,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(true)
-    }
-    this.stdin.resume()
-    this.stdin.setEncoding("utf8")
-
     await new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.stdin.off("data", capListener)
@@ -733,6 +727,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
 
   private setupInput(): void {
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(true)
+    }
+    this.stdin.resume()
+    this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
   }
 
@@ -946,8 +945,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private queryPixelResolution() {
     this.waitingForPixelResolution = true
-    // TODO: should move to native, injecting the request in the next frame if running
-    this.writeOut(ANSI.queryPixelSize)
+    this.lib.queryPixelResolution(this.rendererPtr)
   }
 
   private processResize(width: number, height: number): void {
@@ -1174,7 +1172,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
-    this.stdin.removeListener("data", this.stdinListener)
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
@@ -1183,10 +1180,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.memorySnapshotTimer) {
       clearInterval(this.memorySnapshotTimer)
-    }
-
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
     }
 
     if (this.isDestroyed) return
@@ -1203,6 +1196,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._splitHeight > 0) {
       this.flushStdoutCache(this._splitHeight, true)
     }
+
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+    this.stdin.removeListener("data", this.stdinListener)
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
