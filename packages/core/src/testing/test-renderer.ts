@@ -21,6 +21,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   captureCharFrame: () => string
   resize: (width: number, height: number) => void
 }> {
+  process.env.OTUI_USE_CONSOLE = "false"
   const renderer = await setupTestRenderer({
     ...options,
     useAlternateScreen: false,
