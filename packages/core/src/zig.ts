@@ -4,12 +4,27 @@ import { type CursorStyle, type DebugOverlayCorner, type WidthMethod } from "./t
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
+import { env, registerEnvVar } from "./lib/env"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 const targetLibPath = module.default
 if (!existsSync(targetLibPath)) {
   throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
 }
+
+registerEnvVar({
+  name: "OTUI_DEBUG_FFI",
+  description: "Enable debug logging for the FFI bindings.",
+  type: "boolean",
+  default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_TRACE_FFI",
+  description: "Enable tracing for the FFI bindings.",
+  type: "boolean",
+  default: false,
+})
 
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
@@ -375,7 +390,7 @@ function getOpenTUILib(libPath?: string) {
     },
   })
 
-  if (process.env.DEBUG_FFI === "true" || process.env.TRACE_FFI === "true") {
+  if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
     return {
       symbols: convertToDebugSymbols(rawSymbols.symbols),
     }
@@ -393,7 +408,7 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
     debugSymbols[key] = value
   })
 
-  if (process.env.DEBUG_FFI === "true") {
+  if (env.OTUI_DEBUG_FFI) {
     Object.entries(symbols).forEach(([key, value]) => {
       if (typeof value === "function") {
         debugSymbols[key] = (...args: any[]) => {
@@ -406,7 +421,7 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
     })
   }
 
-  if (process.env.TRACE_FFI === "true") {
+  if (env.OTUI_TRACE_FFI) {
     hasTracing = true
     Object.entries(symbols).forEach(([key, value]) => {
       if (typeof value === "function") {

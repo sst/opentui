@@ -7,7 +7,8 @@ import type { CliRenderer, ColorInput } from "."
 import { OptimizedBuffer } from "./buffer"
 import { Capture, CapturedWritableStream } from "./lib/output.capture"
 import { parseColor, RGBA } from "./lib/RGBA"
-import { singleton } from "./singleton"
+import { singleton } from "./lib/singleton"
+import { env, registerEnvVar } from "./lib/env"
 
 interface CallerInfo {
   functionName: string
@@ -49,6 +50,20 @@ enum LogLevel {
 
 export const capture = singleton("ConsoleCapture", () => new Capture())
 
+registerEnvVar({
+  name: "OTUI_USE_CONSOLE",
+  description: "Whether to use the console. Will not capture console output if set to false.",
+  type: "boolean",
+  default: true,
+})
+
+registerEnvVar({
+  name: "SHOW_CONSOLE",
+  description: "Show the console at startup if set to true.",
+  type: "boolean",
+  default: false,
+})
+
 class TerminalConsoleCache extends EventEmitter {
   private _cachedLogs: [Date, LogLevel, any[], CallerInfo | null][] = []
   private readonly MAX_CACHE_SIZE = 1000
@@ -72,7 +87,7 @@ class TerminalConsoleCache extends EventEmitter {
   }
 
   private setupConsoleCapture(): void {
-    if (process.env.OTUI_USE_CONSOLE === "false") return
+    if (!env.OTUI_USE_CONSOLE) return
 
     const mockStdout = new CapturedWritableStream("stdout", capture)
     const mockStderr = new CapturedWritableStream("stderr", capture)
@@ -291,7 +306,7 @@ export class TerminalConsole extends EventEmitter {
       this._handleNewLog(logEntry)
     })
 
-    if (process.env.SHOW_CONSOLE === "true") {
+    if (env.SHOW_CONSOLE) {
       this.show()
     }
   }

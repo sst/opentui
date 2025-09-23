@@ -15,9 +15,24 @@ import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
-import { singleton } from "./singleton"
+import { singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler } from "./lib/KeyHandler"
+import { env, registerEnvVar } from "./lib/env"
+
+registerEnvVar({
+  name: "OTUI_DUMP_CAPTURES",
+  description: "Dump captured output when the renderer exits.",
+  type: "boolean",
+  default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_NO_NATIVE_RENDER",
+  description: "Disable native rendering. This will not actually output ansi and is useful for debugging.",
+  type: "boolean",
+  default: false,
+})
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -283,7 +298,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         resolve(true)
       }, 100)
     }).then(() => {
-      // TODO: Fix friggin shut down sequence to not splurt into scrollback
       this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
 
       this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
@@ -321,8 +335,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private exitHandler: () => void = (() => {
     this.destroy()
-    if (process.env.NODE_ENV !== "production") {
-      this.dumpOutputCache("=== UNHANDLED OUTPUT (this is only printed in non-production environments) ===\n")
+    if (env.OTUI_DUMP_CAPTURES) {
+      this.dumpOutputCache("=== CAPTURED OUTPUT ===\n")
     }
   }).bind(this)
 
@@ -414,7 +428,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     global.window.requestAnimationFrame = requestAnimationFrame
 
     // Prevents output from being written to the terminal, useful for debugging
-    if (process.env.OTUI_NO_NATIVE_RENDER === "true") {
+    if (env.OTUI_NO_NATIVE_RENDER) {
       this.renderNative = () => {
         if (this._splitHeight > 0) {
           this.flushStdoutCache(this._splitHeight)
