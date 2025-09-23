@@ -128,11 +128,9 @@ class TerminalConsoleCache extends EventEmitter {
   }
 
   private restoreOriginalConsole(): void {
-    // Restore to the original console object
     const originalNodeConsole = require("node:console")
     global.console = originalNodeConsole
 
-    // Restore console capture after restoring the original console
     this.setupConsoleCapture()
   }
 
