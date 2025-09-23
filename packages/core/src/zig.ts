@@ -62,6 +62,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
 
+    queryPixelResolution: {
+      args: ["ptr"],
+      returns: "void",
+    },
+
     createOptimizedBuffer: {
       args: ["u32", "u32", "bool", "u8", "ptr", "usize"],
       returns: "ptr",
@@ -668,6 +673,7 @@ export interface RenderLib {
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
   disableKittyKeyboard: (renderer: Pointer) => void
   setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
+  queryPixelResolution: (renderer: Pointer) => void
 
   // TextBuffer methods
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
@@ -1199,6 +1205,10 @@ class FFIRenderLib implements RenderLib {
 
   public setupTerminal(renderer: Pointer, useAlternateScreen: boolean): void {
     this.opentui.symbols.setupTerminal(renderer, useAlternateScreen)
+  }
+
+  public queryPixelResolution(renderer: Pointer): void {
+    this.opentui.symbols.queryPixelResolution(renderer)
   }
 
   // TextBuffer methods

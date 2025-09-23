@@ -19,7 +19,9 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
   captureCharFrame: () => string
+  resize: (width: number, height: number) => void
 }> {
+  process.env.OTUI_USE_CONSOLE = "false"
   const renderer = await setupTestRenderer({
     ...options,
     useAlternateScreen: false,
@@ -30,18 +32,25 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 
   const mockInput = createMockKeys(renderer)
   const mockMouse = createMockMouse(renderer)
+
+  const renderOnce = async () => {
+    //@ts-expect-error - this is a test renderer
+    await renderer.loop()
+  }
+
   return {
     renderer,
     mockInput,
     mockMouse,
-    renderOnce: async () => {
-      //@ts-expect-error - this is a test renderer
-      await renderer.loop()
-    },
+    renderOnce,
     captureCharFrame: () => {
       const currentBuffer = renderer.currentRenderBuffer
       const frameBytes = currentBuffer.getRealCharBytes(true)
       return decoder.decode(frameBytes)
+    },
+    resize: (width: number, height: number) => {
+      //@ts-expect-error - this is a test renderer
+      renderer.processResize(width, height)
     },
   }
 }

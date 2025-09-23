@@ -346,6 +346,10 @@ export fn disableMouse(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableMouse();
 }
 
+export fn queryPixelResolution(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.queryPixelResolution();
+}
+
 export fn enableKittyKeyboard(rendererPtr: *renderer.CliRenderer, flags: u8) void {
     rendererPtr.enableKittyKeyboard(flags);
 }

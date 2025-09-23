@@ -16,6 +16,7 @@ pub const ANSI = struct {
     pub const hideCursor = "\x1b[?25l";
     pub const showCursor = "\x1b[?25h";
     pub const defaultCursorStyle = "\x1b[0 q";
+    pub const queryPixelSize = "\x1b[14t";
 
     // Direct writing to any writer - the most efficient option
     pub fn moveToOutput(writer: anytype, x: u32, y: u32) AnsiError!void {

@@ -9,8 +9,8 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let captureFrame: () => string
+let resize: (width: number, height: number) => void
 
-// Helper function to setup TextRenderable with proper layout
 async function createTextRenderable(
   renderer: TestRenderer,
   options: TextOptions,
@@ -25,12 +25,11 @@ async function createTextRenderable(
 describe("TextRenderable Selection", () => {
   describe("Native getSelectedText", () => {
     it("should use native implementation", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
 
-      // Simulate a selection from start to position 5 (selecting "Hello")
       await currentMouse.drag(text.x, text.y, text.x + 5, text.y)
       await renderOnce()
 
@@ -39,7 +38,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle graphemes correctly", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World",
         selectable: true,
       })
@@ -59,6 +58,7 @@ describe("TextRenderable Selection", () => {
       renderOnce,
       mockMouse: currentMouse,
       captureCharFrame: captureFrame,
+      resize,
     } = await createTestRenderer({
       width: 20,
       height: 5,
@@ -71,7 +71,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Initialization", () => {
     it("should initialize properly", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -85,37 +85,32 @@ describe("TextRenderable Selection", () => {
 
   describe("Basic Selection Flow", () => {
     it("should handle selection from start to end", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
 
-      // Initially no selection
       expect(text.hasSelection()).toBe(false)
       expect(text.getSelection()).toBe(null)
       expect(text.getSelectedText()).toBe("")
 
-      // Start selection at position 6 (start of "World")
       expect(text.shouldStartSelection(6, 0)).toBe(true)
 
-      // Set selection from 6 to 11 (selecting "World")
       await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
 
       expect(text.hasSelection()).toBe(true)
 
-      // Verify getSelection returns correct start/end
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
       expect(selection!.start).toBe(6)
       expect(selection!.end).toBe(11)
 
-      // Verify getSelectedText returns correct substring
       expect(text.getSelectedText()).toBe("World")
     })
 
     it("should handle selection with newline characters", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Line 1\nLine 2\nLine 3",
         selectable: true,
       })
@@ -133,7 +128,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection spanning multiple lines completely", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "First\nSecond\nThird",
         selectable: true,
       })
@@ -148,7 +143,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection including multiple line breaks", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "A\nB\nC\nD",
         selectable: true,
       })
@@ -166,7 +161,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection that includes line breaks at boundaries", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Line1\nLine2\nLine3",
         selectable: true,
       })
@@ -184,18 +179,16 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle reverse selection (end before start)", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
 
-      // Start selection from end to beginning (drag from right to left)
       await currentMouse.drag(text.x + 11, text.y, text.x + 6, text.y)
       await renderOnce()
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
-      // Selection should be normalized: start < end
       expect(selection!.start).toBe(6)
       expect(selection!.end).toBe(11)
 
@@ -205,12 +198,11 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection Edge Cases", () => {
     it("should handle empty text", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "",
         selectable: true,
       })
 
-      // Try to create a zero-width selection
       await currentMouse.drag(text.x, text.y, text.x, text.y)
       await renderOnce()
 
@@ -220,7 +212,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle single character selection", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "A",
         selectable: true,
       })
@@ -237,35 +229,32 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle zero-width selection", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
 
-      // Create zero-width selection
       await currentMouse.drag(text.x + 5, text.y, text.x + 5, text.y)
       await renderOnce()
 
-      // Zero-width selection should be considered no selection
       expect(text.hasSelection()).toBe(false)
       expect(text.getSelection()).toBe(null)
       expect(text.getSelectedText()).toBe("")
     })
 
     it("should handle selection beyond text bounds", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hi",
         selectable: true,
       })
 
-      // Try to select beyond text bounds
       await currentMouse.drag(text.x, text.y, text.x + 10, text.y)
       await renderOnce()
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
       expect(selection!.start).toBe(0)
-      expect(selection!.end).toBe(2) // Clamped to text length
+      expect(selection!.end).toBe(2)
 
       expect(text.getSelectedText()).toBe("Hi")
     })
@@ -274,10 +263,9 @@ describe("TextRenderable Selection", () => {
   describe("Selection with Styled Text", () => {
     it("should handle styled text selection", async () => {
       const styledText = stringToStyledText("Hello World")
-      // Add some styling to make it more realistic
       styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
 
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: styledText,
         selectable: true,
       })
@@ -294,11 +282,11 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection with different text colors", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Red and Blue",
         selectable: true,
-        selectionBg: RGBA.fromValues(1, 1, 0, 1), // Yellow selection background
-        selectionFg: RGBA.fromValues(0, 0, 0, 1), // Black selection text
+        selectionBg: RGBA.fromValues(1, 1, 0, 1),
+        selectionFg: RGBA.fromValues(0, 0, 0, 1),
       })
 
       await currentMouse.drag(text.x + 8, text.y, text.x + 12, text.y)
@@ -315,17 +303,15 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection State Management", () => {
     it("should clear selection when selection is cleared", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
 
-      // Set initial selection
       await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
       expect(text.hasSelection()).toBe(true)
 
-      // Clear selection by setting to null via renderer
       currentRenderer.clearSelection()
       await renderOnce()
 
@@ -340,19 +326,16 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // First selection: "Hello"
       await currentMouse.drag(text.x + 0, text.y, text.x + 5, text.y)
       await renderOnce()
       expect(text.getSelectedText()).toBe("Hello")
       expect(text.getSelection()).toEqual({ start: 0, end: 5 })
 
-      // Second selection: "World"
       await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
       expect(text.getSelectedText()).toBe("World")
       expect(text.getSelection()).toEqual({ start: 6, end: 11 })
 
-      // Third selection: "Test"
       await currentMouse.drag(text.x + 12, text.y, text.x + 16, text.y)
       await renderOnce()
       expect(text.getSelectedText()).toBe("Test")
@@ -398,13 +381,14 @@ describe("TextRenderable Selection", () => {
     it("should handle selection in constrained width", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "This is a very long text that should wrap to multiple lines",
+        width: 10,
         selectable: true,
       })
 
       // Note: In a real scenario, the TextRenderable would handle width constraints
       // For this test, we're just verifying that selection works with multi-line content
 
-      await currentMouse.drag(text.x, text.y, text.x + 10, text.y + 1)
+      await currentMouse.drag(text.x, text.y, text.x + 10, text.y + 2)
       await renderOnce()
 
       // The exact start/end positions will depend on how text wraps,
@@ -419,9 +403,6 @@ describe("TextRenderable Selection", () => {
 
   describe("Cross-Renderable Selection in Nested Boxes", () => {
     it("should handle selection across multiple nested text renderables in boxes", async () => {
-      // Create a mock box structure similar to the status box in text-selection-demo.ts
-      // We'll create multiple text renderables that simulate the status box layout
-
       const { text: statusText } = await createTextRenderable(currentRenderer, {
         content: "Selected 5 chars:",
         selectable: true,
@@ -461,11 +442,9 @@ describe("TextRenderable Selection", () => {
       // This should cover all renderables in the "box"
       const allRenderables = [statusText, selectionStartText, selectionMiddleText, selectionEndText, debugText]
 
-      // Use a single mouse drag that covers all renderables from top-left to bottom-right
       await currentMouse.drag(0, 0, 50, 10)
       await renderOnce()
 
-      // Verify that each renderable has the expected selection
       expect(statusText.hasSelection()).toBe(true)
       expect(statusText.getSelectedText()).toBe("Selected 5 chars:")
 
@@ -482,7 +461,6 @@ describe("TextRenderable Selection", () => {
       expect(debugText.hasSelection()).toBe(true)
       expect(debugText.getSelectedText()).toBe("Selected renderables: 2/5")
 
-      // Use the renderer's global selection to get combined selected text
       const globalSelectedText = currentRenderer.getSelection()?.getSelectedText()
 
       expect(globalSelectedText).toContain("Selected 5 chars:")
@@ -491,7 +469,6 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should automatically update selection when text content changes within covered area", async () => {
-      // Create renderables similar to the status box
       const { text: statusText } = await createTextRenderable(currentRenderer, {
         content: "Selected 5 chars:",
         selectable: true,
@@ -516,30 +493,25 @@ describe("TextRenderable Selection", () => {
         wrap: false,
       })
 
-      // Establish initial selection covering all renderables
       await currentMouse.drag(0, 0, 50, 5)
       await renderOnce()
 
-      // Verify initial selection
       expect(statusText.getSelectedText()).toBe("Selected 5 chars:")
       expect(selectionStartText.getSelectedText()).toBe('"Hello"')
       expect(debugText.getSelectedText()).toBe("Selected renderables: 2/5")
 
       selectionStartText.content = '"Hello World Extended Selection"'
 
-      // Verify the selection now includes the extended content
       expect(statusText.getSelectedText()).toBe("Selected 5 chars:")
       expect(selectionStartText.getSelectedText()).toBe('"Hello World Extended Selection"')
       expect(debugText.getSelectedText()).toBe("Selected renderables: 2/5")
 
-      // Global selected text should include the changed content
       const updatedGlobalSelectedText = currentRenderer.getSelection()?.getSelectedText()
 
       expect(updatedGlobalSelectedText).toContain('"Hello World Extended Selection"')
       expect(updatedGlobalSelectedText).toContain("Selected 5 chars:")
       expect(updatedGlobalSelectedText).toContain("Selected renderables: 2/5")
 
-      // Change content of another renderable
       debugText.content = "Selected renderables: 3/5 | Container: statusBox"
 
       expect(debugText.getSelectedText()).toBe("Selected renderables: 3/5 | Container: statusBox")
@@ -587,18 +559,15 @@ describe("TextRenderable Selection", () => {
       await currentMouse.drag(statusText.x, statusText.y, 60, 10)
       await renderOnce()
 
-      // Verify all renderables are selected
       allRenderables.forEach((renderable) => {
         expect(renderable.hasSelection()).toBe(true)
       })
 
-      // Verify the selected text from each renderable
       expect(statusText.getSelectedText()).toBe("Status: Selection active")
       expect(selectionStartText.getSelectedText()).toBe("Start: (10,5)")
       expect(selectionEndText.getSelectedText()).toBe("End: (45,12)")
       expect(debugText.getSelectedText()).toBe("Debug: Cross-renderable selection spanning 3 elements")
 
-      // Use the renderer's global selection to get combined selected text
       const globalSelectedText = currentRenderer.getSelection()?.getSelectedText()
 
       expect(globalSelectedText).toContain("Status: Selection active")
@@ -615,7 +584,6 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Create TextNodeRenderables
       const node1 = new TextNodeRenderable({
         fg: RGBA.fromValues(1, 0, 0, 1),
         bg: RGBA.fromValues(0, 0, 0, 1),
@@ -628,11 +596,9 @@ describe("TextRenderable Selection", () => {
       })
       node2.add(" World")
 
-      // Add TextNodes to TextRenderable
       text.add(node1)
       text.add(node2)
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("Hello World")
@@ -653,14 +619,11 @@ describe("TextRenderable Selection", () => {
       const node3 = new TextNodeRenderable({})
       node3.add("!")
 
-      // Add first two nodes
       text.add(node1)
       text.add(node2)
 
-      // Insert third node before second node
       text.insertBefore(node3, node2)
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("Hello! World")
@@ -681,22 +644,17 @@ describe("TextRenderable Selection", () => {
       const node3 = new TextNodeRenderable({})
       node3.add(" World")
 
-      // Add all nodes
       text.add(node1)
       text.add(node2)
       text.add(node3)
 
-      // Trigger initial render
       await renderOnce()
       expect(text.plainText).toBe("Hello Cruel World")
 
-      // Remove middle node - this generates remove commands
       text.remove(node2.id)
 
-      // Trigger render to apply the remove commands
       await renderOnce()
 
-      // After removing " Cruel", should be "Hello World"
       expect(text.plainText).toBe("Hello World")
     })
 
@@ -709,17 +667,13 @@ describe("TextRenderable Selection", () => {
       const node = new TextNodeRenderable({})
       node.add("Test")
 
-      // Add node
       text.add(node)
 
-      // Trigger render
       await renderOnce()
       expect(text.plainText).toBe("Test")
 
-      // Remove node
       text.remove(node.id)
 
-      // Trigger render
       await renderOnce()
       expect(text.plainText).toBe("")
     })
@@ -730,7 +684,6 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Add initial content via TextNodes
       const node1 = new TextNodeRenderable({})
       node1.add("Hello")
 
@@ -740,14 +693,11 @@ describe("TextRenderable Selection", () => {
       text.add(node1)
       text.add(node2)
 
-      // Trigger render to apply commands
       await renderOnce()
       expect(text.plainText).toBe("Hello World")
 
-      // Clear all content
       text.clear()
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("")
@@ -785,7 +735,6 @@ describe("TextRenderable Selection", () => {
       text.add(parent)
       text.add(standalone)
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("Red Green Blue")
@@ -797,7 +746,6 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Add initial string content via TextNode
       const startNode = new TextNodeRenderable({})
       startNode.add("Start ")
 
@@ -811,7 +759,6 @@ describe("TextRenderable Selection", () => {
       text.add(node1)
       text.add(node2)
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("Start middle end")
@@ -824,15 +771,12 @@ describe("TextRenderable Selection", () => {
         fg: RGBA.fromValues(1, 1, 1, 1), // White default
       })
 
-      // Create parent with red color
       const redParent = new TextNodeRenderable({
         fg: RGBA.fromValues(1, 0, 0, 1), // Red
       })
 
-      // Child inherits red color but has no text
       const redChild = new TextNodeRenderable({})
 
-      // Grandchild with green color and text
       const greenGrandchild = new TextNodeRenderable({
         fg: RGBA.fromValues(0, 1, 0, 1), // Green
       })
@@ -849,7 +793,6 @@ describe("TextRenderable Selection", () => {
       text.add(redParent)
       text.add(blueNode)
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("Green Blue")
@@ -870,7 +813,6 @@ describe("TextRenderable Selection", () => {
       text.add(nodeWithText)
       text.add(emptyNode2)
 
-      // Trigger render to apply commands
       await renderOnce()
 
       expect(text.plainText).toBe("Text")
@@ -882,11 +824,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Create initial content node
       const initialNode = new TextNodeRenderable({})
       initialNode.add("Initial")
 
-      // Create multiple nodes
       const nodeA = new TextNodeRenderable({})
       nodeA.add(" A")
 
@@ -899,37 +839,29 @@ describe("TextRenderable Selection", () => {
       const nodeD = new TextNodeRenderable({})
       nodeD.add(" D")
 
-      // Add all nodes
       text.add(initialNode)
       text.add(nodeA)
       text.add(nodeB)
       text.add(nodeC)
       text.add(nodeD)
 
-      // Trigger render
       await renderOnce()
       expect(text.plainText).toBe("Initial A B C D")
 
-      // Remove middle node
       text.remove(nodeB.id)
 
-      // Trigger render
       await renderOnce()
       expect(text.plainText).toBe("Initial A C D")
 
-      // Insert new node before nodeC
       const nodeX = new TextNodeRenderable({})
       nodeX.add(" X")
       text.insertBefore(nodeX, nodeC)
 
-      // Trigger render
       await renderOnce()
       expect(text.plainText).toBe("Initial A X C D")
 
-      // Add more content to existing node
       nodeX.add(" Y")
 
-      // Trigger render
       await renderOnce()
       expect(text.plainText).toBe("Initial A X Y C D")
     })
@@ -948,7 +880,6 @@ describe("TextRenderable Selection", () => {
       const child2 = new TextNodeRenderable({})
       child2.add(" Child2")
 
-      // Add children to TextRenderable
       text.add(child1)
       text.add(child2)
 
@@ -1098,13 +1029,15 @@ describe("TextRenderable Selection", () => {
       expect(chunks[1].text).toBe(" Change")
     })
 
+    // NOTE: This was meant to cover incremental updates,
+    // but currently when the TextNode tree changes it just replaces the whole text content.
+    // Should be optimised at some point.
     it("should handle TextNode commands with multiple operations per render", async () => {
       const { text, root } = await createTextRenderable(currentRenderer, {
         content: "",
         selectable: true,
       })
 
-      // Create nodes and perform multiple operations before rendering
       const node1 = new TextNodeRenderable({})
       node1.add("First")
 
@@ -1122,7 +1055,6 @@ describe("TextRenderable Selection", () => {
       // Note: This test may fail if modifications after adding don't get tracked
       node2.add(" Modified")
 
-      // Trigger single render to apply all commands
       await renderOnce()
 
       // The order should be: Third (inserted before node1), First, Second Modified
@@ -1134,16 +1066,15 @@ describe("TextRenderable Selection", () => {
   describe("StyledText Integration", () => {
     it("should render StyledText content correctly", async () => {
       const styledText = stringToStyledText("Hello World")
-      // Add some styling to make it more realistic
+
       styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
       styledText.chunks[0].bg = RGBA.fromValues(0, 0, 0, 1) // Black background
 
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: styledText,
         selectable: true,
       })
 
-      // Trigger render to apply styling
       await renderOnce()
 
       expect(text.plainText).toBe("Hello World")
@@ -1160,7 +1091,6 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Select "World" (positions 6-11)
       await currentMouse.drag(text.x + 6, text.y, text.x + 11, text.y)
       await renderOnce()
 
@@ -1179,7 +1109,6 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Trigger render
       await renderOnce()
 
       expect(text.plainText).toBe("")
@@ -1188,7 +1117,6 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle StyledText with multiple chunks", async () => {
-      // Create a StyledText with multiple chunks manually using the constructor
       const styledText = new StyledText([
         { __isChunk: true, text: "Red", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 1 },
         { __isChunk: true, text: " ", fg: undefined, attributes: 0 },
@@ -1197,17 +1125,15 @@ describe("TextRenderable Selection", () => {
         { __isChunk: true, text: "Blue", fg: RGBA.fromValues(0, 0, 1, 1), attributes: 0 },
       ])
 
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: styledText,
         selectable: true,
       })
 
-      // Trigger render
       await renderOnce()
 
       expect(text.plainText).toBe("Red Green Blue")
 
-      // Select "Green"
       await currentMouse.drag(text.x + 4, text.y, text.x + 9, text.y)
       await renderOnce()
 
@@ -1215,23 +1141,19 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle StyledText with TextNodeRenderable children", async () => {
-      // Create TextRenderable with empty content (following existing test pattern)
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "",
         selectable: true,
       })
 
-      // Add base content as a TextNodeRenderable
       const baseNode = new TextNodeRenderable({})
       baseNode.add("Base ")
       text.add(baseNode)
 
-      // Add TextNodeRenderable children with StyledText
       const styledNode = new TextNodeRenderable({
         fg: RGBA.fromValues(1, 0, 0, 1),
       })
 
-      // Create a proper StyledText instance for the node
       const nodeStyledText = new StyledText([
         { __isChunk: true, text: "Styled", fg: RGBA.fromValues(0, 1, 0, 1), attributes: 1 },
       ])
@@ -1239,12 +1161,10 @@ describe("TextRenderable Selection", () => {
       styledNode.add(nodeStyledText)
       text.add(styledNode)
 
-      // Trigger render
       await renderOnce()
 
       expect(text.plainText).toBe("Base Styled")
 
-      // Test that we can select text from the combined content
       await currentMouse.drag(text.x + 5, text.y, text.x + 11, text.y)
       await renderOnce()
       expect(text.getSelectedText()).toBe("Styled")
@@ -1253,7 +1173,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Text Content Snapshots", () => {
     it("should render basic text content correctly", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Hello World",
         left: 5,
         top: 3,
@@ -1264,7 +1184,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should render multiline text content correctly", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Line 1: Hello\nLine 2: World\nLine 3: Testing\nLine 4: Multiline",
         left: 1,
         top: 1,
@@ -1275,7 +1195,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should render text with graphemes/emojis correctly", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World 👋\n Test 🚀 Emoji",
         left: 0,
         top: 2,
@@ -1312,21 +1232,21 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should render text positioning correctly", async () => {
-      const { text: text1 } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Top",
         position: "absolute",
         left: 0,
         top: 0,
       })
 
-      const { text: text2 } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Mid",
         position: "absolute",
         left: 8,
         top: 2,
       })
 
-      const { text: text3 } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Bot",
         position: "absolute",
         left: 16,
@@ -1358,7 +1278,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should render wrapped text with different content", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
         wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
@@ -1372,7 +1292,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should render wrapped text with emojis and graphemes", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World 👋 This is a test with emojis 🚀 that should wrap properly",
         wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
@@ -1386,7 +1306,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should render wrapped multiline text correctly", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "First line with long content\nSecond line also with content\nThird line",
         wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
@@ -1400,6 +1320,90 @@ describe("TextRenderable Selection", () => {
     })
   })
 
+  describe("Text Node Dimension Updates", () => {
+    it("should update dimensions and reposition subsequent elements when text nodes expand", async () => {
+      const { text: firstText } = await createTextRenderable(currentRenderer, {
+        content: "",
+        width: 20,
+        wrap: true,
+        wrapMode: "char",
+      })
+
+      const shortNode = new TextNodeRenderable({})
+      shortNode.add("Short")
+      firstText.add(shortNode)
+
+      const { text: secondText } = await createTextRenderable(currentRenderer, {
+        content: "Second text",
+      })
+
+      await renderOnce()
+      const initialFrame = captureFrame()
+      expect(initialFrame).toMatchSnapshot()
+
+      expect(firstText.height).toEqual(1)
+      expect(secondText.y).toEqual(1)
+
+      shortNode.add(" text that will definitely wrap")
+
+      await renderOnce()
+
+      const finalFrame = captureFrame()
+
+      expect(firstText.height).toEqual(2)
+      expect(secondText.y).toEqual(2)
+
+      expect(finalFrame).not.toBe(initialFrame)
+      expect(finalFrame).toMatchSnapshot()
+    })
+
+    it("should handle multiple text node updates with complex layout changes", async () => {
+      resize(20, 10)
+      const { text: firstText } = await createTextRenderable(currentRenderer, {
+        width: 10,
+        wrap: true,
+        wrapMode: "word",
+      })
+
+      const node1 = TextNodeRenderable.fromString("First")
+      const node2 = TextNodeRenderable.fromString(" part")
+
+      firstText.add(node1)
+      firstText.add(node2)
+
+      const { text: secondText } = await createTextRenderable(currentRenderer, {
+        width: 12,
+        wrap: true,
+        wrapMode: "word",
+      })
+      secondText.add("Middle text")
+
+      const { text: thirdText } = await createTextRenderable(currentRenderer, {})
+      thirdText.add("Bottom text")
+
+      await renderOnce()
+      const initialFrame = captureFrame()
+      expect(initialFrame).toMatchSnapshot()
+
+      // Record initial positions
+      expect(firstText.height).toEqual(1)
+      expect(secondText.y).toEqual(1)
+      expect(thirdText.y).toEqual(2)
+
+      node1.add(" of a sentence")
+      node2.add("that will wrap")
+
+      await renderOnce()
+
+      const finalFrame = captureFrame()
+      expect(finalFrame).toMatchSnapshot()
+
+      expect(firstText.height).toEqual(4)
+      expect(secondText.y).toEqual(4)
+      expect(thirdText.y).toEqual(5)
+    })
+  })
+
   describe("Word Wrapping", () => {
     it("should default to word wrap mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
@@ -1410,7 +1414,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should wrap at word boundaries when using word mode", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps over the lazy dog",
         wrap: true,
         wrapMode: "word",
@@ -1438,7 +1442,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle word wrapping with punctuation", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "Hello,World.Test-Example/Path",
         wrap: true,
         wrapMode: "word",
@@ -1452,7 +1456,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle word wrapping with hyphens and dashes", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "self-contained multi-line text-wrapping example",
         wrap: true,
         wrapMode: "word",
@@ -1487,7 +1491,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle long words that exceed wrap width in word mode", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
         wrap: true,
         wrapMode: "word",
@@ -1502,7 +1506,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should preserve empty lines with word wrapping", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "First line\n\nThird line",
         wrap: true,
         wrapMode: "word",
@@ -1516,7 +1520,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle word wrapping with single character words", async () => {
-      const { text } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content: "a b c d e f g h i j k l m n o p",
         wrap: true,
         wrapMode: "word",
@@ -1548,7 +1552,7 @@ describe("TextRenderable Selection", () => {
       currentRenderer.root.remove(charText.id)
       await renderOnce()
 
-      const { text: wordText } = await createTextRenderable(currentRenderer, {
+      await createTextRenderable(currentRenderer, {
         content,
         wrap: true,
         wrapMode: "word",

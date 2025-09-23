@@ -853,6 +853,15 @@ pub const CliRenderer = struct {
         bufferedWriter.flush() catch {};
     }
 
+    pub fn queryPixelResolution(self: *CliRenderer) void {
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
+        writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
+
+        bufferedWriter.flush() catch {};
+    }
+
     pub fn disableMouse(self: *CliRenderer) void {
         if (!self.mouseEnabled) return;
 

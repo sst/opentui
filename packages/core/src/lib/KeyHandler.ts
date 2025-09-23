@@ -24,11 +24,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.stdin = stdin || process.stdin
     this.useKittyKeyboard = useKittyKeyboard
 
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(true)
-    }
-    this.stdin.resume()
-    this.stdin.setEncoding("utf8")
     this.listener = (key: Buffer) => {
       let data = key.toString()
       if (data.startsWith(ANSI.bracketedPasteStart)) {
@@ -65,8 +60,5 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 
   public destroy(): void {
     this.stdin.removeListener("data", this.listener)
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
   }
 }
