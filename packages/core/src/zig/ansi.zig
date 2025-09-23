@@ -17,6 +17,7 @@ pub const ANSI = struct {
     pub const showCursor = "\x1b[?25h";
     pub const defaultCursorStyle = "\x1b[0 q";
     pub const queryPixelSize = "\x1b[14t";
+    pub const nextLine = "\x1b[E";
 
     // Direct writing to any writer - the most efficient option
     pub fn moveToOutput(writer: anytype, x: u32, y: u32) AnsiError!void {
@@ -129,22 +130,9 @@ pub const ANSI = struct {
         std.fmt.format(writer, setTerminalTitle, .{title}) catch return AnsiError.WriteFailed;
     }
 
-    pub fn clearRendererSpaceOutput(writer: anytype, height: u32) AnsiError!void {
-        // Clear each line individually from bottom to top
-        // This approach is more compatible across different terminals
-        var i: u32 = height;
-        while (i > 0) : (i -= 1) {
-            std.fmt.format(writer, "\x1b[{d};1H\x1b[2K", .{i}) catch return AnsiError.WriteFailed;
-        }
-    }
-
     pub fn makeRoomForRendererOutput(writer: anytype, height: u32) AnsiError!void {
         if (height > 1) {
-            var i: u32 = 0;
-            while (i < height - 1) : (i += 1) {
-                writer.writeByte('\n') catch return AnsiError.WriteFailed;
-            }
-            std.fmt.format(writer, "\x1b[{d}A", .{height - 1}) catch return AnsiError.WriteFailed;
+            writer.writeByteNTimes('\n', height - 1) catch return AnsiError.WriteFailed;
         }
     }
 };

@@ -271,45 +271,44 @@ pub const CliRenderer = struct {
 
         writer.writeAll(ansi.ANSI.saveCursorState) catch {};
 
-        self.terminal.queryTerminalSend(writer.any()) catch {
-            // If capability detection fails, continue with defaults
-        };
-
         if (useAlternateScreen) {
-            self.terminal.enterAltScreen(writer.any()) catch {};
+            self.terminal.enterAltScreen(writer) catch {};
         } else {
-            ansi.ANSI.makeRoomForRendererOutput(writer, self.height) catch {};
+            ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
         }
 
         self.terminal.setCursorPosition(1, 1, false);
 
         bufferedWriter.flush() catch {};
+
+        self.terminal.queryTerminalSend(writer) catch {
+            logger.warn("Failed to query terminal capabilities", .{});
+        };
     }
 
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
         const direct = self.stdoutWriter.writer();
-
-        self.disableMouse();
-
         self.terminal.resetState(direct.any()) catch {};
 
         if (self.useAlternateScreen) {
             self.stdoutWriter.flush() catch {};
         } else if (self.renderOffset == 0) {
-            ansi.ANSI.clearRendererSpaceOutput(direct, self.height) catch {};
+            direct.writeAll("\x1b[H\x1b[J") catch {};
+            self.stdoutWriter.flush() catch {};
         } else if (self.renderOffset > 0) {
             // Currently still handled in typescript
             // const consoleEndLine = self.height - self.renderOffset;
             // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
         }
 
+        // NOTE: This messes up state after shutdown, but might be necessary for windows?
+        // direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
+
         direct.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
         direct.writeAll(ansi.ANSI.resetCursorColor) catch {};
-        direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
         direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
-
         // Workaround for Ghostty not showing the cursor after shutdown for some reason
         direct.writeAll(ansi.ANSI.showCursor) catch {};
         self.stdoutWriter.flush() catch {};

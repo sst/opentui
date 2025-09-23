@@ -75,7 +75,7 @@ pub fn init(opts: Options) Terminal {
     };
 }
 
-pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
+pub fn resetState(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.showCursor);
     try tty.writeAll(ansi.ANSI.reset);
 
@@ -96,16 +96,19 @@ pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
     }
 
     if (self.state.alt_screen) {
-        try tty.writeAll(ansi.ANSI.home);
-        try tty.writeAll(ansi.ANSI.eraseBelowCursor);
         try self.exitAltScreen(tty);
     } else {
-        try tty.writeByte('\r');
-        var i: u16 = 0;
-        while (i < self.state.cursor.row) : (i += 1) {
-            try tty.writeAll(ansi.ANSI.reverseIndex);
+        switch (builtin.os.tag) {
+            .windows => {
+                try tty.writeByte('\r');
+                var i: u16 = 0;
+                while (i < self.state.cursor.row) : (i += 1) {
+                    try tty.writeAll(ansi.ANSI.reverseIndex);
+                }
+                try tty.writeAll(ansi.ANSI.eraseBelowCursor);
+            },
+            else => {},
         }
-        try tty.writeAll(ansi.ANSI.eraseBelowCursor);
     }
 
     if (self.state.color_scheme_updates) {
@@ -116,17 +119,17 @@ pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
     self.setTerminalTitle(tty, "");
 }
 
-pub fn enterAltScreen(self: *Terminal, tty: AnyWriter) !void {
+pub fn enterAltScreen(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.switchToAlternateScreen);
     self.state.alt_screen = true;
 }
 
-pub fn exitAltScreen(self: *Terminal, tty: AnyWriter) !void {
+pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.switchToMainScreen);
     self.state.alt_screen = false;
 }
 
-pub fn queryTerminalSend(self: *Terminal, tty: AnyWriter) !void {
+pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
 
     try tty.writeAll(ansi.ANSI.hideCursor ++
