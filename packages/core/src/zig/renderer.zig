@@ -290,7 +290,9 @@ pub const CliRenderer = struct {
         if (!self.terminalSetup) return;
 
         const direct = self.stdoutWriter.writer();
-        self.terminal.resetState(direct.any()) catch {};
+        self.terminal.resetState(direct) catch {
+            logger.warn("Failed to reset terminal state", .{});
+        };
 
         if (self.useAlternateScreen) {
             self.stdoutWriter.flush() catch {};
@@ -847,7 +849,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setMouseMode(writer.any(), true) catch {};
+        self.terminal.setMouseMode(writer, true) catch {};
 
         bufferedWriter.flush() catch {};
     }
@@ -870,7 +872,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setMouseMode(writer.any(), false) catch {};
+        self.terminal.setMouseMode(writer, false) catch {};
 
         bufferedWriter.flush() catch {};
     }
@@ -879,7 +881,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setKittyKeyboard(writer.any(), true, flags) catch {};
+        self.terminal.setKittyKeyboard(writer, true, flags) catch {};
         bufferedWriter.flush() catch {};
     }
 
@@ -887,7 +889,7 @@ pub const CliRenderer = struct {
         var bufferedWriter = &self.stdoutWriter;
         const writer = bufferedWriter.writer();
 
-        self.terminal.setKittyKeyboard(writer.any(), false, 0) catch {};
+        self.terminal.setKittyKeyboard(writer, false, 0) catch {};
         bufferedWriter.flush() catch {};
     }
 
@@ -898,7 +900,7 @@ pub const CliRenderer = struct {
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
         const writer = self.stdoutWriter.writer();
-        self.terminal.enableDetectedFeatures(writer.any()) catch {};
+        self.terminal.enableDetectedFeatures(writer) catch {};
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
