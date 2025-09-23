@@ -24,7 +24,7 @@ async function createTextRenderable(
 describe("TextRenderable Selection", () => {
   describe("Native getSelectedText", () => {
     it("should use native implementation", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -37,7 +37,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle graphemes correctly", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World",
         selectable: true,
       })
@@ -69,7 +69,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Initialization", () => {
     it("should initialize properly", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -83,7 +83,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Basic Selection Flow", () => {
     it("should handle selection from start to end", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -108,7 +108,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection with newline characters", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Line 1\nLine 2\nLine 3",
         selectable: true,
       })
@@ -126,7 +126,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection spanning multiple lines completely", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "First\nSecond\nThird",
         selectable: true,
       })
@@ -141,7 +141,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection including multiple line breaks", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "A\nB\nC\nD",
         selectable: true,
       })
@@ -159,7 +159,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection that includes line breaks at boundaries", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Line1\nLine2\nLine3",
         selectable: true,
       })
@@ -177,7 +177,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle reverse selection (end before start)", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -196,7 +196,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection Edge Cases", () => {
     it("should handle empty text", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "",
         selectable: true,
       })
@@ -210,7 +210,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle single character selection", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "A",
         selectable: true,
       })
@@ -227,7 +227,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle zero-width selection", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -241,7 +241,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection beyond text bounds", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hi",
         selectable: true,
       })
@@ -263,7 +263,7 @@ describe("TextRenderable Selection", () => {
       const styledText = stringToStyledText("Hello World")
       styledText.chunks[0].fg = RGBA.fromValues(1, 0, 0, 1) // Red text
 
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: styledText,
         selectable: true,
       })
@@ -280,7 +280,7 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should handle selection with different text colors", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Red and Blue",
         selectable: true,
         selectionBg: RGBA.fromValues(1, 1, 0, 1),
@@ -301,7 +301,7 @@ describe("TextRenderable Selection", () => {
 
   describe("Selection State Management", () => {
     it("should clear selection when selection is cleared", async () => {
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: "Hello World",
         selectable: true,
       })
@@ -1123,7 +1123,7 @@ describe("TextRenderable Selection", () => {
         { __isChunk: true, text: "Blue", fg: RGBA.fromValues(0, 0, 1, 1), attributes: 0 },
       ])
 
-      const { text, root } = await createTextRenderable(currentRenderer, {
+      const { text } = await createTextRenderable(currentRenderer, {
         content: styledText,
         selectable: true,
       })
