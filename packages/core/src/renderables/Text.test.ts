@@ -9,6 +9,7 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let captureFrame: () => string
+let resize: (width: number, height: number) => void
 
 async function createTextRenderable(
   renderer: TestRenderer,
@@ -57,6 +58,7 @@ describe("TextRenderable Selection", () => {
       renderOnce,
       mockMouse: currentMouse,
       captureCharFrame: captureFrame,
+      resize,
     } = await createTestRenderer({
       width: 20,
       height: 5,
@@ -1315,6 +1317,90 @@ describe("TextRenderable Selection", () => {
 
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
+    })
+  })
+
+  describe("Text Node Dimension Updates", () => {
+    it("should update dimensions and reposition subsequent elements when text nodes expand", async () => {
+      const { text: firstText } = await createTextRenderable(currentRenderer, {
+        content: "",
+        width: 20,
+        wrap: true,
+        wrapMode: "char",
+      })
+
+      const shortNode = new TextNodeRenderable({})
+      shortNode.add("Short")
+      firstText.add(shortNode)
+
+      const { text: secondText } = await createTextRenderable(currentRenderer, {
+        content: "Second text",
+      })
+
+      await renderOnce()
+      const initialFrame = captureFrame()
+      expect(initialFrame).toMatchSnapshot()
+
+      expect(firstText.height).toEqual(1)
+      expect(secondText.y).toEqual(1)
+
+      shortNode.add(" text that will definitely wrap")
+
+      await renderOnce()
+
+      const finalFrame = captureFrame()
+
+      expect(firstText.height).toEqual(2)
+      expect(secondText.y).toEqual(2)
+
+      expect(finalFrame).not.toBe(initialFrame)
+      expect(finalFrame).toMatchSnapshot()
+    })
+
+    it("should handle multiple text node updates with complex layout changes", async () => {
+      resize(20, 10)
+      const { text: firstText } = await createTextRenderable(currentRenderer, {
+        width: 10,
+        wrap: true,
+        wrapMode: "word",
+      })
+
+      const node1 = TextNodeRenderable.fromString("First")
+      const node2 = TextNodeRenderable.fromString(" part")
+
+      firstText.add(node1)
+      firstText.add(node2)
+
+      const { text: secondText } = await createTextRenderable(currentRenderer, {
+        width: 12,
+        wrap: true,
+        wrapMode: "word",
+      })
+      secondText.add("Middle text")
+
+      const { text: thirdText } = await createTextRenderable(currentRenderer, {})
+      thirdText.add("Bottom text")
+
+      await renderOnce()
+      const initialFrame = captureFrame()
+      expect(initialFrame).toMatchSnapshot()
+
+      // Record initial positions
+      expect(firstText.height).toEqual(1)
+      expect(secondText.y).toEqual(1)
+      expect(thirdText.y).toEqual(2)
+
+      node1.add(" of a sentence")
+      node2.add("that will wrap")
+
+      await renderOnce()
+
+      const finalFrame = captureFrame()
+      expect(finalFrame).toMatchSnapshot()
+
+      expect(firstText.height).toEqual(4)
+      expect(secondText.y).toEqual(4)
+      expect(thirdText.y).toEqual(5)
     })
   })
 
