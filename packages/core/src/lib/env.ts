@@ -117,6 +117,61 @@ class EnvStore {
 
 const envStore = singleton("env-store", () => new EnvStore())
 
+export function generateEnvMarkdown(): string {
+  const configs = Object.values(envRegistry)
+
+  if (configs.length === 0) {
+    return "# Environment Variables\n\nNo environment variables registered.\n"
+  }
+
+  let markdown = "# Environment Variables\n\n"
+
+  for (const config of configs) {
+    markdown += `## ${config.name}\n\n`
+    markdown += `${config.description}\n\n`
+
+    markdown += `**Type:** \`${config.type || "string"}\`  \n`
+
+    if (config.default !== undefined) {
+      const defaultValue = typeof config.default === "string" ? `"${config.default}"` : String(config.default)
+      markdown += `**Default:** \`${defaultValue}\`  \n`
+    } else {
+      markdown += "**Default:** *Required*  \n"
+    }
+
+    markdown += "\n"
+  }
+
+  return markdown
+}
+
+export function generateEnvColored(): string {
+  const configs = Object.values(envRegistry)
+
+  if (configs.length === 0) {
+    return "\x1b[1;36mEnvironment Variables\x1b[0m\n\nNo environment variables registered.\n"
+  }
+
+  let output = "\x1b[1;36mEnvironment Variables\x1b[0m\n\n"
+
+  for (const config of configs) {
+    output += `\x1b[1;33m${config.name}\x1b[0m\n`
+    output += `${config.description}\n`
+    output += `\x1b[32mType:\x1b[0m \x1b[36m${config.type || "string"}\x1b[0m\n`
+
+    if (config.default !== undefined) {
+      const defaultValue = typeof config.default === "string" ? `"${config.default}"` : String(config.default)
+      output += `\x1b[32mDefault:\x1b[0m \x1b[35m${defaultValue}\x1b[0m\n`
+    } else {
+      output += `\x1b[32mDefault:\x1b[0m \x1b[31mRequired\x1b[0m\n`
+    }
+
+    output += "\n"
+  }
+
+  return output
+}
+
 export const env = new Proxy({} as Record<string, string | boolean | number>, {
   get(target, prop: string) {
     if (typeof prop !== "string") {
