@@ -1,8 +1,16 @@
-import { useTerminalDimensions, useTimeline, createComponentTimeline } from "@opentui/solid"
-import { For } from "solid-js"
+import { render, useTerminalDimensions, useTimeline } from "@opentui/solid"
+import { createSignal, For } from "solid-js"
 
 export const SplitModeDemo = () => {
   const tDims = useTerminalDimensions()
+
+  const [animatedSystem, setAnimatedSystem] = createSignal({
+    cpu: 0,
+    memory: 0,
+    network: 0,
+    disk: 0,
+  })
+
   const systems = [
     { name: "CPU", color: "#6a5acd", y: 6, animKey: "cpu" },
     { name: "MEM", color: "#4682b4", y: 7, animKey: "memory" },
@@ -10,18 +18,23 @@ export const SplitModeDemo = () => {
     { name: "DSK", color: "#daa520", y: 9, animKey: "disk" },
   ] as const
 
-  const timeline = createComponentTimeline({
+  const timeline = useTimeline({
     duration: 8000,
     loop: false,
   })
 
-  const animatedSystem = useTimeline(
-    timeline,
-    { cpu: 0, memory: 0, network: 0, disk: 0 },
-    { cpu: 85, memory: 70, network: 95, disk: 60 },
+  timeline.add(
+    animatedSystem(),
     {
+      cpu: 85,
+      memory: 70,
+      network: 95,
+      disk: 60,
       duration: 3000,
       ease: "inOutQuad",
+      onUpdate(values) {
+        setAnimatedSystem({ ...values.targets[0] })
+      },
     },
     0,
   )
@@ -31,7 +44,6 @@ export const SplitModeDemo = () => {
       style={{
         zIndex: 5,
       }}
-      live
     >
       <box
         title="SYSTEM MONITOR"
@@ -49,8 +61,6 @@ export const SplitModeDemo = () => {
           borderColor: "#4a4a4a",
         }}
       >
-        <text>{animatedSystem().cpu}</text>
-        {/* <DummComponent /> */}
         <For each={systems}>
           {(system) => (
             <box
@@ -81,7 +91,7 @@ export const SplitModeDemo = () => {
               >
                 <box
                   style={{
-                    width: `${Math.round(animatedSystem()[system.animKey])}%`,
+                    width: `${animatedSystem()[system.animKey]}%`,
                     height: 1,
                     backgroundColor: system.color,
                     zIndex: 2,
@@ -159,4 +169,8 @@ export const SplitModeDemo = () => {
       </For>
     </box>
   )
+}
+
+if (import.meta.main) {
+  render(SplitModeDemo)
 }
