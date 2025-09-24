@@ -188,3 +188,30 @@ test("KeyHandler - event inheritance from EventEmitter", () => {
 
   handler.destroy()
 })
+
+test("KeyHandler - preventDefault stops propagation", () => {
+  const handler = createKeyHandler()
+
+  let globalHandlerCalled = false
+  let secondHandlerCalled = false
+
+  // Register global handler that prevents default
+  handler.on("keypress", (key: KeyEvent) => {
+    globalHandlerCalled = true
+    key.preventDefault()
+  })
+
+  // Register second handler (simulating a focused input)
+  handler.on("keypress", (key: KeyEvent) => {
+    if (!key.defaultPrevented) {
+      secondHandlerCalled = true
+    }
+  })
+
+  mockInput.pressKey("a")
+
+  expect(globalHandlerCalled).toBe(true)
+  expect(secondHandlerCalled).toBe(false)
+
+  handler.destroy()
+})

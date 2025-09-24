@@ -360,6 +360,8 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {
+      if (key.defaultPrevented) return
+
       this._keyListeners["down"]?.(key)
       if (this.handleKeyPress) {
         this.handleKeyPress(key)
