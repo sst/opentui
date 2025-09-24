@@ -146,13 +146,9 @@ export class InternalKeyHandler extends KeyHandler {
     if (renderableSet && renderableSet.size > 0) {
       hasRenderableListeners = true
 
-      // Check if the event was prevented
-      if (event === "keypress" || event === "keyrepeat" || event === "keyrelease") {
-        const keyEvent = args[0] as KeyEvent
+      if (event === "keypress" || event === "keyrepeat" || event === "keyrelease" || event === "paste") {
+        const keyEvent = args[0]
         if (keyEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
-      } else if (event === "paste") {
-        const pasteEvent = args[0] as PasteEvent
-        if (pasteEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
       }
 
       for (const handler of renderableSet) {
