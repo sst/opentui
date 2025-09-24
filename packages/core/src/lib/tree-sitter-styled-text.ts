@@ -11,19 +11,6 @@ export type { StyleDefinition } from "./syntax-style"
 function treeSitterToTextChunks(content: string, highlights: SimpleHighlight[], syntaxStyle: SyntaxStyle): TextChunk[] {
   const chunks: TextChunk[] = []
 
-  if (highlights.length === 0) {
-    // No highlights, return entire content with default style
-    const defaultStyle = syntaxStyle.mergeStyles("default")
-    chunks.push({
-      __isChunk: true,
-      text: content,
-      fg: defaultStyle.fg,
-      bg: defaultStyle.bg,
-      attributes: defaultStyle.attributes,
-    })
-    return chunks
-  }
-
   // Style stack to handle nested highlights (like HAST approach)
   const styleStack: string[] = ["default"]
   let currentIndex = 0
@@ -93,9 +80,12 @@ export async function treeSitterToStyledText(
   syntaxStyle: SyntaxStyle,
   client: TreeSitterClient,
 ): Promise<StyledText> {
+  const start = performance.now()
   const result = await client.highlightOnce(content, filetype)
+  const end = performance.now()
+  console.log(`ts client highlightOnce in ${end - start}ms`)
 
-  if (result.highlights) {
+  if (result.highlights && result.highlights.length > 0) {
     const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle)
     return new StyledText(chunks)
   } else {
