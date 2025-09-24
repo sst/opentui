@@ -1,11 +1,4 @@
-import {
-  engine,
-  Selection,
-  Timeline,
-  type CliRenderer,
-  type ParsedKey,
-  type TimelineOptions,
-} from "@opentui/core"
+import { engine, Selection, Timeline, type CliRenderer, type ParsedKey, type TimelineOptions } from "@opentui/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
