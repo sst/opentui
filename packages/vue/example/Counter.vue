@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { RGBA, type ParsedKey } from "@opentui/core"
+import { RGBA, type KeyEvent } from "@opentui/core"
 import { onUnmounted, ref } from "vue"
 import { useCliRenderer } from ".."
 
 const count = ref(0)
 
-function handleKeyPress(key: ParsedKey): void {
+function handleKeyPress(key: KeyEvent): void {
   switch (key.name) {
     case "up":
     case "+":

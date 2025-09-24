@@ -1,4 +1,4 @@
-import { engine, Selection, Timeline, type CliRenderer, type ParsedKey, type TimelineOptions } from "@opentui/core"
+import { engine, Selection, Timeline, type CliRenderer, type KeyEvent, type TimelineOptions } from "@opentui/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
@@ -41,7 +41,7 @@ export const useTerminalDimensions = () => {
   return terminalDimensions
 }
 
-export const useKeyboard = (callback: (key: ParsedKey) => void) => {
+export const useKeyboard = (callback: (key: KeyEvent) => void) => {
   const renderer = useRenderer()
   const keyHandler = renderer.keyInput
   onMount(() => {

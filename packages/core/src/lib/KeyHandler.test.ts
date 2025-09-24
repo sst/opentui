@@ -1,6 +1,6 @@
 import { test, expect, afterAll } from "bun:test"
 import { KeyHandler } from "./KeyHandler"
-import type { ParsedKey } from "./KeyHandler"
+import type { KeyEvent } from "./KeyHandler"
 import { createTestRenderer } from "../testing/test-renderer"
 import { EventEmitter } from "events"
 
@@ -38,14 +38,14 @@ test("KeyHandler - constructor uses process.stdin by default", () => {
   try {
     const handler = new KeyHandler()
 
-    let receivedKey: ParsedKey | undefined
-    handler.on("keypress", (key: ParsedKey) => {
+    let receivedKey: KeyEvent | undefined
+    handler.on("keypress", (key: KeyEvent) => {
       receivedKey = key
     })
 
     mockStdin.emit("data", Buffer.from("a"))
 
-    expect(receivedKey).toEqual({
+    expect(receivedKey).toMatchObject({
       name: "a",
       ctrl: false,
       meta: false,
@@ -69,14 +69,14 @@ test("KeyHandler - constructor uses process.stdin by default", () => {
 test("KeyHandler - emits keypress events", () => {
   const handler = createKeyHandler()
 
-  let receivedKey: ParsedKey | undefined
-  handler.on("keypress", (key: ParsedKey) => {
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
     receivedKey = key
   })
 
   mockInput.pressKey("a")
 
-  expect(receivedKey).toEqual({
+  expect(receivedKey).toMatchObject({
     name: "a",
     ctrl: false,
     meta: false,
@@ -157,14 +157,14 @@ test("KeyHandler - destroy method cleans up properly", () => {
 test("KeyHandler - handles Buffer input", () => {
   const handler = createKeyHandler()
 
-  let receivedKey: ParsedKey | undefined
-  handler.on("keypress", (key: ParsedKey) => {
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
     receivedKey = key
   })
 
   mockInput.pressKey("c")
 
-  expect(receivedKey).toEqual({
+  expect(receivedKey).toMatchObject({
     name: "c",
     ctrl: false,
     meta: false,

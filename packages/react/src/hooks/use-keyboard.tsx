@@ -1,9 +1,9 @@
-import type { ParsedKey } from "@opentui/core"
+import type { KeyEvent } from "@opentui/core"
 import { useEffect } from "react"
 import { useAppContext } from "../components/app"
 import { useEvent } from "./use-event"
 
-export const useKeyboard = (handler: (key: ParsedKey) => void) => {
+export const useKeyboard = (handler: (key: KeyEvent) => void) => {
   const { keyHandler } = useAppContext()
   const stableHandler = useEvent(handler)
 

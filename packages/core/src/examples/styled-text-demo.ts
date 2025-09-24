@@ -10,7 +10,7 @@ import {
   bgYellow,
   fg,
   BoxRenderable,
-  type ParsedKey,
+  type KeyEvent,
 } from "../index"
 import { TextRenderable } from "../renderables/Text"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -21,7 +21,7 @@ let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
 let updateFrequency = 1 // Updates per frame (1 = every frame, 2 = every 2 frames, etc.)
 let complexTemplateCounter = 0
 let startTime = Date.now()
-let keyboardHandler: ((key: ParsedKey) => void) | null = null
+let keyboardHandler: ((key: KeyEvent) => void) | null = null
 let dashboardBox: BoxRenderable | null = null
 let complexDisplay: TextRenderable | null = null
 
@@ -191,7 +191,7 @@ ${bold(fg("#F1C40F")("Controls:"))} ${fg("#BDC3C7")("↑/↓ = Speed, ESC = Exit
   renderer.setFrameCallback(frameCallback)
 
   // Add keyboard controls for update frequency
-  keyboardHandler = (key: ParsedKey) => {
+  keyboardHandler = (key: KeyEvent) => {
     if (key.name === "up" || key.name === "arrowup") {
       updateFrequency = Math.max(1, updateFrequency - 1)
     } else if (key.name === "down" || key.name === "arrowdown") {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { bold, fg, italic, t, TextAttributes, type ParsedKey } from "@opentui/core"
+import { bold, fg, italic, t, TextAttributes, type KeyEvent } from "@opentui/core"
 import { ref, onMounted, onUnmounted, computed } from "vue"
 import { useCliRenderer } from ".."
 
@@ -8,7 +8,7 @@ const password = ref("")
 const focused = ref<"username" | "password">("username")
 const status = ref<"idle" | "invalid" | "success">("idle")
 
-const handleKeyPress = (key: ParsedKey) => {
+const handleKeyPress = (key: KeyEvent) => {
   if (key.name === "tab") {
     focused.value = focused.value === "username" ? "password" : "username"
   }

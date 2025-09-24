@@ -1,4 +1,4 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type ParsedKey } from "../index"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface LayoutDemo {
@@ -416,7 +416,7 @@ function handleResize(width: number, height: number): void {
   centerMoveableElement()
 }
 
-function handleKeyPress(key: ParsedKey): void {
+function handleKeyPress(key: KeyEvent): void {
   switch (key.name) {
     case "space": // Space - next layout
       nextDemo()

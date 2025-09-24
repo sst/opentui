@@ -1,13 +1,56 @@
 import { EventEmitter } from "events"
-import { parseKeypress, type ParsedKey } from "./parse.keypress"
+import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
 import { ANSI } from "../ansi"
 
-export type { ParsedKey }
+export class KeyEvent implements ParsedKey {
+  name: string
+  ctrl: boolean
+  meta: boolean
+  shift: boolean
+  option: boolean
+  sequence: string
+  number: boolean
+  raw: string
+  eventType: KeyEventType
+  code?: string
+  super?: boolean
+  hyper?: boolean
+  capsLock?: boolean
+  numLock?: boolean
+  baseCode?: number
+
+  private _defaultPrevented: boolean = false
+
+  constructor(key: ParsedKey) {
+    this.name = key.name
+    this.ctrl = key.ctrl
+    this.meta = key.meta
+    this.shift = key.shift
+    this.option = key.option
+    this.sequence = key.sequence
+    this.number = key.number
+    this.raw = key.raw
+    this.eventType = key.eventType
+    this.code = key.code
+    this.super = key.super
+    this.hyper = key.hyper
+    this.capsLock = key.capsLock
+    this.numLock = key.numLock
+    this.baseCode = key.baseCode
+  }
+
+  get defaultPrevented(): boolean {
+    return this._defaultPrevented
+  }
+  preventDefault(): void {
+    this._defaultPrevented = true
+  }
+}
 
 type KeyHandlerEventMap = {
-  keypress: [ParsedKey]
-  keyrepeat: [ParsedKey]
-  keyrelease: [ParsedKey]
+  keypress: [KeyEvent]
+  keyrepeat: [KeyEvent]
+  keyrelease: [KeyEvent]
   paste: [string]
 }
 
@@ -42,16 +85,16 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 
       switch (parsedKey.eventType) {
         case "press":
-          this.emit("keypress", parsedKey)
+          this.emit("keypress", new KeyEvent(parsedKey))
           break
         case "repeat":
-          this.emit("keyrepeat", parsedKey)
+          this.emit("keyrepeat", new KeyEvent(parsedKey))
           break
         case "release":
-          this.emit("keyrelease", parsedKey)
+          this.emit("keyrelease", new KeyEvent(parsedKey))
           break
         default:
-          this.emit("keypress", parsedKey)
+          this.emit("keypress", new KeyEvent(parsedKey))
           break
       }
     }

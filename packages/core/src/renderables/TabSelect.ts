@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
-import type { ParsedKey } from "../lib/parse.keypress"
+import type { KeyEvent } from "../lib/KeyHandler"
 import type { RenderContext } from "../types"
 
 export interface TabSelectOption {
@@ -275,7 +275,7 @@ export class TabSelectRenderable extends Renderable {
     return this._tabWidth
   }
 
-  public handleKeyPress(key: ParsedKey | string): boolean {
+  public handleKeyPress(key: KeyEvent | string): boolean {
     const keyName = typeof key === "string" ? key : key.name
 
     switch (keyName) {
