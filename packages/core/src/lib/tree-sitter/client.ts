@@ -19,6 +19,27 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
+const DEFAULT_PARSERS = [
+  {
+    filetype: "javascript",
+    queries: {
+      highlights:
+        "https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/refs/heads/master/queries/highlights.scm",
+    },
+    language:
+      "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
+  },
+  {
+    filetype: "typescript",
+    queries: {
+      highlights:
+        "https://raw.githubusercontent.com/tree-sitter/tree-sitter-typescript/refs/heads/master/queries/highlights.scm",
+    },
+    language:
+      "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
+  },
+]
+
 // TODO: load parsers/queries from filepath or URL
 // TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
 export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
@@ -62,6 +83,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.worker = undefined
   }
 
+  // NOTE: Unused, but useful for debugging and testing
   private handleReset() {
     this.buffers.clear()
     this.stopWorker()
@@ -99,28 +121,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private async registerDefaultParsers(): Promise<void> {
-    const defaultParsers = [
-      {
-        filetype: "javascript",
-        queries: {
-          highlights:
-            "https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/refs/heads/master/queries/highlights.scm",
-        },
-        language:
-          "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
-      },
-      {
-        filetype: "typescript",
-        queries: {
-          highlights:
-            "https://raw.githubusercontent.com/tree-sitter/tree-sitter-typescript/refs/heads/master/queries/highlights.scm",
-        },
-        language:
-          "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
-      },
-    ]
-
-    for (const parser of defaultParsers) {
+    for (const parser of DEFAULT_PARSERS) {
       this.addFiletypeParser(parser)
     }
   }
