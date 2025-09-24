@@ -163,49 +163,35 @@ function add(a, b) {
     const styledText = await treeSitterToStyledText(complexTemplateCode, "javascript", syntaxStyle, client)
     const chunks = styledText.chunks
 
-    // Reconstruct the text from chunks to check for duplication
     const reconstructed = chunks.map((chunk) => chunk.text).join("")
 
-    // Should preserve original text without duplication
     expect(reconstructed).toBe(complexTemplateCode)
-
-    console.log("Complex template chunks:", chunks.length)
-    console.log("Reconstructed:", reconstructed)
-    console.log("Original:", complexTemplateCode)
   })
 
-  test("should debug template literal highlights", async () => {
+  test("should correctly highlight template literal with embedded expressions", async () => {
     const templateLiteralCode = "console.log(`Total users: ${manager.getUserCount()}`);"
 
-    // Get the raw highlights from tree-sitter
     const result = await client.highlightOnce(templateLiteralCode, "javascript")
 
-    if (result.highlights) {
-      console.log("Raw highlights for template literal:")
-      for (const lineHighlight of result.highlights) {
-        console.log(`Line ${lineHighlight.line}:`)
-        for (const highlight of lineHighlight.highlights) {
-          const highlightedText = templateLiteralCode.slice(
-            highlight.startCol +
-              lineHighlight.line * (templateLiteralCode.split("\n")[lineHighlight.line]?.length || 0),
-            highlight.endCol + lineHighlight.line * (templateLiteralCode.split("\n")[lineHighlight.line]?.length || 0),
-          )
-          console.log(`  ${highlight.group}: "${highlightedText}" (${highlight.startCol}-${highlight.endCol})`)
-        }
-      }
-    }
+    expect(result.highlights).toBeDefined()
+    expect(result.highlights!.length).toBeGreaterThan(0)
+
+    const groups = result.highlights!.map(([, , group]) => group)
+    expect(groups).toContain("variable") // console, manager
+    expect(groups).toContain("property") // log, getUserCount
+    expect(groups).toContain("string") // template literal
+    expect(groups).toContain("embedded") // ${...} expression
+    expect(groups).toContain("punctuation.bracket") // (), {}
 
     const styledText = await treeSitterToStyledText(templateLiteralCode, "javascript", syntaxStyle, client)
     const chunks = styledText.chunks
 
-    console.log("Styled text chunks:")
-    for (let i = 0; i < chunks.length; i++) {
-      console.log(`${i}: "${chunks[i].text}" (${chunks[i].fg ? "styled" : "default"})`)
-    }
+    expect(chunks.length).toBeGreaterThan(5)
 
-    // Reconstruct the text from chunks to check for duplication
     const reconstructed = chunks.map((chunk) => chunk.text).join("")
-    console.log("Reconstructed:", reconstructed)
-    console.log("Original:", templateLiteralCode)
+    expect(reconstructed).toBe(templateLiteralCode)
+
+    const styledChunks = chunks.filter((chunk) => chunk.fg !== syntaxStyle.mergeStyles("default").fg)
+    expect(styledChunks.length).toBeGreaterThan(0) // Some chunks should be styled differently
   })
 })
