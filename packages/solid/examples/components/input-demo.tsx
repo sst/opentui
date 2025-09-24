@@ -7,8 +7,8 @@ const InputScene = () => {
   const [nameValue, setNameValue] = createSignal("")
   let inputRef: InputRenderable | null = null
 
-  usePaste((text) => {
-    inputRef?.insertText(text)
+  usePaste((event) => {
+    inputRef?.insertText(event.text)
   })
 
   onMount(() => {

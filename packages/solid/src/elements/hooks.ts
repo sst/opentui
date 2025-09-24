@@ -1,4 +1,12 @@
-import { engine, Selection, Timeline, type CliRenderer, type KeyEvent, type TimelineOptions } from "@opentui/core"
+import {
+  engine,
+  PasteEvent,
+  Selection,
+  Timeline,
+  type CliRenderer,
+  type KeyEvent,
+  type TimelineOptions,
+} from "@opentui/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
@@ -53,7 +61,7 @@ export const useKeyboard = (callback: (key: KeyEvent) => void) => {
   })
 }
 
-export const usePaste = (callback: (text: string) => void) => {
+export const usePaste = (callback: (event: PasteEvent) => void) => {
   const renderer = useRenderer()
   const keyHandler = renderer.keyInput
   onMount(() => {

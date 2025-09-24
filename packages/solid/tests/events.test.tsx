@@ -324,9 +324,9 @@ describe("SolidJS Renderer Integration Tests", () => {
       const [pastedText, setPastedText] = createSignal("")
 
       const TestComponent = () => {
-        usePaste((text) => {
-          pasteSpy(text)
-          setPastedText(text)
+        usePaste((event) => {
+          pasteSpy(event.text)
+          setPastedText(event.text)
         })
 
         return (
