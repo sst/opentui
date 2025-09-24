@@ -15,10 +15,11 @@ import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
-import { singleton } from "./lib/singleton"
+import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
+import { getTreeSitterClient } from "./lib/tree-sitter"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -131,6 +132,10 @@ const rendererTracker = singleton("RendererTracker", () => {
       renderers.delete(renderer)
       if (renderers.size === 0) {
         process.stdin.pause()
+        if (hasSingleton("tree-sitter-client")) {
+          getTreeSitterClient().destroy()
+          destroySingleton("tree-sitter-client")
+        }
       }
     },
   }

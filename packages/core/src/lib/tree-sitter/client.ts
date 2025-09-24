@@ -417,7 +417,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.buffers.clear()
     this.editQueues.clear()
 
-    // Reset initialization state
     this.initialized = false
     this.initializePromise = undefined
   }

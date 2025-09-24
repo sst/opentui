@@ -14,7 +14,7 @@ export type {
 } from "./types"
 export type { StyleDefinition } from "../syntax-style"
 
-import { singleton } from "../../singleton"
+import { singleton } from "../singleton"
 import { TreeSitterClient } from "./client"
 import type { TreeSitterClientOptions } from "./types"
 import { tmpdir } from "os"

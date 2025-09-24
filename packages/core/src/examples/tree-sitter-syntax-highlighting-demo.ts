@@ -1,6 +1,5 @@
 import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type ParsedKey } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../lib/KeyHandler"
 import { parseColor } from "../lib/RGBA"
 import { getTreeSitterClient, treeSitterToStyledText, SyntaxStyle } from "../lib/tree-sitter"
 
@@ -55,7 +54,7 @@ let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let currentFiletype: "typescript" | "javascript" = "typescript"
 
-export function run(rendererInstance: CliRenderer): void {
+export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
   renderer.start()
   renderer.setBackgroundColor("#0D1117")
@@ -132,8 +131,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(timingText)
 
-  // Initial highlighting
-  highlightCode(currentFiletype)
+  await highlightCode(currentFiletype)
 
   keyboardHandler = (key: ParsedKey) => {
     if (key.name === "r" || key.name === "R") {
@@ -152,7 +150,7 @@ export function run(rendererInstance: CliRenderer): void {
     }
   }
 
-  getKeyHandler().on("keypress", keyboardHandler)
+  rendererInstance.keyInput.on("keypress", keyboardHandler)
 }
 
 async function highlightCode(filetype: "typescript" | "javascript") {
@@ -185,7 +183,7 @@ async function highlightCode(filetype: "typescript" | "javascript") {
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (keyboardHandler) {
-    getKeyHandler().off("keypress", keyboardHandler)
+    rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
   }
 

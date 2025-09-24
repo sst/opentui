@@ -311,7 +311,8 @@ export class TextRenderable extends Renderable {
 
       const measuredWidth = this._lineInfo.maxLineWidth
       const measuredHeight = this._lineInfo.lineStarts.length
-
+      console.log("lineInfo", this._lineInfo)
+      console.log("measuredWidth", measuredWidth, "measuredHeight", measuredHeight)
       // NOTE: Yoga may use these measurements or not.
       // If the yoga node settings and the parent allow this node to grow, it will.
       return {
