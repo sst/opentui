@@ -1,17 +1,16 @@
 import { test, expect, afterAll } from "bun:test"
-import { KeyHandler } from "./KeyHandler"
-import type { KeyEvent } from "./KeyHandler"
+import { KeyHandler, InternalKeyHandler, KeyEvent } from "./KeyHandler"
 import { createTestRenderer } from "../testing/test-renderer"
 import { EventEmitter } from "events"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
-function createKeyHandler(useKittyKeyboard: boolean = false): KeyHandler {
+function createKeyHandler(useKittyKeyboard: boolean = false): InternalKeyHandler {
   if (!renderer) {
     throw new Error("Renderer not initialized")
   }
 
-  return new KeyHandler(renderer.stdin, useKittyKeyboard)
+  return new InternalKeyHandler(renderer.stdin, useKittyKeyboard)
 }
 
 afterAll(() => {
@@ -36,7 +35,7 @@ test("KeyHandler - constructor uses process.stdin by default", () => {
   })
 
   try {
-    const handler = new KeyHandler()
+    const handler = new InternalKeyHandler()
 
     let receivedKey: KeyEvent | undefined
     handler.on("keypress", (key: KeyEvent) => {
@@ -210,6 +209,192 @@ test("KeyHandler - preventDefault stops propagation", () => {
 
   expect(globalHandlerCalled).toBe(true)
   expect(secondHandlerCalled).toBe(false)
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - onInternal handlers run after regular handlers", () => {
+  const handler = createKeyHandler()
+
+  const callOrder: string[] = []
+
+  // Register internal handler (should run second)
+  handler.onInternal("keypress", (key: KeyEvent) => {
+    callOrder.push("internal")
+  })
+
+  // Register regular handler (should run first)
+  handler.on("keypress", (key: KeyEvent) => {
+    callOrder.push("regular")
+  })
+
+  mockInput.pressKey("a")
+
+  expect(callOrder).toEqual(["regular", "internal"])
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - preventDefault prevents internal handlers from running", () => {
+  const handler = createKeyHandler()
+
+  let regularHandlerCalled = false
+  let internalHandlerCalled = false
+
+  // Register regular handler that prevents default
+  handler.on("keypress", (key: KeyEvent) => {
+    regularHandlerCalled = true
+    key.preventDefault()
+  })
+
+  // Register internal handler (should not run if prevented)
+  handler.onInternal("keypress", (key: KeyEvent) => {
+    internalHandlerCalled = true
+  })
+
+  mockInput.pressKey("a")
+
+  expect(regularHandlerCalled).toBe(true)
+  expect(internalHandlerCalled).toBe(false)
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - multiple internal handlers can be registered", () => {
+  const handler = createKeyHandler()
+
+  let handler1Called = false
+  let handler2Called = false
+  let handler3Called = false
+
+  const internalHandler1 = () => {
+    handler1Called = true
+  }
+  const internalHandler2 = () => {
+    handler2Called = true
+  }
+  const internalHandler3 = () => {
+    handler3Called = true
+  }
+
+  handler.onInternal("keypress", internalHandler1)
+  handler.onInternal("keypress", internalHandler2)
+  handler.onInternal("keypress", internalHandler3)
+
+  mockInput.pressKey("a")
+
+  expect(handler1Called).toBe(true)
+  expect(handler2Called).toBe(true)
+  expect(handler3Called).toBe(true)
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - offInternal removes specific handlers", () => {
+  const handler = createKeyHandler()
+
+  let handler1Called = false
+  let handler2Called = false
+
+  const internalHandler1 = () => {
+    handler1Called = true
+  }
+  const internalHandler2 = () => {
+    handler2Called = true
+  }
+
+  handler.onInternal("keypress", internalHandler1)
+  handler.onInternal("keypress", internalHandler2)
+
+  // Remove only handler1
+  handler.offInternal("keypress", internalHandler1)
+
+  mockInput.pressKey("a")
+
+  expect(handler1Called).toBe(false)
+  expect(handler2Called).toBe(true)
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - emit returns true when there are listeners", () => {
+  const handler = createKeyHandler()
+
+  // No listeners initially
+  let hasListeners = handler.emit(
+    "keypress",
+    new KeyEvent({
+      name: "a",
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      sequence: "a",
+      number: false,
+      raw: "a",
+      eventType: "press",
+    }),
+  )
+  expect(hasListeners).toBe(false)
+
+  // Add regular listener
+  handler.on("keypress", () => {})
+  hasListeners = handler.emit(
+    "keypress",
+    new KeyEvent({
+      name: "b",
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      sequence: "b",
+      number: false,
+      raw: "b",
+      eventType: "press",
+    }),
+  )
+  expect(hasListeners).toBe(true)
+
+  // Remove regular listener, add internal listener
+  handler.removeAllListeners("keypress")
+  handler.onInternal("keypress", () => {})
+  hasListeners = handler.emit(
+    "keypress",
+    new KeyEvent({
+      name: "c",
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      sequence: "c",
+      number: false,
+      raw: "c",
+      eventType: "press",
+    }),
+  )
+  expect(hasListeners).toBe(true)
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - paste events work with priority system", () => {
+  const handler = createKeyHandler()
+
+  const callOrder: string[] = []
+
+  // Register regular handler
+  handler.on("paste", (text: string) => {
+    callOrder.push(`regular:${text}`)
+  })
+
+  // Register internal handler
+  handler.onInternal("paste", (text: string) => {
+    callOrder.push(`internal:${text}`)
+  })
+
+  mockInput.pasteBracketedText("hello")
+
+  expect(callOrder).toEqual(["regular:hello", "internal:hello"])
 
   handler.destroy()
 })
