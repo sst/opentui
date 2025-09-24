@@ -195,13 +195,11 @@ test("KeyHandler - preventDefault stops propagation", () => {
   let globalHandlerCalled = false
   let secondHandlerCalled = false
 
-  // Register global handler that prevents default
   handler.on("keypress", (key: KeyEvent) => {
     globalHandlerCalled = true
     key.preventDefault()
   })
 
-  // Register second handler (simulating a focused input)
   handler.on("keypress", (key: KeyEvent) => {
     if (!key.defaultPrevented) {
       secondHandlerCalled = true

@@ -360,8 +360,6 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {
-      if (key.defaultPrevented) return
-
       this._keyListeners["down"]?.(key)
       if (this.handleKeyPress) {
         this.handleKeyPress(key)
@@ -375,8 +373,8 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
-    this.ctx.keyInput.on("keypress", this.keypressHandler)
-    this.ctx.keyInput.on("paste", this.pasteHandler)
+    this.ctx._internalKeyInput.onInternal("keypress", this.keypressHandler)
+    this.ctx._internalKeyInput.onInternal("paste", this.pasteHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -387,12 +385,12 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
 
     if (this.keypressHandler) {
-      this.ctx.keyInput.off("keypress", this.keypressHandler)
+      this.ctx._internalKeyInput.offInternal("keypress", this.keypressHandler)
       this.keypressHandler = null
     }
 
     if (this.pasteHandler) {
-      this.ctx.keyInput.off("paste", this.pasteHandler)
+      this.ctx._internalKeyInput.offInternal("paste", this.pasteHandler)
       this.pasteHandler = null
     }
 

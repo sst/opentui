@@ -47,7 +47,7 @@ export class KeyEvent implements ParsedKey {
   }
 }
 
-type KeyHandlerEventMap = {
+export type KeyHandlerEventMap = {
   keypress: [KeyEvent]
   keyrepeat: [KeyEvent]
   keyrelease: [KeyEvent]
@@ -55,11 +55,11 @@ type KeyHandlerEventMap = {
 }
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
-  private stdin: NodeJS.ReadStream
-  private useKittyKeyboard: boolean
-  private listener: (key: Buffer) => void
-  private pasteMode: boolean = false
-  private pasteBuffer: string[] = []
+  protected stdin: NodeJS.ReadStream
+  protected useKittyKeyboard: boolean
+  protected listener: (key: Buffer) => void
+  protected pasteMode: boolean = false
+  protected pasteBuffer: string[] = []
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
@@ -103,5 +103,62 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 
   public destroy(): void {
     this.stdin.removeListener("data", this.listener)
+  }
+}
+
+/**
+ * This class is used internally by the renderer to ensure global handlers
+ * can preventDefault before renderable handlers process events.
+ */
+export class InternalKeyHandler extends KeyHandler {
+  private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
+
+  constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
+    super(stdin, useKittyKeyboard)
+  }
+
+  public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+    return this.emitWithPriority(event, ...args)
+  }
+
+  private emitWithPriority<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+    const hasGlobalListeners = super.emit(event as any, ...args)
+    const renderableSet = this.renderableHandlers.get(event)
+    let hasRenderableListeners = false
+
+    if (renderableSet && renderableSet.size > 0) {
+      hasRenderableListeners = true
+
+      if (event === "keypress" || event === "keyrepeat" || event === "keyrelease") {
+        const keyEvent = args[0] as KeyEvent
+        if (keyEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
+      }
+
+      for (const handler of renderableSet) {
+        handler(...args)
+      }
+    }
+
+    return hasGlobalListeners || hasRenderableListeners
+  }
+
+  public onInternal<K extends keyof KeyHandlerEventMap>(
+    event: K,
+    handler: (...args: KeyHandlerEventMap[K]) => void,
+  ): void {
+    if (!this.renderableHandlers.has(event)) {
+      this.renderableHandlers.set(event, new Set())
+    }
+    this.renderableHandlers.get(event)!.add(handler)
+  }
+
+  public offInternal<K extends keyof KeyHandlerEventMap>(
+    event: K,
+    handler: (...args: KeyHandlerEventMap[K]) => void,
+  ): void {
+    const handlers = this.renderableHandlers.get(event)
+    if (handlers) {
+      handlers.delete(handler)
+    }
   }
 }
