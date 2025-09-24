@@ -1,7 +1,7 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
-import type { KeyEvent } from "./lib/KeyHandler"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
 import {
@@ -214,7 +214,7 @@ export abstract class Renderable extends BaseRenderable {
   protected _focusable: boolean = false
   protected _focused: boolean = false
   protected keypressHandler: ((key: KeyEvent) => void) | null = null
-  protected pasteHandler: ((text: string) => void) | null = null
+  protected pasteHandler: ((event: PasteEvent) => void) | null = null
 
   private _live: boolean = false
   protected _liveCount: number = 0
@@ -366,10 +366,10 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
-    this.pasteHandler = (text: string) => {
-      this._pasteListener?.call(this, text)
+    this.pasteHandler = (event: PasteEvent) => {
+      this._pasteListener?.call(this, event.text)
       if (this.handlePaste) {
-        this.handlePaste(text)
+        this.handlePaste(event.text)
       }
     }
 

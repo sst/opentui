@@ -47,11 +47,28 @@ export class KeyEvent implements ParsedKey {
   }
 }
 
+export class PasteEvent {
+  text: string
+  private _defaultPrevented: boolean = false
+
+  constructor(text: string) {
+    this.text = text
+  }
+
+  get defaultPrevented(): boolean {
+    return this._defaultPrevented
+  }
+
+  preventDefault(): void {
+    this._defaultPrevented = true
+  }
+}
+
 export type KeyHandlerEventMap = {
   keypress: [KeyEvent]
   keyrepeat: [KeyEvent]
   keyrelease: [KeyEvent]
-  paste: [string]
+  paste: [PasteEvent]
 }
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
@@ -76,7 +93,7 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
         this.pasteBuffer.push(Bun.stripANSI(data))
         if (data.endsWith(ANSI.bracketedPasteEnd)) {
           this.pasteMode = false
-          this.emit("paste", this.pasteBuffer.join(""))
+          this.emit("paste", new PasteEvent(this.pasteBuffer.join("")))
           this.pasteBuffer = []
         }
         return
@@ -129,9 +146,13 @@ export class InternalKeyHandler extends KeyHandler {
     if (renderableSet && renderableSet.size > 0) {
       hasRenderableListeners = true
 
+      // Check if the event was prevented
       if (event === "keypress" || event === "keyrepeat" || event === "keyrelease") {
         const keyEvent = args[0] as KeyEvent
         if (keyEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
+      } else if (event === "paste") {
+        const pasteEvent = args[0] as PasteEvent
+        if (pasteEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
       }
 
       for (const handler of renderableSet) {

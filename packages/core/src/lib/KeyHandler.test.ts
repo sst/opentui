@@ -94,8 +94,8 @@ test("KeyHandler - handles paste mode", () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
-  handler.on("paste", (text: string) => {
-    receivedPaste = text
+  handler.on("paste", (event) => {
+    receivedPaste = event.text
   })
 
   mockInput.pasteBracketedText("pasted content")
@@ -109,8 +109,8 @@ test("KeyHandler - handles paste with multiple parts", () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
-  handler.on("paste", (text: string) => {
-    receivedPaste = text
+  handler.on("paste", (event) => {
+    receivedPaste = event.text
   })
 
   mockInput.pasteBracketedText("chunk1chunk2chunk3")
@@ -124,8 +124,8 @@ test("KeyHandler - strips ANSI codes in paste mode", () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
-  handler.on("paste", (text: string) => {
-    receivedPaste = text
+  handler.on("paste", (event) => {
+    receivedPaste = event.text
   })
 
   mockInput.pasteBracketedText("text with \x1b[31mred\x1b[0m color")
@@ -218,12 +218,10 @@ test("InternalKeyHandler - onInternal handlers run after regular handlers", () =
 
   const callOrder: string[] = []
 
-  // Register internal handler (should run second)
   handler.onInternal("keypress", (key: KeyEvent) => {
     callOrder.push("internal")
   })
 
-  // Register regular handler (should run first)
   handler.on("keypress", (key: KeyEvent) => {
     callOrder.push("regular")
   })
@@ -382,19 +380,43 @@ test("InternalKeyHandler - paste events work with priority system", () => {
 
   const callOrder: string[] = []
 
-  // Register regular handler
-  handler.on("paste", (text: string) => {
-    callOrder.push(`regular:${text}`)
+  handler.on("paste", (event) => {
+    callOrder.push(`regular:${event.text}`)
   })
 
-  // Register internal handler
-  handler.onInternal("paste", (text: string) => {
-    callOrder.push(`internal:${text}`)
+  handler.onInternal("paste", (event) => {
+    callOrder.push(`internal:${event.text}`)
   })
 
   mockInput.pasteBracketedText("hello")
 
   expect(callOrder).toEqual(["regular:hello", "internal:hello"])
+
+  handler.destroy()
+})
+
+test("InternalKeyHandler - paste preventDefault prevents internal handlers", () => {
+  const handler = createKeyHandler()
+
+  let regularHandlerCalled = false
+  let internalHandlerCalled = false
+  let receivedText = ""
+
+  handler.on("paste", (event) => {
+    regularHandlerCalled = true
+    receivedText = event.text
+    event.preventDefault()
+  })
+
+  handler.onInternal("paste", (event) => {
+    internalHandlerCalled = true
+  })
+
+  mockInput.pasteBracketedText("test paste")
+
+  expect(regularHandlerCalled).toBe(true)
+  expect(receivedText).toBe("test paste")
+  expect(internalHandlerCalled).toBe(false)
 
   handler.destroy()
 })
