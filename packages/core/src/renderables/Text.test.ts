@@ -1567,5 +1567,24 @@ describe("TextRenderable Selection", () => {
       expect(charFrame).not.toBe(wordFrame)
       expect(wordFrame).toMatchSnapshot()
     })
+
+    it("should correctly wrap text when updating content via text.content", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Short text",
+        wrapMode: "word",
+        left: 0,
+        top: 0,
+      })
+
+      await renderOnce()
+      const initialFrame = captureFrame()
+      expect(initialFrame).toMatchSnapshot()
+
+      text.content = "This is a much longer text that should definitely wrap to multiple lines"
+
+      await renderOnce()
+      const updatedFrame = captureFrame()
+      expect(updatedFrame).toMatchSnapshot()
+    })
   })
 })

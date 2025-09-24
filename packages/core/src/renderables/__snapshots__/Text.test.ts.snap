@@ -216,3 +216,21 @@ text
 wrapping            
 "
 `;
+
+exports[`TextRenderable Selection Word Wrapping should correctly wrap text when updating content via text.content 1`] = `
+"Short text          
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should correctly wrap text when updating content via text.content 2`] = `
+"This is a much      
+longer text that    
+should definitely   
+wrap to multiple    
+lines               
+"
+`;
