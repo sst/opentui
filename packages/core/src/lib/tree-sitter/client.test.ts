@@ -252,14 +252,17 @@ describe("TreeSitterClient", () => {
     expect(result.highlights).toBeDefined()
     expect(result.highlights!.length).toBeGreaterThan(0)
 
-    // Should have highlights for both lines
-    const lineNumbers = result.highlights!.map((h) => h.line)
-    expect(lineNumbers).toContain(0) // First line
-    expect(lineNumbers).toContain(1) // Second line
+    const firstHighlight = result.highlights![0]
+    expect(Array.isArray(firstHighlight)).toBe(true)
+    expect(firstHighlight).toHaveLength(3)
+    expect(typeof firstHighlight[0]).toBe("number")
+    expect(typeof firstHighlight[1]).toBe("number")
+    expect(typeof firstHighlight[2]).toBe("string")
 
     // Should have some highlight groups
-    const groups = result.highlights!.flatMap((h) => h.highlights.map((hl) => hl.group))
+    const groups = result.highlights!.map((hl) => hl[2])
     expect(groups.length).toBeGreaterThan(0)
+    expect(groups).toContain("keyword")
   })
 
   test("should handle one-shot highlighting for unsupported filetype", async () => {
@@ -287,8 +290,17 @@ describe("TreeSitterClient", () => {
     expect(jsResult.highlights!.length).toBeGreaterThan(0)
     expect(tsResult.highlights!.length).toBeGreaterThan(0)
 
-    // Should not interfere with each other
-    expect(client.getAllBuffers()).toHaveLength(0) // No persistent buffers
+    jsResult.highlights!.forEach((hl) => {
+      expect(Array.isArray(hl)).toBe(true)
+      expect(hl).toHaveLength(3)
+    })
+
+    tsResult.highlights!.forEach((hl) => {
+      expect(Array.isArray(hl)).toBe(true)
+      expect(hl).toHaveLength(3)
+    })
+
+    expect(client.getAllBuffers()).toHaveLength(0)
   })
 })
 

@@ -9,7 +9,7 @@ import type {
   FiletypeParserOptions,
   Edit,
   PerformanceStats,
-  HighlightResponse,
+  SimpleHighlight,
 } from "./types"
 
 interface EditQueueItem {
@@ -140,7 +140,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public async highlightOnce(
     content: string,
     filetype: string,
-  ): Promise<{ highlights?: HighlightResponse[]; warning?: string; error?: string }> {
+  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
     if (!this.initialized) {
       try {
         await this.initialize()

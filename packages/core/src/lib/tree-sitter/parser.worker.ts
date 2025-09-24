@@ -2,7 +2,8 @@ import { Parser, Query, Tree, Language } from "web-tree-sitter"
 import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir, readdir, writeFile } from "fs/promises"
 import * as path from "path"
-import type { HighlightRange, HighlightResponse } from "./types"
+import type { HighlightRange, HighlightResponse, SimpleHighlight } from "./types"
+import * as util from "util"
 
 const self = globalThis
 
@@ -511,6 +512,17 @@ export class ParserWorker {
     }
   }
 
+  private getSimpleHighlights(matches: QueryCapture[]): SimpleHighlight[] {
+    const highlights: SimpleHighlight[] = []
+
+    for (const match of matches) {
+      const node = match.node
+      highlights.push([node.startIndex, node.endIndex, match.name])
+    }
+
+    return highlights
+  }
+
   async handleResetBuffer(
     bufferId: number,
     version: number,
@@ -572,20 +584,13 @@ export class ParserWorker {
 
     try {
       const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
-      const highlights = this.getHighlights(
-        {
-          parser: reusableState.parser,
-          tree,
-          queries: reusableState.filetypeParser.queries,
-        },
-        matches,
-      )
+      const highlights = this.getSimpleHighlights(matches)
 
       self.postMessage({
         type: "ONESHOT_HIGHLIGHT_RESPONSE",
         messageId,
         hasParser: true,
-        ...highlights,
+        highlights,
       })
     } finally {
       tree.delete()

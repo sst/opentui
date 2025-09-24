@@ -10,6 +10,8 @@ export interface HighlightResponse {
   droppedHighlights: HighlightRange[]
 }
 
+export type SimpleHighlight = [number, number, string]
+
 export interface FiletypeParserOptions {
   filetype: string
   queries: {
