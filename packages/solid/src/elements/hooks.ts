@@ -1,12 +1,4 @@
-import {
-  Selection,
-  Timeline,
-  type AnimationOptions,
-  type CliRenderer,
-  type JSAnimation,
-  type ParsedKey,
-  type TimelineOptions,
-} from "@opentui/core"
+import { engine, Selection, Timeline, type CliRenderer, type ParsedKey, type TimelineOptions } from "@opentui/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
@@ -90,50 +82,20 @@ export const useSelectionHandler = (callback: (selection: Selection) => void) =>
   })
 }
 
-export const createComponentTimeline = (options: TimelineOptions = {}): Timeline => {
-  const renderer = useRenderer()
+export const useTimeline = (options: TimelineOptions = {}): Timeline => {
   const timeline = new Timeline(options)
-
-  const frameCallback = async (dt: number) => timeline.update(dt)
 
   onMount(() => {
     if (options.autoplay !== false) {
       timeline.play()
     }
-    renderer.setFrameCallback(frameCallback)
+    engine.register(timeline)
   })
 
   onCleanup(() => {
-    renderer.removeFrameCallback(frameCallback)
     timeline.pause()
+    engine.unregister(timeline)
   })
 
   return timeline
-}
-
-export const useTimeline = <T extends Record<string, number>>(
-  timeline: Timeline,
-  initialValue: T,
-  targetValue: T,
-  options: AnimationOptions & { onUpdate?: (values: JSAnimation & { targets: T[] }) => void },
-  startTime: number | string = 0,
-) => {
-  const [store, setStore] = createSignal<T>(initialValue)
-
-  const { onUpdate, ...animationOptions } = options
-
-  timeline.add(
-    store(),
-    {
-      ...targetValue,
-      ...animationOptions,
-      onUpdate: (values: JSAnimation) => {
-        setStore({ ...values.targets[0] })
-        onUpdate?.(values)
-      },
-    },
-    startTime,
-  )
-
-  return store
 }
