@@ -3,6 +3,7 @@ import { testRender } from "../index"
 import { createSignal } from "solid-js"
 import { createSpy } from "./utils/spy"
 import { usePaste } from "../src/elements/hooks"
+import type { PasteEvent } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -324,9 +325,9 @@ describe("SolidJS Renderer Integration Tests", () => {
       const [pastedText, setPastedText] = createSignal("")
 
       const TestComponent = () => {
-        usePaste((text) => {
-          pasteSpy(text)
-          setPastedText(text)
+        usePaste((event) => {
+          pasteSpy(event.text)
+          setPastedText(event.text)
         })
 
         return (
@@ -343,6 +344,261 @@ describe("SolidJS Renderer Integration Tests", () => {
       expect(pasteSpy.callCount()).toBe(1)
       expect(pasteSpy.calls[0]?.[0]).toBe("pasted content")
       expect(pastedText()).toBe("pasted content")
+    })
+
+    it("should handle global preventDefault for keyboard events", async () => {
+      const inputSpy = createSpy()
+      const globalHandlerSpy = createSpy()
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <input focused onInput={inputSpy} />
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      // Register global handler that prevents 'a' key
+      testSetup.renderer.keyInput.on("keypress", (event) => {
+        globalHandlerSpy(event.name)
+        if (event.name === "a") {
+          event.preventDefault()
+        }
+      })
+
+      await testSetup.mockInput.typeText("abc")
+
+      // Global handler should be called for all keys
+      expect(globalHandlerSpy.callCount()).toBe(3)
+      expect(globalHandlerSpy.calls[0]?.[0]).toBe("a")
+      expect(globalHandlerSpy.calls[1]?.[0]).toBe("b")
+      expect(globalHandlerSpy.calls[2]?.[0]).toBe("c")
+
+      // Input should only receive 'b' and 'c' (not 'a')
+      expect(inputSpy.callCount()).toBe(2)
+      expect(inputSpy.calls[0]?.[0]).toBe("b")
+      expect(inputSpy.calls[1]?.[0]).toBe("bc")
+    })
+
+    it("should handle global preventDefault for paste events", async () => {
+      const pasteSpy = createSpy()
+      const globalHandlerSpy = createSpy()
+      const [pastedText, setPastedText] = createSignal("")
+
+      const TestComponent = () => {
+        return (
+          <box>
+            <input
+              focused
+              onPaste={(val) => {
+                pasteSpy(val)
+                setPastedText(val)
+              }}
+            />
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <TestComponent />, { width: 30, height: 5 })
+
+      // Register global handler that prevents paste containing "forbidden"
+      testSetup.renderer.keyInput.on("paste", (event: PasteEvent) => {
+        globalHandlerSpy(event.text)
+        if (event.text.includes("forbidden")) {
+          event.preventDefault()
+        }
+      })
+
+      // First paste should go through
+      await testSetup.mockInput.pasteBracketedText("allowed content")
+      expect(globalHandlerSpy.callCount()).toBe(1)
+      expect(pasteSpy.callCount()).toBe(1)
+      expect(pastedText()).toBe("allowed content")
+
+      // Reset spies
+      globalHandlerSpy.reset()
+      pasteSpy.reset()
+
+      // Second paste should be prevented
+      await testSetup.mockInput.pasteBracketedText("forbidden content")
+      expect(globalHandlerSpy.callCount()).toBe(1)
+      expect(globalHandlerSpy.calls[0]?.[0]).toBe("forbidden content")
+      expect(pasteSpy.callCount()).toBe(0)
+      expect(pastedText()).toBe("allowed content") // Should remain unchanged
+    })
+
+    it("should handle global handler registered after component mount", async () => {
+      const inputSpy = createSpy()
+      const [value, setValue] = createSignal("")
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <input
+              focused
+              onInput={(val) => {
+                inputSpy(val)
+                setValue(val)
+              }}
+            />
+            <text>Value: {value()}</text>
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      // Type before global handler exists
+      await testSetup.mockInput.typeText("hello")
+      expect(inputSpy.callCount()).toBe(5)
+      expect(value()).toBe("hello")
+
+      inputSpy.reset()
+
+      testSetup.renderer.keyInput.on("keypress", (event) => {
+        if (/^[0-9]$/.test(event.name)) {
+          event.preventDefault()
+        }
+      })
+
+      // Type mixed content
+      await testSetup.mockInput.typeText("abc123xyz")
+
+      // Only letters should reach the input
+      expect(inputSpy.callCount()).toBe(6) // a, b, c, x, y, z (not 1, 2, 3)
+      expect(value()).toBe("helloabcxyz")
+    })
+
+    it("should handle dynamic preventDefault conditions", async () => {
+      const inputSpy = createSpy()
+      let preventNumbers = false
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <input focused onInput={inputSpy} />
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      // Register handler with dynamic condition
+      testSetup.renderer.keyInput.on("keypress", (event) => {
+        if (preventNumbers && /^[0-9]$/.test(event.name)) {
+          event.preventDefault()
+        }
+      })
+
+      // Initially allow numbers
+      await testSetup.mockInput.typeText("a1")
+      expect(inputSpy.callCount()).toBe(2)
+      expect(inputSpy.calls[1]?.[0]).toBe("a1")
+
+      // Enable number prevention
+      preventNumbers = true
+      inputSpy.reset()
+
+      // Now numbers should be prevented
+      await testSetup.mockInput.typeText("b2c3")
+      expect(inputSpy.callCount()).toBe(2) // Only 'b' and 'c'
+      expect(inputSpy.calls[0]?.[0]).toBe("a1b")
+      expect(inputSpy.calls[1]?.[0]).toBe("a1bc")
+
+      // Disable prevention again
+      preventNumbers = false
+      inputSpy.reset()
+
+      // Numbers should work again
+      await testSetup.mockInput.typeText("4")
+      expect(inputSpy.callCount()).toBe(1)
+      expect(inputSpy.calls[0]?.[0]).toBe("a1bc4")
+    })
+
+    it("should handle preventDefault for select components", async () => {
+      const changeSpy = createSpy()
+      const globalHandlerSpy = createSpy()
+      const [selectedIndex, setSelectedIndex] = createSignal(0)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <select
+              focused
+              wrapSelection
+              options={[
+                { name: "Option 1", value: 1, description: "First" },
+                { name: "Option 2", value: 2, description: "Second" },
+                { name: "Option 3", value: 3, description: "Third" },
+              ]}
+              onChange={(index, option) => {
+                changeSpy(index, option)
+                setSelectedIndex(index)
+              }}
+            />
+            <text>Selected: {selectedIndex()}</text>
+          </box>
+        ),
+        { width: 30, height: 10 },
+      )
+
+      // Register global handler that prevents down arrow
+      testSetup.renderer.keyInput.on("keypress", (event) => {
+        globalHandlerSpy(event.name)
+        if (event.name === "down") {
+          event.preventDefault()
+        }
+      })
+
+      // Try to press down arrow - should be prevented
+      testSetup.mockInput.pressArrow("down")
+      expect(globalHandlerSpy.callCount()).toBe(1)
+      expect(changeSpy.callCount()).toBe(0) // Should not change
+      expect(selectedIndex()).toBe(0) // Should remain at 0
+
+      // Up arrow should still work
+      testSetup.mockInput.pressArrow("up")
+      expect(globalHandlerSpy.callCount()).toBe(2)
+      expect(changeSpy.callCount()).toBe(1) // Should wrap to last option
+      expect(selectedIndex()).toBe(2) // Should be at last option
+    })
+
+    it("should handle multiple global handlers with preventDefault", async () => {
+      const inputSpy = createSpy()
+      const firstHandlerSpy = createSpy()
+      const secondHandlerSpy = createSpy()
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <input focused onInput={inputSpy} />
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      // First handler prevents 'x'
+      testSetup.renderer.keyInput.on("keypress", (event) => {
+        firstHandlerSpy(event.name)
+        if (event.name === "x") {
+          event.preventDefault()
+        }
+      })
+
+      // Second handler also runs but can't undo preventDefault
+      testSetup.renderer.keyInput.on("keypress", (event) => {
+        secondHandlerSpy(event.name)
+      })
+
+      await testSetup.mockInput.typeText("xyz")
+
+      // Both handlers should be called for all keys
+      expect(firstHandlerSpy.callCount()).toBe(3)
+      expect(secondHandlerSpy.callCount()).toBe(3)
+
+      // But input should only receive 'y' and 'z'
+      expect(inputSpy.callCount()).toBe(2)
+      expect(inputSpy.calls[0]?.[0]).toBe("y")
+      expect(inputSpy.calls[1]?.[0]).toBe("yz")
     })
   })
 })

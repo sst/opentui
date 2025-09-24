@@ -1,6 +1,6 @@
 import { OptimizedBuffer } from "../buffer"
 import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font"
-import type { ParsedKey } from "../lib/parse.keypress"
+import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
@@ -290,7 +290,7 @@ export class SelectRenderable extends Renderable {
     this.requestRender()
   }
 
-  public handleKeyPress(key: ParsedKey | string): boolean {
+  public handleKeyPress(key: KeyEvent | string): boolean {
     const keyName = typeof key === "string" ? key : key.name
     const isShift = typeof key !== "string" && key.shift
 

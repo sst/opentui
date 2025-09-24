@@ -1,6 +1,7 @@
 import { describe, expect, it, afterAll } from "bun:test"
 import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input"
 import { createTestRenderer } from "../testing/test-renderer"
+import type { KeyEvent } from "../lib/KeyHandler"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
@@ -548,6 +549,210 @@ describe("InputRenderable", () => {
 
       // Color changes should trigger render requests
       expect(input).toBeDefined()
+    })
+  })
+
+  describe("Global Key Event Prevention", () => {
+    it("should not handle key events when preventDefault is called by global handler", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "initial",
+      })
+
+      let globalHandlerCalled = false
+      let inputEventFired = false
+
+      // Register global handler that prevents 'a' key
+      renderer.keyInput.on("keypress", (key: KeyEvent) => {
+        globalHandlerCalled = true
+        if (key.name === "a") {
+          key.preventDefault()
+        }
+      })
+
+      input.on(InputRenderableEvents.INPUT, () => {
+        inputEventFired = true
+      })
+
+      input.focus()
+      expect(input.focused).toBe(true)
+
+      // Press 'a' - should be prevented
+      mockInput.pressKey("a")
+      expect(globalHandlerCalled).toBe(true)
+      expect(inputEventFired).toBe(false)
+      expect(input.value).toBe("initial") // Value should not change
+
+      // Reset flags
+      globalHandlerCalled = false
+      inputEventFired = false
+
+      // Press 'b' - should not be prevented
+      mockInput.pressKey("b")
+      expect(globalHandlerCalled).toBe(true)
+      expect(inputEventFired).toBe(true)
+      expect(input.value).toBe("initialb") // Value should change
+
+      // Clean up
+      renderer.keyInput.removeAllListeners("keypress")
+    })
+
+    it("should handle multiple global handlers with preventDefault", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+      })
+
+      let firstHandlerCalled = false
+      let secondHandlerCalled = false
+      let inputEventFired = false
+
+      // First global handler prevents 'x'
+      const firstHandler = (key: KeyEvent) => {
+        firstHandlerCalled = true
+        if (key.name === "x") {
+          key.preventDefault()
+        }
+      }
+
+      // Second global handler should not run for 'x' if first prevents it
+      const secondHandler = (key: KeyEvent) => {
+        secondHandlerCalled = true
+      }
+
+      renderer.keyInput.on("keypress", firstHandler)
+      renderer.keyInput.on("keypress", secondHandler)
+
+      input.on(InputRenderableEvents.INPUT, () => {
+        inputEventFired = true
+      })
+
+      input.focus()
+
+      // Press 'x' - should be prevented by first handler
+      mockInput.pressKey("x")
+      expect(firstHandlerCalled).toBe(true)
+      expect(secondHandlerCalled).toBe(true) // EventEmitter still calls all handlers
+      expect(inputEventFired).toBe(false) // But input should not process it
+      expect(input.value).toBe("")
+
+      // Clean up
+      renderer.keyInput.removeListener("keypress", firstHandler)
+      renderer.keyInput.removeListener("keypress", secondHandler)
+    })
+
+    it("should respect preventDefault from global handler registered AFTER input focus", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "initial",
+      })
+
+      let globalHandlerCalled = false
+      let inputEventFired = false
+
+      input.on(InputRenderableEvents.INPUT, () => {
+        inputEventFired = true
+      })
+
+      // Focus the input FIRST
+      input.focus()
+      expect(input.focused).toBe(true)
+
+      // Type 'a' before global handler exists - should work
+      mockInput.pressKey("a")
+      expect(input.value).toBe("initiala")
+      expect(inputEventFired).toBe(true)
+
+      // Reset flag
+      inputEventFired = false
+
+      // NOW register a global handler that prevents 'b' key
+      const globalHandler = (key: KeyEvent) => {
+        globalHandlerCalled = true
+        if (key.name === "b") {
+          key.preventDefault()
+        }
+      }
+      renderer.keyInput.on("keypress", globalHandler)
+
+      // Press 'b' - should be prevented even though handler was added after focus
+      mockInput.pressKey("b")
+      expect(globalHandlerCalled).toBe(true)
+      expect(inputEventFired).toBe(false)
+      expect(input.value).toBe("initiala") // Value should not change
+
+      // Reset flags
+      globalHandlerCalled = false
+      inputEventFired = false
+
+      // Press 'c' - should not be prevented
+      mockInput.pressKey("c")
+      expect(globalHandlerCalled).toBe(true)
+      expect(inputEventFired).toBe(true)
+      expect(input.value).toBe("initialac") // Value should change
+
+      // Clean up
+      renderer.keyInput.removeListener("keypress", globalHandler)
+    })
+
+    it("should handle dynamic preventDefault conditions", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "",
+      })
+
+      let preventNumbers = false
+      let inputEventFired = false
+
+      // Register handler that can dynamically change what it prevents
+      const dynamicHandler = (key: KeyEvent) => {
+        if (preventNumbers && /^[0-9]$/.test(key.name)) {
+          key.preventDefault()
+        }
+      }
+
+      renderer.keyInput.on("keypress", dynamicHandler)
+
+      input.on(InputRenderableEvents.INPUT, () => {
+        inputEventFired = true
+      })
+
+      input.focus()
+
+      // Initially allow numbers
+      mockInput.pressKey("1")
+      expect(input.value).toBe("1")
+      expect(inputEventFired).toBe(true)
+
+      // Enable number prevention
+      preventNumbers = true
+      inputEventFired = false
+
+      // Now numbers should be prevented
+      mockInput.pressKey("2")
+      expect(input.value).toBe("1") // Should not change
+      expect(inputEventFired).toBe(false)
+
+      // Letters should still work
+      inputEventFired = false
+      mockInput.pressKey("a")
+      expect(input.value).toBe("1a")
+      expect(inputEventFired).toBe(true)
+
+      // Disable prevention again
+      preventNumbers = false
+      inputEventFired = false
+
+      // Numbers should work again
+      mockInput.pressKey("3")
+      expect(input.value).toBe("1a3")
+      expect(inputEventFired).toBe(true)
+
+      // Clean up
+      renderer.keyInput.removeListener("keypress", dynamicHandler)
     })
   })
 

@@ -1,4 +1,4 @@
-import { type ParsedKey } from "../lib"
+import { type KeyEvent } from "../lib"
 import { getObjectsInViewport } from "../lib/objects-in-viewport"
 import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
@@ -335,7 +335,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
-  public handleKeyPress(key: ParsedKey | string): boolean {
+  public handleKeyPress(key: KeyEvent | string): boolean {
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
       return true

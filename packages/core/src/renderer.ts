@@ -17,7 +17,7 @@ import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
 import { singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
-import { KeyHandler } from "./lib/KeyHandler"
+import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 
 registerEnvVar({
@@ -245,7 +245,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
-  private _keyHandler: KeyHandler
+  private _keyHandler: InternalKeyHandler
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -409,7 +409,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
 
-    this._keyHandler = new KeyHandler(this.stdin, config.useKittyKeyboard ?? false)
+    this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? false)
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
@@ -516,6 +516,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get keyInput(): KeyHandler {
+    return this._keyHandler
+  }
+
+  public get _internalKeyInput(): InternalKeyHandler {
     return this._keyHandler
   }
 

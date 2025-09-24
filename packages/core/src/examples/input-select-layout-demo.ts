@@ -1,4 +1,4 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type ParsedKey } from "../index"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "../index"
 import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
 import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -356,7 +356,7 @@ function updateFocus(): void {
   }
 }
 
-function handleKeyPress(key: ParsedKey): void {
+function handleKeyPress(key: KeyEvent): void {
   if (key.name === "tab") {
     if (key.shift) {
       currentFocusIndex = (currentFocusIndex - 1 + focusableElements.length) % focusableElements.length

@@ -1,7 +1,7 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
-import type { ParsedKey } from "./lib/parse.keypress"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
 import {
@@ -117,7 +117,7 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
 
   onPaste?: (this: T, text: string) => void
 
-  onKeyDown?: (key: ParsedKey) => void
+  onKeyDown?: (key: KeyEvent) => void
 
   onSizeChange?: (this: T) => void
 }
@@ -213,8 +213,8 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
-  protected keypressHandler: ((key: ParsedKey) => void) | null = null
-  protected pasteHandler: ((text: string) => void) | null = null
+  protected keypressHandler: ((key: KeyEvent) => void) | null = null
+  protected pasteHandler: ((event: PasteEvent) => void) | null = null
 
   private _live: boolean = false
   protected _liveCount: number = 0
@@ -223,7 +223,7 @@ export abstract class Renderable extends BaseRenderable {
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
   private _pasteListener: ((text: string) => void) | undefined = undefined
-  private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
+  private _keyListeners: Partial<Record<"down", (key: KeyEvent) => void>> = {}
 
   protected yogaNode: YogaNode
   protected _positionType: PositionTypeString = "relative"
@@ -359,22 +359,22 @@ export abstract class Renderable extends BaseRenderable {
     this._focused = true
     this.requestRender()
 
-    this.keypressHandler = (key: ParsedKey) => {
+    this.keypressHandler = (key: KeyEvent) => {
       this._keyListeners["down"]?.(key)
       if (this.handleKeyPress) {
         this.handleKeyPress(key)
       }
     }
 
-    this.pasteHandler = (text: string) => {
-      this._pasteListener?.call(this, text)
+    this.pasteHandler = (event: PasteEvent) => {
+      this._pasteListener?.call(this, event.text)
       if (this.handlePaste) {
-        this.handlePaste(text)
+        this.handlePaste(event.text)
       }
     }
 
-    this.ctx.keyInput.on("keypress", this.keypressHandler)
-    this.ctx.keyInput.on("paste", this.pasteHandler)
+    this.ctx._internalKeyInput.onInternal("keypress", this.keypressHandler)
+    this.ctx._internalKeyInput.onInternal("paste", this.pasteHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -385,12 +385,12 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
 
     if (this.keypressHandler) {
-      this.ctx.keyInput.off("keypress", this.keypressHandler)
+      this.ctx._internalKeyInput.offInternal("keypress", this.keypressHandler)
       this.keypressHandler = null
     }
 
     if (this.pasteHandler) {
-      this.ctx.keyInput.off("paste", this.pasteHandler)
+      this.ctx._internalKeyInput.offInternal("paste", this.pasteHandler)
       this.pasteHandler = null
     }
 
@@ -425,7 +425,7 @@ export abstract class Renderable extends BaseRenderable {
     this.parent?.propagateLiveCount(delta)
   }
 
-  public handleKeyPress?(key: ParsedKey | string): boolean
+  public handleKeyPress?(key: KeyEvent | string): boolean
   public handlePaste?(text: string): void
 
   public findDescendantById(id: string): Renderable | undefined {
@@ -1433,11 +1433,11 @@ export abstract class Renderable extends BaseRenderable {
     return this._pasteListener
   }
 
-  public set onKeyDown(handler: ((key: ParsedKey) => void) | undefined) {
+  public set onKeyDown(handler: ((key: KeyEvent) => void) | undefined) {
     if (handler) this._keyListeners["down"] = handler
     else delete this._keyListeners["down"]
   }
-  public get onKeyDown(): ((key: ParsedKey) => void) | undefined {
+  public get onKeyDown(): ((key: KeyEvent) => void) | undefined {
     return this._keyListeners["down"]
   }
 

@@ -108,7 +108,7 @@ const isCtrlKey = (code: string) => {
 
 export type KeyEventType = "press" | "repeat" | "release"
 
-export type ParsedKey = {
+export interface ParsedKey {
   name: string
   ctrl: boolean
   meta: boolean

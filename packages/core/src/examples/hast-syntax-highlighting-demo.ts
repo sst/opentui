@@ -1,4 +1,4 @@
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type ParsedKey } from "../index"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
 import { hastToStyledText, SyntaxStyle, type HASTElement } from "../lib/hast-styled-text"
@@ -6,7 +6,7 @@ import { hastToStyledText, SyntaxStyle, type HASTElement } from "../lib/hast-sty
 const exampleHAST: HASTElement = (await import("./assets/hast-example.json", { with: { type: "json" } })) as HASTElement
 
 let renderer: CliRenderer | null = null
-let keyboardHandler: ((key: ParsedKey) => void) | null = null
+let keyboardHandler: ((key: KeyEvent) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 
 export function run(rendererInstance: CliRenderer): void {
@@ -87,7 +87,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(timingText)
 
-  keyboardHandler = (key: ParsedKey) => {
+  keyboardHandler = (key: KeyEvent) => {
     if (key.name === "r" || key.name === "R") {
       syntaxStyle.clearCache()
 

@@ -10,7 +10,7 @@ import {
   SelectRenderableEvents,
   BoxRenderable,
   type SelectOption,
-  type ParsedKey,
+  type KeyEvent,
   ASCIIFontRenderable,
 } from "../index"
 import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
@@ -385,7 +385,7 @@ class ExampleSelector {
   }
 
   private setupKeyboardHandling(): void {
-    this.renderer.keyInput.on("keypress", (key: ParsedKey) => {
+    this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
       if (!this.inMenu) {
         switch (key.name) {
           case "escape":

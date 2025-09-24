@@ -1,7 +1,7 @@
-import { resolveRenderLib, type CliRenderer, type ParsedKey } from "../.."
+import { resolveRenderLib, type CliRenderer, type KeyEvent } from "../.."
 
 export function setupCommonDemoKeys(renderer: CliRenderer) {
-  renderer.keyInput.on("keypress", (key: ParsedKey) => {
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
     if (key.name === "`" || key.name === '"') {
       renderer.console.toggle()
     } else if (key.name === ".") {
