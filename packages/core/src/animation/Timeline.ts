@@ -1,3 +1,5 @@
+import type { CliRenderer } from "../renderer"
+
 export interface TimelineOptions {
   duration?: number
   loop?: boolean
@@ -497,14 +499,14 @@ export class Timeline {
 
 class TimelineEngine {
   private timelines: Set<Timeline> = new Set()
-  private renderer: any = null
+  private renderer: CliRenderer | null = null
   private frameCallback: ((deltaTime: number) => Promise<void>) | null = null
   private isLive: boolean = false
   public defaults = {
     frameRate: 60,
   }
 
-  attach(renderer: any): void {
+  attach(renderer: CliRenderer): void {
     if (this.renderer) {
       this.detach()
     }

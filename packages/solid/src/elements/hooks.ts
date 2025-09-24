@@ -83,10 +83,7 @@ export const useSelectionHandler = (callback: (selection: Selection) => void) =>
 }
 
 export const useTimeline = (options: TimelineOptions = {}): Timeline => {
-  const renderer = useRenderer()
   const timeline = new Timeline(options)
-
-  engine.attach(renderer)
 
   onMount(() => {
     if (options.autoplay !== false) {
