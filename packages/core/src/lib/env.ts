@@ -92,7 +92,7 @@ function parseEnvValue(config: EnvVarConfig): string | boolean | number {
 class EnvStore {
   private parsedValues: Map<string, string | boolean | number> = new Map()
 
-  get(key: string): string | boolean | number {
+  get(key: string): any {
     if (this.parsedValues.has(key)) {
       return this.parsedValues.get(key)!
     }
@@ -172,7 +172,7 @@ export function generateEnvColored(): string {
   return output
 }
 
-export const env = new Proxy({} as Record<string, string | boolean | number>, {
+export const env = new Proxy({} as Record<string, any>, {
   get(target, prop: string) {
     if (typeof prop !== "string") {
       return undefined
