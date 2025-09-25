@@ -1,13 +1,14 @@
 import { type RenderContext } from "../types"
 import { StyledText } from "../lib/styled-text"
 import { SyntaxStyle } from "../lib/syntax-style"
-import { getTreeSitterClient, treeSitterToStyledText } from "../lib/tree-sitter"
+import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
 
 export interface CodeOptions extends TextBufferOptions {
   content?: string
   filetype: string
   syntaxStyle: SyntaxStyle
+  treeSitterClient?: TreeSitterClient
 }
 
 export class CodeRenderable extends TextBufferRenderable {
@@ -15,6 +16,8 @@ export class CodeRenderable extends TextBufferRenderable {
   private _filetype: string
   private _syntaxStyle: SyntaxStyle
   private _isHighlighting: boolean = false
+  private _treeSitterClient: TreeSitterClient
+  private _pendingRehighlight: boolean = false
 
   protected _contentDefaultOptions = {
     content: "",
@@ -26,6 +29,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._content = options.content ?? this._contentDefaultOptions.content
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
+    this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
 
     this.updateContent(this._content)
   }
@@ -65,15 +69,19 @@ export class CodeRenderable extends TextBufferRenderable {
 
   private async updateContent(content: string): Promise<void> {
     if (this._isHighlighting) {
-      // TODO: schedule immediate re-highlight if currently highlighting but text changed
+      this._pendingRehighlight = true
       return
     }
 
     this._isHighlighting = true
 
     try {
-      const client = getTreeSitterClient()
-      const styledText = await treeSitterToStyledText(content, this._filetype, this._syntaxStyle, client)
+      const styledText = await treeSitterToStyledText(
+        content,
+        this._filetype,
+        this._syntaxStyle,
+        this._treeSitterClient,
+      )
       this.textBuffer.setStyledText(styledText)
       this.updateTextInfo()
     } catch (error) {
@@ -84,6 +92,11 @@ export class CodeRenderable extends TextBufferRenderable {
       this.updateTextInfo()
     } finally {
       this._isHighlighting = false
+
+      if (this._pendingRehighlight) {
+        this._pendingRehighlight = false
+        process.nextTick(() => this.updateContent(this._content))
+      }
     }
   }
 

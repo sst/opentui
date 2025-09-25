@@ -3,6 +3,48 @@ import { CodeRenderable } from "./Code"
 import { SyntaxStyle } from "../lib/syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { TreeSitterClient } from "../lib/tree-sitter"
+import type { SimpleHighlight } from "../lib/tree-sitter/types"
+
+class MockTreeSitterClient extends TreeSitterClient {
+  private _highlightOnceResolver:
+    | ((result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void)
+    | null = null
+  private _highlightOncePromise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> | null =
+    null
+  private _mockResult: { highlights?: SimpleHighlight[]; warning?: string; error?: string } = { highlights: [] }
+
+  constructor() {
+    super({ dataPath: "/tmp/mock" })
+  }
+
+  async highlightOnce(
+    content: string,
+    filetype: string,
+  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
+    this._highlightOncePromise = new Promise((resolve) => {
+      this._highlightOnceResolver = resolve
+    })
+
+    return this._highlightOncePromise
+  }
+
+  setMockResult(result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) {
+    this._mockResult = result
+  }
+
+  resolveHighlightOnce() {
+    if (this._highlightOnceResolver) {
+      this._highlightOnceResolver(this._mockResult)
+      this._highlightOnceResolver = null
+      this._highlightOncePromise = null
+    }
+  }
+
+  isHighlighting(): boolean {
+    return this._highlightOncePromise !== null
+  }
+}
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -72,4 +114,79 @@ test("CodeRenderable - filetype updates", async () => {
 
   codeRenderable.filetype = "typescript"
   expect(codeRenderable.filetype).toBe("typescript")
+})
+
+test("CodeRenderable - re-highlighting when content changes during active highlighting", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 13, "identifier"],
+    ] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  codeRenderable.content = "let newMessage = 'world';"
+
+  expect(codeRenderable.content).toBe("let newMessage = 'world';")
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  mockClient.resolveHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  mockClient.resolveHighlightOnce()
+
+  expect(mockClient.isHighlighting()).toBe(false)
+})
+
+test("CodeRenderable - multiple content changes during highlighting", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "original content",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  codeRenderable.content = "first change"
+  codeRenderable.content = "second change"
+  codeRenderable.content = "final content"
+
+  expect(codeRenderable.content).toBe("final content")
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  mockClient.resolveHighlightOnce()
+
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  mockClient.resolveHighlightOnce()
+
+  expect(mockClient.isHighlighting()).toBe(false)
 })
