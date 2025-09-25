@@ -1,6 +1,6 @@
 import { Parser, Query, Tree, Language } from "web-tree-sitter"
 import type { Edit, QueryCapture, Range } from "web-tree-sitter"
-import { mkdir, readdir, writeFile } from "fs/promises"
+import { mkdir, writeFile } from "fs/promises"
 import * as path from "path"
 import type { HighlightRange, HighlightResponse, SimpleHighlight } from "./types"
 
@@ -47,7 +47,6 @@ export class ParserWorker {
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
   private filetypeParsers: Map<string, FiletypeParser> = new Map()
   private reusableParsers: Map<string, ReusableParserState> = new Map()
-  private languageFiles: Set<string> = new Set()
   private initializePromise: Promise<void> | undefined
   public performance: PerformanceStats
   private dataPath: string | undefined
@@ -106,7 +105,7 @@ export class ParserWorker {
       try {
         const cachedContent = await Bun.file(cacheFile).arrayBuffer()
         if (cachedContent.byteLength > 0) {
-          console.log(`Loaded from cache: ${source}`)
+          console.log(`Loaded from cache: ${cacheFile} (${source})`)
           return { content: cachedContent, filePath: cacheFile }
         }
       } catch (error) {
@@ -154,8 +153,6 @@ export class ParserWorker {
         await mkdir(path.join(dataPath, "languages"), { recursive: true })
         await mkdir(path.join(dataPath, "queries"), { recursive: true })
 
-        await this.loadExistingLanguageFiles(path.join(dataPath, "languages"))
-
         await Parser.init()
 
         this.initialized = true
@@ -165,19 +162,6 @@ export class ParserWorker {
       }
     })
     return this.initializePromise
-  }
-
-  private async loadExistingLanguageFiles(languagesPath: string) {
-    try {
-      const languageFiles = await readdir(languagesPath, { withFileTypes: true })
-      for (const languageFile of languageFiles) {
-        if (languageFile.isFile()) {
-          this.languageFiles.add(languageFile.name)
-        }
-      }
-    } catch (error) {
-      // Directory might not exist, that's fine
-    }
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions) {
@@ -229,11 +213,6 @@ export class ParserWorker {
 
     try {
       const language = await Language.load(result.filePath)
-
-      if (languageSource.startsWith("http://") || languageSource.startsWith("https://")) {
-        const languageFileName = path.basename(languageSource)
-        this.languageFiles.add(languageFileName)
-      }
 
       return language
     } catch (error) {
@@ -606,6 +585,17 @@ export class ParserWorker {
       tree.delete()
     }
   }
+
+  async updateDataPath(dataPath: string): Promise<void> {
+    this.dataPath = dataPath
+
+    try {
+      await mkdir(path.join(dataPath, "languages"), { recursive: true })
+      await mkdir(path.join(dataPath, "queries"), { recursive: true })
+    } catch (error) {
+      throw new Error(`Failed to update data path: ${error}`)
+    }
+  }
 }
 
 const worker = new ParserWorker()
@@ -684,6 +674,19 @@ self.onmessage = async (e: MessageEvent) => {
 
       case "ONESHOT_HIGHLIGHT":
         await worker.handleOneShotHighlight(content, filetype, messageId)
+        break
+
+      case "UPDATE_DATA_PATH":
+        try {
+          await worker.updateDataPath(dataPath)
+          self.postMessage({ type: "UPDATE_DATA_PATH_RESPONSE", messageId })
+        } catch (error) {
+          self.postMessage({
+            type: "UPDATE_DATA_PATH_RESPONSE",
+            messageId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
         break
 
       default:

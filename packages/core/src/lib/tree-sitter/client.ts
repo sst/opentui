@@ -247,6 +247,15 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
+    if (type === "UPDATE_DATA_PATH_RESPONSE") {
+      const callback = this.messageCallbacks.get(messageId)
+      if (callback) {
+        this.messageCallbacks.delete(messageId)
+        callback({ error })
+      }
+      return
+    }
+
     if (warning) {
       this.emit("warning", warning, bufferId)
       return
@@ -472,9 +481,21 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.options.dataPath = dataPath
 
     if (this.initialized && this.worker) {
-      // TODO: set datapath in existing worker instead of restarting it
-      this.initialized = false
-      await this.handleReset()
+      const messageId = `update_datapath_${this.messageIdCounter++}`
+      return new Promise<void>((resolve, reject) => {
+        this.messageCallbacks.set(messageId, (response: any) => {
+          if (response.error) {
+            reject(new Error(response.error))
+          } else {
+            resolve()
+          }
+        })
+        this.worker!.postMessage({
+          type: "UPDATE_DATA_PATH",
+          dataPath,
+          messageId,
+        })
+      })
     }
   }
 }
