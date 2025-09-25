@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:te
 import { TreeSitterClient } from "./client"
 import { tmpdir } from "os"
 import { join } from "path"
-import { mkdir } from "fs/promises"
+import { mkdir, writeFile } from "fs/promises"
 
 describe("TreeSitterClient", () => {
   let client: TreeSitterClient
@@ -301,6 +301,33 @@ describe("TreeSitterClient", () => {
     })
 
     expect(client.getAllBuffers()).toHaveLength(0)
+  })
+
+  test("should support local file paths for parser configuration", async () => {
+    const testQueryPath = join(dataPath, "test-highlights.scm")
+    const simpleQuery = "(identifier) @variable"
+    await writeFile(testQueryPath, simpleQuery, "utf8")
+
+    client.addFiletypeParser({
+      filetype: "test-lang",
+      queries: {
+        highlights: testQueryPath,
+      },
+      language:
+        "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
+    })
+
+    await client.initialize()
+
+    const hasParser = await client.preloadParser("test-lang")
+    expect(hasParser).toBe(true)
+
+    const testCode = "const myVariable = 42;"
+    const result = await client.highlightOnce(testCode, "test-lang")
+
+    expect(result.highlights).toBeDefined()
+    expect(result.error).toBeUndefined()
+    expect(result.warning).toBeUndefined()
   })
 })
 

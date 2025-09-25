@@ -3,7 +3,6 @@ import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir, readdir, writeFile } from "fs/promises"
 import * as path from "path"
 import type { HighlightRange, HighlightResponse, SimpleHighlight } from "./types"
-import * as util from "util"
 
 const self = globalThis
 
@@ -47,7 +46,7 @@ export class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
   private filetypeParsers: Map<string, FiletypeParser> = new Map()
-  private reusableParsers: Map<string, ReusableParserState> = new Map() // Reusable parsers by filetype
+  private reusableParsers: Map<string, ReusableParserState> = new Map()
   private languageFiles: Set<string> = new Set()
   private initializePromise: Promise<void> | undefined
   public performance: PerformanceStats
@@ -63,48 +62,56 @@ export class ParserWorker {
     }
   }
 
-  private async fetchHighlightQuery(url: string): Promise<string> {
+  private async fetchHighlightQuery(source: string): Promise<string> {
     if (!this.dataPath) {
       throw new Error("Data path not initialized")
     }
 
-    // Create a cache filename from the URL
-    const urlHash = this.hashUrl(url)
-    const cacheFile = path.join(this.dataPath, "queries", `${urlHash}.scm`)
+    const isUrl = source.startsWith("http://") || source.startsWith("https://")
 
-    // Try to load from cache first
-    try {
-      const cachedContent = await Bun.file(cacheFile).text()
-      if (cachedContent) {
-        console.log(`Loaded highlight query from cache: ${url}`)
-        return cachedContent
-      }
-    } catch (error) {
-      // Cache miss, continue to fetch
-    }
+    if (isUrl) {
+      const urlHash = this.hashUrl(source)
+      const cacheFile = path.join(this.dataPath, "queries", `${urlHash}.scm`)
 
-    // Fetch from URL
-    try {
-      console.log(`Fetching highlight query from URL: ${url}`)
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch highlight query from ${url}: ${response.statusText}`)
-      }
-      const content = await response.text()
-
-      // Cache the result
       try {
-        await writeFile(cacheFile, content, "utf8")
-        console.log(`Cached highlight query: ${url}`)
-      } catch (cacheError) {
-        console.warn(`Failed to cache highlight query: ${cacheError}`)
+        const cachedContent = await Bun.file(cacheFile).text()
+        if (cachedContent) {
+          console.log(`Loaded highlight query from cache: ${source}`)
+          return cachedContent
+        }
+      } catch (error) {
+        // Cache miss, continue to fetch
       }
 
-      return content
-    } catch (error) {
-      console.error(`Error fetching highlight query from ${url}:`, error)
-      // Return empty query as fallback
-      return ""
+      try {
+        console.log(`Fetching highlight query from URL: ${source}`)
+        const response = await fetch(source)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch highlight query from ${source}: ${response.statusText}`)
+        }
+        const content = await response.text()
+
+        try {
+          await writeFile(cacheFile, content, "utf8")
+          console.log(`Cached highlight query: ${source}`)
+        } catch (cacheError) {
+          console.warn(`Failed to cache highlight query: ${cacheError}`)
+        }
+
+        return content
+      } catch (error) {
+        console.error(`Error fetching highlight query from ${source}:`, error)
+        return ""
+      }
+    } else {
+      try {
+        console.log(`Loading highlight query from local path: ${source}`)
+        const content = await Bun.file(source).text()
+        return content
+      } catch (error) {
+        console.error(`Error loading highlight query from local path ${source}:`, error)
+        return ""
+      }
     }
   }
 
@@ -127,14 +134,11 @@ export class ParserWorker {
       this.dataPath = dataPath
 
       try {
-        // Create storage directories
         await mkdir(path.join(dataPath, "languages"), { recursive: true })
         await mkdir(path.join(dataPath, "queries"), { recursive: true })
 
-        // Load existing language files
         await this.loadExistingLanguageFiles(path.join(dataPath, "languages"))
 
-        // Let web-tree-sitter handle wasm loading internally
         await Parser.init()
 
         this.initialized = true
@@ -195,37 +199,47 @@ export class ParserWorker {
       return undefined
     }
 
-    const languageFileName = path.basename(languageSource)
-    const languagePath = path.join(this.dataPath, "languages", languageFileName)
+    const isUrl = languageSource.startsWith("http://") || languageSource.startsWith("https://")
 
-    // Check if we already have this language file
-    if (this.languageFiles.has(languageFileName)) {
+    if (isUrl) {
+      const languageFileName = path.basename(languageSource)
+      const languagePath = path.join(this.dataPath, "languages", languageFileName)
+
+      if (this.languageFiles.has(languageFileName)) {
+        try {
+          return await Language.load(languagePath)
+        } catch (error) {
+          this.languageFiles.delete(languageFileName)
+        }
+      }
+
       try {
-        return await Language.load(languagePath)
+        console.log(`Downloading language parser: ${languageSource}`)
+        const response = await fetch(languageSource)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch language from ${languageSource}: ${response.statusText}`)
+        }
+
+        const buffer = await response.arrayBuffer()
+        await writeFile(languagePath, Buffer.from(buffer))
+        console.log(`Cached language parser: ${languageFileName}`)
+
+        const language = await Language.load(languagePath)
+        this.languageFiles.add(languageFileName)
+        return language
       } catch (error) {
-        // File might have been deleted, remove from set and continue to download
-        this.languageFiles.delete(languageFileName)
+        console.error(`Error loading language ${languageSource}:`, error)
+        return undefined
       }
-    }
-
-    // Download and cache the language file
-    try {
-      console.log(`Downloading language parser: ${languageSource}`)
-      const response = await fetch(languageSource)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch language from ${languageSource}: ${response.statusText}`)
+    } else {
+      try {
+        console.log(`Loading language parser from local path: ${languageSource}`)
+        const language = await Language.load(languageSource)
+        return language
+      } catch (error) {
+        console.error(`Error loading language from local path ${languageSource}:`, error)
+        return undefined
       }
-
-      const buffer = await response.arrayBuffer()
-      await writeFile(languagePath, Buffer.from(buffer))
-      console.log(`Cached language parser: ${languageFileName}`)
-
-      const language = await Language.load(languagePath)
-      this.languageFiles.add(languageFileName)
-      return language
-    } catch (error) {
-      console.error(`Error loading language ${languageSource}:`, error)
-      return undefined
     }
   }
 

@@ -40,7 +40,7 @@ const DEFAULT_PARSERS = [
   },
 ]
 
-// TODO: load parsers/queries from filepath or URL
+// Parser options now support both URLs and local file paths
 // TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
 export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private initialized = false

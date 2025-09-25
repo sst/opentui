@@ -15,9 +15,9 @@ export type SimpleHighlight = [number, number, string]
 export interface FiletypeParserOptions {
   filetype: string
   queries: {
-    highlights: string // URL to fetch the highlight query from
+    highlights: string // URL or local file path to fetch the highlight query from
   }
-  language: string
+  language: string // URL or local file path to the language parser WASM file
 }
 
 export interface BufferState {
