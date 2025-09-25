@@ -19,7 +19,7 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
-const DEFAULT_PARSERS = [
+let DEFAULT_PARSERS: FiletypeParserOptions[] = [
   {
     filetype: "javascript",
     queries: {
@@ -39,6 +39,18 @@ const DEFAULT_PARSERS = [
       "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
   },
 ]
+
+export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
+  for (const parser of parsers) {
+    const existingIndex = DEFAULT_PARSERS.findIndex((p) => p.filetype === parser.filetype)
+
+    if (existingIndex >= 0) {
+      DEFAULT_PARSERS[existingIndex] = parser
+    } else {
+      DEFAULT_PARSERS.push(parser)
+    }
+  }
+}
 
 // Parser options now support both URLs and local file paths
 // TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
