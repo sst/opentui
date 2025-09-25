@@ -61,8 +61,8 @@ export class ParserWorker {
     }
   }
 
-  private async fetchHighlightQuery(source: string): Promise<string> {
-    const result = await this.resolveFileSource(source, "queries", ".scm", true)
+  private async fetchHighlightQuery(source: string, filetype: string): Promise<string> {
+    const result = await this.resolveFileSource(source, "queries", ".scm", true, filetype)
 
     if (result.error) {
       console.error(`Error fetching highlight query from ${source}:`, result.error)
@@ -91,6 +91,7 @@ export class ParserWorker {
     cacheSubdir: string,
     fileExtension: string,
     useHashForCache: boolean = true,
+    filetype?: string,
   ): Promise<{ content?: ArrayBuffer; filePath?: string; error?: string }> {
     if (!this.dataPath) {
       return { error: "Data path not initialized" }
@@ -99,7 +100,13 @@ export class ParserWorker {
     const isUrl = source.startsWith("http://") || source.startsWith("https://")
 
     if (isUrl) {
-      const cacheFileName = useHashForCache ? `${this.hashUrl(source)}${fileExtension}` : path.basename(source)
+      let cacheFileName: string
+      if (useHashForCache) {
+        const hash = this.hashUrl(source)
+        cacheFileName = filetype ? `${filetype}-${hash}${fileExtension}` : `${hash}${fileExtension}`
+      } else {
+        cacheFileName = path.basename(source)
+      }
       const cacheFile = path.join(this.dataPath, cacheSubdir, cacheFileName)
 
       try {
@@ -179,7 +186,10 @@ export class ParserWorker {
   > {
     try {
       // Fetch the highlight query from URL
-      const highlightQueryContent = await this.fetchHighlightQuery(filetypeParser.queries.highlights)
+      const highlightQueryContent = await this.fetchHighlightQuery(
+        filetypeParser.queries.highlights,
+        filetypeParser.filetype,
+      )
       if (!highlightQueryContent) {
         console.error("Failed to fetch highlight query for:", filetypeParser.filetype)
         return undefined
