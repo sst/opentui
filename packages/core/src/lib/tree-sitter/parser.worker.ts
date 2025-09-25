@@ -63,67 +63,84 @@ export class ParserWorker {
   }
 
   private async fetchHighlightQuery(source: string): Promise<string> {
+    const result = await this.resolveFileSource(source, "queries", ".scm", true)
+
+    if (result.error) {
+      console.error(`Error fetching highlight query from ${source}:`, result.error)
+      return ""
+    }
+
+    if (result.content) {
+      return new TextDecoder().decode(result.content)
+    }
+
+    return ""
+  }
+
+  private hashUrl(url: string): string {
+    let hash = 0
+    for (let i = 0; i < url.length; i++) {
+      const char = url.charCodeAt(i)
+      hash = (hash << 5) - hash + char
+      hash = hash & hash
+    }
+    return Math.abs(hash).toString(16)
+  }
+
+  private async resolveFileSource(
+    source: string,
+    cacheSubdir: string,
+    fileExtension: string,
+    useHashForCache: boolean = true,
+  ): Promise<{ content?: ArrayBuffer; filePath?: string; error?: string }> {
     if (!this.dataPath) {
-      throw new Error("Data path not initialized")
+      return { error: "Data path not initialized" }
     }
 
     const isUrl = source.startsWith("http://") || source.startsWith("https://")
 
     if (isUrl) {
-      const urlHash = this.hashUrl(source)
-      const cacheFile = path.join(this.dataPath, "queries", `${urlHash}.scm`)
+      const cacheFileName = useHashForCache ? `${this.hashUrl(source)}${fileExtension}` : path.basename(source)
+      const cacheFile = path.join(this.dataPath, cacheSubdir, cacheFileName)
 
       try {
-        const cachedContent = await Bun.file(cacheFile).text()
-        if (cachedContent) {
-          console.log(`Loaded highlight query from cache: ${source}`)
-          return cachedContent
+        const cachedContent = await Bun.file(cacheFile).arrayBuffer()
+        if (cachedContent.byteLength > 0) {
+          console.log(`Loaded from cache: ${source}`)
+          return { content: cachedContent, filePath: cacheFile }
         }
       } catch (error) {
         // Cache miss, continue to fetch
       }
 
       try {
-        console.log(`Fetching highlight query from URL: ${source}`)
+        console.log(`Downloading from URL: ${source}`)
         const response = await fetch(source)
         if (!response.ok) {
-          throw new Error(`Failed to fetch highlight query from ${source}: ${response.statusText}`)
+          return { error: `Failed to fetch from ${source}: ${response.statusText}` }
         }
-        const content = await response.text()
+        const content = await response.arrayBuffer()
 
         try {
-          await writeFile(cacheFile, content, "utf8")
-          console.log(`Cached highlight query: ${source}`)
+          await writeFile(cacheFile, Buffer.from(content))
+          console.log(`Cached: ${source}`)
         } catch (cacheError) {
-          console.warn(`Failed to cache highlight query: ${cacheError}`)
+          console.warn(`Failed to cache: ${cacheError}`)
         }
 
-        return content
+        return { content, filePath: cacheFile }
       } catch (error) {
-        console.error(`Error fetching highlight query from ${source}:`, error)
-        return ""
+        return { error: `Error downloading from ${source}: ${error}` }
       }
     } else {
       try {
-        console.log(`Loading highlight query from local path: ${source}`)
-        const content = await Bun.file(source).text()
-        return content
+        console.log(`Loading from local path: ${source}`)
+        const content = await Bun.file(source).arrayBuffer()
+        return { content, filePath: source }
       } catch (error) {
-        console.error(`Error loading highlight query from local path ${source}:`, error)
-        return ""
+        return { error: `Error loading from local path ${source}: ${error}` }
       }
     }
-  }
-
-  private hashUrl(url: string): string {
-    // Simple hash function for URL to create cache filename
-    let hash = 0
-    for (let i = 0; i < url.length; i++) {
-      const char = url.charCodeAt(i)
-      hash = (hash << 5) - hash + char
-      hash = hash & hash // Convert to 32-bit integer
-    }
-    return Math.abs(hash).toString(16)
   }
 
   async initialize({ dataPath }: { dataPath: string }) {
@@ -199,47 +216,29 @@ export class ParserWorker {
       return undefined
     }
 
-    const isUrl = languageSource.startsWith("http://") || languageSource.startsWith("https://")
+    const result = await this.resolveFileSource(languageSource, "languages", ".wasm", false)
 
-    if (isUrl) {
-      const languageFileName = path.basename(languageSource)
-      const languagePath = path.join(this.dataPath, "languages", languageFileName)
+    if (result.error) {
+      console.error(`Error loading language ${languageSource}:`, result.error)
+      return undefined
+    }
 
-      if (this.languageFiles.has(languageFileName)) {
-        try {
-          return await Language.load(languagePath)
-        } catch (error) {
-          this.languageFiles.delete(languageFileName)
-        }
-      }
+    if (!result.filePath) {
+      return undefined
+    }
 
-      try {
-        console.log(`Downloading language parser: ${languageSource}`)
-        const response = await fetch(languageSource)
-        if (!response.ok) {
-          throw new Error(`Failed to fetch language from ${languageSource}: ${response.statusText}`)
-        }
+    try {
+      const language = await Language.load(result.filePath)
 
-        const buffer = await response.arrayBuffer()
-        await writeFile(languagePath, Buffer.from(buffer))
-        console.log(`Cached language parser: ${languageFileName}`)
-
-        const language = await Language.load(languagePath)
+      if (languageSource.startsWith("http://") || languageSource.startsWith("https://")) {
+        const languageFileName = path.basename(languageSource)
         this.languageFiles.add(languageFileName)
-        return language
-      } catch (error) {
-        console.error(`Error loading language ${languageSource}:`, error)
-        return undefined
       }
-    } else {
-      try {
-        console.log(`Loading language parser from local path: ${languageSource}`)
-        const language = await Language.load(languageSource)
-        return language
-      } catch (error) {
-        console.error(`Error loading language from local path ${languageSource}:`, error)
-        return undefined
-      }
+
+      return language
+    } catch (error) {
+      console.error(`Error loading language from ${result.filePath}:`, error)
+      return undefined
     }
   }
 
@@ -401,11 +400,9 @@ export class ParserWorker {
       return { error: "Failed to parse buffer" }
     }
 
-    // Get changed ranges between old and new tree
     const changedRanges = parserState.tree.getChangedRanges(newTree)
     parserState.tree = newTree
 
-    // Query the buffer
     const startQuery = performance.now()
     const matches: QueryCapture[] = []
 
@@ -452,7 +449,6 @@ export class ParserWorker {
         node = parserState.tree.rootNode
       }
 
-      // Query the containing node
       const nodeCaptures = parserState.queries.highlights.captures(node)
       matches.push(...nodeCaptures)
     }
