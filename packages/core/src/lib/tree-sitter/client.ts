@@ -11,6 +11,7 @@ import type {
   PerformanceStats,
   SimpleHighlight,
 } from "./types"
+import { DEFAULT_PARSERS as DEFAULT_PARSERS_DATA } from "./default-parsers"
 
 interface EditQueueItem {
   edits: Edit[]
@@ -19,26 +20,7 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
-let DEFAULT_PARSERS: FiletypeParserOptions[] = [
-  {
-    filetype: "javascript",
-    queries: {
-      highlights:
-        "https://raw.githubusercontent.com/tree-sitter/tree-sitter-javascript/refs/heads/master/queries/highlights.scm",
-    },
-    language:
-      "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
-  },
-  {
-    filetype: "typescript",
-    queries: {
-      highlights:
-        "https://raw.githubusercontent.com/tree-sitter/tree-sitter-typescript/refs/heads/master/queries/highlights.scm",
-    },
-    language:
-      "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
-  },
-]
+let DEFAULT_PARSERS: FiletypeParserOptions[] = DEFAULT_PARSERS_DATA
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
