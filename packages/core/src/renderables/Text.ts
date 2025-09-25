@@ -29,7 +29,7 @@ export class TextRenderable extends TextBufferRenderable {
     const content = options.content ?? this._contentDefaultOptions.content
     const styledText = typeof content === "string" ? stringToStyledText(content) : content
     this._text = styledText
-    this._hasManualStyledText = !!options.content
+    this._hasManualStyledText = options.content !== undefined && content !== ""
 
     this.rootTextNode = new RootTextNodeRenderable(
       ctx,
@@ -109,6 +109,7 @@ export class TextRenderable extends TextBufferRenderable {
         attributes: this._defaultAttributes,
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
+      this.refreshLocalSelection()
       this.yogaNode.markDirty()
     }
   }

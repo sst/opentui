@@ -185,6 +185,13 @@ export abstract class TextBufferRenderable extends Renderable {
     }
   }
 
+  protected refreshLocalSelection(): boolean {
+    if (this.lastLocalSelection) {
+      return this.updateLocalSelection(this.lastLocalSelection)
+    }
+    return false
+  }
+
   private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
     if (!localSelection?.isActive) {
       this.textBuffer.resetLocalSelection()
