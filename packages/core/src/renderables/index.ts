@@ -1,4 +1,5 @@
 export * from "./Box"
+export * from "./Code"
 export * from "./FrameBuffer"
 export * from "./TextBufferRenderable"
 export * from "./Text"

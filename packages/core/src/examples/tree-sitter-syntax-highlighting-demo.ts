@@ -1,7 +1,7 @@
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type ParsedKey } from "../index"
+import { CliRenderer, createCliRenderer, CodeRenderable, BoxRenderable, TextRenderable, type ParsedKey } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
-import { getTreeSitterClient, treeSitterToStyledText, SyntaxStyle } from "../lib/tree-sitter"
+import { SyntaxStyle } from "../lib/tree-sitter"
 
 // Example TypeScript code to highlight
 const exampleCode = `interface User {
@@ -49,7 +49,7 @@ console.log(\`Adults: \${manager.getAdults().length}\`);`
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
-let codeDisplay: TextRenderable | null = null
+let codeDisplay: CodeRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let currentFiletype: "typescript" | "javascript" = "typescript"
@@ -80,7 +80,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content: "ESC to return | R to re-highlight | T to toggle language | Demonstrating tree-sitter direct highlighting",
+    content: "ESC to return | T to toggle language | Demonstrating CodeRenderable with tree-sitter highlighting",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -90,7 +90,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "single",
     borderColor: "#6BCF7F",
     backgroundColor: "#0D1117",
-    title: "TypeScript Code (Tree-Sitter)",
+    title: "TypeScript Code (CodeRenderable)",
     titleAlignment: "left",
     paddingLeft: 1,
     border: true,
@@ -113,10 +113,12 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     default: { fg: parseColor("#F0F6FC") }, // white default
   })
 
-  // Create code display and timing text directly (like HAST demo)
-  codeDisplay = new TextRenderable(renderer, {
+  // Create code display using CodeRenderable
+  codeDisplay = new CodeRenderable(renderer, {
     id: "code-display",
-    content: "Initializing tree-sitter...",
+    content: exampleCode,
+    filetype: currentFiletype,
+    syntaxStyle,
     bg: "#0D1117",
     selectable: true,
     selectionBg: "#264F78",
@@ -131,54 +133,29 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   parentContainer.add(timingText)
 
-  await highlightCode(currentFiletype)
+  timingText.content = `Using CodeRenderable with ${currentFiletype.toUpperCase()} highlighting`
 
   keyboardHandler = (key: ParsedKey) => {
-    if (key.name === "r" || key.name === "R") {
-      // Re-highlight with current language
-      highlightCode(currentFiletype)
-    } else if (key.name === "t" || key.name === "T") {
+    if (key.name === "t" || key.name === "T") {
       // Toggle between TypeScript and JavaScript highlighting
       if (currentFiletype === "typescript") {
         currentFiletype = "javascript"
-        codeBox.title = "JavaScript Code (Tree-Sitter)"
+        codeBox.title = "JavaScript Code (CodeRenderable)"
       } else {
         currentFiletype = "typescript"
-        codeBox.title = "TypeScript Code (Tree-Sitter)"
+        codeBox.title = "TypeScript Code (CodeRenderable)"
       }
-      highlightCode(currentFiletype)
+
+      if (codeDisplay) {
+        codeDisplay.filetype = currentFiletype
+        if (timingText) {
+          timingText.content = `Using CodeRenderable with ${currentFiletype.toUpperCase()} highlighting`
+        }
+      }
     }
   }
 
   rendererInstance.keyInput.on("keypress", keyboardHandler)
-}
-
-async function highlightCode(filetype: "typescript" | "javascript") {
-  if (!syntaxStyle || !codeDisplay || !timingText) return
-
-  try {
-    const client = getTreeSitterClient()
-
-    syntaxStyle.clearCache()
-    const transformStart = performance.now()
-
-    const styledText = await treeSitterToStyledText(exampleCode, filetype, syntaxStyle, client)
-
-    const transformEnd = performance.now()
-    const transformTime = (transformEnd - transformStart).toFixed(2)
-
-    codeDisplay.content = styledText
-    timingText.content = `Tree-sitter highlighting: ${transformTime}ms (Cache: ${syntaxStyle.getCacheSize()} entries) | Language: ${filetype.toUpperCase()}`
-
-    console.log(`Tree-sitter highlighting completed in ${transformTime}ms`)
-    console.log(`Style cache entries: ${syntaxStyle.getCacheSize()}`)
-    console.log(`Styled text chunks: ${styledText.chunks.length}`)
-  } catch (error) {
-    console.error("Error highlighting code:", error)
-    if (timingText) {
-      timingText.content = `Error: ${error instanceof Error ? error.message : String(error)}`
-    }
-  }
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
