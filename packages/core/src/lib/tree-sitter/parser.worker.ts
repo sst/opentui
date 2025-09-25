@@ -1,8 +1,9 @@
 import { Parser, Query, Tree, Language } from "web-tree-sitter"
 import type { Edit, QueryCapture, Range } from "web-tree-sitter"
-import { mkdir, writeFile } from "fs/promises"
+import { mkdir } from "fs/promises"
 import * as path from "path"
 import type { HighlightRange, HighlightResponse, SimpleHighlight } from "./types"
+import { DownloadUtils } from "./download-utils"
 
 const self = globalThis
 
@@ -61,100 +62,11 @@ export class ParserWorker {
     }
   }
 
-  private async fetchHighlightQuery(source: string, filetype: string): Promise<string> {
-    const result = await this.resolveFileSource(source, "queries", ".scm", true, filetype)
-
-    if (result.error) {
-      console.error(`Error fetching highlight query from ${source}:`, result.error)
+  private async fetchHighlightQueries(sources: string[], filetype: string): Promise<string> {
+    if (!this.dataPath) {
       return ""
     }
-
-    if (result.content) {
-      return new TextDecoder().decode(result.content)
-    }
-
-    return ""
-  }
-
-  private async fetchHighlightQueries(sources: string[], filetype: string): Promise<string> {
-    const queryPromises = sources.map((source) => this.fetchHighlightQuery(source, filetype))
-    const queryResults = await Promise.all(queryPromises)
-
-    const validQueries = queryResults.filter((query) => query.trim().length > 0)
-    return validQueries.join("\n")
-  }
-
-  private hashUrl(url: string): string {
-    let hash = 0
-    for (let i = 0; i < url.length; i++) {
-      const char = url.charCodeAt(i)
-      hash = (hash << 5) - hash + char
-      hash = hash & hash
-    }
-    return Math.abs(hash).toString(16)
-  }
-
-  private async resolveFileSource(
-    source: string,
-    cacheSubdir: string,
-    fileExtension: string,
-    useHashForCache: boolean = true,
-    filetype?: string,
-  ): Promise<{ content?: ArrayBuffer; filePath?: string; error?: string }> {
-    if (!this.dataPath) {
-      return { error: "Data path not initialized" }
-    }
-
-    const isUrl = source.startsWith("http://") || source.startsWith("https://")
-
-    if (isUrl) {
-      let cacheFileName: string
-      if (useHashForCache) {
-        const hash = this.hashUrl(source)
-        cacheFileName = filetype ? `${filetype}-${hash}${fileExtension}` : `${hash}${fileExtension}`
-      } else {
-        cacheFileName = path.basename(source)
-      }
-      const cacheFile = path.join(this.dataPath, cacheSubdir, cacheFileName)
-
-      try {
-        const cachedContent = await Bun.file(cacheFile).arrayBuffer()
-        if (cachedContent.byteLength > 0) {
-          console.log(`Loaded from cache: ${cacheFile} (${source})`)
-          return { content: cachedContent, filePath: cacheFile }
-        }
-      } catch (error) {
-        // Cache miss, continue to fetch
-      }
-
-      try {
-        console.log(`Downloading from URL: ${source}`)
-        const response = await fetch(source)
-        if (!response.ok) {
-          return { error: `Failed to fetch from ${source}: ${response.statusText}` }
-        }
-        const content = await response.arrayBuffer()
-
-        try {
-          await writeFile(cacheFile, Buffer.from(content))
-          console.log(`Cached: ${source}`)
-        } catch (cacheError) {
-          console.warn(`Failed to cache: ${cacheError}`)
-        }
-
-        return { content, filePath: cacheFile }
-      } catch (error) {
-        return { error: `Error downloading from ${source}: ${error}` }
-      }
-    } else {
-      try {
-        console.log(`Loading from local path: ${source}`)
-        const content = await Bun.file(source).arrayBuffer()
-        return { content, filePath: source }
-      } catch (error) {
-        return { error: `Error loading from local path ${source}: ${error}` }
-      }
-    }
+    return DownloadUtils.fetchHighlightQueries(sources, this.dataPath, filetype)
   }
 
   async initialize({ dataPath }: { dataPath: string }) {
@@ -218,7 +130,7 @@ export class ParserWorker {
       return undefined
     }
 
-    const result = await this.resolveFileSource(languageSource, "languages", ".wasm", false)
+    const result = await DownloadUtils.downloadOrLoad(languageSource, this.dataPath, "languages", ".wasm", false)
 
     if (result.error) {
       console.error(`Error loading language ${languageSource}:`, result.error)
@@ -231,7 +143,6 @@ export class ParserWorker {
 
     try {
       const language = await Language.load(result.filePath)
-
       return language
     } catch (error) {
       console.error(`Error loading language from ${result.filePath}:`, error)
