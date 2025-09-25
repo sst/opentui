@@ -17,13 +17,21 @@ export type { StyleDefinition } from "../syntax-style"
 import { singleton } from "../singleton"
 import { TreeSitterClient } from "./client"
 import type { TreeSitterClientOptions } from "./types"
-import { tmpdir } from "os"
-import { join } from "path"
+import { getDataPaths } from "../data-paths"
 
 export function getTreeSitterClient(): TreeSitterClient {
+  const dataPathsManager = getDataPaths()
   const defaultOptions: TreeSitterClientOptions = {
-    dataPath: join(tmpdir(), "opentui-tree-sitter"),
+    dataPath: dataPathsManager.globalDataPath,
   }
 
-  return singleton("tree-sitter-client", () => new TreeSitterClient(defaultOptions))
+  return singleton("tree-sitter-client", () => {
+    const client = new TreeSitterClient(defaultOptions)
+
+    dataPathsManager.on("paths:changed", (paths) => {
+      client.setDataPath(paths.globalDataPath)
+    })
+
+    return client
+  })
 }

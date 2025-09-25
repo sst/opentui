@@ -463,4 +463,18 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public isInitialized(): boolean {
     return this.initialized
   }
+
+  public async setDataPath(dataPath: string): Promise<void> {
+    if (this.options.dataPath === dataPath) {
+      return
+    }
+
+    this.options.dataPath = dataPath
+
+    if (this.initialized && this.worker) {
+      // TODO: set datapath in existing worker instead of restarting it
+      this.initialized = false
+      await this.handleReset()
+    }
+  }
 }

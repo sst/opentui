@@ -383,4 +383,42 @@ describe("TreeSitterClient Edge Cases", () => {
 
     await client.destroy()
   })
+
+  test("should handle data path changes with reactive getTreeSitterClient", async () => {
+    const { getDataPaths } = await import("../data-paths")
+    const { getTreeSitterClient } = await import("./index")
+
+    const dataPathsManager = getDataPaths()
+    const originalAppName = dataPathsManager.appName
+    let client: any
+
+    try {
+      client = getTreeSitterClient()
+      await client.initialize()
+
+      const initialDataPath = dataPathsManager.globalDataPath
+
+      dataPathsManager.appName = "test-app-changed"
+
+      // Wait for the event to propagate and client to reinitialize
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      const newDataPath = dataPathsManager.globalDataPath
+      expect(newDataPath).not.toBe(initialDataPath)
+      expect(newDataPath).toContain("test-app-changed")
+
+      if (!client.isInitialized()) {
+        await client.initialize()
+      }
+
+      const hasParser = await client.preloadParser("javascript")
+      expect(hasParser).toBe(true)
+    } finally {
+      if (client) {
+        await client.destroy()
+      }
+
+      dataPathsManager.appName = originalAppName
+    }
+  })
 })

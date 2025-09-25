@@ -160,4 +160,33 @@ describe("TreeSitterClient Caching", () => {
 
     await client.destroy()
   })
+
+  test("should handle data path changes", async () => {
+    const initialDataPath = join(tmpdir(), "tree-sitter-initial-" + Math.random().toString(36).slice(2))
+    const newDataPath = join(tmpdir(), "tree-sitter-new-" + Math.random().toString(36).slice(2))
+
+    await mkdir(initialDataPath, { recursive: true })
+    await mkdir(newDataPath, { recursive: true })
+
+    const client = new TreeSitterClient({ dataPath: initialDataPath })
+    await client.initialize()
+
+    const hasParser1 = await client.preloadParser("javascript")
+    expect(hasParser1).toBe(true)
+
+    const initialLanguagesDir = join(initialDataPath, "languages")
+    const initialFiles = await readdir(initialLanguagesDir)
+    expect(initialFiles).toContain("tree-sitter-javascript.wasm")
+
+    await client.setDataPath(newDataPath)
+
+    const hasParser2 = await client.preloadParser("typescript")
+    expect(hasParser2).toBe(true)
+
+    const newLanguagesDir = join(newDataPath, "languages")
+    const newFiles = await readdir(newLanguagesDir)
+    expect(newFiles).toContain("tree-sitter-typescript.wasm")
+
+    await client.destroy()
+  })
 })
