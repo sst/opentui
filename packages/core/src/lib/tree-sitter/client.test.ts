@@ -311,7 +311,7 @@ describe("TreeSitterClient", () => {
     client.addFiletypeParser({
       filetype: "test-lang",
       queries: {
-        highlights: testQueryPath,
+        highlights: [testQueryPath],
       },
       language:
         "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",

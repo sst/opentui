@@ -17,7 +17,7 @@ type ParserState = {
 interface FiletypeParserOptions {
   filetype: string
   queries: {
-    highlights: string
+    highlights: string[]
   }
   language: string
 }
@@ -74,6 +74,14 @@ export class ParserWorker {
     }
 
     return ""
+  }
+
+  private async fetchHighlightQueries(sources: string[], filetype: string): Promise<string> {
+    const queryPromises = sources.map((source) => this.fetchHighlightQuery(source, filetype))
+    const queryResults = await Promise.all(queryPromises)
+
+    const validQueries = queryResults.filter((query) => query.trim().length > 0)
+    return validQueries.join("\n")
   }
 
   private hashUrl(url: string): string {
@@ -185,13 +193,13 @@ export class ParserWorker {
     | undefined
   > {
     try {
-      // Fetch the highlight query from URL
-      const highlightQueryContent = await this.fetchHighlightQuery(
+      // Fetch all highlight queries from URLs/paths and concatenate them
+      const highlightQueryContent = await this.fetchHighlightQueries(
         filetypeParser.queries.highlights,
         filetypeParser.filetype,
       )
       if (!highlightQueryContent) {
-        console.error("Failed to fetch highlight query for:", filetypeParser.filetype)
+        console.error("Failed to fetch highlight queries for:", filetypeParser.filetype)
         return undefined
       }
 
