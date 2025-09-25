@@ -145,8 +145,6 @@ export function run(renderer: CliRenderer): void {
     new ASCIIFontRenderable(renderer, {
       id: "moving-box-ascii",
       text: "ASCII",
-      width: 16,
-      height: 5,
       position: "relative",
       left: 2,
       top: 5,
