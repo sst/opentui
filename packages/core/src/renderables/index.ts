@@ -1,5 +1,6 @@
 export * from "./Box"
 export * from "./FrameBuffer"
+export * from "./TextBufferRenderable"
 export * from "./Text"
 export * from "./TextNode"
 export * from "./ASCIIFont"
