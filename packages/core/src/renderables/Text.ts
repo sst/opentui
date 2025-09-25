@@ -92,7 +92,6 @@ export class TextRenderable extends Renderable {
     )
 
     this.updateTextBuffer(styledText)
-    this._text.mount(this)
 
     if (this._wrap && this.width > 0) {
       this.updateWrapWidth(this.width)
@@ -141,7 +140,6 @@ export class TextRenderable extends Renderable {
     const styledText = typeof value === "string" ? stringToStyledText(value) : value
     if (this._text !== styledText) {
       this._text = styledText
-      styledText.mount(this)
       this.updateTextBuffer(styledText)
       this.updateTextInfo()
     }
@@ -388,7 +386,6 @@ export class TextRenderable extends Renderable {
 
     const emptyStyledText = stringToStyledText("")
     this._text = emptyStyledText
-    emptyStyledText.mount(this)
     this.updateTextBuffer(emptyStyledText)
     this.updateTextInfo()
 
