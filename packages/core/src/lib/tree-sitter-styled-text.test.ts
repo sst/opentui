@@ -1,8 +1,9 @@
 import { test, expect, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient } from "./tree-sitter/client"
-import { treeSitterToStyledText } from "./tree-sitter-styled-text"
+import { treeSitterToStyledText, treeSitterToTextChunks } from "./tree-sitter-styled-text"
 import { SyntaxStyle } from "./syntax-style"
 import { RGBA } from "./RGBA"
+import { createTextAttributes } from "../utils"
 import { tmpdir } from "os"
 import { join } from "path"
 import { mkdir } from "fs/promises"
@@ -215,5 +216,80 @@ function add(a, b) {
 
     const reconstructed = chunks.map((chunk) => chunk.text).join("")
     expect(reconstructed).toBe(tsCode)
+  })
+
+  test("should resolve styles correctly for dot-delimited groups and multiple overlapping groups", async () => {
+    // Test the getStyle method directly
+    expect(syntaxStyle.getStyle("function.method")).toEqual(syntaxStyle.getStyle("function"))
+    expect(syntaxStyle.getStyle("variable.member")).toEqual(syntaxStyle.getStyle("variable"))
+    expect(syntaxStyle.getStyle("nonexistent.fallback")).toBeUndefined()
+    expect(syntaxStyle.getStyle("function")).toBeDefined()
+    expect(syntaxStyle.getStyle("constructor")).toBeUndefined() // Should not return Object constructor
+
+    // Test with mock highlights that have multiple groups for same range
+    const mockHighlights: Array<[number, number, string]> = [
+      [0, 4, "variable.member"], // should resolve to 'variable' style
+      [0, 4, "function.method"], // should resolve to 'function' style (last valid)
+      [0, 4, "nonexistent"], // undefined, should not override
+      [4, 8, "keyword"], // should resolve to 'keyword' style
+    ]
+
+    const content = "testfunc"
+    const chunks = treeSitterToTextChunks(content, mockHighlights, syntaxStyle)
+
+    expect(chunks.length).toBe(2) // Two highlight ranges, no gaps
+
+    // First chunk [0,4] should have function style (last valid style)
+    const functionStyle = syntaxStyle.getStyle("function")!
+    expect(chunks[0].text).toBe("test")
+    expect(chunks[0].fg).toEqual(functionStyle.fg)
+    expect(chunks[0].attributes).toBe(
+      createTextAttributes({
+        bold: functionStyle.bold,
+        italic: functionStyle.italic,
+        underline: functionStyle.underline,
+        dim: functionStyle.dim,
+      }),
+    )
+
+    // Second chunk [4,8] should have keyword style
+    const keywordStyle = syntaxStyle.getStyle("keyword")!
+    expect(chunks[1].text).toBe("func")
+    expect(chunks[1].fg).toEqual(keywordStyle.fg)
+    expect(chunks[1].attributes).toBe(
+      createTextAttributes({
+        bold: keywordStyle.bold,
+        italic: keywordStyle.italic,
+        underline: keywordStyle.underline,
+        dim: keywordStyle.dim,
+      }),
+    )
+  })
+
+  test("should handle constructor group correctly", async () => {
+    expect(syntaxStyle.getStyle("constructor")).toBeUndefined()
+
+    const mockHighlights: Array<[number, number, string]> = [
+      [0, 11, "variable.member"], // should resolve to 'variable' style
+      [0, 11, "constructor"], // should resolve to undefined
+      [0, 11, "function.method"], // should resolve to 'function' style (last valid)
+    ]
+
+    const content = "constructor"
+    const chunks = treeSitterToTextChunks(content, mockHighlights, syntaxStyle)
+
+    expect(chunks.length).toBe(1)
+
+    const functionStyle = syntaxStyle.getStyle("function")!
+    expect(chunks[0].text).toBe("constructor")
+    expect(chunks[0].fg).toEqual(functionStyle.fg)
+    expect(chunks[0].attributes).toBe(
+      createTextAttributes({
+        bold: functionStyle.bold,
+        italic: functionStyle.italic,
+        underline: functionStyle.underline,
+        dim: functionStyle.dim,
+      }),
+    )
   })
 })

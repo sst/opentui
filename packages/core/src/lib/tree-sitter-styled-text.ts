@@ -3,60 +3,86 @@ import { StyledText } from "./styled-text"
 import { SyntaxStyle } from "./syntax-style"
 import { TreeSitterClient } from "./tree-sitter/client"
 import type { SimpleHighlight } from "./tree-sitter/types"
+import { createTextAttributes } from "../utils"
 
-function treeSitterToTextChunks(content: string, highlights: SimpleHighlight[], syntaxStyle: SyntaxStyle): TextChunk[] {
+export function treeSitterToTextChunks(
+  content: string,
+  highlights: SimpleHighlight[],
+  syntaxStyle: SyntaxStyle,
+): TextChunk[] {
   const chunks: TextChunk[] = []
-
-  const styleStack: string[] = ["default"]
+  const defaultStyle = syntaxStyle.getStyle("default")
   let currentIndex = 0
 
-  const events: Array<{ index: number; type: "start" | "end"; group?: string }> = []
+  for (let i = 0; i < highlights.length; i++) {
+    const [startIndex, endIndex, group] = highlights[i]
 
-  for (const [startIndex, endIndex, group] of highlights) {
-    events.push({ index: startIndex, type: "start", group })
-    events.push({ index: endIndex, type: "end", group })
-  }
-
-  events.sort((a, b) => {
-    if (a.index !== b.index) return a.index - b.index
-    return a.type === "start" ? -1 : 1
-  })
-
-  for (const event of events) {
-    if (event.index > currentIndex) {
-      const text = content.slice(currentIndex, event.index)
-      if (text.length > 0) {
-        const currentStyle = syntaxStyle.mergeStyles(...styleStack)
-        chunks.push({
-          __isChunk: true,
-          text,
-          fg: currentStyle.fg,
-          bg: currentStyle.bg,
-          attributes: currentStyle.attributes,
-        })
-      }
-      currentIndex = event.index
+    if (startIndex < currentIndex) continue
+    if (currentIndex < startIndex) {
+      const text = content.slice(currentIndex, startIndex)
+      chunks.push({
+        __isChunk: true,
+        text,
+        fg: defaultStyle?.fg,
+        bg: defaultStyle?.bg,
+        attributes: defaultStyle
+          ? createTextAttributes({
+              bold: defaultStyle.bold,
+              italic: defaultStyle.italic,
+              underline: defaultStyle.underline,
+              dim: defaultStyle.dim,
+            })
+          : 0,
+      })
+      currentIndex = startIndex
     }
 
-    if (event.type === "start") {
-      styleStack.push(event.group!)
-    } else {
-      const index = styleStack.lastIndexOf(event.group!)
-      if (index !== -1) {
-        styleStack.splice(index, 1)
+    let resolvedStyle = syntaxStyle.getStyle(group)
+    let j = i + 1
+    while (j < highlights.length && highlights[j][0] === startIndex) {
+      const [, , nextGroup] = highlights[j]
+      const nextStyle = syntaxStyle.getStyle(nextGroup)
+      if (nextStyle) {
+        resolvedStyle = nextStyle
       }
+      j++
     }
+    i = j - 1 // Skip the processed highlights
+
+    const text = content.slice(startIndex, endIndex)
+    const styleToUse = resolvedStyle || defaultStyle
+    chunks.push({
+      __isChunk: true,
+      text,
+      fg: styleToUse?.fg,
+      bg: styleToUse?.bg,
+      attributes: styleToUse
+        ? createTextAttributes({
+            bold: styleToUse.bold,
+            italic: styleToUse.italic,
+            underline: styleToUse.underline,
+            dim: styleToUse.dim,
+          })
+        : 0,
+    })
+    currentIndex = endIndex
   }
 
   if (currentIndex < content.length) {
     const text = content.slice(currentIndex)
-    const currentStyle = syntaxStyle.mergeStyles(...styleStack)
     chunks.push({
       __isChunk: true,
       text,
-      fg: currentStyle.fg,
-      bg: currentStyle.bg,
-      attributes: currentStyle.attributes,
+      fg: defaultStyle?.fg,
+      bg: defaultStyle?.bg,
+      attributes: defaultStyle
+        ? createTextAttributes({
+            bold: defaultStyle.bold,
+            italic: defaultStyle.italic,
+            underline: defaultStyle.underline,
+            dim: defaultStyle.dim,
+          })
+        : 0,
     })
   }
 

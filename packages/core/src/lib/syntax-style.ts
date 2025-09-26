@@ -68,6 +68,21 @@ export class SyntaxStyle {
     return merged
   }
 
+  getStyle(name: string): StyleDefinition | undefined {
+    if (Object.prototype.hasOwnProperty.call(this.styles, name)) {
+      return this.styles[name]
+    }
+
+    if (name.includes(".")) {
+      const baseName = name.split(".")[0]
+      if (Object.prototype.hasOwnProperty.call(this.styles, baseName)) {
+        return this.styles[baseName]
+      }
+    }
+
+    return undefined
+  }
+
   clearCache(): void {
     this.mergedStyleCache.clear()
   }
