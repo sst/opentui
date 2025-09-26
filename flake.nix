@@ -99,6 +99,9 @@
         # Development shell with OpenTUI
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
+            # OpenTUI library
+            opentui
+            
             # Development tools
             go
             bun
@@ -114,49 +117,24 @@
           shellHook = ''
             echo "OpenTUI development environment"
             echo ""
-            
-            # First, check if we need to build the library
-            if [ ! -f packages/core/src/zig/zig-out/lib/${libName} ]; then
-              echo "Building OpenTUI library..."
-              (cd packages/core && bun install --silent 2>/dev/null || true)
-              (cd packages/core/src/zig && zig build -Doptimize=ReleaseFast) || echo "Warning: Failed to build OpenTUI library"
-            fi
-            
-            # Set up environment variables for Go to find the library
-            export OPENTUI_ROOT="$PWD"
-            export CGO_CFLAGS="-I$OPENTUI_ROOT/packages/go"
-            export CGO_LDFLAGS="-L$OPENTUI_ROOT/packages/core/src/zig/zig-out/lib -lopentui"
-            export LD_LIBRARY_PATH="$OPENTUI_ROOT/packages/core/src/zig/zig-out/lib:$LD_LIBRARY_PATH"
-            ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
-              export DYLD_LIBRARY_PATH="$OPENTUI_ROOT/packages/core/src/zig/zig-out/lib:$DYLD_LIBRARY_PATH"
-            ''}
-            
-            # Create a temporary pkg-config file for the current session
-            export PKG_CONFIG_PATH="$OPENTUI_ROOT:$PKG_CONFIG_PATH"
-            if [ ! -f "$OPENTUI_ROOT/opentui.pc" ]; then
-              cat > "$OPENTUI_ROOT/opentui.pc" <<EOF
-            prefix=$OPENTUI_ROOT
-            libdir=$OPENTUI_ROOT/packages/core/src/zig/zig-out/lib
-            includedir=$OPENTUI_ROOT/packages/go
-            
-            Name: OpenTUI
-            Description: Terminal UI framework
-            Version: 0.1.0
-            Libs: -L\''${libdir} -lopentui
-            Cflags: -I\''${includedir}
-            EOF
-            fi
-            
+            echo "OpenTUI installed from Nix:"
+            echo "  Header: ${opentui}/include/opentui.h"
+            echo "  Library: ${opentui}/lib/${libName}"
+            echo ""
             echo "Available tools:"
             echo "  - Bun (TypeScript/JavaScript runtime & package manager)"
             echo "  - Zig (for native components)"
             echo "  - Go (for Go bindings)"
             echo "  - Git & GitHub CLI"
             echo ""
-            echo "Environment configured for Go development:"
-            echo "  CGO_CFLAGS: $CGO_CFLAGS"
-            echo "  CGO_LDFLAGS: $CGO_LDFLAGS"
-            echo ""
+            
+            # Set up environment variables
+            export PKG_CONFIG_PATH="${opentui}/lib/pkgconfig:$PKG_CONFIG_PATH"
+            export LD_LIBRARY_PATH="${opentui}/lib:$LD_LIBRARY_PATH"
+            ${pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+              export DYLD_LIBRARY_PATH="${opentui}/lib:$DYLD_LIBRARY_PATH"
+            ''}
+            
             echo "To run Go examples:"
             echo "  cd packages/go/examples/basic && go run main.go"
             echo ""
