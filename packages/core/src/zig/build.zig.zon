@@ -1,5 +1,5 @@
 .{
-    .name = .opentui,
+    .name = "opentui",
     .version = "0.1.11",
     .fingerprint = 0x5445027d063f5083,
     .minimum_zig_version = "0.14.1",
