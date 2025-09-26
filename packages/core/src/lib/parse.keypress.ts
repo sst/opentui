@@ -212,6 +212,11 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     key.meta = true
     key.shift = /^[A-Z]$/.test(parts[1]!)
     key.name = parts[1]
+  } else if (s.length === 2 && s[0] === "\x1b" && s[1]! <= "\x1a") {
+    // meta+ctrl+letter (ESC + control character)
+    key.meta = true
+    key.ctrl = true
+    key.name = String.fromCharCode(s.charCodeAt(1) + "a".charCodeAt(0) - 1)
   } else if ((parts = fnKeyRe.exec(s))) {
     const segs = [...s]
 
