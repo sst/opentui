@@ -33,6 +33,7 @@ export function extToFiletype(extension: string): string | undefined {
 }
 
 export function pathToFiletype(path: string): string | undefined {
+  if (typeof path !== "string") return undefined
   const lastDot = path.lastIndexOf(".")
   if (lastDot === -1 || lastDot === path.length - 1) {
     return undefined
