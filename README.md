@@ -40,6 +40,26 @@ Then use in your Go projects:
 go get github.com/sst/opentui/packages/go
 ```
 
+### Nix
+
+OpenTUI can be installed using Nix flakes on Linux and macOS (x86_64 and aarch64):
+
+```bash
+# Run development shell with OpenTUI
+nix develop github:sst/opentui
+
+# Install OpenTUI to your profile
+nix profile install github:sst/opentui
+
+# Add to your flake.nix
+inputs.opentui.url = "github:sst/opentui";
+
+# Use in NixOS configuration
+environment.systemPackages = [ opentui.packages.${system}.default ];
+```
+
+The Nix package includes the OpenTUI headers, libraries, and pkg-config files for system integration.
+
 ## Running Examples (from the repo root)
 
 ### TypeScript Examples
