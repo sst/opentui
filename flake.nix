@@ -33,7 +33,12 @@
           ];
           
           buildPhase = ''
-            # Only build the Zig library (no JS dependencies needed)
+            # Set up Zig cache directory
+            export ZIG_GLOBAL_CACHE_DIR=$TMPDIR/zig-cache
+            export ZIG_LOCAL_CACHE_DIR=$TMPDIR/zig-cache
+            mkdir -p $TMPDIR/zig-cache
+            
+            # Build the Zig library
             cd packages/core/src/zig
             zig build -Doptimize=ReleaseFast
             cd ../../../..
