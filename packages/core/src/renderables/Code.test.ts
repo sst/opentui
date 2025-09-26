@@ -190,3 +190,97 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
 
   expect(mockClient.isHighlighting()).toBe(false)
 })
+
+test("CodeRenderable - fallback when no filetype provided", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello world';",
+    syntaxStyle,
+    // No filetype provided - should trigger fallback
+  })
+
+  await renderOnce()
+
+  expect(codeRenderable.content).toBe("const message = 'hello world';")
+  expect(codeRenderable.filetype).toBeUndefined()
+  expect(codeRenderable.plainText).toBe("const message = 'hello world';")
+})
+
+test("CodeRenderable - fallback when highlighting throws error", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+
+  mockClient.highlightOnce = async () => {
+    throw new Error("Highlighting failed")
+  }
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello world';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  await renderOnce()
+
+  expect(codeRenderable.content).toBe("const message = 'hello world';")
+  expect(codeRenderable.filetype).toBe("javascript")
+  expect(codeRenderable.plainText).toBe("const message = 'hello world';")
+})
+
+test("CodeRenderable - early return when content is empty", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "", // Empty content should trigger early return
+    filetype: "javascript",
+    syntaxStyle,
+  })
+
+  await renderOnce()
+
+  expect(codeRenderable.content).toBe("")
+  expect(codeRenderable.filetype).toBe("javascript")
+  expect(codeRenderable.plainText).toBe("")
+})
+
+test("CodeRenderable - empty content does not trigger highlighting", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  mockClient.resolveHighlightOnce()
+  await renderOnce()
+
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  expect(codeRenderable.content).toBe("const message = 'hello';")
+  expect(codeRenderable.plainText).toBe("const message = 'hello';")
+
+  codeRenderable.content = ""
+
+  expect(mockClient.isHighlighting()).toBe(false)
+  expect(codeRenderable.content).toBe("")
+})

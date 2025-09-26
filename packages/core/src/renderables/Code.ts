@@ -6,14 +6,14 @@ import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRender
 
 export interface CodeOptions extends TextBufferOptions {
   content?: string
-  filetype: string
+  filetype?: string
   syntaxStyle: SyntaxStyle
   treeSitterClient?: TreeSitterClient
 }
 
 export class CodeRenderable extends TextBufferRenderable {
   private _content: string
-  private _filetype: string
+  private _filetype?: string
   private _syntaxStyle: SyntaxStyle
   private _isHighlighting: boolean = false
   private _treeSitterClient: TreeSitterClient
@@ -45,7 +45,7 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
-  get filetype(): string {
+  get filetype(): string | undefined {
     return this._filetype
   }
 
@@ -68,8 +68,14 @@ export class CodeRenderable extends TextBufferRenderable {
   }
 
   private async updateContent(content: string): Promise<void> {
+    if (content.length === 0) return
     if (this._isHighlighting) {
       this._pendingRehighlight = true
+      return
+    }
+
+    if (!this._filetype) {
+      this.fallback(content)
       return
     }
 
@@ -85,11 +91,8 @@ export class CodeRenderable extends TextBufferRenderable {
       this.textBuffer.setStyledText(styledText)
       this.updateTextInfo()
     } catch (error) {
-      // Fallback to unstyled text if highlighting fails
       console.warn("Code highlighting failed, falling back to plain text:", error)
-      const fallbackStyledText = this.createFallbackStyledText(content)
-      this.textBuffer.setStyledText(fallbackStyledText)
-      this.updateTextInfo()
+      this.fallback(content)
     } finally {
       this._isHighlighting = false
 
@@ -100,15 +103,20 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  private fallback(content: string): void {
+    const fallbackStyledText = this.createFallbackStyledText(content)
+    this.textBuffer.setStyledText(fallbackStyledText)
+    this.updateTextInfo()
+  }
+
   private createFallbackStyledText(content: string): StyledText {
-    const defaultStyle = this._syntaxStyle.mergeStyles("default")
     const chunks = [
       {
         __isChunk: true as const,
         text: content,
-        fg: defaultStyle.fg,
-        bg: defaultStyle.bg,
-        attributes: defaultStyle.attributes,
+        fg: this._defaultFg,
+        bg: this._defaultBg,
+        attributes: this._defaultAttributes,
       },
     ]
     return new StyledText(chunks)

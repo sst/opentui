@@ -1,23 +1,14 @@
-export { TreeSitterClient } from "./client"
-export { treeSitterToStyledText } from "../tree-sitter-styled-text"
-export { SyntaxStyle } from "../syntax-style"
-export type {
-  HighlightRange,
-  HighlightResponse,
-  FiletypeParserOptions,
-  BufferState,
-  ParsedBuffer,
-  TreeSitterClientEvents,
-  TreeSitterClientOptions,
-  Edit,
-  PerformanceStats,
-} from "./types"
-export type { StyleDefinition } from "../syntax-style"
-
 import { singleton } from "../singleton"
 import { TreeSitterClient } from "./client"
 import type { TreeSitterClientOptions } from "./types"
 import { getDataPaths } from "../data-paths"
+
+export * from "./client"
+export * from "../tree-sitter-styled-text"
+export * from "../syntax-style"
+export * from "./types"
+export * from "../syntax-style"
+export * from "./resolve-ft"
 
 export function getTreeSitterClient(): TreeSitterClient {
   const dataPathsManager = getDataPaths()
