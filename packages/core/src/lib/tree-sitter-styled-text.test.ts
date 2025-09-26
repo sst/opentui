@@ -194,4 +194,26 @@ function add(a, b) {
     const styledChunks = chunks.filter((chunk) => chunk.fg !== syntaxStyle.mergeStyles("default").fg)
     expect(styledChunks.length).toBeGreaterThan(0) // Some chunks should be styled differently
   })
+
+  test("should work with real tree-sitter output containing dot-delimited groups", async () => {
+    const tsCode = "interface User { name: string; age?: number; }"
+
+    const result = await client.highlightOnce(tsCode, "typescript")
+    expect(result.highlights).toBeDefined()
+
+    const groups = result.highlights!.map(([, , group]) => group)
+    const dotDelimitedGroups = groups.filter((group) => group.includes("."))
+    expect(dotDelimitedGroups.length).toBeGreaterThan(0)
+
+    const styledText = await treeSitterToStyledText(tsCode, "typescript", syntaxStyle, client)
+    const chunks = styledText.chunks
+
+    expect(chunks.length).toBeGreaterThan(1)
+
+    const styledChunks = chunks.filter((chunk) => chunk.fg !== syntaxStyle.mergeStyles("default").fg)
+    expect(styledChunks.length).toBeGreaterThan(0)
+
+    const reconstructed = chunks.map((chunk) => chunk.text).join("")
+    expect(reconstructed).toBe(tsCode)
+  })
 })

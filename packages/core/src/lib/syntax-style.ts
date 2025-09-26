@@ -33,7 +33,13 @@ export class SyntaxStyle {
     const styleDefinition: StyleDefinition = {}
 
     for (const name of styleNames) {
-      const style = this.styles[name]
+      let style = this.styles[name]
+
+      if (!style && name.includes(".")) {
+        const baseName = name.split(".")[0]
+        style = this.styles[baseName]
+      }
+
       if (!style) continue
 
       if (style.fg) styleDefinition.fg = style.fg
