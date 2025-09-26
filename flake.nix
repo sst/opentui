@@ -33,12 +33,8 @@
           ];
           
           buildPhase = ''
-            # Build the core package
-            cd packages/core
-            bun install --frozen-lockfile
-            
-            # Build the Zig library
-            cd src/zig
+            # Only build the Zig library (no JS dependencies needed)
+            cd packages/core/src/zig
             zig build -Doptimize=ReleaseFast
             cd ../../../..
           '';
