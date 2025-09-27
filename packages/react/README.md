@@ -188,6 +188,58 @@ function App() {
 
 **Returns:** An object with `width` and `height` properties representing the current terminal dimensions.
 
+#### `useTimeline(options?)`
+
+Create and manage animations using OpenTUI's timeline system. This hook automatically registers and unregisters the timeline with the animation engine.
+
+```tsx
+import { render, useTimeline } from "@opentui/react"
+import { useEffect, useState } from "react"
+
+function App() {
+  const [width, setWidth] = useState(0)
+
+  const timeline = useTimeline({
+    duration: 2000,
+    loop: false,
+  })
+
+  useEffect(() => {
+    timeline.add(
+      {
+        width,
+      },
+      {
+        width: 50,
+        duration: 2000,
+        ease: "linear",
+        onUpdate: (animation) => {
+          setWidth(animation.targets[0].width)
+        },
+      },
+    )
+  }, [])
+
+  return <box style={{ width, backgroundColor: "#6a5acd" }} />
+}
+```
+
+**Parameters:**
+
+- `options?`: Optional `TimelineOptions` object with properties:
+  - `duration?`: Animation duration in milliseconds (default: 1000)
+  - `loop?`: Whether the timeline should loop (default: false)
+  - `autoplay?`: Whether to automatically start the timeline (default: true)
+  - `onComplete?`: Callback when timeline completes
+  - `onPause?`: Callback when timeline is paused
+
+**Returns:** A `Timeline` instance with methods:
+
+- `add(target, properties, startTime)`: Add animation to timeline
+- `play()`: Start the timeline
+- `pause()`: Pause the timeline
+- `restart()`: Restart the timeline from beginning
+
 ## Components
 
 ### Text Component
@@ -497,6 +549,89 @@ function App() {
   return (
     <box title="Counter" style={{ padding: 2 }}>
       <text fg="#00FF00">{`Count: ${count}`}</text>
+    </box>
+  )
+}
+
+render(<App />)
+```
+
+### System Monitor Animation
+
+```tsx
+import { TextAttributes } from "@opentui/core"
+import { render, useTimeline } from "@opentui/react"
+import { useEffect, useState } from "react"
+
+type Stats = {
+  cpu: number
+  memory: number
+  network: number
+  disk: number
+}
+
+export const App = () => {
+  const [stats, setAnimatedStats] = useState<Stats>({
+    cpu: 0,
+    memory: 0,
+    network: 0,
+    disk: 0,
+  })
+
+  const timeline = useTimeline({
+    duration: 3000,
+    loop: false,
+  })
+
+  useEffect(() => {
+    timeline.add(
+      stats,
+      {
+        cpu: 85,
+        memory: 70,
+        network: 95,
+        disk: 60,
+        duration: 3000,
+        ease: "linear",
+        onUpdate: (values) => {
+          setAnimatedStats({ ...values.targets[0] })
+        },
+      },
+      0,
+    )
+  }, [])
+
+  const statsMap = [
+    { name: "CPU", key: "cpu", color: "#6a5acd" },
+    { name: "Memory", key: "memory", color: "#4682b4" },
+    { name: "Network", key: "network", color: "#20b2aa" },
+    { name: "Disk", key: "disk", color: "#daa520" },
+  ]
+
+  return (
+    <box
+      title="System Monitor"
+      style={{
+        margin: 1,
+        padding: 1,
+        border: true,
+        marginLeft: 2,
+        marginRight: 2,
+        borderStyle: "single",
+        borderColor: "#4a4a4a",
+      }}
+    >
+      {statsMap.map((stat) => (
+        <box key={stat.key}>
+          <box flexDirection="row" justifyContent="space-between">
+            <text>{stat.name}</text>
+            <text attributes={TextAttributes.DIM}>{Math.round(stats[stat.key as keyof Stats])}%</text>
+          </box>
+          <box style={{ backgroundColor: "#333333" }}>
+            <box style={{ width: `${stats[stat.key as keyof Stats]}%`, height: 1, backgroundColor: stat.color }} />
+          </box>
+        </box>
+      ))}
     </box>
   )
 }
