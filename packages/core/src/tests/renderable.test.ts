@@ -265,6 +265,55 @@ describe("Renderable - Child Management", () => {
     expect(parent.findDescendantById("child2")).toBe(child2)
     expect(parent.findDescendantById("text-node")).toBeUndefined()
   })
+
+  test("destroyRecursively destroys nested children recursively", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const grandchild = new TestRenderable(testRenderer, { id: "grandchild" })
+    const greatGrandchild = new TestRenderable(testRenderer, { id: "greatGrandchild" })
+
+    parent.add(child)
+    child.add(grandchild)
+    grandchild.add(greatGrandchild)
+
+    expect(parent.isDestroyed).toBe(false)
+    expect(child.isDestroyed).toBe(false)
+    expect(grandchild.isDestroyed).toBe(false)
+    expect(greatGrandchild.isDestroyed).toBe(false)
+
+    parent.destroyRecursively()
+
+    expect(parent.isDestroyed).toBe(true)
+    expect(child.isDestroyed).toBe(true)
+    expect(grandchild.isDestroyed).toBe(true)
+    expect(greatGrandchild.isDestroyed).toBe(true)
+  })
+
+  test("destroyRecursively handles empty renderable without errors", () => {
+    const parent = new TestRenderable(testRenderer, { id: "empty-parent" })
+
+    expect(parent.isDestroyed).toBe(false)
+    expect(() => parent.destroyRecursively()).not.toThrow()
+    expect(parent.isDestroyed).toBe(true)
+  })
+
+  test("destroyRecursively destroys all children correctly with multiple children", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const child3 = new TestRenderable(testRenderer, { id: "child3" })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+
+    parent.destroyRecursively()
+
+    expect(parent.isDestroyed).toBe(true)
+    expect(child1.isDestroyed).toBe(true)
+    expect(child2.isDestroyed).toBe(true)
+    expect(child3.isDestroyed).toBe(true)
+  })
 })
 
 describe("Renderable - Events", () => {

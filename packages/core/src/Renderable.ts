@@ -1350,7 +1350,9 @@ export abstract class Renderable extends BaseRenderable {
 
   public destroyRecursively(): void {
     // Destroy children first to ensure removal as destroy clears child array
-    for (const child of this._childrenInLayoutOrder) {
+    // Make a copy of the children array to avoid iteration issues when children are destroyed
+    const children = [...this._childrenInLayoutOrder]
+    for (const child of children) {
       child.destroyRecursively()
     }
     this.destroy()
