@@ -88,6 +88,7 @@ export class CodeRenderable extends TextBufferRenderable {
         this._syntaxStyle,
         this._treeSitterClient,
       )
+      if (this.isDestroyed) return
       this.textBuffer.setStyledText(styledText)
       this.updateTextInfo()
     } catch (error) {
@@ -105,6 +106,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
   private fallback(content: string): void {
     const fallbackStyledText = this.createFallbackStyledText(content)
+    if (this.isDestroyed) return
     this.textBuffer.setStyledText(fallbackStyledText)
     this.updateTextInfo()
   }

@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test"
-import { SyntaxStyle } from "./syntax-style"
+import { SyntaxStyle, convertThemeToStyles, type ThemeTokenStyle } from "./syntax-style"
 import { RGBA } from "./RGBA"
 
 describe("SyntaxStyle", () => {
@@ -169,5 +169,229 @@ describe("SyntaxStyle", () => {
     // Should use first part before first dot
     const result = syntaxStyle.mergeStyles("keyword.control.flow")
     expect(result.fg).toEqual(RGBA.fromInts(255, 100, 100, 255))
+  })
+})
+
+describe("Theme Conversion", () => {
+  test("should convert theme definition to flat styles", () => {
+    const theme: ThemeTokenStyle[] = [
+      {
+        scope: ["keyword", "keyword.control"],
+        style: {
+          foreground: "#569cd6",
+          italic: true,
+        },
+      },
+      {
+        scope: ["string"],
+        style: {
+          foreground: "#9ece6a",
+          bold: true,
+        },
+      },
+      {
+        scope: ["comment"],
+        style: {
+          foreground: "#51597d",
+          italic: true,
+          dim: true,
+        },
+      },
+    ]
+
+    const flatStyles = convertThemeToStyles(theme)
+
+    expect(flatStyles.keyword).toBeDefined()
+    expect(flatStyles.keyword.fg).toEqual(RGBA.fromHex("#569cd6"))
+    expect(flatStyles.keyword.italic).toBe(true)
+    expect(flatStyles.keyword.bold).toBeUndefined()
+
+    expect(flatStyles["keyword.control"]).toBeDefined()
+    expect(flatStyles["keyword.control"].fg).toEqual(RGBA.fromHex("#569cd6"))
+    expect(flatStyles["keyword.control"].italic).toBe(true)
+
+    expect(flatStyles.string).toBeDefined()
+    expect(flatStyles.string.fg).toEqual(RGBA.fromHex("#9ece6a"))
+    expect(flatStyles.string.bold).toBe(true)
+    expect(flatStyles.string.italic).toBeUndefined()
+
+    expect(flatStyles.comment).toBeDefined()
+    expect(flatStyles.comment.fg).toEqual(RGBA.fromHex("#51597d"))
+    expect(flatStyles.comment.italic).toBe(true)
+    expect(flatStyles.comment.dim).toBe(true)
+  })
+
+  test("should handle background colors in theme conversion", () => {
+    const theme: ThemeTokenStyle[] = [
+      {
+        scope: ["highlight"],
+        style: {
+          foreground: "#ffffff",
+          background: "#ff0000",
+          bold: true,
+        },
+      },
+    ]
+
+    const flatStyles = convertThemeToStyles(theme)
+
+    expect(flatStyles.highlight.fg).toEqual(RGBA.fromHex("#ffffff"))
+    expect(flatStyles.highlight.bg).toEqual(RGBA.fromHex("#ff0000"))
+    expect(flatStyles.highlight.bold).toBe(true)
+  })
+
+  test("should create SyntaxStyle from theme using fromTheme", () => {
+    const theme: ThemeTokenStyle[] = [
+      {
+        scope: ["keyword"],
+        style: {
+          foreground: "#569cd6",
+          italic: true,
+        },
+      },
+      {
+        scope: ["string", "symbol"],
+        style: {
+          foreground: "#9ece6a",
+        },
+      },
+    ]
+
+    const syntaxStyle = SyntaxStyle.fromTheme(theme)
+
+    const keywordResult = syntaxStyle.mergeStyles("keyword")
+    expect(keywordResult.fg).toEqual(RGBA.fromHex("#569cd6"))
+    expect(keywordResult.attributes).toBeGreaterThan(0) // Should have italic
+
+    const stringResult = syntaxStyle.mergeStyles("string")
+    expect(stringResult.fg).toEqual(RGBA.fromHex("#9ece6a"))
+
+    const symbolResult = syntaxStyle.mergeStyles("symbol")
+    expect(symbolResult.fg).toEqual(RGBA.fromHex("#9ece6a"))
+  })
+
+  test("should work with the provided theme example", () => {
+    const theme: ThemeTokenStyle[] = [
+      {
+        scope: ["prompt"],
+        style: {
+          foreground: "#89ddff",
+        },
+      },
+      {
+        scope: ["comment"],
+        style: {
+          foreground: "#51597d",
+          italic: true,
+        },
+      },
+      {
+        scope: ["comment.documentation"],
+        style: {
+          foreground: "#51597d",
+          italic: true,
+        },
+      },
+      {
+        scope: ["string", "symbol"],
+        style: {
+          foreground: "#9ece6a",
+        },
+      },
+      {
+        scope: ["keyword.type"],
+        style: {
+          foreground: "#0db9d7",
+          bold: true,
+          italic: true,
+        },
+      },
+    ]
+
+    const syntaxStyle = SyntaxStyle.fromTheme(theme)
+
+    const promptResult = syntaxStyle.mergeStyles("prompt")
+    expect(promptResult.fg).toEqual(RGBA.fromHex("#89ddff"))
+
+    const commentResult = syntaxStyle.mergeStyles("comment")
+    expect(commentResult.fg).toEqual(RGBA.fromHex("#51597d"))
+    expect(commentResult.attributes).toBeGreaterThan(0) // Should have italic
+
+    const commentDocResult = syntaxStyle.mergeStyles("comment.documentation")
+    expect(commentDocResult.fg).toEqual(RGBA.fromHex("#51597d"))
+    expect(commentDocResult.attributes).toBeGreaterThan(0) // Should have italic
+
+    const stringResult = syntaxStyle.mergeStyles("string")
+    expect(stringResult.fg).toEqual(RGBA.fromHex("#9ece6a"))
+
+    const symbolResult = syntaxStyle.mergeStyles("symbol")
+    expect(symbolResult.fg).toEqual(RGBA.fromHex("#9ece6a"))
+
+    const keywordTypeResult = syntaxStyle.mergeStyles("keyword.type")
+    expect(keywordTypeResult.fg).toEqual(RGBA.fromHex("#0db9d7"))
+    expect(keywordTypeResult.attributes).toBeGreaterThan(0) // Should have both bold and italic
+  })
+
+  test("should handle fallback for dot-delimited scopes in theme", () => {
+    const theme: ThemeTokenStyle[] = [
+      {
+        scope: ["keyword"],
+        style: {
+          foreground: "#569cd6",
+          italic: true,
+        },
+      },
+    ]
+
+    const syntaxStyle = SyntaxStyle.fromTheme(theme)
+
+    const result = syntaxStyle.mergeStyles("keyword.operator")
+    expect(result.fg).toEqual(RGBA.fromHex("#569cd6"))
+    expect(result.attributes).toBeGreaterThan(0) // Should have italic
+  })
+
+  test("should handle different color input formats", () => {
+    const redRGBA = RGBA.fromInts(255, 0, 0, 255)
+
+    const theme: ThemeTokenStyle[] = [
+      {
+        scope: ["hex-color"],
+        style: {
+          foreground: "#ff0000",
+        },
+      },
+      {
+        scope: ["css-color"],
+        style: {
+          foreground: "red",
+        },
+      },
+      {
+        scope: ["rgba-color"],
+        style: {
+          foreground: redRGBA,
+        },
+      },
+      {
+        scope: ["transparent"],
+        style: {
+          foreground: "transparent",
+        },
+      },
+    ]
+
+    const syntaxStyle = SyntaxStyle.fromTheme(theme)
+
+    const hexResult = syntaxStyle.mergeStyles("hex-color")
+    expect(hexResult.fg).toEqual(RGBA.fromHex("#ff0000"))
+
+    const cssResult = syntaxStyle.mergeStyles("css-color")
+    expect(cssResult.fg).toEqual(RGBA.fromHex("#FF0000")) // CSS red
+
+    const rgbaResult = syntaxStyle.mergeStyles("rgba-color")
+    expect(rgbaResult.fg).toEqual(redRGBA)
+
+    const transparentResult = syntaxStyle.mergeStyles("transparent")
+    expect(transparentResult.fg).toEqual(RGBA.fromValues(0, 0, 0, 0))
   })
 })
