@@ -1298,19 +1298,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.isDestroyed) {
       this.renderNative()
-    }
 
-    const overallFrameTime = performance.now() - overallStart
-    // TODO: Add animationRequestTime to stats
-    this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
+      const overallFrameTime = performance.now() - overallStart
+      // TODO: Add animationRequestTime to stats
+      this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
 
-    if (this.gatherStats) {
-      this.collectStatSample(overallFrameTime)
-    }
+      if (this.gatherStats) {
+        this.collectStatSample(overallFrameTime)
+      }
 
-    if (this._isRunning) {
-      const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
-      this.renderTimeout = setTimeout(() => this.loop(), delay)
+      if (this._isRunning) {
+        const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
+        this.renderTimeout = setTimeout(() => this.loop(), delay)
+      }
     }
     this.rendering = false
     if (this.immediateRerenderRequested) {
