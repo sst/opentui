@@ -1219,7 +1219,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
 
-    this.root.destroyRecursively()
+    try {
+      this.root.destroyRecursively()
+    } catch (e) {
+      console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
+    }
 
     this._keyHandler.destroy()
     this._console.deactivate()
