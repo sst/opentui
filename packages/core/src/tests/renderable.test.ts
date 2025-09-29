@@ -266,21 +266,6 @@ describe("Renderable - Child Management", () => {
     expect(parent.findDescendantById("text-node")).toBeUndefined()
   })
 
-  test("destroyRecursively destroys single direct child", () => {
-    const parent = new TestRenderable(testRenderer, { id: "parent" })
-    const child = new TestRenderable(testRenderer, { id: "child" })
-
-    parent.add(child)
-
-    expect(parent.isDestroyed).toBe(false)
-    expect(child.isDestroyed).toBe(false)
-
-    parent.destroyRecursively()
-
-    expect(parent.isDestroyed).toBe(true)
-    expect(child.isDestroyed).toBe(true)
-  })
-
   test("destroyRecursively destroys nested children recursively", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child = new TestRenderable(testRenderer, { id: "child" })
