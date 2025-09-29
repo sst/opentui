@@ -756,6 +756,43 @@ describe("InputRenderable", () => {
     })
   })
 
+  it("should respect preventDefault from onKeyDown handler", () => {
+    const { input } = createInputRenderable({
+      width: 20,
+      height: 1,
+      value: "initial",
+    })
+
+    let onKeyDownCalled = false
+    let inputEventFired = false
+
+    input.onKeyDown = (key: KeyEvent) => {
+      onKeyDownCalled = true
+      if (key.name === "a") {
+        key.preventDefault()
+      }
+    }
+
+    input.on(InputRenderableEvents.INPUT, () => {
+      inputEventFired = true
+    })
+
+    input.focus()
+
+    mockInput.pressKey("a")
+    expect(onKeyDownCalled).toBe(true)
+    expect(inputEventFired).toBe(false)
+    expect(input.value).toBe("initial")
+
+    onKeyDownCalled = false
+    inputEventFired = false
+
+    mockInput.pressKey("b")
+    expect(onKeyDownCalled).toBe(true)
+    expect(inputEventFired).toBe(true)
+    expect(input.value).toBe("initialb")
+  })
+
   describe("Edge Cases", () => {
     it("should handle non-printable characters", () => {
       const { input } = createInputRenderable({ width: 20, height: 1 })

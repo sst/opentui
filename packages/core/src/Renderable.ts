@@ -361,14 +361,14 @@ export abstract class Renderable extends BaseRenderable {
 
     this.keypressHandler = (key: KeyEvent) => {
       this._keyListeners["down"]?.(key)
-      if (this.handleKeyPress) {
+      if (!key.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(key)
       }
     }
 
     this.pasteHandler = (event: PasteEvent) => {
       this._pasteListener?.call(this, event.text)
-      if (this.handlePaste) {
+      if (!event.defaultPrevented && this.handlePaste) {
         this.handlePaste(event.text)
       }
     }
