@@ -47,7 +47,9 @@ export class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
   private filetypeParsers: Map<string, FiletypeParser> = new Map()
+  private filetypeParserPromises: Map<string, Promise<FiletypeParser | undefined>> = new Map()
   private reusableParsers: Map<string, ReusableParserState> = new Map()
+  private reusableParserPromises: Map<string, Promise<ReusableParserState | undefined>> = new Map()
   private initializePromise: Promise<void> | undefined
   public performance: PerformanceStats
   private dataPath: string | undefined
@@ -154,6 +156,26 @@ export class ParserWorker {
     if (this.filetypeParsers.has(filetype)) {
       return this.filetypeParsers.get(filetype)
     }
+
+    if (this.filetypeParserPromises.has(filetype)) {
+      return this.filetypeParserPromises.get(filetype)
+    }
+
+    const loadingPromise = this.loadFiletypeParser(filetype)
+    this.filetypeParserPromises.set(filetype, loadingPromise)
+
+    try {
+      const result = await loadingPromise
+      if (result) {
+        this.filetypeParsers.set(filetype, result)
+      }
+      return result
+    } finally {
+      this.filetypeParserPromises.delete(filetype)
+    }
+  }
+
+  private async loadFiletypeParser(filetype: string): Promise<FiletypeParser | undefined> {
     const filetypeParserOptions = this.filetypeParserOptions.get(filetype)
     if (!filetypeParserOptions) {
       return undefined
@@ -172,7 +194,6 @@ export class ParserWorker {
       queries,
       language,
     }
-    this.filetypeParsers.set(filetype, filetypeParser)
     return filetypeParser
   }
 
@@ -185,6 +206,25 @@ export class ParserWorker {
       return this.reusableParsers.get(filetype)
     }
 
+    if (this.reusableParserPromises.has(filetype)) {
+      return this.reusableParserPromises.get(filetype)
+    }
+
+    const creationPromise = this.createReusableParser(filetype)
+    this.reusableParserPromises.set(filetype, creationPromise)
+
+    try {
+      const result = await creationPromise
+      if (result) {
+        this.reusableParsers.set(filetype, result)
+      }
+      return result
+    } finally {
+      this.reusableParserPromises.delete(filetype)
+    }
+  }
+
+  private async createReusableParser(filetype: string): Promise<ReusableParserState | undefined> {
     const filetypeParser = await this.resolveFiletypeParser(filetype)
     if (!filetypeParser) {
       return undefined
@@ -197,8 +237,6 @@ export class ParserWorker {
       parser,
       filetypeParser,
     }
-
-    this.reusableParsers.set(filetype, reusableState)
 
     return reusableState
   }

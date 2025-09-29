@@ -250,6 +250,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     if (type === "WORKER_LOG") {
       const { logType, data } = event.data
+      const message = data.join(" ")
+
+      this.emit("worker:log", logType, message)
+
       if (logType === "log") {
         console.log("Worker stdout:", ...data)
       } else if (logType === "error") {

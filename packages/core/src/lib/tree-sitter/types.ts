@@ -36,6 +36,7 @@ export interface TreeSitterClientEvents {
   "highlights:response": [bufferId: number, version: number, highlights: HighlightResponse[]]
   "buffer:initialized": [bufferId: number, hasParser: boolean]
   "buffer:disposed": [bufferId: number]
+  "worker:log": [logType: "log" | "error", message: string]
   error: [error: string, bufferId?: number]
   warning: [warning: string, bufferId?: number]
 }

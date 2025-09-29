@@ -329,6 +329,47 @@ describe("TreeSitterClient", () => {
     expect(result.error).toBeUndefined()
     expect(result.warning).toBeUndefined()
   })
+
+  test("should handle concurrent highlightOnce calls efficiently (no duplicate parser loading)", async () => {
+    const freshClient = new TreeSitterClient({ dataPath })
+    const workerLogs: string[] = []
+
+    freshClient.on("worker:log", (logType, message) => {
+      if (message.includes("Loading from local path:")) {
+        workerLogs.push(message)
+      }
+    })
+
+    try {
+      await freshClient.initialize()
+
+      const jsCode = 'const hello = "world"; function test() { return 42; }'
+      const promises = Array.from({ length: 5 }, () => freshClient.highlightOnce(jsCode, "javascript"))
+
+      const results = await Promise.all(promises)
+
+      for (const result of results) {
+        expect(result.highlights).toBeDefined()
+        expect(result.highlights!.length).toBeGreaterThan(0)
+        expect(result.error).toBeUndefined()
+      }
+
+      const firstResult = results[0]
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i].highlights).toEqual(firstResult.highlights)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      const languageLoadLogs = workerLogs.filter((log) => log.includes("tree-sitter-javascript.wasm"))
+      const queryLoadLogs = workerLogs.filter((log) => log.includes("highlights.scm"))
+
+      expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
+      expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
+    } finally {
+      await freshClient.destroy()
+    }
+  })
 })
 
 describe("TreeSitterClient Edge Cases", () => {
