@@ -111,13 +111,13 @@ import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      return `    {
-      filetype: "${parser.filetype}",
-      queries: {
-        highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],
-      },
-      wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),
-    }`
+      return `      {
+        filetype: "${parser.filetype}",
+        queries: {
+          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],
+        },
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),
+      }`
     })
     .join(",\n")
 
