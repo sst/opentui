@@ -170,6 +170,46 @@ describe("SyntaxStyle", () => {
     const result = syntaxStyle.mergeStyles("keyword.control.flow")
     expect(result.fg).toEqual(RGBA.fromInts(255, 100, 100, 255))
   })
+
+  test("should handle style named 'constructor' correctly", () => {
+    const syntaxStyle = new SyntaxStyle({
+      default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+      constructor: { fg: RGBA.fromInts(255, 200, 100, 255), bold: true },
+    })
+
+    // Should handle "constructor" as a regular style name
+    const result = syntaxStyle.mergeStyles("constructor")
+    expect(result.fg).toEqual(RGBA.fromInts(255, 200, 100, 255))
+    expect(result.attributes).toBeGreaterThan(0) // Should have bold attribute
+
+    // Should also work with dot-delimited constructor styles
+    const fallbackResult = syntaxStyle.mergeStyles("constructor.special")
+    expect(fallbackResult.fg).toEqual(RGBA.fromInts(255, 200, 100, 255))
+    expect(fallbackResult.attributes).toBeGreaterThan(0)
+  })
+
+  test("should not return prototype properties when style is not defined", () => {
+    const syntaxStyle = new SyntaxStyle({
+      default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+      keyword: { fg: RGBA.fromInts(255, 100, 100, 255) },
+    })
+
+    // These are Object.prototype properties that should not be treated as styles
+    const constructorResult = syntaxStyle.mergeStyles("constructor")
+    expect(constructorResult.fg).toBeUndefined()
+    expect(constructorResult.bg).toBeUndefined()
+    expect(constructorResult.attributes).toBe(0)
+
+    const toStringResult = syntaxStyle.mergeStyles("toString")
+    expect(toStringResult.fg).toBeUndefined()
+    expect(toStringResult.bg).toBeUndefined()
+    expect(toStringResult.attributes).toBe(0)
+
+    const hasOwnPropertyResult = syntaxStyle.mergeStyles("hasOwnProperty")
+    expect(hasOwnPropertyResult.fg).toBeUndefined()
+    expect(hasOwnPropertyResult.bg).toBeUndefined()
+    expect(hasOwnPropertyResult.attributes).toBe(0)
+  })
 })
 
 describe("Theme Conversion", () => {
