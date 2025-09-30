@@ -1184,6 +1184,18 @@ export abstract class Renderable extends BaseRenderable {
           this._childrenInZIndexOrder.splice(zIndexIndex, 1)
         }
 
+        if (this._forceLayoutUpdateFor) {
+          const forceIndex = this._forceLayoutUpdateFor.findIndex((obj) => obj.id === id)
+          if (forceIndex !== -1) {
+            this._forceLayoutUpdateFor?.splice(forceIndex, 1)
+          }
+        }
+
+        const newChildIndex = this._newChildren.findIndex((obj) => obj.id === id)
+        if (newChildIndex !== -1) {
+          this._newChildren?.splice(newChildIndex, 1)
+        }
+
         this.childrenPrimarySortDirty = true
       }
     }
