@@ -4,6 +4,7 @@ set -e
 
 LINK_REACT=false
 LINK_SOLID=false
+LINK_DIST=false
 TARGET_ROOT=""
 
 while [[ $# -gt 0 ]]; do
@@ -16,6 +17,10 @@ while [[ $# -gt 0 ]]; do
             LINK_SOLID=true
             shift
             ;;
+        --dist)
+            LINK_DIST=true
+            shift
+            ;;
         *)
             TARGET_ROOT="$1"
             shift
@@ -24,15 +29,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$TARGET_ROOT" ]; then
-    echo "Usage: $0 <target-project-root> [--react] [--solid]"
+    echo "Usage: $0 <target-project-root> [--react] [--solid] [--dist]"
     echo "Example: $0 /path/to/your/project"
     echo "Example: $0 /path/to/your/project --solid"
-    echo "Example: $0 /path/to/your/project --react"
+    echo "Example: $0 /path/to/your/project --react --dist"
     echo ""
     echo "By default, only @opentui/core is linked."
     echo "Options:"
     echo "  --react   Also link @opentui/react"
     echo "  --solid   Also link @opentui/solid and solid-js"
+    echo "  --dist    Link dist directories instead of source packages"
     exit 1
 fi
 
@@ -65,36 +71,46 @@ remove_if_exists() {
 
 mkdir -p "$NODE_MODULES_DIR/@opentui"
 
-echo "Creating symbolic links..."
+# Determine path suffix
+if [ "$LINK_DIST" = true ]; then
+    SUFFIX="/dist"
+    echo "Creating symbolic links (using dist directories)..."
+else
+    SUFFIX=""
+    echo "Creating symbolic links..."
+fi
 
 # Always link core
 remove_if_exists "$NODE_MODULES_DIR/@opentui/core"
-if [ -d "$OPENTUI_ROOT/packages/core" ]; then
-    ln -s "$OPENTUI_ROOT/packages/core" "$NODE_MODULES_DIR/@opentui/core"
+CORE_PATH="$OPENTUI_ROOT/packages/core$SUFFIX"
+if [ -d "$CORE_PATH" ]; then
+    ln -s "$CORE_PATH" "$NODE_MODULES_DIR/@opentui/core"
     echo "✓ Linked @opentui/core"
 else
-    echo "Warning: $OPENTUI_ROOT/packages/core not found"
+    echo "Warning: $CORE_PATH not found"
 fi
 
 # Link React if requested
 if [ "$LINK_REACT" = true ]; then
     remove_if_exists "$NODE_MODULES_DIR/@opentui/react"
-    if [ -d "$OPENTUI_ROOT/packages/react" ]; then
-        ln -s "$OPENTUI_ROOT/packages/react" "$NODE_MODULES_DIR/@opentui/react"
+    REACT_PATH="$OPENTUI_ROOT/packages/react$SUFFIX"
+    if [ -d "$REACT_PATH" ]; then
+        ln -s "$REACT_PATH" "$NODE_MODULES_DIR/@opentui/react"
         echo "✓ Linked @opentui/react"
     else
-        echo "Warning: $OPENTUI_ROOT/packages/react not found"
+        echo "Warning: $REACT_PATH not found"
     fi
 fi
 
 # Link Solid and solid-js if requested
 if [ "$LINK_SOLID" = true ]; then
     remove_if_exists "$NODE_MODULES_DIR/@opentui/solid"
-    if [ -d "$OPENTUI_ROOT/packages/solid" ]; then
-        ln -s "$OPENTUI_ROOT/packages/solid" "$NODE_MODULES_DIR/@opentui/solid"
+    SOLID_PATH="$OPENTUI_ROOT/packages/solid$SUFFIX"
+    if [ -d "$SOLID_PATH" ]; then
+        ln -s "$SOLID_PATH" "$NODE_MODULES_DIR/@opentui/solid"
         echo "✓ Linked @opentui/solid"
     else
-        echo "Warning: $OPENTUI_ROOT/packages/solid not found"
+        echo "Warning: $SOLID_PATH not found"
     fi
 
     remove_if_exists "$NODE_MODULES_DIR/solid-js"
