@@ -98,13 +98,13 @@ Add the update script to your `package.json`:
 
 ```typescript
 import { getTreeSitterClient } from "@opentui/core"
-import { DEFAULT_PARSERS } from "./parsers"
+import { getParsers } from "./parsers"
 
 const client = getTreeSitterClient()
 
 // Register your custom parsers
-for (const parser of DEFAULT_PARSERS) {
-  await client.registerParser(parser)
+for (const parser of getParsers()) {
+  client.addFiletypeParser(parser)
 }
 ```
 

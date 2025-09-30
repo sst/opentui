@@ -11,7 +11,7 @@ import type {
   PerformanceStats,
   SimpleHighlight,
 } from "./types"
-import { getDefaultParsers } from "./default-parsers"
+import { getParsers } from "./default-parsers"
 import parser_path from "./parser.worker" with { type: "file" }
 import { resolve, isAbsolute } from "path"
 
@@ -22,7 +22,7 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
-let DEFAULT_PARSERS: FiletypeParserOptions[] = getDefaultParsers()
+let DEFAULT_PARSERS: FiletypeParserOptions[] = getParsers()
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {

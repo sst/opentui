@@ -204,12 +204,10 @@ The script generates a TypeScript file with all parsers pre-configured:
 
 ```typescript
 import { addDefaultParsers, getTreeSitterClient } from "@opentui/core"
-import { DEFAULT_PARSERS } from "./parsers" // Generated file
+import { getParsers } from "./parsers" // Generated file
 
-// Add all configured parsers
-addDefaultParsers(DEFAULT_PARSERS)
+addDefaultParsers(getParsers())
 
-// Initialize and use
 const client = getTreeSitterClient()
 await client.initialize()
 

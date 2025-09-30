@@ -131,21 +131,17 @@ import { fileURLToPath } from "url"
 
 ${imports}
 
-export function getDefaultParsers(): FiletypeParserOptions[] {
-  return [
-${parserDefinitions},
-  ]
-}
-
 // Cached parsers to avoid re-resolving paths on every call
 let _cachedParsers: FiletypeParserOptions[] | undefined
 
-export const DEFAULT_PARSERS = (() => {
+export function getParsers(): FiletypeParserOptions[] {
   if (!_cachedParsers) {
-    _cachedParsers = getDefaultParsers()
+    _cachedParsers = [
+${parserDefinitions},
+    ]
   }
   return _cachedParsers
-})()
+}
 `
 
   await mkdir(path.dirname(outputPath), { recursive: true })
