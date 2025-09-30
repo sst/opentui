@@ -5,14 +5,14 @@
 Base directory for user-specific configuration files
 
 **Type:** `string`  
-**Default:** _Required_
+**Default:** `""`
 
 ## XDG_DATA_HOME
 
 Base directory for user-specific data files
 
 **Type:** `string`  
-**Default:** _Required_
+**Default:** `""`
 
 ## OTUI_DEBUG_FFI
 
@@ -55,6 +55,20 @@ Disable native rendering. This will not actually output ansi and is useful for d
 
 **Type:** `boolean`  
 **Default:** `false`
+
+## OTUI_USE_ALTERNATE_SCREEN
+
+Whether to use the console. Will not capture console output if set to false.
+
+**Type:** `boolean`  
+**Default:** `true`
+
+## OTUI_OVERRIDE_STDOUT
+
+Override the stdout stream. This is useful for debugging.
+
+**Type:** `boolean`  
+**Default:** `true`
 
 ---
 

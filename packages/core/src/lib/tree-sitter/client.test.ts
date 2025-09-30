@@ -392,7 +392,8 @@ describe("TreeSitterClient Edge Cases", () => {
       initTimeout: 500,
     })
 
-    await expect(client.initialize()).rejects.toThrow("Worker initialization timed out")
+    // Should fail with either a worker error (Bun fails fast) or timeout
+    await expect(client.initialize()).rejects.toThrow(/Worker error|Worker initialization timed out/)
 
     await client.destroy()
   })

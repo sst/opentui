@@ -111,13 +111,13 @@ import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      return `  {
-    filetype: "${parser.filetype}",
-    queries: {
-      highlights: [${safeFiletype}_highlights],
-    },
-    wasm: ${safeFiletype}_language,
-  }`
+      return `      {
+        filetype: "${parser.filetype}",
+        queries: {
+          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],
+        },
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),
+      }`
     })
     .join(",\n")
 
@@ -126,12 +126,22 @@ import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file
 // Last generated: ${new Date().toISOString()}
 
 import type { FiletypeParserOptions } from "./types"
+import { resolve, dirname } from "path"
+import { fileURLToPath } from "url"
 
 ${imports}
 
-export const DEFAULT_PARSERS: FiletypeParserOptions[] = [
+// Cached parsers to avoid re-resolving paths on every call
+let _cachedParsers: FiletypeParserOptions[] | undefined
+
+export function getParsers(): FiletypeParserOptions[] {
+  if (!_cachedParsers) {
+    _cachedParsers = [
 ${parserDefinitions},
-]
+    ]
+  }
+  return _cachedParsers
+}
 `
 
   await mkdir(path.dirname(outputPath), { recursive: true })

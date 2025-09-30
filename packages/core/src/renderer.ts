@@ -35,6 +35,20 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OTUI_USE_ALTERNATE_SCREEN",
+  description: "Whether to use the console. Will not capture console output if set to false.",
+  type: "boolean",
+  default: true,
+})
+
+registerEnvVar({
+  name: "OTUI_OVERRIDE_STDOUT",
+  description: "Override the stdout stream. This is useful for debugging.",
+  type: "boolean",
+  default: true,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -132,6 +146,7 @@ const rendererTracker = singleton("RendererTracker", () => {
       renderers.delete(renderer)
       if (renderers.size === 0) {
         process.stdin.pause()
+
         if (hasSingleton("tree-sitter-client")) {
           getTreeSitterClient().destroy()
           destroySingleton("tree-sitter-client")
@@ -259,7 +274,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
-  private _useAlternateScreen: boolean = true
+  private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
@@ -389,7 +404,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement || true
     this._useMouse = config.useMouse ?? true
-    this._useAlternateScreen = config.useAlternateScreen ?? true
+    this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
@@ -400,7 +415,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.startMemorySnapshotTimer()
     }
 
-    this.stdout.write = this.interceptStdoutWrite.bind(this)
+    if (env.OTUI_OVERRIDE_STDOUT) {
+      this.stdout.write = this.interceptStdoutWrite.bind(this)
+    }
 
     // Handle terminal resize
     process.on("SIGWINCH", this.sigwinchHandler)
