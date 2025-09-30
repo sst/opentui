@@ -101,6 +101,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (!this.worker) {
       return
     }
+
     this.worker.terminate()
     this.worker = undefined
   }
@@ -467,10 +468,24 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       this.initializeResolvers = undefined
     }
 
+    for (const [messageId, callback] of this.messageCallbacks.entries()) {
+      if (typeof callback === "function") {
+        try {
+          callback({ error: "Client destroyed" })
+        } catch (e) {
+          // Ignore errors during cleanup
+        }
+      }
+    }
+    this.messageCallbacks.clear()
+
     clearDebounceScope("tree-sitter-client")
-    this.stopWorker()
-    this.buffers.clear()
+    this.debouncer.clear()
+
     this.editQueues.clear()
+    this.buffers.clear()
+
+    this.stopWorker()
 
     this.initialized = false
     this.initializePromise = undefined

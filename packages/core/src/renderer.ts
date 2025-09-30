@@ -146,7 +146,7 @@ const rendererTracker = singleton("RendererTracker", () => {
       renderers.delete(renderer)
       if (renderers.size === 0) {
         process.stdin.pause()
-        console.log("Removing renderer, destroying tree-sitter-client")
+
         if (hasSingleton("tree-sitter-client")) {
           getTreeSitterClient().destroy()
           destroySingleton("tree-sitter-client")

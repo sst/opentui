@@ -193,12 +193,7 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [
-    packageJson.module,
-    "src/3d.ts",
-    "src/testing.ts",
-    "src/lib/tree-sitter/parser.worker.ts",
-  ]
+  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts", "src/parser.worker.ts"]
 
   spawnSync(
     "bun",
@@ -281,6 +276,11 @@ if (buildLib) {
       import: "./testing.js",
       require: "./testing.js",
       types: "./testing.d.ts",
+    },
+    "./parser.worker": {
+      import: "./parser.worker.js",
+      require: "./parser.worker.js",
+      types: "./parser.worker.d.ts",
     },
   }
 
