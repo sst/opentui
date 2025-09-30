@@ -141,6 +141,86 @@ addDefaultParsers([
 ])
 ```
 
+## Automated Parser Management
+
+You can automate parser downloads and import generation using the `updateAssets` utility. This is especially useful when supporting multiple languages or integrating parser management into your build pipeline.
+
+### Creating a Parser Configuration
+
+Create a `parsers-config.json` file in your project:
+
+```json
+{
+  "parsers": [
+    {
+      "filetype": "python",
+      "language": {
+        "url": "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm"
+      },
+      "queries": {
+        "highlights": ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/master/queries/highlights.scm"]
+      }
+    },
+    {
+      "filetype": "rust",
+      "language": {
+        "url": "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm"
+      },
+      "queries": {
+        "highlights": ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/highlights.scm"]
+      }
+    }
+  ]
+}
+```
+
+### Integrating into Build Pipeline
+
+#### CLI Usage
+
+Add the update script to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "prebuild": "bun node_modules/@opentui/core/lib/tree-sitter/assets/update.ts --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts",
+    "build": "bun build ./src/index.ts"
+  }
+}
+```
+
+#### Programmatic Usage
+
+Or call it programmatically in your build script:
+
+```typescript
+import { updateAssets } from "@opentui/core"
+
+await updateAssets({
+  configPath: "./parsers-config.json",
+  assetsDir: "./src/parsers",
+  outputPath: "./src/parsers.ts",
+})
+```
+
+### Using Generated Parsers
+
+The script generates a TypeScript file with all parsers pre-configured:
+
+```typescript
+import { addDefaultParsers, getTreeSitterClient } from "@opentui/core"
+import { DEFAULT_PARSERS } from "./parsers" // Generated file
+
+// Add all configured parsers
+addDefaultParsers(DEFAULT_PARSERS)
+
+// Initialize and use
+const client = getTreeSitterClient()
+await client.initialize()
+
+const result = await client.highlightOnce('def hello():\n    print("world")', "python")
+```
+
 ## Complete Example: Adding Multiple Languages
 
 ```typescript
@@ -210,7 +290,7 @@ const codeBlock = new CodeRenderable("code-1", {
 
 ## Caching
 
-Parser and query files are automatically cached in the `dataPath` directory to avoid re-downloading them. 
+Parser and query files are automatically cached in the `dataPath` directory to avoid re-downloading them.
 You can customize the cache location when creating a client:
 
 ```typescript

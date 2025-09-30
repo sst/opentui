@@ -3,6 +3,7 @@
 import { readFile, writeFile, mkdir } from "fs/promises"
 import * as path from "path"
 import { DownloadUtils } from "../download-utils"
+import { parseArgs } from "util"
 
 interface ParsersConfig {
   parsers: Array<{
@@ -22,17 +23,35 @@ interface GeneratedParser {
   highlightsPath: string
 }
 
-const ASSETS_DIR = path.resolve(__dirname)
-const CONFIG_PATH = path.resolve(__dirname, "../parsers-config.json")
-const DEFAULT_PARSERS_PATH = path.resolve(__dirname, "../default-parsers.ts")
+export interface UpdateOptions {
+  /** Path to parsers-config.json */
+  configPath: string
+  /** Directory where .wasm and .scm files will be downloaded */
+  assetsDir: string
+  /** Path where the generated TypeScript file will be written */
+  outputPath: string
+}
 
-async function loadConfig(): Promise<ParsersConfig> {
-  const configContent = await readFile(CONFIG_PATH, "utf-8")
+function getDefaultOptions(): UpdateOptions {
+  return {
+    configPath: path.resolve(__dirname, "../parsers-config.json"),
+    assetsDir: path.resolve(__dirname),
+    outputPath: path.resolve(__dirname, "../default-parsers.ts"),
+  }
+}
+
+async function loadConfig(configPath: string): Promise<ParsersConfig> {
+  const configContent = await readFile(configPath, "utf-8")
   return JSON.parse(configContent)
 }
 
-async function downloadLanguage(filetype: string, languageUrl: string): Promise<string> {
-  const languageDir = path.join(ASSETS_DIR, filetype)
+async function downloadLanguage(
+  filetype: string,
+  languageUrl: string,
+  assetsDir: string,
+  outputPath: string,
+): Promise<string> {
+  const languageDir = path.join(assetsDir, filetype)
   const languageFilename = path.basename(languageUrl)
   const languagePath = path.join(languageDir, languageFilename)
 
@@ -42,11 +61,16 @@ async function downloadLanguage(filetype: string, languageUrl: string): Promise<
     throw new Error(`Failed to download language for ${filetype}: ${result.error}`)
   }
 
-  return "./" + path.relative(path.dirname(DEFAULT_PARSERS_PATH), languagePath)
+  return "./" + path.relative(path.dirname(outputPath), languagePath)
 }
 
-async function downloadAndCombineQueries(filetype: string, queryUrls: string[]): Promise<string> {
-  const queriesDir = path.join(ASSETS_DIR, filetype)
+async function downloadAndCombineQueries(
+  filetype: string,
+  queryUrls: string[],
+  assetsDir: string,
+  outputPath: string,
+): Promise<string> {
+  const queriesDir = path.join(assetsDir, filetype)
   const highlightsPath = path.join(queriesDir, "highlights.scm")
 
   const queryContents: string[] = []
@@ -79,10 +103,10 @@ async function downloadAndCombineQueries(filetype: string, queryUrls: string[]):
 
   console.log(`  Combined ${queryContents.length} queries into ${highlightsPath}`)
 
-  return "./" + path.relative(path.dirname(DEFAULT_PARSERS_PATH), highlightsPath)
+  return "./" + path.relative(path.dirname(outputPath), highlightsPath)
 }
 
-async function generateDefaultParsersFile(parsers: GeneratedParser[]): Promise<void> {
+async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath: string): Promise<void> {
   const imports = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
@@ -117,14 +141,21 @@ ${parserDefinitions},
 ]
 `
 
-  await writeFile(DEFAULT_PARSERS_PATH, fileContent, "utf-8")
-  console.log(`Generated default-parsers.ts with ${parsers.length} parsers`)
+  await mkdir(path.dirname(outputPath), { recursive: true })
+  await writeFile(outputPath, fileContent, "utf-8")
+  console.log(`Generated ${path.basename(outputPath)} with ${parsers.length} parsers`)
 }
 
-async function main(): Promise<void> {
+async function main(options?: Partial<UpdateOptions>): Promise<void> {
+  const opts = { ...getDefaultOptions(), ...options }
+
   try {
     console.log("Loading parsers configuration...")
-    const config = await loadConfig()
+    console.log(`  Config: ${opts.configPath}`)
+    console.log(`  Assets Dir: ${opts.assetsDir}`)
+    console.log(`  Output: ${opts.outputPath}`)
+
+    const config = await loadConfig(opts.configPath)
 
     console.log(`Found ${config.parsers.length} parsers to process`)
 
@@ -134,10 +165,15 @@ async function main(): Promise<void> {
       console.log(`Processing ${parser.filetype}...`)
 
       console.log(`  Downloading language...`)
-      const languagePath = await downloadLanguage(parser.filetype, parser.language.url)
+      const languagePath = await downloadLanguage(parser.filetype, parser.language.url, opts.assetsDir, opts.outputPath)
 
       console.log(`  Downloading ${parser.queries.highlights.length} highlight queries...`)
-      const highlightsPath = await downloadAndCombineQueries(parser.filetype, parser.queries.highlights)
+      const highlightsPath = await downloadAndCombineQueries(
+        parser.filetype,
+        parser.queries.highlights,
+        opts.assetsDir,
+        opts.outputPath,
+      )
 
       generatedParsers.push({
         filetype: parser.filetype,
@@ -148,8 +184,8 @@ async function main(): Promise<void> {
       console.log(`  ✓ Completed ${parser.filetype}`)
     }
 
-    console.log("Generating default-parsers.ts...")
-    await generateDefaultParsersFile(generatedParsers)
+    console.log("Generating output file...")
+    await generateDefaultParsersFile(generatedParsers, opts.outputPath)
 
     console.log("✅ Update completed successfully!")
   } catch (error) {
@@ -158,8 +194,54 @@ async function main(): Promise<void> {
   }
 }
 
+function parseCLIArgs(): Partial<UpdateOptions> | null {
+  try {
+    const { values } = parseArgs({
+      args: Bun.argv.slice(2),
+      options: {
+        config: { type: "string" },
+        assets: { type: "string" },
+        output: { type: "string" },
+        help: { type: "boolean" },
+      },
+      strict: true,
+    })
+
+    if (values.help) {
+      console.log(`Usage: bun update.ts [options]
+
+Options:
+  --config <path>  Path to parsers-config.json
+  --assets <path>  Directory where .wasm and .scm files will be downloaded
+  --output <path>  Path where the generated TypeScript file will be written
+  --help           Show this help message
+
+Examples:
+  # Use default paths (for OpenTUI core development)
+  bun update.ts
+
+  # Use custom paths (for application integration)
+  bun update.ts --config ./my-parsers.json --assets ./src/parsers --output ./src/parsers.ts
+`)
+      process.exit(0)
+    }
+
+    const options: Partial<UpdateOptions> = {}
+    if (values.config) options.configPath = path.resolve(values.config)
+    if (values.assets) options.assetsDir = path.resolve(values.assets)
+    if (values.output) options.outputPath = path.resolve(values.output)
+
+    return Object.keys(options).length > 0 ? options : null
+  } catch (error) {
+    console.error(`Error parsing arguments: ${error}`)
+    console.log("Run with --help for usage information")
+    process.exit(1)
+  }
+}
+
 if (import.meta.main) {
-  main()
+  const cliOptions = parseCLIArgs()
+  main(cliOptions || undefined)
 }
 
 export { main as updateAssets }

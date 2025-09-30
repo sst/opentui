@@ -9,6 +9,8 @@ export * from "../syntax-style"
 export * from "./types"
 export * from "../syntax-style"
 export * from "./resolve-ft"
+export type { UpdateOptions } from "./assets/update"
+export { updateAssets } from "./assets/update"
 
 export function getTreeSitterClient(): TreeSitterClient {
   const dataPathsManager = getDataPaths()
