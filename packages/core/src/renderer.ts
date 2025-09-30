@@ -188,7 +188,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
-  private isDestroyed: boolean = false
+  private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -437,6 +437,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.setupInput()
+  }
+
+  public get isDestroyed(): boolean {
+    return this._isDestroyed
   }
 
   public registerLifecyclePass(renderable: Renderable) {
@@ -900,7 +904,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private takeMemorySnapshot(): void {
-    if (this.isDestroyed) return
+    if (this._isDestroyed) return
 
     const memoryUsage = process.memoryUsage()
     this.lastMemorySnapshot = {
@@ -946,7 +950,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleResize(width: number, height: number): void {
-    if (this.isDestroyed) return
+    if (this._isDestroyed) return
     if (this._splitHeight > 0) {
       this.processResize(width, height)
       return
@@ -1146,7 +1150,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private internalStart(): void {
-    if (!this._isRunning && !this.isDestroyed) {
+    if (!this._isRunning && !this._isDestroyed) {
       this._isRunning = true
 
       if (this.memorySnapshotInterval > 0) {
@@ -1172,7 +1176,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private internalStop(): void {
-    if (this.isRunning && !this.isDestroyed) {
+    if (this.isRunning && !this._isDestroyed) {
       this._isRunning = false
 
       if (this.memorySnapshotTimer) {
@@ -1198,8 +1202,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearInterval(this.memorySnapshotTimer)
     }
 
-    if (this.isDestroyed) return
-    this.isDestroyed = true
+    if (this._isDestroyed) return
+    this._isDestroyed = true
 
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1242,7 +1246,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private async loop(): Promise<void> {
-    if (this.rendering || this.isDestroyed) return
+    if (this.rendering || this._isDestroyed) return
     this.rendering = true
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1296,7 +1300,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console.renderToBuffer(this.nextRenderBuffer)
 
-    if (!this.isDestroyed) {
+    if (!this._isDestroyed) {
       this.renderNative()
 
       const overallFrameTime = performance.now() - overallStart

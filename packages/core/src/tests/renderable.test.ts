@@ -3,7 +3,6 @@ import {
   Renderable,
   BaseRenderable,
   RootRenderable,
-  LayoutEvents,
   RenderableEvents,
   type BaseRenderableOptions,
   type RenderableOptions,
@@ -313,6 +312,50 @@ describe("Renderable - Child Management", () => {
     expect(child1.isDestroyed).toBe(true)
     expect(child2.isDestroyed).toBe(true)
     expect(child3.isDestroyed).toBe(true)
+  })
+
+  test("handles immediate add and destroy before render tick", async () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const children = []
+    for (let i = 0; i < 10; i++) {
+      children.push(new TestRenderable(testRenderer, { id: `child-${i}` }))
+    }
+
+    for (const child of children) {
+      parent.add(child)
+    }
+
+    testRenderer.root.add(parent)
+
+    parent.destroyRecursively()
+
+    await renderOnce()
+    expect(parent.getChildrenCount()).toBe(0)
+  })
+
+  test("remove() must clean up _newChildren to prevent accessing destroyed nodes", async () => {
+    // BUG: remove() doesn't clean up _newChildren array
+    // This test FAILS without the fix
+
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+
+    parent.add(child)
+    testRenderer.root.add(parent)
+    await renderOnce()
+
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    parent.add(child2)
+
+    // @ts-ignore - verify it's in _newChildren
+    expect(parent._newChildren.includes(child2)).toBe(true)
+
+    // Destroy child2
+    child2.destroy()
+
+    // FIX: remove() should clean up _newChildren
+    // @ts-ignore
+    expect(parent._newChildren.includes(child2)).toBe(false)
   })
 })
 
