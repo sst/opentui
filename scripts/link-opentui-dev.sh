@@ -5,6 +5,7 @@ set -e
 LINK_REACT=false
 LINK_SOLID=false
 LINK_DIST=false
+COPY_MODE=false
 TARGET_ROOT=""
 
 while [[ $# -gt 0 ]]; do
@@ -21,6 +22,10 @@ while [[ $# -gt 0 ]]; do
             LINK_DIST=true
             shift
             ;;
+        --copy)
+            COPY_MODE=true
+            shift
+            ;;
         *)
             TARGET_ROOT="$1"
             shift
@@ -29,16 +34,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$TARGET_ROOT" ]; then
-    echo "Usage: $0 <target-project-root> [--react] [--solid] [--dist]"
+    echo "Usage: $0 <target-project-root> [--react] [--solid] [--dist] [--copy]"
     echo "Example: $0 /path/to/your/project"
     echo "Example: $0 /path/to/your/project --solid"
     echo "Example: $0 /path/to/your/project --react --dist"
+    echo "Example: $0 /path/to/your/project --dist --copy"
     echo ""
     echo "By default, only @opentui/core is linked."
     echo "Options:"
     echo "  --react   Also link @opentui/react"
     echo "  --solid   Also link @opentui/solid and solid-js"
     echo "  --dist    Link dist directories instead of source packages"
+    echo "  --copy    Copy dist directories instead of symlinking (requires --dist)"
+    exit 1
+fi
+
+if [ "$COPY_MODE" = true ] && [ "$LINK_DIST" = false ]; then
+    echo "Error: --copy requires --dist to be specified"
     exit 1
 fi
 
@@ -69,12 +81,30 @@ remove_if_exists() {
     fi
 }
 
+link_or_copy() {
+    local source_path="$1"
+    local target_path="$2"
+    local package_name="$3"
+    
+    if [ "$COPY_MODE" = true ]; then
+        cp -r "$source_path" "$target_path"
+        echo "✓ Copied $package_name"
+    else
+        ln -s "$source_path" "$target_path"
+        echo "✓ Linked $package_name"
+    fi
+}
+
 mkdir -p "$NODE_MODULES_DIR/@opentui"
 
-# Determine path suffix
+# Determine path suffix and message
 if [ "$LINK_DIST" = true ]; then
     SUFFIX="/dist"
-    echo "Creating symbolic links (using dist directories)..."
+    if [ "$COPY_MODE" = true ]; then
+        echo "Copying dist directories..."
+    else
+        echo "Creating symbolic links (using dist directories)..."
+    fi
 else
     SUFFIX=""
     echo "Creating symbolic links..."
@@ -84,8 +114,7 @@ fi
 remove_if_exists "$NODE_MODULES_DIR/@opentui/core"
 CORE_PATH="$OPENTUI_ROOT/packages/core$SUFFIX"
 if [ -d "$CORE_PATH" ]; then
-    ln -s "$CORE_PATH" "$NODE_MODULES_DIR/@opentui/core"
-    echo "✓ Linked @opentui/core"
+    link_or_copy "$CORE_PATH" "$NODE_MODULES_DIR/@opentui/core" "@opentui/core"
 else
     echo "Warning: $CORE_PATH not found"
 fi
@@ -95,8 +124,7 @@ if [ "$LINK_REACT" = true ]; then
     remove_if_exists "$NODE_MODULES_DIR/@opentui/react"
     REACT_PATH="$OPENTUI_ROOT/packages/react$SUFFIX"
     if [ -d "$REACT_PATH" ]; then
-        ln -s "$REACT_PATH" "$NODE_MODULES_DIR/@opentui/react"
-        echo "✓ Linked @opentui/react"
+        link_or_copy "$REACT_PATH" "$NODE_MODULES_DIR/@opentui/react" "@opentui/react"
     else
         echo "Warning: $REACT_PATH not found"
     fi
@@ -107,21 +135,23 @@ if [ "$LINK_SOLID" = true ]; then
     remove_if_exists "$NODE_MODULES_DIR/@opentui/solid"
     SOLID_PATH="$OPENTUI_ROOT/packages/solid$SUFFIX"
     if [ -d "$SOLID_PATH" ]; then
-        ln -s "$SOLID_PATH" "$NODE_MODULES_DIR/@opentui/solid"
-        echo "✓ Linked @opentui/solid"
+        link_or_copy "$SOLID_PATH" "$NODE_MODULES_DIR/@opentui/solid" "@opentui/solid"
     else
         echo "Warning: $SOLID_PATH not found"
     fi
 
-    remove_if_exists "$NODE_MODULES_DIR/solid-js"
-    if [ -d "$OPENTUI_ROOT/node_modules/solid-js" ]; then
-        ln -s "$OPENTUI_ROOT/node_modules/solid-js" "$NODE_MODULES_DIR/solid-js"
-        echo "✓ Linked solid-js"
-    elif [ -d "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" ]; then
-        ln -s "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" "$NODE_MODULES_DIR/solid-js"
-        echo "✓ Linked solid-js (from packages/solid/node_modules)"
-    else
-        echo "Warning: solid-js not found in OpenTUI node_modules"
+    # Only link solid-js when not in copy mode
+    if [ "$COPY_MODE" = false ]; then
+        remove_if_exists "$NODE_MODULES_DIR/solid-js"
+        if [ -d "$OPENTUI_ROOT/node_modules/solid-js" ]; then
+            ln -s "$OPENTUI_ROOT/node_modules/solid-js" "$NODE_MODULES_DIR/solid-js"
+            echo "✓ Linked solid-js"
+        elif [ -d "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" ]; then
+            ln -s "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" "$NODE_MODULES_DIR/solid-js"
+            echo "✓ Linked solid-js (from packages/solid/node_modules)"
+        else
+            echo "Warning: solid-js not found in OpenTUI node_modules"
+        fi
     fi
 fi
 
