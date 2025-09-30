@@ -1,9 +1,33 @@
-import { describe, test, expect, beforeEach } from "bun:test"
-import { envRegistry, registerEnvVar, env } from "./env.ts"
+import { describe, test, expect, beforeEach, afterEach } from "bun:test"
+import { envRegistry, registerEnvVar, env, clearEnvCache } from "./env.ts"
 
-// Clear registry before each test
+// Backup and restore registry to avoid interfering with module-level registrations
+let registryBackup: Record<string, any> = {}
+
 beforeEach(() => {
-  Object.keys(envRegistry).forEach((key) => delete envRegistry[key])
+  registryBackup = { ...envRegistry }
+
+  clearEnvCache()
+
+  Object.keys(process.env).forEach((key) => {
+    if (key.startsWith("TEST_")) {
+      delete process.env[key]
+    }
+  })
+})
+
+afterEach(() => {
+  Object.keys(envRegistry).forEach((key) => {
+    if (key.startsWith("TEST_") && !(key in registryBackup)) {
+      delete envRegistry[key]
+    }
+  })
+
+  Object.keys(process.env).forEach((key) => {
+    if (key.startsWith("TEST_")) {
+      delete process.env[key]
+    }
+  })
 })
 
 describe("env registry", () => {

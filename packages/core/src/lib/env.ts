@@ -38,7 +38,7 @@ export interface EnvVarConfig {
   type?: "string" | "boolean" | "number"
 }
 
-export const envRegistry: Record<string, EnvVarConfig> = {}
+export const envRegistry: Record<string, EnvVarConfig> = singleton("env-registry", () => ({}))
 
 export function registerEnvVar(config: EnvVarConfig): void {
   const existing = envRegistry[config.name]
@@ -92,7 +92,7 @@ function parseEnvValue(config: EnvVarConfig): string | boolean | number {
 class EnvStore {
   private parsedValues: Map<string, string | boolean | number> = new Map()
 
-  get(key: string): string | boolean | number {
+  get(key: string): any {
     if (this.parsedValues.has(key)) {
       return this.parsedValues.get(key)!
     }
@@ -113,9 +113,17 @@ class EnvStore {
   has(key: string): boolean {
     return key in envRegistry
   }
+
+  clearCache(): void {
+    this.parsedValues.clear()
+  }
 }
 
 const envStore = singleton("env-store", () => new EnvStore())
+
+export function clearEnvCache(): void {
+  envStore.clearCache()
+}
 
 export function generateEnvMarkdown(): string {
   const configs = Object.values(envRegistry)
@@ -172,7 +180,7 @@ export function generateEnvColored(): string {
   return output
 }
 
-export const env = new Proxy({} as Record<string, string | boolean | number>, {
+export const env = new Proxy({} as Record<string, any>, {
   get(target, prop: string) {
     if (typeof prop !== "string") {
       return undefined

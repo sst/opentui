@@ -521,6 +521,77 @@ describe("TextRenderable Selection", () => {
       expect(finalGlobalSelectedText).toContain("Selected renderables: 3/5 | Container: statusBox")
     })
 
+    it("should automatically update selection when text node content changes with clear and add", async () => {
+      const { text: statusText } = await createTextRenderable(currentRenderer, {
+        content: "",
+        selectable: true,
+        fg: "#f0f6fc",
+        top: 0,
+        wrap: false,
+      })
+
+      const statusNode = new TextNodeRenderable({})
+      statusNode.add("Selected 5 chars:")
+      statusText.add(statusNode)
+
+      const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
+        content: "",
+        selectable: true,
+        fg: "#7dd3fc",
+        top: 1,
+        wrap: false,
+      })
+
+      const selectionNode = new TextNodeRenderable({})
+      selectionNode.add('"Hello"')
+      selectionStartText.add(selectionNode)
+
+      const { text: debugText } = await createTextRenderable(currentRenderer, {
+        content: "",
+        selectable: true,
+        fg: "#e6edf3",
+        top: 2,
+        wrap: false,
+      })
+
+      const debugNode = new TextNodeRenderable({})
+      debugNode.add("Selected renderables: 2/5")
+      debugText.add(debugNode)
+
+      await currentMouse.drag(0, 0, 50, 5)
+      await renderOnce()
+
+      expect(statusText.getSelectedText()).toBe("Selected 5 chars:")
+      expect(selectionStartText.getSelectedText()).toBe('"Hello"')
+      expect(debugText.getSelectedText()).toBe("Selected renderables: 2/5")
+
+      // Clear and add new content to the selection node
+      selectionNode.clear()
+      selectionNode.add('"Hello World Extended Selection"')
+      await renderOnce()
+
+      expect(statusText.getSelectedText()).toBe("Selected 5 chars:")
+      expect(selectionStartText.getSelectedText()).toBe('"Hello World Extended Selection"')
+      expect(debugText.getSelectedText()).toBe("Selected renderables: 2/5")
+
+      const updatedGlobalSelectedText = currentRenderer.getSelection()?.getSelectedText()
+
+      expect(updatedGlobalSelectedText).toContain('"Hello World Extended Selection"')
+      expect(updatedGlobalSelectedText).toContain("Selected 5 chars:")
+      expect(updatedGlobalSelectedText).toContain("Selected renderables: 2/5")
+
+      // Clear and add new content to the debug node
+      debugNode.clear()
+      debugNode.add("Selected renderables: 3/5 | Container: statusBox")
+      await renderOnce()
+
+      expect(debugText.getSelectedText()).toBe("Selected renderables: 3/5 | Container: statusBox")
+
+      const finalGlobalSelectedText = currentRenderer.getSelection()?.getSelectedText()
+
+      expect(finalGlobalSelectedText).toContain("Selected renderables: 3/5 | Container: statusBox")
+    })
+
     it("should handle selection that starts above box and ends below/right of box", async () => {
       const { text: statusText } = await createTextRenderable(currentRenderer, {
         content: "Status: Selection active",
@@ -1566,6 +1637,25 @@ describe("TextRenderable Selection", () => {
       // The frames should be different as word wrapping preserves word boundaries
       expect(charFrame).not.toBe(wordFrame)
       expect(wordFrame).toMatchSnapshot()
+    })
+
+    it("should correctly wrap text when updating content via text.content", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Short text",
+        wrapMode: "word",
+        left: 0,
+        top: 0,
+      })
+
+      await renderOnce()
+      const initialFrame = captureFrame()
+      expect(initialFrame).toMatchSnapshot()
+
+      text.content = "This is a much longer text that should definitely wrap to multiple lines"
+
+      await renderOnce()
+      const updatedFrame = captureFrame()
+      expect(updatedFrame).toMatchSnapshot()
     })
   })
 })

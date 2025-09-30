@@ -1,5 +1,19 @@
 # Environment Variables
 
+## XDG_CONFIG_HOME
+
+Base directory for user-specific configuration files
+
+**Type:** `string`  
+**Default:** _Required_
+
+## XDG_DATA_HOME
+
+Base directory for user-specific data files
+
+**Type:** `string`  
+**Default:** _Required_
+
 ## OTUI_DEBUG_FFI
 
 Enable debug logging for the FFI bindings.

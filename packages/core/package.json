@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "jimp": "1.6.0",
+    "web-tree-sitter": "^0.26.0",
     "yoga-layout": "3.2.1"
   },
   "optionalDependencies": {

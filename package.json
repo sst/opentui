@@ -5,7 +5,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build && cd ../vue && bun run build",
+    "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build",
     "build:go": "cd packages/go && go build ./...",
     "pre-publish": "bun scripts/pre-publish.ts",
     "publish": "bun run pre-publish && bun run publish:core && bun run publish:react && bun run publish:solid && bun run publish:vue",

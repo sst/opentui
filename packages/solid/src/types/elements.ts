@@ -4,6 +4,8 @@ import type {
   BaseRenderable,
   BoxOptions,
   BoxRenderable,
+  CodeOptions,
+  CodeRenderable,
   InputRenderable,
   InputRenderableOptions,
   RenderableOptions,
@@ -72,7 +74,9 @@ export type GetNonStyledProperties<TConstructor> =
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>
           ? NonStyledProps | "placeholder" | "value"
-          : NonStyledProps
+          : TConstructor extends RenderableConstructor<CodeRenderable>
+            ? NonStyledProps | "content" | "filetype" | "syntaxStyle" | "treeSitterClient"
+            : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -129,6 +133,8 @@ export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, Sc
   stickyScroll?: boolean
   stickyStart?: "bottom" | "top" | "left" | "right"
 }
+
+export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 // ============================================================================
 // Extended/Dynamic Component System

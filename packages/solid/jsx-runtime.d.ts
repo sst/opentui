@@ -2,6 +2,7 @@ import { Renderable } from "@opentui/core"
 import type {
   AsciiFontProps,
   BoxProps,
+  CodeProps,
   ExtendedIntrinsicElements,
   InputProps,
   OpenTUIComponents,
@@ -28,6 +29,7 @@ declare namespace JSX {
     ascii_font: AsciiFontProps
     tab_select: TabSelectProps
     scrollbox: ScrollBoxProps
+    code: CodeProps
 
     b: SpanProps
     strong: SpanProps

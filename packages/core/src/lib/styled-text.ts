@@ -27,79 +27,9 @@ export class StyledText {
   [BrandedStyledText] = true
 
   public chunks: TextChunk[]
-  public textRenderable?: TextRenderable
 
   constructor(chunks: TextChunk[]) {
     this.chunks = chunks
-  }
-
-  public mount(textRenderable: TextRenderable): void {
-    this.textRenderable = textRenderable
-  }
-
-  /**
-   * @deprecated: Use textRenderable.insertChunk instead
-   */
-  insert(chunk: TextChunk, index?: number): StyledText {
-    const originalLength = this.chunks.length
-    if (this.textRenderable) {
-      this.textRenderable.insertChunk(chunk, index ?? originalLength)
-
-      let newChunks: TextChunk[]
-
-      if (index === undefined || index === originalLength) {
-        newChunks = [...this.chunks, chunk]
-      } else {
-        newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index)]
-      }
-      this.chunks = newChunks
-    }
-    return this
-  }
-
-  /**
-   * @deprecated: Use textRenderable.removeChunk instead
-   */
-  remove(chunk: TextChunk): StyledText {
-    if (this.textRenderable) {
-      this.textRenderable.removeChunk(chunk)
-
-      const originalLength = this.chunks.length
-      const index = this.chunks.indexOf(chunk)
-      if (index === -1) return this
-
-      let newChunks: TextChunk[]
-
-      if (index === originalLength - 1) {
-        newChunks = this.chunks.slice(0, -1)
-      } else {
-        newChunks = [...this.chunks.slice(0, index), ...this.chunks.slice(index + 1)]
-      }
-      this.chunks = newChunks
-    }
-    return this
-  }
-
-  /**
-   * @deprecated: Use textRenderable.replaceChunk instead
-   */
-  replace(chunk: TextChunk, oldChunk: TextChunk): StyledText {
-    if (this.textRenderable) {
-      this.textRenderable.replaceChunk(chunk, oldChunk)
-
-      const index = this.chunks.indexOf(oldChunk)
-      if (index === -1) return this
-
-      let newChunks: TextChunk[]
-
-      if (index === this.chunks.length - 1) {
-        newChunks = [...this.chunks.slice(0, -1), chunk]
-      } else {
-        newChunks = [...this.chunks.slice(0, index), chunk, ...this.chunks.slice(index + 1)]
-      }
-      this.chunks = newChunks
-    }
-    return this
   }
 }
 

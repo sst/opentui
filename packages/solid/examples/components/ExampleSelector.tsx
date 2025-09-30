@@ -3,6 +3,7 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
+import { CodeDemo } from "./code-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
@@ -12,6 +13,11 @@ import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
 
 const EXAMPLES = [
+  {
+    name: "Code Syntax Highlighting Demo",
+    description: "JavaScript syntax highlighting using TreeSitter with <code> component",
+    scene: "code-demo",
+  },
   {
     name: "Text Selection Demo",
     description: "Text selection across multiple renderables with mouse drag",
@@ -114,6 +120,9 @@ const ExampleSelector = () => {
 
   return (
     <Switch>
+      <Match when={selectedScene() === "code-demo"}>
+        <CodeDemo />
+      </Match>
       <Match when={selectedScene() === "split-mode"}>
         <SplitModeDemo />
       </Match>
@@ -149,8 +158,6 @@ const ExampleSelector = () => {
           <box alignItems="center">
             <ascii_font
               style={{
-                width: titleWidth,
-                height: titleHeight,
                 font: titleFont,
               }}
               text={titleText}

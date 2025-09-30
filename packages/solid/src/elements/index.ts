@@ -1,6 +1,7 @@
 import {
   ASCIIFontRenderable,
   BoxRenderable,
+  CodeRenderable,
   InputRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
@@ -80,6 +81,7 @@ export const baseComponents = {
   ascii_font: ASCIIFontRenderable,
   tab_select: TabSelectRenderable,
   scrollbox: ScrollBoxRenderable,
+  code: CodeRenderable,
 
   span: SpanRenderable,
   strong: BoldSpanRenderable,
