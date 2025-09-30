@@ -17,20 +17,20 @@ let _cachedParsers: FiletypeParserOptions[] | undefined
 export function getParsers(): FiletypeParserOptions[] {
   if (!_cachedParsers) {
     _cachedParsers = [
-    {
-      filetype: "javascript",
-      queries: {
-        highlights: [resolve(dirname(fileURLToPath(import.meta.url)), javascript_highlights)],
+      {
+        filetype: "javascript",
+        queries: {
+          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), javascript_highlights)],
+        },
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), javascript_language),
       },
-      wasm: resolve(dirname(fileURLToPath(import.meta.url)), javascript_language),
-    },
-    {
-      filetype: "typescript",
-      queries: {
-        highlights: [resolve(dirname(fileURLToPath(import.meta.url)), typescript_highlights)],
+      {
+        filetype: "typescript",
+        queries: {
+          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), typescript_highlights)],
+        },
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), typescript_language),
       },
-      wasm: resolve(dirname(fileURLToPath(import.meta.url)), typescript_language),
-    },
     ]
   }
   return _cachedParsers
