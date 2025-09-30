@@ -5,7 +5,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build",
+    "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build && cd ../svelte && bun run build",
     "build:go": "cd packages/go && go build ./...",
     "pre-publish": "bun scripts/pre-publish.ts",
     "publish": "bun run pre-publish && bun run publish:core && bun run publish:react && bun run publish:solid",
@@ -15,8 +15,10 @@
     "publish:vue": "cd packages/vue && bun run publish",
     "prepare-release": "bun scripts/prepare-release.ts",
     "test:go": "cd packages/go && go test -v . && go build ./examples/...",
+    "build:svelte": "cd packages/svelte && bun run build",
+    "test:svelte": "cd packages/svelte && bun run test",
     "prettier:write": "prettier --write .",
-    "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --if-present test"
+    "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/svelte' --if-present test"
   },
   "devDependencies": {
     "prettier": "3.6.2"

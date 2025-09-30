@@ -1,0 +1,44 @@
+{
+  "name": "@opentui/svelte",
+  "version": "0.1.25",
+  "description": "Svelte renderer for OpenTUI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sst/opentui",
+    "directory": "packages/svelte"
+  },
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "main": "index.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "publish": "bun scripts/publish.ts",
+    "compile": "bun scripts/compile-one.ts",
+    "start": "bun --conditions=browser",
+    "dev": "bun --conditions=browser --watch",
+    "test": "bun test"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./preload": {
+      "import": "./scripts/preload.ts"
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "workspace:*",
+    "svelte": "^5.39.7"
+  },
+  "peerDependencies": {
+    "svelte": "^5.39.7"
+  }
+}
