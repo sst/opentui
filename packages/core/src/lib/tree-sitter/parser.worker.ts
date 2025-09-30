@@ -662,3 +662,5 @@ self.onmessage = async (e: MessageEvent) => {
     })
   }
 }
+
+export default __filename

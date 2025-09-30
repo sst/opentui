@@ -193,7 +193,12 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
+  const entryPoints: string[] = [
+    packageJson.module,
+    "src/3d.ts",
+    "src/testing.ts",
+    "src/lib/tree-sitter/parser.worker.ts",
+  ]
 
   spawnSync(
     "bun",
@@ -216,7 +221,7 @@ if (buildLib) {
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js"]
+  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/parser.worker.js"]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {

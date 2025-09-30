@@ -11,7 +11,9 @@ import type {
   PerformanceStats,
   SimpleHighlight,
 } from "./types"
-import { DEFAULT_PARSERS as DEFAULT_PARSERS_DATA } from "./default-parsers"
+import { getDefaultParsers } from "./default-parsers"
+import parser_path from "./parser.worker" with { type: "file" }
+import { resolve, isAbsolute } from "path"
 
 interface EditQueueItem {
   edits: Edit[]
@@ -20,7 +22,7 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
-let DEFAULT_PARSERS: FiletypeParserOptions[] = DEFAULT_PARSERS_DATA
+let DEFAULT_PARSERS: FiletypeParserOptions[] = getDefaultParsers()
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
@@ -74,7 +76,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
-    const workerPath = this.options.workerPath || new URL("./parser.worker.ts", import.meta.url)
+    const workerPath = this.options.workerPath || parser_path
     this.worker = new Worker(workerPath)
 
     // @ts-ignore - onmessage exists
@@ -149,7 +151,23 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions): void {
-    this.worker?.postMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser })
+    // Resolve relative paths to absolute paths before sending to worker
+    // But skip URLs (http:// or https://)
+    const isUrl = (path: string) => path.startsWith("http://") || path.startsWith("https://")
+
+    const resolvedParser: FiletypeParserOptions = {
+      ...filetypeParser,
+      wasm:
+        isUrl(filetypeParser.wasm) || isAbsolute(filetypeParser.wasm)
+          ? filetypeParser.wasm
+          : resolve(filetypeParser.wasm),
+      queries: {
+        highlights: filetypeParser.queries.highlights.map((path) =>
+          isUrl(path) || isAbsolute(path) ? path : resolve(path),
+        ),
+      },
+    }
+    this.worker?.postMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: resolvedParser })
   }
 
   public async getPerformance(): Promise<PerformanceStats> {
