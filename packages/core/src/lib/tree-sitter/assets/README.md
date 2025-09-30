@@ -70,9 +70,7 @@ Create a `parsers-config.json` file in your project with the structure:
   "parsers": [
     {
       "filetype": "python",
-      "language": {
-        "url": "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.20.4/tree-sitter-python.wasm"
-      },
+      "wasm": "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.20.4/tree-sitter-python.wasm",
       "queries": {
         "highlights": [
           "https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/refs/heads/master/queries/highlights.scm"

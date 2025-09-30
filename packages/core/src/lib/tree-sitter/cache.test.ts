@@ -33,14 +33,14 @@ describe("TreeSitterClient Caching", () => {
         queries: {
           highlights: [`${BASE_URL}/javascript/highlights.scm`],
         },
-        language: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+        wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
       },
       {
         filetype: "typescript",
         queries: {
           highlights: [`${BASE_URL}/typescript/highlights.scm`],
         },
-        language: `${BASE_URL}/typescript/tree-sitter-typescript.wasm`,
+        wasm: `${BASE_URL}/typescript/tree-sitter-typescript.wasm`,
       },
     ]
 

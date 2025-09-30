@@ -15,7 +15,7 @@ import { addDefaultParsers, getTreeSitterClient } from "@opentui/core"
 addDefaultParsers([
   {
     filetype: "python",
-    language: "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
+    wasm: "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
     queries: {
       highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/master/queries/highlights.scm"],
     },
@@ -44,7 +44,7 @@ await client.initialize()
 // Add Rust parser to this specific client
 client.addFiletypeParser({
   filetype: "rust",
-  language: "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm",
+  wasm: "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm",
   queries: {
     highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/highlights.scm"],
   },
@@ -62,7 +62,7 @@ The `FiletypeParserOptions` interface defines how to configure a parser:
 ```typescript
 interface FiletypeParserOptions {
   filetype: string // The filetype identifier (e.g., "python", "rust")
-  language: string // URL or local file path to the .wasm parser file
+  wasm: string // URL or local file path to the .wasm parser file
   queries: {
     highlights: string[] // Array of URLs or local file paths to .scm query files
   }
@@ -107,8 +107,7 @@ Some languages require multiple query files. For example, TypeScript uses JavaSc
 addDefaultParsers([
   {
     filetype: "typescript",
-    language:
-      "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
+    wasm: "https://github.com/tree-sitter/tree-sitter-typescript/releases/download/v0.23.2/tree-sitter-typescript.wasm",
     queries: {
       highlights: [
         // Base ECMAScript/JavaScript queries
@@ -133,7 +132,7 @@ import pythonHighlights from "./queries/python/highlights.scm" with { type: "fil
 addDefaultParsers([
   {
     filetype: "python",
-    language: pythonWasm,
+    wasm: pythonWasm,
     queries: {
       highlights: [pythonHighlights],
     },
@@ -154,18 +153,14 @@ Create a `parsers-config.json` file in your project:
   "parsers": [
     {
       "filetype": "python",
-      "language": {
-        "url": "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm"
-      },
+      "wasm": "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
       "queries": {
         "highlights": ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/master/queries/highlights.scm"]
       }
     },
     {
       "filetype": "rust",
-      "language": {
-        "url": "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm"
-      },
+      "wasm": "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm",
       "queries": {
         "highlights": ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/highlights.scm"]
       }
@@ -230,21 +225,21 @@ import { addDefaultParsers, getTreeSitterClient, SyntaxStyle } from "@opentui/co
 addDefaultParsers([
   {
     filetype: "python",
-    language: "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
+    wasm: "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
     queries: {
       highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/master/queries/highlights.scm"],
     },
   },
   {
     filetype: "rust",
-    language: "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm",
+    wasm: "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm",
     queries: {
       highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/highlights.scm"],
     },
   },
   {
     filetype: "go",
-    language: "https://github.com/tree-sitter/tree-sitter-go/releases/download/v0.23.4/tree-sitter-go.wasm",
+    wasm: "https://github.com/tree-sitter/tree-sitter-go/releases/download/v0.23.4/tree-sitter-go.wasm",
     queries: {
       highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-go/master/queries/highlights.scm"],
     },

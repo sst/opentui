@@ -4,17 +4,10 @@ import { readFile, writeFile, mkdir } from "fs/promises"
 import * as path from "path"
 import { DownloadUtils } from "../download-utils"
 import { parseArgs } from "util"
+import type { FiletypeParserOptions } from "../types"
 
 interface ParsersConfig {
-  parsers: Array<{
-    filetype: string
-    language: {
-      url: string
-    }
-    queries: {
-      highlights: string[]
-    }
-  }>
+  parsers: FiletypeParserOptions[]
 }
 
 interface GeneratedParser {
@@ -123,7 +116,7 @@ import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file
     queries: {
       highlights: [${safeFiletype}_highlights],
     },
-    language: ${safeFiletype}_language,
+    wasm: ${safeFiletype}_language,
   }`
     })
     .join(",\n")
@@ -165,7 +158,7 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
       console.log(`Processing ${parser.filetype}...`)
 
       console.log(`  Downloading language...`)
-      const languagePath = await downloadLanguage(parser.filetype, parser.language.url, opts.assetsDir, opts.outputPath)
+      const languagePath = await downloadLanguage(parser.filetype, parser.wasm, opts.assetsDir, opts.outputPath)
 
       console.log(`  Downloading ${parser.queries.highlights.length} highlight queries...`)
       const highlightsPath = await downloadAndCombineQueries(

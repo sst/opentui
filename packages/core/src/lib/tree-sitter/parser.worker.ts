@@ -2,7 +2,13 @@ import { Parser, Query, Tree, Language } from "web-tree-sitter"
 import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir } from "fs/promises"
 import * as path from "path"
-import type { HighlightRange, HighlightResponse, SimpleHighlight } from "./types"
+import type {
+  HighlightRange,
+  HighlightResponse,
+  SimpleHighlight,
+  FiletypeParserOptions,
+  PerformanceStats,
+} from "./types"
 import { DownloadUtils } from "./download-utils"
 
 const self = globalThis
@@ -15,27 +21,12 @@ type ParserState = {
   }
 }
 
-interface FiletypeParserOptions {
-  filetype: string
-  queries: {
-    highlights: string[]
-  }
-  language: string
-}
-
 interface FiletypeParser {
   filetype: string
   queries: {
     highlights: Query
   }
   language: Language
-}
-
-interface PerformanceStats {
-  averageParseTime: number
-  parseTimes: number[]
-  averageQueryTime: number
-  queryTimes: number[]
 }
 
 interface ReusableParserState {
@@ -180,7 +171,7 @@ export class ParserWorker {
     if (!filetypeParserOptions) {
       return undefined
     }
-    const language = await this.loadLanguage(filetypeParserOptions.language)
+    const language = await this.loadLanguage(filetypeParserOptions.wasm)
     if (!language) {
       return undefined
     }

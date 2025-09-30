@@ -313,8 +313,7 @@ describe("TreeSitterClient", () => {
       queries: {
         highlights: [testQueryPath],
       },
-      language:
-        "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
+      wasm: "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
     })
 
     await client.initialize()

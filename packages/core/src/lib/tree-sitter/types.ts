@@ -17,7 +17,7 @@ export interface FiletypeParserOptions {
   queries: {
     highlights: string[] // Array of URLs or local file paths to fetch highlight queries from
   }
-  language: string // URL or local file path to the language parser WASM file
+  wasm: string // URL or local file path to the language parser WASM file
 }
 
 export interface BufferState {
