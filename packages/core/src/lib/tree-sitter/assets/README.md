@@ -30,7 +30,13 @@ bun packages/core/src/lib/tree-sitter/assets/update.ts
 
 ## Adding New Parsers
 
-To add support for a new language:
+### For Application Developers
+
+If you're using OpenTUI in your application and want to add support for additional languages, see the [Tree-Sitter guide](../../../docs/tree-sitter.md).
+
+### For OpenTUI Core Developers
+
+To add a new default parser to OpenTUI Core:
 
 1. **Update Configuration**: Add the new parser to `../parsers-config.json`
 2. **Run Update Script**: Execute `bun update.ts` to download assets and regenerate imports
