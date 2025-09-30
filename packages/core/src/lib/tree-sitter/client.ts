@@ -57,6 +57,18 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.startWorker()
   }
 
+  private emitError(error: string, bufferId?: number): void {
+    if (this.listenerCount("error") > 0) {
+      this.emit("error", error, bufferId)
+    }
+  }
+
+  private emitWarning(warning: string, bufferId?: number): void {
+    if (this.listenerCount("warning") > 0) {
+      this.emit("warning", warning, bufferId)
+    }
+  }
+
   private startWorker() {
     if (this.worker) {
       return
@@ -67,6 +79,20 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     // @ts-ignore - onmessage exists
     this.worker.onmessage = this.handleWorkerMessage.bind(this)
+
+    // @ts-ignore - onerror exists
+    this.worker.onerror = (error: ErrorEvent) => {
+      console.error("TreeSitter worker error:", error.message)
+
+      // If we're still initializing, reject the init promise
+      if (this.initializeResolvers) {
+        clearTimeout(this.initializeResolvers.timeoutId)
+        this.initializeResolvers.reject(new Error(`Worker error: ${error.message}`))
+        this.initializeResolvers = undefined
+      }
+
+      this.emitError(`Worker error: ${error.message}`)
+    }
   }
 
   private stopWorker() {
@@ -95,8 +121,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.initializePromise = new Promise((resolve, reject) => {
       const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
+        const error = new Error("Worker initialization timed out")
+        console.error("TreeSitter client:", error.message)
         this.initializeResolvers = undefined
-        reject(new Error("Worker initialization timed out"))
+        reject(error)
       }, timeoutMs)
 
       this.initializeResolvers = { resolve, reject, timeoutId }
@@ -173,6 +201,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       if (this.initializeResolvers) {
         clearTimeout(this.initializeResolvers.timeoutId)
         if (error) {
+          console.error("TreeSitter client initialization failed:", error)
           this.initializeResolvers.reject(new Error(error))
         } else {
           this.initialized = true
@@ -239,12 +268,12 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
 
     if (warning) {
-      this.emit("warning", warning, bufferId)
+      this.emitWarning(warning, bufferId)
       return
     }
 
     if (error) {
-      this.emit("error", error, bufferId)
+      this.emitError(error, bufferId)
       return
     }
 
@@ -285,13 +314,13 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   ): Promise<boolean> {
     if (!this.initialized) {
       if (!autoInitialize) {
-        this.emit("error", "Could not create buffer because client is not initialized")
+        this.emitError("Could not create buffer because client is not initialized")
         return false
       }
       try {
         await this.initialize()
       } catch (error) {
-        this.emit("error", "Could not create buffer because of initialization error")
+        this.emitError("Could not create buffer because of initialization error")
         return false
       }
     }
@@ -319,7 +348,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (!response.hasParser) {
       this.emit("buffer:initialized", id, false)
       if (filetype !== "plaintext") {
-        this.emit("warning", response.warning || response.error || "Buffer has no parser", id)
+        this.emitWarning(response.warning || response.error || "Buffer has no parser", id)
       }
       return false
     }
@@ -436,7 +465,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     const buffer = this.buffers.get(bufferId)
     if (!buffer || !buffer.hasParser) {
-      this.emit("error", "Cannot reset buffer with no parser", bufferId)
+      this.emitError("Cannot reset buffer with no parser", bufferId)
       return
     }
 
