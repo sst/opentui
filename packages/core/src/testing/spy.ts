@@ -11,4 +11,3 @@ export function createSpy() {
   spy.reset = () => (calls.length = 0)
   return spy
 }
-
