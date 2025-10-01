@@ -27,12 +27,15 @@
     "@types/bun": "latest",
     "@types/three": "0.177.0",
     "commander": "^13.1.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "web-tree-sitter": "^0.26.0"
   },
   "dependencies": {
     "jimp": "1.6.0",
-    "web-tree-sitter": "^0.26.0",
     "yoga-layout": "3.2.1"
+  },
+  "peerDependencies": {
+    "web-tree-sitter": ">=0.26.0"
   },
   "optionalDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
@@ -60,8 +63,8 @@
       "import": "./src/testing.ts"
     },
     "./parser.worker": {
-      "types": "./src/parser.worker.ts",
-      "import": "./src/parser.worker.ts"
+      "types": "./src/lib/tree-sitter/parser.worker.ts",
+      "import": "./src/lib/tree-sitter/parser.worker.ts"
     }
   },
   "engines": {

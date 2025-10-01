@@ -12,8 +12,9 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-import parser_path from "./parser.worker" with { type: "file" }
+// import parser_path from "./parser.worker.path"
 import { resolve, isAbsolute } from "path"
+import { existsSync } from "fs"
 
 interface EditQueueItem {
   edits: Edit[]
@@ -76,8 +77,18 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
-    const workerPath = this.options.workerPath || parser_path
-    this.worker = new Worker(workerPath)
+    let worker_path: string | URL
+
+    if (this.options.workerPath) {
+      worker_path = this.options.workerPath
+    } else {
+      worker_path = new URL("./parser.worker.js", import.meta.url).href
+      if (!existsSync(resolve(import.meta.dirname, "parser.worker.js"))) {
+        worker_path = new URL("./parser.worker.ts", import.meta.url).href
+      }
+    }
+
+    this.worker = new Worker(worker_path)
 
     // @ts-ignore - onmessage exists
     this.worker.onmessage = this.handleWorkerMessage.bind(this)

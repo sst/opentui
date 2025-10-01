@@ -193,8 +193,9 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts", "src/parser.worker.ts"]
+  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
 
+  // Build main entry points with code splitting
   spawnSync(
     "bun",
     [
@@ -212,11 +213,31 @@ if (buildLib) {
     },
   )
 
+  // Build parser worker as standalone bundle (no splitting) so it can be loaded as a Worker
+  // Make web-tree-sitter external so it loads from node_modules with its WASM file
+  spawnSync(
+    "bun",
+    [
+      "build",
+      "--target=bun",
+      "--outdir=dist",
+      "--sourcemap",
+      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      "--external",
+      "web-tree-sitter",
+      "src/lib/tree-sitter/parser.worker.ts",
+    ],
+    {
+      cwd: rootDir,
+      stdio: "inherit",
+    },
+  )
+
   // Post-process to fix Bun's duplicate export issue
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/parser.worker.js"]
+  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/lib/tree-sitter/parser.worker.js"]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -278,9 +299,9 @@ if (buildLib) {
       types: "./testing.d.ts",
     },
     "./parser.worker": {
-      import: "./parser.worker.js",
-      require: "./parser.worker.js",
-      types: "./parser.worker.d.ts",
+      import: "./lib/tree-sitter/parser.worker.js",
+      require: "./lib/tree-sitter/parser.worker.js",
+      types: "./lib/tree-sitter/parser.worker.d.ts",
     },
   }
 
@@ -306,6 +327,7 @@ if (buildLib) {
         repository: packageJson.repository,
         bugs: packageJson.bugs,
         exports,
+        dependencies: packageJson.dependencies,
         devDependencies: packageJson.devDependencies,
         peerDependencies: packageJson.peerDependencies,
         optionalDependencies: {

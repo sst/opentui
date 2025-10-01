@@ -664,5 +664,3 @@ if (!isMainThread) {
     }
   }
 }
-
-export default __filename
