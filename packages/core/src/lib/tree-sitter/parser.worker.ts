@@ -665,4 +665,4 @@ if (!isMainThread) {
   }
 }
 
-export default __filename
+export default import.meta.filename

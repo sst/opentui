@@ -8,7 +8,7 @@
     "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build",
     "build:go": "cd packages/go && go build ./...",
     "pre-publish": "bun scripts/pre-publish.ts",
-    "publish": "bun run pre-publish && bun run publish:core && bun run publish:react && bun run publish:solid && bun run publish:vue",
+    "publish": "bun run pre-publish && bun run publish:core && bun run publish:react && bun run publish:solid",
     "publish:core": "cd packages/core && bun run publish",
     "publish:react": "cd packages/react && bun run publish",
     "publish:solid": "cd packages/solid && bun run publish",

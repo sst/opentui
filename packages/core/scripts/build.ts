@@ -193,8 +193,9 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts", "src/parser.worker.ts"]
+  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
 
+  // Build main entry points with code splitting
   spawnSync(
     "bun",
     [
@@ -212,11 +213,47 @@ if (buildLib) {
     },
   )
 
+  // Build parser worker as standalone bundle (no splitting) so it can be loaded as a Worker
+  // Make web-tree-sitter external so it loads from node_modules with its WASM file
+  spawnSync(
+    "bun",
+    [
+      "build",
+      "--target=bun",
+      "--outdir=dist",
+      "--sourcemap",
+      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      "--external",
+      "web-tree-sitter",
+      "src/parser.worker.ts",
+    ],
+    {
+      cwd: rootDir,
+      stdio: "inherit",
+    },
+  )
+
+  // Build parser worker path resolver
+  spawnSync(
+    "bun",
+    ["build", "--target=bun", "--outdir=dist", "--sourcemap", "src/lib/tree-sitter/parser.worker.path.ts"],
+    {
+      cwd: rootDir,
+      stdio: "inherit",
+    },
+  )
+
   // Post-process to fix Bun's duplicate export issue
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/parser.worker.js"]
+  const bundledFiles = [
+    "dist/index.js",
+    "dist/3d.js",
+    "dist/testing.js",
+    "dist/parser.worker.js",
+    "dist/parser.worker.path.js",
+  ]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -260,6 +297,22 @@ if (buildLib) {
     console.log("TypeScript declarations generated")
   }
 
+  // Create type declarations for parser worker path (simple string export)
+  writeFileSync(
+    join(distDir, "parser.worker.path.d.ts"),
+    `declare const workerPath: string;
+export default workerPath;
+`,
+  )
+
+  // Fix parser.worker.d.ts to export the path string instead of re-exporting
+  writeFileSync(
+    join(distDir, "parser.worker.d.ts"),
+    `declare const parser_worker_path: string;
+export default parser_worker_path;
+`,
+  )
+
   // Configure exports for multiple entry points
   const exports = {
     ".": {
@@ -281,6 +334,11 @@ if (buildLib) {
       import: "./parser.worker.js",
       require: "./parser.worker.js",
       types: "./parser.worker.d.ts",
+    },
+    "./parser.worker.path": {
+      import: "./parser.worker.path.js",
+      require: "./parser.worker.path.js",
+      types: "./parser.worker.path.d.ts",
     },
   }
 
@@ -306,6 +364,7 @@ if (buildLib) {
         repository: packageJson.repository,
         bugs: packageJson.bugs,
         exports,
+        dependencies: packageJson.dependencies,
         devDependencies: packageJson.devDependencies,
         peerDependencies: packageJson.peerDependencies,
         optionalDependencies: {

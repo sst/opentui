@@ -12,7 +12,7 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-import parser_path from "./parser.worker" with { type: "file" }
+import parser_path from "./parser.worker.path"
 import { resolve, isAbsolute } from "path"
 
 interface EditQueueItem {
