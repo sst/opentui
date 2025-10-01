@@ -63,8 +63,8 @@
       "import": "./src/testing.ts"
     },
     "./parser.worker": {
-      "types": "./src/parser.worker.ts",
-      "import": "./src/parser.worker.ts"
+      "types": "./src/lib/tree-sitter/parser.worker.ts",
+      "import": "./src/lib/tree-sitter/parser.worker.ts"
     }
   },
   "engines": {

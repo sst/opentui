@@ -225,7 +225,7 @@ if (buildLib) {
       ...externalDeps.flatMap((dep) => ["--external", dep]),
       "--external",
       "web-tree-sitter",
-      "src/parser.worker.ts",
+      "src/lib/tree-sitter/parser.worker.ts",
     ],
     {
       cwd: rootDir,
@@ -237,7 +237,7 @@ if (buildLib) {
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/parser.worker.js"]
+  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/lib/tree-sitter/parser.worker.js"]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -299,9 +299,9 @@ if (buildLib) {
       types: "./testing.d.ts",
     },
     "./parser.worker": {
-      import: "./parser.worker.js",
-      require: "./parser.worker.js",
-      types: "./parser.worker.d.ts",
+      import: "./lib/tree-sitter/parser.worker.js",
+      require: "./lib/tree-sitter/parser.worker.js",
+      types: "./lib/tree-sitter/parser.worker.d.ts",
     },
   }
 
