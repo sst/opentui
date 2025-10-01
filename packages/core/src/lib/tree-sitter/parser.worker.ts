@@ -74,7 +74,19 @@ class ParserWorker {
         await mkdir(path.join(dataPath, "languages"), { recursive: true })
         await mkdir(path.join(dataPath, "queries"), { recursive: true })
 
-        await Parser.init()
+        let { default: treeWasm } = await import("web-tree-sitter/web-tree-sitter.wasm" as string, {
+          with: { type: "wasm" },
+        })
+
+        if (/\$bunfs/.test(treeWasm)) {
+          treeWasm = "/$bunfs/root/" + path.parse(treeWasm).base
+        }
+
+        await Parser.init({
+          locateFile() {
+            return treeWasm
+          },
+        })
 
         this.initialized = true
         resolve()
