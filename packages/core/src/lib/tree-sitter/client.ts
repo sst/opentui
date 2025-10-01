@@ -182,9 +182,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (isUrl(path)) {
       return path
     }
-    // if (/\$bunfs/.test(path)) {
-    //   return "/$bunfs/root/" + parse(path).base
-    // }
+    if (/\$bunfs/.test(path)) {
+      return "/$bunfs/root/" + parse(path).base
+    }
     if (!isAbsolute(path)) {
       return resolve(path)
     }
