@@ -12,9 +12,20 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-// import parser_path from "./parser.worker.path"
 import { resolve, isAbsolute } from "path"
 import { existsSync } from "fs"
+import { registerEnvVar, env } from "../env"
+
+registerEnvVar({
+  name: "OTUI_TREE_SITTER_WORKER_PATH",
+  description: "Path to the TreeSitter worker",
+  type: "string",
+  default: "",
+})
+
+declare global {
+  const OTUI_TREE_SITTER_WORKER_PATH: string
+}
 
 interface EditQueueItem {
   edits: Edit[]
@@ -79,7 +90,11 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     let worker_path: string | URL
 
-    if (this.options.workerPath) {
+    if (env.OTUI_TREE_SITTER_WORKER_PATH) {
+      worker_path = env.OTUI_TREE_SITTER_WORKER_PATH
+    } else if (OTUI_TREE_SITTER_WORKER_PATH) {
+      worker_path = OTUI_TREE_SITTER_WORKER_PATH
+    } else if (this.options.workerPath) {
       worker_path = this.options.workerPath
     } else {
       worker_path = new URL("./parser.worker.js", import.meta.url).href

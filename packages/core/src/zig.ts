@@ -7,7 +7,12 @@ import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
-const targetLibPath = module.default
+let targetLibPath = module.default
+
+if (/\$bunfs/.test(targetLibPath)) {
+  targetLibPath = targetLibPath.replace("../", "")
+}
+
 if (!existsSync(targetLibPath)) {
   throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
 }
