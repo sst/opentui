@@ -12,9 +12,21 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-// import parser_path from "./parser.worker.path"
 import { resolve, isAbsolute } from "path"
 import { existsSync } from "fs"
+import { registerEnvVar, env } from "../env"
+import { parse } from "path"
+
+registerEnvVar({
+  name: "OTUI_TREE_SITTER_WORKER_PATH",
+  description: "Path to the TreeSitter worker",
+  type: "string",
+  default: "",
+})
+
+declare global {
+  const OTUI_TREE_SITTER_WORKER_PATH: string
+}
 
 interface EditQueueItem {
   edits: Edit[]
@@ -36,6 +48,8 @@ export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
     }
   }
 }
+
+const isUrl = (path: string) => path.startsWith("http://") || path.startsWith("https://")
 
 // Parser options now support both URLs and local file paths
 // TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
@@ -79,7 +93,11 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     let worker_path: string | URL
 
-    if (this.options.workerPath) {
+    if (env.OTUI_TREE_SITTER_WORKER_PATH) {
+      worker_path = env.OTUI_TREE_SITTER_WORKER_PATH
+    } else if (typeof OTUI_TREE_SITTER_WORKER_PATH !== "undefined") {
+      worker_path = OTUI_TREE_SITTER_WORKER_PATH
+    } else if (this.options.workerPath) {
       worker_path = this.options.workerPath
     } else {
       worker_path = new URL("./parser.worker.js", import.meta.url).href
@@ -149,8 +167,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     })
 
     await this.initializePromise
-
-    // Register default parsers after initialization
     await this.registerDefaultParsers()
 
     return this.initializePromise
@@ -162,21 +178,25 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
   }
 
-  public addFiletypeParser(filetypeParser: FiletypeParserOptions): void {
-    // Resolve relative paths to absolute paths before sending to worker
-    // But skip URLs (http:// or https://)
-    const isUrl = (path: string) => path.startsWith("http://") || path.startsWith("https://")
+  private resolvePath(path: string): string {
+    if (isUrl(path)) {
+      return path
+    }
+    if (/\$bunfs/.test(path)) {
+      return "/$bunfs/root/" + parse(path).base
+    }
+    if (!isAbsolute(path)) {
+      return resolve(path)
+    }
+    return path
+  }
 
+  public addFiletypeParser(filetypeParser: FiletypeParserOptions): void {
     const resolvedParser: FiletypeParserOptions = {
       ...filetypeParser,
-      wasm:
-        isUrl(filetypeParser.wasm) || isAbsolute(filetypeParser.wasm)
-          ? filetypeParser.wasm
-          : resolve(filetypeParser.wasm),
+      wasm: this.resolvePath(filetypeParser.wasm),
       queries: {
-        highlights: filetypeParser.queries.highlights.map((path) =>
-          isUrl(path) || isAbsolute(path) ? path : resolve(path),
-        ),
+        highlights: filetypeParser.queries.highlights.map((path) => this.resolvePath(path)),
       },
     }
     this.worker?.postMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: resolvedParser })

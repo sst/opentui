@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
@@ -196,6 +196,17 @@ if (buildLib) {
   const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
 
   // Build main entry points with code splitting
+  // External patterns to prevent bundling tree-sitter assets and default-parsers
+  // to allow standalone executables to work
+  const externalPatterns = [
+    ...externalDeps,
+    "*.wasm",
+    "*.scm",
+    "./lib/tree-sitter/assets/*",
+    "./lib/tree-sitter/default-parsers",
+    "./lib/tree-sitter/default-parsers.ts",
+  ]
+
   spawnSync(
     "bun",
     [
@@ -204,7 +215,7 @@ if (buildLib) {
       "--splitting",
       "--outdir=dist",
       "--sourcemap",
-      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      ...externalPatterns.flatMap((dep) => ["--external", dep]),
       ...entryPoints,
     ],
     {
@@ -280,6 +291,25 @@ if (buildLib) {
   } else {
     console.log("TypeScript declarations generated")
   }
+
+  const treeSitterSrcDir = join(rootDir, "src", "lib", "tree-sitter")
+
+  const copyAssets = (src: string, dest: string) => {
+    mkdirSync(dest, { recursive: true })
+    const entries = readdirSync(src, { withFileTypes: true })
+    for (const entry of entries) {
+      const srcPath = join(src, entry.name)
+      const destPath = join(dest, entry.name)
+      if (entry.isDirectory()) {
+        copyAssets(srcPath, destPath)
+      } else if (entry.isFile() && (entry.name.endsWith(".wasm") || entry.name.endsWith(".scm"))) {
+        copyFileSync(srcPath, destPath)
+      }
+    }
+  }
+
+  copyAssets(join(treeSitterSrcDir, "assets"), join(distDir, "assets"))
+  console.log("  Copied tree-sitter assets (*.wasm, *.scm) to dist/assets/")
 
   // Configure exports for multiple entry points
   const exports = {
