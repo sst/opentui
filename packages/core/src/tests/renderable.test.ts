@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import {
   Renderable,
   BaseRenderable,
@@ -344,18 +344,13 @@ describe("Renderable - Child Management", () => {
     const child2 = new TestRenderable(testRenderer, { id: "child2" })
     parent.add(child2)
 
-    let updateFromLayoutCalled = false
-    const originalUpdateFromLayout = child2.updateFromLayout
-    child2.updateFromLayout = function () {
-      updateFromLayoutCalled = true
-      return originalUpdateFromLayout.call(this)
-    }
+    const spy = spyOn(child2, "updateFromLayout")
 
     child2.destroy()
 
     await renderOnce()
 
-    expect(updateFromLayoutCalled).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
   })
 })
 
