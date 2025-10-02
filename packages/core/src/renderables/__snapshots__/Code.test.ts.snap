@@ -1,0 +1,13 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`CodeRenderable - text renders immediately before highlighting completes: text visible before highlighting completes 1`] = `
+"const message = 'hello world';  
+                                
+"
+`;
+
+exports[`CodeRenderable - text renders immediately before highlighting completes: text visible after highlighting completes 1`] = `
+"const message = 'hello world';  
+                                
+"
+`;

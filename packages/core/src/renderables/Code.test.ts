@@ -48,11 +48,13 @@ class MockTreeSitterClient extends TreeSitterClient {
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
+let captureFrame: () => string
 
 beforeEach(async () => {
-  const testRenderer = await createTestRenderer({ width: 80, height: 24 })
+  const testRenderer = await createTestRenderer({ width: 32, height: 2 })
   currentRenderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
+  captureFrame = testRenderer.captureCharFrame
 })
 
 afterEach(async () => {
@@ -283,4 +285,45 @@ test("CodeRenderable - empty content does not trigger highlighting", async () =>
 
   expect(mockClient.isHighlighting()).toBe(false)
   expect(codeRenderable.content).toBe("")
+})
+
+test("CodeRenderable - text renders immediately before highlighting completes", async () => {
+  const syntaxStyle = new SyntaxStyle({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 13, "identifier"],
+    ] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello world';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  await renderOnce()
+
+  const frameBeforeHighlighting = captureFrame()
+  expect(frameBeforeHighlighting).toMatchSnapshot("text visible before highlighting completes")
+
+  mockClient.resolveHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  const frameAfterHighlighting = captureFrame()
+  expect(frameAfterHighlighting).toMatchSnapshot("text visible after highlighting completes")
 })

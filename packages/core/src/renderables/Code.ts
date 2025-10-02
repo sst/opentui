@@ -79,6 +79,8 @@ export class CodeRenderable extends TextBufferRenderable {
       return
     }
 
+    this.fallback(content)
+
     this._isHighlighting = true
 
     try {
