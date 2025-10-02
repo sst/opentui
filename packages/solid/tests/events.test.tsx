@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal } from "solid-js"
-import { createSpy } from "./utils/spy"
+import { createSpy } from "@opentui/core/testing"
 import { usePaste } from "../src/elements/hooks"
 import type { PasteEvent } from "@opentui/core"
 
