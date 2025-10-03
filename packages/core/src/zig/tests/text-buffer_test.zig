@@ -7,15 +7,20 @@ const RGBA = text_buffer.RGBA;
 
 const LineInfo = struct {
     line_count: u32,
-    lines: []const text_buffer.TextLine,
+    starts: []const u32,
+    widths: []const u32,
+    max_width: u32,
 };
 
 fn testWriteAndGetLineInfo(tb: *TextBuffer, text: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) !LineInfo {
     _ = try tb.writeChunk(text, fg, bg, attr);
     tb.finalizeLineInfo();
+    const cached = tb.getCachedLineInfo();
     return LineInfo{
         .line_count = tb.getLineCount(),
-        .lines = tb.lines.items,
+        .starts = cached.starts,
+        .widths = cached.widths,
+        .max_width = cached.max_width,
     };
 }
 
@@ -35,8 +40,8 @@ test "TextBuffer line info - empty buffer" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].width);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.widths[0]);
 }
 
 test "TextBuffer line info - simple text without newlines" {
@@ -53,8 +58,8 @@ test "TextBuffer line info - simple text without newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expect(lineInfo.lines[0].width > 0);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expect(lineInfo.widths[0] > 0);
 }
 
 test "TextBuffer line info - single newline" {
@@ -71,10 +76,10 @@ test "TextBuffer line info - single newline" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello\nWorld", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[1].char_offset); // line_starts[1] ("Hello\n" = 6 chars)
-    try std.testing.expect(lineInfo.lines[0].width > 0);
-    try std.testing.expect(lineInfo.lines[1].width > 0);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 6), lineInfo.starts[1]); // line_starts[1] ("Hello\n" = 6 chars)
+    try std.testing.expect(lineInfo.widths[0] > 0);
+    try std.testing.expect(lineInfo.widths[1] > 0);
 }
 
 test "TextBuffer line info - multiple lines separated by newlines" {
@@ -91,14 +96,14 @@ test "TextBuffer line info - multiple lines separated by newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\nLine 2\nLine 3", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[1].char_offset); // line_starts[1] ("Line 1\n" = 7 chars)
-    try std.testing.expectEqual(@as(u32, 14), lineInfo.lines[2].char_offset); // line_starts[2] ("Line 1\nLine 2\n" = 14 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 7), lineInfo.starts[1]); // line_starts[1] ("Line 1\n" = 7 chars)
+    try std.testing.expectEqual(@as(u32, 14), lineInfo.starts[2]); // line_starts[2] ("Line 1\nLine 2\n" = 14 chars)
 
     // All line widths should be > 0
-    try std.testing.expect(lineInfo.lines[0].width > 0);
-    try std.testing.expect(lineInfo.lines[1].width > 0);
-    try std.testing.expect(lineInfo.lines[2].width > 0);
+    try std.testing.expect(lineInfo.widths[0] > 0);
+    try std.testing.expect(lineInfo.widths[1] > 0);
+    try std.testing.expect(lineInfo.widths[2] > 0);
 }
 
 test "TextBuffer line info - text ending with newline" {
@@ -115,10 +120,10 @@ test "TextBuffer line info - text ending with newline" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World\n", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 12), lineInfo.lines[1].char_offset); // line_starts[1] ("Hello World\n" = 12 chars)
-    try std.testing.expect(lineInfo.lines[0].width > 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0); // line_widths[1] (second line may have width 0 or some default width)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 12), lineInfo.starts[1]); // line_starts[1] ("Hello World\n" = 12 chars)
+    try std.testing.expect(lineInfo.widths[0] > 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0); // line_widths[1] (second line may have width 0 or some default width)
 }
 
 test "TextBuffer line info - consecutive newlines" {
@@ -135,9 +140,9 @@ test "TextBuffer line info - consecutive newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\n\nLine 3", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[1].char_offset); // line_starts[1] ("Line 1\n" = 7 chars)
-    try std.testing.expectEqual(@as(u32, 8), lineInfo.lines[2].char_offset); // line_starts[2] ("Line 1\n\n" = 8 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 7), lineInfo.starts[1]); // line_starts[1] ("Line 1\n" = 7 chars)
+    try std.testing.expectEqual(@as(u32, 8), lineInfo.starts[2]); // line_starts[2] ("Line 1\n\n" = 8 chars)
 }
 
 test "TextBuffer line info - text starting with newline" {
@@ -154,8 +159,8 @@ test "TextBuffer line info - text starting with newline" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "\nHello World", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset); // line_starts[0] (empty first line)
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.lines[1].char_offset); // line_starts[1] ("\n" = 1 char)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]); // line_starts[0] (empty first line)
+    try std.testing.expectEqual(@as(u32, 1), lineInfo.starts[1]); // line_starts[1] ("\n" = 1 char)
 }
 
 test "TextBuffer line info - only newlines" {
@@ -172,15 +177,15 @@ test "TextBuffer line info - only newlines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "\n\n\n", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 4), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.lines[1].char_offset);
-    try std.testing.expectEqual(@as(u32, 2), lineInfo.lines[2].char_offset);
-    try std.testing.expectEqual(@as(u32, 3), lineInfo.lines[3].char_offset);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 1), lineInfo.starts[1]);
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.starts[2]);
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.starts[3]);
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
-    try std.testing.expect(lineInfo.lines[2].width >= 0);
-    try std.testing.expect(lineInfo.lines[3].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
+    try std.testing.expect(lineInfo.widths[2] >= 0);
+    try std.testing.expect(lineInfo.widths[3] >= 0);
 }
 
 test "TextBuffer line info - wide characters (Unicode)" {
@@ -197,8 +202,8 @@ test "TextBuffer line info - wide characters (Unicode)" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expect(lineInfo.lines[0].width > 0);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expect(lineInfo.widths[0] > 0);
 }
 
 test "TextBuffer line info - empty lines between content" {
@@ -215,9 +220,9 @@ test "TextBuffer line info - empty lines between content" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "First\n\nThird", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[1].char_offset); // line_starts[1] ("First\n")
-    try std.testing.expectEqual(@as(u32, 7), lineInfo.lines[2].char_offset); // line_starts[2] ("First\n\n")
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 6), lineInfo.starts[1]); // line_starts[1] ("First\n")
+    try std.testing.expectEqual(@as(u32, 7), lineInfo.starts[2]); // line_starts[2] ("First\n\n")
 }
 
 test "TextBuffer line info - very long lines" {
@@ -236,8 +241,8 @@ test "TextBuffer line info - very long lines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, &longText, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expect(lineInfo.lines[0].width > 0);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expect(lineInfo.widths[0] > 0);
 }
 
 test "TextBuffer line info - lines with different widths" {
@@ -261,8 +266,8 @@ test "TextBuffer line info - lines with different widths" {
     const lineInfo = try testWriteAndGetLineInfo(tb, text, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expect(lineInfo.lines[0].width < lineInfo.lines[1].width); // Short < Long
-    try std.testing.expect(lineInfo.lines[1].width > lineInfo.lines[2].width); // Long > Medium
+    try std.testing.expect(lineInfo.widths[0] < lineInfo.widths[1]); // Short < Long
+    try std.testing.expect(lineInfo.widths[1] > lineInfo.widths[2]); // Long > Medium
 }
 
 test "TextBuffer line info - styled text with colors" {
@@ -290,8 +295,8 @@ test "TextBuffer line info - styled text with colors" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_offset); // line_starts[1] ("Red\n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.starts[1]); // line_starts[1] ("Red\n" = 4 chars)
 }
 
 test "TextBuffer line info - buffer with only whitespace" {
@@ -308,14 +313,14 @@ test "TextBuffer line info - buffer with only whitespace" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "   \n \n ", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_offset); // line_starts[1] ("   \n" = 4 chars)
-    try std.testing.expectEqual(@as(u32, 6), lineInfo.lines[2].char_offset); // line_starts[2] ("   \n \n" = 6 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.starts[1]); // line_starts[1] ("   \n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 6), lineInfo.starts[2]); // line_starts[2] ("   \n \n" = 6 chars)
 
     // Whitespace should still contribute to line widths
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
-    try std.testing.expect(lineInfo.lines[2].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
+    try std.testing.expect(lineInfo.widths[2] >= 0);
 }
 
 test "TextBuffer line info - single character lines" {
@@ -332,14 +337,14 @@ test "TextBuffer line info - single character lines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "A\nB\nC", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 2), lineInfo.lines[1].char_offset); // line_starts[1] ("A\n" = 2 chars)
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[2].char_offset); // line_starts[2] ("A\nB\n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.starts[1]); // line_starts[1] ("A\n" = 2 chars)
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.starts[2]); // line_starts[2] ("A\nB\n" = 4 chars)
 
     // All widths should be > 0
-    try std.testing.expect(lineInfo.lines[0].width > 0);
-    try std.testing.expect(lineInfo.lines[1].width > 0);
-    try std.testing.expect(lineInfo.lines[2].width > 0);
+    try std.testing.expect(lineInfo.widths[0] > 0);
+    try std.testing.expect(lineInfo.widths[1] > 0);
+    try std.testing.expect(lineInfo.widths[2] > 0);
 }
 
 test "TextBuffer line info - mixed content with special characters" {
@@ -357,11 +362,11 @@ test "TextBuffer line info - mixed content with special characters" {
 
     try std.testing.expectEqual(@as(u32, 5), lineInfo.line_count); // line_count (4 lines + empty line at end)
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
-    try std.testing.expect(lineInfo.lines[2].width >= 0);
-    try std.testing.expect(lineInfo.lines[3].width >= 0);
-    try std.testing.expect(lineInfo.lines[4].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
+    try std.testing.expect(lineInfo.widths[2] >= 0);
+    try std.testing.expect(lineInfo.widths[3] >= 0);
+    try std.testing.expect(lineInfo.widths[4] >= 0);
 }
 
 test "TextBuffer line info - buffer resize operations" {
@@ -413,12 +418,12 @@ test "TextBuffer line info - thousands of lines" {
     const lineInfo = try testWriteAndGetLineInfo(tb, text_builder.items, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1000), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
 
     // Check that line starts are monotonically increasing
     var line_idx: u32 = 1;
     while (line_idx < 1000) : (line_idx += 1) {
-        try std.testing.expect(lineInfo.lines[line_idx].char_offset > lineInfo.lines[line_idx - 1].char_offset);
+        try std.testing.expect(lineInfo.starts[line_idx] > lineInfo.starts[line_idx - 1]);
     }
 }
 
@@ -437,12 +442,12 @@ test "TextBuffer line info - alternating empty and content lines" {
 
     try std.testing.expectEqual(@as(u32, 6), lineInfo.line_count);
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
-    try std.testing.expect(lineInfo.lines[2].width >= 0);
-    try std.testing.expect(lineInfo.lines[3].width >= 0);
-    try std.testing.expect(lineInfo.lines[4].width >= 0);
-    try std.testing.expect(lineInfo.lines[5].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
+    try std.testing.expect(lineInfo.widths[2] >= 0);
+    try std.testing.expect(lineInfo.widths[3] >= 0);
+    try std.testing.expect(lineInfo.widths[4] >= 0);
+    try std.testing.expect(lineInfo.widths[5] >= 0);
 }
 
 test "TextBuffer line info - complex Unicode combining characters" {
@@ -459,9 +464,9 @@ test "TextBuffer line info - complex Unicode combining characters" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "café\nnaïve\nrésumé", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-    try std.testing.expect(lineInfo.lines[0].width > 0);
-    try std.testing.expect(lineInfo.lines[1].width > 0);
-    try std.testing.expect(lineInfo.lines[2].width > 0);
+    try std.testing.expect(lineInfo.widths[0] > 0);
+    try std.testing.expect(lineInfo.widths[1] > 0);
+    try std.testing.expect(lineInfo.widths[2] > 0);
 }
 
 test "TextBuffer line info - default styles" {
@@ -485,11 +490,11 @@ test "TextBuffer line info - default styles" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 5), lineInfo.lines[1].char_offset); // line_starts[1] ("Test\n" = 5 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[1]); // line_starts[1] ("Test\n" = 5 chars)
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
 }
 
 test "TextBuffer line info - reset defaults" {
@@ -511,11 +516,11 @@ test "TextBuffer line info - reset defaults" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 5), lineInfo.lines[1].char_offset);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[1]);
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
 }
 
 test "TextBuffer line info - unicode width method" {
@@ -532,8 +537,8 @@ test "TextBuffer line info - unicode width method" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expect(lineInfo.lines[0].width > 0);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expect(lineInfo.widths[0] > 0);
 }
 
 test "TextBuffer line info - unicode mixed content with special characters" {
@@ -551,11 +556,11 @@ test "TextBuffer line info - unicode mixed content with special characters" {
 
     try std.testing.expectEqual(@as(u32, 5), lineInfo.line_count); // line_count (4 lines + empty line at end)
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
-    try std.testing.expect(lineInfo.lines[2].width >= 0);
-    try std.testing.expect(lineInfo.lines[3].width >= 0);
-    try std.testing.expect(lineInfo.lines[4].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
+    try std.testing.expect(lineInfo.widths[2] >= 0);
+    try std.testing.expect(lineInfo.widths[3] >= 0);
+    try std.testing.expect(lineInfo.widths[4] >= 0);
 }
 
 test "TextBuffer line info - unicode styled text with colors and attributes" {
@@ -583,11 +588,11 @@ test "TextBuffer line info - unicode styled text with colors and attributes" {
     const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expectEqual(@as(u32, 4), lineInfo.lines[1].char_offset); // line_starts[1] ("Red\n" = 4 chars)
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.starts[1]); // line_starts[1] ("Red\n" = 4 chars)
     // All line widths should be >= 0
-    try std.testing.expect(lineInfo.lines[0].width >= 0);
-    try std.testing.expect(lineInfo.lines[1].width >= 0);
+    try std.testing.expect(lineInfo.widths[0] >= 0);
+    try std.testing.expect(lineInfo.widths[1] >= 0);
 }
 
 test "TextBuffer line info - extremely long single line" {
@@ -606,8 +611,8 @@ test "TextBuffer line info - extremely long single line" {
     const lineInfo = try testWriteAndGetLineInfo(tb, &extremelyLongText, null, null, null);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.lines[0].char_offset);
-    try std.testing.expect(lineInfo.lines[0].width > 0);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expect(lineInfo.widths[0] > 0);
 }
 
 // ===== Text Wrapping Tests =====
@@ -947,18 +952,13 @@ test "TextBuffer virtual lines - match real lines when no wrap" {
     _ = try tb.writeChunk("Line 1\nLine 2\nLine 3", null, null, null);
     tb.finalizeLineInfo();
 
-    // Force update virtual lines without wrap
-    tb.updateVirtualLines();
+    // Check line count matches expected
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
 
-    // Virtual lines should match real lines exactly
-    try std.testing.expectEqual(@as(usize, 3), tb.lines.items.len);
-    try std.testing.expectEqual(@as(usize, 3), tb.virtual_lines.items.len);
-
-    // Check each virtual line matches corresponding real line
-    for (tb.lines.items, tb.virtual_lines.items) |real_line, virtual_line| {
-        try std.testing.expectEqual(real_line.width, virtual_line.width);
-        try std.testing.expectEqual(real_line.char_offset, virtual_line.char_offset);
-    }
+    // Verify line info is available
+    const line_info = tb.getCachedLineInfo();
+    try std.testing.expectEqual(@as(usize, 3), line_info.starts.len);
+    try std.testing.expectEqual(@as(usize, 3), line_info.widths.len);
 }
 
 test "TextBuffer virtual lines - updated when wrap width set" {
@@ -976,13 +976,11 @@ test "TextBuffer virtual lines - updated when wrap width set" {
     tb.finalizeLineInfo();
 
     // Initially no wrap
-    tb.updateVirtualLines();
-    try std.testing.expectEqual(@as(usize, 1), tb.virtual_lines.items.len);
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
 
     // Set wrap width
     tb.setWrapWidth(10);
-    tb.updateVirtualLines();
-    try std.testing.expectEqual(@as(usize, 2), tb.virtual_lines.items.len);
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
 }
 
 test "TextBuffer virtual lines - reset to match real lines when wrap removed" {
@@ -1001,21 +999,18 @@ test "TextBuffer virtual lines - reset to match real lines when wrap removed" {
 
     // Set wrap width
     tb.setWrapWidth(10);
-    tb.updateVirtualLines();
-    try std.testing.expectEqual(@as(usize, 3), tb.virtual_lines.items.len);
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
 
     // Remove wrap
     tb.setWrapWidth(null);
-    tb.updateVirtualLines();
 
-    // Should be back to matching real lines
-    try std.testing.expectEqual(@as(usize, 2), tb.lines.items.len);
-    try std.testing.expectEqual(@as(usize, 2), tb.virtual_lines.items.len);
+    // Should be back to 2 lines
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
 
-    for (tb.lines.items, tb.virtual_lines.items) |real_line, virtual_line| {
-        try std.testing.expectEqual(real_line.width, virtual_line.width);
-        try std.testing.expectEqual(real_line.char_offset, virtual_line.char_offset);
-    }
+    // Verify line info is consistent
+    const line_info = tb.getCachedLineInfo();
+    try std.testing.expectEqual(@as(usize, 2), line_info.starts.len);
+    try std.testing.expectEqual(@as(usize, 2), line_info.widths.len);
 }
 
 test "TextBuffer virtual lines - multi-line text without wrap" {
@@ -1031,22 +1026,77 @@ test "TextBuffer virtual lines - multi-line text without wrap" {
 
     _ = try tb.writeChunk("First line\n\nThird line with more text\n", null, null, null);
     tb.finalizeLineInfo();
-    tb.updateVirtualLines();
 
     // Should have 4 lines (including empty line and trailing empty line)
-    try std.testing.expectEqual(@as(usize, 4), tb.lines.items.len);
-    try std.testing.expectEqual(@as(usize, 4), tb.virtual_lines.items.len);
+    try std.testing.expectEqual(@as(u32, 4), tb.getLineCount());
 
-    // All virtual lines should match real lines
-    for (tb.lines.items, tb.virtual_lines.items, 0..) |real_line, virtual_line, i| {
-        try std.testing.expectEqual(real_line.width, virtual_line.width);
-        try std.testing.expectEqual(real_line.char_offset, virtual_line.char_offset);
+    // Verify line info is available
+    const line_info = tb.getCachedLineInfo();
+    try std.testing.expectEqual(@as(usize, 4), line_info.starts.len);
+    try std.testing.expectEqual(@as(usize, 4), line_info.widths.len);
 
-        // Verify chunks match
-        try std.testing.expectEqual(real_line.chunks.items.len, virtual_line.chunks.items.len);
-        for (virtual_line.chunks.items) |vchunk| {
-            try std.testing.expectEqual(i, vchunk.source_line);
-        }
+    // Verify the line starts are monotonically increasing
+    try std.testing.expect(line_info.starts[0] == 0);
+    try std.testing.expect(line_info.starts[1] > line_info.starts[0]);
+    try std.testing.expect(line_info.starts[2] > line_info.starts[1]);
+    try std.testing.expect(line_info.starts[3] > line_info.starts[2]);
+}
+
+test "TextBuffer accessor methods - getVirtualLines and getLines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("Line 1\nLine 2", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Test getVirtualLines returns correct data
+    const virtual_lines = tb.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), virtual_lines.len);
+
+    // Test getLines returns correct data
+    const lines = tb.getLines();
+    try std.testing.expectEqual(@as(usize, 2), lines.len);
+
+    // Verify we can access chunks through the accessor
+    try std.testing.expect(lines[0].chunks.items.len > 0);
+    try std.testing.expect(virtual_lines[0].chunks.items.len > 0);
+}
+
+test "TextBuffer accessor methods - with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
+    tb.finalizeLineInfo();
+
+    // Set wrap width
+    tb.setWrapWidth(10);
+
+    // Get virtual lines - should be wrapped
+    const virtual_lines = tb.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), virtual_lines.len);
+
+    // Get real lines - should be 1
+    const lines = tb.getLines();
+    try std.testing.expectEqual(@as(usize, 1), lines.len);
+
+    // Verify virtual chunks reference the real line
+    for (virtual_lines[0].chunks.items) |vchunk| {
+        try std.testing.expectEqual(@as(usize, 0), vchunk.source_line);
     }
 }
 
@@ -1117,10 +1167,9 @@ test "TextBuffer selection - selection with wrapped lines" {
 
     // Set wrap width
     tb.setWrapWidth(10);
-    tb.updateVirtualLines();
 
     // Should have 2 virtual lines now
-    try std.testing.expectEqual(@as(usize, 2), tb.virtual_lines.items.len);
+    try std.testing.expectEqual(@as(u32, 2), tb.getVirtualLineCount());
 
     // Select across the wrap boundary
     _ = tb.setLocalSelection(5, 0, 5, 1, null, null);

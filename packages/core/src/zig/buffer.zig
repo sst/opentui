@@ -827,18 +827,17 @@ pub const OptimizedBuffer = struct {
         y: i32,
         clip_rect: ?ClipRect,
     ) !void {
-        text_buffer.updateVirtualLines();
-
-        if (text_buffer.virtual_lines.items.len == 0) return;
+        const virtual_lines = text_buffer.getVirtualLines();
+        if (virtual_lines.len == 0) return;
 
         const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
         const bufferBottomY = self.height;
         const lastPossibleLine = if (y >= bufferBottomY)
             0
         else
-            @min(text_buffer.virtual_lines.items.len, bufferBottomY - @as(u32, @intCast(y)));
+            @min(virtual_lines.len, bufferBottomY - @as(u32, @intCast(y)));
 
-        if (firstVisibleLine >= text_buffer.virtual_lines.items.len or lastPossibleLine == 0) return;
+        if (firstVisibleLine >= virtual_lines.len or lastPossibleLine == 0) return;
         if (firstVisibleLine >= lastPossibleLine) return;
 
         var currentX = x;
@@ -851,13 +850,15 @@ pub const OptimizedBuffer = struct {
         else
             0;
 
-        for (text_buffer.virtual_lines.items[firstVisibleLine..lastPossibleLine]) |vline| {
+        const lines = text_buffer.getLines();
+
+        for (virtual_lines[firstVisibleLine..lastPossibleLine]) |vline| {
             if (currentY >= bufferBottomY) break;
 
             currentX = x;
 
             for (vline.chunks.items) |vchunk| {
-                const source_chunk = &text_buffer.lines.items[vchunk.source_line].chunks.items[vchunk.source_chunk];
+                const source_chunk = &lines[vchunk.source_line].chunks.items[vchunk.source_chunk];
                 const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
 
                 if (currentX >= @as(i32, @intCast(self.width))) {

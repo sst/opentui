@@ -827,6 +827,20 @@ pub const TextBuffer = struct {
         return @intCast(self.lines.items.len);
     }
 
+    pub fn getVirtualLineCount(self: *TextBuffer) u32 {
+        self.updateVirtualLines();
+        return @intCast(self.virtual_lines.items.len);
+    }
+
+    pub fn getVirtualLines(self: *TextBuffer) []const VirtualLine {
+        self.updateVirtualLines();
+        return self.virtual_lines.items;
+    }
+
+    pub fn getLines(self: *const TextBuffer) []const TextLine {
+        return self.lines.items;
+    }
+
     /// Format: [start:u32][end:u32] packed into u64
     /// If no selection, returns 0xFFFFFFFF_FFFFFFFF (all bits set)
     pub fn packSelectionInfo(self: *const TextBuffer) u64 {
