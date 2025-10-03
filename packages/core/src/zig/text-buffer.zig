@@ -42,7 +42,16 @@ pub const Highlight = struct {
     col_start: u32, // Column start (in grapheme/display units)
     col_end: u32, // Column end (in grapheme/display units)
     style_id: u32, // ID into SyntaxStyle
+    priority: u8, // Higher priority wins for overlaps
     hl_ref: ?u16, // Optional reference for bulk removal
+};
+
+/// Pre-computed style span for efficient rendering
+/// Represents a contiguous region with a single style
+pub const StyleSpan = struct {
+    col: u32, // Starting column
+    style_id: u32, // Style to use (0 = use default)
+    next_col: u32, // Column where next style change happens
 };
 
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
@@ -136,6 +145,7 @@ pub const TextBuffer = struct {
 
     lines: std.ArrayListUnmanaged(TextLine),
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
+    line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
     syntax_style: ?*const SyntaxStyle,
 
     wrap_width: ?u32,
@@ -198,6 +208,9 @@ pub const TextBuffer = struct {
         var line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)) = .{};
         errdefer line_highlights.deinit(internal_allocator);
 
+        var line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)) = .{};
+        errdefer line_spans.deinit(internal_allocator);
+
         self.* = .{
             .text_bytes = &[_]u8{},
             .char_count = 0,
@@ -209,6 +222,7 @@ pub const TextBuffer = struct {
             .virtual_lines_arena = virtual_lines_internal_arena,
             .lines = lines,
             .line_highlights = line_highlights,
+            .line_spans = line_spans,
             .syntax_style = null,
             .wrap_width = null,
             .wrap_mode = .char,
@@ -253,6 +267,7 @@ pub const TextBuffer = struct {
 
         self.lines = .{};
         self.line_highlights = .{};
+        self.line_spans = .{};
         self.virtual_lines = .{};
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
@@ -285,6 +300,7 @@ pub const TextBuffer = struct {
         col_start: u32,
         col_end: u32,
         style_id: u32,
+        priority: u8,
         hl_ref: ?u16,
     ) TextBufferError!void {
         // Ensure line_highlights is sized to include this line
@@ -299,24 +315,31 @@ pub const TextBuffer = struct {
             .col_start = col_start,
             .col_end = col_end,
             .style_id = style_id,
+            .priority = priority,
             .hl_ref = hl_ref,
         };
 
         try self.line_highlights.items[line_idx].append(self.allocator, hl);
+        try self.rebuildLineSpans(line_idx);
     }
 
     /// Remove all highlights with a specific reference ID
     pub fn removeHighlightsByRef(self: *TextBuffer, hl_ref: u16) void {
-        for (self.line_highlights.items) |*line_hls| {
+        for (self.line_highlights.items, 0..) |*line_hls, line_idx| {
             var i: usize = 0;
+            var changed = false;
             while (i < line_hls.items.len) {
                 if (line_hls.items[i].hl_ref) |ref| {
                     if (ref == hl_ref) {
                         _ = line_hls.swapRemove(i);
+                        changed = true;
                         continue;
                     }
                 }
                 i += 1;
+            }
+            if (changed) {
+                self.rebuildLineSpans(line_idx) catch {};
             }
         }
     }
@@ -325,13 +348,15 @@ pub const TextBuffer = struct {
     pub fn clearLineHighlights(self: *TextBuffer, line_idx: usize) void {
         if (line_idx < self.line_highlights.items.len) {
             self.line_highlights.items[line_idx].clearRetainingCapacity();
+            self.rebuildLineSpans(line_idx) catch {};
         }
     }
 
     /// Clear all highlights from all lines
     pub fn clearAllHighlights(self: *TextBuffer) void {
-        for (self.line_highlights.items) |*line_hls| {
+        for (self.line_highlights.items, 0..) |*line_hls, line_idx| {
             line_hls.clearRetainingCapacity();
+            self.rebuildLineSpans(line_idx) catch {};
         }
     }
 
@@ -341,6 +366,95 @@ pub const TextBuffer = struct {
             return self.line_highlights.items[line_idx].items;
         }
         return &[_]Highlight{};
+    }
+
+    /// Get pre-computed style spans for a specific line
+    pub fn getLineSpans(self: *const TextBuffer, line_idx: usize) []const StyleSpan {
+        if (line_idx < self.line_spans.items.len) {
+            return self.line_spans.items[line_idx].items;
+        }
+        return &[_]StyleSpan{};
+    }
+
+    /// Rebuild pre-computed style spans for a line
+    /// Builds an optimized span list for O(1) rendering lookups
+    fn rebuildLineSpans(self: *TextBuffer, line_idx: usize) TextBufferError!void {
+        // Ensure line_spans is sized
+        while (self.line_spans.items.len <= line_idx) {
+            try self.line_spans.append(
+                self.allocator,
+                std.ArrayListUnmanaged(StyleSpan){},
+            );
+        }
+
+        self.line_spans.items[line_idx].clearRetainingCapacity();
+
+        if (line_idx >= self.line_highlights.items.len or self.line_highlights.items[line_idx].items.len == 0) {
+            return; // No highlights, rendering will use defaults
+        }
+
+        const highlights = self.line_highlights.items[line_idx].items;
+
+        // Collect all boundary columns
+        const Event = struct {
+            col: u32,
+            is_start: bool,
+            hl_idx: usize,
+        };
+
+        var events = std.ArrayList(Event).init(self.allocator);
+        defer events.deinit();
+
+        for (highlights, 0..) |hl, idx| {
+            try events.append(.{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
+            try events.append(.{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
+        }
+
+        // Sort by column, ends before starts at same position
+        const sortFn = struct {
+            fn lessThan(_: void, a: Event, b: Event) bool {
+                if (a.col != b.col) return a.col < b.col;
+                return !a.is_start; // Ends before starts
+            }
+        }.lessThan;
+        std.mem.sort(Event, events.items, {}, sortFn);
+
+        // Build spans by tracking active highlights
+        var active = std.AutoHashMap(usize, void).init(self.allocator);
+        defer active.deinit();
+
+        var current_col: u32 = 0;
+
+        for (events.items) |event| {
+            // Find current highest priority style before processing event
+            var current_priority: i16 = -1;
+            var current_style: u32 = 0;
+            var it = active.keyIterator();
+            while (it.next()) |hl_idx| {
+                const hl = highlights[hl_idx.*];
+                if (hl.priority > current_priority) {
+                    current_priority = @intCast(hl.priority);
+                    current_style = hl.style_id;
+                }
+            }
+
+            // Emit span for the segment leading up to this event
+            if (event.col > current_col) {
+                try self.line_spans.items[line_idx].append(self.allocator, StyleSpan{
+                    .col = current_col,
+                    .style_id = current_style,
+                    .next_col = event.col,
+                });
+                current_col = event.col;
+            }
+
+            // Process event
+            if (event.is_start) {
+                try active.put(event.hl_idx, {});
+            } else {
+                _ = active.remove(event.hl_idx);
+            }
+        }
     }
 
     /// Set the syntax style for highlight resolution

@@ -1754,7 +1754,7 @@ test "TextBuffer highlights - add single highlight to line" {
     try tb.setText("Hello World");
 
     // Add a highlight
-    try tb.addHighlight(0, 0, 5, 1, null);
+    try tb.addHighlight(0, 0, 5, 1, 0, null);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);
@@ -1777,8 +1777,8 @@ test "TextBuffer highlights - add multiple highlights to same line" {
     try tb.setText("Hello World");
 
     // Add multiple highlights
-    try tb.addHighlight(0, 0, 5, 1, null);
-    try tb.addHighlight(0, 6, 11, 2, null);
+    try tb.addHighlight(0, 0, 5, 1, 0, null);
+    try tb.addHighlight(0, 6, 11, 2, 0, null);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 2), highlights.len);
@@ -1800,9 +1800,9 @@ test "TextBuffer highlights - add highlights to multiple lines" {
     try tb.setText("Line 1\nLine 2\nLine 3");
 
     // Add highlights to different lines
-    try tb.addHighlight(0, 0, 6, 1, null);
-    try tb.addHighlight(1, 0, 6, 2, null);
-    try tb.addHighlight(2, 0, 6, 3, null);
+    try tb.addHighlight(0, 0, 6, 1, 0, null);
+    try tb.addHighlight(1, 0, 6, 2, 0, null);
+    try tb.addHighlight(2, 0, 6, 3, 0, null);
 
     try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(0).len);
     try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(1).len);
@@ -1823,9 +1823,9 @@ test "TextBuffer highlights - remove highlights by reference" {
     try tb.setText("Line 1\nLine 2");
 
     // Add highlights with different references
-    try tb.addHighlight(0, 0, 3, 1, 100);
-    try tb.addHighlight(0, 3, 6, 2, 200);
-    try tb.addHighlight(1, 0, 6, 3, 100);
+    try tb.addHighlight(0, 0, 3, 1, 0, 100);
+    try tb.addHighlight(0, 3, 6, 2, 0, 200);
+    try tb.addHighlight(1, 0, 6, 3, 0, 100);
 
     // Remove all highlights with ref 100
     tb.removeHighlightsByRef(100);
@@ -1851,8 +1851,8 @@ test "TextBuffer highlights - clear line highlights" {
 
     try tb.setText("Line 1\nLine 2");
 
-    try tb.addHighlight(0, 0, 6, 1, null);
-    try tb.addHighlight(0, 6, 10, 2, null);
+    try tb.addHighlight(0, 0, 6, 1, 0, null);
+    try tb.addHighlight(0, 6, 10, 2, 0, null);
 
     tb.clearLineHighlights(0);
 
@@ -1873,9 +1873,9 @@ test "TextBuffer highlights - clear all highlights" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    try tb.addHighlight(0, 0, 6, 1, null);
-    try tb.addHighlight(1, 0, 6, 2, null);
-    try tb.addHighlight(2, 0, 6, 3, null);
+    try tb.addHighlight(0, 0, 6, 1, 0, null);
+    try tb.addHighlight(1, 0, 6, 2, 0, null);
+    try tb.addHighlight(2, 0, 6, 3, 0, null);
 
     tb.clearAllHighlights();
 
@@ -1916,8 +1916,8 @@ test "TextBuffer highlights - overlapping highlights" {
     try tb.setText("Hello World");
 
     // Add overlapping highlights
-    try tb.addHighlight(0, 0, 8, 1, null);
-    try tb.addHighlight(0, 5, 11, 2, null);
+    try tb.addHighlight(0, 0, 8, 1, 0, null);
+    try tb.addHighlight(0, 5, 11, 2, 0, null);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 2), highlights.len);
@@ -1936,7 +1936,7 @@ test "TextBuffer highlights - highlights preserved after wrap width change" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    try tb.addHighlight(0, 0, 10, 1, null);
+    try tb.addHighlight(0, 0, 10, 1, 0, null);
 
     tb.setWrapWidth(10);
 
@@ -1957,7 +1957,7 @@ test "TextBuffer highlights - reset clears highlights" {
     defer tb.deinit();
 
     try tb.setText("Hello World");
-    try tb.addHighlight(0, 0, 5, 1, null);
+    try tb.addHighlight(0, 0, 5, 1, 0, null);
 
     tb.reset();
 
@@ -2015,9 +2015,9 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     tb.setSyntaxStyle(syntax_style);
 
     // Add highlights
-    try tb.addHighlight(0, 0, 8, keyword_id, null); // "function"
-    try tb.addHighlight(0, 9, 14, string_id, null); // "hello"
-    try tb.addHighlight(0, 17, 27, comment_id, null); // "// comment"
+    try tb.addHighlight(0, 0, 8, keyword_id, 1, null); // "function"
+    try tb.addHighlight(0, 9, 14, string_id, 1, null); // "hello"
+    try tb.addHighlight(0, 17, 27, comment_id, 1, null); // "// comment"
 
     // Verify highlights are stored
     const highlights = tb.getLineHighlights(0);
@@ -2028,4 +2028,65 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     try std.testing.expect(style.resolveById(keyword_id) != null);
     try std.testing.expect(style.resolveById(string_id) != null);
     try std.testing.expect(style.resolveById(comment_id) != null);
+}
+
+test "TextBuffer highlights - style spans computed correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("0123456789");
+
+    // Add non-overlapping highlights
+    try tb.addHighlight(0, 0, 3, 1, 1, null); // cols 0-2
+    try tb.addHighlight(0, 5, 8, 2, 1, null); // cols 5-7
+
+    const spans = tb.getLineSpans(0);
+    try std.testing.expect(spans.len > 0);
+
+    // Should have spans for: [0-3 style:1], [3-5 style:0/default], [5-8 style:2], ...
+    var found_style1 = false;
+    var found_style2 = false;
+    for (spans) |span| {
+        if (span.style_id == 1) found_style1 = true;
+        if (span.style_id == 2) found_style2 = true;
+    }
+    try std.testing.expect(found_style1);
+    try std.testing.expect(found_style2);
+}
+
+test "TextBuffer highlights - priority handling in spans" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("0123456789");
+
+    // Add overlapping highlights with different priorities
+    try tb.addHighlight(0, 0, 8, 1, 1, null); // priority 1
+    try tb.addHighlight(0, 3, 6, 2, 5, null); // priority 5 (higher)
+
+    const spans = tb.getLineSpans(0);
+    try std.testing.expect(spans.len > 0);
+
+    // In range 3-6, style 2 should win due to higher priority
+    var found_high_priority = false;
+    for (spans) |span| {
+        if (span.col >= 3 and span.col < 6 and span.style_id == 2) {
+            found_high_priority = true;
+        }
+    }
+    try std.testing.expect(found_high_priority);
 }

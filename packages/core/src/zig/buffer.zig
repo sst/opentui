@@ -861,6 +861,26 @@ pub const OptimizedBuffer = struct {
 
             currentX = x;
 
+            // Initialize span tracking for this line
+            const vline_idx = @as(usize, @intCast(currentY - y));
+            const spans = text_buffer.getLineSpans(vline_idx);
+            var span_idx: usize = 0;
+            var lineFg = default_fg;
+            var lineBg = default_bg;
+            var lineAttributes = default_attributes;
+            var next_change_col: u32 = if (spans.len > 0) spans[0].next_col else std.math.maxInt(u32);
+
+            // Apply initial span style (if it starts at col 0)
+            if (spans.len > 0 and spans[0].col == 0 and spans[0].style_id != 0) {
+                if (text_buffer.getSyntaxStyle()) |style| {
+                    if (style.resolveById(spans[0].style_id)) |resolved_style| {
+                        if (resolved_style.fg) |fg| lineFg = fg;
+                        if (resolved_style.bg) |bg| lineBg = bg;
+                        lineAttributes |= resolved_style.attributes;
+                    }
+                }
+            }
+
             for (vline.chunks.items) |vchunk| {
                 const source_chunk = &lines[vchunk.source_line].chunks.items[vchunk.source_chunk];
                 const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
@@ -870,11 +890,6 @@ pub const OptimizedBuffer = struct {
                     currentX += @intCast(chars.len);
                     continue;
                 }
-
-                // Use default styles for all text (no per-chunk styling)
-                const chunkFg = default_fg;
-                const chunkBg = default_bg;
-                const chunkAttributes: u8 = default_attributes;
 
                 var charIndex: u32 = 0;
                 for (chars) |charCode| {
@@ -918,26 +933,33 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
-                    var finalFg = chunkFg;
-                    var finalBg = chunkBg;
-                    var finalAttributes = chunkAttributes;
-
-                    // Apply syntax highlighting from line highlights
-                    const vline_idx = @as(usize, @intCast(currentY - y));
-                    const highlights = text_buffer.getLineHighlights(vline_idx);
+                    // Check if we need to advance to next span
                     const col_pos = @as(u32, @intCast(currentX - x));
+                    if (col_pos >= next_change_col and span_idx + 1 < spans.len) {
+                        span_idx += 1;
+                        const new_span = spans[span_idx];
 
-                    if (text_buffer.getSyntaxStyle()) |style| {
-                        for (highlights) |hl| {
-                            if (col_pos >= hl.col_start and col_pos < hl.col_end) {
-                                if (style.resolveById(hl.style_id)) |resolved_style| {
-                                    if (resolved_style.fg) |fg| finalFg = fg;
-                                    if (resolved_style.bg) |bg| finalBg = bg;
-                                    finalAttributes |= resolved_style.attributes;
+                        // Reset to defaults for new span
+                        lineFg = default_fg;
+                        lineBg = default_bg;
+                        lineAttributes = default_attributes;
+
+                        // Apply new span's style
+                        if (text_buffer.getSyntaxStyle()) |style| {
+                            if (new_span.style_id != 0) {
+                                if (style.resolveById(new_span.style_id)) |resolved_style| {
+                                    if (resolved_style.fg) |fg| lineFg = fg;
+                                    if (resolved_style.bg) |bg| lineBg = bg;
+                                    lineAttributes |= resolved_style.attributes;
                                 }
                             }
                         }
+                        next_change_col = new_span.next_col;
                     }
+
+                    var finalFg = lineFg;
+                    var finalBg = lineBg;
+                    const finalAttributes = lineAttributes;
 
                     // Handle selection highlighting
                     if (text_buffer.selection) |sel| {
