@@ -163,67 +163,6 @@ export class TextBuffer {
     return this.getSelection() !== null
   }
 
-  public insertChunkGroup(index: number, text: string, fg?: RGBA, bg?: RGBA, attributes?: number): void {
-    this.guard()
-    const textBytes = this.lib.encoder.encode(text)
-    this.insertEncodedChunkGroup(index, textBytes, fg, bg, attributes)
-  }
-
-  public insertEncodedChunkGroup(
-    index: number,
-    textBytes: Uint8Array,
-    fg?: RGBA,
-    bg?: RGBA,
-    attributes?: number,
-  ): void {
-    this.guard()
-    this._length = this.lib.textBufferInsertChunkGroup(
-      this.bufferPtr,
-      index,
-      textBytes,
-      fg || null,
-      bg || null,
-      attributes ?? null,
-    )
-    this._lineInfo = undefined
-  }
-
-  public removeChunkGroup(index: number): void {
-    this.guard()
-    this._length = this.lib.textBufferRemoveChunkGroup(this.bufferPtr, index)
-    this._lineInfo = undefined
-  }
-
-  public replaceChunkGroup(index: number, text: string, fg?: RGBA, bg?: RGBA, attributes?: number): void {
-    this.guard()
-    const textBytes = this.lib.encoder.encode(text)
-    this.replaceEncodedChunkGroup(index, textBytes, fg, bg, attributes)
-  }
-
-  public replaceEncodedChunkGroup(
-    index: number,
-    textBytes: Uint8Array,
-    fg?: RGBA,
-    bg?: RGBA,
-    attributes?: number,
-  ): void {
-    this.guard()
-    this._length = this.lib.textBufferReplaceChunkGroup(
-      this.bufferPtr,
-      index,
-      textBytes,
-      fg || null,
-      bg || null,
-      attributes ?? null,
-    )
-    this._lineInfo = undefined
-  }
-
-  public get chunkGroupCount(): number {
-    this.guard()
-    return this.lib.textBufferGetChunkGroupCount(this.bufferPtr)
-  }
-
   public setWrapWidth(width: number | null): void {
     this.guard()
     this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)

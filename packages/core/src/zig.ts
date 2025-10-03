@@ -349,22 +349,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    textBufferInsertChunkGroup: {
-      args: ["ptr", "usize", "ptr", "u32", "ptr", "ptr", "u8"],
-      returns: "u32",
-    },
-    textBufferRemoveChunkGroup: {
-      args: ["ptr", "usize"],
-      returns: "u32",
-    },
-    textBufferReplaceChunkGroup: {
-      args: ["ptr", "usize", "ptr", "u32", "ptr", "ptr", "u8"],
-      returns: "u32",
-    },
-    textBufferGetChunkGroupCount: {
-      args: ["ptr"],
-      returns: "usize",
-    },
     textBufferSetWrapWidth: {
       args: ["ptr", "u32"],
       returns: "void",
@@ -750,24 +734,6 @@ export interface RenderLib {
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
 
-  textBufferInsertChunkGroup: (
-    buffer: Pointer,
-    index: number,
-    textBytes: Uint8Array,
-    fg: RGBA | null,
-    bg: RGBA | null,
-    attributes: number | null,
-  ) => number
-  textBufferRemoveChunkGroup: (buffer: Pointer, index: number) => number
-  textBufferReplaceChunkGroup: (
-    buffer: Pointer,
-    index: number,
-    textBytes: Uint8Array,
-    fg: RGBA | null,
-    bg: RGBA | null,
-    attributes: number | null,
-  ) => number
-  textBufferGetChunkGroupCount: (buffer: Pointer) => number
   textBufferSetWrapWidth: (buffer: Pointer, width: number) => void
   textBufferSetWrapMode: (buffer: Pointer, mode: "char" | "word") => void
 
@@ -1388,59 +1354,6 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferResetLocalSelection(buffer: Pointer): void {
     this.opentui.symbols.textBufferResetLocalSelection(buffer)
-  }
-
-  public textBufferInsertChunkGroup(
-    buffer: Pointer,
-    index: number,
-    textBytes: Uint8Array,
-    fg: RGBA | null,
-    bg: RGBA | null,
-    attributes: number | null,
-  ): number {
-    const fgPtr = fg ? fg.buffer : null
-    const bgPtr = bg ? bg.buffer : null
-    const attr = attributes ?? 255
-    return this.opentui.symbols.textBufferInsertChunkGroup(
-      buffer,
-      index,
-      textBytes,
-      textBytes.length,
-      fgPtr,
-      bgPtr,
-      attr,
-    )
-  }
-
-  public textBufferRemoveChunkGroup(buffer: Pointer, index: number): number {
-    return this.opentui.symbols.textBufferRemoveChunkGroup(buffer, index)
-  }
-
-  public textBufferReplaceChunkGroup(
-    buffer: Pointer,
-    index: number,
-    textBytes: Uint8Array,
-    fg: RGBA | null,
-    bg: RGBA | null,
-    attributes: number | null,
-  ): number {
-    const fgPtr = fg ? fg.buffer : null
-    const bgPtr = bg ? bg.buffer : null
-    const attr = attributes ?? 255
-    return this.opentui.symbols.textBufferReplaceChunkGroup(
-      buffer,
-      index,
-      textBytes,
-      textBytes.length,
-      fgPtr,
-      bgPtr,
-      attr,
-    )
-  }
-
-  public textBufferGetChunkGroupCount(buffer: Pointer): number {
-    const result = this.opentui.symbols.textBufferGetChunkGroupCount(buffer)
-    return typeof result === "bigint" ? Number(result) : result
   }
 
   public textBufferSetWrapWidth(buffer: Pointer, width: number): void {

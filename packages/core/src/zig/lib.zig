@@ -490,30 +490,6 @@ export fn textBufferResetLocalSelection(tb: *text_buffer.TextBuffer) void {
     tb.resetLocalSelection();
 }
 
-export fn textBufferInsertChunkGroup(tb: *text_buffer.TextBuffer, index: usize, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: u8) u32 {
-    const textSlice = textBytes[0..textLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const attrValue = if (attr == 255) null else attr;
-    return tb.insertChunkGroup(index, textSlice, fgColor, bgColor, attrValue) catch 0;
-}
-
-export fn textBufferRemoveChunkGroup(tb: *text_buffer.TextBuffer, index: usize) u32 {
-    return tb.removeChunkGroup(index) catch tb.char_count;
-}
-
-export fn textBufferReplaceChunkGroup(tb: *text_buffer.TextBuffer, index: usize, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: u8) u32 {
-    const textSlice = textBytes[0..textLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const attrValue = if (attr == 255) null else attr;
-    return tb.replaceChunkGroup(index, textSlice, fgColor, bgColor, attrValue) catch tb.char_count;
-}
-
-export fn textBufferGetChunkGroupCount(tb: *const text_buffer.TextBuffer) usize {
-    return tb.getChunkGroupCount();
-}
-
 export fn textBufferSetWrapWidth(tb: *text_buffer.TextBuffer, width: u32) void {
     tb.setWrapWidth(if (width == 0) null else width);
 }

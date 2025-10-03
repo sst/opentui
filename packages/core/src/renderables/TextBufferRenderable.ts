@@ -259,27 +259,6 @@ export abstract class TextBufferRenderable extends Renderable {
     this.yogaNode.setMeasureFunc(measureFunc)
   }
 
-  insertChunk(chunk: TextChunk, index?: number): void {
-    this.textBuffer.insertChunkGroup(
-      index ?? this.textBuffer.chunkGroupCount,
-      chunk.text,
-      chunk.fg,
-      chunk.bg,
-      chunk.attributes,
-    )
-    this.updateTextInfo()
-  }
-
-  removeChunk(index: number): void {
-    this.textBuffer.removeChunkGroup(index)
-    this.updateTextInfo()
-  }
-
-  replaceChunk(index: number, chunk: TextChunk): void {
-    this.textBuffer.replaceChunkGroup(index, chunk.text, chunk.fg, chunk.bg, chunk.attributes)
-    this.updateTextInfo()
-  }
-
   shouldStartSelection(x: number, y: number): boolean {
     if (!this.selectable) return false
 
