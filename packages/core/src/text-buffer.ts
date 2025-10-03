@@ -175,6 +175,82 @@ export class TextBuffer {
     this._lineInfo = undefined
   }
 
+  /**
+   * Add a highlight using character offsets into the full text.
+   * Efficiently handles single-line and multi-line highlights.
+   * @param charStart - Start character offset in the text
+   * @param charEnd - End character offset in the text
+   * @param styleId - Style ID from SyntaxStyle
+   * @param priority - Priority for overlapping highlights (higher wins)
+   * @param hlRef - Optional reference ID for bulk removal
+   */
+  public addHighlightByCharRange(
+    charStart: number,
+    charEnd: number,
+    styleId: number,
+    priority: number = 0,
+    hlRef?: number,
+  ): void {
+    this.guard()
+    this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, charStart, charEnd, styleId, priority, hlRef)
+  }
+
+  /**
+   * Add a highlight to a specific line by column positions.
+   * @param lineIdx - Line index
+   * @param colStart - Start column (grapheme-based)
+   * @param colEnd - End column (grapheme-based)
+   * @param styleId - Style ID from SyntaxStyle
+   * @param priority - Priority for overlapping highlights (higher wins)
+   * @param hlRef - Optional reference ID for bulk removal
+   */
+  public addHighlight(
+    lineIdx: number,
+    colStart: number,
+    colEnd: number,
+    styleId: number,
+    priority: number = 0,
+    hlRef?: number,
+  ): void {
+    this.guard()
+    this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, colStart, colEnd, styleId, priority, hlRef)
+  }
+
+  /**
+   * Remove all highlights with a specific reference ID.
+   * @param hlRef - Reference ID to remove
+   */
+  public removeHighlightsByRef(hlRef: number): void {
+    this.guard()
+    this.lib.textBufferRemoveHighlightsByRef(this.bufferPtr, hlRef)
+  }
+
+  /**
+   * Clear all highlights from a specific line.
+   * @param lineIdx - Line index
+   */
+  public clearLineHighlights(lineIdx: number): void {
+    this.guard()
+    this.lib.textBufferClearLineHighlights(this.bufferPtr, lineIdx)
+  }
+
+  /**
+   * Clear all highlights from all lines.
+   */
+  public clearAllHighlights(): void {
+    this.guard()
+    this.lib.textBufferClearAllHighlights(this.bufferPtr)
+  }
+
+  /**
+   * Set the syntax style for highlight resolution.
+   * @param style - Pointer to SyntaxStyle or null to unset
+   */
+  public setSyntaxStyle(style: Pointer | null): void {
+    this.guard()
+    this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

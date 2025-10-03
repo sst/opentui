@@ -357,6 +357,30 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u8"],
       returns: "void",
     },
+    textBufferAddHighlightByCharRange: {
+      args: ["ptr", "u32", "u32", "u32", "u8", "u32"],
+      returns: "void",
+    },
+    textBufferAddHighlight: {
+      args: ["ptr", "u32", "u32", "u32", "u32", "u8", "u32"],
+      returns: "void",
+    },
+    textBufferRemoveHighlightsByRef: {
+      args: ["ptr", "u16"],
+      returns: "void",
+    },
+    textBufferClearLineHighlights: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    textBufferClearAllHighlights: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferSetSyntaxStyle: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
 
     getArenaAllocatedBytes: {
       args: [],
@@ -758,6 +782,27 @@ export interface RenderLib {
 
   textBufferSetWrapWidth: (buffer: Pointer, width: number) => void
   textBufferSetWrapMode: (buffer: Pointer, mode: "char" | "word") => void
+  textBufferAddHighlightByCharRange: (
+    buffer: Pointer,
+    charStart: number,
+    charEnd: number,
+    styleId: number,
+    priority: number,
+    hlRef?: number,
+  ) => void
+  textBufferAddHighlight: (
+    buffer: Pointer,
+    lineIdx: number,
+    colStart: number,
+    colEnd: number,
+    styleId: number,
+    priority: number,
+    hlRef?: number,
+  ) => void
+  textBufferRemoveHighlightsByRef: (buffer: Pointer, hlRef: number) => void
+  textBufferClearLineHighlights: (buffer: Pointer, lineIdx: number) => void
+  textBufferClearAllHighlights: (buffer: Pointer) => void
+  textBufferSetSyntaxStyle: (buffer: Pointer, style: Pointer | null) => void
 
   getArenaAllocatedBytes: () => number
 
@@ -1391,6 +1436,47 @@ class FFIRenderLib implements RenderLib {
   public textBufferSetWrapMode(buffer: Pointer, mode: "char" | "word"): void {
     const modeValue = mode === "char" ? 0 : 1
     this.opentui.symbols.textBufferSetWrapMode(buffer, modeValue)
+  }
+
+  public textBufferAddHighlightByCharRange(
+    buffer: Pointer,
+    charStart: number,
+    charEnd: number,
+    styleId: number,
+    priority: number,
+    hlRef?: number,
+  ): void {
+    const ref = hlRef === undefined ? 0xffffffff : hlRef
+    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, charStart, charEnd, styleId, priority, ref)
+  }
+
+  public textBufferAddHighlight(
+    buffer: Pointer,
+    lineIdx: number,
+    colStart: number,
+    colEnd: number,
+    styleId: number,
+    priority: number,
+    hlRef?: number,
+  ): void {
+    const ref = hlRef === undefined ? 0xffffffff : hlRef
+    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, colStart, colEnd, styleId, priority, ref)
+  }
+
+  public textBufferRemoveHighlightsByRef(buffer: Pointer, hlRef: number): void {
+    this.opentui.symbols.textBufferRemoveHighlightsByRef(buffer, hlRef)
+  }
+
+  public textBufferClearLineHighlights(buffer: Pointer, lineIdx: number): void {
+    this.opentui.symbols.textBufferClearLineHighlights(buffer, lineIdx)
+  }
+
+  public textBufferClearAllHighlights(buffer: Pointer): void {
+    this.opentui.symbols.textBufferClearAllHighlights(buffer)
+  }
+
+  public textBufferSetSyntaxStyle(buffer: Pointer, style: Pointer | null): void {
+    this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style)
   }
 
   public getArenaAllocatedBytes(): number {

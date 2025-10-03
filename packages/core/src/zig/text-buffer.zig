@@ -376,6 +376,93 @@ pub const TextBuffer = struct {
         return &[_]StyleSpan{};
     }
 
+    /// Add a highlight using character offsets into the full text
+    /// Efficiently handles single-line and multi-line highlights
+    pub fn addHighlightByCharRange(
+        self: *TextBuffer,
+        char_start: u32,
+        char_end: u32,
+        style_id: u32,
+        priority: u8,
+        hl_ref: ?u16,
+    ) TextBufferError!void {
+        if (char_start >= char_end or self.lines.items.len == 0) {
+            return;
+        }
+
+        // Binary search to find the starting line
+        var start_line_idx: usize = 0;
+        {
+            var left: usize = 0;
+            var right: usize = self.lines.items.len;
+            while (left < right) {
+                const mid = left + (right - left) / 2;
+                const line = &self.lines.items[mid];
+                const line_end_char = if (mid + 1 < self.lines.items.len)
+                    self.lines.items[mid + 1].char_offset
+                else
+                    line.char_offset + line.width;
+
+                if (char_start < line.char_offset) {
+                    right = mid;
+                } else if (char_start >= line_end_char) {
+                    left = mid + 1;
+                } else {
+                    start_line_idx = mid;
+                    break;
+                }
+            }
+            if (left >= self.lines.items.len) return;
+            if (left == right) start_line_idx = left;
+        }
+
+        const start_line = &self.lines.items[start_line_idx];
+        const start_line_end_char = if (start_line_idx + 1 < self.lines.items.len)
+            self.lines.items[start_line_idx + 1].char_offset
+        else
+            start_line.char_offset + start_line.width;
+
+        // Fast path: highlight is entirely within one line
+        if (char_end <= start_line_end_char) {
+            const col_start = char_start - start_line.char_offset;
+            const col_end = char_end - start_line.char_offset;
+            return self.addHighlight(start_line_idx, col_start, col_end, style_id, priority, hl_ref);
+        }
+
+        // Multi-line highlight: process first line
+        {
+            const col_start = char_start - start_line.char_offset;
+            const col_end = start_line.width;
+            try self.addHighlight(start_line_idx, col_start, col_end, style_id, priority, hl_ref);
+        }
+
+        // Process middle and end lines
+        var line_idx = start_line_idx + 1;
+        while (line_idx < self.lines.items.len) {
+            const line = &self.lines.items[line_idx];
+            const line_end_char = if (line_idx + 1 < self.lines.items.len)
+                self.lines.items[line_idx + 1].char_offset
+            else
+                line.char_offset + line.width;
+
+            if (line.char_offset >= char_end) {
+                break;
+            }
+
+            if (char_end <= line_end_char) {
+                // This is the last line
+                const col_end = char_end - line.char_offset;
+                try self.addHighlight(line_idx, 0, col_end, style_id, priority, hl_ref);
+                break;
+            } else {
+                // Middle line: highlight entire line
+                try self.addHighlight(line_idx, 0, line.width, style_id, priority, hl_ref);
+            }
+
+            line_idx += 1;
+        }
+    }
+
     /// Rebuild pre-computed style spans for a line
     /// Builds an optimized span list for O(1) rendering lookups
     fn rebuildLineSpans(self: *TextBuffer, line_idx: usize) TextBufferError!void {

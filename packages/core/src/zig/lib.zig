@@ -504,6 +504,47 @@ export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
     tb.setWrapMode(wrapMode);
 }
 
+export fn textBufferAddHighlightByCharRange(
+    tb: *text_buffer.TextBuffer,
+    char_start: u32,
+    char_end: u32,
+    style_id: u32,
+    priority: u8,
+    hl_ref: u32,
+) void {
+    const ref: ?u16 = if (hl_ref == 0xFFFFFFFF) null else @intCast(hl_ref);
+    tb.addHighlightByCharRange(char_start, char_end, style_id, priority, ref) catch {};
+}
+
+export fn textBufferAddHighlight(
+    tb: *text_buffer.TextBuffer,
+    line_idx: u32,
+    col_start: u32,
+    col_end: u32,
+    style_id: u32,
+    priority: u8,
+    hl_ref: u32,
+) void {
+    const ref: ?u16 = if (hl_ref == 0xFFFFFFFF) null else @intCast(hl_ref);
+    tb.addHighlight(line_idx, col_start, col_end, style_id, priority, ref) catch {};
+}
+
+export fn textBufferRemoveHighlightsByRef(tb: *text_buffer.TextBuffer, hl_ref: u16) void {
+    tb.removeHighlightsByRef(hl_ref);
+}
+
+export fn textBufferClearLineHighlights(tb: *text_buffer.TextBuffer, line_idx: u32) void {
+    tb.clearLineHighlights(line_idx);
+}
+
+export fn textBufferClearAllHighlights(tb: *text_buffer.TextBuffer) void {
+    tb.clearAllHighlights();
+}
+
+export fn textBufferSetSyntaxStyle(tb: *text_buffer.TextBuffer, style: ?*syntax_style.SyntaxStyle) void {
+    tb.setSyntaxStyle(style);
+}
+
 // SyntaxStyle functions
 export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
     return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {

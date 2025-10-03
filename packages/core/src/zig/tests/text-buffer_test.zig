@@ -2090,3 +2090,311 @@ test "TextBuffer highlights - priority handling in spans" {
     }
     try std.testing.expect(found_high_priority);
 }
+
+// ===== Character Range Highlight Tests =====
+
+test "TextBuffer char range highlights - single line highlight" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    // Highlight "Hello" (chars 0-5)
+    try tb.addHighlightByCharRange(0, 5, 1, 1, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 0), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 5), highlights[0].col_end);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].style_id);
+}
+
+test "TextBuffer char range highlights - multi-line highlight" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // "Hello\n" = 6 chars (0-5 + newline)
+    // "World\n" = 6 chars (6-11 + newline)
+    // "Test" = 4 chars (12-15)
+    try tb.setText("Hello\nWorld\nTest");
+
+    // Highlight from middle of line 0 to middle of line 1 (chars 3-9)
+    try tb.addHighlightByCharRange(3, 9, 1, 1, null);
+
+    // Should create highlights on line 0 and line 1
+    const line0_highlights = tb.getLineHighlights(0);
+    const line1_highlights = tb.getLineHighlights(1);
+
+    try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
+    try std.testing.expectEqual(@as(usize, 1), line1_highlights.len);
+
+    // Line 0: highlight from col 3 to end (col 5)
+    try std.testing.expectEqual(@as(u32, 3), line0_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 5), line0_highlights[0].col_end);
+
+    // Line 1: highlight from start (col 0) to col 3
+    try std.testing.expectEqual(@as(u32, 0), line1_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 3), line1_highlights[0].col_end);
+}
+
+test "TextBuffer char range highlights - spanning three lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line1\nLine2\nLine3");
+
+    // Highlight from char 3 (middle of line 0) to char 13 (middle of line 2)
+    try tb.addHighlightByCharRange(3, 13, 1, 1, null);
+
+    const line0_highlights = tb.getLineHighlights(0);
+    const line1_highlights = tb.getLineHighlights(1);
+    const line2_highlights = tb.getLineHighlights(2);
+
+    // All three lines should have highlights
+    try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
+    try std.testing.expectEqual(@as(usize, 1), line1_highlights.len);
+    try std.testing.expectEqual(@as(usize, 1), line2_highlights.len);
+
+    // Line 0: from col 3 to end
+    try std.testing.expectEqual(@as(u32, 3), line0_highlights[0].col_start);
+
+    // Line 1: entire line (col 0 to line width)
+    try std.testing.expectEqual(@as(u32, 0), line1_highlights[0].col_start);
+
+    // Line 2: from start to col 1 (char 13 is at offset 12, which is line 2 col 1)
+    try std.testing.expectEqual(@as(u32, 0), line2_highlights[0].col_start);
+}
+
+test "TextBuffer char range highlights - exact line boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("AAAA\nBBBB\nCCCC");
+
+    // Highlight entire first line (chars 0-4, excluding newline)
+    try tb.addHighlightByCharRange(0, 4, 1, 1, null);
+
+    const line0_highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
+    try std.testing.expectEqual(@as(u32, 0), line0_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 4), line0_highlights[0].col_end);
+
+    // Line 1 should have no highlights
+    const line1_highlights = tb.getLineHighlights(1);
+    try std.testing.expectEqual(@as(usize, 0), line1_highlights.len);
+}
+
+test "TextBuffer char range highlights - empty range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    // Empty range (start == end) should add no highlights
+    try tb.addHighlightByCharRange(5, 5, 1, 1, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+}
+
+test "TextBuffer char range highlights - invalid range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    // Invalid range (start > end) should add no highlights
+    try tb.addHighlightByCharRange(10, 5, 1, 1, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+}
+
+test "TextBuffer char range highlights - out of bounds range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello");
+
+    // Range extends beyond text length - should handle gracefully
+    try tb.addHighlightByCharRange(3, 100, 1, 1, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 3), highlights[0].col_start);
+}
+
+test "TextBuffer char range highlights - multiple non-overlapping ranges" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("function hello() { return 42; }");
+
+    // Highlight multiple tokens
+    try tb.addHighlightByCharRange(0, 8, 1, 1, null); // "function"
+    try tb.addHighlightByCharRange(9, 14, 2, 1, null); // "hello"
+    try tb.addHighlightByCharRange(19, 25, 3, 1, null); // "return"
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 3), highlights.len);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].style_id);
+    try std.testing.expectEqual(@as(u32, 2), highlights[1].style_id);
+    try std.testing.expectEqual(@as(u32, 3), highlights[2].style_id);
+}
+
+test "TextBuffer char range highlights - with reference ID for removal" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line1\nLine2\nLine3");
+
+    // Add highlights with reference ID 100
+    try tb.addHighlightByCharRange(0, 5, 1, 1, 100);
+    try tb.addHighlightByCharRange(6, 11, 2, 1, 100);
+
+    // Verify they were added
+    try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(0).len);
+    try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(1).len);
+
+    // Remove all highlights with ref 100
+    tb.removeHighlightsByRef(100);
+
+    // Verify they were removed
+    try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(0).len);
+    try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(1).len);
+}
+
+test "TextBuffer char range highlights - priority handling" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("0123456789");
+
+    // Add overlapping highlights with different priorities
+    try tb.addHighlightByCharRange(0, 8, 1, 1, null); // priority 1
+    try tb.addHighlightByCharRange(3, 6, 2, 5, null); // priority 5 (higher)
+
+    const spans = tb.getLineSpans(0);
+    try std.testing.expect(spans.len > 0);
+
+    // Higher priority should win in overlap region
+    var found_high_priority = false;
+    for (spans) |span| {
+        if (span.col >= 3 and span.col < 6 and span.style_id == 2) {
+            found_high_priority = true;
+        }
+    }
+    try std.testing.expect(found_high_priority);
+}
+
+test "TextBuffer char range highlights - unicode text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello 世界 🌟");
+
+    // Highlight the entire text by character count
+    const text_len = tb.getLength();
+    try tb.addHighlightByCharRange(0, text_len, 1, 1, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+}
+
+test "TextBuffer char range highlights - preserved after setText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+    try tb.addHighlightByCharRange(0, 5, 1, 1, null);
+
+    // Set new text - highlights should be cleared
+    try tb.setText("New Text");
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+}
