@@ -49,6 +49,7 @@ pub const GraphemePool = struct {
         len: u16,
         refcount: u32,
         generation: u32,
+        is_owned: u32, // 0 = unowned (external memory), 1 = owned (copied into pool)
     };
 
     pub fn init(allocator: std.mem.Allocator) GraphemePool {
@@ -77,7 +78,22 @@ pub const GraphemePool = struct {
 
     pub fn alloc(self: *GraphemePool, bytes: []const u8) GraphemePoolError!IdPayload {
         const class_id: u32 = classForSize(bytes.len);
-        const slot_index = try self.classes[class_id].alloc(bytes);
+        const slot_index = try self.classes[class_id].alloc(bytes, true);
+        if (slot_index > SLOT_MASK) return GraphemePoolError.OutOfMemory;
+        const generation = self.classes[class_id].getGeneration(slot_index);
+        return (class_id << (GENERATION_BITS + SLOT_BITS)) |
+            ((generation & GENERATION_MASK) << SLOT_BITS) |
+            (slot_index & SLOT_MASK);
+    }
+
+    /// Allocate an ID for externally managed memory (no copy, just reference)
+    /// The caller is responsible for keeping the memory valid while the ID is in use
+    pub fn allocUnowned(self: *GraphemePool, bytes: []const u8) GraphemePoolError!IdPayload {
+        // For unowned allocations, we need space for a pointer
+        // Use the smallest class that can hold a pointer (typically class 0 or 1)
+        const ptr_size = @sizeOf(usize);
+        const class_id: u32 = classForSize(ptr_size);
+        const slot_index = try self.classes[class_id].allocUnowned(bytes, false);
         if (slot_index > SLOT_MASK) return GraphemePoolError.OutOfMemory;
         const generation = self.classes[class_id].getGeneration(slot_index);
         return (class_id << (GENERATION_BITS + SLOT_BITS)) |
@@ -151,7 +167,7 @@ pub const GraphemePool = struct {
             return &self.slots.items[offset];
         }
 
-        pub fn alloc(self: *ClassPool, bytes: []const u8) GraphemePoolError!u32 {
+        pub fn alloc(self: *ClassPool, bytes: []const u8, is_owned: bool) GraphemePoolError!u32 {
             if (bytes.len > self.slot_capacity) {
                 @panic("ClassPool.alloc: bytes.len > slot_capacity");
             }
@@ -168,11 +184,38 @@ pub const GraphemePool = struct {
                 .len = @intCast(@min(bytes.len, self.slot_capacity)),
                 .refcount = 1, // Start with refcount of 1 for new allocation
                 .generation = new_generation,
+                .is_owned = if (is_owned) 1 else 0,
             };
 
             const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
             @memcpy(data_ptr[0..header_ptr.len], bytes[0..header_ptr.len]);
+
+            return slot_index;
+        }
+
+        pub fn allocUnowned(self: *ClassPool, bytes: []const u8, is_owned: bool) GraphemePoolError!u32 {
+            // For unowned memory, we store a pointer to the external memory
+            if (self.free_list.items.len == 0) try self.grow();
+
+            const slot_index = self.free_list.pop().?;
+            const p = self.slotPtr(slot_index);
+            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+
+            // Increment generation when reusing a slot
+            const new_generation = (header_ptr.generation + 1) & GENERATION_MASK;
+
+            header_ptr.* = .{
+                .len = @intCast(bytes.len),
+                .refcount = 1,
+                .generation = new_generation,
+                .is_owned = if (is_owned) 1 else 0,
+            };
+
+            // Store pointer to external memory
+            const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
+            const ptr_storage = @as(*[*]const u8, @ptrCast(@alignCast(data_ptr)));
+            ptr_storage.* = bytes.ptr;
 
             return slot_index;
         }
@@ -218,7 +261,15 @@ pub const GraphemePool = struct {
 
             const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
-            return data_ptr[0..header_ptr.len];
+            if (header_ptr.is_owned == 1) {
+                // Owned memory: return slice from our storage
+                return data_ptr[0..header_ptr.len];
+            } else {
+                // Unowned memory: dereference stored pointer
+                const ptr_storage = @as(*[*]const u8, @ptrCast(@alignCast(data_ptr)));
+                const external_ptr = ptr_storage.*;
+                return external_ptr[0..header_ptr.len];
+            }
         }
     };
 };

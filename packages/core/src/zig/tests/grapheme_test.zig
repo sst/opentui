@@ -750,3 +750,242 @@ test "GraphemePool - global unicode data init" {
     _ = graphemes_ptr;
     _ = display_width_ptr;
 }
+
+// ===== Unowned Memory Tests =====
+
+test "GraphemePool - allocUnowned basic" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    // External memory that we manage
+    const external_text = "external";
+    const id = try pool.allocUnowned(external_text);
+
+    // Should be able to retrieve the same memory
+    const retrieved = try pool.get(id);
+    try std.testing.expectEqualSlices(u8, external_text, retrieved);
+
+    // Verify it's actually pointing to the same memory location
+    try std.testing.expectEqual(@intFromPtr(external_text.ptr), @intFromPtr(retrieved.ptr));
+
+    try pool.decref(id);
+}
+
+test "GraphemePool - allocUnowned multiple references" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const external_text1 = "external1";
+    const external_text2 = "external2";
+    const external_text3 = "external3";
+
+    const id1 = try pool.allocUnowned(external_text1);
+    const id2 = try pool.allocUnowned(external_text2);
+    const id3 = try pool.allocUnowned(external_text3);
+
+    // All should be retrievable
+    try std.testing.expectEqualSlices(u8, external_text1, try pool.get(id1));
+    try std.testing.expectEqualSlices(u8, external_text2, try pool.get(id2));
+    try std.testing.expectEqualSlices(u8, external_text3, try pool.get(id3));
+
+    // Verify they point to original memory
+    try std.testing.expectEqual(@intFromPtr(external_text1.ptr), @intFromPtr((try pool.get(id1)).ptr));
+    try std.testing.expectEqual(@intFromPtr(external_text2.ptr), @intFromPtr((try pool.get(id2)).ptr));
+    try std.testing.expectEqual(@intFromPtr(external_text3.ptr), @intFromPtr((try pool.get(id3)).ptr));
+
+    try pool.decref(id1);
+    try pool.decref(id2);
+    try pool.decref(id3);
+}
+
+test "GraphemePool - allocUnowned with emoji" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const external_emoji = "🌟🎉🚀";
+    const id = try pool.allocUnowned(external_emoji);
+
+    const retrieved = try pool.get(id);
+    try std.testing.expectEqualSlices(u8, external_emoji, retrieved);
+    try std.testing.expectEqual(@intFromPtr(external_emoji.ptr), @intFromPtr(retrieved.ptr));
+
+    try pool.decref(id);
+}
+
+test "GraphemePool - allocUnowned refcounting" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const external_text = "refcount_test";
+    const id = try pool.allocUnowned(external_text);
+
+    // Increment refcount
+    try pool.incref(id);
+    try pool.incref(id);
+
+    // Should still be accessible
+    try std.testing.expectEqualSlices(u8, external_text, try pool.get(id));
+
+    // Decrement
+    try pool.decref(id);
+    try std.testing.expectEqualSlices(u8, external_text, try pool.get(id));
+
+    try pool.decref(id);
+    try std.testing.expectEqualSlices(u8, external_text, try pool.get(id));
+
+    // Final decref
+    try pool.decref(id);
+}
+
+test "GraphemePool - mix owned and unowned allocations" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const owned_text = "owned";
+    const external_text = "unowned";
+
+    const owned_id = try pool.alloc(owned_text);
+    const unowned_id = try pool.allocUnowned(external_text);
+
+    // Both should be retrievable
+    const retrieved_owned = try pool.get(owned_id);
+    const retrieved_unowned = try pool.get(unowned_id);
+
+    try std.testing.expectEqualSlices(u8, owned_text, retrieved_owned);
+    try std.testing.expectEqualSlices(u8, external_text, retrieved_unowned);
+
+    // Owned should be different memory location (copy)
+    try std.testing.expect(@intFromPtr(owned_text.ptr) != @intFromPtr(retrieved_owned.ptr));
+
+    // Unowned should be same memory location (reference)
+    try std.testing.expectEqual(@intFromPtr(external_text.ptr), @intFromPtr(retrieved_unowned.ptr));
+
+    try pool.decref(owned_id);
+    try pool.decref(unowned_id);
+}
+
+test "GraphemePool - allocUnowned slot reuse" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const text1 = "first";
+    const id1 = try pool.allocUnowned(text1);
+    try pool.decref(id1);
+
+    // Allocate again - should reuse slot
+    const text2 = "second";
+    const id2 = try pool.allocUnowned(text2);
+
+    // Old ID should fail
+    const result = pool.get(id1);
+    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+
+    // New ID should work and point to new memory
+    const retrieved = try pool.get(id2);
+    try std.testing.expectEqualSlices(u8, text2, retrieved);
+    try std.testing.expectEqual(@intFromPtr(text2.ptr), @intFromPtr(retrieved.ptr));
+
+    try pool.decref(id2);
+}
+
+test "GraphemePool - allocUnowned large text" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    // Large external buffer
+    var large_buffer: [1000]u8 = undefined;
+    @memset(&large_buffer, 'X');
+    const large_slice: []const u8 = &large_buffer;
+
+    const id = try pool.allocUnowned(large_slice);
+
+    const retrieved = try pool.get(id);
+    try std.testing.expectEqual(@as(usize, 1000), retrieved.len);
+    try std.testing.expectEqualSlices(u8, large_slice, retrieved);
+    try std.testing.expectEqual(@intFromPtr(large_slice.ptr), @intFromPtr(retrieved.ptr));
+
+    try pool.decref(id);
+}
+
+test "GraphemeTracker - with unowned allocations" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const text1 = "external1";
+    const text2 = "external2";
+
+    const id1 = try pool.allocUnowned(text1);
+    const id2 = try pool.allocUnowned(text2);
+
+    var tracker = GraphemeTracker.init(std.testing.allocator, &pool);
+    defer tracker.deinit();
+
+    tracker.add(id1);
+    tracker.add(id2);
+
+    try std.testing.expectEqual(@as(u32, 2), tracker.getGraphemeCount());
+    try std.testing.expect(tracker.contains(id1));
+    try std.testing.expect(tracker.contains(id2));
+
+    // Should still get correct bytes
+    try std.testing.expectEqualSlices(u8, text1, try pool.get(id1));
+    try std.testing.expectEqualSlices(u8, text2, try pool.get(id2));
+}
+
+test "GraphemeTracker - mix owned and unowned" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const owned_text = "owned_data";
+    const external_text = "external_data";
+
+    const owned_id = try pool.alloc(owned_text);
+    const unowned_id = try pool.allocUnowned(external_text);
+
+    var tracker = GraphemeTracker.init(std.testing.allocator, &pool);
+    defer tracker.deinit();
+
+    tracker.add(owned_id);
+    tracker.add(unowned_id);
+
+    try std.testing.expectEqual(@as(u32, 2), tracker.getGraphemeCount());
+
+    const total_bytes = tracker.getTotalGraphemeBytes();
+    try std.testing.expectEqual(@as(u32, owned_text.len + external_text.len), total_bytes);
+
+    // Both should be retrievable
+    try std.testing.expectEqualSlices(u8, owned_text, try pool.get(owned_id));
+    try std.testing.expectEqualSlices(u8, external_text, try pool.get(unowned_id));
+}
+
+test "GraphemePool - allocUnowned with stack memory" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    // Simulate stack-allocated buffer
+    var stack_buffer: [50]u8 = undefined;
+    @memcpy(stack_buffer[0..11], "stack_based");
+    const stack_slice = stack_buffer[0..11];
+
+    const id = try pool.allocUnowned(stack_slice);
+
+    const retrieved = try pool.get(id);
+    try std.testing.expectEqualSlices(u8, "stack_based", retrieved);
+    try std.testing.expectEqual(@intFromPtr(stack_slice.ptr), @intFromPtr(retrieved.ptr));
+
+    try pool.decref(id);
+    // Note: In real usage, caller must ensure stack_buffer stays valid while ID is in use
+}
+
+test "GraphemePool - allocUnowned zero-length slice" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const empty: []const u8 = "";
+    const id = try pool.allocUnowned(empty);
+
+    const retrieved = try pool.get(id);
+    try std.testing.expectEqual(@as(usize, 0), retrieved.len);
+
+    try pool.decref(id);
+}
