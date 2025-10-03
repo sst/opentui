@@ -1,9 +1,11 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
+const ss = @import("../syntax-style.zig");
 
 const TextBuffer = text_buffer.TextBuffer;
 const RGBA = text_buffer.RGBA;
+const Highlight = text_buffer.Highlight;
 
 const LineInfo = struct {
     line_count: u32,
@@ -1734,4 +1736,296 @@ test "TextBuffer wrapping - getVirtualLines reflects current wrap state" {
     tb.setWrapWidth(null);
     vlines = tb.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 1), vlines.len);
+}
+
+// ===== Highlight System Tests =====
+
+test "TextBuffer highlights - add single highlight to line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    // Add a highlight
+    try tb.addHighlight(0, 0, 5, 1, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 0), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 5), highlights[0].col_end);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].style_id);
+}
+
+test "TextBuffer highlights - add multiple highlights to same line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    // Add multiple highlights
+    try tb.addHighlight(0, 0, 5, 1, null);
+    try tb.addHighlight(0, 6, 11, 2, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), highlights.len);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].style_id);
+    try std.testing.expectEqual(@as(u32, 2), highlights[1].style_id);
+}
+
+test "TextBuffer highlights - add highlights to multiple lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    // Add highlights to different lines
+    try tb.addHighlight(0, 0, 6, 1, null);
+    try tb.addHighlight(1, 0, 6, 2, null);
+    try tb.addHighlight(2, 0, 6, 3, null);
+
+    try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(0).len);
+    try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(1).len);
+    try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(2).len);
+}
+
+test "TextBuffer highlights - remove highlights by reference" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1\nLine 2");
+
+    // Add highlights with different references
+    try tb.addHighlight(0, 0, 3, 1, 100);
+    try tb.addHighlight(0, 3, 6, 2, 200);
+    try tb.addHighlight(1, 0, 6, 3, 100);
+
+    // Remove all highlights with ref 100
+    tb.removeHighlightsByRef(100);
+
+    const line0_highlights = tb.getLineHighlights(0);
+    const line1_highlights = tb.getLineHighlights(1);
+
+    try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
+    try std.testing.expectEqual(@as(u32, 2), line0_highlights[0].style_id);
+    try std.testing.expectEqual(@as(usize, 0), line1_highlights.len);
+}
+
+test "TextBuffer highlights - clear line highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1\nLine 2");
+
+    try tb.addHighlight(0, 0, 6, 1, null);
+    try tb.addHighlight(0, 6, 10, 2, null);
+
+    tb.clearLineHighlights(0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+}
+
+test "TextBuffer highlights - clear all highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    try tb.addHighlight(0, 0, 6, 1, null);
+    try tb.addHighlight(1, 0, 6, 2, null);
+    try tb.addHighlight(2, 0, 6, 3, null);
+
+    tb.clearAllHighlights();
+
+    try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(0).len);
+    try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(1).len);
+    try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(2).len);
+}
+
+test "TextBuffer highlights - get highlights from non-existent line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1");
+
+    // Get highlights from line that doesn't have any
+    const highlights = tb.getLineHighlights(10);
+    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+}
+
+test "TextBuffer highlights - overlapping highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    // Add overlapping highlights
+    try tb.addHighlight(0, 0, 8, 1, null);
+    try tb.addHighlight(0, 5, 11, 2, null);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), highlights.len);
+}
+
+test "TextBuffer highlights - highlights preserved after wrap width change" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    try tb.addHighlight(0, 0, 10, 1, null);
+
+    tb.setWrapWidth(10);
+
+    // Highlights should still be there (they're on real lines, not virtual lines)
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+}
+
+test "TextBuffer highlights - reset clears highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+    try tb.addHighlight(0, 0, 5, 1, null);
+
+    tb.reset();
+
+    // After reset, highlights should be gone
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+}
+
+test "TextBuffer highlights - setSyntaxStyle and getSyntaxStyle" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer syntax_style.deinit();
+
+    // Initially no syntax style
+    try std.testing.expect(tb.getSyntaxStyle() == null);
+
+    // Set syntax style
+    tb.setSyntaxStyle(syntax_style);
+    try std.testing.expect(tb.getSyntaxStyle() != null);
+
+    // Clear syntax style
+    tb.setSyntaxStyle(null);
+    try std.testing.expect(tb.getSyntaxStyle() == null);
+}
+
+test "TextBuffer highlights - integration with SyntaxStyle" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer syntax_style.deinit();
+
+    // Register some styles
+    const keyword_id = try syntax_style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const string_id = try syntax_style.registerStyle("string", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+    const comment_id = try syntax_style.registerStyle("comment", RGBA{ 0.5, 0.5, 0.5, 1.0 }, null, 0);
+
+    try tb.setText("function hello() // comment");
+    tb.setSyntaxStyle(syntax_style);
+
+    // Add highlights
+    try tb.addHighlight(0, 0, 8, keyword_id, null); // "function"
+    try tb.addHighlight(0, 9, 14, string_id, null); // "hello"
+    try tb.addHighlight(0, 17, 27, comment_id, null); // "// comment"
+
+    // Verify highlights are stored
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 3), highlights.len);
+
+    // Verify we can resolve the styles
+    const style = tb.getSyntaxStyle().?;
+    try std.testing.expect(style.resolveById(keyword_id) != null);
+    try std.testing.expect(style.resolveById(string_id) != null);
+    try std.testing.expect(style.resolveById(comment_id) != null);
 }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const buffer = @import("buffer.zig");
+const ss = @import("syntax-style.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
@@ -9,6 +10,7 @@ const logger = @import("logger.zig");
 
 pub const RGBA = buffer.RGBA;
 pub const TextSelection = buffer.TextSelection;
+pub const SyntaxStyle = ss.SyntaxStyle;
 
 pub const TextBufferError = error{
     OutOfMemory,
@@ -33,6 +35,14 @@ pub const TextChunk = struct {
     byte_end: u32, // Offset into TextBuffer.text_bytes
     chars: []u32, // Pre-packed u32s (grapheme starts + continuations)
     width: u32, // Display width in cells
+};
+
+/// A highlight represents a styled region on a line
+pub const Highlight = struct {
+    col_start: u32, // Column start (in grapheme/display units)
+    col_end: u32, // Column end (in grapheme/display units)
+    style_id: u32, // ID into SyntaxStyle
+    hl_ref: ?u16, // Optional reference for bulk removal
 };
 
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
@@ -114,7 +124,7 @@ pub const LocalSelection = struct {
 
 /// TextBuffer holds text organized by lines without styling
 pub const TextBuffer = struct {
-    text_bytes: []const u8, // Owned UTF-8 bytes in arena
+    text_bytes: []const u8, // Reference to external UTF-8 bytes
     char_count: u32, // Total character count across all chunks
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
@@ -125,6 +135,8 @@ pub const TextBuffer = struct {
     virtual_lines_arena: *std.heap.ArenaAllocator,
 
     lines: std.ArrayListUnmanaged(TextLine),
+    line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
+    syntax_style: ?*const SyntaxStyle,
 
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -183,6 +195,9 @@ pub const TextBuffer = struct {
         var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
         errdefer cached_line_widths.deinit(virtual_lines_allocator);
 
+        var line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)) = .{};
+        errdefer line_highlights.deinit(internal_allocator);
+
         self.* = .{
             .text_bytes = &[_]u8{},
             .char_count = 0,
@@ -193,6 +208,8 @@ pub const TextBuffer = struct {
             .arena = internal_arena,
             .virtual_lines_arena = virtual_lines_internal_arena,
             .lines = lines,
+            .line_highlights = line_highlights,
+            .syntax_style = null,
             .wrap_width = null,
             .wrap_mode = .char,
             .virtual_lines = virtual_lines,
@@ -235,6 +252,7 @@ pub const TextBuffer = struct {
         self.selection = null;
 
         self.lines = .{};
+        self.line_highlights = .{};
         self.virtual_lines = .{};
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
@@ -258,6 +276,81 @@ pub const TextBuffer = struct {
 
     pub fn getSelection(self: *const TextBuffer) ?TextSelection {
         return self.selection;
+    }
+
+    /// Add a highlight to a specific line
+    pub fn addHighlight(
+        self: *TextBuffer,
+        line_idx: usize,
+        col_start: u32,
+        col_end: u32,
+        style_id: u32,
+        hl_ref: ?u16,
+    ) TextBufferError!void {
+        // Ensure line_highlights is sized to include this line
+        while (self.line_highlights.items.len <= line_idx) {
+            try self.line_highlights.append(
+                self.allocator,
+                std.ArrayListUnmanaged(Highlight){},
+            );
+        }
+
+        const hl = Highlight{
+            .col_start = col_start,
+            .col_end = col_end,
+            .style_id = style_id,
+            .hl_ref = hl_ref,
+        };
+
+        try self.line_highlights.items[line_idx].append(self.allocator, hl);
+    }
+
+    /// Remove all highlights with a specific reference ID
+    pub fn removeHighlightsByRef(self: *TextBuffer, hl_ref: u16) void {
+        for (self.line_highlights.items) |*line_hls| {
+            var i: usize = 0;
+            while (i < line_hls.items.len) {
+                if (line_hls.items[i].hl_ref) |ref| {
+                    if (ref == hl_ref) {
+                        _ = line_hls.swapRemove(i);
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+        }
+    }
+
+    /// Clear all highlights from a specific line
+    pub fn clearLineHighlights(self: *TextBuffer, line_idx: usize) void {
+        if (line_idx < self.line_highlights.items.len) {
+            self.line_highlights.items[line_idx].clearRetainingCapacity();
+        }
+    }
+
+    /// Clear all highlights from all lines
+    pub fn clearAllHighlights(self: *TextBuffer) void {
+        for (self.line_highlights.items) |*line_hls| {
+            line_hls.clearRetainingCapacity();
+        }
+    }
+
+    /// Get highlights for a specific line
+    pub fn getLineHighlights(self: *const TextBuffer, line_idx: usize) []const Highlight {
+        if (line_idx < self.line_highlights.items.len) {
+            return self.line_highlights.items[line_idx].items;
+        }
+        return &[_]Highlight{};
+    }
+
+    /// Set the syntax style for highlight resolution
+    pub fn setSyntaxStyle(self: *TextBuffer, syntax_style: ?*const SyntaxStyle) void {
+        self.syntax_style = syntax_style;
+    }
+
+    /// Get the current syntax style
+    pub fn getSyntaxStyle(self: *const TextBuffer) ?*const SyntaxStyle {
+        return self.syntax_style;
     }
 
     /// Set the wrap width for text wrapping. null means no wrapping.

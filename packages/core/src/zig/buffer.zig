@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const tb = @import("text-buffer.zig");
+const ss = @import("syntax-style.zig");
 const math = std.math;
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
@@ -819,7 +820,7 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-    /// Draw a TextBuffer to this OptimizedBuffer with selection support
+    /// Draw a TextBuffer to this OptimizedBuffer with selection support and optional syntax highlighting
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
         text_buffer: *TextBuffer,
@@ -919,7 +920,24 @@ pub const OptimizedBuffer = struct {
 
                     var finalFg = chunkFg;
                     var finalBg = chunkBg;
-                    const finalAttributes = chunkAttributes;
+                    var finalAttributes = chunkAttributes;
+
+                    // Apply syntax highlighting from line highlights
+                    const vline_idx = @as(usize, @intCast(currentY - y));
+                    const highlights = text_buffer.getLineHighlights(vline_idx);
+                    const col_pos = @as(u32, @intCast(currentX - x));
+
+                    if (text_buffer.getSyntaxStyle()) |style| {
+                        for (highlights) |hl| {
+                            if (col_pos >= hl.col_start and col_pos < hl.col_end) {
+                                if (style.resolveById(hl.style_id)) |resolved_style| {
+                                    if (resolved_style.fg) |fg| finalFg = fg;
+                                    if (resolved_style.bg) |bg| finalBg = bg;
+                                    finalAttributes |= resolved_style.attributes;
+                                }
+                            }
+                        }
+                    }
 
                     // Handle selection highlighting
                     if (text_buffer.selection) |sel| {
