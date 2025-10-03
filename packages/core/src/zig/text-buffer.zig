@@ -580,8 +580,8 @@ pub const TextBuffer = struct {
             return;
         }
 
-        // Copy text into arena
-        self.text_bytes = self.allocator.dupe(u8, text) catch return TextBufferError.OutOfMemory;
+        // Reference the external text (no copy)
+        self.text_bytes = text;
 
         // Parse into lines using memchr for \n
         var line_start: u32 = 0;
