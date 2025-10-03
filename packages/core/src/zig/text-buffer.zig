@@ -137,6 +137,9 @@ pub const TextBuffer = struct {
     char_count: u32, // Total character count across all chunks
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
+    default_fg: ?RGBA,
+    default_bg: ?RGBA,
+    default_attributes: ?u8,
 
     allocator: Allocator,
     global_allocator: Allocator,
@@ -216,6 +219,9 @@ pub const TextBuffer = struct {
             .char_count = 0,
             .selection = null,
             .local_selection = null,
+            .default_fg = null,
+            .default_bg = null,
+            .default_attributes = null,
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
@@ -291,6 +297,24 @@ pub const TextBuffer = struct {
 
     pub fn getSelection(self: *const TextBuffer) ?TextSelection {
         return self.selection;
+    }
+
+    pub fn setDefaultFg(self: *TextBuffer, fg: ?RGBA) void {
+        self.default_fg = fg;
+    }
+
+    pub fn setDefaultBg(self: *TextBuffer, bg: ?RGBA) void {
+        self.default_bg = bg;
+    }
+
+    pub fn setDefaultAttributes(self: *TextBuffer, attributes: ?u8) void {
+        self.default_attributes = attributes;
+    }
+
+    pub fn resetDefaults(self: *TextBuffer) void {
+        self.default_fg = null;
+        self.default_bg = null;
+        self.default_attributes = null;
     }
 
     /// Add a highlight to a specific line

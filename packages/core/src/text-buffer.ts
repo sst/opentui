@@ -3,6 +3,7 @@ import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
+import type { NativeSyntaxStyle } from "./native-syntax-style"
 
 export interface TextChunk {
   __isChunk: true
@@ -18,6 +19,7 @@ export class TextBuffer {
   private _length: number = 0
   private _lineInfo?: LineInfo
   private _destroyed: boolean = false
+  private _syntaxStyle?: NativeSyntaxStyle
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -36,26 +38,42 @@ export class TextBuffer {
     if (this._destroyed) throw new Error("TextBuffer is destroyed")
   }
 
+  public setText(text: string): void {
+    this.guard()
+    this.lib.textBufferSetText(this.bufferPtr, text)
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._lineInfo = undefined
+  }
+
   public setStyledText(text: StyledText): void {
     this.guard()
-    this.lib.textBufferReset(this.bufferPtr)
-    this._length = 0
-    this._lineInfo = undefined
 
-    for (const chunk of text.chunks) {
-      const textBytes = this.lib.encoder.encode(chunk.text)
-      this.lib.textBufferWriteChunk(
-        this.bufferPtr,
-        textBytes,
-        chunk.fg || null,
-        chunk.bg || null,
-        chunk.attributes ?? null,
-      )
+    const fullText = text.chunks.map((c) => c.text).join("")
+    this.setText(fullText)
+
+    this.clearAllHighlights()
+
+    if (this._syntaxStyle) {
+      let charPos = 0
+      for (let i = 0; i < text.chunks.length; i++) {
+        const chunk = text.chunks[i]
+        const chunkLen = Bun.stringWidth(chunk.text)
+
+        if (chunkLen > 0) {
+          const styleId = this.lib.syntaxStyleRegister(
+            this._syntaxStyle.ptr,
+            String(i),
+            chunk.fg || null,
+            chunk.bg || null,
+            chunk.attributes ?? 0,
+          )
+
+          this.addHighlightByCharRange(charPos, charPos + chunkLen, styleId, 1)
+        }
+
+        charPos += chunkLen
+      }
     }
-
-    // TODO: textBufferFinalizeLineInfo can return the length of the text buffer, not another call to textBufferGetLength
-    this.lib.textBufferFinalizeLineInfo(this.bufferPtr)
-    this._length = this.lib.textBufferGetLength(this.bufferPtr)
   }
 
   public setDefaultFg(fg: RGBA | null): void {
@@ -246,9 +264,10 @@ export class TextBuffer {
    * Set the syntax style for highlight resolution.
    * @param style - Pointer to SyntaxStyle or null to unset
    */
-  public setSyntaxStyle(style: Pointer | null): void {
+  public setSyntaxStyle(style: NativeSyntaxStyle | null): void {
     this.guard()
-    this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style)
+    this._syntaxStyle = style ?? undefined
+    this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)
   }
 
   public destroy(): void {

@@ -826,9 +826,6 @@ pub const OptimizedBuffer = struct {
         text_buffer: *TextBuffer,
         x: i32,
         y: i32,
-        default_fg: RGBA,
-        default_bg: RGBA,
-        default_attributes: u8,
         clip_rect: ?ClipRect,
     ) !void {
         const virtual_lines = text_buffer.getVirtualLines();
@@ -865,9 +862,9 @@ pub const OptimizedBuffer = struct {
             const vline_idx = @as(usize, @intCast(currentY - y));
             const spans = text_buffer.getLineSpans(vline_idx);
             var span_idx: usize = 0;
-            var lineFg = default_fg;
-            var lineBg = default_bg;
-            var lineAttributes = default_attributes;
+            var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
+            var lineAttributes = text_buffer.default_attributes orelse 0;
             var next_change_col: u32 = if (spans.len > 0) spans[0].next_col else std.math.maxInt(u32);
 
             // Apply initial span style (if it starts at col 0)
@@ -940,9 +937,9 @@ pub const OptimizedBuffer = struct {
                         const new_span = spans[span_idx];
 
                         // Reset to defaults for new span
-                        lineFg = default_fg;
-                        lineBg = default_bg;
-                        lineAttributes = default_attributes;
+                        lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                        lineAttributes = text_buffer.default_attributes orelse 0;
 
                         // Apply new span's style
                         if (text_buffer.getSyntaxStyle()) |style| {

@@ -313,12 +313,8 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    textBufferWriteChunk: {
-      args: ["ptr", "ptr", "u32", "ptr", "ptr", "ptr"],
-      returns: "u32",
-    },
-    textBufferFinalizeLineInfo: {
-      args: ["ptr"],
+    textBufferSetText: {
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
     textBufferGetLineCount: {
@@ -410,7 +406,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     bufferDrawTextBuffer: {
-      args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
+      args: ["ptr", "ptr", "i32", "i32", "ptr", "ptr", "u8", "i32", "i32", "u32", "u32", "bool"],
       returns: "void",
     },
 
@@ -749,18 +745,11 @@ export interface RenderLib {
     fgColor: RGBA | null,
   ) => boolean
   textBufferResetLocalSelection: (buffer: Pointer) => void
+  textBufferSetText: (buffer: Pointer, text: string) => void
   textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
   textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
   textBufferResetDefaults: (buffer: Pointer) => void
-  textBufferWriteChunk: (
-    buffer: Pointer,
-    textBytes: Uint8Array,
-    fg: RGBA | null,
-    bg: RGBA | null,
-    attributes: number | null,
-  ) => number
-  textBufferFinalizeLineInfo: (buffer: Pointer) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   textBufferGetLineInfoDirect: (buffer: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer) => void
   textBufferGetLineInfo: (buffer: Pointer) => LineInfo
@@ -1328,27 +1317,9 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferResetDefaults(buffer)
   }
 
-  public textBufferWriteChunk(
-    buffer: Pointer,
-    textBytes: Uint8Array,
-    fg: RGBA | null,
-    bg: RGBA | null,
-    attributes: number | null,
-  ): number {
-    // Create attribute buffer - null means use default, otherwise pass the u8 value
-    const attrValue = attributes === null ? null : new Uint8Array([attributes])
-    return this.opentui.symbols.textBufferWriteChunk(
-      buffer,
-      textBytes,
-      textBytes.length,
-      fg ? fg.buffer : null,
-      bg ? bg.buffer : null,
-      attrValue,
-    )
-  }
-
-  public textBufferFinalizeLineInfo(buffer: Pointer): void {
-    this.opentui.symbols.textBufferFinalizeLineInfo(buffer)
+  public textBufferSetText(buffer: Pointer, text: string): void {
+    const textBytes = this.encoder.encode(text)
+    this.opentui.symbols.textBufferSetText(buffer, textBytes, textBytes.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {

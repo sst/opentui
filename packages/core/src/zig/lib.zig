@@ -410,25 +410,17 @@ export fn textBufferSetDefaultBg(tb: *text_buffer.TextBuffer, bg: ?[*]const f32)
 }
 
 export fn textBufferSetDefaultAttributes(tb: *text_buffer.TextBuffer, attr: ?[*]const u8) void {
-    const attrValue = if (attr) |a| a[0] else null;
-    tb.setDefaultAttributes(attrValue);
+    const attributes = if (attr) |a| a[0] else null;
+    tb.setDefaultAttributes(attributes);
 }
 
 export fn textBufferResetDefaults(tb: *text_buffer.TextBuffer) void {
     tb.resetDefaults();
 }
 
-export fn textBufferWriteChunk(tb: *text_buffer.TextBuffer, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: ?[*]const u8) u32 {
-    const textSlice = textBytes[0..textLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const attrValue = if (attr) |a| a[0] else null;
-
-    return tb.writeChunk(textSlice, fgColor, bgColor, attrValue) catch 0;
-}
-
-export fn textBufferFinalizeLineInfo(tb: *text_buffer.TextBuffer) void {
-    tb.finalizeLineInfo();
+export fn textBufferSetText(tb: *text_buffer.TextBuffer, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    tb.setText(text) catch {};
 }
 
 export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
