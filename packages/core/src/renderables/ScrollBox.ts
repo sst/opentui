@@ -1,5 +1,6 @@
 import { type KeyEvent } from "../lib"
 import { getObjectsInViewport } from "../lib/objects-in-viewport"
+import { MacOSScrollAccel } from "../lib/scroll-acceleration"
 import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
@@ -32,6 +33,13 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   stickyStart?: "bottom" | "top" | "left" | "right"
   scrollX?: boolean
   scrollY?: boolean
+  scrollAcceleration?: boolean | {
+    threshold1?: number
+    threshold2?: number
+    multiplier1?: number
+    multiplier2?: number
+    baseMultiplier?: number
+  }
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -65,6 +73,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollRight: boolean = false
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
+  private scrollAccelX: MacOSScrollAccel
+  private scrollAccelY: MacOSScrollAccel
 
   get stickyScroll(): boolean {
     return this._stickyScroll
@@ -180,6 +190,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       stickyStart,
       scrollX = false,
       scrollY = true,
+      scrollAcceleration = false,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -194,6 +205,17 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.internalId = ScrollBoxRenderable.idCounter++
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
+
+    // Initialize scroll acceleration
+    if (scrollAcceleration) {
+      const accelOpts = typeof scrollAcceleration === "object" ? scrollAcceleration : {}
+      this.scrollAccelX = new MacOSScrollAccel(accelOpts)
+      this.scrollAccelY = new MacOSScrollAccel(accelOpts)
+    } else {
+      // Use MacOSScrollAccel with baseMultiplier=1 for linear behavior
+      this.scrollAccelX = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
+      this.scrollAccelY = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
+    }
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -320,10 +342,22 @@ export class ScrollBoxRenderable extends BoxRenderable {
       if (event.modifiers.shift)
         dir = dir === "up" ? "left" : dir === "down" ? "right" : dir === "right" ? "down" : "up"
 
-      if (dir === "up") this.scrollTop -= event.scroll?.delta ?? 0
-      else if (dir === "down") this.scrollTop += event.scroll?.delta ?? 0
-      else if (dir === "left") this.scrollLeft -= event.scroll?.delta ?? 0
-      else if (dir === "right") this.scrollLeft += event.scroll?.delta ?? 0
+      const baseDelta = event.scroll?.delta ?? 0
+      const now = Date.now()
+
+      if (dir === "up") {
+        const multiplier = this.scrollAccelY.tick(now)
+        this.scrollTop -= baseDelta * multiplier
+      } else if (dir === "down") {
+        const multiplier = this.scrollAccelY.tick(now)
+        this.scrollTop += baseDelta * multiplier
+      } else if (dir === "left") {
+        const multiplier = this.scrollAccelX.tick(now)
+        this.scrollLeft -= baseDelta * multiplier
+      } else if (dir === "right") {
+        const multiplier = this.scrollAccelX.tick(now)
+        this.scrollLeft += baseDelta * multiplier
+      }
 
       this._hasManualScroll = true
     }
@@ -336,12 +370,23 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public handleKeyPress(key: KeyEvent | string): boolean {
+    // Let scrollbars handle their own acceleration
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
+      // Reset acceleration on direction change
+      const keyName = typeof key === "string" ? key : key.name
+      if (["up", "down", "k", "j", "pageup", "pagedown"].includes(keyName)) {
+        this.scrollAccelY.reset()
+      }
       return true
     }
     if (this.horizontalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
+      // Reset acceleration on direction change
+      const keyName = typeof key === "string" ? key : key.name
+      if (["left", "right", "h", "l"].includes(keyName)) {
+        this.scrollAccelX.reset()
+      }
       return true
     }
     return false
@@ -557,6 +602,17 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public set horizontalScrollbarOptions(options: ScrollBoxOptions["horizontalScrollbarOptions"]) {
     Object.assign(this.horizontalScrollBar, options)
     this.requestRender()
+  }
+
+  public set scrollAcceleration(value: ScrollBoxOptions["scrollAcceleration"]) {
+    if (value === false) {
+      this.scrollAccelX = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
+      this.scrollAccelY = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
+    } else if (value) {
+      const accelOpts = typeof value === "object" ? value : {}
+      this.scrollAccelX = new MacOSScrollAccel(accelOpts)
+      this.scrollAccelY = new MacOSScrollAccel(accelOpts)
+    }
   }
 
   protected destroySelf(): void {
