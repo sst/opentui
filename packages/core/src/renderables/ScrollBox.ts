@@ -33,13 +33,15 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   stickyStart?: "bottom" | "top" | "left" | "right"
   scrollX?: boolean
   scrollY?: boolean
-  scrollAcceleration?: boolean | {
-    threshold1?: number
-    threshold2?: number
-    multiplier1?: number
-    multiplier2?: number
-    baseMultiplier?: number
-  }
+  scrollAcceleration?:
+    | boolean
+    | {
+        threshold1?: number
+        threshold2?: number
+        multiplier1?: number
+        multiplier2?: number
+        baseMultiplier?: number
+      }
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -190,7 +192,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       stickyStart,
       scrollX = false,
       scrollY = true,
-      scrollAcceleration = false,
+      scrollAcceleration = process.platform === "darwin",
       ...options
     }: ScrollBoxOptions,
   ) {
