@@ -363,6 +363,28 @@ function getOpenTUILib(libPath?: string) {
       returns: "usize",
     },
 
+    // SyntaxStyle functions
+    createSyntaxStyle: {
+      args: [],
+      returns: "ptr",
+    },
+    destroySyntaxStyle: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    syntaxStyleRegister: {
+      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u8"],
+      returns: "u32",
+    },
+    syntaxStyleResolveByName: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "u32",
+    },
+    syntaxStyleGetStyleCount: {
+      args: ["ptr"],
+      returns: "usize",
+    },
+
     bufferDrawTextBuffer: {
       args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
       returns: "void",
@@ -738,6 +760,12 @@ export interface RenderLib {
   textBufferSetWrapMode: (buffer: Pointer, mode: "char" | "word") => void
 
   getArenaAllocatedBytes: () => number
+
+  createSyntaxStyle: () => Pointer
+  destroySyntaxStyle: (style: Pointer) => void
+  syntaxStyleRegister: (style: Pointer, name: string, fg: RGBA | null, bg: RGBA | null, attributes: number) => number
+  syntaxStyleResolveByName: (style: Pointer, name: string) => number | null
+  syntaxStyleGetStyleCount: (style: Pointer) => number
 
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
@@ -1454,6 +1482,42 @@ class FFIRenderLib implements RenderLib {
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
     this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
+  }
+
+  public createSyntaxStyle(): Pointer {
+    const stylePtr = this.opentui.symbols.createSyntaxStyle()
+    if (!stylePtr) {
+      throw new Error("Failed to create SyntaxStyle")
+    }
+    return stylePtr
+  }
+
+  public destroySyntaxStyle(style: Pointer): void {
+    this.opentui.symbols.destroySyntaxStyle(style)
+  }
+
+  public syntaxStyleRegister(
+    style: Pointer,
+    name: string,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number,
+  ): number {
+    const nameBytes = this.encoder.encode(name)
+    const fgPtr = fg ? fg.buffer : null
+    const bgPtr = bg ? bg.buffer : null
+    return this.opentui.symbols.syntaxStyleRegister(style, nameBytes, nameBytes.length, fgPtr, bgPtr, attributes)
+  }
+
+  public syntaxStyleResolveByName(style: Pointer, name: string): number | null {
+    const nameBytes = this.encoder.encode(name)
+    const id = this.opentui.symbols.syntaxStyleResolveByName(style, nameBytes, nameBytes.length)
+    return id === 0 ? null : id
+  }
+
+  public syntaxStyleGetStyleCount(style: Pointer): number {
+    const result = this.opentui.symbols.syntaxStyleGetStyleCount(style)
+    return typeof result === "bigint" ? Number(result) : result
   }
 }
 

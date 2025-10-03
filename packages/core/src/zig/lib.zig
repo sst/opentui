@@ -6,6 +6,7 @@ const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
+const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
@@ -501,4 +502,32 @@ export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
         else => .char,
     };
     tb.setWrapMode(wrapMode);
+}
+
+// SyntaxStyle functions
+export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
+    return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {
+        logger.err("Failed to create SyntaxStyle: {}", .{err});
+        return null;
+    };
+}
+
+export fn destroySyntaxStyle(style: *syntax_style.SyntaxStyle) void {
+    style.deinit();
+}
+
+export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u8) u32 {
+    const name = namePtr[0..nameLen];
+    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    return style.registerStyle(name, fgColor, bgColor, attributes) catch 0;
+}
+
+export fn syntaxStyleResolveByName(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize) u32 {
+    const name = namePtr[0..nameLen];
+    return style.resolveByName(name) orelse 0;
+}
+
+export fn syntaxStyleGetStyleCount(style: *syntax_style.SyntaxStyle) usize {
+    return style.getStyleCount();
 }
