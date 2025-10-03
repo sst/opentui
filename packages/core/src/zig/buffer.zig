@@ -825,6 +825,9 @@ pub const OptimizedBuffer = struct {
         text_buffer: *TextBuffer,
         x: i32,
         y: i32,
+        default_fg: RGBA,
+        default_bg: RGBA,
+        default_attributes: u8,
         clip_rect: ?ClipRect,
     ) !void {
         const virtual_lines = text_buffer.getVirtualLines();
@@ -867,26 +870,10 @@ pub const OptimizedBuffer = struct {
                     continue;
                 }
 
-                var chunkFg = source_chunk.fg orelse text_buffer.default_fg orelse .{ 1.0, 1.0, 1.0, 1.0 };
-                var chunkBg = source_chunk.bg orelse text_buffer.default_bg orelse .{ 0.0, 0.0, 0.0, 0.0 };
-                var chunkAttributes: u8 = @intCast(source_chunk.attributes & tb.ATTR_MASK);
-
-                if (source_chunk.attributes & tb.USE_DEFAULT_ATTR != 0) {
-                    if (text_buffer.default_attributes) |defAttr| {
-                        chunkAttributes = defAttr;
-                    }
-                }
-
-                if (source_chunk.attributes & tb.USE_DEFAULT_FG != 0) {
-                    if (text_buffer.default_fg) |defFg| {
-                        chunkFg = defFg;
-                    }
-                }
-                if (source_chunk.attributes & tb.USE_DEFAULT_BG != 0) {
-                    if (text_buffer.default_bg) |defBg| {
-                        chunkBg = defBg;
-                    }
-                }
+                // Use default styles for all text (no per-chunk styling)
+                const chunkFg = default_fg;
+                const chunkBg = default_bg;
+                const chunkAttributes: u8 = default_attributes;
 
                 var charIndex: u32 = 0;
                 for (chars) |charCode| {

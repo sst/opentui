@@ -12,9 +12,8 @@ const LineInfo = struct {
     max_width: u32,
 };
 
-fn testWriteAndGetLineInfo(tb: *TextBuffer, text: []const u8, fg: ?RGBA, bg: ?RGBA, attr: ?u8) !LineInfo {
-    _ = try tb.writeChunk(text, fg, bg, attr);
-    tb.finalizeLineInfo();
+fn testWriteAndGetLineInfo(tb: *TextBuffer, text: []const u8) !LineInfo {
+    try tb.setText(text);
     const cached = tb.getCachedLineInfo();
     return LineInfo{
         .line_count = tb.getLineCount(),
@@ -37,7 +36,7 @@ test "TextBuffer line info - empty buffer" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "");
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -55,7 +54,7 @@ test "TextBuffer line info - simple text without newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World");
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -73,7 +72,7 @@ test "TextBuffer line info - single newline" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello\nWorld", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello\nWorld");
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -93,7 +92,7 @@ test "TextBuffer line info - multiple lines separated by newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\nLine 2\nLine 3", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\nLine 2\nLine 3");
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -117,7 +116,7 @@ test "TextBuffer line info - text ending with newline" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World\n", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello World\n");
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -137,7 +136,7 @@ test "TextBuffer line info - consecutive newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\n\nLine 3", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Line 1\n\nLine 3");
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -156,7 +155,7 @@ test "TextBuffer line info - text starting with newline" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "\nHello World", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "\nHello World");
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]); // line_starts[0] (empty first line)
@@ -174,7 +173,7 @@ test "TextBuffer line info - only newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "\n\n\n", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "\n\n\n");
 
     try std.testing.expectEqual(@as(u32, 4), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -199,7 +198,7 @@ test "TextBuffer line info - wide characters (Unicode)" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟");
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -217,7 +216,7 @@ test "TextBuffer line info - empty lines between content" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "First\n\nThird", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "First\n\nThird");
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -238,7 +237,7 @@ test "TextBuffer line info - very long lines" {
 
     // Create a long text with 1000 'A' characters
     const longText = [_]u8{'A'} ** 1000;
-    const lineInfo = try testWriteAndGetLineInfo(tb, &longText, null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, &longText);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -263,14 +262,14 @@ test "TextBuffer line info - lines with different widths" {
     try text_builder.appendNTimes('A', 50);
     try text_builder.appendSlice("\nMedium");
     const text = text_builder.items;
-    const lineInfo = try testWriteAndGetLineInfo(tb, text, null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, text);
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expect(lineInfo.widths[0] < lineInfo.widths[1]); // Short < Long
     try std.testing.expect(lineInfo.widths[1] > lineInfo.widths[2]); // Long > Medium
 }
 
-test "TextBuffer line info - styled text with colors" {
+test "TextBuffer line info - text without styling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -281,18 +280,8 @@ test "TextBuffer line info - styled text with colors" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    // Write "Red" with red foreground
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    _ = try tb.writeChunk("Red", red_fg, null, null);
-
-    // Write newline
-    _ = try tb.writeChunk("\n", null, null, null);
-
-    // Write "Blue" with blue foreground
-    const blue_fg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
-    _ = try tb.writeChunk("Blue", blue_fg, null, null);
-
-    const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
+    // setText now handles all text at once without styling
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Red\nBlue");
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -310,7 +299,7 @@ test "TextBuffer line info - buffer with only whitespace" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "   \n \n ", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "   \n \n ");
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -334,7 +323,7 @@ test "TextBuffer line info - single character lines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "A\nB\nC", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "A\nB\nC");
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -358,7 +347,7 @@ test "TextBuffer line info - mixed content with special characters" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Normal\n123\n!@#\n测试\n", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Normal\n123\n!@#\n测试\n");
 
     try std.testing.expectEqual(@as(u32, 5), lineInfo.line_count); // line_count (4 lines + empty line at end)
     // All line widths should be >= 0
@@ -388,7 +377,7 @@ test "TextBuffer line info - buffer resize operations" {
     try text_builder.appendSlice("\n");
     try text_builder.appendNTimes('B', 100);
     const longText = text_builder.items;
-    const lineInfo = try testWriteAndGetLineInfo(tb, longText, null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, longText);
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
 }
@@ -415,7 +404,7 @@ test "TextBuffer line info - thousands of lines" {
     // Last line without newline
     try std.fmt.format(text_builder.writer(), "Line {}", .{i});
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, text_builder.items, null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, text_builder.items);
 
     try std.testing.expectEqual(@as(u32, 1000), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -438,7 +427,7 @@ test "TextBuffer line info - alternating empty and content lines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "\nContent\n\nMore\n\n", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "\nContent\n\nMore\n\n");
 
     try std.testing.expectEqual(@as(u32, 6), lineInfo.line_count);
     // All line widths should be >= 0
@@ -461,7 +450,7 @@ test "TextBuffer line info - complex Unicode combining characters" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "café\nnaïve\nrésumé", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "café\nnaïve\nrésumé");
 
     try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
     try std.testing.expect(lineInfo.widths[0] > 0);
@@ -469,7 +458,7 @@ test "TextBuffer line info - complex Unicode combining characters" {
     try std.testing.expect(lineInfo.widths[2] > 0);
 }
 
-test "TextBuffer line info - default styles" {
+test "TextBuffer line info - simple multi-line text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -480,44 +469,11 @@ test "TextBuffer line info - default styles" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    // Set default styles
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    tb.setDefaultFg(red_fg);
-    tb.setDefaultBg(black_bg);
-    tb.setDefaultAttributes(1);
-
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText");
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
     try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[1]); // line_starts[1] ("Test\n" = 5 chars)
-    // All line widths should be >= 0
-    try std.testing.expect(lineInfo.widths[0] >= 0);
-    try std.testing.expect(lineInfo.widths[1] >= 0);
-}
-
-test "TextBuffer line info - reset defaults" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    // Set and then reset defaults
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    tb.setDefaultFg(red_fg);
-    tb.resetDefaults();
-
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Test\nText", null, null, null);
-
-    try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
-    try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[1]);
     // All line widths should be >= 0
     try std.testing.expect(lineInfo.widths[0] >= 0);
     try std.testing.expect(lineInfo.widths[1] >= 0);
@@ -534,7 +490,7 @@ test "TextBuffer line info - unicode width method" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Hello 世界 🌟");
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -552,7 +508,7 @@ test "TextBuffer line info - unicode mixed content with special characters" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    const lineInfo = try testWriteAndGetLineInfo(tb, "Normal\n123\n!@#\n测试\n", null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Normal\n123\n!@#\n测试\n");
 
     try std.testing.expectEqual(@as(u32, 5), lineInfo.line_count); // line_count (4 lines + empty line at end)
     // All line widths should be >= 0
@@ -563,7 +519,7 @@ test "TextBuffer line info - unicode mixed content with special characters" {
     try std.testing.expect(lineInfo.widths[4] >= 0);
 }
 
-test "TextBuffer line info - unicode styled text with colors and attributes" {
+test "TextBuffer line info - unicode text without styling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -574,18 +530,8 @@ test "TextBuffer line info - unicode styled text with colors and attributes" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    // Write "Red" with red foreground
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    _ = try tb.writeChunk("Red", red_fg, null, null);
-
-    // Write newline
-    _ = try tb.writeChunk("\n", null, null, null);
-
-    // Write "Blue" with blue foreground
-    const blue_fg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
-    _ = try tb.writeChunk("Blue", blue_fg, null, null);
-
-    const lineInfo = try testWriteAndGetLineInfo(tb, "", null, null, null);
+    // setText now handles all text at once without styling
+    const lineInfo = try testWriteAndGetLineInfo(tb, "Red\nBlue");
 
     try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -608,7 +554,7 @@ test "TextBuffer line info - extremely long single line" {
 
     // Create extremely long text with 10000 'A' characters
     const extremelyLongText = [_]u8{'A'} ** 10000;
-    const lineInfo = try testWriteAndGetLineInfo(tb, &extremelyLongText, null, null, null);
+    const lineInfo = try testWriteAndGetLineInfo(tb, &extremelyLongText);
 
     try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
     try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
@@ -628,8 +574,7 @@ test "TextBuffer wrapping - no wrap returns same line count" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello World", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello World");
 
     const no_wrap_count = tb.getLineCount();
     try std.testing.expectEqual(@as(u32, 1), no_wrap_count);
@@ -650,8 +595,7 @@ test "TextBuffer wrapping - simple wrap splits line" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     const no_wrap_count = tb.getLineCount();
     try std.testing.expectEqual(@as(u32, 1), no_wrap_count);
@@ -673,8 +617,7 @@ test "TextBuffer wrapping - wrap at exact boundary" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("0123456789", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("0123456789");
 
     tb.setWrapWidth(10);
     const wrapped_count = tb.getLineCount();
@@ -693,8 +636,7 @@ test "TextBuffer wrapping - multiple wrap lines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123");
 
     tb.setWrapWidth(10);
     tb.updateVirtualLines(); // Force update
@@ -714,8 +656,7 @@ test "TextBuffer wrapping - preserves newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Short\nAnother short line\nLast", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Short\nAnother short line\nLast");
 
     const no_wrap_count = tb.getLineCount();
     try std.testing.expectEqual(@as(u32, 3), no_wrap_count);
@@ -737,8 +678,7 @@ test "TextBuffer wrapping - long line with newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST\nShort", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST\nShort");
 
     const no_wrap_count = tb.getLineCount();
     try std.testing.expectEqual(@as(u32, 2), no_wrap_count);
@@ -760,8 +700,7 @@ test "TextBuffer wrapping - change wrap width" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     tb.setWrapWidth(10);
     var wrapped_count = tb.getLineCount();
@@ -794,8 +733,7 @@ test "TextBuffer wrapping - grapheme at exact boundary" {
     defer tb.deinit();
 
     // Create text with emoji that takes 2 cells at position 9-10
-    _ = try tb.writeChunk("12345678🌟", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("12345678🌟");
 
     tb.setWrapWidth(10);
     const wrapped_count = tb.getLineCount();
@@ -816,8 +754,7 @@ test "TextBuffer wrapping - grapheme split across boundary" {
     defer tb.deinit();
 
     // Create text where emoji would straddle the boundary
-    _ = try tb.writeChunk("123456789🌟ABC", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("123456789🌟ABC");
 
     tb.setWrapWidth(10);
     const wrapped_count = tb.getLineCount();
@@ -838,8 +775,7 @@ test "TextBuffer wrapping - CJK characters at boundaries" {
     defer tb.deinit();
 
     // CJK characters typically take 2 cells each
-    _ = try tb.writeChunk("测试文字处理", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("测试文字处理");
 
     tb.setWrapWidth(10);
     const wrapped_count = tb.getLineCount();
@@ -860,8 +796,7 @@ test "TextBuffer wrapping - mixed width characters" {
     defer tb.deinit();
 
     // Mix of single-width and double-width characters
-    _ = try tb.writeChunk("AB测试CD", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("AB测试CD");
 
     tb.setWrapWidth(6);
     const wrapped_count = tb.getLineCount();
@@ -882,8 +817,7 @@ test "TextBuffer wrapping - single wide character exceeds width" {
     defer tb.deinit();
 
     // Emoji takes 2 cells but wrap width is 1
-    _ = try tb.writeChunk("🌟", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("🌟");
 
     tb.setWrapWidth(1);
     const wrapped_count = tb.getLineCount();
@@ -904,8 +838,7 @@ test "TextBuffer wrapping - multiple consecutive wide characters" {
     defer tb.deinit();
 
     // Multiple emojis in a row
-    _ = try tb.writeChunk("🌟🌟🌟🌟🌟", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("🌟🌟🌟🌟🌟");
 
     tb.setWrapWidth(6);
     const wrapped_count = tb.getLineCount();
@@ -926,8 +859,7 @@ test "TextBuffer wrapping - zero width characters" {
     defer tb.deinit();
 
     // Text with combining characters (zero-width)
-    _ = try tb.writeChunk("e\u{0301}e\u{0301}e\u{0301}", null, null, null); // é é é using combining acute
-    tb.finalizeLineInfo();
+    try tb.setText("e\u{0301}e\u{0301}e\u{0301}"); // é é é using combining acute
 
     tb.setWrapWidth(2);
     const wrapped_count = tb.getLineCount();
@@ -949,8 +881,7 @@ test "TextBuffer virtual lines - match real lines when no wrap" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Line 1\nLine 2\nLine 3", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Line 1\nLine 2\nLine 3");
 
     // Check line count matches expected
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
@@ -972,8 +903,7 @@ test "TextBuffer virtual lines - updated when wrap width set" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     // Initially no wrap
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
@@ -994,8 +924,7 @@ test "TextBuffer virtual lines - reset to match real lines when wrap removed" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST\nShort", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST\nShort");
 
     // Set wrap width
     tb.setWrapWidth(10);
@@ -1024,8 +953,7 @@ test "TextBuffer virtual lines - multi-line text without wrap" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("First line\n\nThird line with more text\n", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("First line\n\nThird line with more text\n");
 
     // Should have 4 lines (including empty line and trailing empty line)
     try std.testing.expectEqual(@as(u32, 4), tb.getLineCount());
@@ -1053,8 +981,7 @@ test "TextBuffer accessor methods - getVirtualLines and getLines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Line 1\nLine 2", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Line 1\nLine 2");
 
     // Test getVirtualLines returns correct data
     const virtual_lines = tb.getVirtualLines();
@@ -1080,8 +1007,7 @@ test "TextBuffer accessor methods - with wrapping" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     // Set wrap width
     tb.setWrapWidth(10);
@@ -1113,8 +1039,7 @@ test "TextBuffer selection - basic selection without wrap" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello World", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello World");
 
     // Set a local selection
     _ = tb.setLocalSelection(2, 0, 7, 0, null, null);
@@ -1141,8 +1066,7 @@ test "TextBuffer selection - multi-line selection without wrap" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Line 1\nLine 2\nLine 3", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Line 1\nLine 2\nLine 3");
 
     // Select from middle of line 1 to middle of line 2
     _ = tb.setLocalSelection(2, 0, 4, 1, null, null);
@@ -1162,8 +1086,7 @@ test "TextBuffer selection - selection with wrapped lines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     // Set wrap width
     tb.setWrapWidth(10);
@@ -1195,8 +1118,7 @@ test "TextBuffer selection - no selection returns all bits set" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello World", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello World");
 
     // No selection set
     const packed_info = tb.packSelectionInfo();
@@ -1214,8 +1136,7 @@ test "TextBuffer selection - selection at wrap boundary" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     tb.setWrapWidth(10);
 
@@ -1243,8 +1164,7 @@ test "TextBuffer selection - spanning multiple wrapped lines" {
     defer tb.deinit();
 
     // Create text that will wrap to 3 lines at width 10
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123");
 
     tb.setWrapWidth(10);
     try std.testing.expectEqual(@as(u32, 3), tb.getVirtualLineCount());
@@ -1272,8 +1192,7 @@ test "TextBuffer selection - changes when wrap width changes" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     // Initial wrap at width 10 - 2 virtual lines
     tb.setWrapWidth(10);
@@ -1310,8 +1229,7 @@ test "TextBuffer selection - empty selection with wrapping" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJ", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJ");
 
     tb.setWrapWidth(5);
 
@@ -1335,8 +1253,7 @@ test "TextBuffer selection - selection with newlines and wrapping" {
     defer tb.deinit();
 
     // Text with newlines that also needs wrapping
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNO\nPQRSTUVWXYZ", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNO\nPQRSTUVWXYZ");
 
     tb.setWrapWidth(10);
 
@@ -1363,8 +1280,7 @@ test "TextBuffer selection - reset clears selection" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello World", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello World");
 
     // Set selection
     _ = tb.setLocalSelection(0, 0, 5, 0, null, null);
@@ -1390,8 +1306,7 @@ test "TextBuffer word wrapping - basic word wrap at space" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello World", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello World");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1413,8 +1328,7 @@ test "TextBuffer word wrapping - long word exceeds width" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRSTUVWXYZ", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1436,8 +1350,7 @@ test "TextBuffer word wrapping - multiple words" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("The quick brown fox jumps", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("The quick brown fox jumps");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1459,8 +1372,7 @@ test "TextBuffer word wrapping - hyphenated words" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("self-contained multi-line", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("self-contained multi-line");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1482,8 +1394,7 @@ test "TextBuffer word wrapping - punctuation boundaries" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello,World.Test", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello,World.Test");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1505,8 +1416,7 @@ test "TextBuffer word wrapping - compare char vs word mode" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello wonderful world", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello wonderful world");
 
     // Test with char mode first
     tb.setWrapMode(.char);
@@ -1533,8 +1443,7 @@ test "TextBuffer word wrapping - empty lines preserved" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("First line\n\nSecond line", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("First line\n\nSecond line");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1556,8 +1465,7 @@ test "TextBuffer word wrapping - slash as boundary" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("path/to/file", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("path/to/file");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1579,8 +1487,7 @@ test "TextBuffer word wrapping - brackets as boundaries" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("array[index]value", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("array[index]value");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1602,8 +1509,7 @@ test "TextBuffer word wrapping - single character at boundary" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("a b c d e f", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("a b c d e f");
 
     // Set word wrap mode
     tb.setWrapMode(.word);
@@ -1627,8 +1533,7 @@ test "TextBuffer wrapping - very narrow width (1 char)" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDE", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDE");
 
     tb.setWrapWidth(1);
     const wrapped_count = tb.getLineCount();
@@ -1648,8 +1553,7 @@ test "TextBuffer wrapping - very narrow width (2 chars)" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEF", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEF");
 
     tb.setWrapWidth(2);
     const wrapped_count = tb.getLineCount();
@@ -1669,8 +1573,7 @@ test "TextBuffer wrapping - switch between char and word mode" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("Hello world test", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("Hello world test");
 
     tb.setWrapWidth(8);
 
@@ -1698,8 +1601,7 @@ test "TextBuffer wrapping - multiple consecutive newlines with wrapping" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJ\n\n\nKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJ\n\n\nKLMNOPQRST");
 
     tb.setWrapWidth(5);
     const wrapped_count = tb.getLineCount();
@@ -1722,8 +1624,7 @@ test "TextBuffer wrapping - only spaces should not create extra lines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("          ", null, null, null); // 10 spaces
-    tb.finalizeLineInfo();
+    try tb.setText("          "); // 10 spaces
 
     tb.setWrapWidth(5);
     const wrapped_count = tb.getLineCount();
@@ -1743,8 +1644,7 @@ test "TextBuffer wrapping - mixed tabs and spaces" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("AB\tCD\tEF", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("AB\tCD\tEF");
 
     tb.setWrapWidth(5);
     const wrapped_count = tb.getLineCount();
@@ -1765,8 +1665,7 @@ test "TextBuffer wrapping - unicode emoji with varying widths" {
     defer tb.deinit();
 
     // Mix of single-width ASCII and wide emoji
-    _ = try tb.writeChunk("A🌟B🎨C🚀D", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("A🌟B🎨C🚀D");
 
     tb.setWrapWidth(5);
     const wrapped_count = tb.getLineCount();
@@ -1786,8 +1685,7 @@ test "TextBuffer wrapping - line starts and widths consistency" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     tb.setWrapWidth(7);
     const line_count = tb.getLineCount();
@@ -1816,8 +1714,7 @@ test "TextBuffer wrapping - getVirtualLines reflects current wrap state" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    _ = try tb.writeChunk("ABCDEFGHIJKLMNOPQRST", null, null, null);
-    tb.finalizeLineInfo();
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
     // No wrap
     var vlines = tb.getVirtualLines();
