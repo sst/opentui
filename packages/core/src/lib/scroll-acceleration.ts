@@ -55,9 +55,10 @@ export class MacOSScrollAccel {
     }
 
     // Calculate average interval (lower = faster scrolling)
-    const avgInterval = this.velocityHistory.length > 0
-      ? this.velocityHistory.reduce((a, b) => a + b, 0) / this.velocityHistory.length
-      : Infinity
+    const avgInterval =
+      this.velocityHistory.length > 0
+        ? this.velocityHistory.reduce((a, b) => a + b, 0) / this.velocityHistory.length
+        : Infinity
 
     if (avgInterval === Infinity) {
       return 1
