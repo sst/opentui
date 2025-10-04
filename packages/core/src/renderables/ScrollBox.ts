@@ -36,11 +36,9 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollAcceleration?:
     | boolean
     | {
-        threshold1?: number
-        threshold2?: number
-        multiplier1?: number
-        multiplier2?: number
-        baseMultiplier?: number
+        A?: number
+        tau?: number
+        maxMultiplier?: number
       }
 }
 
@@ -214,9 +212,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.scrollAccelX = new MacOSScrollAccel(accelOpts)
       this.scrollAccelY = new MacOSScrollAccel(accelOpts)
     } else {
-      // Use MacOSScrollAccel with baseMultiplier=1 for linear behavior
-      this.scrollAccelX = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
-      this.scrollAccelY = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
+      // Use MacOSScrollAccel with A=0 for linear behavior (no acceleration)
+      this.scrollAccelX = new MacOSScrollAccel({ A: 0 })
+      this.scrollAccelY = new MacOSScrollAccel({ A: 0 })
     }
 
     this.wrapper = new BoxRenderable(ctx, {
@@ -608,8 +606,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   public set scrollAcceleration(value: ScrollBoxOptions["scrollAcceleration"]) {
     if (value === false) {
-      this.scrollAccelX = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
-      this.scrollAccelY = new MacOSScrollAccel({ baseMultiplier: 1, multiplier1: 1, multiplier2: 1 })
+      this.scrollAccelX = new MacOSScrollAccel({ A: 0 })
+      this.scrollAccelY = new MacOSScrollAccel({ A: 0 })
     } else if (value) {
       const accelOpts = typeof value === "object" ? value : {}
       this.scrollAccelX = new MacOSScrollAccel(accelOpts)
