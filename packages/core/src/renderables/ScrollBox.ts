@@ -306,6 +306,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
     return this.content.add(obj, index)
   }
 
+  public insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+    return this.content.insertBefore(obj, anchor)
+  }
+
   public remove(id: string): void {
     this.content.remove(id)
   }
