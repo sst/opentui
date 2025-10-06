@@ -1,5 +1,6 @@
 import { type KeyEvent } from "../lib"
 import { getObjectsInViewport } from "../lib/objects-in-viewport"
+import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration"
 import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
@@ -32,6 +33,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   stickyStart?: "bottom" | "top" | "left" | "right"
   scrollX?: boolean
   scrollY?: boolean
+  scrollAcceleration?: ScrollAcceleration
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -65,6 +67,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollRight: boolean = false
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
+  private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
     return this._stickyScroll
@@ -180,6 +183,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       stickyStart,
       scrollX = false,
       scrollY = true,
+      scrollAcceleration,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -194,6 +198,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.internalId = ScrollBoxRenderable.idCounter++
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
+
+    // Initialize scroll acceleration
+    if (scrollAcceleration) {
+      this.scrollAccel = scrollAcceleration
+    } else if (process.platform === "darwin") {
+      this.scrollAccel = new MacOSScrollAccel()
+    } else {
+      this.scrollAccel = new LinearScrollAccel()
+    }
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -324,10 +337,19 @@ export class ScrollBoxRenderable extends BoxRenderable {
       if (event.modifiers.shift)
         dir = dir === "up" ? "left" : dir === "down" ? "right" : dir === "right" ? "down" : "up"
 
-      if (dir === "up") this.scrollTop -= event.scroll?.delta ?? 0
-      else if (dir === "down") this.scrollTop += event.scroll?.delta ?? 0
-      else if (dir === "left") this.scrollLeft -= event.scroll?.delta ?? 0
-      else if (dir === "right") this.scrollLeft += event.scroll?.delta ?? 0
+      const baseDelta = event.scroll?.delta ?? 0
+      const now = Date.now()
+      const multiplier = this.scrollAccel.tick(now)
+
+      if (dir === "up") {
+        this.scrollTop -= baseDelta * multiplier
+      } else if (dir === "down") {
+        this.scrollTop += baseDelta * multiplier
+      } else if (dir === "left") {
+        this.scrollLeft -= baseDelta * multiplier
+      } else if (dir === "right") {
+        this.scrollLeft += baseDelta * multiplier
+      }
 
       this._hasManualScroll = true
     }
@@ -340,12 +362,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public handleKeyPress(key: KeyEvent | string): boolean {
+    // Let scrollbars handle their own acceleration
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
+      this.scrollAccel.reset()
       return true
     }
     if (this.horizontalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
+      this.scrollAccel.reset()
       return true
     }
     return false
