@@ -1,3 +1,16 @@
+export interface ScrollAcceleration {
+  tick(now?: number): number
+  reset(): void
+}
+
+export class LinearScrollAccel implements ScrollAcceleration {
+  tick(_now?: number): number {
+    return 1
+  }
+
+  reset(): void {}
+}
+
 /**
  * macOS-inspired scroll acceleration.
  *
@@ -18,7 +31,7 @@
  * - multiplier2: scale for sustained fast streaks.
  * - baseMultiplier: scale for relaxed scrolling; set to 1 for linear behaviour.
  */
-export class MacOSScrollAccel {
+export class MacOSScrollAccel implements ScrollAcceleration {
   private lastTickTime = 0
   private velocityHistory: number[] = []
   private readonly historySize = 3

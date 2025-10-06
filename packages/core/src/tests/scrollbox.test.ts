@@ -1,13 +1,16 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { BoxRenderable } from "../renderables/Box"
 import { TextRenderable } from "../renderables/Text"
+import { MacOSScrollAccel } from "../lib/scroll-acceleration"
 
 let testRenderer: TestRenderer
+let mockMouse: MockMouse
+let renderOnce: () => Promise<void>
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer } = await createTestRenderer({}))
+  ;({ renderer: testRenderer, mockMouse, renderOnce } = await createTestRenderer({ width: 80, height: 24 }))
 })
 
 afterEach(() => {
@@ -21,7 +24,6 @@ describe("ScrollBoxRenderable - destroyRecursively", () => {
 
     parent.add(child)
 
-    // Get references to internal components
     const wrapper = parent.wrapper
     const viewport = parent.viewport
     const content = parent.content
@@ -45,5 +47,48 @@ describe("ScrollBoxRenderable - destroyRecursively", () => {
     expect(content.isDestroyed).toBe(true)
     expect(horizontalScrollBar.isDestroyed).toBe(true)
     expect(verticalScrollBar.isDestroyed).toBe(true)
+  })
+})
+
+describe("ScrollBoxRenderable - Mouse interaction", () => {
+  test("scrolls with mouse wheel", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new MacOSScrollAccel({ A: 0 }),
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    expect(scrollBox.scrollTop).toBeGreaterThan(0)
+  })
+
+  test("acceleration makes rapid scrolls cover more distance", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new MacOSScrollAccel({ A: 0.8, tau: 3, maxMultiplier: 6 }),
+    })
+    for (let i = 0; i < 200; i++) scrollBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    const slowScrollDistance = scrollBox.scrollTop
+
+    scrollBox.scrollTop = 0
+
+    for (let i = 0; i < 5; i++) {
+      await mockMouse.scroll(25, 10, "down")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    await renderOnce()
+    const rapidScrollDistance = scrollBox.scrollTop
+
+    expect(rapidScrollDistance).toBeGreaterThan(slowScrollDistance * 3)
   })
 })
