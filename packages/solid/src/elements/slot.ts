@@ -30,6 +30,10 @@ class SlotBaseRenderable extends BaseRenderable {
   }
 
   public requestRender(): void {}
+
+  public findDescendantById(id: string): BaseRenderable | undefined {
+    return undefined
+  }
 }
 
 export class TextSlotRenderable extends TextNodeRenderable {

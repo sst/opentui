@@ -272,6 +272,10 @@ export class TextNodeRenderable extends BaseRenderable {
   public get attributes(): number {
     return this._attributes
   }
+
+  public findDescendantById(id: string): BaseRenderable | undefined {
+    return undefined
+  }
 }
 
 export class RootTextNodeRenderable extends TextNodeRenderable {

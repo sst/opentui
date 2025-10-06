@@ -149,6 +149,7 @@ export abstract class BaseRenderable extends EventEmitter {
   public abstract getChildrenCount(): number
   public abstract getRenderable(id: string): BaseRenderable | undefined
   public abstract requestRender(): void
+  public abstract findDescendantById(id: string): BaseRenderable | undefined
 
   public get id(): string {
     return this._id

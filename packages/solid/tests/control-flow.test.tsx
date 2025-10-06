@@ -725,5 +725,35 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       // Consistent ordering
       expect(frame).toMatchSnapshot()
     })
+
+    it("should find descendants by id through slot renderables in scrollbox", async () => {
+      const [showContent, setShowContent] = createSignal(false) // Start with FALSE to keep slot in tree
+
+      testSetup = await testRender(
+        () => (
+          <box id="parent-box">
+            <box id="always-visible" border title="Always" />
+            <Show when={showContent()}>
+              <box id="conditional-child" border title="Conditional">
+                <box id="nested-child" border title="Nested" />
+              </box>
+            </Show>
+            <box id="another-visible" border title="Another" />
+          </box>
+        ),
+        { width: 30, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+
+      const parentBox = testSetup.renderer.root.findDescendantById("parent-box")
+      expect(parentBox).toBeDefined()
+
+      // This should work - findDescendantById should be able to traverse through or skip slot renderables
+      // Currently fails because LayoutSlotRenderable (from Show when={false}) doesn't have findDescendantById
+      const anotherVisible = parentBox?.findDescendantById("another-visible")
+      expect(anotherVisible).toBeDefined()
+      expect(anotherVisible?.id).toBe("another-visible")
+    })
   })
 })
