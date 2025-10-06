@@ -745,7 +745,7 @@ export interface RenderLib {
     fgColor: RGBA | null,
   ) => boolean
   textBufferResetLocalSelection: (buffer: Pointer) => void
-  textBufferSetText: (buffer: Pointer, text: string) => void
+  textBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
   textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
   textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
@@ -1317,8 +1317,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferResetDefaults(buffer)
   }
 
-  public textBufferSetText(buffer: Pointer, text: string): void {
-    const textBytes = this.encoder.encode(text)
+  public textBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
     this.opentui.symbols.textBufferSetText(buffer, textBytes, textBytes.length)
   }
 

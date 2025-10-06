@@ -20,6 +20,7 @@ export class TextBuffer {
   private _lineInfo?: LineInfo
   private _destroyed: boolean = false
   private _syntaxStyle?: NativeSyntaxStyle
+  private _textBytes?: Uint8Array // Keep UTF-8 bytes alive for Zig reference
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -40,7 +41,9 @@ export class TextBuffer {
 
   public setText(text: string): void {
     this.guard()
-    this.lib.textBufferSetText(this.bufferPtr, text)
+    // Keep UTF-8 bytes alive - Zig stores a reference to this memory
+    this._textBytes = this.lib.encoder.encode(text)
+    this.lib.textBufferSetText(this.bufferPtr, this._textBytes)
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._lineInfo = undefined
   }
