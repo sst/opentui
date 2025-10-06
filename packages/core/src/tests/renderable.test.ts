@@ -194,6 +194,19 @@ describe("Renderable - Child Management", () => {
     expect(children[2].id).toBe("child2")
   })
 
+  test("insertBefore makes new child accessible", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const newChild = new TestRenderable(testRenderer, { id: "newChild" })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.insertBefore(newChild, child2)
+
+    expect(parent.getRenderable("newChild")).toBe(newChild)
+  })
+
   test("handles adding destroyed renderable", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child = new TestRenderable(testRenderer, { id: "child" })
