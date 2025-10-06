@@ -1121,10 +1121,11 @@ export abstract class Renderable extends BaseRenderable {
     if (renderable.parent === this) {
       this.yogaNode.removeChild(renderable.getLayoutNode())
       this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
-    } else if (renderable.parent) {
+    } else {
       this.replaceParent(renderable)
       this.needsZIndexSort = true
       this.renderableMapById.set(renderable.id, renderable)
+      this._childrenInZIndexOrder.push(renderable)
 
       if (typeof renderable.onLifecyclePass === "function") {
         this._ctx.registerLifecyclePass(renderable)
