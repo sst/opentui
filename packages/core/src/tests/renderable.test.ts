@@ -38,6 +38,9 @@ export class TestBaseRenderable extends BaseRenderable {
   requestRender(): void {
     throw new Error("Method not implemented.")
   }
+  findDescendantById(id: string): BaseRenderable | undefined {
+    throw new Error("Method not implemented.")
+  }
 }
 
 class TestRenderable extends Renderable {
