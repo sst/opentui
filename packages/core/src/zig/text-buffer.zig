@@ -106,16 +106,12 @@ pub const VirtualLine = struct {
 
 /// A line contains multiple chunks and tracks its total width
 pub const TextLine = struct {
-    byte_start: u32, // Offset into TextBuffer.text_bytes
-    byte_end: u32, // Offset into TextBuffer.text_bytes (excludes \n or \r\n)
     chunks: std.ArrayListUnmanaged(TextChunk),
     width: u32,
     char_offset: u32, // Cumulative char offset for selection tracking
 
     pub fn init() TextLine {
         return .{
-            .byte_start = 0,
-            .byte_end = 0,
             .chunks = .{},
             .width = 0,
             .char_offset = 0,
@@ -948,8 +944,6 @@ pub const TextBuffer = struct {
         if (has_trailing_newline) {
             var final_line = TextLine.init();
             final_line.char_offset = self.char_count;
-            final_line.byte_start = @intCast(text.len);
-            final_line.byte_end = @intCast(text.len);
             try self.lines.append(self.allocator, final_line);
         }
 
@@ -959,8 +953,6 @@ pub const TextBuffer = struct {
     /// Parse a single line into chunks with grapheme clusters
     fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
         var line = TextLine.init();
-        line.byte_start = byte_start;
-        line.byte_end = byte_end;
         line.char_offset = self.char_count;
 
         const line_bytes = self.text_bytes[byte_start..byte_end];
@@ -1163,7 +1155,6 @@ pub const TextBuffer = struct {
 
             const lineStart = vline.char_offset;
             const lineWidth = vline.width;
-            // lineEnd is the exclusive end position (start of next line, or end of this line's content)
             const lineEnd = if (i < self.virtual_lines.items.len - 1)
                 self.virtual_lines.items[i + 1].char_offset
             else
