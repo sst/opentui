@@ -264,6 +264,10 @@ pub const TextBuffer = struct {
         return self.char_count;
     }
 
+    pub fn getByteSize(self: *const TextBuffer) u32 {
+        return @intCast(self.text_bytes.len);
+    }
+
     pub fn measureText(self: *const TextBuffer, text: []const u8) u32 {
         return gwidth.gwidth(text, self.width_method, &self.display_width);
     }

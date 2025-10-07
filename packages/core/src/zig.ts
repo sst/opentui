@@ -284,6 +284,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "u32",
     },
+    textBufferGetByteSize: {
+      args: ["ptr"],
+      returns: "u32",
+    },
 
     textBufferReset: {
       args: ["ptr"],
@@ -729,6 +733,7 @@ export interface RenderLib {
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
   destroyTextBuffer: (buffer: Pointer) => void
   textBufferGetLength: (buffer: Pointer) => number
+  textBufferGetByteSize: (buffer: Pointer) => number
 
   textBufferReset: (buffer: Pointer) => void
   textBufferSetSelection: (
@@ -1284,6 +1289,10 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferGetLength(buffer: Pointer): number {
     return this.opentui.symbols.textBufferGetLength(buffer)
+  }
+
+  public textBufferGetByteSize(buffer: Pointer): number {
+    return this.opentui.symbols.textBufferGetByteSize(buffer)
   }
 
   public textBufferReset(buffer: Pointer): void {

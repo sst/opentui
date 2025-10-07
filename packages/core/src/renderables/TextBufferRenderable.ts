@@ -60,6 +60,7 @@ export abstract class TextBufferRenderable extends Renderable {
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
 
     // TEMP
+    // TODO: Only set when given in options, otherwise no style
     const style = NativeSyntaxStyle.create()
     this.textBuffer.setSyntaxStyle(style)
 

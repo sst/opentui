@@ -17,6 +17,7 @@ export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _length: number = 0
+  private _byteSize: number = 0
   private _lineInfo?: LineInfo
   private _destroyed: boolean = false
   private _syntaxStyle?: NativeSyntaxStyle
@@ -45,6 +46,7 @@ export class TextBuffer {
     this._textBytes = this.lib.encoder.encode(text)
     this.lib.textBufferSetText(this.bufferPtr, this._textBytes)
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
   }
 
@@ -64,6 +66,7 @@ export class TextBuffer {
 
     // Update cached length and line info
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
   }
 
@@ -92,6 +95,11 @@ export class TextBuffer {
     return this._length
   }
 
+  public get byteSize(): number {
+    this.guard()
+    return this._byteSize
+  }
+
   public get ptr(): Pointer {
     this.guard()
     return this.bufferPtr
@@ -100,8 +108,8 @@ export class TextBuffer {
   public getSelectedText(): string {
     this.guard()
     if (this._length === 0) return ""
-    // TODO: The _length should be the text length, need to know the number of bytes for the text though
-    const selectedBytes = this.lib.getSelectedTextBytes(this.bufferPtr, this.length * 4)
+    // Use byteSize for accurate buffer allocation
+    const selectedBytes = this.lib.getSelectedTextBytes(this.bufferPtr, this._byteSize)
 
     if (!selectedBytes) return ""
 
@@ -110,9 +118,9 @@ export class TextBuffer {
 
   public getPlainText(): string {
     this.guard()
-    // Note: _length doesn't count newlines, so we can't use it to determine if buffer is empty
-    // Always call getPlainTextBytes to get the actual text (including newlines)
-    const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, Math.max(this.length * 4, 1024))
+    if (this._byteSize === 0) return ""
+    // Use byteSize for accurate buffer allocation (includes newlines in byte count)
+    const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, this._byteSize)
 
     if (!plainBytes) return ""
 

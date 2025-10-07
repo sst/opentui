@@ -385,6 +385,10 @@ export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLength();
 }
 
+export fn textBufferGetByteSize(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getByteSize();
+}
+
 export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
     tb.reset();
 }
