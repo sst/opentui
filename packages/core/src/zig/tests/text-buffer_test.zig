@@ -1295,6 +1295,151 @@ test "TextBuffer selection - reset clears selection" {
     try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info);
 }
 
+// ===== Text Extraction Tests =====
+
+test "TextBuffer getPlainTextIntoBuffer - simple text without newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getPlainTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("Hello World", text);
+}
+
+test "TextBuffer getPlainTextIntoBuffer - text with newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getPlainTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", text);
+}
+
+test "TextBuffer getPlainTextIntoBuffer - text with only newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("\n\n\n");
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getPlainTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("\n\n\n", text);
+}
+
+test "TextBuffer getPlainTextIntoBuffer - empty lines between content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("First\n\nThird");
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getPlainTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("First\n\nThird", text);
+}
+
+test "TextBuffer getSelectedTextIntoBuffer - simple selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World");
+    tb.setSelection(6, 11, null, null);
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getSelectedTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("World", text);
+}
+
+test "TextBuffer getSelectedTextIntoBuffer - selection with newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+    tb.setSelection(0, 10, null, null); // Select "Line 1\nLin"
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getSelectedTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("Line 1\nLin", text);
+}
+
+test "TextBuffer getSelectedTextIntoBuffer - selection spanning multiple lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Red\nBlue");
+    tb.setSelection(2, 6, null, null); // Select "d\nBl"
+
+    var buffer: [100]u8 = undefined;
+    const len = tb.getSelectedTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("d\nBl", text);
+}
+
 // ===== Word Wrapping Tests =====
 
 test "TextBuffer word wrapping - basic word wrap at space" {
