@@ -434,7 +434,6 @@ pub const StyledChunk = extern struct {
 
 export fn textBufferSetStyledText(
     tb: *text_buffer.TextBuffer,
-    syntaxStylePtr: ?*syntax_style.SyntaxStyle,
     chunksPtr: [*]const StyledChunk,
     chunkCount: usize,
 ) void {
@@ -464,29 +463,10 @@ export fn textBufferSetStyledText(
     // Clear all highlights
     tb.clearAllHighlights();
 
-    // If we have a syntax style, measure chunks first, then add highlights
-    if (syntaxStylePtr) |style| {
-        // First pass: measure each chunk's length
-        const chunk_lengths = globalArena.alloc(u32, chunkCount) catch return;
-        defer globalArena.free(chunk_lengths);
-
-        for (chunks, 0..) |chunk, i| {
-            const chunk_text = chunk.text_ptr[0..chunk.text_len];
-            tb.setText(chunk_text) catch {
-                chunk_lengths[i] = 0;
-                continue;
-            };
-            chunk_lengths[i] = tb.getLength();
-        }
-
-        // Restore the full text
-        tb.setText(full_text) catch return;
-        tb.clearAllHighlights();
-
-        // Second pass: add highlights using measured lengths
+    if (tb.syntax_style) |style| {
         var char_pos: u32 = 0;
         for (chunks, 0..) |chunk, i| {
-            const chunk_len = chunk_lengths[i];
+            const chunk_len = tb.measureText(chunk.text_ptr[0..chunk.text_len]);
 
             if (chunk_len > 0) {
                 // Register style for this chunk
@@ -494,7 +474,7 @@ export fn textBufferSetStyledText(
                 const bg = if (chunk.bg_ptr) |bgPtr| f32PtrToRGBA(bgPtr) else null;
 
                 const style_name = std.fmt.allocPrint(globalArena, "chunk{d}", .{i}) catch continue;
-                const style_id = style.registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
+                const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
 
                 // Add highlight for this chunk's range
                 tb.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, null) catch {};

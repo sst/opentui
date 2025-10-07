@@ -60,7 +60,7 @@ export class TextBuffer {
     }))
 
     // Call the native implementation which handles width calculation correctly
-    this.lib.textBufferSetStyledText(this.bufferPtr, this._syntaxStyle?.ptr ?? null, chunks)
+    this.lib.textBufferSetStyledText(this.bufferPtr, chunks)
 
     // Update cached length and line info
     this._length = this.lib.textBufferGetLength(this.bufferPtr)

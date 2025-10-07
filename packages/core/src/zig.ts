@@ -318,7 +318,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferSetStyledText: {
-      args: ["ptr", "ptr", "ptr", "usize"],
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
     textBufferGetLineCount: {
@@ -752,7 +752,6 @@ export interface RenderLib {
   textBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
   textBufferSetStyledText: (
     buffer: Pointer,
-    syntaxStyle: Pointer | null,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ) => void
   textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
@@ -1332,7 +1331,6 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetStyledText(
     buffer: Pointer,
-    syntaxStyle: Pointer | null,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ): void {
     // Filter out chunks with empty text - they don't contribute to the buffer
@@ -1392,12 +1390,7 @@ class FFIRenderLib implements RenderLib {
     }
 
     // Call the native function
-    this.opentui.symbols.textBufferSetStyledText(
-      buffer,
-      syntaxStyle,
-      ptr(new Uint8Array(chunksBuffer)),
-      nonEmptyChunks.length,
-    )
+    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(new Uint8Array(chunksBuffer)), nonEmptyChunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
