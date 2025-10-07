@@ -860,17 +860,31 @@ pub const OptimizedBuffer = struct {
 
             // Initialize span tracking for this line
             const vline_idx = @as(usize, @intCast(currentY - y));
-            const spans = text_buffer.getLineSpans(vline_idx);
+            const vline_span_info = text_buffer.getVirtualLineSpans(vline_idx);
+            const spans = vline_span_info.spans;
+            const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
             var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
             var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
-            var next_change_col: u32 = if (spans.len > 0) spans[0].next_col else std.math.maxInt(u32);
 
-            // Apply initial span style (if it starts at col 0)
-            if (spans.len > 0 and spans[0].col == 0 and spans[0].style_id != 0) {
+            // Find the first span that overlaps this virtual line's column range
+            while (span_idx < spans.len and spans[span_idx].next_col <= col_offset) {
+                span_idx += 1;
+            }
+
+            var next_change_col: u32 = if (span_idx < spans.len)
+                if (spans[span_idx].next_col > col_offset)
+                    spans[span_idx].next_col - col_offset
+                else
+                    std.math.maxInt(u32)
+            else
+                std.math.maxInt(u32);
+
+            // Apply initial span style if it covers the start of this virtual line
+            if (span_idx < spans.len and spans[span_idx].col <= col_offset and spans[span_idx].style_id != 0) {
                 if (text_buffer.getSyntaxStyle()) |style| {
-                    if (style.resolveById(spans[0].style_id)) |resolved_style| {
+                    if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
                         if (resolved_style.fg) |fg| lineFg = fg;
                         if (resolved_style.bg) |bg| lineBg = bg;
                         lineAttributes |= resolved_style.attributes;
@@ -931,8 +945,10 @@ pub const OptimizedBuffer = struct {
                     }
 
                     // Check if we need to advance to next span
-                    const col_pos = @as(u32, @intCast(currentX - x));
-                    if (col_pos >= next_change_col and span_idx + 1 < spans.len) {
+                    // col_pos is relative to the virtual line (col_offset already handled in span lookup)
+                    const virt_col_pos = @as(u32, @intCast(currentX - x));
+
+                    if (virt_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 
@@ -951,7 +967,12 @@ pub const OptimizedBuffer = struct {
                                 }
                             }
                         }
-                        next_change_col = new_span.next_col;
+
+                        // Calculate next change column relative to virtual line
+                        next_change_col = if (new_span.next_col > col_offset)
+                            new_span.next_col - col_offset
+                        else
+                            std.math.maxInt(u32);
                     }
 
                     var finalFg = lineFg;

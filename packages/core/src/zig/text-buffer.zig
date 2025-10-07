@@ -86,12 +86,16 @@ pub const VirtualLine = struct {
     chunks: std.ArrayListUnmanaged(VirtualChunk),
     width: u32,
     char_offset: u32,
+    source_line: usize, // Which real line this virtual line comes from
+    source_col_offset: u32, // Column offset within the source line (0 for first vline, 10 for second if wrapped at 10, etc.)
 
     pub fn init() VirtualLine {
         return .{
             .chunks = .{},
             .width = 0,
             .char_offset = 0,
+            .source_line = 0,
+            .source_col_offset = 0,
         };
     }
 
@@ -398,6 +402,30 @@ pub const TextBuffer = struct {
             return self.line_spans.items[line_idx].items;
         }
         return &[_]StyleSpan{};
+    }
+
+    /// Get style spans for a virtual line, adjusted for the virtual line's column offset
+    /// This is used when rendering wrapped text to correctly apply highlights
+    pub fn getVirtualLineSpans(self: *const TextBuffer, vline_idx: usize) struct {
+        spans: []const StyleSpan,
+        source_line: usize,
+        col_offset: u32,
+    } {
+        if (vline_idx >= self.virtual_lines.items.len) {
+            return .{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
+        }
+
+        const vline = &self.virtual_lines.items[vline_idx];
+        const spans = if (vline.source_line < self.line_spans.items.len)
+            self.line_spans.items[vline.source_line].items
+        else
+            &[_]StyleSpan{};
+
+        return .{
+            .spans = spans,
+            .source_line = vline.source_line,
+            .col_offset = vline.source_col_offset,
+        };
     }
 
     /// Add a highlight using character offsets into the full text
@@ -753,6 +781,8 @@ pub const TextBuffer = struct {
                 var vline = VirtualLine.init();
                 vline.width = line.width;
                 vline.char_offset = line.char_offset;
+                vline.source_line = line_idx;
+                vline.source_col_offset = 0;
 
                 // Create virtual chunks that reference entire real chunks
                 for (line.chunks.items, 0..) |*chunk, chunk_idx| {
@@ -777,8 +807,11 @@ pub const TextBuffer = struct {
 
             for (self.lines.items, 0..) |*line, line_idx| {
                 var line_position: u32 = 0;
+                var line_col_offset: u32 = 0; // Track column offset within the real line
                 var current_vline = VirtualLine.init();
                 current_vline.char_offset = global_char_offset;
+                current_vline.source_line = line_idx;
+                current_vline.source_col_offset = 0;
                 var first_in_line = true;
 
                 for (line.chunks.items, 0..) |*chunk, chunk_idx| {
@@ -808,10 +841,13 @@ pub const TextBuffer = struct {
                             chunk_pos += 1;
                             global_char_offset += 1;
 
-                            // Start new virtual line
+                            // Start new virtual line (newlines end the real line, so reset col offset)
                             current_vline = VirtualLine.init();
                             current_vline.char_offset = global_char_offset;
+                            current_vline.source_line = line_idx;
+                            current_vline.source_col_offset = 0;
                             line_position = 0;
+                            line_col_offset = 0;
                             first_in_line = true;
                             continue;
                         }
@@ -829,8 +865,11 @@ pub const TextBuffer = struct {
                             self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
                             self.cached_max_width = @max(self.cached_max_width, current_vline.width);
 
+                            line_col_offset += line_position;
                             current_vline = VirtualLine.init();
                             current_vline.char_offset = global_char_offset;
+                            current_vline.source_line = line_idx;
+                            current_vline.source_col_offset = line_col_offset;
                             line_position = 0;
                             first_in_line = false;
                             continue;
@@ -864,8 +903,11 @@ pub const TextBuffer = struct {
                             self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
                             self.cached_max_width = @max(self.cached_max_width, current_vline.width);
 
+                            line_col_offset += line_position;
                             current_vline = VirtualLine.init();
                             current_vline.char_offset = global_char_offset;
+                            current_vline.source_line = line_idx;
+                            current_vline.source_col_offset = line_col_offset;
                             line_position = 0;
                         }
                     }

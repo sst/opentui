@@ -2398,3 +2398,78 @@ test "TextBuffer char range highlights - preserved after setText" {
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 0), highlights.len);
 }
+
+// ===== Highlights with Wrapping Tests =====
+
+test "TextBuffer highlights - work correctly with wrapped lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text that will wrap: "ABCDEFGHIJKLMNOPQRST" at width 10 becomes 2 virtual lines
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    // Add highlight from col 5 to 15 (spans both virtual lines)
+    try tb.addHighlight(0, 5, 15, 1, 1, null);
+
+    // Set wrap width
+    tb.setWrapWidth(10);
+
+    // Should have 2 virtual lines
+    try std.testing.expectEqual(@as(u32, 2), tb.getVirtualLineCount());
+
+    // Get virtual line span info for both lines
+    const vline0_info = tb.getVirtualLineSpans(0);
+    const vline1_info = tb.getVirtualLineSpans(1);
+
+    // Both virtual lines should reference the same source line
+    try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
+    try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
+
+    // First virtual line has col_offset 0, second has col_offset 10
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
+    try std.testing.expectEqual(@as(u32, 10), vline1_info.col_offset);
+
+    // Both should have access to the same spans (from the real line)
+    try std.testing.expect(vline0_info.spans.len > 0);
+    try std.testing.expect(vline1_info.spans.len > 0);
+}
+
+test "TextBuffer highlights - multiple highlights on wrapped line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    // Add highlights at different positions that will span virtual lines
+    try tb.addHighlight(0, 2, 8, 1, 1, null); // First virtual line
+    try tb.addHighlight(0, 12, 18, 2, 1, null); // Second virtual line
+    try tb.addHighlight(0, 22, 26, 3, 1, null); // Third virtual line
+
+    tb.setWrapWidth(10);
+
+    // Should have 3 virtual lines
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expect(vline_count >= 3);
+
+    // Verify all virtual lines can access the highlights
+    for (0..vline_count) |i| {
+        const vline_info = tb.getVirtualLineSpans(i);
+        try std.testing.expectEqual(@as(usize, 0), vline_info.source_line);
+        // Each virtual line should have the correct column offset
+        try std.testing.expectEqual(@as(u32, @intCast(i * 10)), vline_info.col_offset);
+    }
+}
