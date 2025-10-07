@@ -105,17 +105,6 @@ export class TextBuffer {
     return this.bufferPtr
   }
 
-  public getSelectedText(): string {
-    this.guard()
-    if (this._length === 0) return ""
-    // Use byteSize for accurate buffer allocation
-    const selectedBytes = this.lib.getSelectedTextBytes(this.bufferPtr, this._byteSize)
-
-    if (!selectedBytes) return ""
-
-    return this.lib.decoder.decode(selectedBytes)
-  }
-
   public getPlainText(): string {
     this.guard()
     if (this._byteSize === 0) return ""
@@ -125,71 +114,6 @@ export class TextBuffer {
     if (!plainBytes) return ""
 
     return this.lib.decoder.decode(plainBytes)
-  }
-
-  public get lineInfo(): LineInfo {
-    this.guard()
-    if (!this._lineInfo) {
-      this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
-    }
-    return this._lineInfo
-  }
-
-  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
-    this.guard()
-    this.lib.textBufferSetSelection(this.bufferPtr, start, end, bgColor || null, fgColor || null)
-  }
-
-  public resetSelection(): void {
-    this.guard()
-    this.lib.textBufferResetSelection(this.bufferPtr)
-  }
-
-  public setLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: RGBA,
-    fgColor?: RGBA,
-  ): boolean {
-    this.guard()
-    return this.lib.textBufferSetLocalSelection(
-      this.bufferPtr,
-      anchorX,
-      anchorY,
-      focusX,
-      focusY,
-      bgColor || null,
-      fgColor || null,
-    )
-  }
-
-  public resetLocalSelection(): void {
-    this.guard()
-    this.lib.textBufferResetLocalSelection(this.bufferPtr)
-  }
-
-  public getSelection(): { start: number; end: number } | null {
-    this.guard()
-    return this.lib.textBufferGetSelection(this.bufferPtr)
-  }
-
-  public hasSelection(): boolean {
-    this.guard()
-    return this.getSelection() !== null
-  }
-
-  public setWrapWidth(width: number | null): void {
-    this.guard()
-    this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)
-    this._lineInfo = undefined
-  }
-
-  public setWrapMode(mode: "char" | "word"): void {
-    this.guard()
-    this.lib.textBufferSetWrapMode(this.bufferPtr, mode)
-    this._lineInfo = undefined
   }
 
   /**

@@ -6,6 +6,7 @@ const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
+const text_buffer_view = @import("text-buffer-view.zig");
 const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
@@ -393,16 +394,6 @@ export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
     tb.reset();
 }
 
-export fn textBufferSetSelection(tb: *text_buffer.TextBuffer, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    tb.setSelection(start, end, bg, fg);
-}
-
-export fn textBufferResetSelection(tb: *text_buffer.TextBuffer) void {
-    tb.resetSelection();
-}
-
 export fn textBufferSetDefaultFg(tb: *text_buffer.TextBuffer, fg: ?[*]const f32) void {
     const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
     tb.setDefaultFg(fgColor);
@@ -493,8 +484,70 @@ export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
     return tb.getLineCount();
 }
 
-export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
-    const line_info = tb.getCachedLineInfo();
+export fn textBufferGetPlainText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getPlainTextIntoBuffer(outBuffer);
+}
+
+// TextBufferView functions
+export fn createTextBufferView(tb: *text_buffer.TextBuffer) ?*text_buffer_view.TextBufferView {
+    const view = text_buffer_view.TextBufferView.init(std.heap.page_allocator, tb) catch {
+        return null;
+    };
+    return view;
+}
+
+export fn destroyTextBufferView(view: *text_buffer_view.TextBufferView) void {
+    view.deinit();
+}
+
+export fn textBufferViewMarkDirty(view: *text_buffer_view.TextBufferView) void {
+    view.markDirty();
+}
+
+export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    view.setSelection(start, end, bg, fg);
+}
+
+export fn textBufferViewResetSelection(view: *text_buffer_view.TextBufferView) void {
+    view.resetSelection();
+}
+
+export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.TextBufferView) u64 {
+    return view.packSelectionInfo();
+}
+
+export fn textBufferViewSetLocalSelection(view: *text_buffer_view.TextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn textBufferViewResetLocalSelection(view: *text_buffer_view.TextBufferView) void {
+    view.resetLocalSelection();
+}
+
+export fn textBufferViewSetWrapWidth(view: *text_buffer_view.TextBufferView, width: u32) void {
+    view.setWrapWidth(if (width == 0) null else width);
+}
+
+export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferView, mode: u8) void {
+    const wrapMode: text_buffer.WrapMode = switch (mode) {
+        0 => .char,
+        1 => .word,
+        else => .char,
+    };
+    view.setWrapMode(wrapMode);
+}
+
+export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.TextBufferView) u32 {
+    return view.getVirtualLineCount();
+}
+
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getCachedLineInfo();
 
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
@@ -502,9 +555,19 @@ export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr
     return line_info.max_width;
 }
 
-export fn bufferDrawTextBuffer(
+export fn textBufferViewGetSelectedText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.getSelectedTextIntoBuffer(outBuffer);
+}
+
+export fn textBufferViewGetPlainText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.getPlainTextIntoBuffer(outBuffer);
+}
+
+export fn bufferDrawTextBufferView(
     bufferPtr: *buffer.OptimizedBuffer,
-    textBufferPtr: *text_buffer.TextBuffer,
+    viewPtr: *text_buffer_view.TextBufferView,
     x: i32,
     y: i32,
     clipX: i32,
@@ -520,46 +583,7 @@ export fn bufferDrawTextBuffer(
         .height = clipHeight,
     } else null;
 
-    bufferPtr.drawTextBuffer(textBufferPtr, x, y, clip_rect) catch {};
-}
-
-// Get selection info as packed u64: [start:u32][end:u32]
-// Returns 0xFFFFFFFF_FFFFFFFF if no selection
-export fn textBufferGetSelectionInfo(tb: *text_buffer.TextBuffer) u64 {
-    return tb.packSelectionInfo();
-}
-
-export fn textBufferGetSelectedText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
-    const outBuffer = outPtr[0..maxLen];
-    return tb.getSelectedTextIntoBuffer(outBuffer);
-}
-
-export fn textBufferGetPlainText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
-    const outBuffer = outPtr[0..maxLen];
-    return tb.getPlainTextIntoBuffer(outBuffer);
-}
-
-export fn textBufferSetLocalSelection(tb: *text_buffer.TextBuffer, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    return tb.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
-}
-
-export fn textBufferResetLocalSelection(tb: *text_buffer.TextBuffer) void {
-    tb.resetLocalSelection();
-}
-
-export fn textBufferSetWrapWidth(tb: *text_buffer.TextBuffer, width: u32) void {
-    tb.setWrapWidth(if (width == 0) null else width);
-}
-
-export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
-    const wrapMode: text_buffer.WrapMode = switch (mode) {
-        0 => .char,
-        1 => .word,
-        else => .char,
-    };
-    tb.setWrapMode(wrapMode);
+    bufferPtr.drawTextBuffer(viewPtr, x, y, clip_rect) catch {};
 }
 
 export fn textBufferAddHighlightByCharRange(

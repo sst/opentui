@@ -1,6 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
 import { TextBuffer, type TextChunk } from "../text-buffer"
+import { TextBufferView } from "../text-buffer-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
@@ -32,6 +33,7 @@ export abstract class TextBufferRenderable extends Renderable {
   protected lastLocalSelection: LocalSelectionBounds | null = null
 
   protected textBuffer: TextBuffer
+  protected textBufferView: TextBufferView
   protected _lineInfo: LineInfo = { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
 
   protected _defaultOptions = {
@@ -58,13 +60,14 @@ export abstract class TextBufferRenderable extends Renderable {
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    this.textBufferView = TextBufferView.create(this.textBuffer)
 
     // TEMP
     // TODO: Only set when given in options, otherwise no style
     const style = NativeSyntaxStyle.create()
     this.textBuffer.setSyntaxStyle(style)
 
-    this.textBuffer.setWrapMode(this._wrapMode)
+    this.textBufferView.setWrapMode(this._wrapMode)
     this.setupMeasureFunc()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
@@ -165,7 +168,7 @@ export abstract class TextBufferRenderable extends Renderable {
     if (this._wrap !== value) {
       this._wrap = value
       // Set or clear wrap width based on current setting
-      this.textBuffer.setWrapWidth(this._wrap ? this.width : null)
+      this.textBufferView.setWrapWidth(this._wrap ? this.width : null)
       this.requestRender()
     }
   }
@@ -177,7 +180,7 @@ export abstract class TextBufferRenderable extends Renderable {
   set wrapMode(value: "char" | "word") {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      this.textBuffer.setWrapMode(this._wrapMode)
+      this.textBufferView.setWrapMode(this._wrapMode)
       this.requestRender()
     }
   }
@@ -200,11 +203,11 @@ export abstract class TextBufferRenderable extends Renderable {
 
   private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
     if (!localSelection?.isActive) {
-      this.textBuffer.resetLocalSelection()
+      this.textBufferView.resetLocalSelection()
       return true
     }
 
-    return this.textBuffer.setLocalSelection(
+    return this.textBufferView.setLocalSelection(
       localSelection.anchorX,
       localSelection.anchorY,
       localSelection.focusX,
@@ -215,6 +218,7 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   protected updateTextInfo(): void {
+    this.textBufferView.markDirty()
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -227,14 +231,14 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   private updateLineInfo(): void {
-    const lineInfo = this.textBuffer.lineInfo
+    const lineInfo = this.textBufferView.lineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
     this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
   }
 
   private updateWrapWidth(width: number): void {
-    this.textBuffer.setWrapWidth(width)
+    this.textBufferView.setWrapWidth(width)
     this.updateLineInfo()
   }
 
@@ -288,15 +292,15 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   getSelectedText(): string {
-    return this.textBuffer.getSelectedText()
+    return this.textBufferView.getSelectedText()
   }
 
   hasSelection(): boolean {
-    return this.textBuffer.hasSelection()
+    return this.textBufferView.hasSelection()
   }
 
   getSelection(): { start: number; end: number } | null {
-    return this.textBuffer.getSelection()
+    return this.textBufferView.getSelection()
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -317,11 +321,12 @@ export abstract class TextBufferRenderable extends Renderable {
         height: this.height,
       }
 
-      buffer.drawTextBuffer(this.textBuffer, this.x, this.y, clipRect)
+      buffer.drawTextBuffer(this.textBufferView, this.x, this.y, clipRect)
     }
   }
 
   destroy(): void {
+    this.textBufferView.destroy()
     this.textBuffer.destroy()
     super.destroy()
   }

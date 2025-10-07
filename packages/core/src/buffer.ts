@@ -235,13 +235,13 @@ export class OptimizedBuffer {
   }
 
   public drawTextBuffer(
-    textBuffer: TextBuffer,
+    textBufferView: import("./text-buffer-view").TextBufferView,
     x: number,
     y: number,
     clipRect?: { x: number; y: number; width: number; height: number },
   ): void {
     this.guard()
-    this.lib.bufferDrawTextBuffer(this.bufferPtr, textBuffer.ptr, x, y, clipRect)
+    this.lib.bufferDrawTextBufferView(this.bufferPtr, textBufferView.ptr, x, y, clipRect)
   }
 
   public drawSuperSampleBuffer(
