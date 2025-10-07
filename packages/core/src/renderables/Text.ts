@@ -47,7 +47,6 @@ export class TextRenderable extends TextBufferRenderable {
 
   private updateTextBuffer(styledText: StyledText): void {
     this.textBuffer.setStyledText(styledText)
-    this.textBufferView.markDirty()
     this.clearChunks(styledText)
   }
 
@@ -91,7 +90,6 @@ export class TextRenderable extends TextBufferRenderable {
         attributes: this._defaultAttributes,
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
-      this.textBufferView.markDirty()
       this.refreshLocalSelection()
       this.yogaNode.markDirty()
     }

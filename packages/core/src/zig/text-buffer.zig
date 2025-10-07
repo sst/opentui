@@ -133,6 +133,11 @@ pub const TextBuffer = struct {
     grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
 
+    // View registration system
+    view_dirty_flags: std.ArrayListUnmanaged(bool),
+    next_view_id: u32,
+    free_view_ids: std.ArrayListUnmanaged(u32),
+
     pub fn init(global_allocator: Allocator, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
         const self = global_allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
@@ -161,6 +166,12 @@ pub const TextBuffer = struct {
         var line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)) = .{};
         errdefer line_spans.deinit(internal_allocator);
 
+        var view_dirty_flags: std.ArrayListUnmanaged(bool) = .{};
+        errdefer view_dirty_flags.deinit(global_allocator);
+
+        var free_view_ids: std.ArrayListUnmanaged(u32) = .{};
+        errdefer free_view_ids.deinit(global_allocator);
+
         self.* = .{
             .text_bytes = &[_]u8{},
             .char_count = 0,
@@ -179,6 +190,9 @@ pub const TextBuffer = struct {
             .display_width = dw,
             .grapheme_tracker = gp.GraphemeTracker.init(global_allocator, pool),
             .width_method = width_method,
+            .view_dirty_flags = view_dirty_flags,
+            .next_view_id = 0,
+            .free_view_ids = free_view_ids,
         };
 
         return self;
@@ -186,9 +200,57 @@ pub const TextBuffer = struct {
 
     pub fn deinit(self: *TextBuffer) void {
         self.grapheme_tracker.deinit();
+        self.view_dirty_flags.deinit(self.global_allocator);
+        self.free_view_ids.deinit(self.global_allocator);
         self.arena.deinit();
         self.global_allocator.destroy(self.arena);
         self.global_allocator.destroy(self);
+    }
+
+    /// Register a view with this buffer and return a view ID
+    pub fn registerView(self: *TextBuffer) TextBufferError!u32 {
+        // Try to reuse a freed ID first
+        if (self.free_view_ids.items.len > 0) {
+            const id = self.free_view_ids.items[self.free_view_ids.items.len - 1];
+            _ = self.free_view_ids.pop();
+            self.view_dirty_flags.items[id] = true; // Mark as dirty initially
+            return id;
+        }
+
+        // Otherwise allocate a new ID
+        const id = self.next_view_id;
+        self.next_view_id += 1;
+        try self.view_dirty_flags.append(self.global_allocator, true);
+        return id;
+    }
+
+    /// Unregister a view from this buffer
+    pub fn unregisterView(self: *TextBuffer, view_id: u32) void {
+        if (view_id < self.view_dirty_flags.items.len) {
+            self.free_view_ids.append(self.global_allocator, view_id) catch {};
+        }
+    }
+
+    /// Check if a view is marked as dirty
+    pub fn isViewDirty(self: *const TextBuffer, view_id: u32) bool {
+        if (view_id < self.view_dirty_flags.items.len) {
+            return self.view_dirty_flags.items[view_id];
+        }
+        return false;
+    }
+
+    /// Clear the dirty flag for a view
+    pub fn clearViewDirty(self: *TextBuffer, view_id: u32) void {
+        if (view_id < self.view_dirty_flags.items.len) {
+            self.view_dirty_flags.items[view_id] = false;
+        }
+    }
+
+    /// Mark all registered views as dirty
+    fn markAllViewsDirty(self: *TextBuffer) void {
+        for (self.view_dirty_flags.items) |*flag| {
+            flag.* = true;
+        }
     }
 
     pub fn getLength(self: *const TextBuffer) u32 {
@@ -214,6 +276,9 @@ pub const TextBuffer = struct {
         self.lines = .{};
         self.line_highlights = .{};
         self.line_spans = .{};
+
+        // Mark all registered views as dirty
+        self.markAllViewsDirty();
     }
 
     pub fn setDefaultFg(self: *TextBuffer, fg: ?RGBA) void {

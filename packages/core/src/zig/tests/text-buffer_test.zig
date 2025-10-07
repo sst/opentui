@@ -1210,3 +1210,150 @@ test "TextBuffer char range highlights - preserved after setText" {
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 0), highlights.len);
 }
+
+// ===== View Registration Tests =====
+
+test "TextBuffer view registration - multiple views can be created" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Register multiple views
+    const id1 = try tb.registerView();
+    const id2 = try tb.registerView();
+    const id3 = try tb.registerView();
+
+    // IDs should be unique
+    try std.testing.expect(id1 != id2);
+    try std.testing.expect(id2 != id3);
+    try std.testing.expect(id1 != id3);
+
+    // Clean up
+    tb.unregisterView(id1);
+    tb.unregisterView(id2);
+    tb.unregisterView(id3);
+}
+
+test "TextBuffer view registration - views marked dirty on setText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const id1 = try tb.registerView();
+    defer tb.unregisterView(id1);
+
+    // Initially dirty
+    try std.testing.expect(tb.isViewDirty(id1));
+
+    // Clear dirty flag
+    tb.clearViewDirty(id1);
+    try std.testing.expect(!tb.isViewDirty(id1));
+
+    // setText should mark dirty again
+    try tb.setText("Hello World");
+    try std.testing.expect(tb.isViewDirty(id1));
+
+    // Clear and set again
+    tb.clearViewDirty(id1);
+    try std.testing.expect(!tb.isViewDirty(id1));
+
+    try tb.setText("New text");
+    try std.testing.expect(tb.isViewDirty(id1));
+}
+
+test "TextBuffer view registration - views marked dirty on reset" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const id1 = try tb.registerView();
+    defer tb.unregisterView(id1);
+
+    // Clear initial dirty flag
+    tb.clearViewDirty(id1);
+    try std.testing.expect(!tb.isViewDirty(id1));
+
+    // reset should mark dirty
+    tb.reset();
+    try std.testing.expect(tb.isViewDirty(id1));
+}
+
+test "TextBuffer view registration - ID reuse after unregister" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Register and unregister a view
+    const id1 = try tb.registerView();
+    tb.unregisterView(id1);
+
+    // Register another view - should reuse the ID
+    const id2 = try tb.registerView();
+    defer tb.unregisterView(id2);
+
+    try std.testing.expectEqual(id1, id2);
+
+    // Reused ID should be dirty
+    try std.testing.expect(tb.isViewDirty(id2));
+}
+
+test "TextBuffer view registration - multiple views all marked dirty on setText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const id1 = try tb.registerView();
+    defer tb.unregisterView(id1);
+
+    const id2 = try tb.registerView();
+    defer tb.unregisterView(id2);
+
+    const id3 = try tb.registerView();
+    defer tb.unregisterView(id3);
+
+    // Clear all dirty flags
+    tb.clearViewDirty(id1);
+    tb.clearViewDirty(id2);
+    tb.clearViewDirty(id3);
+
+    try std.testing.expect(!tb.isViewDirty(id1));
+    try std.testing.expect(!tb.isViewDirty(id2));
+    try std.testing.expect(!tb.isViewDirty(id3));
+
+    // setText should mark all views dirty
+    try tb.setText("Test");
+
+    try std.testing.expect(tb.isViewDirty(id1));
+    try std.testing.expect(tb.isViewDirty(id2));
+    try std.testing.expect(tb.isViewDirty(id3));
+}

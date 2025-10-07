@@ -22,7 +22,6 @@ describe("TextBufferView", () => {
     it("should return line info for empty buffer", () => {
       const emptyText = stringToStyledText("")
       buffer.setStyledText(emptyText)
-      view.markDirty()
 
       const lineInfo = view.lineInfo
       expect(lineInfo.lineStarts).toEqual([0])
@@ -32,7 +31,6 @@ describe("TextBufferView", () => {
     it("should return single line info for simple text without newlines", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const lineInfo = view.lineInfo
       expect(lineInfo.lineStarts).toEqual([0])
@@ -43,7 +41,6 @@ describe("TextBufferView", () => {
     it("should handle single newline correctly", () => {
       const styledText = stringToStyledText("Hello\nWorld")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const lineInfo = view.lineInfo
       expect(lineInfo.lineStarts).toEqual([0, 5])
@@ -56,7 +53,6 @@ describe("TextBufferView", () => {
       const longText = "This is a very long text that should wrap when the text wrapping is enabled."
       const styledText = stringToStyledText(longText)
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const unwrappedInfo = view.lineInfo
       expect(unwrappedInfo.lineStarts).toEqual([0])
@@ -83,7 +79,6 @@ describe("TextBufferView", () => {
       const text = "Hello world this is a test"
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setWrapMode("word")
       view.setWrapWidth(12)
@@ -101,7 +96,6 @@ describe("TextBufferView", () => {
       const text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setWrapMode("char")
       view.setWrapWidth(10)
@@ -116,7 +110,6 @@ describe("TextBufferView", () => {
       const text = "The quick brown fox jumps over the lazy dog"
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setWrapWidth(15)
 
@@ -135,7 +128,6 @@ describe("TextBufferView", () => {
       const text = "Line 1\nLine 2\nLine 3"
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const originalInfo = view.lineInfo
       expect(originalInfo.lineStarts).toEqual([0, 6, 12])
@@ -156,7 +148,6 @@ describe("TextBufferView", () => {
     it("should return empty string when no selection", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const selectedText = view.getSelectedText()
       expect(selectedText).toBe("")
@@ -165,7 +156,6 @@ describe("TextBufferView", () => {
     it("should return selected text for simple selection", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setSelection(6, 11)
       const selectedText = view.getSelectedText()
@@ -175,7 +165,6 @@ describe("TextBufferView", () => {
     it("should return selected text with newlines", () => {
       const styledText = stringToStyledText("Line 1\nLine 2\nLine 3")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setSelection(0, 9)
       const selectedText = view.getSelectedText()
@@ -185,7 +174,6 @@ describe("TextBufferView", () => {
     it("should handle Unicode characters in selection", () => {
       const styledText = stringToStyledText("Hello 世界 🌟")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setSelection(6, 12)
       const selectedText = view.getSelectedText()
@@ -195,7 +183,6 @@ describe("TextBufferView", () => {
     it("should handle selection reset", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       view.setSelection(6, 11)
       expect(view.getSelectedText()).toBe("World")
@@ -209,7 +196,6 @@ describe("TextBufferView", () => {
     it("should track selection state", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       expect(view.hasSelection()).toBe(false)
 
@@ -228,7 +214,6 @@ describe("TextBufferView", () => {
     it("should return empty string for empty buffer", () => {
       const emptyText = stringToStyledText("")
       buffer.setStyledText(emptyText)
-      view.markDirty()
 
       const plainText = view.getPlainText()
       expect(plainText).toBe("")
@@ -237,7 +222,6 @@ describe("TextBufferView", () => {
     it("should return plain text without styling", () => {
       const styledText = stringToStyledText("Hello World")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const plainText = view.getPlainText()
       expect(plainText).toBe("Hello World")
@@ -246,7 +230,6 @@ describe("TextBufferView", () => {
     it("should handle text with newlines", () => {
       const styledText = stringToStyledText("Line 1\nLine 2\nLine 3")
       buffer.setStyledText(styledText)
-      view.markDirty()
 
       const plainText = view.getPlainText()
       expect(plainText).toBe("Line 1\nLine 2\nLine 3")

@@ -393,9 +393,8 @@ test "TextBufferView updates after buffer setText" {
     view.setWrapWidth(5);
     const count1 = view.getVirtualLineCount();
 
-    // Change buffer content
+    // Change buffer content - should automatically mark view dirty
     try tb.setText("New text that is much longer");
-    view.markDirty(); // Mark view as needing update
 
     const count2 = view.getVirtualLineCount();
 
@@ -3007,4 +3006,247 @@ test "TextBufferView - char range highlights unicode text" {
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);
+}
+
+// ===== Automatic View Update Tests =====
+
+test "TextBufferView automatic updates - view reflects buffer changes immediately" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Set initial text
+    try tb.setText("Hello");
+    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
+
+    var buffer: [100]u8 = undefined;
+    const len1 = view.getPlainTextIntoBuffer(&buffer);
+    try std.testing.expectEqualStrings("Hello", buffer[0..len1]);
+
+    // Change buffer content - view should automatically update
+    try tb.setText("Hello\nWorld");
+    try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
+
+    const len2 = view.getPlainTextIntoBuffer(&buffer);
+    try std.testing.expectEqualStrings("Hello\nWorld", buffer[0..len2]);
+}
+
+test "TextBufferView automatic updates - multiple views update independently" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view1 = try TextBufferView.init(std.testing.allocator, tb);
+    defer view1.deinit();
+
+    var view2 = try TextBufferView.init(std.testing.allocator, tb);
+    defer view2.deinit();
+
+    // Set text - both views should see it
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    try std.testing.expectEqual(@as(u32, 1), view1.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 1), view2.getVirtualLineCount());
+
+    // Set different wrap widths on each view
+    view1.setWrapWidth(10);
+    view2.setWrapWidth(5);
+
+    // Views should have different virtual line counts
+    try std.testing.expectEqual(@as(u32, 2), view1.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 4), view2.getVirtualLineCount());
+
+    // Change buffer - both should update automatically
+    try tb.setText("Short");
+
+    try std.testing.expectEqual(@as(u32, 1), view1.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 1), view2.getVirtualLineCount());
+}
+
+test "TextBufferView automatic updates - view destroyed doesn't affect others" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view1 = try TextBufferView.init(std.testing.allocator, tb);
+    defer view1.deinit();
+
+    var view2 = try TextBufferView.init(std.testing.allocator, tb);
+
+    try tb.setText("Hello");
+    try std.testing.expectEqual(@as(u32, 1), view1.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 1), view2.getVirtualLineCount());
+
+    // Destroy view2
+    view2.deinit();
+
+    // view1 should still work and update
+    try tb.setText("Hello\nWorld");
+    try std.testing.expectEqual(@as(u32, 2), view1.getVirtualLineCount());
+}
+
+test "TextBufferView automatic updates - with wrapping across buffer changes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Set wrap width first
+    view.setWrapWidth(10);
+
+    // Set text that will wrap
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+    try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
+
+    const info1 = view.getCachedLineInfo();
+    try std.testing.expectEqual(@as(usize, 2), info1.starts.len);
+
+    // Change to shorter text - should update automatically
+    try tb.setText("Short");
+    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
+
+    const info2 = view.getCachedLineInfo();
+    try std.testing.expectEqual(@as(usize, 1), info2.starts.len);
+
+    // Change to longer text - should update automatically
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    const vline_count = view.getVirtualLineCount();
+    try std.testing.expect(vline_count >= 3);
+
+    const info3 = view.getCachedLineInfo();
+    try std.testing.expect(info3.starts.len >= 3);
+}
+
+test "TextBufferView automatic updates - reset clears content and marks views dirty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Set text
+    try tb.setText("Hello World");
+    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
+
+    // Reset buffer - view should automatically see cleared buffer (0 lines)
+    tb.reset();
+    try std.testing.expectEqual(@as(u32, 0), view.getVirtualLineCount());
+
+    // After setText with empty string, should have 1 empty line
+    try tb.setText("");
+    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
+
+    var buffer: [100]u8 = undefined;
+    const len = view.getPlainTextIntoBuffer(&buffer);
+    try std.testing.expectEqual(@as(usize, 0), len);
+}
+
+test "TextBufferView automatic updates - view updates work with selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+    view.setSelection(0, 5, null, null);
+
+    var buffer: [100]u8 = undefined;
+    var len = view.getSelectedTextIntoBuffer(&buffer);
+    try std.testing.expectEqualStrings("Hello", buffer[0..len]);
+
+    // Change text - selection still works (though may be out of bounds)
+    try tb.setText("Hi");
+
+    // Get new plain text to verify update
+    len = view.getPlainTextIntoBuffer(&buffer);
+    try std.testing.expectEqualStrings("Hi", buffer[0..len]);
+}
+
+test "TextBufferView automatic updates - multiple views with different wrap settings" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view_nowrap = try TextBufferView.init(std.testing.allocator, tb);
+    defer view_nowrap.deinit();
+
+    var view_wrap10 = try TextBufferView.init(std.testing.allocator, tb);
+    defer view_wrap10.deinit();
+    view_wrap10.setWrapWidth(10);
+
+    var view_wrap5 = try TextBufferView.init(std.testing.allocator, tb);
+    defer view_wrap5.deinit();
+    view_wrap5.setWrapWidth(5);
+
+    // Set text that will wrap differently
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    // Each view should reflect the text with their wrap settings
+    try std.testing.expectEqual(@as(u32, 1), view_nowrap.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 2), view_wrap10.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 4), view_wrap5.getVirtualLineCount());
+
+    // Update text - all views should automatically update
+    try tb.setText("Short");
+
+    try std.testing.expectEqual(@as(u32, 1), view_nowrap.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 1), view_wrap10.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 1), view_wrap5.getVirtualLineCount());
+
+    // Set longer text again
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    try std.testing.expectEqual(@as(u32, 1), view_nowrap.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 3), view_wrap10.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 6), view_wrap5.getVirtualLineCount());
 }

@@ -359,10 +359,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    textBufferViewMarkDirty: {
-      args: ["ptr"],
-      returns: "void",
-    },
     textBufferViewSetSelection: {
       args: ["ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
@@ -772,7 +768,6 @@ export interface RenderLib {
   // TextBufferView methods
   createTextBufferView: (textBuffer: Pointer) => Pointer
   destroyTextBufferView: (view: Pointer) => void
-  textBufferViewMarkDirty: (view: Pointer) => void
   textBufferViewSetSelection: (
     view: Pointer,
     start: number,
@@ -1444,10 +1439,6 @@ class FFIRenderLib implements RenderLib {
 
   public destroyTextBufferView(view: Pointer): void {
     this.opentui.symbols.destroyTextBufferView(view)
-  }
-
-  public textBufferViewMarkDirty(view: Pointer): void {
-    this.opentui.symbols.textBufferViewMarkDirty(view)
   }
 
   public textBufferViewSetSelection(

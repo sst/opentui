@@ -501,10 +501,6 @@ export fn destroyTextBufferView(view: *text_buffer_view.TextBufferView) void {
     view.deinit();
 }
 
-export fn textBufferViewMarkDirty(view: *text_buffer_view.TextBufferView) void {
-    view.markDirty();
-}
-
 export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
     const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;

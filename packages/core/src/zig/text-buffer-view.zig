@@ -26,6 +26,7 @@ pub const LocalSelection = struct {
 /// TextBufferView provides a view over a TextBuffer with wrapping and selection state
 pub const TextBufferView = struct {
     text_buffer: *TextBuffer, // Reference to the underlying buffer (not owned)
+    view_id: u32, // Registration ID in the text buffer
 
     // View-specific state
     selection: ?TextSelection,
@@ -70,8 +71,12 @@ pub const TextBufferView = struct {
         var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
         errdefer cached_line_widths.deinit(virtual_lines_allocator);
 
+        // Register this view with the text buffer
+        const view_id = text_buffer.registerView() catch return TextBufferViewError.OutOfMemory;
+
         self.* = .{
             .text_buffer = text_buffer,
+            .view_id = view_id,
             .selection = null,
             .local_selection = null,
             .wrap_width = null,
@@ -89,14 +94,12 @@ pub const TextBufferView = struct {
     }
 
     pub fn deinit(self: *TextBufferView) void {
+        // Unregister from the text buffer
+        self.text_buffer.unregisterView(self.view_id);
+
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
         self.global_allocator.destroy(self);
-    }
-
-    /// Mark virtual lines as needing update (called when buffer content changes)
-    pub fn markDirty(self: *TextBufferView) void {
-        self.virtual_lines_dirty = true;
     }
 
     pub fn setSelection(self: *TextBufferView, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
@@ -271,7 +274,9 @@ pub const TextBufferView = struct {
 
     /// Update virtual lines based on current wrap width
     pub fn updateVirtualLines(self: *TextBufferView) void {
-        if (!self.virtual_lines_dirty) return;
+        // Check both local and buffer dirty flags
+        const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
+        if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
@@ -399,7 +404,9 @@ pub const TextBufferView = struct {
             }
         }
 
+        // Clear both dirty flags
         self.virtual_lines_dirty = false;
+        self.text_buffer.clearViewDirty(self.view_id);
     }
 
     pub fn getVirtualLineCount(self: *TextBufferView) u32 {

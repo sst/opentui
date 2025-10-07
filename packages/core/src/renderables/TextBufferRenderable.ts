@@ -218,7 +218,6 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   protected updateTextInfo(): void {
-    this.textBufferView.markDirty()
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {

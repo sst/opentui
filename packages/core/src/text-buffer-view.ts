@@ -7,7 +7,6 @@ export class TextBufferView {
   private lib: RenderLib
   private viewPtr: Pointer
   private textBuffer: TextBuffer
-  private _lineInfo?: LineInfo
   private _destroyed: boolean = false
 
   constructor(lib: RenderLib, ptr: Pointer, textBuffer: TextBuffer) {
@@ -30,15 +29,6 @@ export class TextBufferView {
   public get ptr(): Pointer {
     this.guard()
     return this.viewPtr
-  }
-
-  // TODO: mark dirty should not be necessary.
-  // The underlying text buffer should have a mechanism to register views and mark them dirty
-  // when something changes, so the view can check that flag and update itself, resetting the flag.
-  public markDirty(): void {
-    this.guard()
-    this.lib.textBufferViewMarkDirty(this.viewPtr)
-    this._lineInfo = undefined
   }
 
   public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
@@ -70,7 +60,6 @@ export class TextBufferView {
     fgColor?: RGBA,
   ): boolean {
     this.guard()
-    this._lineInfo = undefined // Selection might change line info display
     return this.lib.textBufferViewSetLocalSelection(
       this.viewPtr,
       anchorX,
@@ -90,21 +79,16 @@ export class TextBufferView {
   public setWrapWidth(width: number | null): void {
     this.guard()
     this.lib.textBufferViewSetWrapWidth(this.viewPtr, width ?? 0)
-    this._lineInfo = undefined
   }
 
   public setWrapMode(mode: "char" | "word"): void {
     this.guard()
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
-    this._lineInfo = undefined
   }
 
   public get lineInfo(): LineInfo {
     this.guard()
-    if (!this._lineInfo) {
-      this._lineInfo = this.lib.textBufferViewGetLineInfo(this.viewPtr)
-    }
-    return this._lineInfo
+    return this.lib.textBufferViewGetLineInfo(this.viewPtr)
   }
 
   public getSelectedText(): string {
