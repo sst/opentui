@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const tb = @import("text-buffer.zig");
+const tbv = @import("text-buffer-view.zig");
 const ss = @import("syntax-style.zig");
 const math = std.math;
 const Graphemes = @import("Graphemes");
@@ -16,6 +17,7 @@ pub const Vec3f = @Vector(3, f32);
 pub const Vec4f = @Vector(4, f32);
 
 const TextBuffer = tb.TextBuffer;
+const TextBufferView = tbv.TextBufferView;
 
 const INV_255: f32 = 1.0 / 255.0;
 pub const DEFAULT_SPACE_CHAR: u32 = 32;
@@ -820,15 +822,15 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-    /// Draw a TextBuffer to this OptimizedBuffer with selection support and optional syntax highlighting
+    /// Draw a TextBufferView to this OptimizedBuffer with selection support and optional syntax highlighting
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
-        text_buffer: *TextBuffer,
+        text_buffer_view: *TextBufferView,
         x: i32,
         y: i32,
         clip_rect: ?ClipRect,
     ) !void {
-        const virtual_lines = text_buffer.getVirtualLines();
+        const virtual_lines = text_buffer_view.getVirtualLines();
         if (virtual_lines.len == 0) return;
 
         const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
@@ -843,9 +845,10 @@ pub const OptimizedBuffer = struct {
 
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
+        const text_buffer = text_buffer_view.text_buffer;
         const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
 
-        const line_info = text_buffer.getCachedLineInfo();
+        const line_info = text_buffer_view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)
             line_info.starts[firstVisibleLine]
         else
@@ -860,7 +863,7 @@ pub const OptimizedBuffer = struct {
 
             // Initialize span tracking for this line
             const vline_idx = @as(usize, @intCast(currentY - y));
-            const vline_span_info = text_buffer.getVirtualLineSpans(vline_idx);
+            const vline_span_info = text_buffer_view.getVirtualLineSpans(vline_idx);
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
@@ -980,7 +983,7 @@ pub const OptimizedBuffer = struct {
                     const finalAttributes = lineAttributes;
 
                     // Handle selection highlighting
-                    if (text_buffer.selection) |sel| {
+                    if (text_buffer_view.selection) |sel| {
                         const isSelected = globalCharPos >= sel.start and globalCharPos < sel.end;
                         if (isSelected) {
                             if (sel.bgColor) |selBg| {
