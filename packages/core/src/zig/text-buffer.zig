@@ -1163,10 +1163,11 @@ pub const TextBuffer = struct {
 
             const lineStart = vline.char_offset;
             const lineWidth = vline.width;
-            const lineEnd = if (i < self.virtual_lines.items.len - 1) blk: {
-                const next_offset = self.virtual_lines.items[i + 1].char_offset;
-                break :blk if (next_offset > 0) next_offset - 1 else next_offset;
-            } else lineStart + lineWidth;
+            // lineEnd is the exclusive end position (start of next line, or end of this line's content)
+            const lineEnd = if (i < self.virtual_lines.items.len - 1)
+                self.virtual_lines.items[i + 1].char_offset
+            else
+                lineStart + lineWidth;
 
             if (lineY > startY and lineY < endY) {
                 // Entire line is selected

@@ -127,6 +127,42 @@ describe("TextRenderable Selection", () => {
       expect(text.getSelectedText()).toBe("ne 2\nLine")
     })
 
+    it("should handle selection across empty lines", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\n\nLine 4",
+        selectable: true,
+      })
+
+      // Select from start of line 1 to position 2 on empty line 3
+      await currentMouse.drag(text.x, text.y, text.x + 2, text.y + 2)
+      await renderOnce()
+
+      const selection = text.getSelection()
+      expect(selection).not.toBe(null)
+      // Should select "Line 1\nLine 2" (6 + 6 = 12 chars, newlines not counted)
+      expect(selection!.start).toBe(0)
+      expect(selection!.end).toBe(12)
+      expect(text.getSelectedText()).toBe("Line 1\nLine 2")
+    })
+
+    it("should handle selection ending in empty line", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\n\nLine 3",
+        selectable: true,
+      })
+
+      // Select from start of line 1 into the empty line 2
+      await currentMouse.drag(text.x, text.y, text.x + 3, text.y + 1)
+      await renderOnce()
+
+      const selection = text.getSelection()
+      expect(selection).not.toBe(null)
+      // Should select "Line 1" (6 chars)
+      expect(selection!.start).toBe(0)
+      expect(selection!.end).toBe(6)
+      expect(text.getSelectedText()).toBe("Line 1")
+    })
+
     it("should handle selection spanning multiple lines completely", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "First\nSecond\nThird",
