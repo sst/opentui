@@ -956,17 +956,15 @@ pub const TextBuffer = struct {
                     line_end = @intCast(nl_pos - 1);
                 }
 
-                try self.parseLine(line_start, line_end);
-
-                // Count the newline character
-                self.char_count += 1;
+                // Parse line with newline included
+                try self.parseLine(line_start, line_end, true);
 
                 pos = @intCast(nl_pos + 1);
                 line_start = pos;
                 has_trailing_newline = (pos == text.len);
             } else {
                 // Last line (no trailing \n)
-                try self.parseLine(line_start, @intCast(text.len));
+                try self.parseLine(line_start, @intCast(text.len), false);
                 has_trailing_newline = false;
                 break;
             }
@@ -985,7 +983,7 @@ pub const TextBuffer = struct {
     }
 
     /// Parse a single line into chunks with grapheme clusters
-    fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32) TextBufferError!void {
+    fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32, has_newline: bool) TextBufferError!void {
         var line = TextLine.init();
         line.byte_start = byte_start;
         line.byte_end = byte_end;
@@ -1041,6 +1039,13 @@ pub const TextBuffer = struct {
             }
 
             chunk_width += width;
+        }
+
+        // Add newline character if this line has one
+        if (has_newline) {
+            try chunk_chars.append('\n');
+            self.char_count += 1;
+            // Newline doesn't add to visual width
         }
 
         // Store the chunk with pre-computed u32s
@@ -1286,48 +1291,10 @@ pub const TextBuffer = struct {
     /// Extract all text as UTF-8 bytes from the char buffer into provided output buffer
     /// Returns the number of bytes written to the output buffer
     pub fn getPlainTextIntoBuffer(self: *const TextBuffer, out_buffer: []u8) usize {
-        var out_index: usize = 0;
-
-        // Iterate through all lines and chunks, similar to rendering
-        for (self.lines.items) |line| {
-            for (line.chunks.items) |chunk| {
-                var chunk_char_index: u32 = 0;
-                while (chunk_char_index < chunk.chars.len and out_index < out_buffer.len) : (chunk_char_index += 1) {
-                    const c = chunk.chars[chunk_char_index];
-
-                    if (!gp.isContinuationChar(c)) {
-                        if (gp.isGraphemeChar(c)) {
-                            const gid = gp.graphemeIdFromChar(c);
-                            const grapheme_bytes = self.pool.get(gid) catch continue;
-                            const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
-                            @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
-                            out_index += copy_len;
-                        } else {
-                            var utf8_buf: [4]u8 = undefined;
-                            const utf8_len = std.unicode.utf8Encode(@intCast(c), &utf8_buf) catch 1;
-                            const copy_len = @min(utf8_len, out_buffer.len - out_index);
-                            @memcpy(out_buffer[out_index .. out_index + copy_len], utf8_buf[0..copy_len]);
-                            out_index += copy_len;
-                        }
-
-                        // Skip continuation characters for graphemes
-                        if (gp.isGraphemeChar(c)) {
-                            const right_extent = gp.charRightExtent(c);
-                            var k: u32 = 0;
-                            while (k < right_extent and chunk_char_index + 1 < chunk.chars.len) : (k += 1) {
-                                chunk_char_index += 1;
-                                // Verify the continuation character exists
-                                if (chunk_char_index >= chunk.chars.len or !gp.isContinuationChar(chunk.chars[chunk_char_index])) {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return out_index;
+        // Simply copy the original text bytes which already contain newlines
+        const copy_len = @min(self.text_bytes.len, out_buffer.len);
+        @memcpy(out_buffer[0..copy_len], self.text_bytes[0..copy_len]);
+        return copy_len;
     }
 
     /// Get cached line info (line starts and widths)
