@@ -825,37 +825,7 @@ pub const TextBuffer = struct {
                         const remaining_width = if (line_position < wrap_w) wrap_w - line_position else 0;
                         const remaining_chars = chunk.chars[chunk_pos..];
 
-                        // Check if this is a newline at the start
-                        if (remaining_chars.len > 0 and remaining_chars[0] == '\n') {
-                            // Add the newline to current line and start a new line
-                            current_vline.chunks.append(virtual_allocator, VirtualChunk{
-                                .source_line = line_idx,
-                                .source_chunk = chunk_idx,
-                                .char_start = chunk_pos,
-                                .char_count = 1,
-                                .width = 0,
-                            }) catch {};
-
-                            current_vline.width = line_position;
-                            self.virtual_lines.append(virtual_allocator, current_vline) catch {};
-                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
-                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
-                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
-
-                            chunk_pos += 1;
-                            global_char_offset += 1;
-
-                            // Start new virtual line (newlines end the real line, so reset col offset)
-                            current_vline = VirtualLine.init();
-                            current_vline.char_offset = global_char_offset;
-                            current_vline.source_line = line_idx;
-                            current_vline.source_col_offset = 0;
-                            line_position = 0;
-                            line_col_offset = 0;
-                            first_in_line = true;
-                            continue;
-                        }
-
+                        // Remove newline handling - newlines are handled at line boundaries, not within chunks
                         const fit_result = switch (self.wrap_mode) {
                             .char => self.calculateChunkFit(remaining_chars, remaining_width),
                             .word => self.calculateChunkFitWord(remaining_chars, remaining_width),
