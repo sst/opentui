@@ -2473,3 +2473,344 @@ test "TextBuffer highlights - multiple highlights on wrapped line" {
         try std.testing.expectEqual(@as(u32, @intCast(i * 10)), vline_info.col_offset);
     }
 }
+
+test "TextBuffer highlights - with emojis and wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text with emojis: "AB🌟CD🎨EF🚀GH"
+    // Widths: A(1) B(1) 🌟(2) C(1) D(1) 🎨(2) E(1) F(1) 🚀(2) G(1) H(1) = 14 total
+    try tb.setText("AB🌟CD🎨EF🚀GH");
+
+    // Add highlight from position 2 to 8 (should cover 🌟CD🎨)
+    // Position 2 is at 🌟, position 8 is after 🎨
+    try tb.addHighlight(0, 2, 8, 1, 1, null);
+
+    // Wrap at width 6 - should create multiple virtual lines
+    tb.setWrapWidth(6);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expect(vline_count >= 2);
+
+    // Verify virtual lines have correct column offsets
+    const vline0_info = tb.getVirtualLineSpans(0);
+    const vline1_info = tb.getVirtualLineSpans(1);
+
+    try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
+    try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
+
+    // First virtual line should have col_offset 0
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
+
+    // Second virtual line should have col_offset equal to first line's width
+    try std.testing.expect(vline1_info.col_offset == 6);
+
+    // Both should access the same spans from the source line
+    try std.testing.expect(vline0_info.spans.len > 0);
+}
+
+test "TextBuffer highlights - with CJK characters and wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text with CJK: "AB测试CD文字EF"
+    // Widths: A(1) B(1) 测(2) 试(2) C(1) D(1) 文(2) 字(2) E(1) F(1) = 14 total
+    try tb.setText("AB测试CD文字EF");
+
+    // Add highlight covering the CJK characters
+    // Position 2-6 should cover "测试" (positions 2,3,4,5)
+    try tb.addHighlight(0, 2, 6, 1, 1, null);
+
+    // Wrap at width 6
+    tb.setWrapWidth(6);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expect(vline_count >= 2);
+
+    // Verify column offsets are correct for CJK
+    for (0..vline_count) |i| {
+        const vline_info = tb.getVirtualLineSpans(i);
+        try std.testing.expectEqual(@as(usize, 0), vline_info.source_line);
+
+        // The column offset should account for display width
+        if (i == 0) {
+            try std.testing.expectEqual(@as(u32, 0), vline_info.col_offset);
+        } else if (i == 1) {
+            try std.testing.expectEqual(@as(u32, 6), vline_info.col_offset);
+        }
+    }
+}
+
+test "TextBuffer highlights - mixed ASCII and wide chars with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Mix of ASCII, emoji, and CJK: "Hello🌟世界"
+    // Widths: H(1) e(1) l(1) l(1) o(1) 🌟(2) 世(2) 界(2) = 11 total
+    try tb.setText("Hello🌟世界");
+
+    // Highlight from position 5 (emoji) to end
+    // Position 5 is at 🌟 (display cols 5-6), then 世 (7-8), 界 (9-10)
+    try tb.addHighlight(0, 5, 11, 1, 1, null);
+
+    // Wrap at width 7
+    tb.setWrapWidth(7);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expect(vline_count >= 2);
+
+    const vline0_info = tb.getVirtualLineSpans(0);
+    const vline1_info = tb.getVirtualLineSpans(1);
+
+    // Both reference same source line
+    try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
+    try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
+
+    // Verify column offsets
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
+    try std.testing.expectEqual(@as(u32, 7), vline1_info.col_offset);
+
+    // Both should have access to highlights
+    try std.testing.expect(vline0_info.spans.len > 0);
+    try std.testing.expect(vline1_info.spans.len > 0);
+}
+
+test "TextBuffer highlights - emoji at wrap boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text where emoji spans wrap boundary: "ABCD🌟EFGH"
+    // Widths: A(1) B(1) C(1) D(1) 🌟(2) E(1) F(1) G(1) H(1) = 10 total
+    try tb.setText("ABCD🌟EFGH");
+
+    // Highlight the emoji and surrounding chars (positions 3-7)
+    try tb.addHighlight(0, 3, 7, 1, 1, null);
+
+    // Wrap at width 5 - emoji should move to next line
+    tb.setWrapWidth(5);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expect(vline_count >= 2);
+
+    // First line: "ABCD" (4 chars), emoji doesn't fit
+    // Second line: "🌟EFGH"
+    const vline0_info = tb.getVirtualLineSpans(0);
+    const vline1_info = tb.getVirtualLineSpans(1);
+
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
+
+    // The second virtual line's offset depends on where the wrap happened
+    // It should be 4 if "ABCD" is on first line
+    try std.testing.expect(vline1_info.col_offset >= 4);
+}
+
+// ===== Highlights with Graphemes (No Wrapping) Tests =====
+
+test "TextBuffer highlights - emojis without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text with emojis: "AB🌟CD🎨EF"
+    // Display cols: A(0) B(1) 🌟(2-3) C(4) D(5) 🎨(6-7) E(8) F(9)
+    try tb.setText("AB🌟CD🎨EF");
+
+    // Highlight the first emoji and following chars: positions 2-6 covers "🌟CD🎨"
+    try tb.addHighlight(0, 2, 8, 1, 1, null);
+
+    // No wrapping
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    // Get spans and verify
+    const spans = tb.getLineSpans(0);
+    try std.testing.expect(spans.len > 0);
+
+    // Verify the highlight exists
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 2), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 8), highlights[0].col_end);
+}
+
+test "TextBuffer highlights - CJK without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Text with CJK: "AB测试CD"
+    // Display cols: A(0) B(1) 测(2-3) 试(4-5) C(6) D(7)
+    try tb.setText("AB测试CD");
+
+    // Highlight the CJK characters: positions 2-6 covers "测试"
+    try tb.addHighlight(0, 2, 6, 1, 1, null);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    // Verify highlight is correct
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 2), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 6), highlights[0].col_end);
+
+    // Verify spans were built
+    const spans = tb.getLineSpans(0);
+    try std.testing.expect(spans.len > 0);
+}
+
+test "TextBuffer highlights - mixed width graphemes without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Mix: "A🌟B测C试D"
+    // Display cols: A(0) 🌟(1-2) B(3) 测(4-5) C(6) 试(7-8) D(9)
+    try tb.setText("A🌟B测C试D");
+
+    // Highlight multiple regions
+    try tb.addHighlight(0, 1, 4, 1, 1, null); // "🌟B" (cols 1-3)
+    try tb.addHighlight(0, 4, 7, 2, 1, null); // "测C" (cols 4-6)
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    // Verify both highlights exist
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), highlights.len);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 4), highlights[0].col_end);
+    try std.testing.expectEqual(@as(u32, 4), highlights[1].col_start);
+    try std.testing.expectEqual(@as(u32, 7), highlights[1].col_end);
+
+    // Verify spans include both highlights
+    const spans = tb.getLineSpans(0);
+    try std.testing.expect(spans.len > 0);
+}
+
+test "TextBuffer highlights - emoji at start without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Emoji at start: "🌟ABCD"
+    // Display cols: 🌟(0-1) A(2) B(3) C(4) D(5)
+    try tb.setText("🌟ABCD");
+
+    // Highlight from beginning: positions 0-3 covers "🌟A"
+    try tb.addHighlight(0, 0, 3, 1, 1, null);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 0), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 3), highlights[0].col_end);
+}
+
+test "TextBuffer highlights - emoji at end without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Emoji at end: "ABCD🌟"
+    // Display cols: A(0) B(1) C(2) D(3) 🌟(4-5)
+    try tb.setText("ABCD🌟");
+
+    // Highlight including emoji: positions 3-6 covers "D🌟"
+    try tb.addHighlight(0, 3, 6, 1, 1, null);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 3), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 6), highlights[0].col_end);
+}
+
+test "TextBuffer highlights - consecutive emojis without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Consecutive emojis: "A🌟🎨🚀B"
+    // Display cols: A(0) 🌟(1-2) 🎨(3-4) 🚀(5-6) B(7)
+    try tb.setText("A🌟🎨🚀B");
+
+    // Highlight all emojis: positions 1-7
+    try tb.addHighlight(0, 1, 7, 1, 1, null);
+
+    const vline_count = tb.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 1), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 7), highlights[0].col_end);
+}
