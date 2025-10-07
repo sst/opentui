@@ -51,32 +51,20 @@ export class TextBuffer {
   public setStyledText(text: StyledText): void {
     this.guard()
 
-    const fullText = text.chunks.map((c) => c.text).join("")
-    this.setText(fullText)
+    // Convert StyledText chunks to the format expected by the native layer
+    const chunks = text.chunks.map((chunk) => ({
+      text: chunk.text,
+      fg: chunk.fg || null,
+      bg: chunk.bg || null,
+      attributes: chunk.attributes ?? 0,
+    }))
 
-    this.clearAllHighlights()
+    // Call the native implementation which handles width calculation correctly
+    this.lib.textBufferSetStyledText(this.bufferPtr, this._syntaxStyle?.ptr ?? null, chunks)
 
-    if (this._syntaxStyle) {
-      let charPos = 0
-      for (let i = 0; i < text.chunks.length; i++) {
-        const chunk = text.chunks[i]
-        const chunkLen = Bun.stringWidth(chunk.text)
-
-        if (chunkLen > 0) {
-          const styleId = this.lib.syntaxStyleRegister(
-            this._syntaxStyle.ptr,
-            String(i),
-            chunk.fg || null,
-            chunk.bg || null,
-            chunk.attributes ?? 0,
-          )
-
-          this.addHighlightByCharRange(charPos, charPos + chunkLen, styleId, 1)
-        }
-
-        charPos += chunkLen
-      }
-    }
+    // Update cached length and line info
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._lineInfo = undefined
   }
 
   public setDefaultFg(fg: RGBA | null): void {
