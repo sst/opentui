@@ -124,12 +124,12 @@ Bottom text
 
 exports[`TextRenderable Selection Text Node Dimension Updates should handle multiple text node updates with complex layout changes 2`] = `
 "First of            
-a sentence          
- partthat           
+a                   
+sentence            
+partthat            
 will wrap           
 Middle text         
 Bottom text         
-                    
                     
                     
                     

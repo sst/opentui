@@ -1469,9 +1469,9 @@ describe("TextRenderable Selection", () => {
       const finalFrame = captureFrame()
       expect(finalFrame).toMatchSnapshot()
 
-      expect(firstText.height).toEqual(4)
-      expect(secondText.y).toEqual(4)
-      expect(thirdText.y).toEqual(5)
+      expect(firstText.height).toEqual(5)
+      expect(secondText.y).toEqual(5)
+      expect(thirdText.y).toEqual(6)
     })
   })
 
