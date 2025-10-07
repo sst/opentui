@@ -110,9 +110,9 @@ export class TextBuffer {
 
   public getPlainText(): string {
     this.guard()
-    if (this._length === 0) return ""
-    // TODO: The _length should be the text length, need to know the number of bytes for the text though
-    const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, this.length * 4)
+    // Note: _length doesn't count newlines, so we can't use it to determine if buffer is empty
+    // Always call getPlainTextBytes to get the actual text (including newlines)
+    const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, Math.max(this.length * 4, 1024))
 
     if (!plainBytes) return ""
 

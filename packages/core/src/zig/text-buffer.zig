@@ -761,10 +761,6 @@ pub const TextBuffer = struct {
     fn calculateChunkWidth(_: *const TextBuffer, chars: []const u32) u32 {
         if (chars.len == 0) return 0;
 
-        if (chars[chars.len - 1] == '\n') {
-            return @intCast(chars.len - 1);
-        }
-
         return @intCast(chars.len);
     }
 
@@ -957,7 +953,7 @@ pub const TextBuffer = struct {
     }
 
     /// Parse a single line into chunks with grapheme clusters
-    fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32, has_newline: bool) TextBufferError!void {
+    fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
         var line = TextLine.init();
         line.byte_start = byte_start;
         line.byte_end = byte_end;
@@ -1015,12 +1011,8 @@ pub const TextBuffer = struct {
             chunk_width += width;
         }
 
-        // Add newline character if this line has one
-        if (has_newline) {
-            try chunk_chars.append('\n');
-            self.char_count += 1;
-            // Newline doesn't add to visual width
-        }
+        // Note: We don't include the newline character in the chunk
+        // Newlines are implicit line separators, not counted as characters
 
         // Store the chunk with pre-computed u32s
         if (chunk_chars.items.len > 0) {
@@ -1218,7 +1210,9 @@ pub const TextBuffer = struct {
         var count: u32 = 0;
 
         // Iterate through all lines and chunks, similar to rendering
-        for (self.lines.items) |line| {
+        for (self.lines.items, 0..) |line, line_idx| {
+            var line_had_selection = false;
+
             for (line.chunks.items) |chunk| {
                 var chunk_char_index: u32 = 0;
                 while (chunk_char_index < chunk.chars.len and count < end and out_index < out_buffer.len) : (chunk_char_index += 1) {
@@ -1226,6 +1220,7 @@ pub const TextBuffer = struct {
 
                     if (!gp.isContinuationChar(c)) {
                         if (count >= start) {
+                            line_had_selection = true;
                             if (gp.isGraphemeChar(c)) {
                                 const gid = gp.graphemeIdFromChar(c);
                                 const grapheme_bytes = self.pool.get(gid) catch continue;
@@ -1256,6 +1251,12 @@ pub const TextBuffer = struct {
                         }
                     }
                 }
+            }
+
+            // Add newline between lines if we're still in the selection range and not at the last line
+            if (line_had_selection and line_idx < self.lines.items.len - 1 and count < end and out_index < out_buffer.len) {
+                out_buffer[out_index] = '\n';
+                out_index += 1;
             }
         }
 

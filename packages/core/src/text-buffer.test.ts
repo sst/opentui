@@ -41,7 +41,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 6]) // "Hello\n" is 6 chars
+      expect(lineInfo.lineStarts).toEqual([0, 5]) // "Hello" is 5 chars (newline not counted)
       expect(lineInfo.lineWidths.length).toBe(2)
       expect(lineInfo.lineWidths[0]).toBeGreaterThan(0) // First line has content
       expect(lineInfo.lineWidths[1]).toBeGreaterThan(0) // Second line has content
@@ -52,7 +52,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 7, 14]) // Positions: 0, "Line 1\n"=7, "Line 1\nLine 2\n"=14
+      expect(lineInfo.lineStarts).toEqual([0, 6, 12]) // "Line 1"=6, "Line 2"=6, newlines not counted
       expect(lineInfo.lineWidths.length).toBe(3)
       lineInfo.lineWidths.forEach((width) => {
         expect(width).toBeGreaterThan(0)
@@ -64,7 +64,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 12]) // "Hello World\n" is 12 chars
+      expect(lineInfo.lineStarts).toEqual([0, 11]) // "Hello World" is 11 chars (newline not counted)
       expect(lineInfo.lineWidths.length).toBe(2)
       expect(lineInfo.lineWidths[0]).toBeGreaterThan(0) // First line has content
       // Second line (empty) may have width 0 or some default width
@@ -75,7 +75,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 7, 8]) // 0, "Line 1\n"=7, "Line 1\n\n"=8
+      expect(lineInfo.lineStarts).toEqual([0, 6, 6]) // "Line 1"=6, empty line still at 6, newlines not counted
       expect(lineInfo.lineWidths.length).toBe(3)
     })
 
@@ -84,7 +84,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 1]) // Empty first line, then content
+      expect(lineInfo.lineStarts).toEqual([0, 0]) // Empty first line has 0 chars, newline not counted
       expect(lineInfo.lineWidths.length).toBe(2)
     })
 
@@ -93,7 +93,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 1, 2, 3])
+      expect(lineInfo.lineStarts).toEqual([0, 0, 0, 0]) // All empty lines, newlines not counted
       expect(lineInfo.lineWidths.length).toBe(4)
     })
 
@@ -144,8 +144,8 @@ describe("TextBuffer", () => {
       expect(lineInfo.lineStarts.length).toBe(3)
       expect(lineInfo.lineWidths.length).toBe(3)
       expect(lineInfo.lineStarts[0]).toBe(0)
-      expect(lineInfo.lineStarts[1]).toBe(6) // "First\n"
-      expect(lineInfo.lineStarts[2]).toBe(7) // "First\n\n"
+      expect(lineInfo.lineStarts[1]).toBe(5) // "First" is 5 chars (newline not counted)
+      expect(lineInfo.lineStarts[2]).toBe(5) // Empty line still at 5
     })
 
     it("should handle very long lines", () => {
@@ -200,7 +200,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 4]) // "Red\n" = 4 chars
+      expect(lineInfo.lineStarts).toEqual([0, 3]) // "Red" = 3 chars (newline not counted)
       expect(lineInfo.lineWidths.length).toBe(2)
     })
 
@@ -209,7 +209,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 4, 6])
+      expect(lineInfo.lineStarts).toEqual([0, 3, 4]) // "   "=3, " "=1, newlines not counted
       expect(lineInfo.lineWidths.length).toBe(3)
       // Whitespace should still contribute to line widths
       lineInfo.lineWidths.forEach((width) => {
@@ -222,7 +222,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 2, 4])
+      expect(lineInfo.lineStarts).toEqual([0, 1, 2]) // "A"=1, "B"=1, "C"=1, newlines not counted
       expect(lineInfo.lineWidths.length).toBe(3)
       lineInfo.lineWidths.forEach((width) => {
         expect(width).toBeGreaterThan(0)
@@ -322,7 +322,7 @@ describe("TextBuffer", () => {
 
       // lineInfo should still work the same
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 5])
+      expect(lineInfo.lineStarts).toEqual([0, 4]) // "Test" = 4 chars (newline not counted)
       expect(lineInfo.lineWidths.length).toBe(2)
     })
 
@@ -334,7 +334,7 @@ describe("TextBuffer", () => {
       buffer.resetDefaults()
 
       const lineInfo = buffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 5])
+      expect(lineInfo.lineStarts).toEqual([0, 4]) // "Test" = 4 chars (newline not counted)
       expect(lineInfo.lineWidths.length).toBe(2)
     })
   })
@@ -423,7 +423,7 @@ describe("TextBuffer", () => {
       unicodeBuffer.setStyledText(styledText)
 
       const lineInfo = unicodeBuffer.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 4]) // "Red\n" = 4 chars
+      expect(lineInfo.lineStarts).toEqual([0, 3]) // "Red" = 3 chars (newline not counted)
       expect(lineInfo.lineWidths.length).toBe(2)
     })
   })
@@ -450,7 +450,7 @@ describe("TextBuffer", () => {
       const styledText = stringToStyledText("Line 1\nLine 2\nLine 3")
       buffer.setStyledText(styledText)
 
-      buffer.setSelection(0, 10) // Select "Line 1\nLin"
+      buffer.setSelection(0, 9) // Select "Line 1\nLin" (Line 1=6 chars, Lin=3 chars, total 9)
       const selectedText = buffer.getSelectedText()
       expect(selectedText).toBe("Line 1\nLin")
     })
@@ -575,6 +575,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const plainText = buffer.getPlainText()
+      // getPlainText returns the original text bytes which still contain newlines
       expect(plainText).toBe("\n\n\n")
     })
 
@@ -712,7 +713,7 @@ describe("TextBuffer", () => {
       buffer.setStyledText(styledText)
 
       const originalInfo = buffer.lineInfo
-      expect(originalInfo.lineStarts).toEqual([0, 7, 14])
+      expect(originalInfo.lineStarts).toEqual([0, 6, 12]) // "Line 1"=6, "Line 2"=6, newlines not counted
 
       buffer.setWrapWidth(5)
       // @ts-ignore
@@ -726,7 +727,7 @@ describe("TextBuffer", () => {
       buffer._lineInfo = null
 
       const unwrappedInfo = buffer.lineInfo
-      expect(unwrappedInfo.lineStarts).toEqual([0, 7, 14])
+      expect(unwrappedInfo.lineStarts).toEqual([0, 6, 12])
       expect(unwrappedInfo).toEqual(originalInfo)
     })
   })
@@ -766,7 +767,7 @@ describe("TextBuffer", () => {
       const styledText = stringToStyledText("Line 1\nLine 2\nLine 3")
       buffer.setStyledText(styledText)
 
-      expect(buffer.length).toBe(20) // "Line 1\nLine 2\nLine 3" has 20 characters (including spaces)
+      expect(buffer.length).toBe(18) // "Line 1" (6) + "Line 2" (6) + "Line 3" (6) = 18 chars (newlines not counted)
     })
 
     it("should handle Unicode characters correctly", () => {
@@ -795,7 +796,7 @@ describe("TextBuffer", () => {
       const styledText = stringToStyledText("   \n \n ")
       buffer.setStyledText(styledText)
 
-      expect(buffer.length).toBe(7)
+      expect(buffer.length).toBe(5) // "   " (3) + " " (1) + " " (1) = 5 chars (newlines not counted)
     })
 
     it("should handle consecutive empty chunks correctly", () => {

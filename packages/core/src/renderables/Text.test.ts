@@ -121,8 +121,8 @@ describe("TextRenderable Selection", () => {
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
-      expect(selection!.start).toBe(9) // Position of "n" in "Line 2"
-      expect(selection!.end).toBe(18) // Position after "Line"
+      expect(selection!.start).toBe(8) // Position of "n" in "Line 2" (Line 1=6 chars, "Li"=2 chars, total 8)
+      expect(selection!.end).toBe(16) // Position after "Line" on line 3 (6+6+4=16, newlines not counted)
 
       expect(text.getSelectedText()).toBe("ne 2\nLine")
     })
