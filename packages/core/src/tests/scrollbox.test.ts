@@ -3,7 +3,7 @@ import { createTestRenderer, type TestRenderer, type MockMouse } from "../testin
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { BoxRenderable } from "../renderables/Box"
 import { TextRenderable } from "../renderables/Text"
-import { MacOSScrollAccel } from "../lib/scroll-acceleration"
+import { LinearScrollAccel, MacOSScrollAccel } from "../lib/scroll-acceleration"
 
 let testRenderer: TestRenderer
 let mockMouse: MockMouse
@@ -106,6 +106,40 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
     await mockMouse.scroll(25, 10, "down")
     await renderOnce()
     expect(scrollBox.scrollTop).toBeGreaterThan(0)
+  })
+
+  test("single isolated scroll has same distance as linear", async () => {
+    const linearBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new LinearScrollAccel(),
+    })
+
+    for (let i = 0; i < 100; i++) linearBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    testRenderer.root.add(linearBox)
+    await renderOnce()
+
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    const linearDistance = linearBox.scrollTop
+
+    testRenderer.destroy()
+    ;({ renderer: testRenderer, mockMouse, renderOnce } = await createTestRenderer({ width: 80, height: 24 }))
+
+    const accelBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new MacOSScrollAccel(),
+    })
+
+    for (let i = 0; i < 100; i++) accelBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    testRenderer.root.add(accelBox)
+    await renderOnce()
+
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+
+    expect(accelBox.scrollTop).toBe(linearDistance)
   })
 
   test("acceleration makes rapid scrolls cover more distance", async () => {

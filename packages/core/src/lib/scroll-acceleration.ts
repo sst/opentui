@@ -36,6 +36,10 @@ export class MacOSScrollAccel implements ScrollAcceleration {
   private velocityHistory: number[] = []
   private readonly historySize = 3
   private readonly streakTimeout = 150
+  // Some terminals send 2 or more ticks for each mouse wheel tick, for example Ghostty, with a small delay between each tick, about 4ms on average.
+  // We ignore these ticks otherwise they would cause faster acceleration to kick in
+  // https://github.com/ghostty-org/ghostty/discussions/7577
+  private readonly minTickInterval = 6
 
   constructor(
     private opts: {
@@ -51,31 +55,28 @@ export class MacOSScrollAccel implements ScrollAcceleration {
     const maxMultiplier = this.opts.maxMultiplier ?? 6
 
     const dt = this.lastTickTime ? now - this.lastTickTime : Infinity
-    this.lastTickTime = now
 
-    // Reset streak if too much time has passed
-    if (dt > this.streakTimeout) {
+    // Reset streak if too much time has passed or first tick
+    if (dt === Infinity || dt > this.streakTimeout) {
+      this.lastTickTime = now
       this.velocityHistory = []
       return 1
     }
 
-    // Track recent intervals
-    if (dt !== Infinity) {
-      this.velocityHistory.push(dt)
-      if (this.velocityHistory.length > this.historySize) {
-        this.velocityHistory.shift()
-      }
+    // Ignore ticks closer than minTickInterval (they're part of the same logical tick)
+    if (dt < this.minTickInterval) {
+      return 1
+    }
+
+    this.lastTickTime = now
+
+    this.velocityHistory.push(dt)
+    if (this.velocityHistory.length > this.historySize) {
+      this.velocityHistory.shift()
     }
 
     // Calculate average interval (lower = faster scrolling)
-    const avgInterval =
-      this.velocityHistory.length > 0
-        ? this.velocityHistory.reduce((a, b) => a + b, 0) / this.velocityHistory.length
-        : Infinity
-
-    if (avgInterval === Infinity) {
-      return 1
-    }
+    const avgInterval = this.velocityHistory.reduce((a, b) => a + b, 0) / this.velocityHistory.length
 
     // Convert interval to velocity: faster ticks = higher velocity
     // Normalize to a reference interval (e.g., 100ms = velocity of 1)

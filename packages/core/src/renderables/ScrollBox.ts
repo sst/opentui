@@ -204,9 +204,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.scrollAccel = scrollAcceleration
     } else if (process.platform === "darwin") {
       this.scrollAccel = new MacOSScrollAccel()
-    } else {
-      this.scrollAccel = new LinearScrollAccel()
     }
+    this.scrollAccel ??= new LinearScrollAccel()
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
