@@ -54,43 +54,6 @@ pub const StyleSpan = struct {
     next_col: u32, // Column where next style change happens
 };
 
-/// A virtual chunk references a portion of a real TextChunk for text wrapping
-pub const VirtualChunk = struct {
-    source_line: usize,
-    source_chunk: usize,
-    char_start: u32,
-    char_count: u32,
-    width: u32,
-
-    pub fn getChars(self: *const VirtualChunk, text_buffer: *const TextBuffer) []const u32 {
-        const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
-        return chunk.chars[self.char_start .. self.char_start + self.char_count];
-    }
-};
-
-/// A virtual line represents a display line after text wrapping
-pub const VirtualLine = struct {
-    chunks: std.ArrayListUnmanaged(VirtualChunk),
-    width: u32,
-    char_offset: u32,
-    source_line: usize, // Which real line this virtual line comes from
-    source_col_offset: u32, // Column offset within the source line (0 for first vline, 10 for second if wrapped at 10, etc.)
-
-    pub fn init() VirtualLine {
-        return .{
-            .chunks = .{},
-            .width = 0,
-            .char_offset = 0,
-            .source_line = 0,
-            .source_col_offset = 0,
-        };
-    }
-
-    pub fn deinit(self: *VirtualLine, allocator: Allocator) void {
-        self.chunks.deinit(allocator);
-    }
-};
-
 /// A line contains multiple chunks and tracks its total width
 pub const TextLine = struct {
     chunks: std.ArrayListUnmanaged(TextChunk),
