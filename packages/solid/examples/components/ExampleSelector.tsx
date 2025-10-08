@@ -8,6 +8,7 @@ import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
 import { ScrollDemo, ScrollDemoIndex } from "./scroll-demo.tsx"
+import { CustomScrollAccelDemo } from "./custom-scroll-accel-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
@@ -62,6 +63,11 @@ const EXAMPLES = [
     name: "Scroll Demo Index",
     description: "Scroll demo Index",
     scene: "scroll-demo-index",
+  },
+  {
+    name: "Custom Scroll Acceleration Demo",
+    description: "Interactive demo showcasing different scroll acceleration modes",
+    scene: "custom-scroll-accel-demo",
   },
   {
     name: "Session Scrollbox",
@@ -149,6 +155,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "scroll-demo-index"}>
         <ScrollDemoIndex />
+      </Match>
+      <Match when={selectedScene() === "custom-scroll-accel-demo"}>
+        <CustomScrollAccelDemo />
       </Match>
       <Match when={selectedScene() === "session-scrollbox"}>
         <Session />
