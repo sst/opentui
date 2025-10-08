@@ -36,7 +36,7 @@ export class MacOSScrollAccel implements ScrollAcceleration {
   private velocityHistory: number[] = []
   private readonly historySize = 3
   private readonly streakTimeout = 150
-  // some terminals send 2 or more ticks for each mouse wheel ticks, for example Ghostty, with a small delay between each, 3ms on averate.
+  // Some terminals send 2 or more ticks for each mouse wheel tick, for example Ghostty, with a small delay between each tick, about 4ms on average.
   // We ignore these ticks otherwise they would cause faster acceleration to kick in
   // https://github.com/ghostty-org/ghostty/discussions/7577
   private readonly minTickInterval = 6
