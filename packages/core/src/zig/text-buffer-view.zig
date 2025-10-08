@@ -223,7 +223,7 @@ pub const TextBufferView = struct {
         // Build cache for this chunk
         const lines = self.text_buffer.getLines();
         const chunk = &lines[line_idx].chunks.items[chunk_idx];
-        const chunk_bytes = chunk.getBytes(self.text_buffer.text_bytes);
+        const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
 
         var grapheme_list = std.ArrayList(GraphemeInfo).init(self.global_allocator);
         defer grapheme_list.deinit();
@@ -429,7 +429,7 @@ pub const TextBufferView = struct {
                 for (line.chunks.items, 0..) |*chunk, chunk_idx| {
                     // Get or create cached grapheme info for this chunk
                     const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
-                    const chunk_bytes = chunk.getBytes(self.text_buffer.text_bytes);
+                    const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
 
                     var grapheme_idx: u32 = 0;
 
@@ -754,7 +754,7 @@ pub const TextBufferView = struct {
             for (line.chunks.items, 0..) |chunk, chunk_idx| {
                 // Get cached grapheme info
                 const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
-                const chunk_bytes = chunk.getBytes(self.text_buffer.text_bytes);
+                const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
 
                 for (graphemes_cache) |g| {
                     if (count >= end) break;

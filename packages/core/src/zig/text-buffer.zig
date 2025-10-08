@@ -17,6 +17,7 @@ pub const TextBufferError = error{
     InvalidDimensions,
     InvalidIndex,
     InvalidId,
+    InvalidMemId,
 };
 
 pub const WrapMode = enum {
@@ -29,15 +30,74 @@ pub const ChunkFitResult = struct {
     width: u32,
 };
 
-/// A chunk represents a contiguous sequence of UTF-8 bytes
+/// Memory buffer reference in the registry
+pub const MemBuffer = struct {
+    data: []const u8,
+    owned: bool, // Whether this buffer should be freed on deinit
+};
+
+/// Registry for multiple memory buffers
+pub const MemRegistry = struct {
+    buffers: std.ArrayListUnmanaged(MemBuffer),
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) MemRegistry {
+        return .{
+            .buffers = .{},
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *MemRegistry) void {
+        for (self.buffers.items) |mem_buf| {
+            if (mem_buf.owned) {
+                self.allocator.free(mem_buf.data);
+            }
+        }
+        self.buffers.deinit(self.allocator);
+    }
+
+    /// Register a memory buffer and return its ID
+    pub fn register(self: *MemRegistry, data: []const u8, owned: bool) TextBufferError!u8 {
+        if (self.buffers.items.len >= 255) {
+            return TextBufferError.OutOfMemory; // Max 255 buffers with u8 ID
+        }
+        const id: u8 = @intCast(self.buffers.items.len);
+        try self.buffers.append(self.allocator, MemBuffer{
+            .data = data,
+            .owned = owned,
+        });
+        return id;
+    }
+
+    /// Get buffer by ID
+    pub fn get(self: *const MemRegistry, id: u8) ?[]const u8 {
+        if (id >= self.buffers.items.len) return null;
+        return self.buffers.items[id].data;
+    }
+
+    /// Clear all registered buffers
+    pub fn clear(self: *MemRegistry) void {
+        for (self.buffers.items) |mem_buf| {
+            if (mem_buf.owned) {
+                self.allocator.free(mem_buf.data);
+            }
+        }
+        self.buffers.clearRetainingCapacity();
+    }
+};
+
+/// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
 pub const TextChunk = struct {
-    byte_start: u32, // Offset into TextBuffer.text_bytes
-    byte_end: u32, // Offset into TextBuffer.text_bytes
+    mem_id: u8, // ID of the memory buffer this chunk references
+    byte_start: u32, // Offset into the memory buffer
+    byte_end: u32, // End offset into the memory buffer
     width: u32, // Display width in cells (computed once)
     char_count: u32, // Number of grapheme clusters (computed once)
 
-    pub fn getBytes(self: *const TextChunk, text_bytes: []const u8) []const u8 {
-        return text_bytes[self.byte_start..self.byte_end];
+    pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
+        const mem_buf = mem_registry.get(self.mem_id) orelse return &[_]u8{};
+        return mem_buf[self.byte_start..self.byte_end];
     }
 };
 
@@ -79,7 +139,7 @@ pub const TextLine = struct {
 
 /// TextBuffer holds text organized by lines without styling
 pub const TextBuffer = struct {
-    text_bytes: []const u8, // Reference to external UTF-8 bytes
+    mem_registry: MemRegistry, // Registry for multiple memory buffers
     char_count: u32, // Total character count across all chunks
     default_fg: ?RGBA,
     default_bg: ?RGBA,
@@ -139,8 +199,11 @@ pub const TextBuffer = struct {
         var free_view_ids: std.ArrayListUnmanaged(u32) = .{};
         errdefer free_view_ids.deinit(global_allocator);
 
+        var mem_registry = MemRegistry.init(global_allocator);
+        errdefer mem_registry.deinit();
+
         self.* = .{
-            .text_bytes = &[_]u8{},
+            .mem_registry = mem_registry,
             .char_count = 0,
             .default_fg = null,
             .default_bg = null,
@@ -169,6 +232,7 @@ pub const TextBuffer = struct {
         self.grapheme_tracker.deinit();
         self.view_dirty_flags.deinit(self.global_allocator);
         self.free_view_ids.deinit(self.global_allocator);
+        self.mem_registry.deinit();
         self.arena.deinit();
         self.global_allocator.destroy(self.arena);
         self.global_allocator.destroy(self);
@@ -225,7 +289,18 @@ pub const TextBuffer = struct {
     }
 
     pub fn getByteSize(self: *const TextBuffer) u32 {
-        return @intCast(self.text_bytes.len);
+        // TODO: Cache bytesize and recalculate when chunks change
+        var total_bytes: u32 = 0;
+        for (self.lines.items, 0..) |line, line_idx| {
+            for (line.chunks.items) |chunk| {
+                total_bytes += chunk.byte_end - chunk.byte_start;
+            }
+            // Add newline byte count (except for last line)
+            if (line_idx < self.lines.items.len - 1) {
+                total_bytes += 1; // for '\n'
+            }
+        }
+        return total_bytes;
     }
 
     pub fn measureText(self: *const TextBuffer, text: []const u8) u32 {
@@ -237,7 +312,7 @@ pub const TextBuffer = struct {
 
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
-        self.text_bytes = &[_]u8{};
+        self.mem_registry.clear();
         self.char_count = 0;
 
         self.lines = .{};
@@ -539,8 +614,8 @@ pub const TextBuffer = struct {
             return;
         }
 
-        // Reference the external text (no copy)
-        self.text_bytes = text;
+        // Register the text buffer and get its ID
+        const mem_id = try self.mem_registry.register(text, false);
 
         // Parse into lines using memchr for \n
         var line_start: u32 = 0;
@@ -556,14 +631,14 @@ pub const TextBuffer = struct {
                 }
 
                 // Parse line with newline included
-                try self.parseLine(line_start, line_end, true);
+                try self.parseLine(mem_id, text, line_start, line_end, true);
 
                 pos = @intCast(nl_pos + 1);
                 line_start = pos;
                 has_trailing_newline = (pos == text.len);
             } else {
                 // Last line (no trailing \n)
-                try self.parseLine(line_start, @intCast(text.len), false);
+                try self.parseLine(mem_id, text, line_start, @intCast(text.len), false);
                 has_trailing_newline = false;
                 break;
             }
@@ -578,11 +653,11 @@ pub const TextBuffer = struct {
     }
 
     /// Parse a single line into chunks (count and measure graphemes, but don't encode)
-    fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
+    fn parseLine(self: *TextBuffer, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
         var line = TextLine.init();
         line.char_offset = self.char_count;
 
-        const line_bytes = self.text_bytes[byte_start..byte_end];
+        const line_bytes = text[byte_start..byte_end];
 
         var chunk_width: u32 = 0;
         var chunk_char_count: u32 = 0;
@@ -614,6 +689,7 @@ pub const TextBuffer = struct {
         // Store the chunk with just byte references
         if (byte_start < byte_end or line_bytes.len == 0) {
             const chunk = TextChunk{
+                .mem_id = mem_id,
                 .byte_start = byte_start,
                 .byte_end = byte_end,
                 .width = chunk_width,
@@ -665,9 +741,132 @@ pub const TextBuffer = struct {
     /// Extract all text as UTF-8 bytes from the char buffer into provided output buffer
     /// Returns the number of bytes written to the output buffer
     pub fn getPlainTextIntoBuffer(self: *const TextBuffer, out_buffer: []u8) usize {
-        // Simply copy the original text bytes which already contain newlines
-        const copy_len = @min(self.text_bytes.len, out_buffer.len);
-        @memcpy(out_buffer[0..copy_len], self.text_bytes[0..copy_len]);
-        return copy_len;
+        var out_index: usize = 0;
+
+        for (self.lines.items, 0..) |line, line_idx| {
+            for (line.chunks.items) |chunk| {
+                const chunk_bytes = chunk.getBytes(&self.mem_registry);
+                const copy_len = @min(chunk_bytes.len, out_buffer.len - out_index);
+                if (copy_len > 0) {
+                    @memcpy(out_buffer[out_index .. out_index + copy_len], chunk_bytes[0..copy_len]);
+                    out_index += copy_len;
+                }
+            }
+
+            // Add newline between lines (except after last line)
+            if (line_idx < self.lines.items.len - 1 and out_index < out_buffer.len) {
+                out_buffer[out_index] = '\n';
+                out_index += 1;
+            }
+        }
+
+        return out_index;
+    }
+
+    /// Register a memory buffer with the text buffer
+    /// Returns the memory ID that can be used to reference this buffer
+    /// If owned is true, the buffer will be freed when the TextBuffer is destroyed
+    pub fn registerMemBuffer(self: *TextBuffer, data: []const u8, owned: bool) TextBufferError!u8 {
+        return try self.mem_registry.register(data, owned);
+    }
+
+    /// Get a memory buffer by its ID
+    pub fn getMemBuffer(self: *const TextBuffer, mem_id: u8) ?[]const u8 {
+        return self.mem_registry.get(mem_id);
+    }
+
+    /// Append a chunk to an existing line
+    /// This allows for incremental editing by adding chunks from different memory buffers
+    pub fn appendChunkToLine(
+        self: *TextBuffer,
+        line_idx: usize,
+        mem_id: u8,
+        byte_start: u32,
+        byte_end: u32,
+    ) TextBufferError!void {
+        if (line_idx >= self.lines.items.len) {
+            return TextBufferError.InvalidIndex;
+        }
+
+        const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
+        const chunk_bytes = mem_buf[byte_start..byte_end];
+
+        // Calculate chunk metrics
+        var chunk_width: u32 = 0;
+        var chunk_char_count: u32 = 0;
+        var iter = self.graphemes_data.iterator(chunk_bytes);
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
+
+            if (width_u16 == 0) continue;
+
+            const width: u32 = @intCast(width_u16);
+            chunk_char_count += width;
+            chunk_width += width;
+        }
+
+        const chunk = TextChunk{
+            .mem_id = mem_id,
+            .byte_start = byte_start,
+            .byte_end = byte_end,
+            .width = chunk_width,
+            .char_count = chunk_char_count,
+        };
+
+        var line = &self.lines.items[line_idx];
+        try line.chunks.append(self.allocator, chunk);
+        line.width += chunk_width;
+        self.char_count += chunk_char_count;
+
+        // Mark all views as dirty
+        self.markAllViewsDirty();
+    }
+
+    /// Add a new line with a chunk
+    pub fn addLine(
+        self: *TextBuffer,
+        mem_id: u8,
+        byte_start: u32,
+        byte_end: u32,
+    ) TextBufferError!void {
+        const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
+        const chunk_bytes = mem_buf[byte_start..byte_end];
+
+        // Calculate chunk metrics
+        var chunk_width: u32 = 0;
+        var chunk_char_count: u32 = 0;
+        var iter = self.graphemes_data.iterator(chunk_bytes);
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
+
+            if (width_u16 == 0) continue;
+
+            const width: u32 = @intCast(width_u16);
+            chunk_char_count += width;
+            chunk_width += width;
+        }
+
+        var line = TextLine.init();
+        line.char_offset = self.char_count;
+        line.width = chunk_width;
+
+        const chunk = TextChunk{
+            .mem_id = mem_id,
+            .byte_start = byte_start,
+            .byte_end = byte_end,
+            .width = chunk_width,
+            .char_count = chunk_char_count,
+        };
+
+        try line.chunks.append(self.allocator, chunk);
+        try self.lines.append(self.allocator, line);
+        self.char_count += chunk_char_count;
+
+        // Mark all views as dirty
+        self.markAllViewsDirty();
     }
 };

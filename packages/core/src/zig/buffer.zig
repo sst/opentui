@@ -900,7 +900,7 @@ pub const OptimizedBuffer = struct {
 
                 // Get cached grapheme info for this chunk
                 const graphemes_cache = text_buffer_view.getOrCreateChunkCache(vchunk.source_line, vchunk.source_chunk) catch continue;
-                const chunk_bytes = source_chunk.getBytes(text_buffer.text_bytes);
+                const chunk_bytes = source_chunk.getBytes(&text_buffer.mem_registry);
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.grapheme_count;
