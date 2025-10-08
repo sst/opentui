@@ -647,6 +647,39 @@ pub const TextBuffer = struct {
         }
     }
 
+    /// Create a TextChunk from a memory buffer range
+    /// Calculates width and char_count by iterating over graphemes
+    fn createChunk(
+        self: *const TextBuffer,
+        mem_id: u8,
+        byte_start: u32,
+        byte_end: u32,
+        chunk_bytes: []const u8,
+    ) TextChunk {
+        var chunk_width: u32 = 0;
+        var chunk_char_count: u32 = 0;
+        var iter = self.graphemes_data.iterator(chunk_bytes);
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
+
+            if (width_u16 == 0) continue;
+
+            const width: u32 = @intCast(width_u16);
+            chunk_char_count += width;
+            chunk_width += width;
+        }
+
+        return TextChunk{
+            .mem_id = mem_id,
+            .byte_start = byte_start,
+            .byte_end = byte_end,
+            .width = chunk_width,
+            .char_count = chunk_char_count,
+        };
+    }
+
     /// Parse a single line into chunks (count and measure graphemes, but don't encode)
     fn parseLine(self: *TextBuffer, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
         var line = TextLine.init();
@@ -654,45 +687,16 @@ pub const TextBuffer = struct {
 
         const line_bytes = text[byte_start..byte_end];
 
-        var chunk_width: u32 = 0;
-        var chunk_char_count: u32 = 0;
-        var iter = self.graphemes_data.iterator(line_bytes);
-
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(line_bytes);
-            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
-
-            if (width_u16 == 0) {
-                // Zero-width or control cluster: skip
-                continue;
-            }
-
-            const width: u32 = @intCast(width_u16);
-
-            // Count this grapheme cluster
-            // In the old encoding, wide chars (width > 1) would produce 1 start + (width-1) continuations
-            // So total chars = width
-            chunk_char_count += width;
-            chunk_width += width;
-        }
-
-        self.char_count += chunk_char_count;
-
         // Note: We don't include the newline character in the chunk
         // Newlines are implicit line separators, not counted as characters
 
         // Store the chunk with just byte references
         if (byte_start < byte_end or line_bytes.len == 0) {
-            const chunk = TextChunk{
-                .mem_id = mem_id,
-                .byte_start = byte_start,
-                .byte_end = byte_end,
-                .width = chunk_width,
-                .char_count = chunk_char_count,
-            };
+            const chunk = self.createChunk(mem_id, byte_start, byte_end, line_bytes);
 
+            self.char_count += chunk.char_count;
             try line.chunks.append(self.allocator, chunk);
-            line.width = chunk_width;
+            line.width = chunk.width;
         }
 
         try self.lines.append(self.allocator, line);
@@ -786,34 +790,12 @@ pub const TextBuffer = struct {
         const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         const chunk_bytes = mem_buf[byte_start..byte_end];
 
-        // Calculate chunk metrics
-        var chunk_width: u32 = 0;
-        var chunk_char_count: u32 = 0;
-        var iter = self.graphemes_data.iterator(chunk_bytes);
-
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(chunk_bytes);
-            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
-
-            if (width_u16 == 0) continue;
-
-            const width: u32 = @intCast(width_u16);
-            chunk_char_count += width;
-            chunk_width += width;
-        }
-
-        const chunk = TextChunk{
-            .mem_id = mem_id,
-            .byte_start = byte_start,
-            .byte_end = byte_end,
-            .width = chunk_width,
-            .char_count = chunk_char_count,
-        };
+        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
 
         var line = &self.lines.items[line_idx];
         try line.chunks.append(self.allocator, chunk);
-        line.width += chunk_width;
-        self.char_count += chunk_char_count;
+        line.width += chunk.width;
+        self.char_count += chunk.char_count;
 
         // Mark all views as dirty
         self.markAllViewsDirty();
@@ -829,37 +811,15 @@ pub const TextBuffer = struct {
         const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         const chunk_bytes = mem_buf[byte_start..byte_end];
 
-        // Calculate chunk metrics
-        var chunk_width: u32 = 0;
-        var chunk_char_count: u32 = 0;
-        var iter = self.graphemes_data.iterator(chunk_bytes);
-
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(chunk_bytes);
-            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
-
-            if (width_u16 == 0) continue;
-
-            const width: u32 = @intCast(width_u16);
-            chunk_char_count += width;
-            chunk_width += width;
-        }
+        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
 
         var line = TextLine.init();
         line.char_offset = self.char_count;
-        line.width = chunk_width;
-
-        const chunk = TextChunk{
-            .mem_id = mem_id,
-            .byte_start = byte_start,
-            .byte_end = byte_end,
-            .width = chunk_width,
-            .char_count = chunk_char_count,
-        };
+        line.width = chunk.width;
 
         try line.chunks.append(self.allocator, chunk);
         try self.lines.append(self.allocator, line);
-        self.char_count += chunk_char_count;
+        self.char_count += chunk.char_count;
 
         // Mark all views as dirty
         self.markAllViewsDirty();
