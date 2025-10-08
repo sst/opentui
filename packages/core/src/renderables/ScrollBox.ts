@@ -587,6 +587,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.requestRender()
   }
 
+  public get scrollAcceleration(): ScrollAcceleration {
+    return this.scrollAccel
+  }
+
+  public set scrollAcceleration(value: ScrollAcceleration) {
+    this.scrollAccel = value
+  }
+
   protected destroySelf(): void {
     if (this.selectionListener) {
       this._ctx.off("selection", this.selectionListener)
