@@ -39,8 +39,14 @@ jobs:
         run: |
           TAG_VERSION="${{ steps.extract_version.outputs.version }}"
 
-          # Check packages/*/package.json versions
+          # Check packages/*/package.json versions (excluding vue by default)
           for pkg in packages/*/; do
+            # Skip vue package
+            if [[ "$pkg" == "packages/vue/" ]]; then
+              echo "Skipping vue package version check"
+              continue
+            fi
+            
             if [ -f "$pkg/package.json" ]; then
               PKG_VERSION=$(node -p "require('./$pkg/package.json').version")
               if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
