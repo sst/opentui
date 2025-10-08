@@ -29,12 +29,16 @@ pub const ChunkFitResult = struct {
     width: u32,
 };
 
-/// A chunk represents a contiguous sequence of characters
+/// A chunk represents a contiguous sequence of UTF-8 bytes
 pub const TextChunk = struct {
     byte_start: u32, // Offset into TextBuffer.text_bytes
     byte_end: u32, // Offset into TextBuffer.text_bytes
-    chars: []u32, // Pre-packed u32s (grapheme starts + continuations)
-    width: u32, // Display width in cells
+    width: u32, // Display width in cells (computed once)
+    char_count: u32, // Number of grapheme clusters (computed once)
+
+    pub fn getBytes(self: *const TextChunk, text_bytes: []const u8) []const u8 {
+        return text_bytes[self.byte_start..self.byte_end];
+    }
 };
 
 /// A highlight represents a styled region on a line
@@ -573,18 +577,15 @@ pub const TextBuffer = struct {
         }
     }
 
-    /// Parse a single line into chunks with grapheme clusters
+    /// Parse a single line into chunks (count and measure graphemes, but don't encode)
     fn parseLine(self: *TextBuffer, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
         var line = TextLine.init();
         line.char_offset = self.char_count;
 
         const line_bytes = self.text_bytes[byte_start..byte_end];
 
-        // Temporary buffer to collect characters for the line chunk
-        var chunk_chars = std.ArrayList(u32).init(self.allocator);
-        defer chunk_chars.deinit();
-
         var chunk_width: u32 = 0;
+        var chunk_char_count: u32 = 0;
         var iter = self.graphemes_data.iterator(line_bytes);
 
         while (iter.next()) |gc| {
@@ -597,52 +598,26 @@ pub const TextBuffer = struct {
             }
 
             const width: u32 = @intCast(width_u16);
-            var encoded_char: u32 = 0;
 
-            // Encode the grapheme cluster
-            if (gbytes.len == 1 and width == 1 and gbytes[0] >= 32) {
-                encoded_char = @as(u32, gbytes[0]);
-            } else {
-                const gid = self.pool.allocUnowned(gbytes) catch return TextBufferError.OutOfMemory;
-                encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, width);
-                self.grapheme_tracker.add(gid);
-            }
-
-            // Pack the start + continuations
-            if (gp.isGraphemeChar(encoded_char)) {
-                const right = gp.charRightExtent(encoded_char);
-                const gid: u32 = gp.graphemeIdFromChar(encoded_char);
-
-                try chunk_chars.append(encoded_char);
-                self.char_count += 1;
-
-                var k: u32 = 1;
-                while (k <= right) : (k += 1) {
-                    const cont = gp.packContinuation(k, right - k, gid);
-                    try chunk_chars.append(cont);
-                    self.char_count += 1;
-                }
-            } else {
-                try chunk_chars.append(encoded_char);
-                self.char_count += 1;
-            }
-
+            // Count this grapheme cluster
+            // In the old encoding, wide chars (width > 1) would produce 1 start + (width-1) continuations
+            // So total chars = width
+            chunk_char_count += width;
             chunk_width += width;
         }
+
+        self.char_count += chunk_char_count;
 
         // Note: We don't include the newline character in the chunk
         // Newlines are implicit line separators, not counted as characters
 
-        // Store the chunk with pre-computed u32s
-        if (chunk_chars.items.len > 0) {
-            const chunk_data = self.allocator.alloc(u32, chunk_chars.items.len) catch return TextBufferError.OutOfMemory;
-            @memcpy(chunk_data, chunk_chars.items);
-
+        // Store the chunk with just byte references
+        if (byte_start < byte_end or line_bytes.len == 0) {
             const chunk = TextChunk{
                 .byte_start = byte_start,
                 .byte_end = byte_end,
-                .chars = chunk_data,
                 .width = chunk_width,
+                .char_count = chunk_char_count,
             };
 
             try line.chunks.append(self.allocator, chunk);

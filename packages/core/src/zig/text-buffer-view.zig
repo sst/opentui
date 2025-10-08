@@ -2,6 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const tb = @import("text-buffer.zig");
 const gp = @import("grapheme.zig");
+const gwidth = @import("gwidth.zig");
+const Graphemes = @import("Graphemes");
+const DisplayWidth = @import("DisplayWidth");
 
 const TextBuffer = tb.TextBuffer;
 const RGBA = tb.RGBA;
@@ -13,18 +16,41 @@ pub const TextBufferViewError = error{
     OutOfMemory,
 };
 
+/// Cached grapheme cluster information for a chunk
+pub const GraphemeInfo = struct {
+    byte_offset: u32, // Offset within the chunk's bytes
+    byte_len: u8, // Length in UTF-8 bytes
+    width: u8, // Display width (1, 2, etc.)
+};
+
+/// Cache key for chunk grapheme info
+pub const ChunkCacheKey = struct {
+    line_idx: u32,
+    chunk_idx: u32,
+
+    pub fn hash(self: ChunkCacheKey) u64 {
+        return (@as(u64, self.line_idx) << 32) | @as(u64, self.chunk_idx);
+    }
+
+    pub fn eql(self: ChunkCacheKey, other: ChunkCacheKey) bool {
+        return self.line_idx == other.line_idx and self.chunk_idx == other.chunk_idx;
+    }
+};
+
+/// Cached grapheme information for a chunk
+pub const ChunkCache = struct {
+    graphemes: []GraphemeInfo,
+    total_width: u32,
+    total_chars: u32,
+};
+
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
     source_line: usize,
     source_chunk: usize,
-    char_start: u32,
-    char_count: u32,
+    grapheme_start: u32, // Index into cached graphemes
+    grapheme_count: u32, // Number of grapheme clusters
     width: u32,
-
-    pub fn getChars(self: *const VirtualChunk, text_buffer: *const TextBuffer) []const u32 {
-        const chunk = &text_buffer.lines.items[self.source_line].chunks.items[self.source_chunk];
-        return chunk.chars[self.char_start .. self.char_start + self.char_count];
-    }
 };
 
 /// A virtual line represents a display line after text wrapping
@@ -78,6 +104,9 @@ pub const TextBufferView = struct {
     cached_line_widths: std.ArrayListUnmanaged(u32),
     cached_max_width: u32,
 
+    // Grapheme cluster cache per chunk
+    chunk_cache: std.AutoHashMap(u64, ChunkCache),
+
     // Memory management
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
@@ -106,6 +135,9 @@ pub const TextBufferView = struct {
         var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
         errdefer cached_line_widths.deinit(virtual_lines_allocator);
 
+        var chunk_cache = std.AutoHashMap(u64, ChunkCache).init(global_allocator);
+        errdefer chunk_cache.deinit();
+
         // Register this view with the text buffer
         const view_id = text_buffer.registerView() catch return TextBufferViewError.OutOfMemory;
 
@@ -121,6 +153,7 @@ pub const TextBufferView = struct {
             .cached_line_starts = cached_line_starts,
             .cached_line_widths = cached_line_widths,
             .cached_max_width = 0,
+            .chunk_cache = chunk_cache,
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
         };
@@ -131,6 +164,13 @@ pub const TextBufferView = struct {
     pub fn deinit(self: *TextBufferView) void {
         // Unregister from the text buffer
         self.text_buffer.unregisterView(self.view_id);
+
+        // Clean up chunk cache
+        var it = self.chunk_cache.valueIterator();
+        while (it.next()) |cache| {
+            self.global_allocator.free(cache.graphemes);
+        }
+        self.chunk_cache.deinit();
 
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
@@ -170,52 +210,87 @@ pub const TextBufferView = struct {
         }
     }
 
-    /// Calculate how many characters from a chunk fit within the given width
-    /// Returns the number of characters and their total width
-    fn calculateChunkFit(_: *const TextBufferView, chars: []const u32, max_width: u32) tb.ChunkFitResult {
-        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
-        if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
+    /// Get or create cached grapheme info for a chunk
+    /// Returns a slice of GraphemeInfo that is valid until the cache is cleared
+    pub fn getOrCreateChunkCache(self: *TextBufferView, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const GraphemeInfo {
+        const key = ChunkCacheKey{ .line_idx = @intCast(line_idx), .chunk_idx = @intCast(chunk_idx) };
+        const hash_key = key.hash();
 
-        const has_newline = chars[chars.len - 1] == '\n';
-        const effective_len = if (has_newline) chars.len - 1 else chars.len;
-
-        if (effective_len <= max_width) {
-            if (has_newline) {
-                return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
-            }
-            return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
+        if (self.chunk_cache.get(hash_key)) |cache| {
+            return cache.graphemes;
         }
 
-        const cut_pos = max_width;
-        const char_at_cut = chars[cut_pos];
+        // Build cache for this chunk
+        const lines = self.text_buffer.getLines();
+        const chunk = &lines[line_idx].chunks.items[chunk_idx];
+        const chunk_bytes = chunk.getBytes(self.text_buffer.text_bytes);
 
-        if (gp.isContinuationChar(char_at_cut)) {
-            const left_extent = gp.charLeftExtent(char_at_cut);
-            const grapheme_start = cut_pos - left_extent;
-            const grapheme_width = left_extent + 1 + gp.charRightExtent(char_at_cut);
+        var grapheme_list = std.ArrayList(GraphemeInfo).init(self.global_allocator);
+        defer grapheme_list.deinit();
 
-            if (grapheme_start + grapheme_width <= max_width) {
-                return .{ .char_count = grapheme_start + grapheme_width, .width = grapheme_start + grapheme_width };
+        var total_width: u32 = 0;
+        var total_chars: u32 = 0;
+
+        var iter = self.text_buffer.graphemes_data.iterator(chunk_bytes);
+        var byte_pos: u32 = 0;
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, self.text_buffer.width_method, &self.text_buffer.display_width);
+
+            if (width_u16 == 0) {
+                byte_pos += @intCast(gbytes.len);
+                continue;
             }
 
-            return .{ .char_count = grapheme_start, .width = grapheme_start };
-        } else if (gp.isGraphemeChar(char_at_cut)) {
-            const grapheme_width = 1 + gp.charRightExtent(char_at_cut);
+            const width: u8 = @intCast(width_u16);
 
-            if (cut_pos + grapheme_width > max_width) {
-                return .{ .char_count = cut_pos, .width = cut_pos };
-            }
+            try grapheme_list.append(GraphemeInfo{
+                .byte_offset = byte_pos,
+                .byte_len = @intCast(gbytes.len),
+                .width = width,
+            });
 
-            return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+            total_width += width;
+            total_chars += width; // Each grapheme contributes 'width' cells
+            byte_pos += @intCast(gbytes.len);
         }
 
-        return .{ .char_count = cut_pos, .width = cut_pos };
+        const graphemes = try self.global_allocator.dupe(GraphemeInfo, grapheme_list.items);
+
+        try self.chunk_cache.put(hash_key, ChunkCache{
+            .graphemes = graphemes,
+            .total_width = total_width,
+            .total_chars = total_chars,
+        });
+
+        return graphemes;
     }
 
-    fn isWordBoundary(c: u32) bool {
+    /// Calculate how many graphemes from a chunk fit within the given width
+    /// Returns the number of grapheme clusters and their total width
+    fn calculateChunkFit(_: *const TextBufferView, graphemes: []const GraphemeInfo, max_width: u32) tb.ChunkFitResult {
+        if (max_width == 0) return .{ .char_count = 0, .width = 0 };
+        if (graphemes.len == 0) return .{ .char_count = 0, .width = 0 };
+
+        var total_width: u32 = 0;
+        var count: u32 = 0;
+
+        for (graphemes) |g| {
+            if (total_width + g.width > max_width) {
+                break;
+            }
+            total_width += g.width;
+            count += g.width; // Each grapheme contributes 'width' cells
+        }
+
+        return .{ .char_count = count, .width = total_width };
+    }
+
+    fn isWordBoundaryByte(c: u8) bool {
         return switch (c) {
             ' ', '\t', '\r', '\n' => true, // Whitespace
-            '-', '–', '—' => true, // Dashes and hyphens
+            '-' => true, // Dash
             '/', '\\' => true, // Slashes
             '.', ',', ';', ':', '!', '?' => true, // Punctuation
             '(', ')', '[', ']', '{', '}' => true, // Brackets
@@ -223,88 +298,70 @@ pub const TextBufferView = struct {
         };
     }
 
-    /// Calculate how many characters from a chunk fit within the given width (word wrapping)
-    /// Returns the number of characters and their total width
-    fn calculateChunkFitWord(self: *const TextBufferView, chars: []const u32, max_width: u32) tb.ChunkFitResult {
+    /// Calculate how many graphemes from a chunk fit within the given width (word wrapping)
+    /// Returns the number of grapheme clusters and their total width
+    /// chunk_bytes should be the full chunk bytes, not a slice
+    fn calculateChunkFitWord(self: *const TextBufferView, chunk_bytes: []const u8, graphemes: []const GraphemeInfo, max_width: u32) tb.ChunkFitResult {
         if (max_width == 0) return .{ .char_count = 0, .width = 0 };
-        if (chars.len == 0) return .{ .char_count = 0, .width = 0 };
+        if (graphemes.len == 0) return .{ .char_count = 0, .width = 0 };
 
-        const has_newline = chars[chars.len - 1] == '\n';
-        const effective_len = if (has_newline) chars.len - 1 else chars.len;
+        var total_width: u32 = 0;
+        var last_boundary_idx: ?usize = null;
+        var last_boundary_width: u32 = 0;
+        var last_boundary_chars: u32 = 0;
 
-        if (effective_len <= max_width) {
-            if (has_newline) {
-                return .{ .char_count = @intCast(chars.len), .width = @intCast(effective_len) };
-            }
-            return .{ .char_count = @intCast(chars.len), .width = @intCast(chars.len) };
-        }
+        for (graphemes, 0..) |g, idx| {
+            if (total_width + g.width > max_width) {
+                // Can't fit this grapheme
+                if (last_boundary_idx) |_| {
+                    // Wrap at last word boundary
+                    return .{ .char_count = last_boundary_chars, .width = last_boundary_width };
+                } else {
+                    // No boundary found - either wrap at beginning or force break
+                    const line_width = if (self.wrap_width) |w| w else max_width;
 
-        var cut_pos = @min(max_width, @as(u32, @intCast(chars.len)));
-        var found_boundary = false;
+                    // Check if first word is too long for any line
+                    var word_width: u32 = 0;
+                    for (graphemes) |wg| {
+                        const first_byte = chunk_bytes[wg.byte_offset];
+                        if (isWordBoundaryByte(first_byte)) break;
+                        word_width += wg.width;
+                    }
 
-        while (cut_pos > 0) {
-            cut_pos -= 1;
-            const c = chars[cut_pos];
+                    if (word_width > line_width) {
+                        // Force break the word
+                        var forced_width: u32 = 0;
+                        var forced_count: u32 = 0;
+                        for (graphemes) |fg| {
+                            if (forced_width + fg.width > max_width) break;
+                            forced_width += fg.width;
+                            forced_count += fg.width;
+                        }
+                        return .{ .char_count = forced_count, .width = forced_width };
+                    }
 
-            if (gp.isContinuationChar(c)) {
-                const left_extent = gp.charLeftExtent(c);
-                cut_pos = cut_pos -| left_extent; // Saturating subtraction
-                if (cut_pos == 0) break;
-                continue;
-            }
-
-            if (isWordBoundary(c)) {
-                cut_pos += 1;
-                found_boundary = true;
-                break;
-            }
-        }
-
-        if (!found_boundary or cut_pos == 0) {
-            // Check if we're at the beginning of a word that could fit on next line
-            // First, find where this word ends
-            var word_end: u32 = 0;
-            while (word_end < chars.len and !isWordBoundary(chars[word_end])) : (word_end += 1) {}
-
-            const line_width = if (self.wrap_width) |w| w else max_width;
-
-            // If the word is longer than a full line width, we have to break it
-            if (word_end > line_width) {
-                cut_pos = max_width;
-            } else {
-                return .{ .char_count = 0, .width = 0 };
-            }
-            const char_at_cut = chars[cut_pos];
-
-            if (gp.isContinuationChar(char_at_cut)) {
-                const left_extent = gp.charLeftExtent(char_at_cut);
-                const grapheme_start = cut_pos - left_extent;
-                const grapheme_width = left_extent + 1 + gp.charRightExtent(char_at_cut);
-
-                if (grapheme_start + grapheme_width <= max_width) {
-                    return .{ .char_count = grapheme_start + grapheme_width, .width = grapheme_start + grapheme_width };
+                    // Word can fit on next line
+                    return .{ .char_count = 0, .width = 0 };
                 }
+            }
 
-                return .{ .char_count = grapheme_start, .width = grapheme_start };
-            } else if (gp.isGraphemeChar(char_at_cut)) {
-                const grapheme_width = 1 + gp.charRightExtent(char_at_cut);
+            total_width += g.width;
 
-                if (cut_pos + grapheme_width > max_width) {
-                    return .{ .char_count = cut_pos, .width = cut_pos };
-                }
-
-                return .{ .char_count = cut_pos + grapheme_width, .width = cut_pos + grapheme_width };
+            // Check if this grapheme is a word boundary
+            const first_byte = chunk_bytes[g.byte_offset];
+            if (isWordBoundaryByte(first_byte)) {
+                last_boundary_idx = idx + 1; // After this boundary
+                last_boundary_width = total_width;
+                last_boundary_chars = total_width; // Sum of widths so far
             }
         }
 
-        return .{ .char_count = cut_pos, .width = cut_pos };
-    }
-
-    /// Calculate the visual width of a chunk of characters
-    fn calculateChunkWidth(_: *const TextBufferView, chars: []const u32) u32 {
-        if (chars.len == 0) return 0;
-
-        return @intCast(chars.len);
+        // All graphemes fit
+        var count: u32 = 0;
+        for (graphemes) |g| {
+            count += g.width;
+        }
+        return .{ .char_count = count, .width = total_width };
     }
 
     /// Update virtual lines based on current wrap width
@@ -312,6 +369,15 @@ pub const TextBufferView = struct {
         // Check both local and buffer dirty flags
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
+
+        // Clear chunk cache if buffer is dirty
+        if (buffer_dirty) {
+            var it = self.chunk_cache.valueIterator();
+            while (it.next()) |cache| {
+                self.global_allocator.free(cache.graphemes);
+            }
+            self.chunk_cache.clearRetainingCapacity();
+        }
 
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
@@ -336,9 +402,9 @@ pub const TextBufferView = struct {
                     vline.chunks.append(virtual_allocator, VirtualChunk{
                         .source_line = line_idx,
                         .source_chunk = chunk_idx,
-                        .char_start = 0,
-                        .char_count = @intCast(chunk.chars.len),
-                        .width = self.calculateChunkWidth(chunk.chars),
+                        .grapheme_start = 0,
+                        .grapheme_count = chunk.char_count,
+                        .width = chunk.width,
                     }) catch {};
                 }
 
@@ -359,18 +425,21 @@ pub const TextBufferView = struct {
                 current_vline.char_offset = global_char_offset;
                 current_vline.source_line = line_idx;
                 current_vline.source_col_offset = 0;
-                var first_in_line = true;
 
                 for (line.chunks.items, 0..) |*chunk, chunk_idx| {
-                    var chunk_pos: u32 = 0;
+                    // Get or create cached grapheme info for this chunk
+                    const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
+                    const chunk_bytes = chunk.getBytes(self.text_buffer.text_bytes);
 
-                    while (chunk_pos < chunk.chars.len) {
+                    var grapheme_idx: u32 = 0;
+
+                    while (grapheme_idx < graphemes_cache.len) {
                         const remaining_width = if (line_position < wrap_w) wrap_w - line_position else 0;
-                        const remaining_chars = chunk.chars[chunk_pos..];
+                        const remaining_graphemes = graphemes_cache[grapheme_idx..];
 
                         const fit_result = switch (self.wrap_mode) {
-                            .char => self.calculateChunkFit(remaining_chars, remaining_width),
-                            .word => self.calculateChunkFitWord(remaining_chars, remaining_width),
+                            .char => self.calculateChunkFit(remaining_graphemes, remaining_width),
+                            .word => self.calculateChunkFitWord(chunk_bytes, remaining_graphemes, remaining_width),
                         };
 
                         // If nothing fits and we have content on the line, wrap to next line
@@ -387,31 +456,64 @@ pub const TextBufferView = struct {
                             current_vline.source_line = line_idx;
                             current_vline.source_col_offset = line_col_offset;
                             line_position = 0;
-                            first_in_line = false;
                             continue;
                         }
 
-                        // If nothing fits even on empty line (char too wide), skip it
-                        if (fit_result.char_count == 0) {
-                            chunk_pos += 1;
-                            global_char_offset += 1;
+                        // If nothing fits even on empty line, force-add at least one grapheme
+                        // (e.g., a 2-cell emoji with wrap_width=1 should still appear on a line)
+                        if (fit_result.char_count == 0 and line_position == 0 and grapheme_idx < graphemes_cache.len) {
+                            // Force add the first grapheme even if it doesn't fit
+                            const g = graphemes_cache[grapheme_idx];
+
+                            current_vline.chunks.append(virtual_allocator, VirtualChunk{
+                                .source_line = line_idx,
+                                .source_chunk = chunk_idx,
+                                .grapheme_start = grapheme_idx,
+                                .grapheme_count = g.width,
+                                .width = g.width,
+                            }) catch {};
+
+                            grapheme_idx += 1;
+                            global_char_offset += g.width;
+                            line_position += g.width;
                             continue;
+                        }
+
+                        // If nothing fits and we're mid-line, this should have been caught by the wrap check above
+                        if (fit_result.char_count == 0) {
+                            break; // Move to next chunk
+                        }
+
+                        // Count how many graphemes this represents
+                        var num_graphemes: u32 = 0;
+                        for (remaining_graphemes) |g| {
+                            if (num_graphemes >= fit_result.char_count) break;
+                            num_graphemes += g.width;
                         }
 
                         current_vline.chunks.append(virtual_allocator, VirtualChunk{
                             .source_line = line_idx,
                             .source_chunk = chunk_idx,
-                            .char_start = chunk_pos,
-                            .char_count = fit_result.char_count,
+                            .grapheme_start = grapheme_idx,
+                            .grapheme_count = fit_result.char_count,
                             .width = fit_result.width,
                         }) catch {};
 
-                        chunk_pos += fit_result.char_count;
+                        // Advance by the number of graphemes that fit
+                        var chars_processed: u32 = 0;
+                        var graphemes_processed: u32 = 0;
+                        for (remaining_graphemes) |g| {
+                            if (chars_processed >= fit_result.char_count) break;
+                            chars_processed += g.width;
+                            graphemes_processed += 1;
+                        }
+
+                        grapheme_idx += graphemes_processed;
                         global_char_offset += fit_result.char_count;
                         line_position += fit_result.width;
 
                         // Check if we need to wrap
-                        if (line_position >= wrap_w and chunk_pos < chunk.chars.len) {
+                        if (line_position >= wrap_w and grapheme_idx < graphemes_cache.len) {
                             current_vline.width = line_position;
                             self.virtual_lines.append(virtual_allocator, current_vline) catch {};
                             self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
@@ -429,7 +531,7 @@ pub const TextBufferView = struct {
                 }
 
                 // Append the last virtual line if it has content or represents an empty line
-                if (current_vline.chunks.items.len > 0 or line.chunks.items.len == 0) {
+                if (current_vline.chunks.items.len > 0 or line.width == 0) {
                     current_vline.width = line_position;
                     self.virtual_lines.append(virtual_allocator, current_vline) catch {};
                     self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
@@ -635,7 +737,7 @@ pub const TextBufferView = struct {
 
     /// Extract selected text as UTF-8 bytes from the char buffer into provided output buffer
     /// Returns the number of bytes written to the output buffer
-    pub fn getSelectedTextIntoBuffer(self: *const TextBufferView, out_buffer: []u8) usize {
+    pub fn getSelectedTextIntoBuffer(self: *TextBufferView, out_buffer: []u8) usize {
         const selection = self.selection orelse return 0;
         const start = selection.start;
         const end = selection.end;
@@ -644,49 +746,38 @@ pub const TextBufferView = struct {
         var count: u32 = 0;
 
         const lines = self.text_buffer.getLines();
-        const pool = self.text_buffer.pool;
 
-        // Iterate through all lines and chunks, similar to rendering
+        // Iterate through all lines and chunks
         for (lines, 0..) |line, line_idx| {
             var line_had_selection = false;
 
-            for (line.chunks.items) |chunk| {
-                var chunk_char_index: u32 = 0;
-                while (chunk_char_index < chunk.chars.len and count < end and out_index < out_buffer.len) : (chunk_char_index += 1) {
-                    const c = chunk.chars[chunk_char_index];
+            for (line.chunks.items, 0..) |chunk, chunk_idx| {
+                // Get cached grapheme info
+                const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
+                const chunk_bytes = chunk.getBytes(self.text_buffer.text_bytes);
 
-                    if (!gp.isContinuationChar(c)) {
-                        if (count >= start) {
-                            line_had_selection = true;
-                            if (gp.isGraphemeChar(c)) {
-                                const gid = gp.graphemeIdFromChar(c);
-                                const grapheme_bytes = pool.get(gid) catch continue;
-                                const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
-                                @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
-                                out_index += copy_len;
-                            } else {
-                                var utf8_buf: [4]u8 = undefined;
-                                const utf8_len = std.unicode.utf8Encode(@intCast(c), &utf8_buf) catch 1;
-                                const copy_len = @min(utf8_len, out_buffer.len - out_index);
-                                @memcpy(out_buffer[out_index .. out_index + copy_len], utf8_buf[0..copy_len]);
-                                out_index += copy_len;
-                            }
-                        }
-                        count += 1;
+                for (graphemes_cache) |g| {
+                    if (count >= end) break;
 
-                        // Skip continuation characters for graphemes
-                        if (gp.isGraphemeChar(c)) {
-                            const right_extent = gp.charRightExtent(c);
-                            var k: u32 = 0;
-                            while (k < right_extent and chunk_char_index + 1 < chunk.chars.len) : (k += 1) {
-                                chunk_char_index += 1;
-                                // Verify the continuation character exists
-                                if (chunk_char_index >= chunk.chars.len or !gp.isContinuationChar(chunk.chars[chunk_char_index])) {
-                                    break;
-                                }
-                            }
+                    // Each grapheme contributes 'width' cells
+                    const grapheme_start_count = count;
+                    const grapheme_end_count = count + g.width;
+
+                    // Check if any part of this grapheme is selected
+                    if (grapheme_end_count > start and grapheme_start_count < end) {
+                        line_had_selection = true;
+
+                        // Copy the grapheme's bytes
+                        const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
+                        const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
+
+                        if (copy_len > 0) {
+                            @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
+                            out_index += copy_len;
                         }
                     }
+
+                    count += g.width;
                 }
             }
 

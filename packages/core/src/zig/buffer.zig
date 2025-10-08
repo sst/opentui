@@ -897,58 +897,55 @@ pub const OptimizedBuffer = struct {
 
             for (vline.chunks.items) |vchunk| {
                 const source_chunk = &lines[vchunk.source_line].chunks.items[vchunk.source_chunk];
-                const chars = source_chunk.chars[vchunk.char_start .. vchunk.char_start + vchunk.char_count];
+
+                // Get cached grapheme info for this chunk
+                const graphemes_cache = text_buffer_view.getOrCreateChunkCache(vchunk.source_line, vchunk.source_chunk) catch continue;
+                const chunk_bytes = source_chunk.getBytes(text_buffer.text_bytes);
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
-                    globalCharPos += @intCast(chars.len);
-                    currentX += @intCast(chars.len);
+                    globalCharPos += vchunk.grapheme_count;
+                    currentX += @intCast(vchunk.grapheme_count);
                     continue;
                 }
 
-                var charIndex: u32 = 0;
-                for (chars) |charCode| {
-                    if (charCode == '\n') {
-                        globalCharPos += 1;
-                        charIndex += 1;
+                // Iterate through the graphemes in this virtual chunk
+                const grapheme_end = @min(vchunk.grapheme_start + vchunk.grapheme_count, @as(u32, @intCast(graphemes_cache.len)));
+                var grapheme_idx = vchunk.grapheme_start;
+
+                while (grapheme_idx < grapheme_end) : (grapheme_idx += 1) {
+                    const g = graphemes_cache[grapheme_idx];
+                    const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
+
+                    // Skip if completely out of bounds (left of visible area)
+                    if (currentX < -@as(i32, @intCast(g.width))) {
+                        globalCharPos += g.width;
+                        currentX += @as(i32, @intCast(g.width));
                         continue;
                     }
 
-                    if (currentX < 0) {
-                        globalCharPos += 1;
-                        currentX += 1;
-                        charIndex += 1;
-                        continue;
-                    }
+                    // Stop if we're past the buffer width
                     if (currentX >= @as(i32, @intCast(self.width))) {
-                        const remainingChars = chars.len - charIndex;
-                        globalCharPos += @intCast(remainingChars);
-                        currentX += @intCast(remainingChars);
+                        for (graphemes_cache[grapheme_idx..grapheme_end]) |remaining_g| {
+                            globalCharPos += remaining_g.width;
+                        }
                         break;
                     }
 
-                    // TODO: Clip rect is currently used in text buffer drawing and cannot be removed yet.
-                    // Using scissor only should work now.
-                    if (clip_rect) |clip| {
-                        if (currentX < clip.x or currentY < clip.y or
+                    // Check clip rect
+                    const should_skip_clip = if (clip_rect) |clip|
+                        currentX < clip.x or currentY < clip.y or
                             currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                            currentY > clip.y + @as(i32, @intCast(clip.height))) // inclusive
-                        {
-                            globalCharPos += 1;
-                            currentX += 1;
-                            charIndex += 1;
-                            continue;
-                        }
-                    }
+                            currentY > clip.y + @as(i32, @intCast(clip.height))
+                    else
+                        false;
 
-                    if (!self.isPointInScissor(currentX, currentY)) {
-                        globalCharPos += 1;
-                        currentX += 1;
-                        charIndex += 1;
+                    if (should_skip_clip or !self.isPointInScissor(currentX, currentY)) {
+                        globalCharPos += g.width;
+                        currentX += @as(i32, @intCast(g.width));
                         continue;
                     }
 
                     // Check if we need to advance to next span
-                    // col_pos is relative to the virtual line (col_offset already handled in span lookup)
                     const virt_col_pos = @as(u32, @intCast(currentX - x));
 
                     if (virt_col_pos >= next_change_col and span_idx + 1 < spans.len) {
@@ -982,20 +979,24 @@ pub const OptimizedBuffer = struct {
                     var finalBg = lineBg;
                     const finalAttributes = lineAttributes;
 
-                    // Handle selection highlighting
-                    if (text_buffer_view.selection) |sel| {
-                        const isSelected = globalCharPos >= sel.start and globalCharPos < sel.end;
-                        if (isSelected) {
-                            if (sel.bgColor) |selBg| {
-                                finalBg = selBg;
-                                if (sel.fgColor) |selFg| {
-                                    finalFg = selFg;
+                    // Handle selection highlighting (for each cell of this grapheme)
+                    var cell_idx: u32 = 0;
+                    while (cell_idx < g.width) : (cell_idx += 1) {
+                        if (text_buffer_view.selection) |sel| {
+                            const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
+                            if (isSelected) {
+                                if (sel.bgColor) |selBg| {
+                                    finalBg = selBg;
+                                    if (sel.fgColor) |selFg| {
+                                        finalFg = selFg;
+                                    }
+                                } else {
+                                    // Swap fg and bg for default selection style
+                                    const temp = lineFg;
+                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                    finalBg = temp;
                                 }
-                            } else {
-                                // Swap fg and bg for default selection style
-                                const temp = finalFg;
-                                finalFg = if (finalBg[3] > 0) finalBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
-                                finalBg = temp;
+                                break; // Apply to whole grapheme
                             }
                         }
                     }
@@ -1004,29 +1005,42 @@ pub const OptimizedBuffer = struct {
                     var drawBg = finalBg;
                     const drawAttributes = finalAttributes;
 
-                    // Wait, isn't that handled by the ansi itself?
                     if (drawAttributes & (1 << 5) != 0) { // reverse bit
                         const temp = drawFg;
                         drawFg = drawBg;
                         drawBg = temp;
                     }
 
+                    // Encode the grapheme on the fly
+                    var encoded_char: u32 = 0;
+                    if (grapheme_bytes.len == 1 and g.width == 1 and grapheme_bytes[0] >= 32) {
+                        encoded_char = @as(u32, grapheme_bytes[0]);
+                    } else {
+                        const gid = self.pool.alloc(grapheme_bytes) catch {
+                            globalCharPos += g.width;
+                            currentX += @as(i32, @intCast(g.width));
+                            continue;
+                        };
+                        encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g.width);
+                    }
+
+                    // Render the grapheme (this handles placing start + continuation chars)
                     if (graphemeAware) {
                         try self.setCellWithAlphaBlending(
                             @intCast(currentX),
                             @intCast(currentY),
-                            charCode,
+                            encoded_char,
                             drawFg,
                             drawBg,
                             drawAttributes,
                         );
                     } else {
-                        self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), charCode, drawFg, drawBg, drawAttributes) catch {};
+                        self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), encoded_char, drawFg, drawBg, drawAttributes) catch {};
                     }
 
-                    globalCharPos += 1;
-                    currentX += 1;
-                    charIndex += 1;
+                    // Advance by the grapheme's full width
+                    globalCharPos += g.width;
+                    currentX += @as(i32, @intCast(g.width));
                 }
             }
 
