@@ -70,7 +70,6 @@ export class MacOSScrollAccel implements ScrollAcceleration {
 
     this.lastTickTime = now
 
-
     this.velocityHistory.push(dt)
     if (this.velocityHistory.length > this.historySize) {
       this.velocityHistory.shift()
