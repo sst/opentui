@@ -846,7 +846,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = text_buffer_view.text_buffer;
-        const graphemeAware = self.grapheme_tracker.hasAny() or text_buffer.grapheme_tracker.hasAny();
+        const graphemeAware = self.grapheme_tracker.hasAny();
 
         const line_info = text_buffer_view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)

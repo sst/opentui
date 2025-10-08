@@ -157,7 +157,6 @@ pub const TextBuffer = struct {
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
-    grapheme_tracker: gp.GraphemeTracker,
     width_method: gwidth.WidthMethod,
 
     // View registration system
@@ -218,7 +217,6 @@ pub const TextBuffer = struct {
             .pool = pool,
             .graphemes_data = graph,
             .display_width = dw,
-            .grapheme_tracker = gp.GraphemeTracker.init(global_allocator, pool),
             .width_method = width_method,
             .view_dirty_flags = view_dirty_flags,
             .next_view_id = 0,
@@ -229,7 +227,6 @@ pub const TextBuffer = struct {
     }
 
     pub fn deinit(self: *TextBuffer) void {
-        self.grapheme_tracker.deinit();
         self.view_dirty_flags.deinit(self.global_allocator);
         self.free_view_ids.deinit(self.global_allocator);
         self.mem_registry.deinit();
@@ -308,8 +305,6 @@ pub const TextBuffer = struct {
     }
 
     pub fn reset(self: *TextBuffer) void {
-        self.grapheme_tracker.clear();
-
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.mem_registry.clear();
