@@ -19,4 +19,11 @@ jobs:
           bun-version: latest
 
       - name: Check Prettier formatting
-        run: bunx prettier --check .
+        run: bunx prettier --check --log-level warn .
+
+      - name: Show formatting differences
+        if: failure()
+        run: |
+          echo "=== Showing differences for each file ==="
+          bunx prettier --write .
+          git diff --color=always
