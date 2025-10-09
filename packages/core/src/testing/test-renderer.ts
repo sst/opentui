@@ -93,6 +93,8 @@ async function setupTestRenderer(config: TestRendererOptions): Promise<TestRende
   ziglib.setUseThread(rendererPtr, config.useThread)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config) as TestRenderer
+  // Do not setup the terminal for testing as we will not actualy output anything to the terminal
+  // await renderer.setupTerminal()
 
   return renderer
 }
