@@ -7,7 +7,11 @@ export interface TestRendererOptions extends CliRendererConfig {
   width?: number
   height?: number
 }
-export interface TestRenderer extends CliRenderer {}
+export interface TestRenderer extends CliRenderer {
+  ready?: Promise<void>
+  resolveReady?: () => void
+}
+
 export type MockInput = ReturnType<typeof createMockKeys>
 export type MockMouse = ReturnType<typeof createMockMouse>
 
@@ -33,9 +37,19 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   const mockInput = createMockKeys(renderer)
   const mockMouse = createMockMouse(renderer)
 
+  const { promise, resolve } = Promise.withResolvers<void>()
+  renderer.ready = promise
+  renderer.resolveReady = resolve
+
   const renderOnce = async () => {
     //@ts-expect-error - this is a test renderer
     await renderer.loop()
+    if (renderer.ready) {
+      await renderer.ready
+    }
+    const { promise, resolve: newResolve } = Promise.withResolvers<void>()
+    renderer.ready = promise
+    renderer.resolveReady = newResolve
   }
 
   return {
@@ -55,7 +69,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   }
 }
 
-async function setupTestRenderer(config: TestRendererOptions) {
+async function setupTestRenderer(config: TestRendererOptions): Promise<TestRenderer> {
   const stdin = config.stdin || process.stdin
   const stdout = config.stdout || process.stdout
 
@@ -78,10 +92,7 @@ async function setupTestRenderer(config: TestRendererOptions) {
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
-  const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-
-  // Do not setup the terminal for testing as we will not actualy output anything to the terminal
-  // await renderer.setupTerminal()
+  const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config) as TestRenderer
 
   return renderer
 }

@@ -1,4 +1,5 @@
 import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
+import { type TestRenderer } from "@opentui/core/testing"
 import React, { type ReactNode } from "react"
 import { AppContext } from "../components/app"
 import { _render } from "./reconciler"
@@ -19,7 +20,15 @@ export async function render(node: ReactNode, rendererOrConfig: CliRendererConfi
         React.createElement(ErrorBoundary, null, node),
       ),
       renderer.root,
-      resolve,
+      () => {
+        if ("resolveReady" in renderer && "ready" in renderer) {
+          const testRenderer = renderer as TestRenderer
+          if (testRenderer.resolveReady) {
+            testRenderer.resolveReady()
+          }
+        }
+        resolve()
+      },
     )
   })
 }

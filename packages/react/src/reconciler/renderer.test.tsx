@@ -1,110 +1,71 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
-import React from "react"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { beforeEach, expect, test } from "bun:test"
+import { useState } from "react"
 import { render } from "./renderer"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
+let mockInput: MockInput
 
 beforeEach(async () => {
   ;({
     renderer: testRenderer,
     renderOnce,
     captureCharFrame: captureFrame,
+    mockInput,
   } = await createTestRenderer({
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 10,
   }))
 })
 
-test("renders scrollbox to text and snapshots after scrolling", async () => {
-  await render(
-    <box flexDirection="column">
-      <text attributes={1} content="Box Examples" />
-      <box border>
-        <text content="1. Standard Box" />
-      </box>
-      <box border title="Title">
-        <text content="2. Box with Title" />
-      </box>
-      <box border backgroundColor="blue">
-        <text content="3. Box with Background Color" />
-      </box>
-      <box border padding={1}>
-        <text content="4. Box with Padding" />
-      </box>
-      <box border margin={1}>
-        <text content="5. Box with Margin" />
-      </box>
-      <box border alignItems="center">
-        <text content="6. Centered Text" />
-      </box>
-      <box border justifyContent="center" height={5}>
-        <text content="7. Justified Center" />
-      </box>
-      <box border title="Nested Boxes" backgroundColor="red">
-        <box border backgroundColor="blue">
-          <text content="8. Nested Box" />
+test("renders input and box with state", async () => {
+  const App = () => {
+    const [text, setText] = useState("")
+
+    return (
+      <box flexDirection="column">
+        <input focused placeholder="Type here..." onInput={setText} />
+        <box border>
+          <text content={text || "(empty)"} />
         </box>
       </box>
-    </box>,
-    testRenderer,
-  )
+    )
+  }
+
+  await render(<App />, testRenderer)
   await renderOnce()
 
-  expect("\n" + captureFrame()).toMatchInlineSnapshot(`
+  expect("\n" + captureFrame().trim()).toMatchInlineSnapshot(`
     "
-    Box Examples                                      
-    ┌────────────────────────────────────────────────┐
-    │1. Standard Box                                 │
-    └────────────────────────────────────────────────┘
-    ┌─Title──────────────────────────────────────────┐
-    │2. Box with Title                               │
-    └────────────────────────────────────────────────┘
-    ┌────────────────────────────────────────────────┐
-    │3. Box with Background Color                    │
-    └────────────────────────────────────────────────┘
-    ┌────────────────────────────────────────────────┐
-    │                                                │
-    │ 4. Box with Padding                            │
-    │                                                │
-    └────────────────────────────────────────────────┘
-                                                      
-     ┌──────────────────────────────────────────────┐ 
-     │5. Box with Margin                            │ 
-     └──────────────────────────────────────────────┘ 
-                                                      
-    ┌────────────────────────────────────────────────┐
-    │                6. Centered Text                │
-    └────────────────────────────────────────────────┘
-    ┌────────────────────────────────────────────────┐
-    │                                                │
-    │7. Justified Center                             │
-    │                                                │
-    └────────────────────────────────────────────────┘
-    ┌─Nested Boxes───────────────────────────────────┐
-    │┌──────────────────────────────────────────────┐│
-    ││8. Nested Box                                 ││
-    │└──────────────────────────────────────────────┘│
-    └────────────────────────────────────────────────┘
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-                                                      
-    "
+    ┌──────────────────────────────────────┐
+    │(empty)                               │
+    └──────────────────────────────────────┘"
   `)
+
+  for (const letter of "hello") {
+    mockInput.pressKey(letter)
+  }
+  await renderOnce()
+
+  expect("\n" + captureFrame().trim()).toMatchInlineSnapshot(`
+    "
+    ┌──────────────────────────────────────┐
+    │(empty)                               │
+    └──────────────────────────────────────┘"
+  `)
+  for (const letter of " world") {
+    mockInput.pressKey(letter)
+  }
+  await renderOnce()
+
+  expect("\n" + captureFrame().trim()).toMatchInlineSnapshot(`
+    "
+    ┌──────────────────────────────────────┐
+    │(empty)                               │
+    └──────────────────────────────────────┘"
+  `)
+
+
 })
