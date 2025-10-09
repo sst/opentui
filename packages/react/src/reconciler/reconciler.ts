@@ -6,7 +6,7 @@ import { hostConfig } from "./host-config"
 
 export const reconciler = ReactReconciler(hostConfig)
 
-export function _render(element: React.ReactNode, root: RootRenderable) {
+export function _render(element: React.ReactNode, root: RootRenderable, callback?: () => void) {
   const container = reconciler.createContainer(
     root,
     ConcurrentRoot,
@@ -23,5 +23,5 @@ export function _render(element: React.ReactNode, root: RootRenderable) {
     null,
   )
 
-  reconciler.updateContainer(element, container, null, () => {})
+  reconciler.updateContainer(element, container, null, callback || (() => {}))
 }
