@@ -52,7 +52,7 @@ test("renders input and box with state", async () => {
   expect("\n" + captureFrame().trim()).toMatchInlineSnapshot(`
     "
     ┌──────────────────────────────────────┐
-    │(empty)                               │
+    │hello                                 │
     └──────────────────────────────────────┘"
   `)
   for (const letter of " world") {
@@ -63,7 +63,7 @@ test("renders input and box with state", async () => {
   expect("\n" + captureFrame().trim()).toMatchInlineSnapshot(`
     "
     ┌──────────────────────────────────────┐
-    │(empty)                               │
+    │hello world                           │
     └──────────────────────────────────────┘"
   `)
 
