@@ -66,6 +66,4 @@ test("renders input and box with state", async () => {
     │hello world                           │
     └──────────────────────────────────────┘"
   `)
-
-
 })
