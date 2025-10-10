@@ -429,6 +429,178 @@ pub fn Rope(comptime T: type) type {
             self.root = try Node.new_branch(self.allocator, self.root, other.root);
         }
 
+        /// Split rope into two at index (returns right half, modifies self to be left half)
+        pub fn split(self: *Self, index: u32) !Self {
+            const SplitContext = struct {
+                left_items: std.ArrayList(T),
+                right_items: std.ArrayList(T),
+                split_index: u32,
+                current_index: u32 = 0,
+                allocator: Allocator,
+
+                fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
+                    _ = idx;
+                    const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
+                    if (context.current_index < context.split_index) {
+                        context.left_items.append(data.*) catch |e| return .{ .err = e };
+                    } else {
+                        context.right_items.append(data.*) catch |e| return .{ .err = e };
+                    }
+                    context.current_index += 1;
+                    return .{};
+                }
+            };
+
+            var context = SplitContext{
+                .left_items = std.ArrayList(T).init(self.allocator),
+                .right_items = std.ArrayList(T).init(self.allocator),
+                .split_index = index,
+                .allocator = self.allocator,
+            };
+            defer context.left_items.deinit();
+            defer context.right_items.deinit();
+
+            try self.walk(&context, SplitContext.walker);
+
+            // Create new ropes from the split items
+            const left_root = if (context.left_items.items.len > 0)
+                try Self.from_slice(self.allocator, context.left_items.items)
+            else
+                try Self.init(self.allocator);
+
+            const right_root = if (context.right_items.items.len > 0)
+                try Self.from_slice(self.allocator, context.right_items.items)
+            else
+                try Self.init(self.allocator);
+
+            self.root = left_root.root;
+            return right_root;
+        }
+
+        /// Extract items in range [start, end) into an array
+        pub fn slice(self: *const Self, start: u32, end: u32, allocator: Allocator) ![]T {
+            if (start >= end) return &[_]T{};
+
+            const SliceContext = struct {
+                items: std.ArrayList(T),
+                start: u32,
+                end: u32,
+                current_index: u32 = 0,
+
+                fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
+                    _ = idx;
+                    const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
+                    if (context.current_index >= context.start and context.current_index < context.end) {
+                        context.items.append(data.*) catch |e| return .{ .err = e };
+                    }
+                    context.current_index += 1;
+                    if (context.current_index >= context.end) {
+                        return .{ .keep_walking = false };
+                    }
+                    return .{};
+                }
+            };
+
+            var context = SliceContext{
+                .items = std.ArrayList(T).init(allocator),
+                .start = start,
+                .end = end,
+            };
+            errdefer context.items.deinit();
+
+            try self.walk(&context, SliceContext.walker);
+            return context.items.toOwnedSlice();
+        }
+
+        /// Delete range of items [start, end)
+        pub fn delete_range(self: *Self, start: u32, end: u32) !void {
+            if (start >= end) return;
+            const num_items = end - start;
+
+            // Delete items one by one from the end to avoid index shifting issues
+            var i: u32 = 0;
+            while (i < num_items) : (i += 1) {
+                try self.delete(start);
+            }
+        }
+
+        /// Insert multiple items at index efficiently
+        pub fn insert_slice(self: *Self, index: u32, items: []const T) !void {
+            if (items.len == 0) return;
+
+            // Create a rope from the items to insert
+            const insert_rope = try Self.from_slice(self.allocator, items);
+
+            // Split at index, insert new rope, then concatenate
+            if (index == 0) {
+                // Prepend case: insert_rope + self
+                const old_root = self.root;
+                self.root = try Node.new_branch(self.allocator, insert_rope.root, old_root);
+            } else if (index >= self.count()) {
+                // Append case: self + insert_rope
+                try self.concat(&insert_rope);
+            } else {
+                // Middle case: split, then concatenate left + insert + right
+                const SliceContext = struct {
+                    left_items: std.ArrayList(T),
+                    right_items: std.ArrayList(T),
+                    split_index: u32,
+                    current_index: u32 = 0,
+
+                    fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
+                        _ = idx;
+                        const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
+                        if (context.current_index < context.split_index) {
+                            context.left_items.append(data.*) catch |e| return .{ .err = e };
+                        } else {
+                            context.right_items.append(data.*) catch |e| return .{ .err = e };
+                        }
+                        context.current_index += 1;
+                        return .{};
+                    }
+                };
+
+                var context = SliceContext{
+                    .left_items = std.ArrayList(T).init(self.allocator),
+                    .right_items = std.ArrayList(T).init(self.allocator),
+                    .split_index = index,
+                };
+                defer context.left_items.deinit();
+                defer context.right_items.deinit();
+
+                try self.walk(&context, SliceContext.walker);
+
+                const left_rope = try Self.from_slice(self.allocator, context.left_items.items);
+                const right_rope = try Self.from_slice(self.allocator, context.right_items.items);
+
+                // Concatenate: left + insert + right
+                const left_plus_insert = try Node.new_branch(self.allocator, left_rope.root, insert_rope.root);
+                self.root = try Node.new_branch(self.allocator, left_plus_insert, right_rope.root);
+            }
+        }
+
+        /// Convert entire rope to array
+        pub fn to_array(self: *const Self, allocator: Allocator) ![]T {
+            const ToArrayContext = struct {
+                items: std.ArrayList(T),
+
+                fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
+                    _ = idx;
+                    const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
+                    context.items.append(data.*) catch |e| return .{ .err = e };
+                    return .{};
+                }
+            };
+
+            var context = ToArrayContext{
+                .items = std.ArrayList(T).init(allocator),
+            };
+            errdefer context.items.deinit();
+
+            try self.walk(&context, ToArrayContext.walker);
+            return context.items.toOwnedSlice();
+        }
+
         /// Undo/Redo operations
         pub fn store_undo(self: *Self, meta: []const u8) !void {
             const undo_node = try self.create_undo_node(self.root, meta);

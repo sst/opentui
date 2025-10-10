@@ -1665,3 +1665,654 @@ test "Rope - stress test undo/redo with many operations" {
     }
     try std.testing.expectEqual(@as(u32, 16), rope.count());
 }
+
+//===== Bulk/Range Operations Tests =====
+
+test "Rope - split at beginning" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const right = try rope.split(0);
+
+    try std.testing.expectEqual(@as(u32, 1), rope.count()); // empty + nothing
+    try std.testing.expectEqual(@as(u32, 3), right.count());
+    try std.testing.expectEqual(@as(u32, 1), right.get(0).?.value);
+}
+
+test "Rope - split at middle" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+        .{ .value = 4 },
+        .{ .value = 5 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const right = try rope.split(2);
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+
+    try std.testing.expectEqual(@as(u32, 3), right.count());
+    try std.testing.expectEqual(@as(u32, 3), right.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 4), right.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 5), right.get(2).?.value);
+}
+
+test "Rope - split at end" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const right = try rope.split(3);
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), right.count()); // just empty
+}
+
+test "Rope - slice full range" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const sliced = try rope.slice(0, 3, arena.allocator());
+    defer arena.allocator().free(sliced);
+
+    try std.testing.expectEqual(@as(usize, 3), sliced.len);
+    try std.testing.expectEqual(@as(u32, 1), sliced[0].value);
+    try std.testing.expectEqual(@as(u32, 2), sliced[1].value);
+    try std.testing.expectEqual(@as(u32, 3), sliced[2].value);
+}
+
+test "Rope - slice partial range" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 10 },
+        .{ .value = 20 },
+        .{ .value = 30 },
+        .{ .value = 40 },
+        .{ .value = 50 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const sliced = try rope.slice(1, 4, arena.allocator());
+    defer arena.allocator().free(sliced);
+
+    try std.testing.expectEqual(@as(usize, 3), sliced.len);
+    try std.testing.expectEqual(@as(u32, 20), sliced[0].value);
+    try std.testing.expectEqual(@as(u32, 30), sliced[1].value);
+    try std.testing.expectEqual(@as(u32, 40), sliced[2].value);
+}
+
+test "Rope - slice empty range" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const sliced = try rope.slice(1, 1, arena.allocator());
+    defer arena.allocator().free(sliced);
+
+    try std.testing.expectEqual(@as(usize, 0), sliced.len);
+}
+
+test "Rope - delete_range at beginning" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+        .{ .value = 4 },
+        .{ .value = 5 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.delete_range(0, 2);
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 3), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 4), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 5), rope.get(2).?.value);
+}
+
+test "Rope - delete_range in middle" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+        .{ .value = 4 },
+        .{ .value = 5 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.delete_range(1, 4);
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 5), rope.get(1).?.value);
+}
+
+test "Rope - delete_range at end" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.delete_range(1, 3);
+
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+}
+
+test "Rope - delete_range empty (same indices)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.delete_range(1, 1);
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+}
+
+test "Rope - insert_slice at beginning" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 3 });
+
+    const to_insert = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    try rope.insert_slice(0, &to_insert);
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+}
+
+test "Rope - insert_slice in middle" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 4 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const to_insert = [_]SimpleItem{
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    try rope.insert_slice(1, &to_insert);
+
+    try std.testing.expectEqual(@as(u32, 4), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+    try std.testing.expectEqual(@as(u32, 4), rope.get(3).?.value);
+}
+
+test "Rope - insert_slice at end" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const to_insert = [_]SimpleItem{
+        .{ .value = 3 },
+        .{ .value = 4 },
+    };
+    try rope.insert_slice(2, &to_insert);
+
+    try std.testing.expectEqual(@as(u32, 4), rope.count());
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+    try std.testing.expectEqual(@as(u32, 4), rope.get(3).?.value);
+}
+
+test "Rope - insert_slice empty array" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    const to_insert: []const SimpleItem = &[_]SimpleItem{};
+    try rope.insert_slice(0, to_insert);
+
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+}
+
+test "Rope - to_array with simple items" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 10 },
+        .{ .value = 20 },
+        .{ .value = 30 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const array = try rope.to_array(arena.allocator());
+    defer arena.allocator().free(array);
+
+    try std.testing.expectEqual(@as(usize, 3), array.len);
+    try std.testing.expectEqual(@as(u32, 10), array[0].value);
+    try std.testing.expectEqual(@as(u32, 20), array[1].value);
+    try std.testing.expectEqual(@as(u32, 30), array[2].value);
+}
+
+test "Rope - to_array empty rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    const array = try rope.to_array(arena.allocator());
+    defer arena.allocator().free(array);
+
+    try std.testing.expectEqual(@as(usize, 1), array.len); // empty item
+}
+
+test "Rope - combined bulk operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+        .{ .value = 4 },
+        .{ .value = 5 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    // Delete middle range
+    try rope.delete_range(2, 4);
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+
+    // Insert slice in middle
+    const to_insert = [_]SimpleItem{
+        .{ .value = 30 },
+        .{ .value = 40 },
+    };
+    try rope.insert_slice(1, &to_insert);
+    try std.testing.expectEqual(@as(u32, 5), rope.count());
+
+    // Verify final state
+    const array = try rope.to_array(arena.allocator());
+    defer arena.allocator().free(array);
+
+    try std.testing.expectEqual(@as(u32, 1), array[0].value);
+    try std.testing.expectEqual(@as(u32, 30), array[1].value);
+    try std.testing.expectEqual(@as(u32, 40), array[2].value);
+    try std.testing.expectEqual(@as(u32, 2), array[3].value);
+    try std.testing.expectEqual(@as(u32, 5), array[4].value);
+}
+
+test "Rope - undo/redo with bulk operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    // Store state
+    try rope.store_undo("before bulk");
+
+    // Bulk insert
+    const to_insert = [_]SimpleItem{
+        .{ .value = 10 },
+        .{ .value = 20 },
+    };
+    try rope.insert_slice(1, &to_insert);
+    try std.testing.expectEqual(@as(u32, 5), rope.count());
+
+    // Undo
+    _ = try rope.undo("after bulk");
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+
+    // Redo
+    _ = try rope.redo();
+    try std.testing.expectEqual(@as(u32, 5), rope.count());
+}
+
+//===== Edge Case Tests =====
+
+test "Rope - slice with start > end returns empty" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const sliced = try rope.slice(2, 1, arena.allocator());
+    defer arena.allocator().free(sliced);
+
+    try std.testing.expectEqual(@as(usize, 0), sliced.len);
+}
+
+test "Rope - slice beyond bounds" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    // Should only get items that exist
+    const sliced = try rope.slice(0, 100, arena.allocator());
+    defer arena.allocator().free(sliced);
+
+    try std.testing.expectEqual(@as(usize, 2), sliced.len);
+}
+
+test "Rope - delete_range with start > end does nothing" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.delete_range(2, 1);
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+}
+
+test "Rope - insert_slice beyond count appends" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    const to_insert = [_]SimpleItem{
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    try rope.insert_slice(100, &to_insert);
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+}
+
+test "Rope - replace at out of bounds does nothing" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.replace(100, .{ .value = 999 });
+
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+}
+
+test "Rope - delete at out of bounds" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // This should handle gracefully (delete beyond bounds)
+    try rope.delete(100);
+
+    // Count unchanged
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+}
+
+test "Rope - split at zero creates empty left" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const right = try rope.split(0);
+
+    try std.testing.expectEqual(@as(u32, 1), rope.count()); // just empty item
+    try std.testing.expectEqual(@as(u32, 2), right.count());
+}
+
+test "Rope - split beyond count" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const right = try rope.split(100);
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), right.count()); // just empty
+}
+
+test "Rope - multiple undo without operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.store_undo("state1");
+    try rope.store_undo("state2");
+
+    // Two undos back to back
+    _ = try rope.undo("current");
+    _ = try rope.undo("current");
+
+    // Should fail on third
+    const result = rope.undo("current");
+    try std.testing.expectError(error.Stop, result);
+}
+
+test "Rope - stress test with 1000 items" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var items: [1000]SimpleItem = undefined;
+    for (&items, 0..) |*item, i| {
+        item.* = .{ .value = @intCast(i) };
+    }
+
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try std.testing.expectEqual(@as(u32, 1000), rope.count());
+    try std.testing.expectEqual(@as(u32, 0), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 500), rope.get(500).?.value);
+    try std.testing.expectEqual(@as(u32, 999), rope.get(999).?.value);
+
+    // Test that tree is reasonably balanced
+    const depth = rope.root.depth();
+    try std.testing.expect(depth < 20); // log2(1000) ≈ 10, allow some slack
+}
+
+test "Rope - delete_range entire rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.delete_range(0, 3);
+
+    // Should have empty item left
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+}
+
+test "Rope - to_array single item" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 42 });
+
+    const array = try rope.to_array(arena.allocator());
+    defer arena.allocator().free(array);
+
+    try std.testing.expectEqual(@as(usize, 1), array.len);
+    try std.testing.expectEqual(@as(u32, 42), array[0].value);
+}
+
+test "Rope - concat with empty rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope1 = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+    const rope2 = try RopeType.init(arena.allocator());
+
+    try rope1.concat(&rope2);
+
+    try std.testing.expectEqual(@as(u32, 2), rope1.count()); // original + empty
+}
+
+test "Rope - redo after modifying tree fails" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.store_undo("state1");
+    try rope.append(.{ .value = 2 });
+
+    _ = try rope.undo("current");
+
+    // Manually modify the rope (breaking the redo contract)
+    try rope.append(.{ .value = 3 });
+
+    // Redo should fail because tree was modified
+    const result = rope.redo();
+    try std.testing.expectError(error.Stop, result);
+}
+
+test "Rope - rebalance extremely unbalanced tree" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    // Create unbalanced tree by inserting at end repeatedly
+    for (0..50) |i| {
+        try rope.append(.{ .value = @intCast(i) });
+    }
+
+    const depth_before = rope.root.depth();
+
+    // Rebalance
+    try rope.rebalance(arena.allocator());
+
+    const depth_after = rope.root.depth();
+
+    // Should be more balanced now
+    try std.testing.expect(depth_after <= depth_before);
+    try std.testing.expect(depth_after < 15); // log2(51) ≈ 6
+
+    // Data should be preserved
+    try std.testing.expectEqual(@as(u32, 51), rope.count());
+    try std.testing.expectEqual(@as(u32, 0), rope.get(1).?.value);
+}
