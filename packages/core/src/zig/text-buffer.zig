@@ -177,17 +177,23 @@ pub const TextLine = struct {
     chunks: std.ArrayListUnmanaged(TextChunk),
     width: u32,
     char_offset: u32, // Cumulative char offset for selection tracking
+    highlights: std.ArrayListUnmanaged(Highlight), // Highlights for this line
+    spans: std.ArrayListUnmanaged(StyleSpan), // Pre-computed style spans for this line
 
     pub fn init() TextLine {
         return .{
             .chunks = .{},
             .width = 0,
             .char_offset = 0,
+            .highlights = .{},
+            .spans = .{},
         };
     }
 
     pub fn deinit(self: *TextLine, allocator: Allocator) void {
         self.chunks.deinit(allocator);
+        self.highlights.deinit(allocator);
+        self.spans.deinit(allocator);
     }
 };
 
@@ -204,8 +210,6 @@ pub const TextBuffer = struct {
     arena: *std.heap.ArenaAllocator,
 
     lines: std.ArrayListUnmanaged(TextLine),
-    line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
-    line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
@@ -240,12 +244,6 @@ pub const TextBuffer = struct {
             lines.deinit(internal_allocator);
         }
 
-        var line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)) = .{};
-        errdefer line_highlights.deinit(internal_allocator);
-
-        var line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)) = .{};
-        errdefer line_spans.deinit(internal_allocator);
-
         var view_dirty_flags: std.ArrayListUnmanaged(bool) = .{};
         errdefer view_dirty_flags.deinit(global_allocator);
 
@@ -265,8 +263,6 @@ pub const TextBuffer = struct {
             .global_allocator = global_allocator,
             .arena = internal_arena,
             .lines = lines,
-            .line_highlights = line_highlights,
-            .line_spans = line_spans,
             .syntax_style = null,
             .pool = pool,
             .graphemes_data = graph,
@@ -365,8 +361,6 @@ pub const TextBuffer = struct {
         self.char_count = 0;
 
         self.lines = .{};
-        self.line_highlights = .{};
-        self.line_spans = .{};
 
         // Mark all registered views as dirty
         self.markAllViewsDirty();
@@ -400,12 +394,8 @@ pub const TextBuffer = struct {
         priority: u8,
         hl_ref: ?u16,
     ) TextBufferError!void {
-        // Ensure line_highlights is sized to include this line
-        while (self.line_highlights.items.len <= line_idx) {
-            try self.line_highlights.append(
-                self.allocator,
-                std.ArrayListUnmanaged(Highlight){},
-            );
+        if (line_idx >= self.lines.items.len) {
+            return TextBufferError.InvalidIndex;
         }
 
         const hl = Highlight{
@@ -416,19 +406,19 @@ pub const TextBuffer = struct {
             .hl_ref = hl_ref,
         };
 
-        try self.line_highlights.items[line_idx].append(self.allocator, hl);
+        try self.lines.items[line_idx].highlights.append(self.allocator, hl);
         try self.rebuildLineSpans(line_idx);
     }
 
     /// Remove all highlights with a specific reference ID
     pub fn removeHighlightsByRef(self: *TextBuffer, hl_ref: u16) void {
-        for (self.line_highlights.items, 0..) |*line_hls, line_idx| {
+        for (self.lines.items, 0..) |*line, line_idx| {
             var i: usize = 0;
             var changed = false;
-            while (i < line_hls.items.len) {
-                if (line_hls.items[i].hl_ref) |ref| {
+            while (i < line.highlights.items.len) {
+                if (line.highlights.items[i].hl_ref) |ref| {
                     if (ref == hl_ref) {
-                        _ = line_hls.swapRemove(i);
+                        _ = line.highlights.swapRemove(i);
                         changed = true;
                         continue;
                     }
@@ -443,32 +433,32 @@ pub const TextBuffer = struct {
 
     /// Clear all highlights from a specific line
     pub fn clearLineHighlights(self: *TextBuffer, line_idx: usize) void {
-        if (line_idx < self.line_highlights.items.len) {
-            self.line_highlights.items[line_idx].clearRetainingCapacity();
+        if (line_idx < self.lines.items.len) {
+            self.lines.items[line_idx].highlights.clearRetainingCapacity();
             self.rebuildLineSpans(line_idx) catch {};
         }
     }
 
     /// Clear all highlights from all lines
     pub fn clearAllHighlights(self: *TextBuffer) void {
-        for (self.line_highlights.items, 0..) |*line_hls, line_idx| {
-            line_hls.clearRetainingCapacity();
+        for (self.lines.items, 0..) |*line, line_idx| {
+            line.highlights.clearRetainingCapacity();
             self.rebuildLineSpans(line_idx) catch {};
         }
     }
 
     /// Get highlights for a specific line
     pub fn getLineHighlights(self: *const TextBuffer, line_idx: usize) []const Highlight {
-        if (line_idx < self.line_highlights.items.len) {
-            return self.line_highlights.items[line_idx].items;
+        if (line_idx < self.lines.items.len) {
+            return self.lines.items[line_idx].highlights.items;
         }
         return &[_]Highlight{};
     }
 
     /// Get pre-computed style spans for a specific line
     pub fn getLineSpans(self: *const TextBuffer, line_idx: usize) []const StyleSpan {
-        if (line_idx < self.line_spans.items.len) {
-            return self.line_spans.items[line_idx].items;
+        if (line_idx < self.lines.items.len) {
+            return self.lines.items[line_idx].spans.items;
         }
         return &[_]StyleSpan{};
     }
@@ -563,21 +553,18 @@ pub const TextBuffer = struct {
     /// Rebuild pre-computed style spans for a line
     /// Builds an optimized span list for O(1) rendering lookups
     fn rebuildLineSpans(self: *TextBuffer, line_idx: usize) TextBufferError!void {
-        // Ensure line_spans is sized
-        while (self.line_spans.items.len <= line_idx) {
-            try self.line_spans.append(
-                self.allocator,
-                std.ArrayListUnmanaged(StyleSpan){},
-            );
+        if (line_idx >= self.lines.items.len) {
+            return TextBufferError.InvalidIndex;
         }
 
-        self.line_spans.items[line_idx].clearRetainingCapacity();
+        const line = &self.lines.items[line_idx];
+        line.spans.clearRetainingCapacity();
 
-        if (line_idx >= self.line_highlights.items.len or self.line_highlights.items[line_idx].items.len == 0) {
+        if (line.highlights.items.len == 0) {
             return; // No highlights, rendering will use defaults
         }
 
-        const highlights = self.line_highlights.items[line_idx].items;
+        const highlights = line.highlights.items;
 
         // Collect all boundary columns
         const Event = struct {
@@ -624,7 +611,7 @@ pub const TextBuffer = struct {
 
             // Emit span for the segment leading up to this event
             if (event.col > current_col) {
-                try self.line_spans.items[line_idx].append(self.allocator, StyleSpan{
+                try line.spans.append(self.allocator, StyleSpan{
                     .col = current_col,
                     .style_id = current_style,
                     .next_col = event.col,
