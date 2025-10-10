@@ -2317,3 +2317,269 @@ test "Rope - rebalance extremely unbalanced tree" {
     try std.testing.expectEqual(@as(u32, 50), rope.count());
     try std.testing.expectEqual(@as(u32, 0), rope.get(0).?.value); // Fixed index
 }
+
+//===== Weight-aware Tests =====
+
+// Type with custom weight for testing weight-based operations
+const WeightedItem = struct {
+    value: u32,
+    weight: u32,
+
+    pub const Metrics = struct {
+        total_weight: u32 = 0,
+
+        pub fn add(self: *Metrics, other: Metrics) void {
+            self.total_weight += other.total_weight;
+        }
+
+        pub fn weight(self: *const Metrics) u32 {
+            return self.total_weight;
+        }
+    };
+
+    pub fn measure(self: *const WeightedItem) Metrics {
+        return .{ .total_weight = self.weight };
+    }
+
+    pub fn empty() WeightedItem {
+        return .{ .value = 0, .weight = 0 };
+    }
+
+    pub fn is_empty(self: *const WeightedItem) bool {
+        return self.value == 0 and self.weight == 0;
+    }
+};
+
+// Leaf split function for testing
+const WeightedRope = rope_mod.Rope(WeightedItem);
+fn splitWeightedItem(allocator: std.mem.Allocator, leaf: *const WeightedItem, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!WeightedRope.Node.LeafSplitResult {
+    _ = allocator;
+    if (weight_in_leaf == 0) {
+        return .{
+            .left = WeightedItem.empty(),
+            .right = leaf.*,
+        };
+    } else if (weight_in_leaf >= leaf.weight) {
+        return .{
+            .left = leaf.*,
+            .right = WeightedItem.empty(),
+        };
+    }
+
+    // Split proportionally
+    return .{
+        .left = .{ .value = leaf.value, .weight = weight_in_leaf },
+        .right = .{ .value = leaf.value + 1000, .weight = leaf.weight - weight_in_leaf },
+    };
+}
+
+test "Rope - totalWeight returns correct weight" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+    try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
+}
+
+test "Rope - split_at_weight at boundary" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    const rope = try WeightedRope.from_slice(arena.allocator(), &items);
+
+    // Split at weight 30 (boundary between second and third item)
+    const result = try WeightedRope.Node.split_at_weight(rope.root, 30, arena.allocator(), rope.empty_leaf, splitWeightedItem);
+
+    // Left should have weight 30 (first two items)
+    try std.testing.expectEqual(@as(u32, 30), result.left.metrics().weight());
+
+    // Right should have weight 30 (third item)
+    try std.testing.expectEqual(@as(u32, 30), result.right.metrics().weight());
+}
+
+test "Rope - split_at_weight inside leaf" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const rope = try WeightedRope.from_item(arena.allocator(), .{ .value = 1, .weight = 100 });
+
+    // Split at weight 40 (inside the single leaf)
+    const result = try WeightedRope.Node.split_at_weight(rope.root, 40, arena.allocator(), rope.empty_leaf, splitWeightedItem);
+
+    // Left should have weight 40
+    try std.testing.expectEqual(@as(u32, 40), result.left.metrics().weight());
+
+    // Right should have weight 60
+    try std.testing.expectEqual(@as(u32, 60), result.right.metrics().weight());
+}
+
+test "Rope - splitByWeight" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+    try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
+
+    // Split at weight 30
+    const right_half = try rope.splitByWeight(30, splitWeightedItem);
+
+    // Left half should have weight 30
+    try std.testing.expectEqual(@as(u32, 30), rope.totalWeight());
+
+    // Right half should have weight 30
+    try std.testing.expectEqual(@as(u32, 30), right_half.totalWeight());
+}
+
+test "Rope - deleteRangeByWeight" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+        .{ .value = 4, .weight = 40 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+    try std.testing.expectEqual(@as(u32, 100), rope.totalWeight());
+
+    // Delete weight range [10, 30) - removes the second item (weight 20)
+    try rope.deleteRangeByWeight(10, 30, splitWeightedItem);
+
+    // Should have removed weight 20
+    try std.testing.expectEqual(@as(u32, 80), rope.totalWeight());
+}
+
+test "Rope - insertSliceByWeight" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+    try std.testing.expectEqual(@as(u32, 40), rope.totalWeight());
+
+    // Insert at weight 10 (after first item)
+    const insert_items = [_]WeightedItem{
+        .{ .value = 2, .weight = 20 },
+    };
+    try rope.insertSliceByWeight(10, &insert_items, splitWeightedItem);
+
+    // Should have added weight 20
+    try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
+}
+
+test "Rope - findByWeight" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+
+    // Find leaf containing weight 0 (first item)
+    const result0 = rope.findByWeight(0);
+    try std.testing.expect(result0 != null);
+    try std.testing.expectEqual(@as(u32, 1), result0.?.leaf.value);
+    try std.testing.expectEqual(@as(u32, 0), result0.?.start_weight);
+
+    // Find leaf containing weight 15 (second item)
+    const result15 = rope.findByWeight(15);
+    try std.testing.expect(result15 != null);
+    try std.testing.expectEqual(@as(u32, 2), result15.?.leaf.value);
+    try std.testing.expectEqual(@as(u32, 10), result15.?.start_weight);
+
+    // Find leaf containing weight 35 (third item)
+    const result35 = rope.findByWeight(35);
+    try std.testing.expect(result35 != null);
+    try std.testing.expectEqual(@as(u32, 3), result35.?.leaf.value);
+    try std.testing.expectEqual(@as(u32, 30), result35.?.start_weight);
+
+    // Out of bounds
+    const result100 = rope.findByWeight(100);
+    try std.testing.expect(result100 == null);
+}
+
+test "Rope - WeightFinger basic operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+
+    // Create finger at weight 15
+    var finger = rope.makeWeightFinger(15);
+    try std.testing.expectEqual(@as(u32, 15), finger.getWeight());
+
+    // Seek to different weight
+    finger.seekWeight(35);
+    try std.testing.expectEqual(@as(u32, 35), finger.getWeight());
+
+    // Invalidate
+    finger.invalidate();
+    try std.testing.expect(finger.cached_node == null);
+}
+
+test "Rope - insertSliceAtWeightFinger" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 3, .weight = 30 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+
+    var finger = rope.makeWeightFinger(10);
+
+    const insert_items = [_]WeightedItem{
+        .{ .value = 2, .weight = 20 },
+    };
+    try rope.insertSliceAtWeightFinger(&finger, &insert_items, splitWeightedItem);
+
+    try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
+}
+
+test "Rope - deleteRangeByWeightWith" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 10 },
+        .{ .value = 2, .weight = 20 },
+        .{ .value = 3, .weight = 30 },
+        .{ .value = 4, .weight = 40 },
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+
+    var start_finger = rope.makeWeightFinger(10);
+    var end_finger = rope.makeWeightFinger(30);
+
+    try rope.deleteRangeByWeightWith(&start_finger, &end_finger, splitWeightedItem);
+
+    // Should have removed weight 20
+    try std.testing.expectEqual(@as(u32, 80), rope.totalWeight());
+}

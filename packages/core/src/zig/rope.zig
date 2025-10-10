@@ -343,6 +343,62 @@ pub fn Rope(comptime T: type) type {
                     },
                 };
             }
+
+            /// Result type for leaf splitting operations
+            pub const LeafSplitResult = struct { left: T, right: T };
+
+            /// Leaf-splitting function type for weight-based splits
+            /// Called when split point falls inside a leaf
+            /// Returns (left_data, right_data) where left_data has exactly weight_in_leaf weight
+            pub const LeafSplitFn = *const fn (allocator: Allocator, leaf: *const T, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult;
+
+            /// Structural split at weight - returns (left, right) without flattening
+            /// O(log n) operation that reuses subtrees
+            /// When split point falls inside a leaf, calls split_leaf_fn to split the data
+            pub fn split_at_weight(
+                node: *const Node,
+                target_weight: u32,
+                allocator: Allocator,
+                empty_leaf: *const Node,
+                split_leaf_fn: LeafSplitFn,
+            ) error{ OutOfMemory, OutOfBounds }!struct { left: *const Node, right: *const Node } {
+                return switch (node.*) {
+                    .leaf => |*l| {
+                        const leaf_weight = node.metrics().weight();
+
+                        // Boundary cases: split before or after this leaf
+                        if (target_weight == 0) {
+                            return .{ .left = empty_leaf, .right = node };
+                        } else if (target_weight >= leaf_weight) {
+                            return .{ .left = node, .right = empty_leaf };
+                        }
+
+                        // Split inside the leaf
+                        const split_result = try split_leaf_fn(allocator, &l.data, target_weight);
+                        const left_node = try new_leaf(allocator, split_result.left);
+                        const right_node = try new_leaf(allocator, split_result.right);
+                        return .{ .left = left_node, .right = right_node };
+                    },
+                    .branch => |*b| {
+                        const left_weight = b.left_metrics.weight();
+
+                        if (target_weight < left_weight) {
+                            // Split point is in left subtree
+                            const result = try split_at_weight(b.left, target_weight, allocator, empty_leaf, split_leaf_fn);
+                            const new_right = try join_balanced(result.right, b.right, allocator);
+                            return .{ .left = result.left, .right = new_right };
+                        } else if (target_weight > left_weight) {
+                            // Split point is in right subtree
+                            const result = try split_at_weight(b.right, target_weight - left_weight, allocator, empty_leaf, split_leaf_fn);
+                            const new_left = try join_balanced(b.left, result.left, allocator);
+                            return .{ .left = new_left, .right = result.right };
+                        } else {
+                            // Split point is exactly at the boundary
+                            return .{ .left = b.left, .right = b.right };
+                        }
+                    },
+                };
+            }
         };
 
         /// Finger for efficient near-cursor edits
@@ -407,6 +463,55 @@ pub fn Rope(comptime T: type) type {
 
                 // Cache miss - traverse from root and update cache
                 return self.rope.root.get(self.index);
+            }
+        };
+
+        /// Weight-based finger for efficient near-cursor edits by weight
+        /// Caches the path to last accessed position for locality
+        pub const WeightFinger = struct {
+            weight: u32, // Last resolved weight
+            rope: *const Self, // Reference to the rope this finger belongs to
+            cached_node: ?*const Node = null, // Cached node near weight
+            cached_node_start_weight: u32 = 0, // Starting weight of cached node's subtree
+
+            /// Create a weight finger at a specific weight
+            pub fn init(rope: *const Self, weight: u32) WeightFinger {
+                return .{
+                    .weight = weight,
+                    .rope = rope,
+                };
+            }
+
+            /// Move finger to a new weight and invalidate cache if far away
+            pub fn seekWeight(self: *WeightFinger, weight: u32) void {
+                // If seeking far away (more than 100 weight units), invalidate cache
+                if (self.weight > weight) {
+                    if (self.weight - weight > 100) {
+                        self.invalidate();
+                    }
+                } else {
+                    if (weight - self.weight > 100) {
+                        self.invalidate();
+                    }
+                }
+                self.weight = weight;
+            }
+
+            /// Get current weight
+            pub fn getWeight(self: *const WeightFinger) u32 {
+                return self.weight;
+            }
+
+            /// Invalidate the cache (call after structural changes)
+            pub fn invalidate(self: *WeightFinger) void {
+                self.cached_node = null;
+                self.cached_node_start_weight = 0;
+            }
+
+            /// Update cache with a node and its starting weight
+            fn updateCache(self: *WeightFinger, node: *const Node, start_weight: u32) void {
+                self.cached_node = node;
+                self.cached_node_start_weight = start_weight;
             }
         };
 
@@ -765,6 +870,74 @@ pub fn Rope(comptime T: type) type {
             return context.items.toOwnedSlice();
         }
 
+        /// Get total weight of the rope
+        /// Uses T.Metrics.weight() if available, else falls back to count
+        pub fn totalWeight(self: *const Self) u32 {
+            return self.root.metrics().weight();
+        }
+
+        /// Split rope into two at weight (returns right half, modifies self to be left half)
+        /// O(log n) structural split without flattening
+        /// Calls split_leaf_fn when split point falls inside a leaf
+        pub fn splitByWeight(self: *Self, weight: u32, split_leaf_fn: Node.LeafSplitFn) !Self {
+            const result = try Node.split_at_weight(self.root, weight, self.allocator, self.empty_leaf, split_leaf_fn);
+            self.root = result.left;
+            return Self{
+                .root = result.right,
+                .allocator = self.allocator,
+                .empty_leaf = self.empty_leaf,
+                .undo_history = null,
+                .redo_history = null,
+                .curr_history = null,
+            };
+        }
+
+        /// Delete range by weight [start, end)
+        /// O(log n) structural operation
+        /// Calls split_leaf_fn when split points fall inside leaves
+        pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: Node.LeafSplitFn) !void {
+            if (start >= end) return;
+
+            // Split at start, then split the right part at (end - start)
+            const first_split = try Node.split_at_weight(self.root, start, self.allocator, self.empty_leaf, split_leaf_fn);
+            const second_split = try Node.split_at_weight(first_split.right, end - start, self.allocator, self.empty_leaf, split_leaf_fn);
+
+            // Join left part with the part after the deleted range
+            // Filter split-boundary empties
+            if (first_split.left == self.empty_leaf) {
+                self.root = second_split.right;
+            } else if (second_split.right == self.empty_leaf) {
+                self.root = first_split.left;
+            } else {
+                self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
+            }
+        }
+
+        /// Insert multiple items at weight position efficiently
+        /// O(log n + k) structural operation where k is items.len
+        /// Calls split_leaf_fn when split point falls inside a leaf
+        pub fn insertSliceByWeight(self: *Self, weight: u32, items: []const T, split_leaf_fn: Node.LeafSplitFn) !void {
+            if (items.len == 0) return;
+
+            // Create a rope from the items to insert
+            const insert_rope = try Self.from_slice(self.allocator, items);
+
+            // Split at weight: (left, right)
+            const split_result = try Node.split_at_weight(self.root, weight, self.allocator, self.empty_leaf, split_leaf_fn);
+
+            // Join: left + insert + right
+            // Filter split-boundary empties (pointer equality with self.empty_leaf)
+            const left_filtered = if (split_result.left == self.empty_leaf)
+                insert_rope.root
+            else
+                try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
+
+            self.root = if (split_result.right == self.empty_leaf)
+                left_filtered
+            else
+                try Node.join_balanced(left_filtered, split_result.right, self.allocator);
+        }
+
         /// Create a finger at the given index
         pub fn makeFinger(self: *const Self, index: u32) Finger {
             return Finger.init(self, index);
@@ -803,6 +976,60 @@ pub fn Rope(comptime T: type) type {
             const start = start_finger.index;
             const end = end_finger.index;
             try self.delete_range(@min(start, end), @max(start, end));
+            start_finger.invalidate(); // Structure changed
+            end_finger.invalidate(); // Structure changed
+        }
+
+        /// Result type for weight-based find operations
+        pub const WeightFindResult = struct { leaf: *const T, start_weight: u32 };
+
+        /// Find leaf containing the given weight
+        /// Returns the leaf data and its starting weight in the rope
+        pub fn findByWeight(self: *const Self, weight: u32) ?WeightFindResult {
+            return self.findByWeightInNode(self.root, weight, 0);
+        }
+
+        fn findByWeightInNode(self: *const Self, node: *const Node, target_weight: u32, current_weight: u32) ?WeightFindResult {
+            // Skip sentinel empties
+            if (node.is_sentinel(self.empty_leaf)) {
+                return null;
+            }
+
+            return switch (node.*) {
+                .branch => |*b| {
+                    const left_weight = b.left_metrics.weight();
+                    if (target_weight < current_weight + left_weight) {
+                        return self.findByWeightInNode(b.left, target_weight, current_weight);
+                    }
+                    return self.findByWeightInNode(b.right, target_weight, current_weight + left_weight);
+                },
+                .leaf => |*l| {
+                    const leaf_weight = node.metrics().weight();
+                    if (target_weight < current_weight + leaf_weight) {
+                        return .{ .leaf = &l.data, .start_weight = current_weight };
+                    }
+                    return null;
+                },
+            };
+        }
+
+        /// Create a weight finger at the given weight
+        pub fn makeWeightFinger(self: *const Self, weight: u32) WeightFinger {
+            return WeightFinger.init(self, weight);
+        }
+
+        /// Insert slice at weight finger position (invalidates finger cache)
+        pub fn insertSliceAtWeightFinger(self: *Self, finger: *WeightFinger, items: []const T, split_leaf_fn: Node.LeafSplitFn) !void {
+            try self.insertSliceByWeight(finger.weight, items, split_leaf_fn);
+            finger.invalidate(); // Structure changed
+            // Finger now points to first inserted item
+        }
+
+        /// Delete range using two weight fingers (invalidates both finger caches)
+        pub fn deleteRangeByWeightWith(self: *Self, start_finger: *WeightFinger, end_finger: *WeightFinger, split_leaf_fn: Node.LeafSplitFn) !void {
+            const start = start_finger.weight;
+            const end = end_finger.weight;
+            try self.deleteRangeByWeight(@min(start, end), @max(start, end), split_leaf_fn);
             start_finger.invalidate(); // Structure changed
             end_finger.invalidate(); // Structure changed
         }
