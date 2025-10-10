@@ -1063,168 +1063,101 @@ pub const TextBuffer = struct {
             return; // Invalid range
         }
 
+        const start_line = &self.lines.items[start_row];
+        const end_line = &self.lines.items[end_row];
+
+        if (start_col >= start_line.width or end_col > end_line.width) {
+            return TextBufferError.InvalidIndex;
+        }
+
+        var deleted_chars: u32 = 0;
+
+        // Step 1: Find start chunk and split if needed (keep left part)
+        var kept_chunks = std.ArrayList(TextChunk).init(self.allocator);
+        defer kept_chunks.deinit();
+        var kept_width: u32 = 0;
+
+        var current_col: u32 = 0;
+        for (start_line.chunks.items) |*chunk| {
+            const chunk_end = current_col + chunk.width;
+
+            if (chunk_end <= start_col) {
+                // Keep entire chunk (before deletion start)
+                try kept_chunks.append(chunk.*);
+                kept_width += chunk.width;
+            } else if (current_col < start_col) {
+                // Split chunk, keep left part
+                const col_in_chunk = start_col - current_col;
+                if (self.splitChunk(chunk, col_in_chunk)) |split| {
+                    try kept_chunks.append(split.left);
+                    kept_width += split.left.width;
+                }
+                break;
+            } else {
+                // Past start_col, stop
+                break;
+            }
+            current_col = chunk_end;
+        }
+
+        // Step 2: Count deleted chars
         if (start_row == end_row) {
-            // Single line deletion - rebuild line keeping only [0..start_col) and [end_col..)
-            const line = &self.lines.items[start_row];
-            if (start_col >= line.width or end_col > line.width) {
-                return TextBufferError.InvalidIndex;
-            }
-
-            const deleted_width = end_col - start_col;
-
-            // Build new chunk list
-            var new_chunks = std.ArrayList(TextChunk).init(self.allocator);
-            defer new_chunks.deinit();
-
-            var current_col: u32 = 0;
-            for (line.chunks.items) |*chunk| {
-                const chunk_start = current_col;
-                const chunk_end = current_col + chunk.width;
-
-                if (chunk_end <= start_col) {
-                    // Chunk is entirely before deletion - keep it
-                    try new_chunks.append(chunk.*);
-                } else if (chunk_start >= end_col) {
-                    // Chunk is entirely after deletion - keep it
-                    try new_chunks.append(chunk.*);
-                } else {
-                    // Chunk overlaps with deletion range
-                    // Determine which parts to keep
-                    const keep_left = chunk_start < start_col;
-                    const keep_right = chunk_end > end_col;
-
-                    if (keep_left and keep_right) {
-                        // Keep both ends, delete middle
-                        // Split at start_col to get left part
-                        const left_col = start_col - chunk_start;
-                        if (self.splitChunk(chunk, left_col)) |first_split| {
-                            try new_chunks.append(first_split.left);
-                            // Now split the right part at (end_col - start_col)
-                            var right_part = first_split.right;
-                            const right_col = end_col - start_col;
-                            if (self.splitChunk(&right_part, right_col)) |second_split| {
-                                try new_chunks.append(second_split.right);
-                            }
-                        }
-                    } else if (keep_left) {
-                        // Keep only left part
-                        const col_in_chunk = start_col - chunk_start;
-                        if (self.splitChunk(chunk, col_in_chunk)) |split| {
-                            try new_chunks.append(split.left);
-                        }
-                    } else if (keep_right) {
-                        // Keep only right part
-                        const col_in_chunk = end_col - chunk_start;
-                        if (self.splitChunk(chunk, col_in_chunk)) |split| {
-                            try new_chunks.append(split.right);
-                        }
-                    }
-                    // else: entire chunk is deleted, don't append anything
-                }
-
-                current_col = chunk_end;
-            }
-
-            // Replace line chunks
-            line.chunks.deinit(self.allocator);
-            line.chunks = .{};
-            for (new_chunks.items) |chunk| {
-                try line.chunks.append(self.allocator, chunk);
-            }
-
-            line.width -= deleted_width;
-            self.char_count -= deleted_width;
-
-            // Update char_offsets for subsequent lines
-            for (self.lines.items[start_row + 1 ..]) |*next_line| {
-                next_line.char_offset -= deleted_width;
-            }
+            deleted_chars = end_col - start_col;
         } else {
-            // Multi-line deletion: Keep [0..start_col) from start line, [end_col..) from end line
-            var deleted_chars: u32 = 0;
-
-            // Count deleted chars
-            const start_line = &self.lines.items[start_row];
-            if (start_col < start_line.width) {
-                deleted_chars += start_line.width - start_col;
-            }
+            deleted_chars += start_line.width - start_col; // Rest of start line
             for (self.lines.items[start_row + 1 .. end_row]) |line| {
-                deleted_chars += line.width;
+                deleted_chars += line.width; // Middle lines
             }
-            const end_line = &self.lines.items[end_row];
-            if (end_col <= end_line.width) {
-                deleted_chars += end_col;
-            }
+            deleted_chars += end_col; // Beginning of end line
+        }
 
-            // Build merged line chunks: [0..start_col) from start line + [end_col..) from end line
-            var merged_chunks = std.ArrayList(TextChunk).init(self.allocator);
-            defer merged_chunks.deinit();
-            var merged_width: u32 = 0;
+        // Step 3: Find end chunk and split if needed (keep right part)
+        current_col = 0;
+        for (end_line.chunks.items) |*chunk| {
+            const chunk_start = current_col;
+            const chunk_end = current_col + chunk.width;
 
-            // Add chunks from start line up to start_col
-            var current_col: u32 = 0;
-            for (start_line.chunks.items) |*chunk| {
-                const chunk_end = current_col + chunk.width;
-                if (chunk_end <= start_col) {
-                    try merged_chunks.append(chunk.*);
-                    merged_width += chunk.width;
-                } else if (current_col < start_col) {
-                    // Partial chunk
-                    const col_in_chunk = start_col - current_col;
-                    if (self.splitChunk(chunk, col_in_chunk)) |split| {
-                        try merged_chunks.append(split.left);
-                        merged_width += split.left.width;
-                    }
+            if (chunk_end <= end_col) {
+                // Skip (being deleted)
+            } else if (chunk_start < end_col) {
+                // Split chunk, keep right part
+                const col_in_chunk = end_col - chunk_start;
+                if (self.splitChunk(chunk, col_in_chunk)) |split| {
+                    try kept_chunks.append(split.right);
+                    kept_width += split.right.width;
                 }
-                current_col = chunk_end;
+            } else {
+                // Keep entire chunk (after deletion end)
+                try kept_chunks.append(chunk.*);
+                kept_width += chunk.width;
             }
+            current_col = chunk_end;
+        }
 
-            // Add chunks from end line starting at end_col
-            current_col = 0;
-            for (end_line.chunks.items) |*chunk| {
-                const chunk_start = current_col;
-                const chunk_end = current_col + chunk.width;
+        // Step 4: Replace start line chunks with kept chunks
+        start_line.chunks.deinit(self.allocator);
+        start_line.chunks = .{};
+        for (kept_chunks.items) |chunk| {
+            try start_line.chunks.append(self.allocator, chunk);
+        }
+        start_line.width = kept_width;
 
-                if (chunk_end <= end_col) {
-                    // Skip
-                } else if (chunk_start >= end_col) {
-                    // Keep entire chunk
-                    try merged_chunks.append(chunk.*);
-                    merged_width += chunk.width;
-                } else {
-                    // Partial chunk - keep right part
-                    const col_in_chunk = end_col - chunk_start;
-                    if (self.splitChunk(chunk, col_in_chunk)) |split| {
-                        try merged_chunks.append(split.right);
-                        merged_width += split.right.width;
-                    }
-                }
-                current_col = chunk_end;
-            }
-
-            // Replace start line chunks with merged chunks
-            start_line.chunks.deinit(self.allocator);
-            start_line.chunks = .{};
-            for (merged_chunks.items) |chunk| {
-                try start_line.chunks.append(self.allocator, chunk);
-            }
-            start_line.width = merged_width;
-
-            // Remove lines from start_row+1 to end_row (inclusive)
+        // Step 5: Remove lines from start_row+1 to end_row (inclusive)
+        if (end_row > start_row) {
             const lines_to_remove = end_row - start_row;
             for (0..lines_to_remove) |_| {
                 var removed_line = self.lines.orderedRemove(start_row + 1);
                 removed_line.deinit(self.allocator);
             }
+        }
 
-            self.char_count -= deleted_chars;
+        self.char_count -= deleted_chars;
 
-            // Update char_offsets for subsequent lines
-            var current_offset = start_line.char_offset + start_line.width;
-            for (self.lines.items[start_row + 1 ..]) |*next_line| {
-                next_line.char_offset = current_offset;
-                current_offset += next_line.width;
-            }
+        // Step 6: Update char_offsets for subsequent lines
+        var current_offset = start_line.char_offset + start_line.width;
+        for (self.lines.items[start_row + 1 ..]) |*next_line| {
+            next_line.char_offset = current_offset;
+            current_offset += next_line.width;
         }
 
         self.markAllViewsDirty();
