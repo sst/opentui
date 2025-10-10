@@ -172,10 +172,8 @@ pub const TextBufferView = struct {
     /// Get grapheme info for a chunk (lazily computed on first access)
     /// Returns the grapheme slice from the chunk
     pub fn getOrCreateChunkCache(self: *TextBufferView, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const GraphemeInfo {
-        const lines = self.text_buffer.getLines();
-        const line = &lines[line_idx];
-        // For ArrayRope(TextChunk), use .items.items to get the actual array
-        const chunk = &line.chunks.items.items[chunk_idx];
+        const line = self.text_buffer.getLine(@intCast(line_idx)) orelse return TextBufferViewError.OutOfMemory;
+        const chunk = line.chunks.get(@intCast(chunk_idx)) orelse return TextBufferViewError.OutOfMemory;
         return chunk.getGraphemes(
             &self.text_buffer.mem_registry,
             self.text_buffer.allocator,
@@ -295,161 +293,218 @@ pub const TextBufferView = struct {
         self.cached_max_width = 0;
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
-        const lines = self.text_buffer.getLines();
+        var global_char_offset: u32 = 0;
 
         if (self.wrap_width == null) {
             // No wrapping - create 1:1 mapping to real lines
-            for (lines, 0..) |*line, line_idx| {
-                var vline = VirtualLine.init();
-                vline.width = line.width;
-                vline.char_offset = line.char_offset;
-                vline.source_line = line_idx;
-                vline.source_col_offset = 0;
+            const NoWrapContext = struct {
+                view: *TextBufferView,
+                virtual_allocator: Allocator,
+                global_char_offset: *u32,
 
-                // Create virtual chunks that reference entire real chunks
-                // For ArrayRope(TextChunk), use .items.items to get the actual array
-                for (line.chunks.items.items, 0..) |*chunk, chunk_idx| {
-                    vline.chunks.append(virtual_allocator, VirtualChunk{
-                        .source_line = line_idx,
-                        .source_chunk = chunk_idx,
-                        .grapheme_start = 0,
-                        .grapheme_count = chunk.width,
-                        .width = chunk.width,
-                    }) catch {};
+                fn lineWalker(ctx_ptr: *anyopaque, line: *const tb.TextLine(tb.ArrayRope(tb.TextChunk)), line_idx: u32) tb.ArrayRope(tb.TextLine(tb.ArrayRope(tb.TextChunk))).Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    var vline = VirtualLine.init();
+                    vline.width = line.width;
+                    vline.char_offset = ctx.global_char_offset.*;
+                    vline.source_line = line_idx;
+                    vline.source_col_offset = 0;
+
+                    // Walk chunks to create virtual chunks
+                    const ChunkContext = struct {
+                        vline: *VirtualLine,
+                        virtual_allocator: Allocator,
+                        line_idx: u32,
+
+                        fn chunkWalker(chunk_ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, chunk_idx: u32) tb.ArrayRope(tb.TextChunk).Node.WalkerResult {
+                            const chunk_ctx = @as(*@This(), @ptrCast(@alignCast(chunk_ctx_ptr)));
+                            chunk_ctx.vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
+                                .source_line = chunk_ctx.line_idx,
+                                .source_chunk = chunk_idx,
+                                .grapheme_start = 0,
+                                .grapheme_count = chunk.width,
+                                .width = chunk.width,
+                            }) catch {};
+                            return .{};
+                        }
+                    };
+
+                    var chunk_ctx = ChunkContext{ .vline = &vline, .virtual_allocator = ctx.virtual_allocator, .line_idx = line_idx };
+                    line.chunks.walk(&chunk_ctx, ChunkContext.chunkWalker) catch {};
+
+                    ctx.view.virtual_lines.append(ctx.virtual_allocator, vline) catch {};
+                    ctx.view.cached_line_starts.append(ctx.virtual_allocator, vline.char_offset) catch {};
+                    ctx.view.cached_line_widths.append(ctx.virtual_allocator, vline.width) catch {};
+                    ctx.view.cached_max_width = @max(ctx.view.cached_max_width, vline.width);
+
+                    ctx.global_char_offset.* += line.width;
+                    return .{};
                 }
+            };
 
-                self.virtual_lines.append(virtual_allocator, vline) catch {};
-                self.cached_line_starts.append(virtual_allocator, vline.char_offset) catch {};
-                self.cached_line_widths.append(virtual_allocator, vline.width) catch {};
-                self.cached_max_width = @max(self.cached_max_width, vline.width);
-            }
+            var no_wrap_ctx = NoWrapContext{ .view = self, .virtual_allocator = virtual_allocator, .global_char_offset = &global_char_offset };
+            self.text_buffer.walkLines(&no_wrap_ctx, NoWrapContext.lineWalker) catch {};
         } else {
             // Wrap lines at wrap_width
             const wrap_w = self.wrap_width.?;
-            var global_char_offset: u32 = 0;
 
-            for (lines, 0..) |*line, line_idx| {
-                var line_position: u32 = 0;
-                var line_col_offset: u32 = 0; // Track column offset within the real line
-                var current_vline = VirtualLine.init();
-                current_vline.char_offset = global_char_offset;
-                current_vline.source_line = line_idx;
-                current_vline.source_col_offset = 0;
+            const WrapContext = struct {
+                view: *TextBufferView,
+                virtual_allocator: Allocator,
+                wrap_w: u32,
+                global_char_offset: *u32,
 
-                // For ArrayRope(TextChunk), use .items.items to get the actual array
-                for (line.chunks.items.items, 0..) |*chunk, chunk_idx| {
-                    // Get or create cached grapheme info for this chunk
-                    const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
-                    const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
+                fn lineWalker(ctx_ptr: *anyopaque, line: *const tb.TextLine(tb.ArrayRope(tb.TextChunk)), line_idx: u32) tb.ArrayRope(tb.TextLine(tb.ArrayRope(tb.TextChunk))).Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    var line_position: u32 = 0;
+                    var line_col_offset: u32 = 0;
+                    var current_vline = VirtualLine.init();
+                    current_vline.char_offset = ctx.global_char_offset.*;
+                    current_vline.source_line = line_idx;
+                    current_vline.source_col_offset = 0;
 
-                    var grapheme_idx: u32 = 0;
+                    const ChunkContext = struct {
+                        view: *TextBufferView,
+                        virtual_allocator: Allocator,
+                        wrap_w: u32,
+                        global_char_offset: *u32,
+                        line_idx: u32,
+                        line_position: *u32,
+                        line_col_offset: *u32,
+                        current_vline: *VirtualLine,
+                        line: *const tb.TextLine(tb.ArrayRope(tb.TextChunk)),
 
-                    while (grapheme_idx < graphemes_cache.len) {
-                        const remaining_width = if (line_position < wrap_w) wrap_w - line_position else 0;
-                        const remaining_graphemes = graphemes_cache[grapheme_idx..];
+                        fn chunkWalker(chunk_ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, chunk_idx: u32) tb.ArrayRope(tb.TextChunk).Node.WalkerResult {
+                            const chunk_ctx = @as(*@This(), @ptrCast(@alignCast(chunk_ctx_ptr)));
+                            const graphemes_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch return .{};
+                            const chunk_bytes = chunk.getBytes(&chunk_ctx.view.text_buffer.mem_registry);
 
-                        const fit_result = switch (self.wrap_mode) {
-                            .char => self.calculateChunkFit(remaining_graphemes, remaining_width),
-                            .word => self.calculateChunkFitWord(chunk_bytes, remaining_graphemes, remaining_width),
-                        };
+                            var grapheme_idx: u32 = 0;
 
-                        // If nothing fits and we have content on the line, wrap to next line
-                        if (fit_result.char_count == 0 and line_position > 0) {
-                            current_vline.width = line_position;
-                            self.virtual_lines.append(virtual_allocator, current_vline) catch {};
-                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
-                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
-                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
+                            while (grapheme_idx < graphemes_cache.len) {
+                                const remaining_width = if (chunk_ctx.line_position.* < chunk_ctx.wrap_w) chunk_ctx.wrap_w - chunk_ctx.line_position.* else 0;
+                                const remaining_graphemes = graphemes_cache[grapheme_idx..];
 
-                            line_col_offset += line_position;
-                            current_vline = VirtualLine.init();
-                            current_vline.char_offset = global_char_offset;
-                            current_vline.source_line = line_idx;
-                            current_vline.source_col_offset = line_col_offset;
-                            line_position = 0;
-                            continue;
+                                const fit_result = switch (chunk_ctx.view.wrap_mode) {
+                                    .char => chunk_ctx.view.calculateChunkFit(remaining_graphemes, remaining_width),
+                                    .word => chunk_ctx.view.calculateChunkFitWord(chunk_bytes, remaining_graphemes, remaining_width),
+                                };
+
+                                // If nothing fits and we have content on the line, wrap to next line
+                                if (fit_result.char_count == 0 and chunk_ctx.line_position.* > 0) {
+                                    chunk_ctx.current_vline.width = chunk_ctx.line_position.*;
+                                    chunk_ctx.view.virtual_lines.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.*) catch {};
+                                    chunk_ctx.view.cached_line_starts.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.char_offset) catch {};
+                                    chunk_ctx.view.cached_line_widths.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.width) catch {};
+                                    chunk_ctx.view.cached_max_width = @max(chunk_ctx.view.cached_max_width, chunk_ctx.current_vline.width);
+
+                                    chunk_ctx.line_col_offset.* += chunk_ctx.line_position.*;
+                                    chunk_ctx.current_vline.* = VirtualLine.init();
+                                    chunk_ctx.current_vline.char_offset = chunk_ctx.global_char_offset.*;
+                                    chunk_ctx.current_vline.source_line = chunk_ctx.line_idx;
+                                    chunk_ctx.current_vline.source_col_offset = chunk_ctx.line_col_offset.*;
+                                    chunk_ctx.line_position.* = 0;
+                                    continue;
+                                }
+
+                                // If nothing fits even on empty line, force-add at least one grapheme
+                                if (fit_result.char_count == 0 and chunk_ctx.line_position.* == 0 and grapheme_idx < graphemes_cache.len) {
+                                    const g = graphemes_cache[grapheme_idx];
+
+                                    chunk_ctx.current_vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
+                                        .source_line = chunk_ctx.line_idx,
+                                        .source_chunk = chunk_idx,
+                                        .grapheme_start = grapheme_idx,
+                                        .grapheme_count = g.width,
+                                        .width = g.width,
+                                    }) catch {};
+
+                                    grapheme_idx += 1;
+                                    chunk_ctx.global_char_offset.* += g.width;
+                                    chunk_ctx.line_position.* += g.width;
+                                    continue;
+                                }
+
+                                if (fit_result.char_count == 0) {
+                                    break; // Move to next chunk
+                                }
+
+                                // Count how many graphemes this represents
+                                var num_graphemes: u32 = 0;
+                                for (remaining_graphemes) |g| {
+                                    if (num_graphemes >= fit_result.char_count) break;
+                                    num_graphemes += g.width;
+                                }
+
+                                chunk_ctx.current_vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
+                                    .source_line = chunk_ctx.line_idx,
+                                    .source_chunk = chunk_idx,
+                                    .grapheme_start = grapheme_idx,
+                                    .grapheme_count = fit_result.char_count,
+                                    .width = fit_result.width,
+                                }) catch {};
+
+                                // Advance by the number of graphemes that fit
+                                var chars_processed: u32 = 0;
+                                var graphemes_processed: u32 = 0;
+                                for (remaining_graphemes) |g| {
+                                    if (chars_processed >= fit_result.char_count) break;
+                                    chars_processed += g.width;
+                                    graphemes_processed += 1;
+                                }
+
+                                grapheme_idx += graphemes_processed;
+                                chunk_ctx.global_char_offset.* += fit_result.char_count;
+                                chunk_ctx.line_position.* += fit_result.width;
+
+                                // Check if we need to wrap
+                                if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and grapheme_idx < graphemes_cache.len) {
+                                    chunk_ctx.current_vline.width = chunk_ctx.line_position.*;
+                                    chunk_ctx.view.virtual_lines.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.*) catch {};
+                                    chunk_ctx.view.cached_line_starts.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.char_offset) catch {};
+                                    chunk_ctx.view.cached_line_widths.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.width) catch {};
+                                    chunk_ctx.view.cached_max_width = @max(chunk_ctx.view.cached_max_width, chunk_ctx.current_vline.width);
+
+                                    chunk_ctx.line_col_offset.* += chunk_ctx.line_position.*;
+                                    chunk_ctx.current_vline.* = VirtualLine.init();
+                                    chunk_ctx.current_vline.char_offset = chunk_ctx.global_char_offset.*;
+                                    chunk_ctx.current_vline.source_line = chunk_ctx.line_idx;
+                                    chunk_ctx.current_vline.source_col_offset = chunk_ctx.line_col_offset.*;
+                                    chunk_ctx.line_position.* = 0;
+                                }
+                            }
+                            return .{};
                         }
+                    };
 
-                        // If nothing fits even on empty line, force-add at least one grapheme
-                        // (e.g., a 2-cell emoji with wrap_width=1 should still appear on a line)
-                        if (fit_result.char_count == 0 and line_position == 0 and grapheme_idx < graphemes_cache.len) {
-                            // Force add the first grapheme even if it doesn't fit
-                            const g = graphemes_cache[grapheme_idx];
+                    var chunk_ctx = ChunkContext{
+                        .view = ctx.view,
+                        .virtual_allocator = ctx.virtual_allocator,
+                        .wrap_w = ctx.wrap_w,
+                        .global_char_offset = ctx.global_char_offset,
+                        .line_idx = line_idx,
+                        .line_position = &line_position,
+                        .line_col_offset = &line_col_offset,
+                        .current_vline = &current_vline,
+                        .line = line,
+                    };
+                    line.chunks.walk(&chunk_ctx, ChunkContext.chunkWalker) catch {};
 
-                            current_vline.chunks.append(virtual_allocator, VirtualChunk{
-                                .source_line = line_idx,
-                                .source_chunk = chunk_idx,
-                                .grapheme_start = grapheme_idx,
-                                .grapheme_count = g.width,
-                                .width = g.width,
-                            }) catch {};
-
-                            grapheme_idx += 1;
-                            global_char_offset += g.width;
-                            line_position += g.width;
-                            continue;
-                        }
-
-                        // If nothing fits and we're mid-line, this should have been caught by the wrap check above
-                        if (fit_result.char_count == 0) {
-                            break; // Move to next chunk
-                        }
-
-                        // Count how many graphemes this represents
-                        var num_graphemes: u32 = 0;
-                        for (remaining_graphemes) |g| {
-                            if (num_graphemes >= fit_result.char_count) break;
-                            num_graphemes += g.width;
-                        }
-
-                        current_vline.chunks.append(virtual_allocator, VirtualChunk{
-                            .source_line = line_idx,
-                            .source_chunk = chunk_idx,
-                            .grapheme_start = grapheme_idx,
-                            .grapheme_count = fit_result.char_count,
-                            .width = fit_result.width,
-                        }) catch {};
-
-                        // Advance by the number of graphemes that fit
-                        var chars_processed: u32 = 0;
-                        var graphemes_processed: u32 = 0;
-                        for (remaining_graphemes) |g| {
-                            if (chars_processed >= fit_result.char_count) break;
-                            chars_processed += g.width;
-                            graphemes_processed += 1;
-                        }
-
-                        grapheme_idx += graphemes_processed;
-                        global_char_offset += fit_result.char_count;
-                        line_position += fit_result.width;
-
-                        // Check if we need to wrap
-                        if (line_position >= wrap_w and grapheme_idx < graphemes_cache.len) {
-                            current_vline.width = line_position;
-                            self.virtual_lines.append(virtual_allocator, current_vline) catch {};
-                            self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
-                            self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
-                            self.cached_max_width = @max(self.cached_max_width, current_vline.width);
-
-                            line_col_offset += line_position;
-                            current_vline = VirtualLine.init();
-                            current_vline.char_offset = global_char_offset;
-                            current_vline.source_line = line_idx;
-                            current_vline.source_col_offset = line_col_offset;
-                            line_position = 0;
-                        }
+                    // Append the last virtual line if it has content or represents an empty line
+                    if (current_vline.chunks.items.len > 0 or line.width == 0) {
+                        current_vline.width = line_position;
+                        ctx.view.virtual_lines.append(ctx.virtual_allocator, current_vline) catch {};
+                        ctx.view.cached_line_starts.append(ctx.virtual_allocator, current_vline.char_offset) catch {};
+                        ctx.view.cached_line_widths.append(ctx.virtual_allocator, current_vline.width) catch {};
+                        ctx.view.cached_max_width = @max(ctx.view.cached_max_width, current_vline.width);
                     }
-                }
 
-                // Append the last virtual line if it has content or represents an empty line
-                if (current_vline.chunks.items.len > 0 or line.width == 0) {
-                    current_vline.width = line_position;
-                    self.virtual_lines.append(virtual_allocator, current_vline) catch {};
-                    self.cached_line_starts.append(virtual_allocator, current_vline.char_offset) catch {};
-                    self.cached_line_widths.append(virtual_allocator, current_vline.width) catch {};
-                    self.cached_max_width = @max(self.cached_max_width, current_vline.width);
+                    return .{};
                 }
-            }
+            };
+
+            var wrap_ctx = WrapContext{ .view = self, .virtual_allocator = virtual_allocator, .wrap_w = wrap_w, .global_char_offset = &global_char_offset };
+            self.text_buffer.walkLines(&wrap_ctx, WrapContext.lineWalker) catch {};
         }
 
         // Clear both dirty flags
@@ -653,52 +708,92 @@ pub const TextBufferView = struct {
         const start = selection.start;
         const end = selection.end;
 
+        const SelectionContext = struct {
+            view: *TextBufferView,
+            out_buffer: []u8,
+            out_index: *usize,
+            count: *u32,
+            start: u32,
+            end: u32,
+            line_count: u32,
+
+            fn lineWalker(ctx_ptr: *anyopaque, line: *const tb.TextLine(tb.ArrayRope(tb.TextChunk)), line_idx: u32) tb.ArrayRope(tb.TextLine(tb.ArrayRope(tb.TextChunk))).Node.WalkerResult {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                var line_had_selection = false;
+
+                const ChunkContext = struct {
+                    view: *TextBufferView,
+                    out_buffer: []u8,
+                    out_index: *usize,
+                    count: *u32,
+                    start: u32,
+                    end: u32,
+                    line_idx: u32,
+                    line_had_selection: *bool,
+
+                    fn chunkWalker(chunk_ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, chunk_idx: u32) tb.ArrayRope(tb.TextChunk).Node.WalkerResult {
+                        const chunk_ctx = @as(*@This(), @ptrCast(@alignCast(chunk_ctx_ptr)));
+                        const graphemes_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch return .{};
+                        const chunk_bytes = chunk.getBytes(&chunk_ctx.view.text_buffer.mem_registry);
+
+                        for (graphemes_cache) |g| {
+                            if (chunk_ctx.count.* >= chunk_ctx.end) return .{ .keep_walking = false };
+
+                            const grapheme_start_count = chunk_ctx.count.*;
+                            const grapheme_end_count = chunk_ctx.count.* + g.width;
+
+                            if (grapheme_end_count > chunk_ctx.start and grapheme_start_count < chunk_ctx.end) {
+                                chunk_ctx.line_had_selection.* = true;
+
+                                const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
+                                const copy_len = @min(grapheme_bytes.len, chunk_ctx.out_buffer.len - chunk_ctx.out_index.*);
+
+                                if (copy_len > 0) {
+                                    @memcpy(chunk_ctx.out_buffer[chunk_ctx.out_index.* .. chunk_ctx.out_index.* + copy_len], grapheme_bytes[0..copy_len]);
+                                    chunk_ctx.out_index.* += copy_len;
+                                }
+                            }
+
+                            chunk_ctx.count.* += g.width;
+                        }
+                        return .{};
+                    }
+                };
+
+                var chunk_ctx = ChunkContext{
+                    .view = ctx.view,
+                    .out_buffer = ctx.out_buffer,
+                    .out_index = ctx.out_index,
+                    .count = ctx.count,
+                    .start = ctx.start,
+                    .end = ctx.end,
+                    .line_idx = line_idx,
+                    .line_had_selection = &line_had_selection,
+                };
+                line.chunks.walk(&chunk_ctx, ChunkContext.chunkWalker) catch {};
+
+                // Add newline between lines if we're still in the selection range and not at the last line
+                if (line_had_selection and line_idx < ctx.line_count - 1 and ctx.count.* < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
+                    ctx.out_buffer[ctx.out_index.*] = '\n';
+                    ctx.out_index.* += 1;
+                }
+
+                return .{};
+            }
+        };
+
         var out_index: usize = 0;
         var count: u32 = 0;
-
-        const lines = self.text_buffer.getLines();
-
-        // Iterate through all lines and chunks
-        for (lines, 0..) |line, line_idx| {
-            var line_had_selection = false;
-
-            // For ArrayRope(TextChunk), use .items.items to get the actual array
-            for (line.chunks.items.items, 0..) |chunk, chunk_idx| {
-                // Get cached grapheme info
-                const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
-                const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
-
-                for (graphemes_cache) |g| {
-                    if (count >= end) break;
-
-                    // Each grapheme contributes 'width' cells
-                    const grapheme_start_count = count;
-                    const grapheme_end_count = count + g.width;
-
-                    // Check if any part of this grapheme is selected
-                    if (grapheme_end_count > start and grapheme_start_count < end) {
-                        line_had_selection = true;
-
-                        // Copy the grapheme's bytes
-                        const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
-                        const copy_len = @min(grapheme_bytes.len, out_buffer.len - out_index);
-
-                        if (copy_len > 0) {
-                            @memcpy(out_buffer[out_index .. out_index + copy_len], grapheme_bytes[0..copy_len]);
-                            out_index += copy_len;
-                        }
-                    }
-
-                    count += g.width;
-                }
-            }
-
-            // Add newline between lines if we're still in the selection range and not at the last line
-            if (line_had_selection and line_idx < lines.len - 1 and count < end and out_index < out_buffer.len) {
-                out_buffer[out_index] = '\n';
-                out_index += 1;
-            }
-        }
+        var sel_ctx = SelectionContext{
+            .view = self,
+            .out_buffer = out_buffer,
+            .out_index = &out_index,
+            .count = &count,
+            .start = start,
+            .end = end,
+            .line_count = self.text_buffer.lineCount(),
+        };
+        self.text_buffer.walkLines(&sel_ctx, SelectionContext.lineWalker) catch {};
 
         return out_index;
     }

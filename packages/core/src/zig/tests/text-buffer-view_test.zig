@@ -2631,12 +2631,10 @@ test "TextBufferView accessor methods - getVirtualLines and getLines" {
     const virtual_lines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), virtual_lines.len);
 
-    // Test getLines returns correct data from buffer
-    const lines = tb.getLines();
-    try std.testing.expectEqual(@as(usize, 2), lines.len);
+    // Test lineCount returns correct data from buffer
+    try std.testing.expectEqual(@as(u32, 2), tb.lineCount());
 
-    // Verify we can access chunks through both accessors
-    try std.testing.expect(lines[0].chunks.items.items.len > 0);
+    // Verify we can access chunks through virtual lines
     try std.testing.expect(virtual_lines[0].chunks.items.len > 0);
 }
 
@@ -2663,9 +2661,8 @@ test "TextBufferView accessor methods - with wrapping" {
     const virtual_lines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), virtual_lines.len);
 
-    // Get real lines - should be 1
-    const lines = tb.getLines();
-    try std.testing.expectEqual(@as(usize, 1), lines.len);
+    // Get real line count - should be 1
+    try std.testing.expectEqual(@as(u32, 1), tb.lineCount());
 
     // Verify virtual chunks reference the real line
     for (virtual_lines[0].chunks.items) |vchunk| {

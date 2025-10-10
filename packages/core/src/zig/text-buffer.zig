@@ -7,8 +7,9 @@ const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
-const ArrayRope = @import("array-rope.zig").ArrayRope;
-const Rope = @import("rope.zig").Rope;
+
+pub const ArrayRope = @import("array-rope.zig").ArrayRope;
+pub const Rope = @import("rope.zig").Rope;
 
 pub const RGBA = buffer.RGBA;
 pub const TextSelection = buffer.TextSelection;
@@ -937,13 +938,26 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
             return self.lines.count();
         }
 
-        pub fn getLines(self: *const Self) []const Line {
-            // For ArrayRope, we can return the underlying items
-            // This is a special case optimization that works when LineStorage is ArrayRope
-            if (@hasField(LineStorage, "items")) {
-                return self.lines.items.items;
+        /// Get the real line count (alias for compatibility)
+        pub fn lineCount(self: *const Self) u32 {
+            return self.lines.count();
+        }
+
+        /// Get a line by index (for rare index-based logic)
+        pub fn getLine(self: *const Self, idx: u32) ?*const Line {
+            return self.lines.get(idx);
+        }
+
+        /// Walk all lines in order (primary iteration API)
+        pub fn walkLines(self: *const Self, ctx: *anyopaque, f: LineStorage.Node.WalkerFn) !void {
+            try self.lines.walk(ctx, f);
+        }
+
+        /// Walk all chunks in a specific line
+        pub fn walkChunks(self: *const Self, line_idx: u32, ctx: *anyopaque, f: ChunkStorage.Node.WalkerFn) !void {
+            if (self.getLine(line_idx)) |line| {
+                try line.chunks.walk(ctx, f);
             }
-            @compileError("getLines() only supported for ArrayRope-based storage");
         }
 
         /// Get line info (starts, widths, max_width) from the buffer

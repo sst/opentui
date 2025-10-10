@@ -854,8 +854,6 @@ pub const OptimizedBuffer = struct {
         else
             0;
 
-        const lines = text_buffer.getLines();
-
         for (virtual_lines[firstVisibleLine..lastPossibleLine]) |vline| {
             if (currentY >= bufferBottomY) break;
 
@@ -896,7 +894,8 @@ pub const OptimizedBuffer = struct {
             }
 
             for (vline.chunks.items) |vchunk| {
-                const source_chunk = &lines[vchunk.source_line].chunks.items.items[vchunk.source_chunk];
+                const source_line = text_buffer.getLine(@intCast(vchunk.source_line)) orelse continue;
+                const source_chunk = source_line.chunks.get(@intCast(vchunk.source_chunk)) orelse continue;
 
                 // Get cached grapheme info for this chunk
                 const graphemes_cache = text_buffer_view.getOrCreateChunkCache(vchunk.source_line, vchunk.source_chunk) catch continue;
