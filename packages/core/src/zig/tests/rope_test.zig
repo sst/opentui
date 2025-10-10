@@ -384,6 +384,7 @@ const Line = struct {
             .chunks = .{
                 .root = &empty_chunk_leaf_node,
                 .allocator = undefined, // Never used for empty
+                .empty_leaf = &empty_chunk_leaf_node,
             },
             .line_id = 0,
         };

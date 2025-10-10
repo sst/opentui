@@ -247,6 +247,97 @@ pub fn Rope(comptime T: type) type {
 
                 return try merge_leaves(leaves.items, allocator);
             }
+
+            /// Structural split at index - returns (left, right) without flattening
+            /// O(log n) operation that reuses subtrees
+            pub fn split_at(node: *const Node, index: u32, allocator: Allocator, empty_leaf: *const Node) error{OutOfMemory}!struct { left: *const Node, right: *const Node } {
+                return switch (node.*) {
+                    .leaf => {
+                        // At leaf level, split is trivial
+                        if (index == 0) {
+                            return .{ .left = empty_leaf, .right = node };
+                        } else {
+                            return .{ .left = node, .right = empty_leaf };
+                        }
+                    },
+                    .branch => |*b| {
+                        const left_count = b.left_metrics.count;
+                        if (index < left_count) {
+                            // Split point is in left subtree
+                            const result = try split_at(b.left, index, allocator, empty_leaf);
+                            const new_right = try join_balanced(result.right, b.right, allocator);
+                            return .{ .left = result.left, .right = new_right };
+                        } else if (index > left_count) {
+                            // Split point is in right subtree
+                            const result = try split_at(b.right, index - left_count, allocator, empty_leaf);
+                            const new_left = try join_balanced(b.left, result.left, allocator);
+                            return .{ .left = new_left, .right = result.right };
+                        } else {
+                            // Split point is exactly at the boundary
+                            return .{ .left = b.left, .right = b.right };
+                        }
+                    },
+                };
+            }
+
+            /// Height-aware join that maintains balance
+            /// O(log |depth difference|) operation
+            /// Does NOT filter empty nodes - empties are real leaves with count=1
+            pub fn join_balanced(left: *const Node, right: *const Node, allocator: Allocator) error{OutOfMemory}!*const Node {
+                const left_depth = left.depth();
+                const right_depth = right.depth();
+
+                // If heights are similar, just create a branch
+                const depth_diff: i32 = @as(i32, @intCast(left_depth)) - @as(i32, @intCast(right_depth));
+                if (@abs(depth_diff) <= max_imbalance) {
+                    return try new_branch(allocator, left, right);
+                }
+
+                // If left is much deeper, attach right to a node deep in left's right spine
+                if (depth_diff > max_imbalance) {
+                    return switch (left.*) {
+                        .leaf => try new_branch(allocator, left, right), // shouldn't happen but handle it
+                        .branch => |*b| {
+                            const new_right = try join_balanced(b.right, right, allocator);
+                            return try new_branch(allocator, b.left, new_right);
+                        },
+                    };
+                }
+
+                // If right is much deeper, attach left to a node deep in right's left spine
+                return switch (right.*) {
+                    .leaf => try new_branch(allocator, left, right), // shouldn't happen but handle it
+                    .branch => |*b| {
+                        const new_left = try join_balanced(left, b.left, allocator);
+                        return try new_branch(allocator, new_left, b.right);
+                    },
+                };
+            }
+        };
+
+        /// Finger for efficient near-cursor edits
+        /// External to rope, one per cursor for multi-cursor support
+        pub const Finger = struct {
+            index: u32, // Last resolved index
+            rope: *const Self, // Reference to the rope this finger belongs to
+
+            /// Create a finger at a specific index
+            pub fn init(rope: *const Self, index: u32) Finger {
+                return .{
+                    .index = index,
+                    .rope = rope,
+                };
+            }
+
+            /// Move finger to a new index
+            pub fn seek(self: *Finger, index: u32) void {
+                self.index = index;
+            }
+
+            /// Get current index
+            pub fn getIndex(self: *const Finger) u32 {
+                return self.index;
+            }
         };
 
         pub const UndoNode = struct {
@@ -264,6 +355,7 @@ pub fn Rope(comptime T: type) type {
         /// The rope handle
         root: *const Node,
         allocator: Allocator,
+        empty_leaf: *const Node, // Shared empty leaf for structural operations
         undo_history: ?*UndoNode = null,
         redo_history: ?*UndoNode = null,
         curr_history: ?*UndoNode = null,
@@ -276,18 +368,27 @@ pub fn Rope(comptime T: type) type {
                 std.mem.zeroes(T);
 
             const root = try Node.new_leaf(allocator, empty_data);
+            // Create a separate empty_leaf for split operations (distinct from the structural root empty)
+            const split_empty = try Node.new_leaf(allocator, empty_data);
             return .{
                 .root = root,
                 .allocator = allocator,
+                .empty_leaf = split_empty,
             };
         }
 
         /// Create from a single item
         pub fn from_item(allocator: Allocator, data: T) !Self {
             const root = try Node.new_leaf(allocator, data);
+            const empty_data = if (@hasDecl(T, "empty"))
+                T.empty()
+            else
+                std.mem.zeroes(T);
+            const empty_leaf = try Node.new_leaf(allocator, empty_data);
             return .{
                 .root = root,
                 .allocator = allocator,
+                .empty_leaf = empty_leaf,
             };
         }
 
@@ -306,9 +407,15 @@ pub fn Rope(comptime T: type) type {
             }
 
             const root = try Node.merge_leaves(leaves.items, allocator);
+            const empty_data = if (@hasDecl(T, "empty"))
+                T.empty()
+            else
+                std.mem.zeroes(T);
+            const empty_leaf = try Node.new_leaf(allocator, empty_data);
             return .{
                 .root = root,
                 .allocator = allocator,
+                .empty_leaf = empty_leaf,
             };
         }
 
@@ -336,85 +443,24 @@ pub fn Rope(comptime T: type) type {
         }
 
         /// Insert item at index
+        /// Uses structural split/join for O(log n) performance with auto-balancing
         pub fn insert(self: *Self, index: u32, data: T) !void {
-            const new_leaf = try Node.new_leaf(self.allocator, data);
-            self.root = try self.insert_node(self.root, index, new_leaf);
-        }
-
-        fn insert_node(self: *Self, node: *const Node, index: u32, new_node: *const Node) error{OutOfMemory}!*const Node {
-            return switch (node.*) {
-                .branch => |*b| {
-                    const left_count = b.left_metrics.count;
-                    if (index <= left_count) {
-                        const new_left = try self.insert_node(b.left, index, new_node);
-                        return try Node.new_branch(self.allocator, new_left, b.right);
-                    } else {
-                        const new_right = try self.insert_node(b.right, index - left_count, new_node);
-                        return try Node.new_branch(self.allocator, b.left, new_right);
-                    }
-                },
-                .leaf => {
-                    if (index == 0) {
-                        return try Node.new_branch(self.allocator, new_node, node);
-                    } else {
-                        return try Node.new_branch(self.allocator, node, new_node);
-                    }
-                },
-            };
+            try self.insert_slice(index, &[_]T{data});
         }
 
         /// Delete item at index
+        /// Uses structural split/join for O(log n) performance with auto-balancing
         pub fn delete(self: *Self, index: u32) !void {
-            self.root = try self.delete_node(self.root, index, self.allocator);
-        }
-
-        fn delete_node(_: *Self, node: *const Node, index: u32, allocator: Allocator) error{OutOfMemory}!*const Node {
-            return switch (node.*) {
-                .branch => |*b| {
-                    const left_count = b.left_metrics.count;
-                    if (index < left_count) {
-                        const new_left = try delete_node(undefined, b.left, index, allocator);
-                        if (new_left.is_empty()) return b.right;
-                        return try Node.new_branch(allocator, new_left, b.right);
-                    } else {
-                        const new_right = try delete_node(undefined, b.right, index - left_count, allocator);
-                        if (new_right.is_empty()) return b.left;
-                        return try Node.new_branch(allocator, b.left, new_right);
-                    }
-                },
-                .leaf => {
-                    // Return an empty node (caller should handle)
-                    if (@hasDecl(T, "empty")) {
-                        return Node.new_leaf(allocator, T.empty()) catch node;
-                    }
-                    return node; // Can't delete if no empty representation
-                },
-            };
+            try self.delete_range(index, index + 1);
         }
 
         pub fn replace(self: *Self, index: u32, data: T) !void {
-            self.root = try self.replace_node(self.root, index, data);
-        }
+            // Check bounds
+            if (index >= self.count()) return;
 
-        fn replace_node(self: *Self, node: *const Node, index: u32, data: T) error{OutOfMemory}!*const Node {
-            return switch (node.*) {
-                .branch => |*b| {
-                    const left_count = b.left_metrics.count;
-                    if (index < left_count) {
-                        const new_left = try self.replace_node(b.left, index, data);
-                        return try Node.new_branch(self.allocator, new_left, b.right);
-                    } else {
-                        const new_right = try self.replace_node(b.right, index - left_count, data);
-                        return try Node.new_branch(self.allocator, b.left, new_right);
-                    }
-                },
-                .leaf => {
-                    if (index == 0) {
-                        return try Node.new_leaf(self.allocator, data);
-                    }
-                    return node;
-                },
-            };
+            // Efficient replace via delete + insert using structural operations
+            try self.delete_range(index, index + 1);
+            try self.insert_slice(index, &[_]T{data});
         }
 
         pub fn append(self: *Self, data: T) !void {
@@ -426,55 +472,22 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn concat(self: *Self, other: *const Self) !void {
-            self.root = try Node.new_branch(self.allocator, self.root, other.root);
+            self.root = try Node.join_balanced(self.root, other.root, self.allocator);
         }
 
         /// Split rope into two at index (returns right half, modifies self to be left half)
+        /// O(log n) structural split without flattening
         pub fn split(self: *Self, index: u32) !Self {
-            const SplitContext = struct {
-                left_items: std.ArrayList(T),
-                right_items: std.ArrayList(T),
-                split_index: u32,
-                current_index: u32 = 0,
-                allocator: Allocator,
-
-                fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
-                    _ = idx;
-                    const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
-                    if (context.current_index < context.split_index) {
-                        context.left_items.append(data.*) catch |e| return .{ .err = e };
-                    } else {
-                        context.right_items.append(data.*) catch |e| return .{ .err = e };
-                    }
-                    context.current_index += 1;
-                    return .{};
-                }
-            };
-
-            var context = SplitContext{
-                .left_items = std.ArrayList(T).init(self.allocator),
-                .right_items = std.ArrayList(T).init(self.allocator),
-                .split_index = index,
+            const result = try Node.split_at(self.root, index, self.allocator, self.empty_leaf);
+            self.root = result.left;
+            return Self{
+                .root = result.right,
                 .allocator = self.allocator,
+                .empty_leaf = self.empty_leaf,
+                .undo_history = null,
+                .redo_history = null,
+                .curr_history = null,
             };
-            defer context.left_items.deinit();
-            defer context.right_items.deinit();
-
-            try self.walk(&context, SplitContext.walker);
-
-            // Create new ropes from the split items
-            const left_root = if (context.left_items.items.len > 0)
-                try Self.from_slice(self.allocator, context.left_items.items)
-            else
-                try Self.init(self.allocator);
-
-            const right_root = if (context.right_items.items.len > 0)
-                try Self.from_slice(self.allocator, context.right_items.items)
-            else
-                try Self.init(self.allocator);
-
-            self.root = left_root.root;
-            return right_root;
         }
 
         /// Extract items in range [start, end) into an array
@@ -513,70 +526,47 @@ pub fn Rope(comptime T: type) type {
         }
 
         /// Delete range of items [start, end)
+        /// O(log n) structural operation
         pub fn delete_range(self: *Self, start: u32, end: u32) !void {
             if (start >= end) return;
-            const num_items = end - start;
 
-            // Delete items one by one from the end to avoid index shifting issues
-            var i: u32 = 0;
-            while (i < num_items) : (i += 1) {
-                try self.delete(start);
+            // Split at start, then split the right part at (end - start)
+            const first_split = try Node.split_at(self.root, start, self.allocator, self.empty_leaf);
+            const second_split = try Node.split_at(first_split.right, end - start, self.allocator, self.empty_leaf);
+
+            // Join left part with the part after the deleted range
+            // Filter split-boundary empties
+            if (first_split.left == self.empty_leaf) {
+                self.root = second_split.right;
+            } else if (second_split.right == self.empty_leaf) {
+                self.root = first_split.left;
+            } else {
+                self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
             }
         }
 
         /// Insert multiple items at index efficiently
+        /// O(log n + k) structural operation where k is items.len
         pub fn insert_slice(self: *Self, index: u32, items: []const T) !void {
             if (items.len == 0) return;
 
             // Create a rope from the items to insert
             const insert_rope = try Self.from_slice(self.allocator, items);
 
-            // Split at index, insert new rope, then concatenate
-            if (index == 0) {
-                // Prepend case: insert_rope + self
-                const old_root = self.root;
-                self.root = try Node.new_branch(self.allocator, insert_rope.root, old_root);
-            } else if (index >= self.count()) {
-                // Append case: self + insert_rope
-                try self.concat(&insert_rope);
-            } else {
-                // Middle case: split, then concatenate left + insert + right
-                const SliceContext = struct {
-                    left_items: std.ArrayList(T),
-                    right_items: std.ArrayList(T),
-                    split_index: u32,
-                    current_index: u32 = 0,
+            // Split at index: (left, right)
+            const split_result = try Node.split_at(self.root, index, self.allocator, self.empty_leaf);
 
-                    fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
-                        _ = idx;
-                        const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
-                        if (context.current_index < context.split_index) {
-                            context.left_items.append(data.*) catch |e| return .{ .err = e };
-                        } else {
-                            context.right_items.append(data.*) catch |e| return .{ .err = e };
-                        }
-                        context.current_index += 1;
-                        return .{};
-                    }
-                };
+            // Join: left + insert + right
+            // Filter split-boundary empties (pointer equality with self.empty_leaf)
+            const left_filtered = if (split_result.left == self.empty_leaf)
+                insert_rope.root
+            else
+                try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
 
-                var context = SliceContext{
-                    .left_items = std.ArrayList(T).init(self.allocator),
-                    .right_items = std.ArrayList(T).init(self.allocator),
-                    .split_index = index,
-                };
-                defer context.left_items.deinit();
-                defer context.right_items.deinit();
-
-                try self.walk(&context, SliceContext.walker);
-
-                const left_rope = try Self.from_slice(self.allocator, context.left_items.items);
-                const right_rope = try Self.from_slice(self.allocator, context.right_items.items);
-
-                // Concatenate: left + insert + right
-                const left_plus_insert = try Node.new_branch(self.allocator, left_rope.root, insert_rope.root);
-                self.root = try Node.new_branch(self.allocator, left_plus_insert, right_rope.root);
-            }
+            self.root = if (split_result.right == self.empty_leaf)
+                left_filtered
+            else
+                try Node.join_balanced(left_filtered, split_result.right, self.allocator);
         }
 
         /// Convert entire rope to array
@@ -599,6 +589,42 @@ pub fn Rope(comptime T: type) type {
 
             try self.walk(&context, ToArrayContext.walker);
             return context.items.toOwnedSlice();
+        }
+
+        /// Create a finger at the given index
+        pub fn makeFinger(self: *const Self, index: u32) Finger {
+            return Finger.init(self, index);
+        }
+
+        /// Insert at finger position
+        pub fn insertAtFinger(self: *Self, finger: *Finger, data: T) !void {
+            try self.insert(finger.index, data);
+            // Finger now points to the inserted item
+        }
+
+        /// Delete at finger position
+        pub fn deleteAtFinger(self: *Self, finger: *Finger) !void {
+            try self.delete(finger.index);
+            // Finger index stays the same, now points to next item (or past end)
+        }
+
+        /// Replace at finger position
+        pub fn replaceAtFinger(self: *Self, finger: *Finger, data: T) !void {
+            try self.replace(finger.index, data);
+            // Finger still points to same position with new data
+        }
+
+        /// Insert slice at finger position
+        pub fn insertSliceAtFinger(self: *Self, finger: *Finger, items: []const T) !void {
+            try self.insert_slice(finger.index, items);
+            // Finger now points to first inserted item
+        }
+
+        /// Delete range using two fingers
+        pub fn deleteRangeWith(self: *Self, start_finger: *const Finger, end_finger: *const Finger) !void {
+            const start = start_finger.index;
+            const end = end_finger.index;
+            try self.delete_range(@min(start, end), @max(start, end));
         }
 
         /// Undo/Redo operations
