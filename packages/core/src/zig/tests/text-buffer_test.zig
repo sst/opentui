@@ -3,7 +3,7 @@ const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
 
-const TextBuffer = text_buffer.TextBuffer;
+const TextBuffer = text_buffer.TextBufferArray;
 const RGBA = text_buffer.RGBA;
 const Highlight = text_buffer.Highlight;
 

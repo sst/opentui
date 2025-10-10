@@ -7,6 +7,8 @@ const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const ArrayRope = @import("array-rope.zig").ArrayRope;
+const Rope = @import("rope.zig").Rope;
 
 pub const RGBA = buffer.RGBA;
 pub const TextSelection = buffer.TextSelection;
@@ -198,749 +200,821 @@ pub const TextLine = struct {
 };
 
 /// TextBuffer holds text organized by lines without styling
-pub const TextBuffer = struct {
-    mem_registry: MemRegistry, // Registry for multiple memory buffers
-    char_count: u32, // Total character count across all chunks
-    default_fg: ?RGBA,
-    default_bg: ?RGBA,
-    default_attributes: ?u8,
+/// Generic over LineStorage type (ArrayRope or Rope)
+pub fn TextBuffer(comptime LineStorage: type) type {
+    return struct {
+        const Self = @This();
 
-    allocator: Allocator,
-    global_allocator: Allocator,
-    arena: *std.heap.ArenaAllocator,
+        mem_registry: MemRegistry, // Registry for multiple memory buffers
+        char_count: u32, // Total character count across all chunks
+        default_fg: ?RGBA,
+        default_bg: ?RGBA,
+        default_attributes: ?u8,
 
-    lines: std.ArrayListUnmanaged(TextLine),
-    syntax_style: ?*const SyntaxStyle,
+        allocator: Allocator,
+        global_allocator: Allocator,
+        arena: *std.heap.ArenaAllocator,
 
-    pool: *gp.GraphemePool,
-    graphemes_data: Graphemes,
-    display_width: DisplayWidth,
-    width_method: gwidth.WidthMethod,
+        lines: LineStorage,
+        syntax_style: ?*const SyntaxStyle,
 
-    // View registration system
-    view_dirty_flags: std.ArrayListUnmanaged(bool),
-    next_view_id: u32,
-    free_view_ids: std.ArrayListUnmanaged(u32),
+        pool: *gp.GraphemePool,
+        graphemes_data: Graphemes,
+        display_width: DisplayWidth,
+        width_method: gwidth.WidthMethod,
 
-    pub fn init(global_allocator: Allocator, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*TextBuffer {
-        const self = global_allocator.create(TextBuffer) catch return TextBufferError.OutOfMemory;
-        errdefer global_allocator.destroy(self);
+        // View registration system
+        view_dirty_flags: std.ArrayListUnmanaged(bool),
+        next_view_id: u32,
+        free_view_ids: std.ArrayListUnmanaged(u32),
 
-        const internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
-        errdefer global_allocator.destroy(internal_arena);
-        internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
+        pub fn init(global_allocator: Allocator, pool: *gp.GraphemePool, width_method: gwidth.WidthMethod, graphemes_data: *Graphemes, display_width: *DisplayWidth) TextBufferError!*Self {
+            const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
+            errdefer global_allocator.destroy(self);
 
-        const internal_allocator = internal_arena.allocator();
+            const internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
+            errdefer global_allocator.destroy(internal_arena);
+            internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
 
-        const graph = graphemes_data.*;
-        const dw = display_width.*;
+            const internal_allocator = internal_arena.allocator();
 
-        var lines: std.ArrayListUnmanaged(TextLine) = .{};
+            const graph = graphemes_data.*;
+            const dw = display_width.*;
 
-        errdefer {
-            for (lines.items) |*line| {
-                line.deinit(internal_allocator);
-            }
-            lines.deinit(internal_allocator);
+            const lines = LineStorage.init(internal_allocator) catch return TextBufferError.OutOfMemory;
+
+            var view_dirty_flags: std.ArrayListUnmanaged(bool) = .{};
+            errdefer view_dirty_flags.deinit(global_allocator);
+
+            var free_view_ids: std.ArrayListUnmanaged(u32) = .{};
+            errdefer free_view_ids.deinit(global_allocator);
+
+            var mem_registry = MemRegistry.init(global_allocator);
+            errdefer mem_registry.deinit();
+
+            self.* = .{
+                .mem_registry = mem_registry,
+                .char_count = 0,
+                .default_fg = null,
+                .default_bg = null,
+                .default_attributes = null,
+                .allocator = internal_allocator,
+                .global_allocator = global_allocator,
+                .arena = internal_arena,
+                .lines = lines,
+                .syntax_style = null,
+                .pool = pool,
+                .graphemes_data = graph,
+                .display_width = dw,
+                .width_method = width_method,
+                .view_dirty_flags = view_dirty_flags,
+                .next_view_id = 0,
+                .free_view_ids = free_view_ids,
+            };
+
+            return self;
         }
 
-        var view_dirty_flags: std.ArrayListUnmanaged(bool) = .{};
-        errdefer view_dirty_flags.deinit(global_allocator);
+        pub fn deinit(self: *Self) void {
+            self.view_dirty_flags.deinit(self.global_allocator);
+            self.free_view_ids.deinit(self.global_allocator);
+            self.mem_registry.deinit();
+            self.arena.deinit();
+            self.global_allocator.destroy(self.arena);
+            self.global_allocator.destroy(self);
+        }
 
-        var free_view_ids: std.ArrayListUnmanaged(u32) = .{};
-        errdefer free_view_ids.deinit(global_allocator);
+        /// Register a view with this buffer and return a view ID
+        pub fn registerView(self: *Self) TextBufferError!u32 {
+            // Try to reuse a freed ID first
+            if (self.free_view_ids.items.len > 0) {
+                const id = self.free_view_ids.items[self.free_view_ids.items.len - 1];
+                _ = self.free_view_ids.pop();
+                self.view_dirty_flags.items[id] = true; // Mark as dirty initially
+                return id;
+            }
 
-        var mem_registry = MemRegistry.init(global_allocator);
-        errdefer mem_registry.deinit();
-
-        self.* = .{
-            .mem_registry = mem_registry,
-            .char_count = 0,
-            .default_fg = null,
-            .default_bg = null,
-            .default_attributes = null,
-            .allocator = internal_allocator,
-            .global_allocator = global_allocator,
-            .arena = internal_arena,
-            .lines = lines,
-            .syntax_style = null,
-            .pool = pool,
-            .graphemes_data = graph,
-            .display_width = dw,
-            .width_method = width_method,
-            .view_dirty_flags = view_dirty_flags,
-            .next_view_id = 0,
-            .free_view_ids = free_view_ids,
-        };
-
-        return self;
-    }
-
-    pub fn deinit(self: *TextBuffer) void {
-        self.view_dirty_flags.deinit(self.global_allocator);
-        self.free_view_ids.deinit(self.global_allocator);
-        self.mem_registry.deinit();
-        self.arena.deinit();
-        self.global_allocator.destroy(self.arena);
-        self.global_allocator.destroy(self);
-    }
-
-    /// Register a view with this buffer and return a view ID
-    pub fn registerView(self: *TextBuffer) TextBufferError!u32 {
-        // Try to reuse a freed ID first
-        if (self.free_view_ids.items.len > 0) {
-            const id = self.free_view_ids.items[self.free_view_ids.items.len - 1];
-            _ = self.free_view_ids.pop();
-            self.view_dirty_flags.items[id] = true; // Mark as dirty initially
+            // Otherwise allocate a new ID
+            const id = self.next_view_id;
+            self.next_view_id += 1;
+            try self.view_dirty_flags.append(self.global_allocator, true);
             return id;
         }
 
-        // Otherwise allocate a new ID
-        const id = self.next_view_id;
-        self.next_view_id += 1;
-        try self.view_dirty_flags.append(self.global_allocator, true);
-        return id;
-    }
-
-    /// Unregister a view from this buffer
-    pub fn unregisterView(self: *TextBuffer, view_id: u32) void {
-        if (view_id < self.view_dirty_flags.items.len) {
-            self.free_view_ids.append(self.global_allocator, view_id) catch {};
-        }
-    }
-
-    /// Check if a view is marked as dirty
-    pub fn isViewDirty(self: *const TextBuffer, view_id: u32) bool {
-        if (view_id < self.view_dirty_flags.items.len) {
-            return self.view_dirty_flags.items[view_id];
-        }
-        return false;
-    }
-
-    /// Clear the dirty flag for a view
-    pub fn clearViewDirty(self: *TextBuffer, view_id: u32) void {
-        if (view_id < self.view_dirty_flags.items.len) {
-            self.view_dirty_flags.items[view_id] = false;
-        }
-    }
-
-    /// Mark all registered views as dirty
-    fn markAllViewsDirty(self: *TextBuffer) void {
-        for (self.view_dirty_flags.items) |*flag| {
-            flag.* = true;
-        }
-    }
-
-    pub fn getLength(self: *const TextBuffer) u32 {
-        return self.char_count;
-    }
-
-    pub fn getByteSize(self: *const TextBuffer) u32 {
-        // TODO: Cache bytesize and recalculate when chunks change
-        var total_bytes: u32 = 0;
-        for (self.lines.items, 0..) |line, line_idx| {
-            for (line.chunks.items) |chunk| {
-                total_bytes += chunk.byte_end - chunk.byte_start;
-            }
-            // Add newline byte count (except for last line)
-            if (line_idx < self.lines.items.len - 1) {
-                total_bytes += 1; // for '\n'
+        /// Unregister a view from this buffer
+        pub fn unregisterView(self: *Self, view_id: u32) void {
+            if (view_id < self.view_dirty_flags.items.len) {
+                self.free_view_ids.append(self.global_allocator, view_id) catch {};
             }
         }
-        return total_bytes;
-    }
 
-    pub fn measureText(self: *const TextBuffer, text: []const u8) u32 {
-        return gwidth.gwidth(text, self.width_method, &self.display_width);
-    }
-
-    pub fn reset(self: *TextBuffer) void {
-        _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
-
-        self.mem_registry.clear();
-        self.char_count = 0;
-
-        self.lines = .{};
-
-        // Mark all registered views as dirty
-        self.markAllViewsDirty();
-    }
-
-    pub fn setDefaultFg(self: *TextBuffer, fg: ?RGBA) void {
-        self.default_fg = fg;
-    }
-
-    pub fn setDefaultBg(self: *TextBuffer, bg: ?RGBA) void {
-        self.default_bg = bg;
-    }
-
-    pub fn setDefaultAttributes(self: *TextBuffer, attributes: ?u8) void {
-        self.default_attributes = attributes;
-    }
-
-    pub fn resetDefaults(self: *TextBuffer) void {
-        self.default_fg = null;
-        self.default_bg = null;
-        self.default_attributes = null;
-    }
-
-    /// Add a highlight to a specific line
-    pub fn addHighlight(
-        self: *TextBuffer,
-        line_idx: usize,
-        col_start: u32,
-        col_end: u32,
-        style_id: u32,
-        priority: u8,
-        hl_ref: ?u16,
-    ) TextBufferError!void {
-        if (line_idx >= self.lines.items.len) {
-            return TextBufferError.InvalidIndex;
+        /// Check if a view is marked as dirty
+        pub fn isViewDirty(self: *const Self, view_id: u32) bool {
+            if (view_id < self.view_dirty_flags.items.len) {
+                return self.view_dirty_flags.items[view_id];
+            }
+            return false;
         }
 
-        const hl = Highlight{
-            .col_start = col_start,
-            .col_end = col_end,
-            .style_id = style_id,
-            .priority = priority,
-            .hl_ref = hl_ref,
-        };
+        /// Clear the dirty flag for a view
+        pub fn clearViewDirty(self: *Self, view_id: u32) void {
+            if (view_id < self.view_dirty_flags.items.len) {
+                self.view_dirty_flags.items[view_id] = false;
+            }
+        }
 
-        try self.lines.items[line_idx].highlights.append(self.allocator, hl);
-        try self.rebuildLineSpans(line_idx);
-    }
+        /// Mark all registered views as dirty
+        fn markAllViewsDirty(self: *Self) void {
+            for (self.view_dirty_flags.items) |*flag| {
+                flag.* = true;
+            }
+        }
 
-    /// Remove all highlights with a specific reference ID
-    pub fn removeHighlightsByRef(self: *TextBuffer, hl_ref: u16) void {
-        for (self.lines.items, 0..) |*line, line_idx| {
-            var i: usize = 0;
-            var changed = false;
-            while (i < line.highlights.items.len) {
-                if (line.highlights.items[i].hl_ref) |ref| {
-                    if (ref == hl_ref) {
-                        _ = line.highlights.swapRemove(i);
-                        changed = true;
-                        continue;
+        pub fn getLength(self: *const Self) u32 {
+            return self.char_count;
+        }
+
+        pub fn getByteSize(self: *const Self) u32 {
+            // TODO: Cache bytesize and recalculate when chunks change
+            const Context = struct {
+                total_bytes: u32 = 0,
+                line_count: u32,
+
+                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    for (line.chunks.items) |chunk| {
+                        ctx.total_bytes += chunk.byte_end - chunk.byte_start;
                     }
-                }
-                i += 1;
-            }
-            if (changed) {
-                self.rebuildLineSpans(line_idx) catch {};
-            }
-        }
-    }
-
-    /// Clear all highlights from a specific line
-    pub fn clearLineHighlights(self: *TextBuffer, line_idx: usize) void {
-        if (line_idx < self.lines.items.len) {
-            self.lines.items[line_idx].highlights.clearRetainingCapacity();
-            self.rebuildLineSpans(line_idx) catch {};
-        }
-    }
-
-    /// Clear all highlights from all lines
-    pub fn clearAllHighlights(self: *TextBuffer) void {
-        for (self.lines.items, 0..) |*line, line_idx| {
-            line.highlights.clearRetainingCapacity();
-            self.rebuildLineSpans(line_idx) catch {};
-        }
-    }
-
-    /// Get highlights for a specific line
-    pub fn getLineHighlights(self: *const TextBuffer, line_idx: usize) []const Highlight {
-        if (line_idx < self.lines.items.len) {
-            return self.lines.items[line_idx].highlights.items;
-        }
-        return &[_]Highlight{};
-    }
-
-    /// Get pre-computed style spans for a specific line
-    pub fn getLineSpans(self: *const TextBuffer, line_idx: usize) []const StyleSpan {
-        if (line_idx < self.lines.items.len) {
-            return self.lines.items[line_idx].spans.items;
-        }
-        return &[_]StyleSpan{};
-    }
-
-    /// Convert row/col coordinates to absolute character offset
-    /// Row is 0-based line index, col is 0-based column within that line
-    /// Returns null if coordinates are out of bounds
-    pub fn coordsToCharOffset(self: *const TextBuffer, row: u32, col: u32) ?u32 {
-        if (row >= self.lines.items.len) return null;
-
-        const line = &self.lines.items[row];
-        if (col > line.width) return null;
-
-        return line.char_offset + col;
-    }
-
-    /// Convert row/col coordinates to byte offset in the underlying memory buffer
-    /// Returns the memory ID, byte offset, and remaining bytes in the chunk
-    /// Returns null if coordinates are out of bounds
-    pub fn coordsToByteOffset(self: *const TextBuffer, row: u32, col: u32) ?struct { mem_id: u8, byte_offset: u32 } {
-        if (row >= self.lines.items.len) return null;
-
-        const line = &self.lines.items[row];
-        if (col > line.width) return null;
-
-        // Find which chunk contains this column
-        var current_col: u32 = 0;
-        for (line.chunks.items) |*chunk| {
-            if (col <= current_col + chunk.width) {
-                // This chunk contains the target column
-                const col_in_chunk = col - current_col;
-
-                // Get graphemes for this chunk to find byte offset
-                const graphemes = chunk.getGraphemes(
-                    &self.mem_registry,
-                    self.allocator,
-                    &self.graphemes_data,
-                    self.width_method,
-                    &self.display_width,
-                ) catch return null;
-
-                // Walk through graphemes to find the byte offset
-                var chars_so_far: u32 = 0;
-                for (graphemes) |g| {
-                    if (chars_so_far >= col_in_chunk) {
-                        return .{
-                            .mem_id = chunk.mem_id,
-                            .byte_offset = chunk.byte_start + g.byte_offset,
-                        };
+                    // Add newline byte count (except for last line)
+                    if (idx < ctx.line_count - 1) {
+                        ctx.total_bytes += 1; // for '\n'
                     }
-                    chars_so_far += g.width;
+                    return .{};
                 }
+            };
 
-                // If we're at the end of the chunk, return end position
+            var ctx = Context{ .line_count = self.lines.count() };
+            self.lines.walk(&ctx, Context.walker) catch {};
+            return ctx.total_bytes;
+        }
+
+        pub fn measureText(self: *const Self, text: []const u8) u32 {
+            return gwidth.gwidth(text, self.width_method, &self.display_width);
+        }
+
+        pub fn reset(self: *Self) void {
+            _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
+
+            self.mem_registry.clear();
+            self.char_count = 0;
+
+            self.lines = LineStorage.init(self.allocator) catch return;
+
+            // Mark all registered views as dirty
+            self.markAllViewsDirty();
+        }
+
+        pub fn setDefaultFg(self: *Self, fg: ?RGBA) void {
+            self.default_fg = fg;
+        }
+
+        pub fn setDefaultBg(self: *Self, bg: ?RGBA) void {
+            self.default_bg = bg;
+        }
+
+        pub fn setDefaultAttributes(self: *Self, attributes: ?u8) void {
+            self.default_attributes = attributes;
+        }
+
+        pub fn resetDefaults(self: *Self) void {
+            self.default_fg = null;
+            self.default_bg = null;
+            self.default_attributes = null;
+        }
+
+        /// Add a highlight to a specific line
+        pub fn addHighlight(
+            self: *Self,
+            line_idx: usize,
+            col_start: u32,
+            col_end: u32,
+            style_id: u32,
+            priority: u8,
+            hl_ref: ?u16,
+        ) TextBufferError!void {
+            if (line_idx >= self.lines.count()) {
+                return TextBufferError.InvalidIndex;
+            }
+
+            const hl = Highlight{
+                .col_start = col_start,
+                .col_end = col_end,
+                .style_id = style_id,
+                .priority = priority,
+                .hl_ref = hl_ref,
+            };
+
+            // Get mutable line - need to work with rope API
+            const line_ptr = self.lines.get(@intCast(line_idx)) orelse return TextBufferError.InvalidIndex;
+            try @constCast(line_ptr).highlights.append(self.allocator, hl);
+            try self.rebuildLineSpans(line_idx);
+        }
+
+        /// Remove all highlights with a specific reference ID
+        pub fn removeHighlightsByRef(self: *Self, hl_ref: u16) void {
+            const Context = struct {
+                buffer: *Self,
+                hl_ref: u16,
+
+                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    const mut_line = @constCast(line);
+                    var i: usize = 0;
+                    var changed = false;
+                    while (i < mut_line.highlights.items.len) {
+                        if (mut_line.highlights.items[i].hl_ref) |ref| {
+                            if (ref == ctx.hl_ref) {
+                                _ = mut_line.highlights.swapRemove(i);
+                                changed = true;
+                                continue;
+                            }
+                        }
+                        i += 1;
+                    }
+                    if (changed) {
+                        ctx.buffer.rebuildLineSpans(idx) catch {};
+                    }
+                    return .{};
+                }
+            };
+
+            var ctx = Context{ .buffer = self, .hl_ref = hl_ref };
+            self.lines.walk(&ctx, Context.walker) catch {};
+        }
+
+        /// Clear all highlights from a specific line
+        pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
+            if (line_idx < self.lines.count()) {
+                if (self.lines.get(@intCast(line_idx))) |line| {
+                    @constCast(line).highlights.clearRetainingCapacity();
+                    self.rebuildLineSpans(line_idx) catch {};
+                }
+            }
+        }
+
+        /// Clear all highlights from all lines
+        pub fn clearAllHighlights(self: *Self) void {
+            const Context = struct {
+                buffer: *Self,
+
+                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    @constCast(line).highlights.clearRetainingCapacity();
+                    ctx.buffer.rebuildLineSpans(idx) catch {};
+                    return .{};
+                }
+            };
+
+            var ctx = Context{ .buffer = self };
+            self.lines.walk(&ctx, Context.walker) catch {};
+        }
+
+        /// Get highlights for a specific line
+        pub fn getLineHighlights(self: *const Self, line_idx: usize) []const Highlight {
+            if (line_idx < self.lines.count()) {
+                if (self.lines.get(@intCast(line_idx))) |line| {
+                    return line.highlights.items;
+                }
+            }
+            return &[_]Highlight{};
+        }
+
+        /// Get pre-computed style spans for a specific line
+        pub fn getLineSpans(self: *const Self, line_idx: usize) []const StyleSpan {
+            if (line_idx < self.lines.count()) {
+                if (self.lines.get(@intCast(line_idx))) |line| {
+                    return line.spans.items;
+                }
+            }
+            return &[_]StyleSpan{};
+        }
+
+        /// Convert row/col coordinates to absolute character offset
+        /// Row is 0-based line index, col is 0-based column within that line
+        /// Returns null if coordinates are out of bounds
+        pub fn coordsToCharOffset(self: *const Self, row: u32, col: u32) ?u32 {
+            if (row >= self.lines.count()) return null;
+
+            const line = self.lines.get(row) orelse return null;
+            if (col > line.width) return null;
+
+            return line.char_offset + col;
+        }
+
+        /// Convert row/col coordinates to byte offset in the underlying memory buffer
+        /// Returns the memory ID, byte offset, and remaining bytes in the chunk
+        /// Returns null if coordinates are out of bounds
+        pub fn coordsToByteOffset(self: *const Self, row: u32, col: u32) ?struct { mem_id: u8, byte_offset: u32 } {
+            if (row >= self.lines.count()) return null;
+
+            const line = self.lines.get(row) orelse return null;
+            if (col > line.width) return null;
+
+            // Find which chunk contains this column
+            var current_col: u32 = 0;
+            for (line.chunks.items) |*chunk| {
+                if (col <= current_col + chunk.width) {
+                    // This chunk contains the target column
+                    const col_in_chunk = col - current_col;
+
+                    // Get graphemes for this chunk to find byte offset
+                    const graphemes = chunk.getGraphemes(
+                        &self.mem_registry,
+                        self.allocator,
+                        &self.graphemes_data,
+                        self.width_method,
+                        &self.display_width,
+                    ) catch return null;
+
+                    // Walk through graphemes to find the byte offset
+                    var chars_so_far: u32 = 0;
+                    for (graphemes) |g| {
+                        if (chars_so_far >= col_in_chunk) {
+                            return .{
+                                .mem_id = chunk.mem_id,
+                                .byte_offset = chunk.byte_start + g.byte_offset,
+                            };
+                        }
+                        chars_so_far += g.width;
+                    }
+
+                    // If we're at the end of the chunk, return end position
+                    return .{
+                        .mem_id = chunk.mem_id,
+                        .byte_offset = chunk.byte_end,
+                    };
+                }
+                current_col += chunk.width;
+            }
+
+            // Column is at the end of the line
+            if (line.chunks.items.len > 0) {
+                const last_chunk = &line.chunks.items[line.chunks.items.len - 1];
                 return .{
-                    .mem_id = chunk.mem_id,
-                    .byte_offset = chunk.byte_end,
+                    .mem_id = last_chunk.mem_id,
+                    .byte_offset = last_chunk.byte_end,
                 };
             }
-            current_col += chunk.width;
+
+            return null;
         }
 
-        // Column is at the end of the line
-        if (line.chunks.items.len > 0) {
-            const last_chunk = &line.chunks.items[line.chunks.items.len - 1];
-            return .{
-                .mem_id = last_chunk.mem_id,
-                .byte_offset = last_chunk.byte_end,
-            };
-        }
+        /// Convert absolute character offset to row/col coordinates
+        /// Returns null if offset is out of bounds
+        pub fn charOffsetToCoords(self: *const Self, char_offset: u32) ?struct { row: u32, col: u32 } {
+            const line_count = self.lines.count();
+            if (line_count == 0) return null;
 
-        return null;
-    }
-
-    /// Convert absolute character offset to row/col coordinates
-    /// Returns null if offset is out of bounds
-    pub fn charOffsetToCoords(self: *const TextBuffer, char_offset: u32) ?struct { row: u32, col: u32 } {
-        if (self.lines.items.len == 0) return null;
-
-        // Binary search to find the line containing this offset
-        var left: usize = 0;
-        var right: usize = self.lines.items.len;
-
-        while (left < right) {
-            const mid = left + (right - left) / 2;
-            const line = &self.lines.items[mid];
-            const line_end_char = if (mid + 1 < self.lines.items.len)
-                self.lines.items[mid + 1].char_offset
-            else
-                line.char_offset + line.width;
-
-            if (char_offset < line.char_offset) {
-                right = mid;
-            } else if (char_offset >= line_end_char) {
-                left = mid + 1;
-            } else {
-                // Found the line
-                const col = char_offset - line.char_offset;
-                return .{ .row = @intCast(mid), .col = col };
-            }
-        }
-
-        return null;
-    }
-
-    /// Add a highlight using row/col coordinates
-    /// Efficiently handles single-line and multi-line highlights
-    pub fn addHighlightByCoords(
-        self: *TextBuffer,
-        start_row: u32,
-        start_col: u32,
-        end_row: u32,
-        end_col: u32,
-        style_id: u32,
-        priority: u8,
-        hl_ref: ?u16,
-    ) TextBufferError!void {
-        const char_start = self.coordsToCharOffset(start_row, start_col) orelse return TextBufferError.InvalidIndex;
-        const char_end = self.coordsToCharOffset(end_row, end_col) orelse return TextBufferError.InvalidIndex;
-
-        return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
-    }
-
-    /// Add a highlight using character offsets into the full text
-    /// Efficiently handles single-line and multi-line highlights
-    pub fn addHighlightByCharRange(
-        self: *TextBuffer,
-        char_start: u32,
-        char_end: u32,
-        style_id: u32,
-        priority: u8,
-        hl_ref: ?u16,
-    ) TextBufferError!void {
-        if (char_start >= char_end or self.lines.items.len == 0) {
-            return;
-        }
-
-        // Binary search to find the starting line
-        var start_line_idx: usize = 0;
-        {
+            // Binary search to find the line containing this offset
             var left: usize = 0;
-            var right: usize = self.lines.items.len;
+            var right: usize = line_count;
+
             while (left < right) {
                 const mid = left + (right - left) / 2;
-                const line = &self.lines.items[mid];
-                const line_end_char = if (mid + 1 < self.lines.items.len)
-                    self.lines.items[mid + 1].char_offset
+                const line = self.lines.get(@intCast(mid)) orelse return null;
+                const next_line = self.lines.get(@intCast(mid + 1));
+                const line_end_char = if (next_line) |nl|
+                    nl.char_offset
                 else
                     line.char_offset + line.width;
 
-                if (char_start < line.char_offset) {
+                if (char_offset < line.char_offset) {
                     right = mid;
-                } else if (char_start >= line_end_char) {
+                } else if (char_offset >= line_end_char) {
                     left = mid + 1;
                 } else {
-                    start_line_idx = mid;
+                    // Found the line
+                    const col = char_offset - line.char_offset;
+                    return .{ .row = @intCast(mid), .col = col };
+                }
+            }
+
+            return null;
+        }
+
+        /// Add a highlight using row/col coordinates
+        /// Efficiently handles single-line and multi-line highlights
+        pub fn addHighlightByCoords(
+            self: *Self,
+            start_row: u32,
+            start_col: u32,
+            end_row: u32,
+            end_col: u32,
+            style_id: u32,
+            priority: u8,
+            hl_ref: ?u16,
+        ) TextBufferError!void {
+            const char_start = self.coordsToCharOffset(start_row, start_col) orelse return TextBufferError.InvalidIndex;
+            const char_end = self.coordsToCharOffset(end_row, end_col) orelse return TextBufferError.InvalidIndex;
+
+            return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
+        }
+
+        /// Add a highlight using character offsets into the full text
+        /// Efficiently handles single-line and multi-line highlights
+        pub fn addHighlightByCharRange(
+            self: *Self,
+            char_start: u32,
+            char_end: u32,
+            style_id: u32,
+            priority: u8,
+            hl_ref: ?u16,
+        ) TextBufferError!void {
+            const line_count = self.lines.count();
+            if (char_start >= char_end or line_count == 0) {
+                return;
+            }
+
+            // Binary search to find the starting line
+            var start_line_idx: usize = 0;
+            {
+                var left: usize = 0;
+                var right: usize = line_count;
+                while (left < right) {
+                    const mid = left + (right - left) / 2;
+                    const line = self.lines.get(@intCast(mid)) orelse break;
+                    const next_line = self.lines.get(@intCast(mid + 1));
+                    const line_end_char = if (next_line) |nl|
+                        nl.char_offset
+                    else
+                        line.char_offset + line.width;
+
+                    if (char_start < line.char_offset) {
+                        right = mid;
+                    } else if (char_start >= line_end_char) {
+                        left = mid + 1;
+                    } else {
+                        start_line_idx = mid;
+                        break;
+                    }
+                }
+                if (left >= line_count) return;
+                if (left == right) start_line_idx = left;
+            }
+
+            const start_line = self.lines.get(@intCast(start_line_idx)) orelse return;
+            const start_line_next = self.lines.get(@intCast(start_line_idx + 1));
+            const start_line_end_char = if (start_line_next) |nl|
+                nl.char_offset
+            else
+                start_line.char_offset + start_line.width;
+
+            // Fast path: highlight is entirely within one line
+            if (char_end <= start_line_end_char) {
+                const col_start = char_start - start_line.char_offset;
+                const col_end = char_end - start_line.char_offset;
+                return self.addHighlight(start_line_idx, col_start, col_end, style_id, priority, hl_ref);
+            }
+
+            // Multi-line highlight: process first line
+            {
+                const col_start = char_start - start_line.char_offset;
+                const col_end = start_line.width;
+                try self.addHighlight(start_line_idx, col_start, col_end, style_id, priority, hl_ref);
+            }
+
+            // Process middle and end lines
+            var line_idx = start_line_idx + 1;
+            while (line_idx < line_count) {
+                const line = self.lines.get(@intCast(line_idx)) orelse break;
+                const next_line = self.lines.get(@intCast(line_idx + 1));
+                const line_end_char = if (next_line) |nl|
+                    nl.char_offset
+                else
+                    line.char_offset + line.width;
+
+                if (line.char_offset >= char_end) {
+                    break;
+                }
+
+                if (char_end <= line_end_char) {
+                    // This is the last line
+                    const col_end = char_end - line.char_offset;
+                    try self.addHighlight(line_idx, 0, col_end, style_id, priority, hl_ref);
+                    break;
+                } else {
+                    // Middle line: highlight entire line
+                    try self.addHighlight(line_idx, 0, line.width, style_id, priority, hl_ref);
+                }
+
+                line_idx += 1;
+            }
+        }
+
+        /// Rebuild pre-computed style spans for a line
+        /// Builds an optimized span list for O(1) rendering lookups
+        fn rebuildLineSpans(self: *Self, line_idx: usize) TextBufferError!void {
+            if (line_idx >= self.lines.count()) {
+                return TextBufferError.InvalidIndex;
+            }
+
+            const line = self.lines.get(@intCast(line_idx)) orelse return TextBufferError.InvalidIndex;
+            const mut_line = @constCast(line);
+            mut_line.spans.clearRetainingCapacity();
+
+            if (line.highlights.items.len == 0) {
+                return; // No highlights, rendering will use defaults
+            }
+
+            const highlights = line.highlights.items;
+
+            // Collect all boundary columns
+            const Event = struct {
+                col: u32,
+                is_start: bool,
+                hl_idx: usize,
+            };
+
+            var events = std.ArrayList(Event).init(self.allocator);
+            defer events.deinit();
+
+            for (highlights, 0..) |hl, idx| {
+                try events.append(.{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
+                try events.append(.{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
+            }
+
+            // Sort by column, ends before starts at same position
+            const sortFn = struct {
+                fn lessThan(_: void, a: Event, b: Event) bool {
+                    if (a.col != b.col) return a.col < b.col;
+                    return !a.is_start; // Ends before starts
+                }
+            }.lessThan;
+            std.mem.sort(Event, events.items, {}, sortFn);
+
+            // Build spans by tracking active highlights
+            var active = std.AutoHashMap(usize, void).init(self.allocator);
+            defer active.deinit();
+
+            var current_col: u32 = 0;
+
+            for (events.items) |event| {
+                // Find current highest priority style before processing event
+                var current_priority: i16 = -1;
+                var current_style: u32 = 0;
+                var it = active.keyIterator();
+                while (it.next()) |hl_idx| {
+                    const hl = highlights[hl_idx.*];
+                    if (hl.priority > current_priority) {
+                        current_priority = @intCast(hl.priority);
+                        current_style = hl.style_id;
+                    }
+                }
+
+                // Emit span for the segment leading up to this event
+                if (event.col > current_col) {
+                    try mut_line.spans.append(self.allocator, StyleSpan{
+                        .col = current_col,
+                        .style_id = current_style,
+                        .next_col = event.col,
+                    });
+                    current_col = event.col;
+                }
+
+                // Process event
+                if (event.is_start) {
+                    try active.put(event.hl_idx, {});
+                } else {
+                    _ = active.remove(event.hl_idx);
+                }
+            }
+        }
+
+        /// Set the syntax style for highlight resolution
+        pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+            self.syntax_style = syntax_style;
+        }
+
+        /// Get the current syntax style
+        pub fn getSyntaxStyle(self: *const Self) ?*const SyntaxStyle {
+            return self.syntax_style;
+        }
+
+        /// Set the text content of the buffer
+        /// Parses UTF-8 text into lines and grapheme clusters
+        pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
+            self.reset();
+
+            if (text.len == 0) {
+                // Create empty line for empty text
+                const empty_line = TextLine.init();
+                try self.lines.append(empty_line);
+                return;
+            }
+
+            // Register the text buffer and get its ID
+            const mem_id = try self.mem_registry.register(text, false);
+
+            // Parse into lines using memchr for \n
+            var line_start: u32 = 0;
+            var pos: u32 = 0;
+            var has_trailing_newline = false;
+
+            while (pos < text.len) {
+                if (std.mem.indexOfScalarPos(u8, text, pos, '\n')) |nl_pos| {
+                    var line_end: u32 = @intCast(nl_pos);
+                    // Check for \r before \n
+                    if (nl_pos > 0 and text[nl_pos - 1] == '\r') {
+                        line_end = @intCast(nl_pos - 1);
+                    }
+
+                    // Parse line with newline included
+                    try self.parseLine(mem_id, text, line_start, line_end, true);
+
+                    pos = @intCast(nl_pos + 1);
+                    line_start = pos;
+                    has_trailing_newline = (pos == text.len);
+                } else {
+                    // Last line (no trailing \n)
+                    try self.parseLine(mem_id, text, line_start, @intCast(text.len), false);
+                    has_trailing_newline = false;
                     break;
                 }
             }
-            if (left >= self.lines.items.len) return;
-            if (left == right) start_line_idx = left;
+
+            // If text ends with \n, create an empty final line
+            if (has_trailing_newline) {
+                var final_line = TextLine.init();
+                final_line.char_offset = self.char_count;
+                try self.lines.append(final_line);
+            }
         }
 
-        const start_line = &self.lines.items[start_line_idx];
-        const start_line_end_char = if (start_line_idx + 1 < self.lines.items.len)
-            self.lines.items[start_line_idx + 1].char_offset
-        else
-            start_line.char_offset + start_line.width;
+        /// Create a TextChunk from a memory buffer range
+        /// Calculates width, but graphemes are computed lazily on first access
+        fn createChunk(
+            self: *const Self,
+            mem_id: u8,
+            byte_start: u32,
+            byte_end: u32,
+        ) TextChunk {
+            const mem_buf = self.mem_registry.get(mem_id).?;
+            const chunk_bytes = mem_buf[byte_start..byte_end];
+            const chunk_width: u32 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
 
-        // Fast path: highlight is entirely within one line
-        if (char_end <= start_line_end_char) {
-            const col_start = char_start - start_line.char_offset;
-            const col_end = char_end - start_line.char_offset;
-            return self.addHighlight(start_line_idx, col_start, col_end, style_id, priority, hl_ref);
+            return TextChunk{
+                .mem_id = mem_id,
+                .byte_start = byte_start,
+                .byte_end = byte_end,
+                .width = chunk_width,
+                .graphemes = null, // Computed lazily
+            };
         }
 
-        // Multi-line highlight: process first line
-        {
-            const col_start = char_start - start_line.char_offset;
-            const col_end = start_line.width;
-            try self.addHighlight(start_line_idx, col_start, col_end, style_id, priority, hl_ref);
-        }
+        /// Parse a single line into chunks (count and measure graphemes, but don't encode)
+        fn parseLine(self: *Self, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
+            var line = TextLine.init();
+            line.char_offset = self.char_count;
 
-        // Process middle and end lines
-        var line_idx = start_line_idx + 1;
-        while (line_idx < self.lines.items.len) {
-            const line = &self.lines.items[line_idx];
-            const line_end_char = if (line_idx + 1 < self.lines.items.len)
-                self.lines.items[line_idx + 1].char_offset
-            else
-                line.char_offset + line.width;
+            // Note: We don't include the newline character in the chunk
+            // Newlines are implicit line separators, not counted as characters
 
-            if (line.char_offset >= char_end) {
-                break;
+            // Store the chunk with just byte references
+            if (byte_start < byte_end) {
+                const chunk = self.createChunk(mem_id, byte_start, byte_end);
+
+                self.char_count += chunk.width;
+                try line.chunks.append(self.allocator, chunk);
+                line.width = chunk.width;
             }
 
-            if (char_end <= line_end_char) {
-                // This is the last line
-                const col_end = char_end - line.char_offset;
-                try self.addHighlight(line_idx, 0, col_end, style_id, priority, hl_ref);
-                break;
-            } else {
-                // Middle line: highlight entire line
-                try self.addHighlight(line_idx, 0, line.width, style_id, priority, hl_ref);
-            }
-
-            line_idx += 1;
-        }
-    }
-
-    /// Rebuild pre-computed style spans for a line
-    /// Builds an optimized span list for O(1) rendering lookups
-    fn rebuildLineSpans(self: *TextBuffer, line_idx: usize) TextBufferError!void {
-        if (line_idx >= self.lines.items.len) {
-            return TextBufferError.InvalidIndex;
+            _ = text; // Suppress unused warning
+            try self.lines.append(line);
         }
 
-        const line = &self.lines.items[line_idx];
-        line.spans.clearRetainingCapacity();
-
-        if (line.highlights.items.len == 0) {
-            return; // No highlights, rendering will use defaults
+        /// Get the real line count (not virtual/wrapped lines)
+        pub fn getLineCount(self: *const Self) u32 {
+            return self.lines.count();
         }
 
-        const highlights = line.highlights.items;
-
-        // Collect all boundary columns
-        const Event = struct {
-            col: u32,
-            is_start: bool,
-            hl_idx: usize,
-        };
-
-        var events = std.ArrayList(Event).init(self.allocator);
-        defer events.deinit();
-
-        for (highlights, 0..) |hl, idx| {
-            try events.append(.{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
-            try events.append(.{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
+        pub fn getLines(self: *const Self) []const TextLine {
+            // For ArrayRope, we can return the underlying items
+            // This is a special case optimization that works because we know LineStorage is ArrayRope for now
+            return self.lines.items.items;
         }
 
-        // Sort by column, ends before starts at same position
-        const sortFn = struct {
-            fn lessThan(_: void, a: Event, b: Event) bool {
-                if (a.col != b.col) return a.col < b.col;
-                return !a.is_start; // Ends before starts
-            }
-        }.lessThan;
-        std.mem.sort(Event, events.items, {}, sortFn);
+        /// Get line info (starts, widths, max_width) from the buffer
+        /// The returned slices are valid until the next setText/reset call
+        pub fn getLineInfo(self: *const Self) struct {
+            line_count: u32,
+            starts: []const u32,
+            widths: []const u32,
+            max_width: u32,
+        } {
+            var starts = std.ArrayList(u32).init(self.allocator);
+            var widths = std.ArrayList(u32).init(self.allocator);
+            var max_width: u32 = 0;
 
-        // Build spans by tracking active highlights
-        var active = std.AutoHashMap(usize, void).init(self.allocator);
-        defer active.deinit();
+            const Context = struct {
+                starts: *std.ArrayList(u32),
+                widths: *std.ArrayList(u32),
+                max_width: *u32,
 
-        var current_col: u32 = 0;
-
-        for (events.items) |event| {
-            // Find current highest priority style before processing event
-            var current_priority: i16 = -1;
-            var current_style: u32 = 0;
-            var it = active.keyIterator();
-            while (it.next()) |hl_idx| {
-                const hl = highlights[hl_idx.*];
-                if (hl.priority > current_priority) {
-                    current_priority = @intCast(hl.priority);
-                    current_style = hl.style_id;
+                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                    _ = idx;
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    ctx.starts.append(line.char_offset) catch {};
+                    ctx.widths.append(line.width) catch {};
+                    ctx.max_width.* = @max(ctx.max_width.*, line.width);
+                    return .{};
                 }
-            }
+            };
 
-            // Emit span for the segment leading up to this event
-            if (event.col > current_col) {
-                try line.spans.append(self.allocator, StyleSpan{
-                    .col = current_col,
-                    .style_id = current_style,
-                    .next_col = event.col,
-                });
-                current_col = event.col;
-            }
+            var ctx = Context{ .starts = &starts, .widths = &widths, .max_width = &max_width };
+            self.lines.walk(&ctx, Context.walker) catch {};
 
-            // Process event
-            if (event.is_start) {
-                try active.put(event.hl_idx, {});
-            } else {
-                _ = active.remove(event.hl_idx);
-            }
-        }
-    }
-
-    /// Set the syntax style for highlight resolution
-    pub fn setSyntaxStyle(self: *TextBuffer, syntax_style: ?*const SyntaxStyle) void {
-        self.syntax_style = syntax_style;
-    }
-
-    /// Get the current syntax style
-    pub fn getSyntaxStyle(self: *const TextBuffer) ?*const SyntaxStyle {
-        return self.syntax_style;
-    }
-
-    /// Set the text content of the buffer
-    /// Parses UTF-8 text into lines and grapheme clusters
-    pub fn setText(self: *TextBuffer, text: []const u8) TextBufferError!void {
-        self.reset();
-
-        if (text.len == 0) {
-            // Create empty line for empty text
-            const empty_line = TextLine.init();
-            try self.lines.append(self.allocator, empty_line);
-            return;
+            return .{
+                .line_count = self.lines.count(),
+                .starts = starts.items,
+                .widths = widths.items,
+                .max_width = max_width,
+            };
         }
 
-        // Register the text buffer and get its ID
-        const mem_id = try self.mem_registry.register(text, false);
+        /// Extract all text as UTF-8 bytes from the char buffer into provided output buffer
+        /// Returns the number of bytes written to the output buffer
+        pub fn getPlainTextIntoBuffer(self: *const Self, out_buffer: []u8) usize {
+            const Context = struct {
+                buffer: *const Self,
+                out_buffer: []u8,
+                out_index: usize = 0,
+                line_count: u32,
 
-        // Parse into lines using memchr for \n
-        var line_start: u32 = 0;
-        var pos: u32 = 0;
-        var has_trailing_newline = false;
+                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    for (line.chunks.items) |chunk| {
+                        const chunk_bytes = chunk.getBytes(&ctx.buffer.mem_registry);
+                        const copy_len = @min(chunk_bytes.len, ctx.out_buffer.len - ctx.out_index);
+                        if (copy_len > 0) {
+                            @memcpy(ctx.out_buffer[ctx.out_index .. ctx.out_index + copy_len], chunk_bytes[0..copy_len]);
+                            ctx.out_index += copy_len;
+                        }
+                    }
 
-        while (pos < text.len) {
-            if (std.mem.indexOfScalarPos(u8, text, pos, '\n')) |nl_pos| {
-                var line_end: u32 = @intCast(nl_pos);
-                // Check for \r before \n
-                if (nl_pos > 0 and text[nl_pos - 1] == '\r') {
-                    line_end = @intCast(nl_pos - 1);
+                    // Add newline between lines (except after last line)
+                    if (idx < ctx.line_count - 1 and ctx.out_index < ctx.out_buffer.len) {
+                        ctx.out_buffer[ctx.out_index] = '\n';
+                        ctx.out_index += 1;
+                    }
+                    return .{};
                 }
+            };
 
-                // Parse line with newline included
-                try self.parseLine(mem_id, text, line_start, line_end, true);
-
-                pos = @intCast(nl_pos + 1);
-                line_start = pos;
-                has_trailing_newline = (pos == text.len);
-            } else {
-                // Last line (no trailing \n)
-                try self.parseLine(mem_id, text, line_start, @intCast(text.len), false);
-                has_trailing_newline = false;
-                break;
-            }
+            var ctx = Context{ .buffer = self, .out_buffer = out_buffer, .line_count = self.lines.count() };
+            self.lines.walk(&ctx, Context.walker) catch {};
+            return ctx.out_index;
         }
 
-        // If text ends with \n, create an empty final line
-        if (has_trailing_newline) {
-            var final_line = TextLine.init();
-            final_line.char_offset = self.char_count;
-            try self.lines.append(self.allocator, final_line);
+        /// Register a memory buffer with the text buffer
+        /// Returns the memory ID that can be used to reference this buffer
+        /// If owned is true, the buffer will be freed when the TextBuffer is destroyed
+        pub fn registerMemBuffer(self: *Self, data: []const u8, owned: bool) TextBufferError!u8 {
+            return try self.mem_registry.register(data, owned);
         }
-    }
 
-    /// Create a TextChunk from a memory buffer range
-    /// Calculates width, but graphemes are computed lazily on first access
-    fn createChunk(
-        self: *const TextBuffer,
-        mem_id: u8,
-        byte_start: u32,
-        byte_end: u32,
-    ) TextChunk {
-        const mem_buf = self.mem_registry.get(mem_id).?;
-        const chunk_bytes = mem_buf[byte_start..byte_end];
-        const chunk_width: u32 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
+        /// Get a memory buffer by its ID
+        pub fn getMemBuffer(self: *const Self, mem_id: u8) ?[]const u8 {
+            return self.mem_registry.get(mem_id);
+        }
 
-        return TextChunk{
-            .mem_id = mem_id,
-            .byte_start = byte_start,
-            .byte_end = byte_end,
-            .width = chunk_width,
-            .graphemes = null, // Computed lazily
-        };
-    }
+        /// Add a new line with a chunk
+        pub fn addLine(
+            self: *Self,
+            mem_id: u8,
+            byte_start: u32,
+            byte_end: u32,
+        ) TextBufferError!void {
+            _ = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
 
-    /// Parse a single line into chunks (count and measure graphemes, but don't encode)
-    fn parseLine(self: *TextBuffer, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
-        var line = TextLine.init();
-        line.char_offset = self.char_count;
-
-        // Note: We don't include the newline character in the chunk
-        // Newlines are implicit line separators, not counted as characters
-
-        // Store the chunk with just byte references
-        if (byte_start < byte_end) {
             const chunk = self.createChunk(mem_id, byte_start, byte_end);
 
-            self.char_count += chunk.width;
-            try line.chunks.append(self.allocator, chunk);
+            var line = TextLine.init();
+            line.char_offset = self.char_count;
             line.width = chunk.width;
+
+            try line.chunks.append(self.allocator, chunk);
+            try self.lines.append(line);
+            self.char_count += chunk.width;
+
+            // Mark all views as dirty
+            self.markAllViewsDirty();
         }
+    };
+}
 
-        _ = text; // Suppress unused warning
-        try self.lines.append(self.allocator, line);
-    }
+/// Type aliases for common use cases
+/// Read-only text buffer using ArrayRope (O(1) access, no editing overhead)
+pub const TextBufferArray = TextBuffer(ArrayRope(TextLine));
 
-    /// Get the real line count (not virtual/wrapped lines)
-    pub fn getLineCount(self: *const TextBuffer) u32 {
-        return @intCast(self.lines.items.len);
-    }
-
-    pub fn getLines(self: *const TextBuffer) []const TextLine {
-        return self.lines.items;
-    }
-
-    /// Get line info (starts, widths, max_width) from the buffer
-    /// The returned slices are valid until the next setText/reset call
-    pub fn getLineInfo(self: *const TextBuffer) struct {
-        line_count: u32,
-        starts: []const u32,
-        widths: []const u32,
-        max_width: u32,
-    } {
-        var starts = std.ArrayList(u32).init(self.allocator);
-        var widths = std.ArrayList(u32).init(self.allocator);
-        var max_width: u32 = 0;
-
-        for (self.lines.items) |line| {
-            starts.append(line.char_offset) catch {};
-            widths.append(line.width) catch {};
-            max_width = @max(max_width, line.width);
-        }
-
-        return .{
-            .line_count = @intCast(self.lines.items.len),
-            .starts = starts.items,
-            .widths = widths.items,
-            .max_width = max_width,
-        };
-    }
-
-    /// Extract all text as UTF-8 bytes from the char buffer into provided output buffer
-    /// Returns the number of bytes written to the output buffer
-    pub fn getPlainTextIntoBuffer(self: *const TextBuffer, out_buffer: []u8) usize {
-        var out_index: usize = 0;
-
-        for (self.lines.items, 0..) |line, line_idx| {
-            for (line.chunks.items) |chunk| {
-                const chunk_bytes = chunk.getBytes(&self.mem_registry);
-                const copy_len = @min(chunk_bytes.len, out_buffer.len - out_index);
-                if (copy_len > 0) {
-                    @memcpy(out_buffer[out_index .. out_index + copy_len], chunk_bytes[0..copy_len]);
-                    out_index += copy_len;
-                }
-            }
-
-            // Add newline between lines (except after last line)
-            if (line_idx < self.lines.items.len - 1 and out_index < out_buffer.len) {
-                out_buffer[out_index] = '\n';
-                out_index += 1;
-            }
-        }
-
-        return out_index;
-    }
-
-    /// Register a memory buffer with the text buffer
-    /// Returns the memory ID that can be used to reference this buffer
-    /// If owned is true, the buffer will be freed when the TextBuffer is destroyed
-    pub fn registerMemBuffer(self: *TextBuffer, data: []const u8, owned: bool) TextBufferError!u8 {
-        return try self.mem_registry.register(data, owned);
-    }
-
-    /// Get a memory buffer by its ID
-    pub fn getMemBuffer(self: *const TextBuffer, mem_id: u8) ?[]const u8 {
-        return self.mem_registry.get(mem_id);
-    }
-
-    /// Add a new line with a chunk
-    pub fn addLine(
-        self: *TextBuffer,
-        mem_id: u8,
-        byte_start: u32,
-        byte_end: u32,
-    ) TextBufferError!void {
-        _ = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
-
-        const chunk = self.createChunk(mem_id, byte_start, byte_end);
-
-        var line = TextLine.init();
-        line.char_offset = self.char_count;
-        line.width = chunk.width;
-
-        try line.chunks.append(self.allocator, chunk);
-        try self.lines.append(self.allocator, line);
-        self.char_count += chunk.width;
-
-        // Mark all views as dirty
-        self.markAllViewsDirty();
-    }
-};
+/// Writable text buffer using Rope (O(log n) access, efficient editing)
+pub const TextBufferRope = TextBuffer(Rope(TextLine));

@@ -6,7 +6,7 @@ const gwidth = @import("gwidth.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
-const TextBuffer = tb.TextBuffer;
+const TextBufferArray = tb.TextBufferArray;
 const RGBA = tb.RGBA;
 const TextSelection = tb.TextSelection;
 const WrapMode = tb.WrapMode;
@@ -59,7 +59,7 @@ pub const LocalSelection = struct {
 
 /// TextBufferView provides a view over a TextBuffer with wrapping and selection state
 pub const TextBufferView = struct {
-    text_buffer: *TextBuffer, // Reference to the underlying buffer (not owned)
+    text_buffer: *TextBufferArray, // Reference to the underlying buffer (not owned)
     view_id: u32, // Registration ID in the text buffer
 
     // View-specific state
@@ -81,7 +81,7 @@ pub const TextBufferView = struct {
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
 
-    pub fn init(global_allocator: Allocator, text_buffer: *TextBuffer) TextBufferViewError!*TextBufferView {
+    pub fn init(global_allocator: Allocator, text_buffer: *TextBufferArray) TextBufferViewError!*TextBufferView {
         const self = global_allocator.create(TextBufferView) catch return TextBufferViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 

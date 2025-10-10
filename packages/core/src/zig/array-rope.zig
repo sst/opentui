@@ -130,6 +130,12 @@ pub fn ArrayRope(comptime T: type) type {
             }
         }
 
+        /// Append - O(1) amortized
+        pub fn append(self: *Self, data: T) !void {
+            try self.items.append(self.allocator, data);
+            self.update_metrics();
+        }
+
         /// Insert - O(n) due to array shifting (use real Rope if this is frequent!)
         pub fn insert(self: *Self, index: u32, data: T) !void {
             if (index > self.items.items.len) return error.OutOfBounds;

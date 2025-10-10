@@ -2,7 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
 
-const TextBuffer = text_buffer.TextBuffer;
+const TextBuffer = text_buffer.TextBufferArray;
 
 // ===== Coordinate Conversion Tests =====
 
