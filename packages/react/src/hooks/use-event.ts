@@ -8,7 +8,7 @@ import { useCallback, useLayoutEffect, useRef } from "react"
  * Useful for event handlers that need to be passed to effects with empty dependency arrays
  * or memoized child components.
  */
-export function useEvent<T extends (...args: any[]) => any>(handler: T): T {
+export function useEffectEvent<T extends (...args: any[]) => any>(handler: T): T {
   const handlerRef = useRef<T>(handler)
 
   useLayoutEffect(() => {
