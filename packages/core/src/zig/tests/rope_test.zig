@@ -348,6 +348,13 @@ const Chunk = struct {
     }
 };
 
+// Static empty chunk rope node for Line.empty()
+const empty_chunk_leaf_node = rope_mod.Rope(Chunk).Node{
+    .leaf = .{
+        .data = Chunk.empty(),
+    },
+};
+
 // Line type containing a rope of chunks
 const Line = struct {
     chunks: rope_mod.Rope(Chunk),
@@ -372,12 +379,18 @@ const Line = struct {
     }
 
     pub fn empty() Line {
-        // Can't create rope without allocator
-        return undefined;
+        // Use static empty chunk rope - safe because it's immutable
+        return .{
+            .chunks = .{
+                .root = &empty_chunk_leaf_node,
+                .allocator = undefined, // Never used for empty
+            },
+            .line_id = 0,
+        };
     }
 
     pub fn is_empty(self: *const Line) bool {
-        return self.chunks.count() == 0;
+        return self.line_id == 0 and self.chunks.count() == 1;
     }
 };
 
@@ -548,9 +561,6 @@ test "Nested Rope - complex line and chunk operations" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // Create initial document structure
-    var line_rope = try rope_mod.Rope(Line).init(allocator);
-
     // Add first line with chunks
     const chunks1 = [_]Chunk{
         .{ .data = "First ", .width = 6 },
@@ -560,7 +570,9 @@ test "Nested Rope - complex line and chunk operations" {
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
         .line_id = 1,
     };
-    try line_rope.insert(0, line1);
+
+    // Create initial document structure with first line
+    var line_rope = try rope_mod.Rope(Line).from_item(allocator, line1);
 
     // Add second line
     const chunks2 = [_]Chunk{.{ .data = "Second line", .width = 11 }};
@@ -568,19 +580,19 @@ test "Nested Rope - complex line and chunk operations" {
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
-    try line_rope.insert(1, line2);
+    try line_rope.append(line2);
 
     // Verify structure
-    try std.testing.expectEqual(@as(u32, 3), line_rope.count()); // +1 for initial empty
+    try std.testing.expectEqual(@as(u32, 2), line_rope.count());
 
     // Access specific chunk in specific line
-    const first_line = line_rope.get(1).?; // Index 1 because 0 is empty
+    const first_line = line_rope.get(0).?;
     try std.testing.expectEqual(@as(u32, 2), first_line.chunks.count());
     try std.testing.expectEqualStrings("First ", first_line.chunks.get(0).?.data);
 
     // Verify total metrics
     const metrics = line_rope.root.metrics();
-    try std.testing.expectEqual(@as(u32, 3), metrics.count);
+    try std.testing.expectEqual(@as(u32, 2), metrics.count);
 }
 
 test "Nested Rope - metrics propagate through all levels" {
@@ -830,9 +842,6 @@ test "Nested Rope - simulate full text buffer workflow" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // Start with empty document
-    var document = try rope_mod.Rope(Line).init(allocator);
-
     // Add first line: "Hello World"
     const chunks1 = [_]Chunk{
         .{ .data = "Hello ", .width = 6 },
@@ -842,7 +851,9 @@ test "Nested Rope - simulate full text buffer workflow" {
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
         .line_id = 1,
     };
-    try document.insert(0, line1);
+
+    // Start with document containing first line
+    var document = try rope_mod.Rope(Line).from_item(allocator, line1);
 
     // Add second line: "Goodbye"
     const chunks2 = [_]Chunk{.{ .data = "Goodbye", .width = 7 }};
@@ -850,17 +861,17 @@ test "Nested Rope - simulate full text buffer workflow" {
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
-    try document.insert(1, line2);
+    try document.append(line2);
 
     // Verify document structure
-    try std.testing.expectEqual(@as(u32, 3), document.count()); // +1 for initial empty
+    try std.testing.expectEqual(@as(u32, 2), document.count());
 
     // Get line 1 and verify it has 2 chunks
-    const retrieved_line1 = document.get(1).?;
+    const retrieved_line1 = document.get(0).?;
     try std.testing.expectEqual(@as(u32, 2), retrieved_line1.chunks.count());
 
     // Get line 2 and verify it has 1 chunk
-    const retrieved_line2 = document.get(2).?;
+    const retrieved_line2 = document.get(1).?;
     try std.testing.expectEqual(@as(u32, 1), retrieved_line2.chunks.count());
 
     // Now simulate editing: insert a chunk into line 1
@@ -1245,4 +1256,412 @@ test "ArrayRope - nested with chunks (rendering use case)" {
     // Metrics work the same
     const metrics = line.measure();
     try std.testing.expectEqual(@as(u32, 11), metrics.total_width);
+}
+
+test "Rope - replace item at index" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.replace(1, .{ .value = 20 });
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 20), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+}
+
+test "Rope - append item" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.append(.{ .value = 2 });
+    try rope.append(.{ .value = 3 });
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+}
+
+test "Rope - prepend item" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 3 });
+
+    try rope.prepend(.{ .value = 2 });
+    try rope.prepend(.{ .value = 1 });
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(2).?.value);
+}
+
+test "Rope - concatenate two ropes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+
+    const items1 = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+    };
+    var rope1 = try RopeType.from_slice(arena.allocator(), &items1);
+
+    const items2 = [_]SimpleItem{
+        .{ .value = 3 },
+        .{ .value = 4 },
+    };
+    const rope2 = try RopeType.from_slice(arena.allocator(), &items2);
+
+    try rope1.concat(&rope2);
+
+    try std.testing.expectEqual(@as(u32, 4), rope1.count());
+    try std.testing.expectEqual(@as(u32, 1), rope1.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 2), rope1.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope1.get(2).?.value);
+    try std.testing.expectEqual(@as(u32, 4), rope1.get(3).?.value);
+}
+
+//===== Undo/Redo Tests =====
+
+test "Rope - basic undo operation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // Store initial state
+    try rope.store_undo("initial");
+
+    // Modify
+    try rope.insert(1, .{ .value = 2 });
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+
+    // Undo
+    const meta = try rope.undo("before undo");
+    try std.testing.expectEqualStrings("initial", meta);
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+}
+
+test "Rope - basic redo operation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // Store and modify
+    try rope.store_undo("initial");
+    try rope.insert(1, .{ .value = 2 });
+
+    // Undo then redo
+    _ = try rope.undo("before undo");
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+
+    const meta = try rope.redo();
+    try std.testing.expectEqualStrings("before undo", meta);
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+}
+
+test "Rope - multiple undo/redo operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // Build up history
+    try rope.store_undo("state1");
+    try rope.append(.{ .value = 2 });
+
+    try rope.store_undo("state2");
+    try rope.append(.{ .value = 3 });
+
+    try rope.store_undo("state3");
+    try rope.append(.{ .value = 4 });
+
+    try std.testing.expectEqual(@as(u32, 4), rope.count());
+
+    // Undo twice
+    _ = try rope.undo("current");
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+
+    _ = try rope.undo("current");
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+
+    // Redo once
+    _ = try rope.redo();
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+}
+
+test "Rope - undo/redo with delete operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try rope.store_undo("before delete");
+    try rope.delete(1); // Delete middle item
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+    try std.testing.expectEqual(@as(u32, 1), rope.get(0).?.value);
+    try std.testing.expectEqual(@as(u32, 3), rope.get(1).?.value);
+
+    // Undo delete
+    _ = try rope.undo("after delete");
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 2), rope.get(1).?.value);
+}
+
+test "Rope - undo/redo with replace operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 10 });
+
+    try rope.store_undo("original");
+    try rope.replace(0, .{ .value = 20 });
+    try std.testing.expectEqual(@as(u32, 20), rope.get(0).?.value);
+
+    _ = try rope.undo("after replace");
+    try std.testing.expectEqual(@as(u32, 10), rope.get(0).?.value);
+
+    _ = try rope.redo();
+    try std.testing.expectEqual(@as(u32, 20), rope.get(0).?.value);
+}
+
+test "Rope - can_undo and can_redo" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // Initially no undo/redo available
+    try std.testing.expect(!rope.can_undo());
+    try std.testing.expect(!rope.can_redo());
+
+    // After storing undo
+    try rope.store_undo("state1");
+    try std.testing.expect(rope.can_undo());
+    try std.testing.expect(!rope.can_redo());
+
+    // After undo
+    _ = try rope.undo("current");
+    try std.testing.expect(!rope.can_undo()); // No more undo (only one state)
+    try std.testing.expect(rope.can_redo());
+}
+
+test "Rope - clear history" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.store_undo("state1");
+    try rope.append(.{ .value = 2 });
+    try rope.store_undo("state2");
+
+    try std.testing.expect(rope.can_undo());
+
+    rope.clear_history();
+    try std.testing.expect(!rope.can_undo());
+    try std.testing.expect(!rope.can_redo());
+}
+
+test "Rope - undo fails when no history" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // No history stored, undo should fail
+    const result = rope.undo("current");
+    try std.testing.expectError(error.Stop, result);
+}
+
+test "Rope - redo fails when no redo history" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    // No redo history, redo should fail
+    const result = rope.redo();
+    try std.testing.expectError(error.Stop, result);
+}
+
+test "Rope - complex undo/redo workflow" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    // Build up a sequence of operations
+    try rope.store_undo("empty");
+    try rope.insert(0, .{ .value = 1 });
+
+    try rope.store_undo("one item");
+    try rope.append(.{ .value = 2 });
+
+    try rope.store_undo("two items");
+    try rope.append(.{ .value = 3 });
+
+    try rope.store_undo("three items");
+    try rope.delete(1); // Remove middle
+
+    // State: [1, 3]
+    try std.testing.expectEqual(@as(u32, 3), rope.count()); // +1 for initial empty
+
+    // Undo delete
+    _ = try rope.undo("current");
+    try std.testing.expectEqual(@as(u32, 4), rope.count());
+
+    // Undo append
+    _ = try rope.undo("current");
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+
+    // Redo append
+    _ = try rope.redo();
+    try std.testing.expectEqual(@as(u32, 4), rope.count());
+}
+
+test "Rope - undo/redo with metadata tracking" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.store_undo("insert operation");
+    try rope.append(.{ .value = 2 });
+
+    try rope.store_undo("delete operation");
+    try rope.delete(0);
+
+    // Undo and check metadata
+    const meta1 = try rope.undo("current state");
+    try std.testing.expectEqualStrings("delete operation", meta1);
+
+    const meta2 = try rope.undo("current state");
+    try std.testing.expectEqualStrings("insert operation", meta2);
+}
+
+test "Rope - undo invalidates redo after new operation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    try rope.store_undo("state1");
+    try rope.append(.{ .value = 2 });
+
+    try rope.store_undo("state2");
+    try rope.append(.{ .value = 3 });
+
+    // Undo once
+    _ = try rope.undo("current");
+    try std.testing.expect(rope.can_redo());
+
+    // Make a new change - this stores the old redo as a branch and clears redo
+    try rope.store_undo("new branch");
+    try rope.append(.{ .value = 99 });
+
+    // Redo should NOT work anymore (it was saved as a branch)
+    try std.testing.expect(!rope.can_redo());
+
+    // But we can still undo
+    try std.testing.expect(rope.can_undo());
+}
+
+test "Rope - undo/redo with nested ropes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Create first line
+    const chunks1 = [_]Chunk{.{ .data = "Line 1", .width = 6 }};
+    const line1 = Line{
+        .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
+        .line_id = 1,
+    };
+
+    const RopeType = rope_mod.Rope(Line);
+    var rope = try RopeType.from_item(allocator, line1);
+
+    try rope.store_undo("before append");
+
+    // Add second line
+    const chunks2 = [_]Chunk{.{ .data = "Line 2", .width = 6 }};
+    const line2 = Line{
+        .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
+        .line_id = 2,
+    };
+    try rope.append(line2);
+
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+
+    // Undo
+    _ = try rope.undo("after append");
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+
+    // Redo
+    _ = try rope.redo();
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
+}
+
+test "Rope - stress test undo/redo with many operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    // Perform 20 operations
+    for (0..20) |i| {
+        try rope.store_undo("operation");
+        try rope.append(.{ .value = @intCast(i) });
+    }
+
+    try std.testing.expectEqual(@as(u32, 21), rope.count()); // +1 for initial empty
+
+    // Undo 10 operations
+    for (0..10) |_| {
+        _ = try rope.undo("current");
+    }
+    try std.testing.expectEqual(@as(u32, 11), rope.count());
+
+    // Redo 5 operations
+    for (0..5) |_| {
+        _ = try rope.redo();
+    }
+    try std.testing.expectEqual(@as(u32, 16), rope.count());
 }

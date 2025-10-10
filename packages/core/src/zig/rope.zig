@@ -249,9 +249,24 @@ pub fn Rope(comptime T: type) type {
             }
         };
 
+        pub const UndoNode = struct {
+            root: *const Node,
+            next: ?*UndoNode = null,
+            branches: ?*UndoBranch = null,
+            meta: []const u8,
+        };
+
+        pub const UndoBranch = struct {
+            redo: *UndoNode,
+            next: ?*UndoBranch,
+        };
+
         /// The rope handle
         root: *const Node,
         allocator: Allocator,
+        undo_history: ?*UndoNode = null,
+        redo_history: ?*UndoNode = null,
+        curr_history: ?*UndoNode = null,
 
         pub fn init(allocator: Allocator) !Self {
             // Create empty root - if T has an empty() function, use it
@@ -375,6 +390,121 @@ pub fn Rope(comptime T: type) type {
                     return node; // Can't delete if no empty representation
                 },
             };
+        }
+
+        pub fn replace(self: *Self, index: u32, data: T) !void {
+            self.root = try self.replace_node(self.root, index, data);
+        }
+
+        fn replace_node(self: *Self, node: *const Node, index: u32, data: T) error{OutOfMemory}!*const Node {
+            return switch (node.*) {
+                .branch => |*b| {
+                    const left_count = b.left_metrics.count;
+                    if (index < left_count) {
+                        const new_left = try self.replace_node(b.left, index, data);
+                        return try Node.new_branch(self.allocator, new_left, b.right);
+                    } else {
+                        const new_right = try self.replace_node(b.right, index - left_count, data);
+                        return try Node.new_branch(self.allocator, b.left, new_right);
+                    }
+                },
+                .leaf => {
+                    if (index == 0) {
+                        return try Node.new_leaf(self.allocator, data);
+                    }
+                    return node;
+                },
+            };
+        }
+
+        pub fn append(self: *Self, data: T) !void {
+            try self.insert(self.count(), data);
+        }
+
+        pub fn prepend(self: *Self, data: T) !void {
+            try self.insert(0, data);
+        }
+
+        pub fn concat(self: *Self, other: *const Self) !void {
+            self.root = try Node.new_branch(self.allocator, self.root, other.root);
+        }
+
+        /// Undo/Redo operations
+        pub fn store_undo(self: *Self, meta: []const u8) !void {
+            const undo_node = try self.create_undo_node(self.root, meta);
+            self.push_undo(undo_node);
+            self.curr_history = null;
+            try self.push_redo_branch();
+        }
+
+        fn create_undo_node(self: *const Self, root: *const Node, meta_: []const u8) !*UndoNode {
+            const undo_node = try self.allocator.create(UndoNode);
+            const meta = try self.allocator.dupe(u8, meta_);
+            undo_node.* = UndoNode{
+                .root = root,
+                .meta = meta,
+            };
+            return undo_node;
+        }
+
+        fn push_undo(self: *Self, undo_node: *UndoNode) void {
+            const next = self.undo_history;
+            self.undo_history = undo_node;
+            undo_node.next = next;
+        }
+
+        fn push_redo(self: *Self, undo_node: *UndoNode) void {
+            const next = self.redo_history;
+            self.redo_history = undo_node;
+            undo_node.next = next;
+        }
+
+        fn push_redo_branch(self: *Self) !void {
+            const r = self.redo_history orelse return;
+            const u = self.undo_history orelse return;
+            const next = u.branches;
+            const b = try self.allocator.create(UndoBranch);
+            b.* = .{
+                .redo = r,
+                .next = next,
+            };
+            u.branches = b;
+            self.redo_history = null;
+        }
+
+        pub fn undo(self: *Self, meta: []const u8) ![]const u8 {
+            const r = self.curr_history orelse try self.create_undo_node(self.root, meta);
+            const h = self.undo_history orelse return error.Stop;
+            self.undo_history = h.next;
+            self.curr_history = h;
+            self.root = h.root;
+            self.push_redo(r);
+            return h.meta;
+        }
+
+        pub fn redo(self: *Self) ![]const u8 {
+            const u = self.curr_history orelse return error.Stop;
+            const h = self.redo_history orelse return error.Stop;
+            if (u.root != self.root) return error.Stop;
+            self.redo_history = h.next;
+            self.curr_history = h;
+            self.root = h.root;
+            self.push_undo(u);
+            return h.meta;
+        }
+
+        pub fn can_undo(self: *const Self) bool {
+            return self.undo_history != null;
+        }
+
+        pub fn can_redo(self: *const Self) bool {
+            return self.redo_history != null and self.curr_history != null;
+        }
+
+        pub fn clear_history(self: *Self) void {
+            self.undo_history = null;
+            self.redo_history = null;
+            self.curr_history = null;
         }
     };
 }
