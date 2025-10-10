@@ -30,6 +30,13 @@ pub const ChunkFitResult = struct {
     width: u32,
 };
 
+/// Cached grapheme cluster information
+pub const GraphemeInfo = struct {
+    byte_offset: u32, // Offset within the chunk's bytes
+    byte_len: u8, // Length in UTF-8 bytes
+    width: u8, // Display width (1, 2, etc.)
+};
+
 /// Memory buffer reference in the registry
 pub const MemBuffer = struct {
     data: []const u8,
@@ -94,6 +101,7 @@ pub const TextChunk = struct {
     byte_end: u32, // End offset into the memory buffer
     width: u32, // Display width in cells (computed once)
     char_count: u32, // Number of grapheme clusters (computed once)
+    graphemes: []GraphemeInfo, // Lazy grapheme buffer (computed once, reused by views)
 
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
         const mem_buf = mem_registry.get(self.mem_id) orelse return &[_]u8{};
@@ -648,28 +656,46 @@ pub const TextBuffer = struct {
     }
 
     /// Create a TextChunk from a memory buffer range
-    /// Calculates width and char_count by iterating over graphemes
+    /// Calculates width, char_count, and builds grapheme info array
     fn createChunk(
-        self: *const TextBuffer,
+        self: *TextBuffer,
         mem_id: u8,
         byte_start: u32,
         byte_end: u32,
         chunk_bytes: []const u8,
-    ) TextChunk {
+    ) TextBufferError!TextChunk {
         var chunk_width: u32 = 0;
         var chunk_char_count: u32 = 0;
+
+        var grapheme_list = std.ArrayList(GraphemeInfo).init(self.allocator);
+        defer grapheme_list.deinit();
+
         var iter = self.graphemes_data.iterator(chunk_bytes);
+        var byte_pos: u32 = 0;
 
         while (iter.next()) |gc| {
             const gbytes = gc.bytes(chunk_bytes);
             const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
 
-            if (width_u16 == 0) continue;
+            if (width_u16 == 0) {
+                byte_pos += @intCast(gbytes.len);
+                continue;
+            }
 
-            const width: u32 = @intCast(width_u16);
+            const width: u8 = @intCast(width_u16);
+
+            try grapheme_list.append(GraphemeInfo{
+                .byte_offset = byte_pos,
+                .byte_len = @intCast(gbytes.len),
+                .width = width,
+            });
+
             chunk_char_count += width;
             chunk_width += width;
+            byte_pos += @intCast(gbytes.len);
         }
+
+        const graphemes = try self.allocator.dupe(GraphemeInfo, grapheme_list.items);
 
         return TextChunk{
             .mem_id = mem_id,
@@ -677,6 +703,7 @@ pub const TextBuffer = struct {
             .byte_end = byte_end,
             .width = chunk_width,
             .char_count = chunk_char_count,
+            .graphemes = graphemes,
         };
     }
 
@@ -692,7 +719,7 @@ pub const TextBuffer = struct {
 
         // Store the chunk with just byte references
         if (byte_start < byte_end or line_bytes.len == 0) {
-            const chunk = self.createChunk(mem_id, byte_start, byte_end, line_bytes);
+            const chunk = try self.createChunk(mem_id, byte_start, byte_end, line_bytes);
 
             self.char_count += chunk.char_count;
             try line.chunks.append(self.allocator, chunk);
@@ -790,7 +817,7 @@ pub const TextBuffer = struct {
         const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         const chunk_bytes = mem_buf[byte_start..byte_end];
 
-        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
+        const chunk = try self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
 
         var line = &self.lines.items[line_idx];
         try line.chunks.append(self.allocator, chunk);
@@ -811,7 +838,7 @@ pub const TextBuffer = struct {
         const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         const chunk_bytes = mem_buf[byte_start..byte_end];
 
-        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
+        const chunk = try self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
 
         var line = TextLine.init();
         line.char_offset = self.char_count;

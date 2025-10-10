@@ -11,37 +11,10 @@ const RGBA = tb.RGBA;
 const TextSelection = tb.TextSelection;
 const WrapMode = tb.WrapMode;
 const StyleSpan = tb.StyleSpan;
+const GraphemeInfo = tb.GraphemeInfo;
 
 pub const TextBufferViewError = error{
     OutOfMemory,
-};
-
-/// Cached grapheme cluster information for a chunk
-pub const GraphemeInfo = struct {
-    byte_offset: u32, // Offset within the chunk's bytes
-    byte_len: u8, // Length in UTF-8 bytes
-    width: u8, // Display width (1, 2, etc.)
-};
-
-/// Cache key for chunk grapheme info
-pub const ChunkCacheKey = struct {
-    line_idx: u32,
-    chunk_idx: u32,
-
-    pub fn hash(self: ChunkCacheKey) u64 {
-        return (@as(u64, self.line_idx) << 32) | @as(u64, self.chunk_idx);
-    }
-
-    pub fn eql(self: ChunkCacheKey, other: ChunkCacheKey) bool {
-        return self.line_idx == other.line_idx and self.chunk_idx == other.chunk_idx;
-    }
-};
-
-/// Cached grapheme information for a chunk
-pub const ChunkCache = struct {
-    graphemes: []GraphemeInfo,
-    total_width: u32,
-    total_chars: u32,
 };
 
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
@@ -104,9 +77,6 @@ pub const TextBufferView = struct {
     cached_line_widths: std.ArrayListUnmanaged(u32),
     cached_max_width: u32,
 
-    // Grapheme cluster cache per chunk
-    chunk_cache: std.AutoHashMap(u64, ChunkCache),
-
     // Memory management
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
@@ -135,9 +105,6 @@ pub const TextBufferView = struct {
         var cached_line_widths: std.ArrayListUnmanaged(u32) = .{};
         errdefer cached_line_widths.deinit(virtual_lines_allocator);
 
-        var chunk_cache = std.AutoHashMap(u64, ChunkCache).init(global_allocator);
-        errdefer chunk_cache.deinit();
-
         // Register this view with the text buffer
         const view_id = text_buffer.registerView() catch return TextBufferViewError.OutOfMemory;
 
@@ -153,7 +120,6 @@ pub const TextBufferView = struct {
             .cached_line_starts = cached_line_starts,
             .cached_line_widths = cached_line_widths,
             .cached_max_width = 0,
-            .chunk_cache = chunk_cache,
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
         };
@@ -164,13 +130,6 @@ pub const TextBufferView = struct {
     pub fn deinit(self: *TextBufferView) void {
         // Unregister from the text buffer
         self.text_buffer.unregisterView(self.view_id);
-
-        // Clean up chunk cache
-        var it = self.chunk_cache.valueIterator();
-        while (it.next()) |cache| {
-            self.global_allocator.free(cache.graphemes);
-        }
-        self.chunk_cache.deinit();
 
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
@@ -210,61 +169,12 @@ pub const TextBufferView = struct {
         }
     }
 
-    /// Get or create cached grapheme info for a chunk
-    /// Returns a slice of GraphemeInfo that is valid until the cache is cleared
+    /// Get grapheme info for a chunk
+    /// Returns the pre-computed grapheme slice from the chunk (no caching needed)
     pub fn getOrCreateChunkCache(self: *TextBufferView, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const GraphemeInfo {
-        const key = ChunkCacheKey{ .line_idx = @intCast(line_idx), .chunk_idx = @intCast(chunk_idx) };
-        const hash_key = key.hash();
-
-        if (self.chunk_cache.get(hash_key)) |cache| {
-            return cache.graphemes;
-        }
-
-        // Build cache for this chunk
         const lines = self.text_buffer.getLines();
         const chunk = &lines[line_idx].chunks.items[chunk_idx];
-        const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
-
-        var grapheme_list = std.ArrayList(GraphemeInfo).init(self.global_allocator);
-        defer grapheme_list.deinit();
-
-        var total_width: u32 = 0;
-        var total_chars: u32 = 0;
-
-        var iter = self.text_buffer.graphemes_data.iterator(chunk_bytes);
-        var byte_pos: u32 = 0;
-
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(chunk_bytes);
-            const width_u16: u16 = gwidth.gwidth(gbytes, self.text_buffer.width_method, &self.text_buffer.display_width);
-
-            if (width_u16 == 0) {
-                byte_pos += @intCast(gbytes.len);
-                continue;
-            }
-
-            const width: u8 = @intCast(width_u16);
-
-            try grapheme_list.append(GraphemeInfo{
-                .byte_offset = byte_pos,
-                .byte_len = @intCast(gbytes.len),
-                .width = width,
-            });
-
-            total_width += width;
-            total_chars += width; // Each grapheme contributes 'width' cells
-            byte_pos += @intCast(gbytes.len);
-        }
-
-        const graphemes = try self.global_allocator.dupe(GraphemeInfo, grapheme_list.items);
-
-        try self.chunk_cache.put(hash_key, ChunkCache{
-            .graphemes = graphemes,
-            .total_width = total_width,
-            .total_chars = total_chars,
-        });
-
-        return graphemes;
+        return chunk.graphemes;
     }
 
     /// Calculate how many graphemes from a chunk fit within the given width
@@ -369,15 +279,6 @@ pub const TextBufferView = struct {
         // Check both local and buffer dirty flags
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
-
-        // Clear chunk cache if buffer is dirty
-        if (buffer_dirty) {
-            var it = self.chunk_cache.valueIterator();
-            while (it.next()) |cache| {
-                self.global_allocator.free(cache.graphemes);
-            }
-            self.chunk_cache.clearRetainingCapacity();
-        }
 
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
