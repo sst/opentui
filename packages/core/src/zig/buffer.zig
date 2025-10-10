@@ -896,7 +896,7 @@ pub const OptimizedBuffer = struct {
             }
 
             for (vline.chunks.items) |vchunk| {
-                const source_chunk = &lines[vchunk.source_line].chunks.items[vchunk.source_chunk];
+                const source_chunk = &lines[vchunk.source_line].chunks.items.items[vchunk.source_chunk];
 
                 // Get cached grapheme info for this chunk
                 const graphemes_cache = text_buffer_view.getOrCreateChunkCache(vchunk.source_line, vchunk.source_chunk) catch continue;

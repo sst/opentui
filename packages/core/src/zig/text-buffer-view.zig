@@ -173,7 +173,9 @@ pub const TextBufferView = struct {
     /// Returns the grapheme slice from the chunk
     pub fn getOrCreateChunkCache(self: *TextBufferView, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const GraphemeInfo {
         const lines = self.text_buffer.getLines();
-        const chunk = &lines[line_idx].chunks.items[chunk_idx];
+        const line = &lines[line_idx];
+        // For ArrayRope(TextChunk), use .items.items to get the actual array
+        const chunk = &line.chunks.items.items[chunk_idx];
         return chunk.getGraphemes(
             &self.text_buffer.mem_registry,
             self.text_buffer.allocator,
@@ -305,7 +307,8 @@ pub const TextBufferView = struct {
                 vline.source_col_offset = 0;
 
                 // Create virtual chunks that reference entire real chunks
-                for (line.chunks.items, 0..) |*chunk, chunk_idx| {
+                // For ArrayRope(TextChunk), use .items.items to get the actual array
+                for (line.chunks.items.items, 0..) |*chunk, chunk_idx| {
                     vline.chunks.append(virtual_allocator, VirtualChunk{
                         .source_line = line_idx,
                         .source_chunk = chunk_idx,
@@ -333,7 +336,8 @@ pub const TextBufferView = struct {
                 current_vline.source_line = line_idx;
                 current_vline.source_col_offset = 0;
 
-                for (line.chunks.items, 0..) |*chunk, chunk_idx| {
+                // For ArrayRope(TextChunk), use .items.items to get the actual array
+                for (line.chunks.items.items, 0..) |*chunk, chunk_idx| {
                     // Get or create cached grapheme info for this chunk
                     const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
                     const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
@@ -658,7 +662,8 @@ pub const TextBufferView = struct {
         for (lines, 0..) |line, line_idx| {
             var line_had_selection = false;
 
-            for (line.chunks.items, 0..) |chunk, chunk_idx| {
+            // For ArrayRope(TextChunk), use .items.items to get the actual array
+            for (line.chunks.items.items, 0..) |chunk, chunk_idx| {
                 // Get cached grapheme info
                 const graphemes_cache = self.getOrCreateChunkCache(line_idx, chunk_idx) catch continue;
                 const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);

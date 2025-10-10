@@ -2636,7 +2636,7 @@ test "TextBufferView accessor methods - getVirtualLines and getLines" {
     try std.testing.expectEqual(@as(usize, 2), lines.len);
 
     // Verify we can access chunks through both accessors
-    try std.testing.expect(lines[0].chunks.items.len > 0);
+    try std.testing.expect(lines[0].chunks.items.items.len > 0);
     try std.testing.expect(virtual_lines[0].chunks.items.len > 0);
 }
 

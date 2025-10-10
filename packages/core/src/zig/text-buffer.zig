@@ -32,6 +32,11 @@ pub const ChunkFitResult = struct {
     width: u32,
 };
 
+pub const ByteOffset = struct {
+    mem_id: u8,
+    byte_offset: u32,
+};
+
 /// Cached grapheme cluster information
 pub const GraphemeInfo = struct {
     byte_offset: u32, // Offset within the chunk's bytes
@@ -112,13 +117,15 @@ pub const TextChunk = struct {
     /// Lazily compute and cache grapheme info for this chunk
     /// Returns a slice that is valid until the buffer is reset
     pub fn getGraphemes(
-        self: *TextChunk,
+        self: *const TextChunk,
         mem_registry: *const MemRegistry,
         allocator: Allocator,
         graphemes_data: *const Graphemes,
         width_method: gwidth.WidthMethod,
         display_width: *const DisplayWidth,
     ) TextBufferError![]const GraphemeInfo {
+        // Need to cast to mutable to cache the graphemes
+        const mut_self = @constCast(self);
         if (self.graphemes) |cached| {
             return cached;
         }
@@ -151,7 +158,7 @@ pub const TextChunk = struct {
         }
 
         const graphemes = try allocator.dupe(GraphemeInfo, grapheme_list.items);
-        self.graphemes = graphemes;
+        mut_self.graphemes = graphemes;
 
         return graphemes;
     }
@@ -175,35 +182,41 @@ pub const StyleSpan = struct {
 };
 
 /// A line contains multiple chunks and tracks its total width
-pub const TextLine = struct {
-    chunks: std.ArrayListUnmanaged(TextChunk),
-    width: u32,
-    char_offset: u32, // Cumulative char offset for selection tracking
-    highlights: std.ArrayListUnmanaged(Highlight), // Highlights for this line
-    spans: std.ArrayListUnmanaged(StyleSpan), // Pre-computed style spans for this line
-
-    pub fn init() TextLine {
-        return .{
-            .chunks = .{},
-            .width = 0,
-            .char_offset = 0,
-            .highlights = .{},
-            .spans = .{},
-        };
-    }
-
-    pub fn deinit(self: *TextLine, allocator: Allocator) void {
-        self.chunks.deinit(allocator);
-        self.highlights.deinit(allocator);
-        self.spans.deinit(allocator);
-    }
-};
-
-/// TextBuffer holds text organized by lines without styling
-/// Generic over LineStorage type (ArrayRope or Rope)
-pub fn TextBuffer(comptime LineStorage: type) type {
+/// Generic over ChunkStorage type (ArrayRope or Rope)
+pub fn TextLine(comptime ChunkStorage: type) type {
     return struct {
         const Self = @This();
+
+        chunks: ChunkStorage,
+        width: u32,
+        char_offset: u32, // Cumulative char offset for selection tracking
+        highlights: std.ArrayListUnmanaged(Highlight), // Highlights for this line
+        spans: std.ArrayListUnmanaged(StyleSpan), // Pre-computed style spans for this line
+
+        pub fn init(allocator: Allocator) !Self {
+            return .{
+                .chunks = try ChunkStorage.init(allocator),
+                .width = 0,
+                .char_offset = 0,
+                .highlights = .{},
+                .spans = .{},
+            };
+        }
+
+        pub fn deinit(self: *Self, allocator: Allocator) void {
+            _ = self;
+            _ = allocator;
+            // Chunks are managed by arena, highlights/spans will be cleared on reset
+        }
+    };
+}
+
+/// TextBuffer holds text organized by lines without styling
+/// Generic over LineStorage and ChunkStorage types (ArrayRope or Rope)
+pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type {
+    return struct {
+        const Self = @This();
+        const Line = TextLine(ChunkStorage);
 
         mem_registry: MemRegistry, // Registry for multiple memory buffers
         char_count: u32, // Total character count across all chunks
@@ -340,11 +353,21 @@ pub fn TextBuffer(comptime LineStorage: type) type {
                 total_bytes: u32 = 0,
                 line_count: u32,
 
-                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                fn walker(ctx_ptr: *anyopaque, line: *const Line, idx: u32) LineStorage.Node.WalkerResult {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    for (line.chunks.items) |chunk| {
-                        ctx.total_bytes += chunk.byte_end - chunk.byte_start;
-                    }
+
+                    // Walk through chunks using rope API
+                    const ChunkContext = struct {
+                        total: *u32,
+                        fn chunkWalker(chunk_ctx: *anyopaque, chunk: *const TextChunk, _: u32) ChunkStorage.Node.WalkerResult {
+                            const c = @as(*@This(), @ptrCast(@alignCast(chunk_ctx)));
+                            c.total.* += chunk.byte_end - chunk.byte_start;
+                            return .{};
+                        }
+                    };
+                    var chunk_ctx = ChunkContext{ .total = &ctx.total_bytes };
+                    line.chunks.walk(&chunk_ctx, ChunkContext.chunkWalker) catch {};
+
                     // Add newline byte count (except for last line)
                     if (idx < ctx.line_count - 1) {
                         ctx.total_bytes += 1; // for '\n'
@@ -426,7 +449,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
                 buffer: *Self,
                 hl_ref: u16,
 
-                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                fn walker(ctx_ptr: *anyopaque, line: *const Line, idx: u32) LineStorage.Node.WalkerResult {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     const mut_line = @constCast(line);
                     var i: usize = 0;
@@ -467,7 +490,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
             const Context = struct {
                 buffer: *Self,
 
-                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                fn walker(ctx_ptr: *anyopaque, line: *const Line, idx: u32) LineStorage.Node.WalkerResult {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     @constCast(line).highlights.clearRetainingCapacity();
                     ctx.buffer.rebuildLineSpans(idx) catch {};
@@ -514,55 +537,72 @@ pub fn TextBuffer(comptime LineStorage: type) type {
         /// Convert row/col coordinates to byte offset in the underlying memory buffer
         /// Returns the memory ID, byte offset, and remaining bytes in the chunk
         /// Returns null if coordinates are out of bounds
-        pub fn coordsToByteOffset(self: *const Self, row: u32, col: u32) ?struct { mem_id: u8, byte_offset: u32 } {
+        pub fn coordsToByteOffset(self: *const Self, row: u32, col: u32) ?ByteOffset {
             if (row >= self.lines.count()) return null;
 
             const line = self.lines.get(row) orelse return null;
             if (col > line.width) return null;
 
-            // Find which chunk contains this column
-            var current_col: u32 = 0;
-            for (line.chunks.items) |*chunk| {
-                if (col <= current_col + chunk.width) {
-                    // This chunk contains the target column
-                    const col_in_chunk = col - current_col;
+            const ChunkContext = struct {
+                buffer: *const Self,
+                col: u32,
+                current_col: u32 = 0,
+                result: ?ByteOffset = null,
 
-                    // Get graphemes for this chunk to find byte offset
-                    const graphemes = chunk.getGraphemes(
-                        &self.mem_registry,
-                        self.allocator,
-                        &self.graphemes_data,
-                        self.width_method,
-                        &self.display_width,
-                    ) catch return null;
+                fn walker(ctx_ptr: *anyopaque, chunk: *const TextChunk, _: u32) ChunkStorage.Node.WalkerResult {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
-                    // Walk through graphemes to find the byte offset
-                    var chars_so_far: u32 = 0;
-                    for (graphemes) |g| {
-                        if (chars_so_far >= col_in_chunk) {
-                            return .{
-                                .mem_id = chunk.mem_id,
-                                .byte_offset = chunk.byte_start + g.byte_offset,
-                            };
+                    if (ctx.col <= ctx.current_col + chunk.width) {
+                        // This chunk contains the target column
+                        const col_in_chunk = ctx.col - ctx.current_col;
+
+                        // Get graphemes for this chunk to find byte offset
+                        const graphemes = chunk.getGraphemes(
+                            &ctx.buffer.mem_registry,
+                            ctx.buffer.allocator,
+                            &ctx.buffer.graphemes_data,
+                            ctx.buffer.width_method,
+                            &ctx.buffer.display_width,
+                        ) catch return .{ .keep_walking = false };
+
+                        // Walk through graphemes to find the byte offset
+                        var chars_so_far: u32 = 0;
+                        for (graphemes) |g| {
+                            if (chars_so_far >= col_in_chunk) {
+                                ctx.result = ByteOffset{
+                                    .mem_id = chunk.mem_id,
+                                    .byte_offset = chunk.byte_start + g.byte_offset,
+                                };
+                                return .{ .keep_walking = false };
+                            }
+                            chars_so_far += g.width;
                         }
-                        chars_so_far += g.width;
-                    }
 
-                    // If we're at the end of the chunk, return end position
-                    return .{
-                        .mem_id = chunk.mem_id,
-                        .byte_offset = chunk.byte_end,
-                    };
+                        // If we're at the end of the chunk, return end position
+                        ctx.result = ByteOffset{
+                            .mem_id = chunk.mem_id,
+                            .byte_offset = chunk.byte_end,
+                        };
+                        return .{ .keep_walking = false };
+                    }
+                    ctx.current_col += chunk.width;
+                    return .{};
                 }
-                current_col += chunk.width;
+            };
+
+            var chunk_ctx = ChunkContext{ .buffer = self, .col = col };
+            line.chunks.walk(&chunk_ctx, ChunkContext.walker) catch {};
+
+            if (chunk_ctx.result) |result| {
+                return result;
             }
 
-            // Column is at the end of the line
-            if (line.chunks.items.len > 0) {
-                const last_chunk = &line.chunks.items[line.chunks.items.len - 1];
-                return .{
-                    .mem_id = last_chunk.mem_id,
-                    .byte_offset = last_chunk.byte_end,
+            // Column is at the end of the line - get last chunk
+            const last_chunk = line.chunks.get(line.chunks.count() - 1);
+            if (last_chunk) |lc| {
+                return ByteOffset{
+                    .mem_id = lc.mem_id,
+                    .byte_offset = lc.byte_end,
                 };
             }
 
@@ -807,7 +847,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
 
             if (text.len == 0) {
                 // Create empty line for empty text
-                const empty_line = TextLine.init();
+                const empty_line = try Line.init(self.allocator);
                 try self.lines.append(empty_line);
                 return;
             }
@@ -844,7 +884,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
 
             // If text ends with \n, create an empty final line
             if (has_trailing_newline) {
-                var final_line = TextLine.init();
+                var final_line = try Line.init(self.allocator);
                 final_line.char_offset = self.char_count;
                 try self.lines.append(final_line);
             }
@@ -873,7 +913,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
 
         /// Parse a single line into chunks (count and measure graphemes, but don't encode)
         fn parseLine(self: *Self, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
-            var line = TextLine.init();
+            var line = try Line.init(self.allocator);
             line.char_offset = self.char_count;
 
             // Note: We don't include the newline character in the chunk
@@ -884,7 +924,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
                 const chunk = self.createChunk(mem_id, byte_start, byte_end);
 
                 self.char_count += chunk.width;
-                try line.chunks.append(self.allocator, chunk);
+                try line.chunks.append(chunk);
                 line.width = chunk.width;
             }
 
@@ -897,10 +937,13 @@ pub fn TextBuffer(comptime LineStorage: type) type {
             return self.lines.count();
         }
 
-        pub fn getLines(self: *const Self) []const TextLine {
+        pub fn getLines(self: *const Self) []const Line {
             // For ArrayRope, we can return the underlying items
-            // This is a special case optimization that works because we know LineStorage is ArrayRope for now
-            return self.lines.items.items;
+            // This is a special case optimization that works when LineStorage is ArrayRope
+            if (@hasField(LineStorage, "items")) {
+                return self.lines.items.items;
+            }
+            @compileError("getLines() only supported for ArrayRope-based storage");
         }
 
         /// Get line info (starts, widths, max_width) from the buffer
@@ -920,7 +963,7 @@ pub fn TextBuffer(comptime LineStorage: type) type {
                 widths: *std.ArrayList(u32),
                 max_width: *u32,
 
-                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                fn walker(ctx_ptr: *anyopaque, line: *const Line, idx: u32) LineStorage.Node.WalkerResult {
                     _ = idx;
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     ctx.starts.append(line.char_offset) catch {};
@@ -950,16 +993,28 @@ pub fn TextBuffer(comptime LineStorage: type) type {
                 out_index: usize = 0,
                 line_count: u32,
 
-                fn walker(ctx_ptr: *anyopaque, line: *const TextLine, idx: u32) LineStorage.Node.WalkerResult {
+                fn walker(ctx_ptr: *anyopaque, line: *const Line, idx: u32) LineStorage.Node.WalkerResult {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    for (line.chunks.items) |chunk| {
-                        const chunk_bytes = chunk.getBytes(&ctx.buffer.mem_registry);
-                        const copy_len = @min(chunk_bytes.len, ctx.out_buffer.len - ctx.out_index);
-                        if (copy_len > 0) {
-                            @memcpy(ctx.out_buffer[ctx.out_index .. ctx.out_index + copy_len], chunk_bytes[0..copy_len]);
-                            ctx.out_index += copy_len;
+
+                    // Walk through chunks using rope API
+                    const ChunkContext = struct {
+                        buffer: *const Self,
+                        out_buffer: []u8,
+                        out_index: *usize,
+
+                        fn chunkWalker(chunk_ctx: *anyopaque, chunk: *const TextChunk, _: u32) ChunkStorage.Node.WalkerResult {
+                            const c = @as(*@This(), @ptrCast(@alignCast(chunk_ctx)));
+                            const chunk_bytes = chunk.getBytes(&c.buffer.mem_registry);
+                            const copy_len = @min(chunk_bytes.len, c.out_buffer.len - c.out_index.*);
+                            if (copy_len > 0) {
+                                @memcpy(c.out_buffer[c.out_index.* .. c.out_index.* + copy_len], chunk_bytes[0..copy_len]);
+                                c.out_index.* += copy_len;
+                            }
+                            return .{};
                         }
-                    }
+                    };
+                    var chunk_ctx = ChunkContext{ .buffer = ctx.buffer, .out_buffer = ctx.out_buffer, .out_index = &ctx.out_index };
+                    line.chunks.walk(&chunk_ctx, ChunkContext.chunkWalker) catch {};
 
                     // Add newline between lines (except after last line)
                     if (idx < ctx.line_count - 1 and ctx.out_index < ctx.out_buffer.len) {
@@ -998,11 +1053,11 @@ pub fn TextBuffer(comptime LineStorage: type) type {
 
             const chunk = self.createChunk(mem_id, byte_start, byte_end);
 
-            var line = TextLine.init();
+            var line = try Line.init(self.allocator);
             line.char_offset = self.char_count;
             line.width = chunk.width;
 
-            try line.chunks.append(self.allocator, chunk);
+            try line.chunks.append(chunk);
             try self.lines.append(line);
             self.char_count += chunk.width;
 
@@ -1013,8 +1068,8 @@ pub fn TextBuffer(comptime LineStorage: type) type {
 }
 
 /// Type aliases for common use cases
-/// Read-only text buffer using ArrayRope (O(1) access, no editing overhead)
-pub const TextBufferArray = TextBuffer(ArrayRope(TextLine));
+/// Read-only text buffer using ArrayRope for both lines and chunks (O(1) access, no editing overhead)
+pub const TextBufferArray = TextBuffer(ArrayRope(TextLine(ArrayRope(TextChunk))), ArrayRope(TextChunk));
 
-/// Writable text buffer using Rope (O(log n) access, efficient editing)
-pub const TextBufferRope = TextBuffer(Rope(TextLine));
+/// Fully writable text buffer using Rope for both lines and chunks (O(log n) access, efficient editing at all levels)
+pub const TextBufferRope = TextBuffer(Rope(TextLine(Rope(TextChunk))), Rope(TextChunk));
