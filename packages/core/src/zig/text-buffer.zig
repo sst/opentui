@@ -100,7 +100,6 @@ pub const TextChunk = struct {
     byte_start: u32, // Offset into the memory buffer
     byte_end: u32, // End offset into the memory buffer
     width: u32, // Display width in cells (computed once)
-    char_count: u32, // Number of grapheme clusters (computed once)
     graphemes: ?[]GraphemeInfo, // Lazy grapheme buffer (computed on first access, reused by views)
 
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
@@ -703,7 +702,7 @@ pub const TextBuffer = struct {
     }
 
     /// Create a TextChunk from a memory buffer range
-    /// Calculates width and char_count, but graphemes are computed lazily on first access
+    /// Calculates width, but graphemes are computed lazily on first access
     fn createChunk(
         self: *const TextBuffer,
         mem_id: u8,
@@ -711,28 +710,13 @@ pub const TextBuffer = struct {
         byte_end: u32,
         chunk_bytes: []const u8,
     ) TextChunk {
-        var chunk_width: u32 = 0;
-        var chunk_char_count: u32 = 0;
-
-        var iter = self.graphemes_data.iterator(chunk_bytes);
-
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(chunk_bytes);
-            const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
-
-            if (width_u16 == 0) continue;
-
-            const width: u32 = @intCast(width_u16);
-            chunk_char_count += width;
-            chunk_width += width;
-        }
+        const chunk_width: u32 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
 
         return TextChunk{
             .mem_id = mem_id,
             .byte_start = byte_start,
             .byte_end = byte_end,
             .width = chunk_width,
-            .char_count = chunk_char_count,
             .graphemes = null, // Computed lazily
         };
     }
@@ -751,7 +735,7 @@ pub const TextBuffer = struct {
         if (byte_start < byte_end or line_bytes.len == 0) {
             const chunk = self.createChunk(mem_id, byte_start, byte_end, line_bytes);
 
-            self.char_count += chunk.char_count;
+            self.char_count += chunk.width;
             try line.chunks.append(self.allocator, chunk);
             line.width = chunk.width;
         }
@@ -849,7 +833,7 @@ pub const TextBuffer = struct {
 
         try line.chunks.append(self.allocator, chunk);
         try self.lines.append(self.allocator, line);
-        self.char_count += chunk.char_count;
+        self.char_count += chunk.width;
 
         // Mark all views as dirty
         self.markAllViewsDirty();

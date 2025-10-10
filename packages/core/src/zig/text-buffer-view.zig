@@ -310,7 +310,7 @@ pub const TextBufferView = struct {
                         .source_line = line_idx,
                         .source_chunk = chunk_idx,
                         .grapheme_start = 0,
-                        .grapheme_count = chunk.char_count,
+                        .grapheme_count = chunk.width,
                         .width = chunk.width,
                     }) catch {};
                 }
