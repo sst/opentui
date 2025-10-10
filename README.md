@@ -26,20 +26,6 @@ This monorepo contains the following packages:
 bun install @opentui/core
 ```
 
-### Go
-
-First install OpenTUI system-wide:
-
-```bash
-curl -L https://github.com/sst/opentui/releases/latest/download/install.sh | sh
-```
-
-Then use in your Go projects:
-
-```bash
-go get github.com/sst/opentui/packages/go
-```
-
 ## Running Examples (from the repo root)
 
 ### TypeScript Examples
@@ -48,12 +34,4 @@ go get github.com/sst/opentui/packages/go
 bun install
 cd packages/core
 bun run src/examples/index.ts
-```
-
-### Go Examples
-
-```bash
-# Basic example
-cd packages/go/examples/basic
-go run .
 ```
