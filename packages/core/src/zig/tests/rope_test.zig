@@ -2350,9 +2350,16 @@ const WeightedItem = struct {
     }
 };
 
-// Leaf split function for testing
+// Leaf split function for testing (callback format)
 const WeightedRope = rope_mod.Rope(WeightedItem);
-fn splitWeightedItem(allocator: std.mem.Allocator, leaf: *const WeightedItem, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!WeightedRope.Node.LeafSplitResult {
+
+fn splitWeightedItemCallback(
+    ctx: ?*anyopaque,
+    allocator: std.mem.Allocator,
+    leaf: *const WeightedItem,
+    weight_in_leaf: u32,
+) error{ OutOfBounds, OutOfMemory }!WeightedRope.Node.LeafSplitResult {
+    _ = ctx;
     _ = allocator;
     if (weight_in_leaf == 0) {
         return .{
@@ -2370,6 +2377,14 @@ fn splitWeightedItem(allocator: std.mem.Allocator, leaf: *const WeightedItem, we
     return .{
         .left = .{ .value = leaf.value, .weight = weight_in_leaf },
         .right = .{ .value = leaf.value + 1000, .weight = leaf.weight - weight_in_leaf },
+    };
+}
+
+// Helper to create the callback struct
+fn makeWeightedSplitter() WeightedRope.Node.LeafSplitFn {
+    return .{
+        .ctx = null,
+        .splitFn = splitWeightedItemCallback,
     };
 }
 
@@ -2398,7 +2413,8 @@ test "Rope - split_at_weight at boundary" {
     const rope = try WeightedRope.from_slice(arena.allocator(), &items);
 
     // Split at weight 30 (boundary between second and third item)
-    const result = try WeightedRope.Node.split_at_weight(rope.root, 30, arena.allocator(), rope.empty_leaf, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    const result = try WeightedRope.Node.split_at_weight(rope.root, 30, arena.allocator(), rope.empty_leaf, &splitter);
 
     // Left should have weight 30 (first two items)
     try std.testing.expectEqual(@as(u32, 30), result.left.metrics().weight());
@@ -2413,7 +2429,8 @@ test "Rope - split_at_weight inside leaf" {
     const rope = try WeightedRope.from_item(arena.allocator(), .{ .value = 1, .weight = 100 });
 
     // Split at weight 40 (inside the single leaf)
-    const result = try WeightedRope.Node.split_at_weight(rope.root, 40, arena.allocator(), rope.empty_leaf, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    const result = try WeightedRope.Node.split_at_weight(rope.root, 40, arena.allocator(), rope.empty_leaf, &splitter);
 
     // Left should have weight 40
     try std.testing.expectEqual(@as(u32, 40), result.left.metrics().weight());
@@ -2435,7 +2452,8 @@ test "Rope - splitByWeight" {
     try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
 
     // Split at weight 30
-    const right_half = try rope.splitByWeight(30, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    const right_half = try rope.splitByWeight(30, &splitter);
 
     // Left half should have weight 30
     try std.testing.expectEqual(@as(u32, 30), rope.totalWeight());
@@ -2458,7 +2476,8 @@ test "Rope - deleteRangeByWeight" {
     try std.testing.expectEqual(@as(u32, 100), rope.totalWeight());
 
     // Delete weight range [10, 30) - removes the second item (weight 20)
-    try rope.deleteRangeByWeight(10, 30, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    try rope.deleteRangeByWeight(10, 30, &splitter);
 
     // Should have removed weight 20
     try std.testing.expectEqual(@as(u32, 80), rope.totalWeight());
@@ -2479,7 +2498,8 @@ test "Rope - insertSliceByWeight" {
     const insert_items = [_]WeightedItem{
         .{ .value = 2, .weight = 20 },
     };
-    try rope.insertSliceByWeight(10, &insert_items, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    try rope.insertSliceByWeight(10, &insert_items, &splitter);
 
     // Should have added weight 20
     try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
@@ -2558,7 +2578,8 @@ test "Rope - insertSliceAtWeightFinger" {
     const insert_items = [_]WeightedItem{
         .{ .value = 2, .weight = 20 },
     };
-    try rope.insertSliceAtWeightFinger(&finger, &insert_items, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    try rope.insertSliceAtWeightFinger(&finger, &insert_items, &splitter);
 
     try std.testing.expectEqual(@as(u32, 60), rope.totalWeight());
 }
@@ -2578,7 +2599,8 @@ test "Rope - deleteRangeByWeightWith" {
     var start_finger = rope.makeWeightFinger(10);
     var end_finger = rope.makeWeightFinger(30);
 
-    try rope.deleteRangeByWeightWith(&start_finger, &end_finger, splitWeightedItem);
+    const splitter = makeWeightedSplitter();
+    try rope.deleteRangeByWeightWith(&start_finger, &end_finger, &splitter);
 
     // Should have removed weight 20
     try std.testing.expectEqual(@as(u32, 80), rope.totalWeight());

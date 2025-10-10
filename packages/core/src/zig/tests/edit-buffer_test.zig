@@ -157,3 +157,139 @@ test "EditBuffer - verify text buffer integration" {
     const written = text_buf.getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Hello\nWorld", out_buffer[0..written]);
 }
+
+test "EditBuffer - delete within line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.deleteRange(.{ .row = 0, .col = 5 }, .{ .row = 0, .col = 11 });
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
+
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}
+
+test "EditBuffer - delete across lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3");
+    try eb.deleteRange(.{ .row = 0, .col = 5 }, .{ .row = 2, .col = 2 });
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line ne 3", out_buffer[0..written]);
+
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
+}
+
+test "EditBuffer - backspace at middle of line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+    try eb.backspace();
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hell", out_buffer[0..written]);
+
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+}
+
+test "EditBuffer - backspace at start of line merges with previous" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld");
+    try eb.setCursor(1, 0);
+    try eb.backspace();
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("HelloWorld", out_buffer[0..written]);
+
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}
+
+test "EditBuffer - deleteForward at middle of line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+    try eb.setCursor(0, 0);
+    try eb.deleteForward();
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("ello", out_buffer[0..written]);
+
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - deleteForward at end of line merges with next" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld");
+    try eb.setCursor(0, 5);
+    try eb.deleteForward();
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("HelloWorld", out_buffer[0..written]);
+
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
+}

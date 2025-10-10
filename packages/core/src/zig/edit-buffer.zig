@@ -150,7 +150,7 @@ pub const EditBuffer = struct {
         self: *EditBuffer,
         chunk: *const TextChunk,
         weight: u32,
-    ) !struct { left: TextChunk, right: TextChunk } {
+    ) error{ OutOfBounds, OutOfMemory }!Rope(TextChunk).Node.LeafSplitResult {
         const chunk_weight = chunk.width;
 
         if (weight == 0) {
@@ -166,13 +166,13 @@ pub const EditBuffer = struct {
         }
 
         // Split inside the chunk using cached graphemes
-        const graphemes = try chunk.getGraphemes(
+        const graphemes = chunk.getGraphemes(
             &self.tb.mem_registry,
             self.tb.allocator,
             &self.tb.graphemes_data,
             self.tb.width_method,
             &self.tb.display_width,
-        );
+        ) catch return error.OutOfMemory;
 
         var accumulated_width: u32 = 0;
         var split_byte_offset: u32 = 0;
@@ -285,63 +285,9 @@ pub const EditBuffer = struct {
             // Insert at end
             try mut_line.chunks.append(new_chunk);
         } else {
-            // Find which chunk contains cursor.col and split it
-            var accumulated: u32 = 0;
-            var chunk_idx: u32 = 0;
-            var found_chunk: ?*const TextChunk = null;
-            var weight_in_chunk: u32 = 0;
-
-            const FindContext = struct {
-                target_weight: u32,
-                accumulated: *u32,
-                found_chunk: *?*const TextChunk,
-                found_idx: *u32,
-                weight_in_chunk: *u32,
-
-                fn walker(ctx_ptr: *anyopaque, chunk: *const TextChunk, idx: u32) Rope(TextChunk).Node.WalkerResult {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    if (ctx.target_weight < ctx.accumulated.* + chunk.width) {
-                        ctx.found_chunk.* = chunk;
-                        ctx.found_idx.* = idx;
-                        ctx.weight_in_chunk.* = ctx.target_weight - ctx.accumulated.*;
-                        return .{ .keep_walking = false };
-                    }
-                    ctx.accumulated.* += chunk.width;
-                    return .{};
-                }
-            };
-
-            var find_ctx = FindContext{
-                .target_weight = cursor.col,
-                .accumulated = &accumulated,
-                .found_chunk = &found_chunk,
-                .found_idx = &chunk_idx,
-                .weight_in_chunk = &weight_in_chunk,
-            };
-            mut_line.chunks.walk(&find_ctx, FindContext.walker) catch {};
-
-            if (found_chunk) |chunk| {
-                // Split this chunk
-                const split_result = try self.splitChunkAtWeight(chunk, weight_in_chunk);
-
-                // Delete the original chunk
-                try mut_line.chunks.delete(chunk_idx);
-
-                // Insert in order: left, new, right
-                var insert_idx = chunk_idx;
-                if (split_result.left.width > 0) {
-                    std.debug.print("Inserting left at idx={}\n", .{insert_idx});
-                    try mut_line.chunks.insert(insert_idx, split_result.left);
-                    insert_idx += 1;
-                }
-                std.debug.print("Inserting new chunk at idx={}\n", .{insert_idx});
-                try mut_line.chunks.insert(insert_idx, new_chunk);
-                insert_idx += 1;
-                if (split_result.right.width > 0) {
-                    std.debug.print("Inserting right at idx={}\n", .{insert_idx});
-                    try mut_line.chunks.insert(insert_idx, split_result.right);
-                }
-            }
+            // Use rope insertSliceByWeight with context-aware callback
+            const splitter = self.makeChunkSplitter();
+            try mut_line.chunks.insertSliceByWeight(cursor.col, &[_]TextChunk{new_chunk}, &splitter);
         }
 
         // Update line width and char count
@@ -350,46 +296,15 @@ pub const EditBuffer = struct {
     }
 
     fn insertMultiLineAtCursor(self: *EditBuffer, cursor: Cursor, segments: []const []const u8) !void {
-        // For now, use a simpler approach: collect all chunks from line, manually split at cursor.col,
-        // and rebuild the chunks with the inserted segments
         const target_line = self.tb.getLine(cursor.row) orelse return EditBufferError.InvalidCursor;
         const mut_line = @constCast(target_line);
 
-        // Collect all existing chunks into an array
-        var existing_chunks = try mut_line.chunks.to_array(self.allocator);
-        defer self.allocator.free(existing_chunks);
+        const splitter = self.makeChunkSplitter();
 
-        // Find split point
-        var accumulated: u32 = 0;
-        var split_chunk_idx: usize = 0;
-        var weight_in_split_chunk: u32 = 0;
+        // Split current line at cursor.col (keep left, save right for last new line)
+        var right_chunks = try mut_line.chunks.splitByWeight(cursor.col, &splitter);
 
-        for (existing_chunks, 0..) |chunk, idx| {
-            if (cursor.col < accumulated + chunk.width) {
-                split_chunk_idx = idx;
-                weight_in_split_chunk = cursor.col - accumulated;
-                break;
-            }
-            accumulated += chunk.width;
-        }
-
-        // Build new chunks for the first line (left-half + first segment)
-        mut_line.chunks = try Rope(TextChunk).init(self.tb.allocator);
-
-        // Add left-half chunks
-        for (existing_chunks[0..split_chunk_idx]) |chunk| {
-            try mut_line.chunks.append(chunk);
-        }
-
-        // Split the split_chunk if needed
-        if (split_chunk_idx < existing_chunks.len and weight_in_split_chunk > 0) {
-            const split_result = try self.splitChunkAtWeight(&existing_chunks[split_chunk_idx], weight_in_split_chunk);
-            if (split_result.left.width > 0) {
-                try mut_line.chunks.append(split_result.left);
-            }
-        }
-
-        // Add first segment
+        // Add first segment to current line (left-half)
         const first_chunk_ref = self.add_buffer.append(segments[0]);
         const first_chunk = TextChunk{
             .mem_id = first_chunk_ref.mem_id,
@@ -405,7 +320,7 @@ pub const EditBuffer = struct {
         var new_lines = std.ArrayList(TextLine(Rope(TextChunk))).init(self.allocator);
         defer new_lines.deinit();
 
-        // Middle segments
+        // Middle segments (1 to n-2)
         var seg_idx: usize = 1;
         while (seg_idx < segments.len - 1) : (seg_idx += 1) {
             const seg_chunk_ref = self.add_buffer.append(segments[seg_idx]);
@@ -438,17 +353,8 @@ pub const EditBuffer = struct {
         var last_line = try TextLine(Rope(TextChunk)).init(self.tb.allocator);
         try last_line.chunks.append(last_chunk);
 
-        // Add right-half of split chunk
-        if (split_chunk_idx < existing_chunks.len) {
-            const split_result = try self.splitChunkAtWeight(&existing_chunks[split_chunk_idx], weight_in_split_chunk);
-            if (split_result.right.width > 0) {
-                try last_line.chunks.append(split_result.right);
-            }
-            // Add remaining chunks
-            for (existing_chunks[split_chunk_idx + 1 ..]) |chunk| {
-                try last_line.chunks.append(chunk);
-            }
-        }
+        // Concat the right-half chunks from the original line
+        try last_line.chunks.concat(&right_chunks);
 
         last_line.width = self.recomputeLineWidth(&last_line);
         last_line.char_offset = 0;
@@ -503,22 +409,184 @@ pub const EditBuffer = struct {
         }
     }
 
-    pub fn deleteRange(self: *EditBuffer, start: Cursor, end: Cursor) !void {
-        // TODO: Implement
-        _ = self;
-        _ = start;
-        _ = end;
-        return EditBufferError.OutOfMemory;
+    pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
+        // Normalize cursors (ensure start <= end)
+        var start = start_cursor;
+        var end = end_cursor;
+        if (start.row > end.row or (start.row == end.row and start.col > end.col)) {
+            const temp = start;
+            start = end;
+            end = temp;
+        }
+
+        // Empty range - nothing to delete
+        if (start.row == end.row and start.col == end.col) return;
+
+        const line_count = self.tb.lineCount();
+        if (start.row >= line_count or end.row >= line_count) return EditBufferError.InvalidCursor;
+
+        if (start.row == end.row) {
+            // Delete within a single line
+            try self.deleteWithinLine(start.row, start.col, end.col);
+        } else {
+            // Delete across multiple lines
+            try self.deleteAcrossLines(start, end);
+        }
+
+        // Update char offsets from deletion point
+        self.recomputeCharOffsetsFrom(start.row);
+
+        // Mark views dirty
+        self.tb.markViewsDirty();
+
+        // Set cursor to start of deleted range
+        if (self.cursors.items.len > 0) {
+            self.cursors.items[0] = start;
+        }
+    }
+
+    /// Create a LeafSplitFn callback that captures self for chunk splitting
+    fn makeChunkSplitter(self: *EditBuffer) Rope(TextChunk).Node.LeafSplitFn {
+        return .{
+            .ctx = self,
+            .splitFn = splitChunkCallback,
+        };
+    }
+
+    fn splitChunkCallback(
+        ctx: ?*anyopaque,
+        allocator: Allocator,
+        leaf: *const TextChunk,
+        weight_in_leaf: u32,
+    ) error{ OutOfBounds, OutOfMemory }!Rope(TextChunk).Node.LeafSplitResult {
+        _ = allocator;
+        const edit_buf = @as(*EditBuffer, @ptrCast(@alignCast(ctx.?)));
+        return edit_buf.splitChunkAtWeight(leaf, weight_in_leaf);
+    }
+
+    fn deleteWithinLine(self: *EditBuffer, row: u32, start_col: u32, end_col: u32) !void {
+        if (start_col >= end_col) return;
+
+        const line = self.tb.getLine(row) orelse return;
+        const mut_line = @constCast(line);
+        const old_width = line.width;
+
+        // Use rope deleteRangeByWeight to delete the range from the chunk rope
+        const splitter = self.makeChunkSplitter();
+        try mut_line.chunks.deleteRangeByWeight(start_col, end_col, &splitter);
+
+        // Update line width and char count
+        mut_line.width = self.recomputeLineWidth(line);
+        const deleted_width = old_width - mut_line.width;
+        if (self.tb.char_count >= deleted_width) {
+            self.tb.char_count -= deleted_width;
+        } else {
+            self.tb.char_count = 0;
+        }
+    }
+
+    fn deleteAcrossLines(self: *EditBuffer, start: Cursor, end: Cursor) !void {
+        const start_line = self.tb.getLine(start.row) orelse return;
+        const end_line = self.tb.getLine(end.row) orelse return;
+        const mut_start_line = @constCast(start_line);
+
+        const splitter = self.makeChunkSplitter();
+
+        // Calculate deleted width before modification
+        var deleted_width: u32 = if (start_line.width > start.col)
+            start_line.width - start.col
+        else
+            0;
+
+        // Add widths of middle lines
+        var row = start.row + 1;
+        while (row < end.row) : (row += 1) {
+            if (self.tb.getLine(row)) |line| {
+                deleted_width += line.width;
+            }
+        }
+
+        // Add deleted portion of end line
+        deleted_width += end.col;
+
+        // Split start line at start.col (keep left, discard right)
+        _ = try mut_start_line.chunks.splitByWeight(start.col, &splitter);
+        // We don't need the right part as it will be discarded
+
+        // Split end line at end.col (discard left, keep right)
+        const mut_end_line = @constCast(end_line);
+        var end_right = try mut_end_line.chunks.splitByWeight(end.col, &splitter);
+
+        // Concat the right part of end line to start line
+        try mut_start_line.chunks.concat(&end_right);
+
+        // Update start line width
+        mut_start_line.width = self.recomputeLineWidth(start_line);
+
+        // Delete middle lines (start.row+1 to end.row inclusive)
+        if (end.row > start.row) {
+            try self.tb.lines.delete_range(start.row + 1, end.row + 1);
+        }
+
+        // Update char count
+        if (self.tb.char_count >= deleted_width) {
+            self.tb.char_count -= deleted_width;
+        } else {
+            self.tb.char_count = 0;
+        }
     }
 
     pub fn backspace(self: *EditBuffer) !void {
-        _ = self;
-        // TODO: Implement backspace
+        if (self.cursors.items.len == 0) return;
+        const cursor = self.cursors.items[0];
+
+        // At start of buffer - nothing to delete
+        if (cursor.row == 0 and cursor.col == 0) return;
+
+        if (cursor.col == 0) {
+            // At start of line - merge with previous line
+            if (cursor.row > 0) {
+                const prev_line = self.tb.getLine(cursor.row - 1) orelse return;
+                const end_col = prev_line.width;
+
+                // Delete the newline by merging lines
+                try self.deleteRange(
+                    .{ .row = cursor.row - 1, .col = end_col },
+                    .{ .row = cursor.row, .col = 0 },
+                );
+            }
+        } else {
+            // Delete one character/grapheme before cursor
+            // For simplicity, delete one display-width unit
+            try self.deleteRange(
+                .{ .row = cursor.row, .col = cursor.col - 1 },
+                .{ .row = cursor.row, .col = cursor.col },
+            );
+        }
     }
 
     pub fn deleteForward(self: *EditBuffer) !void {
-        _ = self;
-        // TODO: Implement deleteForward
+        if (self.cursors.items.len == 0) return;
+        const cursor = self.cursors.items[0];
+
+        const line = self.tb.getLine(cursor.row) orelse return;
+
+        // At end of line
+        if (cursor.col >= line.width) {
+            // Merge with next line if it exists
+            if (cursor.row + 1 < self.tb.lineCount()) {
+                try self.deleteRange(
+                    .{ .row = cursor.row, .col = cursor.col },
+                    .{ .row = cursor.row + 1, .col = 0 },
+                );
+            }
+        } else {
+            // Delete one character/grapheme after cursor
+            try self.deleteRange(
+                .{ .row = cursor.row, .col = cursor.col },
+                .{ .row = cursor.row, .col = cursor.col + 1 },
+            );
+        }
     }
 
     pub fn moveLeft(self: *EditBuffer) void {

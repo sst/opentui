@@ -347,20 +347,26 @@ pub fn Rope(comptime T: type) type {
             /// Result type for leaf splitting operations
             pub const LeafSplitResult = struct { left: T, right: T };
 
-            /// Leaf-splitting function type for weight-based splits
-            /// Called when split point falls inside a leaf
-            /// Returns (left_data, right_data) where left_data has exactly weight_in_leaf weight
-            pub const LeafSplitFn = *const fn (allocator: Allocator, leaf: *const T, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult;
+            /// Leaf-splitting callback for weight-based splits
+            /// Supports optional context for accessing external data during splits
+            pub const LeafSplitFn = struct {
+                ctx: ?*anyopaque = null,
+                splitFn: *const fn (ctx: ?*anyopaque, allocator: Allocator, leaf: *const T, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult,
+
+                pub fn call(self: *const @This(), allocator: Allocator, leaf: *const T, weight: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult {
+                    return self.splitFn(self.ctx, allocator, leaf, weight);
+                }
+            };
 
             /// Structural split at weight - returns (left, right) without flattening
             /// O(log n) operation that reuses subtrees
-            /// When split point falls inside a leaf, calls split_leaf_fn to split the data
+            /// When split point falls inside a leaf, calls split_leaf_fn callback to split the data
             pub fn split_at_weight(
                 node: *const Node,
                 target_weight: u32,
                 allocator: Allocator,
                 empty_leaf: *const Node,
-                split_leaf_fn: LeafSplitFn,
+                split_leaf_fn: *const LeafSplitFn,
             ) error{ OutOfMemory, OutOfBounds }!struct { left: *const Node, right: *const Node } {
                 return switch (node.*) {
                     .leaf => |*l| {
@@ -373,8 +379,8 @@ pub fn Rope(comptime T: type) type {
                             return .{ .left = node, .right = empty_leaf };
                         }
 
-                        // Split inside the leaf
-                        const split_result = try split_leaf_fn(allocator, &l.data, target_weight);
+                        // Split inside the leaf using callback
+                        const split_result = try split_leaf_fn.call(allocator, &l.data, target_weight);
                         const left_node = try new_leaf(allocator, split_result.left);
                         const right_node = try new_leaf(allocator, split_result.right);
                         return .{ .left = left_node, .right = right_node };
@@ -878,8 +884,8 @@ pub fn Rope(comptime T: type) type {
 
         /// Split rope into two at weight (returns right half, modifies self to be left half)
         /// O(log n) structural split without flattening
-        /// Calls split_leaf_fn when split point falls inside a leaf
-        pub fn splitByWeight(self: *Self, weight: u32, split_leaf_fn: Node.LeafSplitFn) !Self {
+        /// Calls split_leaf_fn callback when split point falls inside a leaf
+        pub fn splitByWeight(self: *Self, weight: u32, split_leaf_fn: *const Node.LeafSplitFn) !Self {
             const result = try Node.split_at_weight(self.root, weight, self.allocator, self.empty_leaf, split_leaf_fn);
             self.root = result.left;
             return Self{
@@ -894,8 +900,8 @@ pub fn Rope(comptime T: type) type {
 
         /// Delete range by weight [start, end)
         /// O(log n) structural operation
-        /// Calls split_leaf_fn when split points fall inside leaves
-        pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: Node.LeafSplitFn) !void {
+        /// Calls split_leaf_fn callback when split points fall inside leaves
+        pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: *const Node.LeafSplitFn) !void {
             if (start >= end) return;
 
             // Split at start, then split the right part at (end - start)
@@ -915,8 +921,8 @@ pub fn Rope(comptime T: type) type {
 
         /// Insert multiple items at weight position efficiently
         /// O(log n + k) structural operation where k is items.len
-        /// Calls split_leaf_fn when split point falls inside a leaf
-        pub fn insertSliceByWeight(self: *Self, weight: u32, items: []const T, split_leaf_fn: Node.LeafSplitFn) !void {
+        /// Calls split_leaf_fn callback when split point falls inside a leaf
+        pub fn insertSliceByWeight(self: *Self, weight: u32, items: []const T, split_leaf_fn: *const Node.LeafSplitFn) !void {
             if (items.len == 0) return;
 
             // Create a rope from the items to insert
@@ -1019,14 +1025,14 @@ pub fn Rope(comptime T: type) type {
         }
 
         /// Insert slice at weight finger position (invalidates finger cache)
-        pub fn insertSliceAtWeightFinger(self: *Self, finger: *WeightFinger, items: []const T, split_leaf_fn: Node.LeafSplitFn) !void {
+        pub fn insertSliceAtWeightFinger(self: *Self, finger: *WeightFinger, items: []const T, split_leaf_fn: *const Node.LeafSplitFn) !void {
             try self.insertSliceByWeight(finger.weight, items, split_leaf_fn);
             finger.invalidate(); // Structure changed
             // Finger now points to first inserted item
         }
 
         /// Delete range using two weight fingers (invalidates both finger caches)
-        pub fn deleteRangeByWeightWith(self: *Self, start_finger: *WeightFinger, end_finger: *WeightFinger, split_leaf_fn: Node.LeafSplitFn) !void {
+        pub fn deleteRangeByWeightWith(self: *Self, start_finger: *WeightFinger, end_finger: *WeightFinger, split_leaf_fn: *const Node.LeafSplitFn) !void {
             const start = start_finger.weight;
             const end = end_finger.weight;
             try self.deleteRangeByWeight(@min(start, end), @max(start, end), split_leaf_fn);
