@@ -7,6 +7,7 @@ const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
+const editor_view = @import("editor-view.zig");
 const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
@@ -559,6 +560,83 @@ export fn textBufferViewGetSelectedText(view: *text_buffer_view.TextBufferView, 
 export fn textBufferViewGetPlainText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getPlainTextIntoBuffer(outBuffer);
+}
+
+// ===== EditorView Exports =====
+
+export fn createEditorView(tbv: *text_buffer_view.TextBufferView) ?*editor_view.EditorView {
+    return editor_view.EditorView.init(globalArena, tbv) catch null;
+}
+
+export fn destroyEditorView(view: *editor_view.EditorView) void {
+    view.deinit();
+}
+
+export fn editorViewSetViewport(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32) void {
+    view.setViewport(editor_view.Viewport{ .x = x, .y = y, .width = width, .height = height });
+}
+
+export fn editorViewClearViewport(view: *editor_view.EditorView) void {
+    view.setViewport(null);
+}
+
+export fn editorViewGetViewport(view: *editor_view.EditorView, outX: *u32, outY: *u32, outWidth: *u32, outHeight: *u32) bool {
+    if (view.getViewport()) |vp| {
+        outX.* = vp.x;
+        outY.* = vp.y;
+        outWidth.* = vp.width;
+        outHeight.* = vp.height;
+        return true;
+    }
+    return false;
+}
+
+export fn editorViewSetScrollMargin(view: *editor_view.EditorView, margin: f32) void {
+    view.setScrollMargin(margin);
+}
+
+export fn editorViewEnsureCursorVisible(view: *editor_view.EditorView, cursor_line: u32) void {
+    view.ensureCursorVisible(cursor_line);
+}
+
+export fn editorViewGetVirtualLineCount(view: *editor_view.EditorView) u32 {
+    return @intCast(view.getVirtualLines().len);
+}
+
+export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 {
+    return view.getTotalVirtualLineCount();
+}
+
+export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getCachedLineInfo();
+    for (line_info.starts, 0..) |start, i| {
+        lineStartsPtr[i] = start;
+    }
+    for (line_info.widths, 0..) |width, i| {
+        lineWidthsPtr[i] = width;
+    }
+    return line_info.max_width;
+}
+
+export fn bufferDrawEditorView(
+    bufferPtr: *buffer.OptimizedBuffer,
+    viewPtr: *editor_view.EditorView,
+    x: i32,
+    y: i32,
+    clipX: i32,
+    clipY: i32,
+    clipWidth: u32,
+    clipHeight: u32,
+    hasClipRect: bool,
+) void {
+    const clip_rect = if (hasClipRect) buffer.ClipRect{
+        .x = clipX,
+        .y = clipY,
+        .width = clipWidth,
+        .height = clipHeight,
+    } else null;
+
+    bufferPtr.drawEditorView(viewPtr, x, y, clip_rect) catch {};
 }
 
 export fn bufferDrawTextBufferView(

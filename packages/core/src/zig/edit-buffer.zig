@@ -136,6 +136,11 @@ pub const EditBuffer = struct {
         return self.cursors.items[idx];
     }
 
+    pub fn getPrimaryCursor(self: *const EditBuffer) Cursor {
+        if (self.cursors.items.len == 0) return .{ .row = 0, .col = 0 };
+        return self.cursors.items[0];
+    }
+
     pub fn setCursor(self: *EditBuffer, row: u32, col: u32) !void {
         if (self.cursors.items.len == 0) {
             try self.cursors.append(self.allocator, .{ .row = row, .col = col });
