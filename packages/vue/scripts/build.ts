@@ -107,7 +107,7 @@ const tsconfigBuild = {
 
 writeFileSync(tsconfigBuildPath, JSON.stringify(tsconfigBuild, null, 2))
 
-const tscResult: SpawnSyncReturns<Buffer> = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
+const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bunx", ["tsc", "-p", tsconfigBuildPath], {
   cwd: rootDir,
   stdio: "inherit",
 })

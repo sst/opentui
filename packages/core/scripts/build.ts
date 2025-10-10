@@ -280,7 +280,7 @@ if (buildLib) {
 
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
 
-  const tscResult: SpawnSyncReturns<Buffer> = spawnSync("npx", ["tsc", "-p", tsconfigBuildPath], {
+  const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bunx", ["tsc", "-p", tsconfigBuildPath], {
     cwd: rootDir,
     stdio: "inherit",
   })
