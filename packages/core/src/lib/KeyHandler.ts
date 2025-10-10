@@ -77,6 +77,7 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   protected listener: (key: Buffer) => void
   protected pasteMode: boolean = false
   protected pasteBuffer: string[] = []
+  private suspended: boolean = false
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
@@ -120,6 +121,20 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 
   public destroy(): void {
     this.stdin.removeListener("data", this.listener)
+  }
+
+  public suspend(): void {
+    if (!this.suspended) {
+      this.suspended = true
+      this.stdin.removeListener("data", this.listener)
+    }
+  }
+
+  public resume(): void {
+    if (this.suspended) {
+      this.suspended = false
+      this.stdin.on("data", this.listener)
+    }
   }
 }
 
