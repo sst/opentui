@@ -463,6 +463,125 @@ pub const TextBuffer = struct {
         return &[_]StyleSpan{};
     }
 
+    /// Convert row/col coordinates to absolute character offset
+    /// Row is 0-based line index, col is 0-based column within that line
+    /// Returns null if coordinates are out of bounds
+    pub fn coordsToCharOffset(self: *const TextBuffer, row: u32, col: u32) ?u32 {
+        if (row >= self.lines.items.len) return null;
+
+        const line = &self.lines.items[row];
+        if (col > line.width) return null;
+
+        return line.char_offset + col;
+    }
+
+    /// Convert row/col coordinates to byte offset in the underlying memory buffer
+    /// Returns the memory ID, byte offset, and remaining bytes in the chunk
+    /// Returns null if coordinates are out of bounds
+    pub fn coordsToByteOffset(self: *const TextBuffer, row: u32, col: u32) ?struct { mem_id: u8, byte_offset: u32 } {
+        if (row >= self.lines.items.len) return null;
+
+        const line = &self.lines.items[row];
+        if (col > line.width) return null;
+
+        // Find which chunk contains this column
+        var current_col: u32 = 0;
+        for (line.chunks.items) |*chunk| {
+            if (col <= current_col + chunk.width) {
+                // This chunk contains the target column
+                const col_in_chunk = col - current_col;
+
+                // Get graphemes for this chunk to find byte offset
+                const graphemes = chunk.getGraphemes(
+                    &self.mem_registry,
+                    self.allocator,
+                    &self.graphemes_data,
+                    self.width_method,
+                    &self.display_width,
+                ) catch return null;
+
+                // Walk through graphemes to find the byte offset
+                var chars_so_far: u32 = 0;
+                for (graphemes) |g| {
+                    if (chars_so_far >= col_in_chunk) {
+                        return .{
+                            .mem_id = chunk.mem_id,
+                            .byte_offset = chunk.byte_start + g.byte_offset,
+                        };
+                    }
+                    chars_so_far += g.width;
+                }
+
+                // If we're at the end of the chunk, return end position
+                return .{
+                    .mem_id = chunk.mem_id,
+                    .byte_offset = chunk.byte_end,
+                };
+            }
+            current_col += chunk.width;
+        }
+
+        // Column is at the end of the line
+        if (line.chunks.items.len > 0) {
+            const last_chunk = &line.chunks.items[line.chunks.items.len - 1];
+            return .{
+                .mem_id = last_chunk.mem_id,
+                .byte_offset = last_chunk.byte_end,
+            };
+        }
+
+        return null;
+    }
+
+    /// Convert absolute character offset to row/col coordinates
+    /// Returns null if offset is out of bounds
+    pub fn charOffsetToCoords(self: *const TextBuffer, char_offset: u32) ?struct { row: u32, col: u32 } {
+        if (self.lines.items.len == 0) return null;
+
+        // Binary search to find the line containing this offset
+        var left: usize = 0;
+        var right: usize = self.lines.items.len;
+
+        while (left < right) {
+            const mid = left + (right - left) / 2;
+            const line = &self.lines.items[mid];
+            const line_end_char = if (mid + 1 < self.lines.items.len)
+                self.lines.items[mid + 1].char_offset
+            else
+                line.char_offset + line.width;
+
+            if (char_offset < line.char_offset) {
+                right = mid;
+            } else if (char_offset >= line_end_char) {
+                left = mid + 1;
+            } else {
+                // Found the line
+                const col = char_offset - line.char_offset;
+                return .{ .row = @intCast(mid), .col = col };
+            }
+        }
+
+        return null;
+    }
+
+    /// Add a highlight using row/col coordinates
+    /// Efficiently handles single-line and multi-line highlights
+    pub fn addHighlightByCoords(
+        self: *TextBuffer,
+        start_row: u32,
+        start_col: u32,
+        end_row: u32,
+        end_col: u32,
+        style_id: u32,
+        priority: u8,
+        hl_ref: ?u16,
+    ) TextBufferError!void {
+        const char_start = self.coordsToCharOffset(start_row, start_col) orelse return TextBufferError.InvalidIndex;
+        const char_end = self.coordsToCharOffset(end_row, end_col) orelse return TextBufferError.InvalidIndex;
+
+        return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
+    }
+
     /// Add a highlight using character offsets into the full text
     /// Efficiently handles single-line and multi-line highlights
     pub fn addHighlightByCharRange(
