@@ -33,7 +33,7 @@ test "Rope perf - insert operations" {
         const elapsed = timer.read();
         const elapsed_ms = @as(f64, @floatFromInt(elapsed)) / 1_000_000.0;
         std.debug.print("Sequential append 1000 items: {d:.2}ms\n", .{elapsed_ms});
-        try std.testing.expectEqual(@as(u32, 1001), rope.count());
+        try std.testing.expectEqual(@as(u32, 1000), rope.count());
     }
 
     // Sequential inserts at beginning
@@ -47,7 +47,7 @@ test "Rope perf - insert operations" {
         const elapsed = timer.read();
         const elapsed_ms = @as(f64, @floatFromInt(elapsed)) / 1_000_000.0;
         std.debug.print("Sequential prepend 1000 items: {d:.2}ms\n", .{elapsed_ms});
-        try std.testing.expectEqual(@as(u32, 1001), rope.count());
+        try std.testing.expectEqual(@as(u32, 1000), rope.count());
     }
 
     // Random inserts
@@ -67,7 +67,7 @@ test "Rope perf - insert operations" {
         const elapsed = timer.read();
         const elapsed_ms = @as(f64, @floatFromInt(elapsed)) / 1_000_000.0;
         std.debug.print("Random insert 1000 items: {d:.2}ms\n", .{elapsed_ms});
-        try std.testing.expectEqual(@as(u32, 1001), rope.count());
+        try std.testing.expectEqual(@as(u32, 1000), rope.count());
     }
 }
 
@@ -158,7 +158,7 @@ test "Rope perf - bulk operations" {
         const elapsed = timer.read();
         const elapsed_ms = @as(f64, @floatFromInt(elapsed)) / 1_000_000.0;
         std.debug.print("insert_slice 10x100 items: {d:.2}ms\n", .{elapsed_ms});
-        try std.testing.expectEqual(@as(u32, 1001), rope.count()); // 10*100 + initial empty
+        try std.testing.expectEqual(@as(u32, 1000), rope.count()); // 10*100
     }
 
     // delete_range
@@ -328,7 +328,7 @@ test "Rope perf - depth analysis" {
         }
         const depth = rope.root.depth();
         const count = rope.count();
-        const theoretical_min = @ceil(@log2(@as(f64, @floatFromInt(count))));
+        const theoretical_min = if (count > 0) @ceil(@log2(@as(f64, @floatFromInt(count)))) else 0.0;
         std.debug.print("Sequential append: count={d}, depth={d}, theoretical_min={d:.1}\n", .{ count, depth, theoretical_min });
     }
 

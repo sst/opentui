@@ -9,6 +9,7 @@ const syntax_style_tests = @import("tests/syntax-style_test.zig");
 const rope_tests = @import("tests/rope_test.zig");
 const rope_fuzz_tests = @import("tests/rope_fuzz_test.zig");
 const rope_perf_tests = @import("tests/rope_perf_test.zig");
+const rope_improvements_tests = @import("tests/rope_improvements_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -22,5 +23,6 @@ comptime {
     _ = rope_tests;
     _ = rope_fuzz_tests;
     _ = rope_perf_tests;
+    _ = rope_improvements_tests;
     // _ = example_tests;
 }

@@ -49,7 +49,7 @@ test "Rope - can initialize with arena allocator" {
 
     const RopeType = rope_mod.Rope(SimpleItem);
     var rope = try RopeType.init(arena.allocator());
-    try std.testing.expectEqual(@as(u32, 1), rope.count());
+    try std.testing.expectEqual(@as(u32, 0), rope.count()); // Sentinel filtered
 }
 
 test "Rope - from_item creates single item rope" {
@@ -136,7 +136,7 @@ test "Rope - multiple inserts" {
     try rope.insert(1, .{ .value = 2 });
     try rope.insert(2, .{ .value = 3 });
 
-    try std.testing.expectEqual(@as(u32, 4), rope.count()); // +1 for initial empty
+    try std.testing.expectEqual(@as(u32, 3), rope.count()); // Sentinel filtered
 }
 
 //===== Delete Tests =====
@@ -312,7 +312,7 @@ test "Rope - many insert operations" {
         try rope.insert(@intCast(i), .{ .value = @intCast(i) });
     }
 
-    try std.testing.expectEqual(@as(u32, 51), rope.count()); // +1 for initial empty
+    try std.testing.expectEqual(@as(u32, 50), rope.count()); // Sentinel filtered
 }
 
 //===== Nested Rope Tests (Lines→Chunks Pattern) =====
@@ -916,9 +916,9 @@ test "Nested Rope - empty lines with no chunks" {
 
     try std.testing.expectEqual(@as(u32, 2), line_rope.count());
 
-    // Empty line should have 1 chunk (the empty chunk)
+    // Empty line should have 0 chunks (sentinel filtered)
     const empty = line_rope.get(0).?;
-    try std.testing.expectEqual(@as(u32, 1), empty.chunks.count());
+    try std.testing.expectEqual(@as(u32, 0), empty.chunks.count());
 
     // Content line should have 1 chunk
     const content = line_rope.get(1).?;
@@ -1539,19 +1539,19 @@ test "Rope - complex undo/redo workflow" {
     try rope.delete(1); // Remove middle
 
     // State: [1, 3]
-    try std.testing.expectEqual(@as(u32, 3), rope.count()); // +1 for initial empty
+    try std.testing.expectEqual(@as(u32, 2), rope.count()); // Sentinel filtered
 
     // Undo delete
     _ = try rope.undo("current");
-    try std.testing.expectEqual(@as(u32, 4), rope.count());
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
 
     // Undo append
     _ = try rope.undo("current");
-    try std.testing.expectEqual(@as(u32, 3), rope.count());
+    try std.testing.expectEqual(@as(u32, 2), rope.count());
 
     // Redo append
     _ = try rope.redo();
-    try std.testing.expectEqual(@as(u32, 4), rope.count());
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
 }
 
 test "Rope - undo/redo with metadata tracking" {
@@ -1652,19 +1652,19 @@ test "Rope - stress test undo/redo with many operations" {
         try rope.append(.{ .value = @intCast(i) });
     }
 
-    try std.testing.expectEqual(@as(u32, 21), rope.count()); // +1 for initial empty
+    try std.testing.expectEqual(@as(u32, 20), rope.count()); // Sentinel filtered
 
     // Undo 10 operations
     for (0..10) |_| {
         _ = try rope.undo("current");
     }
-    try std.testing.expectEqual(@as(u32, 11), rope.count());
+    try std.testing.expectEqual(@as(u32, 10), rope.count());
 
     // Redo 5 operations
     for (0..5) |_| {
         _ = try rope.redo();
     }
-    try std.testing.expectEqual(@as(u32, 16), rope.count());
+    try std.testing.expectEqual(@as(u32, 15), rope.count());
 }
 
 //===== Bulk/Range Operations Tests =====
@@ -1683,7 +1683,7 @@ test "Rope - split at beginning" {
 
     const right = try rope.split(0);
 
-    try std.testing.expectEqual(@as(u32, 1), rope.count()); // empty + nothing
+    try std.testing.expectEqual(@as(u32, 0), rope.count()); // Sentinel filtered
     try std.testing.expectEqual(@as(u32, 3), right.count());
     try std.testing.expectEqual(@as(u32, 1), right.get(0).?.value);
 }
@@ -1729,7 +1729,7 @@ test "Rope - split at end" {
     const right = try rope.split(3);
 
     try std.testing.expectEqual(@as(u32, 3), rope.count());
-    try std.testing.expectEqual(@as(u32, 1), right.count()); // just empty
+    try std.testing.expectEqual(@as(u32, 0), right.count()); // Sentinel filtered
 }
 
 test "Rope - slice full range" {
@@ -1979,7 +1979,7 @@ test "Rope - to_array empty rope" {
     const array = try rope.to_array(arena.allocator());
     defer arena.allocator().free(array);
 
-    try std.testing.expectEqual(@as(usize, 1), array.len); // empty item
+    try std.testing.expectEqual(@as(usize, 0), array.len); // Sentinel filtered
 }
 
 test "Rope - combined bulk operations" {
@@ -2163,7 +2163,7 @@ test "Rope - split at zero creates empty left" {
 
     const right = try rope.split(0);
 
-    try std.testing.expectEqual(@as(u32, 1), rope.count()); // just empty item
+    try std.testing.expectEqual(@as(u32, 0), rope.count()); // Sentinel filtered
     try std.testing.expectEqual(@as(u32, 2), right.count());
 }
 
@@ -2181,7 +2181,7 @@ test "Rope - split beyond count" {
     const right = try rope.split(100);
 
     try std.testing.expectEqual(@as(u32, 2), rope.count());
-    try std.testing.expectEqual(@as(u32, 1), right.count()); // just empty
+    try std.testing.expectEqual(@as(u32, 0), right.count()); // Sentinel filtered
 }
 
 test "Rope - multiple undo without operations" {
@@ -2239,8 +2239,8 @@ test "Rope - delete_range entire rope" {
 
     try rope.delete_range(0, 3);
 
-    // Should have empty item left
-    try std.testing.expectEqual(@as(u32, 1), rope.count());
+    // Should be empty (sentinel filtered)
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
 }
 
 test "Rope - to_array single item" {
@@ -2267,7 +2267,7 @@ test "Rope - concat with empty rope" {
 
     try rope1.concat(&rope2);
 
-    try std.testing.expectEqual(@as(u32, 2), rope1.count()); // original + empty
+    try std.testing.expectEqual(@as(u32, 1), rope1.count()); // original only (empty filtered)
 }
 
 test "Rope - redo after modifying tree fails" {
@@ -2311,9 +2311,9 @@ test "Rope - rebalance extremely unbalanced tree" {
 
     // Should be more balanced now
     try std.testing.expect(depth_after <= depth_before);
-    try std.testing.expect(depth_after < 15); // log2(51) ≈ 6
+    try std.testing.expect(depth_after < 15); // log2(50) ≈ 6
 
     // Data should be preserved
-    try std.testing.expectEqual(@as(u32, 51), rope.count());
-    try std.testing.expectEqual(@as(u32, 0), rope.get(1).?.value);
+    try std.testing.expectEqual(@as(u32, 50), rope.count());
+    try std.testing.expectEqual(@as(u32, 0), rope.get(0).?.value); // Fixed index
 }

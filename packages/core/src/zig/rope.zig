@@ -17,6 +17,11 @@ pub fn Rope(comptime T: type) type {
 
         pub const max_imbalance = 7;
 
+        /// Configuration for rope behavior
+        pub const Config = struct {
+            max_undo_depth: ?usize = null, // null = unlimited
+        };
+
         /// Metrics tracked by the rope
         pub const Metrics = struct {
             count: u32 = 0, // Number of items (leaves) - default 0, leaves set to 1
@@ -35,6 +40,16 @@ pub fn Rope(comptime T: type) type {
                     }
                 }
             }
+
+            /// Get balancing weight - uses T.Metrics.weight() if available, else falls back to count
+            pub fn weight(self: *const Metrics) u32 {
+                if (@hasDecl(T, "Metrics")) {
+                    if (@hasDecl(T.Metrics, "weight")) {
+                        return self.custom.weight();
+                    }
+                }
+                return self.count;
+            }
         };
 
         pub const Branch = struct {
@@ -44,9 +59,16 @@ pub fn Rope(comptime T: type) type {
             total_metrics: Metrics, // Total metrics of this subtree
 
             fn is_balanced(self: *const Branch) bool {
-                const left: isize = @intCast(self.left.metrics().depth);
-                const right: isize = @intCast(self.right.metrics().depth);
-                return @abs(left - right) < max_imbalance;
+                // Balance on weight (size/bytes) if available, else depth
+                const left_weight = self.left.metrics().weight();
+                const right_weight = self.right.metrics().weight();
+                const total_weight = left_weight + right_weight;
+
+                if (total_weight == 0) return true;
+
+                // Ensure neither side is more than 75% of total (3:1 ratio)
+                const max_side = (total_weight * 3) / 4;
+                return left_weight <= max_side and right_weight <= max_side;
             }
         };
 
@@ -106,6 +128,11 @@ pub fn Rope(comptime T: type) type {
                         return false;
                     },
                 };
+            }
+
+            /// Check if this node is the sentinel empty leaf (by pointer equality)
+            pub fn is_sentinel(self: *const Node, empty_leaf: *const Node) bool {
+                return self == empty_leaf;
             }
 
             /// Create a new branch node
@@ -280,21 +307,24 @@ pub fn Rope(comptime T: type) type {
                 };
             }
 
-            /// Height-aware join that maintains balance
-            /// O(log |depth difference|) operation
-            /// Does NOT filter empty nodes - empties are real leaves with count=1
+            /// Weight-aware join that maintains balance
+            /// O(log |weight difference|) operation
+            /// Balances on weight (bytes/chars) if T provides weight(), else on count
             pub fn join_balanced(left: *const Node, right: *const Node, allocator: Allocator) error{OutOfMemory}!*const Node {
-                const left_depth = left.depth();
-                const right_depth = right.depth();
+                const left_weight = left.metrics().weight();
+                const right_weight = right.metrics().weight();
+                const total_weight = left_weight + right_weight;
 
-                // If heights are similar, just create a branch
-                const depth_diff: i32 = @as(i32, @intCast(left_depth)) - @as(i32, @intCast(right_depth));
-                if (@abs(depth_diff) <= max_imbalance) {
-                    return try new_branch(allocator, left, right);
+                // If weights are balanced (neither side > 75%), just create a branch
+                if (total_weight > 0) {
+                    const max_side = (total_weight * 3) / 4;
+                    if (left_weight <= max_side and right_weight <= max_side) {
+                        return try new_branch(allocator, left, right);
+                    }
                 }
 
-                // If left is much deeper, attach right to a node deep in left's right spine
-                if (depth_diff > max_imbalance) {
+                // If left is much heavier, attach right to a node deep in left's right spine
+                if (left_weight > right_weight * 3) {
                     return switch (left.*) {
                         .leaf => try new_branch(allocator, left, right), // shouldn't happen but handle it
                         .branch => |*b| {
@@ -304,7 +334,7 @@ pub fn Rope(comptime T: type) type {
                     };
                 }
 
-                // If right is much deeper, attach left to a node deep in right's left spine
+                // If right is much heavier, attach left to a node deep in right's left spine
                 return switch (right.*) {
                     .leaf => try new_branch(allocator, left, right), // shouldn't happen but handle it
                     .branch => |*b| {
@@ -316,10 +346,13 @@ pub fn Rope(comptime T: type) type {
         };
 
         /// Finger for efficient near-cursor edits
+        /// Caches the path to last accessed position for locality
         /// External to rope, one per cursor for multi-cursor support
         pub const Finger = struct {
             index: u32, // Last resolved index
             rope: *const Self, // Reference to the rope this finger belongs to
+            cached_node: ?*const Node = null, // Cached node near index
+            cached_node_start: u32 = 0, // Starting index of cached node's subtree
 
             /// Create a finger at a specific index
             pub fn init(rope: *const Self, index: u32) Finger {
@@ -329,14 +362,51 @@ pub fn Rope(comptime T: type) type {
                 };
             }
 
-            /// Move finger to a new index
+            /// Move finger to a new index and invalidate cache if far away
             pub fn seek(self: *Finger, index: u32) void {
+                // If seeking far away (more than 100 items), invalidate cache
+                if (self.index > index) {
+                    if (self.index - index > 100) {
+                        self.invalidate();
+                    }
+                } else {
+                    if (index - self.index > 100) {
+                        self.invalidate();
+                    }
+                }
                 self.index = index;
             }
 
             /// Get current index
             pub fn getIndex(self: *const Finger) u32 {
                 return self.index;
+            }
+
+            /// Invalidate the cache (call after structural changes)
+            pub fn invalidate(self: *Finger) void {
+                self.cached_node = null;
+                self.cached_node_start = 0;
+            }
+
+            /// Update cache with a node and its starting index
+            fn updateCache(self: *Finger, node: *const Node, start_index: u32) void {
+                self.cached_node = node;
+                self.cached_node_start = start_index;
+            }
+
+            /// Try to get data from cache, otherwise traverse from root
+            pub fn get(self: *Finger) ?*const T {
+                // Try cache first if available
+                if (self.cached_node) |node| {
+                    const node_count = node.count();
+                    const relative_index = self.index - self.cached_node_start;
+                    if (relative_index < node_count) {
+                        return node.get(relative_index);
+                    }
+                }
+
+                // Cache miss - traverse from root and update cache
+                return self.rope.root.get(self.index);
             }
         };
 
@@ -359,21 +429,28 @@ pub fn Rope(comptime T: type) type {
         undo_history: ?*UndoNode = null,
         redo_history: ?*UndoNode = null,
         curr_history: ?*UndoNode = null,
+        config: Config = .{},
+        undo_depth: usize = 0, // Current undo stack depth
 
         pub fn init(allocator: Allocator) !Self {
+            return initWithConfig(allocator, .{});
+        }
+
+        pub fn initWithConfig(allocator: Allocator, config: Config) !Self {
             // Create empty root - if T has an empty() function, use it
             const empty_data = if (@hasDecl(T, "empty"))
                 T.empty()
             else
                 std.mem.zeroes(T);
 
-            const root = try Node.new_leaf(allocator, empty_data);
-            // Create a separate empty_leaf for split operations (distinct from the structural root empty)
-            const split_empty = try Node.new_leaf(allocator, empty_data);
+            // Use same empty_leaf for both root and split operations
+            // This allows sentinel filtering to work correctly
+            const empty_leaf = try Node.new_leaf(allocator, empty_data);
             return .{
-                .root = root,
+                .root = empty_leaf,
                 .allocator = allocator,
-                .empty_leaf = split_empty,
+                .empty_leaf = empty_leaf,
+                .config = config,
             };
         }
 
@@ -420,22 +497,112 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn count(self: *const Self) u32 {
-            return self.root.count();
+            return self.countExcludingSentinel();
+        }
+
+        /// Count items excluding sentinel empties
+        fn countExcludingSentinel(self: *const Self) u32 {
+            return self.countNodeExcludingSentinel(self.root);
+        }
+
+        fn countNodeExcludingSentinel(self: *const Self, node: *const Node) u32 {
+            if (node.is_sentinel(self.empty_leaf)) {
+                return 0;
+            }
+
+            return switch (node.*) {
+                .branch => |*b| {
+                    return self.countNodeExcludingSentinel(b.left) +
+                        self.countNodeExcludingSentinel(b.right);
+                },
+                .leaf => 1,
+            };
         }
 
         pub fn get(self: *const Self, index: u32) ?*const T {
-            return self.root.get(index);
+            return self.getFromNode(self.root, index);
+        }
+
+        fn getFromNode(self: *const Self, node: *const Node, index: u32) ?*const T {
+            // Skip sentinel empties
+            if (node.is_sentinel(self.empty_leaf)) {
+                return null;
+            }
+
+            return switch (node.*) {
+                .branch => |*b| {
+                    const left_count = self.countNodeExcludingSentinel(b.left);
+                    if (index < left_count) {
+                        return self.getFromNode(b.left, index);
+                    }
+                    return self.getFromNode(b.right, index - left_count);
+                },
+                .leaf => |*l| if (index == 0) &l.data else null,
+            };
         }
 
         pub fn walk(self: *const Self, ctx: *anyopaque, f: Node.WalkerFn) !void {
             var index: u32 = 0;
-            const result = self.root.walk(ctx, f, &index);
+            const result = self.walkNode(self.root, ctx, f, &index);
             if (result.err) |e| return e;
         }
 
+        fn walkNode(self: *const Self, node: *const Node, ctx: *anyopaque, f: Node.WalkerFn, current_index: *u32) Node.WalkerResult {
+            // Skip sentinel empties
+            if (node.is_sentinel(self.empty_leaf)) {
+                return .{};
+            }
+
+            return switch (node.*) {
+                .branch => |*b| {
+                    const left_result = self.walkNode(b.left, ctx, f, current_index);
+                    if (!left_result.keep_walking or left_result.err != null) {
+                        return left_result;
+                    }
+                    return self.walkNode(b.right, ctx, f, current_index);
+                },
+                .leaf => |*l| {
+                    const result = f(ctx, &l.data, current_index.*);
+                    current_index.* += 1;
+                    return result;
+                },
+            };
+        }
+
         pub fn walk_from(self: *const Self, start_index: u32, ctx: *anyopaque, f: Node.WalkerFn) !void {
-            const result = self.root.walk_from(start_index, ctx, f);
+            var current_index: u32 = 0;
+            const result = self.walkFromNode(self.root, start_index, ctx, f, &current_index);
             if (result.err) |e| return e;
+        }
+
+        fn walkFromNode(self: *const Self, node: *const Node, start_index: u32, ctx: *anyopaque, f: Node.WalkerFn, current_index: *u32) Node.WalkerResult {
+            // Skip sentinel empties
+            if (node.is_sentinel(self.empty_leaf)) {
+                return .{};
+            }
+
+            return switch (node.*) {
+                .branch => |*b| {
+                    const left_count = self.countNodeExcludingSentinel(b.left);
+                    if (start_index >= left_count) {
+                        return self.walkFromNode(b.right, start_index - left_count, ctx, f, current_index);
+                    }
+
+                    const left_result = self.walkFromNode(b.left, start_index, ctx, f, current_index);
+                    if (!left_result.keep_walking or left_result.err != null) {
+                        return left_result;
+                    }
+                    return self.walkNode(b.right, ctx, f, current_index);
+                },
+                .leaf => |*l| {
+                    if (start_index == 0) {
+                        const result = f(ctx, &l.data, current_index.*);
+                        current_index.* += 1;
+                        return result;
+                    }
+                    return .{};
+                },
+            };
         }
 
         pub fn rebalance(self: *Self, tmp_allocator: Allocator) !void {
@@ -472,7 +639,14 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn concat(self: *Self, other: *const Self) !void {
-            self.root = try Node.join_balanced(self.root, other.root, self.allocator);
+            // Filter empty sentinels during concat
+            if (self.root.is_sentinel(self.empty_leaf)) {
+                self.root = other.root;
+            } else if (other.root.is_sentinel(other.empty_leaf)) {
+                // Keep self.root as is
+            } else {
+                self.root = try Node.join_balanced(self.root, other.root, self.allocator);
+            }
         }
 
         /// Split rope into two at index (returns right half, modifies self to be left half)
@@ -596,35 +770,41 @@ pub fn Rope(comptime T: type) type {
             return Finger.init(self, index);
         }
 
-        /// Insert at finger position
+        /// Insert at finger position (invalidates finger cache)
         pub fn insertAtFinger(self: *Self, finger: *Finger, data: T) !void {
             try self.insert(finger.index, data);
+            finger.invalidate(); // Structure changed
             // Finger now points to the inserted item
         }
 
-        /// Delete at finger position
+        /// Delete at finger position (invalidates finger cache)
         pub fn deleteAtFinger(self: *Self, finger: *Finger) !void {
             try self.delete(finger.index);
+            finger.invalidate(); // Structure changed
             // Finger index stays the same, now points to next item (or past end)
         }
 
-        /// Replace at finger position
+        /// Replace at finger position (invalidates finger cache)
         pub fn replaceAtFinger(self: *Self, finger: *Finger, data: T) !void {
             try self.replace(finger.index, data);
+            finger.invalidate(); // Structure changed
             // Finger still points to same position with new data
         }
 
-        /// Insert slice at finger position
+        /// Insert slice at finger position (invalidates finger cache)
         pub fn insertSliceAtFinger(self: *Self, finger: *Finger, items: []const T) !void {
             try self.insert_slice(finger.index, items);
+            finger.invalidate(); // Structure changed
             // Finger now points to first inserted item
         }
 
-        /// Delete range using two fingers
-        pub fn deleteRangeWith(self: *Self, start_finger: *const Finger, end_finger: *const Finger) !void {
+        /// Delete range using two fingers (invalidates both finger caches)
+        pub fn deleteRangeWith(self: *Self, start_finger: *Finger, end_finger: *Finger) !void {
             const start = start_finger.index;
             const end = end_finger.index;
             try self.delete_range(@min(start, end), @max(start, end));
+            start_finger.invalidate(); // Structure changed
+            end_finger.invalidate(); // Structure changed
         }
 
         /// Undo/Redo operations
@@ -649,6 +829,34 @@ pub fn Rope(comptime T: type) type {
             const next = self.undo_history;
             self.undo_history = undo_node;
             undo_node.next = next;
+            self.undo_depth += 1;
+
+            // Trim history if we exceed max_undo_depth
+            if (self.config.max_undo_depth) |max_depth| {
+                if (self.undo_depth > max_depth) {
+                    self.trimUndoHistory(max_depth);
+                }
+            }
+        }
+
+        fn trimUndoHistory(self: *Self, max_depth: usize) void {
+            var current = self.undo_history;
+            var depth_count: usize = 0;
+            var prev: ?*UndoNode = null;
+
+            while (current) |node| {
+                depth_count += 1;
+                if (depth_count >= max_depth) {
+                    // Cut off the rest of the history
+                    if (prev) |p| {
+                        p.next = null;
+                    }
+                    self.undo_depth = max_depth;
+                    return;
+                }
+                prev = node;
+                current = node.next;
+            }
         }
 
         fn push_redo(self: *Self, undo_node: *UndoNode) void {
@@ -677,6 +885,7 @@ pub fn Rope(comptime T: type) type {
             self.curr_history = h;
             self.root = h.root;
             self.push_redo(r);
+            if (self.undo_depth > 0) self.undo_depth -= 1;
             return h.meta;
         }
 
@@ -703,6 +912,7 @@ pub fn Rope(comptime T: type) type {
             self.undo_history = null;
             self.redo_history = null;
             self.curr_history = null;
+            self.undo_depth = 0;
         }
     };
 }
