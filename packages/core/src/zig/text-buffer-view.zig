@@ -169,12 +169,18 @@ pub const TextBufferView = struct {
         }
     }
 
-    /// Get grapheme info for a chunk
-    /// Returns the pre-computed grapheme slice from the chunk (no caching needed)
+    /// Get grapheme info for a chunk (lazily computed on first access)
+    /// Returns the grapheme slice from the chunk
     pub fn getOrCreateChunkCache(self: *TextBufferView, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const GraphemeInfo {
         const lines = self.text_buffer.getLines();
         const chunk = &lines[line_idx].chunks.items[chunk_idx];
-        return chunk.graphemes;
+        return chunk.getGraphemes(
+            &self.text_buffer.mem_registry,
+            self.text_buffer.allocator,
+            &self.text_buffer.graphemes_data,
+            self.text_buffer.width_method,
+            &self.text_buffer.display_width,
+        ) catch return TextBufferViewError.OutOfMemory;
     }
 
     /// Calculate how many graphemes from a chunk fit within the given width

@@ -101,11 +101,58 @@ pub const TextChunk = struct {
     byte_end: u32, // End offset into the memory buffer
     width: u32, // Display width in cells (computed once)
     char_count: u32, // Number of grapheme clusters (computed once)
-    graphemes: []GraphemeInfo, // Lazy grapheme buffer (computed once, reused by views)
+    graphemes: ?[]GraphemeInfo, // Lazy grapheme buffer (computed on first access, reused by views)
 
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
         const mem_buf = mem_registry.get(self.mem_id) orelse return &[_]u8{};
         return mem_buf[self.byte_start..self.byte_end];
+    }
+
+    /// Lazily compute and cache grapheme info for this chunk
+    /// Returns a slice that is valid until the buffer is reset
+    pub fn getGraphemes(
+        self: *TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        graphemes_data: *const Graphemes,
+        width_method: gwidth.WidthMethod,
+        display_width: *const DisplayWidth,
+    ) TextBufferError![]const GraphemeInfo {
+        if (self.graphemes) |cached| {
+            return cached;
+        }
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
+        defer grapheme_list.deinit();
+
+        var iter = graphemes_data.iterator(chunk_bytes);
+        var byte_pos: u32 = 0;
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, width_method, display_width);
+
+            if (width_u16 == 0) {
+                byte_pos += @intCast(gbytes.len);
+                continue;
+            }
+
+            const width: u8 = @intCast(width_u16);
+
+            try grapheme_list.append(GraphemeInfo{
+                .byte_offset = byte_pos,
+                .byte_len = @intCast(gbytes.len),
+                .width = width,
+            });
+
+            byte_pos += @intCast(gbytes.len);
+        }
+
+        const graphemes = try allocator.dupe(GraphemeInfo, grapheme_list.items);
+        self.graphemes = graphemes;
+
+        return graphemes;
     }
 };
 
@@ -656,46 +703,29 @@ pub const TextBuffer = struct {
     }
 
     /// Create a TextChunk from a memory buffer range
-    /// Calculates width, char_count, and builds grapheme info array
+    /// Calculates width and char_count, but graphemes are computed lazily on first access
     fn createChunk(
-        self: *TextBuffer,
+        self: *const TextBuffer,
         mem_id: u8,
         byte_start: u32,
         byte_end: u32,
         chunk_bytes: []const u8,
-    ) TextBufferError!TextChunk {
+    ) TextChunk {
         var chunk_width: u32 = 0;
         var chunk_char_count: u32 = 0;
 
-        var grapheme_list = std.ArrayList(GraphemeInfo).init(self.allocator);
-        defer grapheme_list.deinit();
-
         var iter = self.graphemes_data.iterator(chunk_bytes);
-        var byte_pos: u32 = 0;
 
         while (iter.next()) |gc| {
             const gbytes = gc.bytes(chunk_bytes);
             const width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
 
-            if (width_u16 == 0) {
-                byte_pos += @intCast(gbytes.len);
-                continue;
-            }
+            if (width_u16 == 0) continue;
 
-            const width: u8 = @intCast(width_u16);
-
-            try grapheme_list.append(GraphemeInfo{
-                .byte_offset = byte_pos,
-                .byte_len = @intCast(gbytes.len),
-                .width = width,
-            });
-
+            const width: u32 = @intCast(width_u16);
             chunk_char_count += width;
             chunk_width += width;
-            byte_pos += @intCast(gbytes.len);
         }
-
-        const graphemes = try self.allocator.dupe(GraphemeInfo, grapheme_list.items);
 
         return TextChunk{
             .mem_id = mem_id,
@@ -703,7 +733,7 @@ pub const TextBuffer = struct {
             .byte_end = byte_end,
             .width = chunk_width,
             .char_count = chunk_char_count,
-            .graphemes = graphemes,
+            .graphemes = null, // Computed lazily
         };
     }
 
@@ -719,7 +749,7 @@ pub const TextBuffer = struct {
 
         // Store the chunk with just byte references
         if (byte_start < byte_end or line_bytes.len == 0) {
-            const chunk = try self.createChunk(mem_id, byte_start, byte_end, line_bytes);
+            const chunk = self.createChunk(mem_id, byte_start, byte_end, line_bytes);
 
             self.char_count += chunk.char_count;
             try line.chunks.append(self.allocator, chunk);
@@ -817,7 +847,7 @@ pub const TextBuffer = struct {
         const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         const chunk_bytes = mem_buf[byte_start..byte_end];
 
-        const chunk = try self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
+        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
 
         var line = &self.lines.items[line_idx];
         try line.chunks.append(self.allocator, chunk);
@@ -838,7 +868,7 @@ pub const TextBuffer = struct {
         const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         const chunk_bytes = mem_buf[byte_start..byte_end];
 
-        const chunk = try self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
+        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
 
         var line = TextLine.init();
         line.char_offset = self.char_count;
