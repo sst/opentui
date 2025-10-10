@@ -173,31 +173,3 @@ pub fn ArrayRope(comptime T: type) type {
         }
     };
 }
-
-/// Type-erased rope interface for maximum flexibility
-/// Allows switching between ArrayRope and real Rope at runtime
-pub fn RopeInterface(comptime T: type) type {
-    return struct {
-        const Self = @This();
-
-        const VTable = struct {
-            count: *const fn (ptr: *const anyopaque) u32,
-            get: *const fn (ptr: *const anyopaque, index: u32) ?*const T,
-            walk: *const fn (ptr: *const anyopaque, ctx: *anyopaque, f: anytype) anyerror!void,
-        };
-
-        ptr: *const anyopaque,
-        vtable: *const VTable,
-
-        pub fn count(self: *const Self) u32 {
-            return self.vtable.count(self.ptr);
-        }
-
-        pub fn get(self: *const Self, index: u32) ?*const T {
-            return self.vtable.get(self.ptr, index);
-        }
-
-        // Walk would need special handling due to function pointer type
-        // Simplified for now
-    };
-}
