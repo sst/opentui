@@ -110,6 +110,36 @@ pub const TextChunk = struct {
     width: u32, // Display width in cells (computed once)
     graphemes: ?[]GraphemeInfo, // Lazy grapheme buffer (computed on first access, reused by views)
 
+    pub const Metrics = struct {
+        total_width: u32 = 0,
+
+        pub fn add(self: *Metrics, other: Metrics) void {
+            self.total_width += other.total_width;
+        }
+
+        pub fn weight(self: *const Metrics) u32 {
+            return self.total_width;
+        }
+    };
+
+    pub fn measure(self: *const TextChunk) Metrics {
+        return .{ .total_width = self.width };
+    }
+
+    pub fn empty() TextChunk {
+        return .{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 0,
+            .width = 0,
+            .graphemes = null,
+        };
+    }
+
+    pub fn is_empty(self: *const TextChunk) bool {
+        return self.width == 0;
+    }
+
     pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
         const mem_buf = mem_registry.get(self.mem_id) orelse return &[_]u8{};
         return mem_buf[self.byte_start..self.byte_end];
@@ -202,6 +232,22 @@ pub fn TextLine(comptime ChunkStorage: type) type {
                 .highlights = .{},
                 .spans = .{},
             };
+        }
+
+        pub fn empty() Self {
+            // This will fail if ChunkStorage doesn't have init that can be called without allocator
+            // For now, we'll return a partially initialized struct
+            return .{
+                .chunks = undefined, // Will be initialized properly via Rope.init
+                .width = 0,
+                .char_offset = 0,
+                .highlights = .{},
+                .spans = .{},
+            };
+        }
+
+        pub fn is_empty(self: *const Self) bool {
+            return self.width == 0;
         }
 
         pub fn deinit(self: *Self, allocator: Allocator) void {
@@ -342,6 +388,11 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
             for (self.view_dirty_flags.items) |*flag| {
                 flag.* = true;
             }
+        }
+
+        /// Mark all registered views as dirty (public wrapper for EditBuffer)
+        pub fn markViewsDirty(self: *Self) void {
+            self.markAllViewsDirty();
         }
 
         pub fn getLength(self: *const Self) u32 {
