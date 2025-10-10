@@ -1484,58 +1484,6 @@ test "TextBuffer memory registry - addLine from multiple buffers" {
     try std.testing.expectEqualStrings("First line\nSecond line\nThird line", out_buffer[0..written]);
 }
 
-test "TextBuffer memory registry - appendChunkToLine" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const text1 = "Hello ";
-    const text2 = "World";
-
-    const id1 = try tb.registerMemBuffer(text1, false);
-    const id2 = try tb.registerMemBuffer(text2, false);
-
-    // Add first chunk
-    try tb.addLine(id1, 0, 6);
-
-    // Append second chunk to same line
-    try tb.appendChunkToLine(0, id2, 0, 5);
-
-    const lineInfo = tb.getLineInfo();
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 11), tb.getLength());
-
-    // Verify text content
-    var out_buffer: [100]u8 = undefined;
-    const written = tb.getPlainTextIntoBuffer(&out_buffer);
-    try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
-}
-
-test "TextBuffer memory registry - appendChunkToLine invalid line index" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const text = "Hello";
-    const mem_id = try tb.registerMemBuffer(text, false);
-
-    // Try to append to non-existent line
-    const result = tb.appendChunkToLine(10, mem_id, 0, 5);
-    try std.testing.expectError(text_buffer.TextBufferError.InvalidIndex, result);
-}
-
 test "TextBuffer memory registry - addLine with invalid mem_id" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1598,46 +1546,6 @@ test "TextBuffer memory registry - reset clears memory buffers" {
     // Old mem_id should no longer be valid
     try std.testing.expect(tb.getMemBuffer(mem_id) == null);
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
-}
-
-test "TextBuffer memory registry - complex multi-buffer composition" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    // Register multiple buffers
-    const header = "Header: ";
-    const body = "This is the body text.";
-    const footer = "Footer!";
-
-    const header_id = try tb.registerMemBuffer(header, false);
-    const body_id = try tb.registerMemBuffer(body, false);
-    const footer_id = try tb.registerMemBuffer(footer, false);
-
-    // Build first line from header + part of body
-    try tb.addLine(header_id, 0, 8);
-    try tb.appendChunkToLine(0, body_id, 0, 7); // "This is"
-
-    // Second line: rest of body
-    try tb.addLine(body_id, 8, 22); // "the body text."
-
-    // Third line: footer
-    try tb.addLine(footer_id, 0, 7);
-
-    const lineInfo = tb.getLineInfo();
-    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
-
-    // Verify text content
-    var out_buffer: [200]u8 = undefined;
-    const written = tb.getPlainTextIntoBuffer(&out_buffer);
-    const expected = "Header: This is\nthe body text.\nFooter!";
-    try std.testing.expectEqualStrings(expected, out_buffer[0..written]);
 }
 
 test "TextBuffer memory registry - partial buffer slices" {
@@ -1749,36 +1657,6 @@ test "TextBuffer memory registry - views marked dirty on addLine" {
     try std.testing.expect(tb.isViewDirty(view_id));
 }
 
-test "TextBuffer memory registry - views marked dirty on appendChunkToLine" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const view_id = try tb.registerView();
-    defer tb.unregisterView(view_id);
-
-    const text1 = "Hello ";
-    const text2 = "World";
-    const id1 = try tb.registerMemBuffer(text1, false);
-    const id2 = try tb.registerMemBuffer(text2, false);
-
-    try tb.addLine(id1, 0, 6);
-
-    // Clear dirty flag after first line
-    tb.clearViewDirty(view_id);
-    try std.testing.expect(!tb.isViewDirty(view_id));
-
-    // Append should mark view dirty
-    try tb.appendChunkToLine(0, id2, 0, 5);
-    try std.testing.expect(tb.isViewDirty(view_id));
-}
-
 test "TextBuffer memory registry - empty chunk handling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1872,77 +1750,6 @@ test "TextBuffer memory registry - byte range out of bounds" {
     try std.testing.expectEqual(@as(u32, 5), tb.getLength());
 }
 
-test "TextBuffer memory registry - multiple appends to same line" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const text1 = "One ";
-    const text2 = "Two ";
-    const text3 = "Three";
-
-    const id1 = try tb.registerMemBuffer(text1, false);
-    const id2 = try tb.registerMemBuffer(text2, false);
-    const id3 = try tb.registerMemBuffer(text3, false);
-
-    // Add first chunk
-    try tb.addLine(id1, 0, 4);
-
-    // Append multiple chunks to the same line
-    try tb.appendChunkToLine(0, id2, 0, 4);
-    try tb.appendChunkToLine(0, id3, 0, 5);
-
-    const lineInfo = tb.getLineInfo();
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 13), tb.getLength());
-
-    // Verify text content
-    var out_buffer: [100]u8 = undefined;
-    const written = tb.getPlainTextIntoBuffer(&out_buffer);
-    try std.testing.expectEqualStrings("One Two Three", out_buffer[0..written]);
-}
-
-test "TextBuffer memory registry - highlights with multi-buffer lines" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const text1 = "Hello ";
-    const text2 = "World";
-
-    const id1 = try tb.registerMemBuffer(text1, false);
-    const id2 = try tb.registerMemBuffer(text2, false);
-
-    // Build a line from two buffers
-    try tb.addLine(id1, 0, 6);
-    try tb.appendChunkToLine(0, id2, 0, 5);
-
-    // Add highlights across the chunk boundary
-    try tb.addHighlight(0, 0, 5, 1, 1, null); // "Hello" (first buffer)
-    try tb.addHighlight(0, 6, 11, 2, 1, null); // "World" (second buffer)
-
-    const highlights = tb.getLineHighlights(0);
-    try std.testing.expectEqual(@as(usize, 2), highlights.len);
-    try std.testing.expectEqual(@as(u32, 1), highlights[0].style_id);
-    try std.testing.expectEqual(@as(u32, 2), highlights[1].style_id);
-
-    // Verify spans work correctly
-    const spans = tb.getLineSpans(0);
-    try std.testing.expect(spans.len > 0);
-}
-
 test "TextBuffer memory registry - character range highlights across buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2025,31 +1832,4 @@ test "TextBuffer memory registry - same buffer registered multiple times" {
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Shared\nbuffer\nShared buffer", out_buffer[0..written]);
-}
-
-test "TextBuffer memory registry - overlapping slices from same buffer" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const text = "ABCDEFGHIJ";
-    const mem_id = try tb.registerMemBuffer(text, false);
-
-    // Create line with overlapping slices
-    try tb.addLine(mem_id, 0, 5); // "ABCDE"
-    try tb.appendChunkToLine(0, mem_id, 3, 8); // "DEFGH"
-
-    const lineInfo = tb.getLineInfo();
-    try std.testing.expectEqual(@as(u32, 1), lineInfo.line_count);
-    try std.testing.expectEqual(@as(u32, 10), tb.getLength());
-
-    var out_buffer: [100]u8 = undefined;
-    const written = tb.getPlainTextIntoBuffer(&out_buffer);
-    try std.testing.expectEqualStrings("ABCDEDEFGH", out_buffer[0..written]);
 }

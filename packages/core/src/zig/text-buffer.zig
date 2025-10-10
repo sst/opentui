@@ -831,33 +831,6 @@ pub const TextBuffer = struct {
         return self.mem_registry.get(mem_id);
     }
 
-    /// Append a chunk to an existing line
-    /// This allows for incremental editing by adding chunks from different memory buffers
-    pub fn appendChunkToLine(
-        self: *TextBuffer,
-        line_idx: usize,
-        mem_id: u8,
-        byte_start: u32,
-        byte_end: u32,
-    ) TextBufferError!void {
-        if (line_idx >= self.lines.items.len) {
-            return TextBufferError.InvalidIndex;
-        }
-
-        const mem_buf = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
-        const chunk_bytes = mem_buf[byte_start..byte_end];
-
-        const chunk = self.createChunk(mem_id, byte_start, byte_end, chunk_bytes);
-
-        var line = &self.lines.items[line_idx];
-        try line.chunks.append(self.allocator, chunk);
-        line.width += chunk.width;
-        self.char_count += chunk.char_count;
-
-        // Mark all views as dirty
-        self.markAllViewsDirty();
-    }
-
     /// Add a new line with a chunk
     pub fn addLine(
         self: *TextBuffer,
