@@ -140,9 +140,30 @@ fn runAllBenchmarks(
         try results.append(try runBenchmarkWithAllocator("MT + SIMD16", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16));
         try results.append(try runBenchmarkWithAllocator("MT + SIMD32", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD32));
         try results.append(try runBenchmarkWithAllocator("MT + Bitmask", text, iterations, allocator, scan.findLineBreaksMultithreadedBitmask128));
+
+        // Fixed thread count variants (SIMD16 with 2, 4, 8 threads)
+        const cpu_count = std.Thread.getCpuCount() catch 2;
+        if (cpu_count >= 2) {
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (2T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_2T));
+        }
+        if (cpu_count >= 4) {
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (4T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_4T));
+        }
+        if (cpu_count >= 8) {
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (8T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_8T));
+        }
     } else {
-        // For batch benchmarks, only include the best single-threaded and best multithreaded
-        try results.append(try runBenchmarkWithAllocator("MT + SIMD16", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16));
+        // For batch benchmarks, show thread scaling
+        const cpu_count = std.Thread.getCpuCount() catch 2;
+        if (cpu_count >= 2) {
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (2T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_2T));
+        }
+        if (cpu_count >= 4) {
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (4T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_4T));
+        }
+        if (cpu_count >= 8) {
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (8T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_8T));
+        }
     }
 
     return results;

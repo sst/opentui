@@ -360,15 +360,15 @@ fn rewindToCodepointBoundary(text: []const u8, pos: usize) usize {
     return p;
 }
 
-pub fn findLineBreaksMultithreadedGeneric(
+pub fn findLineBreaksMultithreadedGenericWithThreadCount(
     text: []const u8,
     result: *BreakResult,
     allocator: std.mem.Allocator,
     scan_func: *const fn ([]const u8, *BreakResult) anyerror!void,
+    thread_count: usize,
 ) !void {
     result.reset();
 
-    const thread_count = @min(std.Thread.getCpuCount() catch 4, 8);
     if (thread_count <= 1 or text.len < 1024) {
         // Fall back to single-threaded for small inputs
         return findLineBreaksBaseline(text, result);
@@ -431,6 +431,17 @@ pub fn findLineBreaksMultithreadedGeneric(
     std.mem.sort(usize, result.breaks.items, {}, std.sort.asc(usize));
 }
 
+// Auto-detected thread count (legacy wrapper)
+pub fn findLineBreaksMultithreadedGeneric(
+    text: []const u8,
+    result: *BreakResult,
+    allocator: std.mem.Allocator,
+    scan_func: *const fn ([]const u8, *BreakResult) anyerror!void,
+) !void {
+    const thread_count = @min(std.Thread.getCpuCount() catch 4, 8);
+    return findLineBreaksMultithreadedGenericWithThreadCount(text, result, allocator, scan_func, thread_count);
+}
+
 pub fn findLineBreaksMultithreadedBaseline(text: []const u8, result: *BreakResult, allocator: std.mem.Allocator) !void {
     return findLineBreaksMultithreadedGeneric(text, result, allocator, findLineBreaksBaseline);
 }
@@ -449,4 +460,17 @@ pub fn findLineBreaksMultithreadedSIMD32(text: []const u8, result: *BreakResult,
 
 pub fn findLineBreaksMultithreadedBitmask128(text: []const u8, result: *BreakResult, allocator: std.mem.Allocator) !void {
     return findLineBreaksMultithreadedGeneric(text, result, allocator, findLineBreaksBitmask128);
+}
+
+// Fixed thread count variants for benchmarking
+pub fn findLineBreaksMultithreadedSIMD16_2T(text: []const u8, result: *BreakResult, allocator: std.mem.Allocator) !void {
+    return findLineBreaksMultithreadedGenericWithThreadCount(text, result, allocator, findLineBreaksSIMD16, 2);
+}
+
+pub fn findLineBreaksMultithreadedSIMD16_4T(text: []const u8, result: *BreakResult, allocator: std.mem.Allocator) !void {
+    return findLineBreaksMultithreadedGenericWithThreadCount(text, result, allocator, findLineBreaksSIMD16, 4);
+}
+
+pub fn findLineBreaksMultithreadedSIMD16_8T(text: []const u8, result: *BreakResult, allocator: std.mem.Allocator) !void {
+    return findLineBreaksMultithreadedGenericWithThreadCount(text, result, allocator, findLineBreaksSIMD16, 8);
 }
