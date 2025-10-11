@@ -1,7 +1,17 @@
 //! UTF-8 Text Scanning Correctness Test Suite
 //!
 //! This test suite validates all scanning methods produce identical results.
-//! Run with: zig test packages/core/src/zig/tests/utf8-scan.test.zig -O ReleaseFast
+//!
+//! Run with:
+//!   cd packages/core/src/zig/dev
+//!   zig test utf8-scan.test.zig -O ReleaseFast
+//!
+//! Test coverage:
+//! - Golden tests: Basic CR/LF/CRLF patterns with known expected outputs
+//! - Boundary tests: CRLF split across 16/32/128-byte chunk boundaries
+//! - Unicode tests: Multi-byte UTF-8 sequences adjacent to line breaks
+//! - Consistency tests: All methods produce identical results on real text
+//! - Property tests: Randomized inputs to catch edge cases
 
 const std = @import("std");
 const testing = std.testing;
@@ -473,12 +483,14 @@ test "property: random small buffers" {
     }
 }
 
-// Large file test (if babylon.txt exists)
+// Large file test (uses generated test files from benchmark)
 test "real-world: large file consistency" {
-    const file_path = "../examples/babylon.txt";
-    const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+    // Try to load one of the generated test files
+    const test_file_path = "utf8-bench-tests/test_05.txt";
+    const file = std.fs.cwd().openFile(test_file_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            std.debug.print("Skipping large file test (babylon.txt not found)\n", .{});
+            std.debug.print("\nSkipping large file test (test files not found)\n", .{});
+            std.debug.print("Generate test files with: zig build-exe utf8-scan-bench.zig -O ReleaseFast && ./utf8-scan-bench --generate-tests\n", .{});
             return;
         }
         return err;
@@ -490,6 +502,6 @@ test "real-world: large file consistency" {
     const text = try file.readToEndAlloc(testing.allocator, max_size);
     defer testing.allocator.free(text);
 
-    std.debug.print("Testing on {d} bytes of babylon.txt...\n", .{text.len});
+    std.debug.print("\nTesting on {d} bytes from {s}...\n", .{ text.len, test_file_path });
     try testAllMethodsMatch(text, testing.allocator);
 }

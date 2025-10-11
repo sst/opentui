@@ -3,21 +3,44 @@
 //! This library provides various methods for scanning UTF-8 text for line breaks.
 //! All methods detect: LF (\n), CR (\r), and CRLF (\r\n).
 //!
-//! Semantics: CRLF is recorded at the \n index (i+1), standalone CR or LF at their own indices.
+//! ## Semantics
 //!
-//! Methods:
-//! - Baseline: Simple byte-by-byte iteration
-//! - StdLib: Using Zig's optimized std.mem.indexOfAny
-//! - SIMD16/32: Manual SIMD vectorization (16-byte and 32-byte vectors)
-//! - Bitmask128: Zed editor-inspired bitmask approach (128-byte chunks)
-//! - Multithreaded variants: Parallel scanning using any of the above methods
+//! - CRLF (\r\n) is recorded at the \n index (the second byte)
+//! - Standalone CR (\r) is recorded at its own index
+//! - Standalone LF (\n) is recorded at its own index
+//! - All methods handle CRLF split across chunk boundaries correctly
 //!
-//! Usage:
-//!   const scan = @import("utf8-scan.zig");
-//!   var result = scan.BreakResult.init(allocator);
-//!   defer result.deinit();
-//!   try scan.findLineBreaksBaseline(text, &result);
-//!   // result.breaks.items contains indices of line breaks
+//! ## Methods
+//!
+//! Single-threaded:
+//! - `findLineBreaksBaseline`: Simple byte-by-byte iteration (reference implementation)
+//! - `findLineBreaksStdLib`: Using Zig's optimized std.mem.indexOfAny
+//! - `findLineBreaksSIMD16`: Manual SIMD vectorization with 16-byte vectors (SSE2/NEON)
+//! - `findLineBreaksSIMD32`: Manual SIMD vectorization with 32-byte vectors (AVX2)
+//! - `findLineBreaksBitmask128`: Zed editor-inspired bitmask approach (128-byte chunks)
+//!
+//! Multithreaded (parallel scanning):
+//! - `findLineBreaksMultithreadedBaseline`
+//! - `findLineBreaksMultithreadedStdLib`
+//! - `findLineBreaksMultithreadedSIMD16`
+//! - `findLineBreaksMultithreadedSIMD32`
+//! - `findLineBreaksMultithreadedBitmask128`
+//!
+//! ## Usage
+//!
+//! ```zig
+//! const scan = @import("utf8-scan.zig");
+//!
+//! var result = scan.BreakResult.init(allocator);
+//! defer result.deinit();
+//!
+//! try scan.findLineBreaksBaseline(text, &result);
+//! // result.breaks.items contains indices of line breaks
+//!
+//! for (result.breaks.items) |idx| {
+//!     std.debug.print("Line break at byte {d}\n", .{idx});
+//! }
+//! ```
 
 const std = @import("std");
 
@@ -112,6 +135,7 @@ pub fn findLineBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
     const vCR: Vec = @splat('\r');
 
     var pos: usize = 0;
+    var prev_was_cr = false; // Track if previous chunk ended with \r
 
     // Process full vector chunks
     while (pos + vector_len <= text.len) {
@@ -121,36 +145,48 @@ pub fn findLineBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
 
         // Check if any newline or CR found
         if (@reduce(.Or, cmp_nl) or @reduce(.Or, cmp_cr)) {
-            // Found a match, scan this chunk byte-by-byte
-            for (0..vector_len) |i| {
+            // Found a match, process this chunk
+            var i: usize = 0;
+            while (i < vector_len) : (i += 1) {
                 const absolute_index = pos + i;
                 const b = text[absolute_index];
                 if (b == '\n') {
+                    // Skip if this is the \n part of a CRLF split across chunks
+                    if (i == 0 and prev_was_cr) {
+                        prev_was_cr = false;
+                        continue;
+                    }
                     try result.breaks.append(absolute_index);
                 } else if (b == '\r') {
                     // Check for CRLF
                     if (absolute_index + 1 < text.len and text[absolute_index + 1] == '\n') {
                         try result.breaks.append(absolute_index + 1);
-                        if (i + 1 < vector_len) {
-                            // Skip the \n in next iteration
-                            pos = absolute_index + 2;
-                            continue;
-                        }
+                        i += 1; // Skip the \n in next iteration
                     } else {
                         try result.breaks.append(absolute_index);
                     }
                 }
             }
-            pos += vector_len;
+            // Update prev_was_cr for next chunk
+            prev_was_cr = (text[pos + vector_len - 1] == '\r');
         } else {
-            pos += vector_len;
+            prev_was_cr = false;
         }
+        pos += vector_len;
     }
 
     // Handle remaining bytes with scalar code
     while (pos < text.len) : (pos += 1) {
         const b = text[pos];
         if (b == '\n') {
+            // Handle CRLF split at chunk boundary
+            if (pos > 0 and text[pos - 1] == '\r') {
+                // Already recorded at pos - 1 or will be skipped
+                if (prev_was_cr) {
+                    prev_was_cr = false;
+                    continue;
+                }
+            }
             try result.breaks.append(pos);
         } else if (b == '\r') {
             if (pos + 1 < text.len and text[pos + 1] == '\n') {
@@ -160,6 +196,7 @@ pub fn findLineBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
                 try result.breaks.append(pos);
             }
         }
+        prev_was_cr = false;
     }
 }
 
@@ -173,6 +210,7 @@ pub fn findLineBreaksSIMD32(text: []const u8, result: *BreakResult) !void {
     const vCR: Vec = @splat('\r');
 
     var pos: usize = 0;
+    var prev_was_cr = false; // Track if previous chunk ended with \r
 
     while (pos + vector_len <= text.len) {
         const chunk: Vec = text[pos..][0..vector_len].*;
@@ -181,35 +219,47 @@ pub fn findLineBreaksSIMD32(text: []const u8, result: *BreakResult) !void {
 
         // Check if any newline or CR found
         if (@reduce(.Or, cmp_nl) or @reduce(.Or, cmp_cr)) {
-            // Found a match, scan this chunk byte-by-byte
-            for (0..vector_len) |i| {
+            // Found a match, process this chunk
+            var i: usize = 0;
+            while (i < vector_len) : (i += 1) {
                 const absolute_index = pos + i;
                 const b = text[absolute_index];
                 if (b == '\n') {
+                    // Skip if this is the \n part of a CRLF split across chunks
+                    if (i == 0 and prev_was_cr) {
+                        prev_was_cr = false;
+                        continue;
+                    }
                     try result.breaks.append(absolute_index);
                 } else if (b == '\r') {
                     // Check for CRLF
                     if (absolute_index + 1 < text.len and text[absolute_index + 1] == '\n') {
                         try result.breaks.append(absolute_index + 1);
-                        if (i + 1 < vector_len) {
-                            pos = absolute_index + 2;
-                            continue;
-                        }
+                        i += 1; // Skip the \n in next iteration
                     } else {
                         try result.breaks.append(absolute_index);
                     }
                 }
             }
-            pos += vector_len;
+            // Update prev_was_cr for next chunk
+            prev_was_cr = (text[pos + vector_len - 1] == '\r');
         } else {
-            pos += vector_len;
+            prev_was_cr = false;
         }
+        pos += vector_len;
     }
 
     // Handle tail
     while (pos < text.len) : (pos += 1) {
         const b = text[pos];
         if (b == '\n') {
+            // Handle CRLF split at chunk boundary
+            if (pos > 0 and text[pos - 1] == '\r') {
+                if (prev_was_cr) {
+                    prev_was_cr = false;
+                    continue;
+                }
+            }
             try result.breaks.append(pos);
         } else if (b == '\r') {
             if (pos + 1 < text.len and text[pos + 1] == '\n') {
@@ -219,6 +269,7 @@ pub fn findLineBreaksSIMD32(text: []const u8, result: *BreakResult) !void {
                 try result.breaks.append(pos);
             }
         }
+        prev_was_cr = false;
     }
 }
 
@@ -228,6 +279,8 @@ pub fn findLineBreaksBitmask128(text: []const u8, result: *BreakResult) !void {
     const chunk_size = 128;
 
     var pos: usize = 0;
+    var prev_was_cr = false; // Track if previous chunk ended with \r
+
     while (pos < text.len) {
         const end = @min(pos + chunk_size, text.len);
         const chunk = text[pos..end];
@@ -237,6 +290,12 @@ pub fn findLineBreaksBitmask128(text: []const u8, result: *BreakResult) !void {
             if (b == '\n' or b == '\r') {
                 mask |= @as(u128, 1) << @intCast(i);
             }
+        }
+
+        // If first byte is \n and previous chunk ended with \r, suppress it
+        if (prev_was_cr and chunk.len > 0 and chunk[0] == '\n') {
+            mask &= ~(@as(u128, 1)); // Clear bit 0
+            prev_was_cr = false;
         }
 
         // Process the mask to find break positions
@@ -262,6 +321,8 @@ pub fn findLineBreaksBitmask128(text: []const u8, result: *BreakResult) !void {
             mask &= ~(@as(u128, 1) << @intCast(bit_pos));
         }
 
+        // Update prev_was_cr for next chunk
+        prev_was_cr = (chunk.len > 0 and chunk[chunk.len - 1] == '\r');
         pos = end;
     }
 }
@@ -322,10 +383,11 @@ pub fn findLineBreaksMultithreadedGeneric(
     defer allocator.free(threads);
 
     var actual_threads: usize = 0;
+    var next_start: usize = 0;
 
-    // Spawn threads
+    // Spawn threads with sequential segments (no gaps)
     for (0..thread_count) |i| {
-        const start = i * segment_len;
+        const start = next_start;
         if (start >= text.len) break;
 
         var end = @min(text.len, start + segment_len);
@@ -333,7 +395,7 @@ pub fn findLineBreaksMultithreadedGeneric(
         // Adjust end to codepoint boundary
         end = rewindToCodepointBoundary(text, end);
 
-        // Handle CRLF split
+        // Handle CRLF split: if we're splitting at '\n' after '\r', back up to include \r in next segment
         if (end < text.len and end > 0) {
             if (text[end] == '\n' and text[end - 1] == '\r') {
                 end -= 1;
@@ -351,9 +413,12 @@ pub fn findLineBreaksMultithreadedGeneric(
 
         threads[actual_threads] = try std.Thread.spawn(.{}, findBreaksInRangeGeneric, .{&contexts[i]});
         actual_threads += 1;
+
+        // Next segment starts where this one ends (no gaps)
+        next_start = end;
     }
 
-    // Join threads and merge results
+    // Join threads and merge results (already in order since segments are sequential)
     for (0..actual_threads) |i| {
         threads[i].join();
         for (contexts[i].result.breaks.items) |br| {
@@ -362,7 +427,7 @@ pub fn findLineBreaksMultithreadedGeneric(
         contexts[i].result.deinit();
     }
 
-    // Sort results since they may be out of order
+    // Results should already be sorted, but keep sort as safety guard
     std.mem.sort(usize, result.breaks.items, {}, std.sort.asc(usize));
 }
 
