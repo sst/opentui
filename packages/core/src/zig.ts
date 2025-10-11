@@ -407,6 +407,248 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
       returns: "void",
     },
+    bufferDrawEditorView: {
+      args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
+      returns: "void",
+    },
+
+    // EditorView functions
+    createEditorView: {
+      args: ["ptr", "u32", "u32"],
+      returns: "ptr",
+    },
+    destroyEditorView: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewSetViewportSize: {
+      args: ["ptr", "u32", "u32"],
+      returns: "void",
+    },
+    editorViewGetViewport: {
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewSetScrollMargin: {
+      args: ["ptr", "f32"],
+      returns: "void",
+    },
+    editorViewEnableWrapping: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    editorViewSetWrapMode: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
+    editorViewIsWrappingEnabled: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    editorViewGetVirtualLineCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    editorViewGetTextBufferView: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+
+    // EditBuffer functions
+    createEditBuffer: {
+      args: ["u8"],
+      returns: "ptr",
+    },
+    destroyEditBuffer: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferSetText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferGetText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    editBufferInsertChar: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferInsertText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferDeleteChar: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferDeleteCharBackward: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferNewLine: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferDeleteLine: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferDeleteToLineEnd: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferJoinLines: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorLeft: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorRight: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorUp: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorDown: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorToLineStart: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorToLineEnd: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorToBufferStart: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferMoveCursorToBufferEnd: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editBufferGotoLine: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    editBufferSetCursor: {
+      args: ["ptr", "u32", "u32"],
+      returns: "void",
+    },
+    editBufferSetCursorToLineCol: {
+      args: ["ptr", "u32", "u32"],
+      returns: "void",
+    },
+    editBufferGetCursorPosition: {
+      args: ["ptr", "ptr", "ptr", "ptr"],
+      returns: "void",
+    },
+    editBufferGetTextBuffer: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+
+    // EditorView selection and editing methods
+    editorViewSetSelection: {
+      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewResetSelection: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewGetSelection: {
+      args: ["ptr"],
+      returns: "u64",
+    },
+    editorViewSetLocalSelection: {
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      returns: "bool",
+    },
+    editorViewResetLocalSelection: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewGetSelectedTextBytes: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    editorViewMoveCursorLeft: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorRight: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorUp: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorDown: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorToLineStart: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorToLineEnd: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorToBufferStart: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveCursorToBufferEnd: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewGotoLine: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    editorViewInsertChar: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editorViewInsertText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editorViewDeleteChar: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewDeleteCharBackward: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewNewLine: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewDeleteLine: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewDeleteToLineEnd: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewJoinLines: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     getArenaAllocatedBytes: {
       args: [],
@@ -802,6 +1044,90 @@ export interface RenderLib {
     y: number,
     clipRect?: { x: number; y: number; width: number; height: number },
   ) => void
+  bufferDrawEditorView: (
+    buffer: Pointer,
+    view: Pointer,
+    x: number,
+    y: number,
+    clipRect?: { x: number; y: number; width: number; height: number },
+  ) => void
+
+  // EditBuffer methods
+  createEditBuffer: (widthMethod: WidthMethod) => Pointer
+  destroyEditBuffer: (buffer: Pointer) => void
+  editBufferSetText: (buffer: Pointer, text: string) => void
+  editBufferGetText: (buffer: Pointer, maxLength: number) => Uint8Array | null
+  editBufferInsertChar: (buffer: Pointer, char: string) => void
+  editBufferInsertText: (buffer: Pointer, text: string) => void
+  editBufferDeleteChar: (buffer: Pointer) => void
+  editBufferDeleteCharBackward: (buffer: Pointer) => void
+  editBufferNewLine: (buffer: Pointer) => void
+  editBufferDeleteLine: (buffer: Pointer) => void
+  editBufferDeleteToLineEnd: (buffer: Pointer) => void
+  editBufferJoinLines: (buffer: Pointer) => void
+  editBufferMoveCursorLeft: (buffer: Pointer) => void
+  editBufferMoveCursorRight: (buffer: Pointer) => void
+  editBufferMoveCursorUp: (buffer: Pointer) => void
+  editBufferMoveCursorDown: (buffer: Pointer) => void
+  editBufferMoveCursorToLineStart: (buffer: Pointer) => void
+  editBufferMoveCursorToLineEnd: (buffer: Pointer) => void
+  editBufferMoveCursorToBufferStart: (buffer: Pointer) => void
+  editBufferMoveCursorToBufferEnd: (buffer: Pointer) => void
+  editBufferGotoLine: (buffer: Pointer, line: number) => void
+  editBufferSetCursor: (buffer: Pointer, line: number, byteOffset: number) => void
+  editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
+  editBufferGetCursorPosition: (buffer: Pointer) => { line: number; charPos: number; visualColumn: number }
+  editBufferGetTextBuffer: (buffer: Pointer) => Pointer
+
+  // EditorView methods
+  createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
+  destroyEditorView: (view: Pointer) => void
+  editorViewSetViewportSize: (view: Pointer, width: number, height: number) => void
+  editorViewGetViewport: (view: Pointer) => { offsetY: number; offsetX: number; height: number; width: number }
+  editorViewSetScrollMargin: (view: Pointer, margin: number) => void
+  editorViewEnableWrapping: (view: Pointer, enabled: boolean) => void
+  editorViewSetWrapMode: (view: Pointer, mode: "char" | "word") => void
+  editorViewIsWrappingEnabled: (view: Pointer) => boolean
+  editorViewGetVirtualLineCount: (view: Pointer) => number
+  editorViewGetTextBufferView: (view: Pointer) => Pointer
+  editorViewSetSelection: (
+    view: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => void
+  editorViewResetSelection: (view: Pointer) => void
+  editorViewGetSelection: (view: Pointer) => { start: number; end: number } | null
+  editorViewSetLocalSelection: (
+    view: Pointer,
+    anchorX: number,
+    anchorY: number,
+    focusX: number,
+    focusY: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => boolean
+  editorViewResetLocalSelection: (view: Pointer) => void
+  editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
+  editorViewMoveCursorLeft: (view: Pointer) => void
+  editorViewMoveCursorRight: (view: Pointer) => void
+  editorViewMoveCursorUp: (view: Pointer) => void
+  editorViewMoveCursorDown: (view: Pointer) => void
+  editorViewMoveCursorToLineStart: (view: Pointer) => void
+  editorViewMoveCursorToLineEnd: (view: Pointer) => void
+  editorViewMoveCursorToBufferStart: (view: Pointer) => void
+  editorViewMoveCursorToBufferEnd: (view: Pointer) => void
+  editorViewGotoLine: (view: Pointer, line: number) => void
+  editorViewInsertChar: (view: Pointer, char: string) => void
+  editorViewInsertText: (view: Pointer, text: string) => void
+  editorViewDeleteChar: (view: Pointer) => void
+  editorViewDeleteCharBackward: (view: Pointer) => void
+  editorViewNewLine: (view: Pointer) => void
+  editorViewDeleteLine: (view: Pointer) => void
+  editorViewDeleteToLineEnd: (view: Pointer) => void
+  editorViewJoinLines: (view: Pointer) => void
+
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
@@ -1623,6 +1949,332 @@ class FFIRenderLib implements RenderLib {
     const clipHeight = clipRect?.height ?? 0
 
     this.opentui.symbols.bufferDrawTextBufferView(buffer, view, x, y, clipX, clipY, clipWidth, clipHeight, hasClipRect)
+  }
+
+  public bufferDrawEditorView(
+    buffer: Pointer,
+    view: Pointer,
+    x: number,
+    y: number,
+    clipRect?: { x: number; y: number; width: number; height: number },
+  ): void {
+    const hasClipRect = clipRect !== undefined && clipRect !== null
+    const clipX = clipRect?.x ?? 0
+    const clipY = clipRect?.y ?? 0
+    const clipWidth = clipRect?.width ?? 0
+    const clipHeight = clipRect?.height ?? 0
+
+    this.opentui.symbols.bufferDrawEditorView(buffer, view, x, y, clipX, clipY, clipWidth, clipHeight, hasClipRect)
+  }
+
+  // EditorView methods
+  public createEditorView(editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number): Pointer {
+    const viewPtr = this.opentui.symbols.createEditorView(editBufferPtr, viewportWidth, viewportHeight)
+    if (!viewPtr) {
+      throw new Error("Failed to create EditorView")
+    }
+    return viewPtr
+  }
+
+  public destroyEditorView(view: Pointer): void {
+    this.opentui.symbols.destroyEditorView(view)
+  }
+
+  public editorViewSetViewportSize(view: Pointer, width: number, height: number): void {
+    this.opentui.symbols.editorViewSetViewportSize(view, width, height)
+  }
+
+  public editorViewGetViewport(view: Pointer): { offsetY: number; offsetX: number; height: number; width: number } {
+    const x = new Uint32Array(1)
+    const y = new Uint32Array(1)
+    const width = new Uint32Array(1)
+    const height = new Uint32Array(1)
+
+    this.opentui.symbols.editorViewGetViewport(view, ptr(x), ptr(y), ptr(width), ptr(height))
+
+    return {
+      offsetX: x[0],
+      offsetY: y[0],
+      width: width[0],
+      height: height[0],
+    }
+  }
+
+  public editorViewSetScrollMargin(view: Pointer, margin: number): void {
+    this.opentui.symbols.editorViewSetScrollMargin(view, margin)
+  }
+
+  public editorViewEnableWrapping(view: Pointer, enabled: boolean): void {
+    this.opentui.symbols.editorViewEnableWrapping(view, enabled)
+  }
+
+  public editorViewSetWrapMode(view: Pointer, mode: "char" | "word"): void {
+    const modeValue = mode === "char" ? 0 : 1
+    this.opentui.symbols.editorViewSetWrapMode(view, modeValue)
+  }
+
+  public editorViewIsWrappingEnabled(view: Pointer): boolean {
+    return this.opentui.symbols.editorViewIsWrappingEnabled(view)
+  }
+
+  public editorViewGetVirtualLineCount(view: Pointer): number {
+    return this.opentui.symbols.editorViewGetVirtualLineCount(view)
+  }
+
+  public editorViewGetTextBufferView(view: Pointer): Pointer {
+    const result = this.opentui.symbols.editorViewGetTextBufferView(view)
+    if (!result) {
+      throw new Error("Failed to get TextBufferView from EditorView")
+    }
+    return result
+  }
+
+  // EditBuffer implementations
+  public createEditBuffer(widthMethod: WidthMethod): Pointer {
+    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
+    const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode)
+    if (!bufferPtr) {
+      throw new Error("Failed to create EditBuffer")
+    }
+    return bufferPtr
+  }
+
+  public destroyEditBuffer(buffer: Pointer): void {
+    this.opentui.symbols.destroyEditBuffer(buffer)
+  }
+
+  public editBufferSetText(buffer: Pointer, text: string): void {
+    const textBytes = this.encoder.encode(text)
+    this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length)
+  }
+
+  public editBufferGetText(buffer: Pointer, maxLength: number): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editBufferGetText(buffer, ptr(outBuffer), maxLength)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
+  }
+
+  public editBufferInsertChar(buffer: Pointer, char: string): void {
+    const charBytes = this.encoder.encode(char)
+    this.opentui.symbols.editBufferInsertChar(buffer, charBytes, charBytes.length)
+  }
+
+  public editBufferInsertText(buffer: Pointer, text: string): void {
+    const textBytes = this.encoder.encode(text)
+    this.opentui.symbols.editBufferInsertText(buffer, textBytes, textBytes.length)
+  }
+
+  public editBufferDeleteChar(buffer: Pointer): void {
+    this.opentui.symbols.editBufferDeleteChar(buffer)
+  }
+
+  public editBufferDeleteCharBackward(buffer: Pointer): void {
+    this.opentui.symbols.editBufferDeleteCharBackward(buffer)
+  }
+
+  public editBufferNewLine(buffer: Pointer): void {
+    this.opentui.symbols.editBufferNewLine(buffer)
+  }
+
+  public editBufferDeleteLine(buffer: Pointer): void {
+    this.opentui.symbols.editBufferDeleteLine(buffer)
+  }
+
+  public editBufferDeleteToLineEnd(buffer: Pointer): void {
+    this.opentui.symbols.editBufferDeleteToLineEnd(buffer)
+  }
+
+  public editBufferJoinLines(buffer: Pointer): void {
+    this.opentui.symbols.editBufferJoinLines(buffer)
+  }
+
+  public editBufferMoveCursorLeft(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorLeft(buffer)
+  }
+
+  public editBufferMoveCursorRight(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorRight(buffer)
+  }
+
+  public editBufferMoveCursorUp(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorUp(buffer)
+  }
+
+  public editBufferMoveCursorDown(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorDown(buffer)
+  }
+
+  public editBufferMoveCursorToLineStart(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorToLineStart(buffer)
+  }
+
+  public editBufferMoveCursorToLineEnd(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorToLineEnd(buffer)
+  }
+
+  public editBufferMoveCursorToBufferStart(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorToBufferStart(buffer)
+  }
+
+  public editBufferMoveCursorToBufferEnd(buffer: Pointer): void {
+    this.opentui.symbols.editBufferMoveCursorToBufferEnd(buffer)
+  }
+
+  public editBufferGotoLine(buffer: Pointer, line: number): void {
+    this.opentui.symbols.editBufferGotoLine(buffer, line)
+  }
+
+  public editBufferSetCursor(buffer: Pointer, line: number, byteOffset: number): void {
+    this.opentui.symbols.editBufferSetCursor(buffer, line, byteOffset)
+  }
+
+  public editBufferSetCursorToLineCol(buffer: Pointer, line: number, col: number): void {
+    this.opentui.symbols.editBufferSetCursorToLineCol(buffer, line, col)
+  }
+
+  public editBufferGetCursorPosition(buffer: Pointer): { line: number; charPos: number; visualColumn: number } {
+    const line = new Uint32Array(1)
+    const charPos = new Uint32Array(1)
+    const visualColumn = new Uint32Array(1)
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(charPos), ptr(visualColumn))
+    return {
+      line: line[0],
+      charPos: charPos[0],
+      visualColumn: visualColumn[0],
+    }
+  }
+
+  public editBufferGetTextBuffer(buffer: Pointer): Pointer {
+    const result = this.opentui.symbols.editBufferGetTextBuffer(buffer)
+    if (!result) {
+      throw new Error("Failed to get TextBuffer from EditBuffer")
+    }
+    return result
+  }
+
+  // EditorView selection and editing implementations
+  public editorViewSetSelection(
+    view: Pointer,
+    start: number,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ): void {
+    const bg = bgColor ? bgColor.buffer : null
+    const fg = fgColor ? fgColor.buffer : null
+    this.opentui.symbols.editorViewSetSelection(view, start, end, bg, fg)
+  }
+
+  public editorViewResetSelection(view: Pointer): void {
+    this.opentui.symbols.editorViewResetSelection(view)
+  }
+
+  public editorViewGetSelection(view: Pointer): { start: number; end: number } | null {
+    const packedInfo = this.opentui.symbols.editorViewGetSelection(view)
+    if (packedInfo === 0xffff_ffff_ffff_ffffn) {
+      return null
+    }
+    const start = Number(packedInfo >> 32n)
+    const end = Number(packedInfo & 0xffff_ffffn)
+    return { start, end }
+  }
+
+  public editorViewSetLocalSelection(
+    view: Pointer,
+    anchorX: number,
+    anchorY: number,
+    focusX: number,
+    focusY: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ): boolean {
+    const bg = bgColor ? bgColor.buffer : null
+    const fg = fgColor ? fgColor.buffer : null
+    return this.opentui.symbols.editorViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+  }
+
+  public editorViewResetLocalSelection(view: Pointer): void {
+    this.opentui.symbols.editorViewResetLocalSelection(view)
+  }
+
+  public editorViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editorViewGetSelectedTextBytes(view, ptr(outBuffer), maxLength)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
+  }
+
+  public editorViewMoveCursorLeft(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorLeft(view)
+  }
+
+  public editorViewMoveCursorRight(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorRight(view)
+  }
+
+  public editorViewMoveCursorUp(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorUp(view)
+  }
+
+  public editorViewMoveCursorDown(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorDown(view)
+  }
+
+  public editorViewMoveCursorToLineStart(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorToLineStart(view)
+  }
+
+  public editorViewMoveCursorToLineEnd(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorToLineEnd(view)
+  }
+
+  public editorViewMoveCursorToBufferStart(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorToBufferStart(view)
+  }
+
+  public editorViewMoveCursorToBufferEnd(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveCursorToBufferEnd(view)
+  }
+
+  public editorViewGotoLine(view: Pointer, line: number): void {
+    this.opentui.symbols.editorViewGotoLine(view, line)
+  }
+
+  public editorViewInsertChar(view: Pointer, char: string): void {
+    const charBytes = this.encoder.encode(char)
+    this.opentui.symbols.editorViewInsertChar(view, charBytes, charBytes.length)
+  }
+
+  public editorViewInsertText(view: Pointer, text: string): void {
+    const textBytes = this.encoder.encode(text)
+    this.opentui.symbols.editorViewInsertText(view, textBytes, textBytes.length)
+  }
+
+  public editorViewDeleteChar(view: Pointer): void {
+    this.opentui.symbols.editorViewDeleteChar(view)
+  }
+
+  public editorViewDeleteCharBackward(view: Pointer): void {
+    this.opentui.symbols.editorViewDeleteCharBackward(view)
+  }
+
+  public editorViewNewLine(view: Pointer): void {
+    this.opentui.symbols.editorViewNewLine(view)
+  }
+
+  public editorViewDeleteLine(view: Pointer): void {
+    this.opentui.symbols.editorViewDeleteLine(view)
+  }
+
+  public editorViewDeleteToLineEnd(view: Pointer): void {
+    this.opentui.symbols.editorViewDeleteToLineEnd(view)
+  }
+
+  public editorViewJoinLines(view: Pointer): void {
+    this.opentui.symbols.editorViewJoinLines(view)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

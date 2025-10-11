@@ -7,6 +7,7 @@ const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
+const edit_buffer_mod = @import("edit-buffer.zig");
 const editor_view = @import("editor-view.zig");
 const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
@@ -490,47 +491,47 @@ export fn textBufferGetPlainText(tb: *text_buffer.TextBufferArray, outPtr: [*]u8
     return tb.getPlainTextIntoBuffer(outBuffer);
 }
 
-// TextBufferView functions
-export fn createTextBufferView(tb: *text_buffer.TextBufferArray) ?*text_buffer_view.TextBufferView {
-    const view = text_buffer_view.TextBufferView.init(std.heap.page_allocator, tb) catch {
+// TextBufferView functions (Array-based for backward compatibility)
+export fn createTextBufferView(tb: *text_buffer.TextBufferArray) ?*text_buffer_view.TextBufferViewArray {
+    const view = text_buffer_view.TextBufferViewArray.init(std.heap.page_allocator, tb) catch {
         return null;
     };
     return view;
 }
 
-export fn destroyTextBufferView(view: *text_buffer_view.TextBufferView) void {
+export fn destroyTextBufferView(view: *text_buffer_view.TextBufferViewArray) void {
     view.deinit();
 }
 
-export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferViewArray, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
     const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
     view.setSelection(start, end, bg, fg);
 }
 
-export fn textBufferViewResetSelection(view: *text_buffer_view.TextBufferView) void {
+export fn textBufferViewResetSelection(view: *text_buffer_view.TextBufferViewArray) void {
     view.resetSelection();
 }
 
-export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.TextBufferView) u64 {
+export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.TextBufferViewArray) u64 {
     return view.packSelectionInfo();
 }
 
-export fn textBufferViewSetLocalSelection(view: *text_buffer_view.TextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn textBufferViewSetLocalSelection(view: *text_buffer_view.TextBufferViewArray, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
     const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
     return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
-export fn textBufferViewResetLocalSelection(view: *text_buffer_view.TextBufferView) void {
+export fn textBufferViewResetLocalSelection(view: *text_buffer_view.TextBufferViewArray) void {
     view.resetLocalSelection();
 }
 
-export fn textBufferViewSetWrapWidth(view: *text_buffer_view.TextBufferView, width: u32) void {
+export fn textBufferViewSetWrapWidth(view: *text_buffer_view.TextBufferViewArray, width: u32) void {
     view.setWrapWidth(if (width == 0) null else width);
 }
 
-export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferView, mode: u8) void {
+export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferViewArray, mode: u8) void {
     const wrapMode: text_buffer.WrapMode = switch (mode) {
         0 => .char,
         1 => .word,
@@ -539,11 +540,11 @@ export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferView, mode
     view.setWrapMode(wrapMode);
 }
 
-export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.TextBufferView) u32 {
+export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.TextBufferViewArray) u32 {
     return view.getVirtualLineCount();
 }
 
-export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferViewArray, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
     const line_info = view.getCachedLineInfo();
 
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
@@ -552,20 +553,216 @@ export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferView
     return line_info.max_width;
 }
 
-export fn textBufferViewGetSelectedText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetSelectedText(view: *text_buffer_view.TextBufferViewArray, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getSelectedTextIntoBuffer(outBuffer);
 }
 
-export fn textBufferViewGetPlainText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetPlainText(view: *text_buffer_view.TextBufferViewArray, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getPlainTextIntoBuffer(outBuffer);
 }
 
+// ===== EditBuffer Exports =====
+
+export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
+    const pool = gp.initGlobalPool(globalArena);
+    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const unicode_data = gp.initGlobalUnicodeData(globalArena);
+    const graphemes_ptr, const display_width_ptr = unicode_data;
+
+    return edit_buffer_mod.EditBuffer.init(
+        std.heap.page_allocator,
+        pool,
+        wMethod,
+        graphemes_ptr,
+        display_width_ptr,
+    ) catch null;
+}
+
+export fn destroyEditBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.deinit();
+}
+
+export fn editBufferGetTextBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) *text_buffer.TextBufferRope {
+    return edit_buffer.getTextBuffer();
+}
+
+export fn editBufferInsertText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    edit_buffer.insertText(text) catch {};
+}
+
+export fn editBufferDeleteRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32) void {
+    const start = edit_buffer_mod.Cursor{ .row = start_row, .col = start_col };
+    const end = edit_buffer_mod.Cursor{ .row = end_row, .col = end_col };
+    edit_buffer.deleteRange(start, end) catch {};
+}
+
+export fn editBufferDeleteCharBackward(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.backspace() catch {};
+}
+
+export fn editBufferDeleteChar(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.deleteForward() catch {};
+}
+
+export fn editBufferMoveCursorLeft(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveLeft();
+}
+
+export fn editBufferMoveCursorRight(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveRight();
+}
+
+export fn editBufferMoveCursorUp(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveUp();
+}
+
+export fn editBufferMoveCursorDown(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveDown();
+}
+
+export fn editBufferGetCursor(edit_buffer: *edit_buffer_mod.EditBuffer, outRow: *u32, outCol: *u32) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    outRow.* = cursor.row;
+    outCol.* = cursor.col;
+}
+
+export fn editBufferSetCursor(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) void {
+    edit_buffer.setCursor(row, col) catch {};
+}
+
+export fn editBufferSetCursorToLineCol(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) void {
+    edit_buffer.setCursor(row, col) catch {};
+}
+
+export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+    // For EditBuffer with rope-based storage, we need to clear and insert
+    // For now, just use insertText at cursor 0,0
+    edit_buffer.setCursor(0, 0) catch {};
+    const text = textPtr[0..textLen];
+    edit_buffer.insertText(text) catch {};
+}
+
+export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    // Get text from the underlying TextBuffer
+    const tb = edit_buffer.getTextBuffer();
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getPlainTextIntoBuffer(outBuffer);
+}
+
+export fn editBufferInsertChar(edit_buffer: *edit_buffer_mod.EditBuffer, charPtr: [*]const u8, charLen: usize) void {
+    const text = charPtr[0..charLen];
+    edit_buffer.insertText(text) catch {};
+}
+
+export fn editBufferNewLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.insertText("\n") catch {};
+}
+
+export fn editBufferDeleteLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    const tb = edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+
+    if (cursor.row >= line_count) return;
+
+    // Delete entire line content and newline
+    const end_row = if (cursor.row + 1 < line_count) cursor.row + 1 else cursor.row;
+    edit_buffer.deleteRange(
+        .{ .row = cursor.row, .col = 0 },
+        .{ .row = end_row, .col = 0 },
+    ) catch {};
+}
+
+export fn editBufferDeleteToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    const tb = edit_buffer.getTextBuffer();
+
+    if (tb.getLine(cursor.row)) |line| {
+        edit_buffer.deleteRange(
+            cursor,
+            .{ .row = cursor.row, .col = line.width },
+        ) catch {};
+    }
+}
+
+export fn editBufferJoinLines(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    const tb = edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+
+    if (cursor.row + 1 >= line_count) return;
+
+    // Move to end of current line and delete to start of next line
+    if (tb.getLine(cursor.row)) |line| {
+        edit_buffer.deleteRange(
+            .{ .row = cursor.row, .col = line.width },
+            .{ .row = cursor.row + 1, .col = 0 },
+        ) catch {};
+    }
+}
+
+export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    edit_buffer.setCursor(cursor.row, 0) catch {};
+}
+
+export fn editBufferMoveCursorToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    const tb = edit_buffer.getTextBuffer();
+
+    if (tb.getLine(cursor.row)) |line| {
+        edit_buffer.setCursor(cursor.row, line.width) catch {};
+    }
+}
+
+export fn editBufferMoveCursorToBufferStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.setCursor(0, 0) catch {};
+}
+
+export fn editBufferMoveCursorToBufferEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    const tb = edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+
+    if (line_count > 0) {
+        if (tb.getLine(line_count - 1)) |line| {
+            edit_buffer.setCursor(@intCast(line_count - 1), line.width) catch {};
+        }
+    }
+}
+
+export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32) void {
+    const tb = edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+    const target_line = @min(line, line_count - 1);
+    edit_buffer.setCursor(target_line, 0) catch {};
+}
+
+export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outCharPos: *u32, outVisualCol: *u32) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    const tb = edit_buffer.getTextBuffer();
+
+    outLine.* = cursor.row;
+    outVisualCol.* = cursor.col; // Visual column is the column position on the current line
+
+    // Calculate absolute character position
+    var char_pos: u32 = 0;
+    var row: u32 = 0;
+    while (row < cursor.row) : (row += 1) {
+        if (tb.getLine(row)) |line| {
+            char_pos += line.width;
+        }
+    }
+    char_pos += cursor.col;
+    outCharPos.* = char_pos;
+}
+
 // ===== EditorView Exports =====
 
-export fn createEditorView(tbv: *text_buffer_view.TextBufferView) ?*editor_view.EditorView {
-    return editor_view.EditorView.init(globalArena, tbv) catch null;
+export fn createEditorView(edit_buffer: *edit_buffer_mod.EditBuffer, viewport_width: u32, viewport_height: u32) ?*editor_view.EditorView {
+    return editor_view.EditorView.init(globalArena, edit_buffer, viewport_width, viewport_height) catch null;
 }
 
 export fn destroyEditorView(view: *editor_view.EditorView) void {
@@ -618,6 +815,176 @@ export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsP
     return line_info.max_width;
 }
 
+export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.TextBufferViewRope {
+    return view.getTextBufferView();
+}
+
+export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, height: u32) void {
+    view.setViewportSize(width, height);
+}
+
+export fn editorViewEnableWrapping(view: *editor_view.EditorView, enabled: bool) void {
+    view.enableWrapping(enabled);
+}
+
+export fn editorViewSetWrapMode(view: *editor_view.EditorView, mode: u8) void {
+    const wrapMode: text_buffer.WrapMode = switch (mode) {
+        0 => .char,
+        1 => .word,
+        else => .char,
+    };
+    view.setWrapMode(wrapMode);
+}
+
+export fn editorViewIsWrappingEnabled(view: *editor_view.EditorView) bool {
+    return view.isWrappingEnabled();
+}
+
+// EditorView selection methods - delegate to TextBufferView
+export fn editorViewSetSelection(view: *editor_view.EditorView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    view.text_buffer_view.setSelection(start, end, bg, fg);
+}
+
+export fn editorViewResetSelection(view: *editor_view.EditorView) void {
+    view.text_buffer_view.resetSelection();
+}
+
+export fn editorViewGetSelection(view: *editor_view.EditorView) u64 {
+    return view.text_buffer_view.packSelectionInfo();
+}
+
+export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    return view.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn editorViewResetLocalSelection(view: *editor_view.EditorView) void {
+    view.text_buffer_view.resetLocalSelection();
+}
+
+export fn editorViewGetSelectedTextBytes(view: *editor_view.EditorView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.text_buffer_view.getSelectedTextIntoBuffer(outBuffer);
+}
+
+// EditorView cursor movement - delegate to EditBuffer
+export fn editorViewMoveCursorLeft(view: *editor_view.EditorView) void {
+    view.edit_buffer.moveLeft();
+}
+
+export fn editorViewMoveCursorRight(view: *editor_view.EditorView) void {
+    view.edit_buffer.moveRight();
+}
+
+export fn editorViewMoveCursorUp(view: *editor_view.EditorView) void {
+    view.edit_buffer.moveUp();
+}
+
+export fn editorViewMoveCursorDown(view: *editor_view.EditorView) void {
+    view.edit_buffer.moveDown();
+}
+
+export fn editorViewMoveCursorToLineStart(view: *editor_view.EditorView) void {
+    const cursor = view.edit_buffer.getPrimaryCursor();
+    view.edit_buffer.setCursor(cursor.row, 0) catch {};
+}
+
+export fn editorViewMoveCursorToLineEnd(view: *editor_view.EditorView) void {
+    const cursor = view.edit_buffer.getPrimaryCursor();
+    const tb = view.edit_buffer.getTextBuffer();
+    if (tb.getLine(cursor.row)) |line| {
+        view.edit_buffer.setCursor(cursor.row, line.width) catch {};
+    }
+}
+
+export fn editorViewMoveCursorToBufferStart(view: *editor_view.EditorView) void {
+    view.edit_buffer.setCursor(0, 0) catch {};
+}
+
+export fn editorViewMoveCursorToBufferEnd(view: *editor_view.EditorView) void {
+    const tb = view.edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+    if (line_count > 0) {
+        if (tb.getLine(line_count - 1)) |line| {
+            view.edit_buffer.setCursor(@intCast(line_count - 1), line.width) catch {};
+        }
+    }
+}
+
+export fn editorViewGotoLine(view: *editor_view.EditorView, line: u32) void {
+    const tb = view.edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+    const target_line = @min(line, line_count - 1);
+    view.edit_buffer.setCursor(target_line, 0) catch {};
+}
+
+// EditorView editing - delegate to EditBuffer
+export fn editorViewInsertChar(view: *editor_view.EditorView, charPtr: [*]const u8, charLen: usize) void {
+    const text = charPtr[0..charLen];
+    view.edit_buffer.insertText(text) catch {};
+}
+
+export fn editorViewInsertText(view: *editor_view.EditorView, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    view.edit_buffer.insertText(text) catch {};
+}
+
+export fn editorViewDeleteChar(view: *editor_view.EditorView) void {
+    view.edit_buffer.deleteForward() catch {};
+}
+
+export fn editorViewDeleteCharBackward(view: *editor_view.EditorView) void {
+    view.edit_buffer.backspace() catch {};
+}
+
+export fn editorViewNewLine(view: *editor_view.EditorView) void {
+    view.edit_buffer.insertText("\n") catch {};
+}
+
+export fn editorViewDeleteLine(view: *editor_view.EditorView) void {
+    const cursor = view.edit_buffer.getPrimaryCursor();
+    const tb = view.edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+
+    if (cursor.row >= line_count) return;
+
+    const end_row = if (cursor.row + 1 < line_count) cursor.row + 1 else cursor.row;
+    view.edit_buffer.deleteRange(
+        .{ .row = cursor.row, .col = 0 },
+        .{ .row = end_row, .col = 0 },
+    ) catch {};
+}
+
+export fn editorViewDeleteToLineEnd(view: *editor_view.EditorView) void {
+    const cursor = view.edit_buffer.getPrimaryCursor();
+    const tb = view.edit_buffer.getTextBuffer();
+
+    if (tb.getLine(cursor.row)) |line| {
+        view.edit_buffer.deleteRange(
+            cursor,
+            .{ .row = cursor.row, .col = line.width },
+        ) catch {};
+    }
+}
+
+export fn editorViewJoinLines(view: *editor_view.EditorView) void {
+    const cursor = view.edit_buffer.getPrimaryCursor();
+    const tb = view.edit_buffer.getTextBuffer();
+    const line_count = tb.lineCount();
+
+    if (cursor.row + 1 >= line_count) return;
+
+    if (tb.getLine(cursor.row)) |line| {
+        view.edit_buffer.deleteRange(
+            .{ .row = cursor.row, .col = line.width },
+            .{ .row = cursor.row + 1, .col = 0 },
+        ) catch {};
+    }
+}
+
 export fn bufferDrawEditorView(
     bufferPtr: *buffer.OptimizedBuffer,
     viewPtr: *editor_view.EditorView,
@@ -641,7 +1008,7 @@ export fn bufferDrawEditorView(
 
 export fn bufferDrawTextBufferView(
     bufferPtr: *buffer.OptimizedBuffer,
-    viewPtr: *text_buffer_view.TextBufferView,
+    viewPtr: *text_buffer_view.TextBufferViewArray,
     x: i32,
     y: i32,
     clipX: i32,

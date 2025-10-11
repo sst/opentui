@@ -1,7 +1,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const tb = @import("text-buffer.zig");
 const tbv = @import("text-buffer-view.zig");
-const TextBufferView = tbv.TextBufferView;
+const eb = @import("edit-buffer.zig");
+const EditBuffer = eb.EditBuffer;
+
+// Use the rope-based types to match EditBuffer
+const TextBufferRope = tb.TextBufferRope;
+const TextBufferViewRope = tbv.TextBufferViewRope;
 const VirtualLine = tbv.VirtualLine;
 
 pub const EditorViewError = error{
@@ -24,8 +30,10 @@ pub const LineInfo = struct {
 };
 
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
+/// It also holds a reference to an EditBuffer for cursor/editing operations
 pub const EditorView = struct {
-    text_buffer_view: *TextBufferView,
+    text_buffer_view: *TextBufferViewRope,
+    edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     viewport: ?Viewport,
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
     last_wrap_override: ?u32, // Track last applied wrap width to avoid redundant reflows
@@ -34,9 +42,14 @@ pub const EditorView = struct {
     global_allocator: Allocator,
     line_info_arena: *std.heap.ArenaAllocator,
 
-    pub fn init(global_allocator: Allocator, text_buffer_view: *TextBufferView) EditorViewError!*EditorView {
+    pub fn init(global_allocator: Allocator, edit_buffer: *EditBuffer, viewport_width: u32, viewport_height: u32) EditorViewError!*EditorView {
         const self = global_allocator.create(EditorView) catch return EditorViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
+
+        // Get TextBuffer from EditBuffer and create TextBufferView
+        const text_buffer = edit_buffer.getTextBuffer();
+        const text_buffer_view = TextBufferViewRope.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
+        errdefer text_buffer_view.deinit();
 
         const line_info_internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return EditorViewError.OutOfMemory;
         errdefer global_allocator.destroy(line_info_internal_arena);
@@ -44,7 +57,13 @@ pub const EditorView = struct {
 
         self.* = .{
             .text_buffer_view = text_buffer_view,
-            .viewport = null,
+            .edit_buffer = edit_buffer,
+            .viewport = Viewport{
+                .x = 0,
+                .y = 0,
+                .width = viewport_width,
+                .height = viewport_height,
+            },
             .scroll_margin = 0.15, // Default 15% margin
             .last_wrap_override = null,
             .global_allocator = global_allocator,
@@ -55,6 +74,7 @@ pub const EditorView = struct {
     }
 
     pub fn deinit(self: *EditorView) void {
+        self.text_buffer_view.deinit(); // We own this
         self.line_info_arena.deinit();
         self.global_allocator.destroy(self.line_info_arena);
         self.global_allocator.destroy(self);
@@ -201,12 +221,54 @@ pub const EditorView = struct {
     }
 
     /// Get the underlying TextBufferView
-    pub fn getTextBufferView(self: *EditorView) *TextBufferView {
+    pub fn getTextBufferView(self: *EditorView) *TextBufferViewRope {
         return self.text_buffer_view;
     }
 
     /// Get the total number of virtual lines (not constrained by viewport)
     pub fn getTotalVirtualLineCount(self: *EditorView) u32 {
         return self.text_buffer_view.getVirtualLineCount();
+    }
+
+    /// Set viewport size (width and height only)
+    /// This is a convenience method that preserves existing offset
+    pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
+        if (self.viewport) |vp| {
+            self.setViewport(Viewport{
+                .x = vp.x,
+                .y = vp.y,
+                .width = width,
+                .height = height,
+            });
+        } else {
+            self.setViewport(Viewport{
+                .x = 0,
+                .y = 0,
+                .width = width,
+                .height = height,
+            });
+        }
+    }
+
+    /// Enable or disable text wrapping
+    pub fn enableWrapping(self: *EditorView, enabled: bool) void {
+        if (enabled) {
+            // Enable wrapping with current viewport width (or 80 if no viewport)
+            const wrap_width = if (self.viewport) |vp| vp.width else 80;
+            self.text_buffer_view.setWrapWidth(wrap_width);
+        } else {
+            // Disable wrapping
+            self.text_buffer_view.setWrapWidth(null);
+        }
+    }
+
+    /// Set wrap mode (char or word)
+    pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
+        self.text_buffer_view.setWrapMode(mode);
+    }
+
+    /// Check if wrapping is currently enabled
+    pub fn isWrappingEnabled(self: *const EditorView) bool {
+        return self.text_buffer_view.wrap_width != null;
     }
 };

@@ -825,9 +825,10 @@ pub const OptimizedBuffer = struct {
     }
 
     /// Draw a TextBufferView to this OptimizedBuffer with selection support and optional syntax highlighting
+    /// Accepts any TextBufferView type (Array or Rope-based)
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
-        text_buffer_view: *TextBufferView,
+        text_buffer_view: anytype,
         x: i32,
         y: i32,
         clip_rect: ?ClipRect,
@@ -1049,8 +1050,9 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-    /// Draw an EditorView to this OptimizedBuffer with viewport-sliced lines
-    /// This is the recommended entrypoint for rendering with viewport support
+    /// Draw an EditorView to this OptimizedBuffer
+    /// EditorView wraps TextBufferView, so we just delegate to drawTextBuffer
+    /// EditorView handles viewport management and returns only the visible lines
     pub fn drawEditorView(
         self: *OptimizedBuffer,
         editor_view: *EditorView,
@@ -1058,222 +1060,11 @@ pub const OptimizedBuffer = struct {
         y: i32,
         clip_rect: ?ClipRect,
     ) !void {
-        const virtual_lines = editor_view.getVirtualLines();
-        if (virtual_lines.len == 0) return;
-
-        const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
-        const bufferBottomY = self.height;
-        const lastPossibleLine = if (y >= bufferBottomY)
-            0
-        else
-            @min(virtual_lines.len, bufferBottomY - @as(u32, @intCast(y)));
-
-        if (firstVisibleLine >= virtual_lines.len or lastPossibleLine == 0) return;
-        if (firstVisibleLine >= lastPossibleLine) return;
-
-        var currentX = x;
-        var currentY = y + @as(i32, @intCast(firstVisibleLine));
+        // EditorView holds a TextBufferView that handles all the rendering logic
+        // The EditorView's getVirtualLines() already returns viewport-sliced lines
+        // So we can just delegate to drawTextBuffer which will render those lines
         const text_buffer_view = editor_view.getTextBufferView();
-        const text_buffer = text_buffer_view.text_buffer;
-        const graphemeAware = self.grapheme_tracker.hasAny();
-
-        const line_info = editor_view.getCachedLineInfo();
-        var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)
-            line_info.starts[firstVisibleLine]
-        else
-            0;
-
-        for (virtual_lines[firstVisibleLine..lastPossibleLine]) |vline| {
-            if (currentY >= bufferBottomY) break;
-
-            currentX = x;
-
-            // Initialize span tracking for this line
-            const vline_idx = @as(usize, @intCast(currentY - y));
-            const vline_span_info = text_buffer_view.getVirtualLineSpans(vline_idx);
-            const spans = vline_span_info.spans;
-            const col_offset = vline_span_info.col_offset;
-            var span_idx: usize = 0;
-            var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
-            var lineAttributes = text_buffer.default_attributes orelse 0;
-
-            // Find the first span that overlaps this virtual line's column range
-            while (span_idx < spans.len and spans[span_idx].next_col <= col_offset) {
-                span_idx += 1;
-            }
-
-            var next_change_col: u32 = if (span_idx < spans.len)
-                if (spans[span_idx].next_col > col_offset)
-                    spans[span_idx].next_col - col_offset
-                else
-                    std.math.maxInt(u32)
-            else
-                std.math.maxInt(u32);
-
-            // Apply initial span style if it covers the start of this virtual line
-            if (span_idx < spans.len and spans[span_idx].col <= col_offset and spans[span_idx].style_id != 0) {
-                if (text_buffer.getSyntaxStyle()) |style| {
-                    if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
-                        if (resolved_style.fg) |fg| lineFg = fg;
-                        if (resolved_style.bg) |bg| lineBg = bg;
-                        lineAttributes |= resolved_style.attributes;
-                    }
-                }
-            }
-
-            for (vline.chunks.items) |vchunk| {
-                const source_line = text_buffer.getLine(@intCast(vchunk.source_line)) orelse continue;
-                const source_chunk = source_line.chunks.get(@intCast(vchunk.source_chunk)) orelse continue;
-
-                // Get cached grapheme info for this chunk
-                const graphemes_cache = text_buffer_view.getOrCreateChunkCache(vchunk.source_line, vchunk.source_chunk) catch continue;
-                const chunk_bytes = source_chunk.getBytes(&text_buffer.mem_registry);
-
-                if (currentX >= @as(i32, @intCast(self.width))) {
-                    globalCharPos += vchunk.grapheme_count;
-                    currentX += @intCast(vchunk.grapheme_count);
-                    continue;
-                }
-
-                // Iterate through the graphemes in this virtual chunk
-                const grapheme_end = @min(vchunk.grapheme_start + vchunk.grapheme_count, @as(u32, @intCast(graphemes_cache.len)));
-                var grapheme_idx = vchunk.grapheme_start;
-
-                while (grapheme_idx < grapheme_end) : (grapheme_idx += 1) {
-                    const g = graphemes_cache[grapheme_idx];
-                    const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
-
-                    // Skip if completely out of bounds (left of visible area)
-                    if (currentX < -@as(i32, @intCast(g.width))) {
-                        globalCharPos += g.width;
-                        currentX += @as(i32, @intCast(g.width));
-                        continue;
-                    }
-
-                    // Stop if we're past the buffer width
-                    if (currentX >= @as(i32, @intCast(self.width))) {
-                        for (graphemes_cache[grapheme_idx..grapheme_end]) |remaining_g| {
-                            globalCharPos += remaining_g.width;
-                        }
-                        break;
-                    }
-
-                    // Check clip rect
-                    const should_skip_clip = if (clip_rect) |clip|
-                        currentX < clip.x or currentY < clip.y or
-                            currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                            currentY > clip.y + @as(i32, @intCast(clip.height))
-                    else
-                        false;
-
-                    if (should_skip_clip or !self.isPointInScissor(currentX, currentY)) {
-                        globalCharPos += g.width;
-                        currentX += @as(i32, @intCast(g.width));
-                        continue;
-                    }
-
-                    // Check if we need to advance to next span
-                    const virt_col_pos = @as(u32, @intCast(currentX - x));
-
-                    if (virt_col_pos >= next_change_col and span_idx + 1 < spans.len) {
-                        span_idx += 1;
-                        const new_span = spans[span_idx];
-
-                        // Reset to defaults for new span
-                        lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
-                        lineAttributes = text_buffer.default_attributes orelse 0;
-
-                        // Apply new span's style
-                        if (text_buffer.getSyntaxStyle()) |style| {
-                            if (new_span.style_id != 0) {
-                                if (style.resolveById(new_span.style_id)) |resolved_style| {
-                                    if (resolved_style.fg) |fg| lineFg = fg;
-                                    if (resolved_style.bg) |bg| lineBg = bg;
-                                    lineAttributes |= resolved_style.attributes;
-                                }
-                            }
-                        }
-
-                        // Calculate next change column relative to virtual line
-                        next_change_col = if (new_span.next_col > col_offset)
-                            new_span.next_col - col_offset
-                        else
-                            std.math.maxInt(u32);
-                    }
-
-                    var finalFg = lineFg;
-                    var finalBg = lineBg;
-                    const finalAttributes = lineAttributes;
-
-                    // Handle selection highlighting (for each cell of this grapheme)
-                    var cell_idx: u32 = 0;
-                    while (cell_idx < g.width) : (cell_idx += 1) {
-                        if (text_buffer_view.selection) |sel| {
-                            const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
-                            if (isSelected) {
-                                if (sel.bgColor) |selBg| {
-                                    finalBg = selBg;
-                                    if (sel.fgColor) |selFg| {
-                                        finalFg = selFg;
-                                    }
-                                } else {
-                                    // Swap fg and bg for default selection style
-                                    const temp = lineFg;
-                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
-                                    finalBg = temp;
-                                }
-                                break; // Apply to whole grapheme
-                            }
-                        }
-                    }
-
-                    var drawFg = finalFg;
-                    var drawBg = finalBg;
-                    const drawAttributes = finalAttributes;
-
-                    if (drawAttributes & (1 << 5) != 0) { // reverse bit
-                        const temp = drawFg;
-                        drawFg = drawBg;
-                        drawBg = temp;
-                    }
-
-                    // Encode the grapheme on the fly
-                    var encoded_char: u32 = 0;
-                    if (grapheme_bytes.len == 1 and g.width == 1 and grapheme_bytes[0] >= 32) {
-                        encoded_char = @as(u32, grapheme_bytes[0]);
-                    } else {
-                        const gid = self.pool.alloc(grapheme_bytes) catch {
-                            globalCharPos += g.width;
-                            currentX += @as(i32, @intCast(g.width));
-                            continue;
-                        };
-                        encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g.width);
-                    }
-
-                    // Render the grapheme (this handles placing start + continuation chars)
-                    if (graphemeAware) {
-                        try self.setCellWithAlphaBlending(
-                            @intCast(currentX),
-                            @intCast(currentY),
-                            encoded_char,
-                            drawFg,
-                            drawBg,
-                            drawAttributes,
-                        );
-                    } else {
-                        self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), encoded_char, drawFg, drawBg, drawAttributes) catch {};
-                    }
-
-                    // Advance by the grapheme's full width
-                    globalCharPos += g.width;
-                    currentX += @as(i32, @intCast(g.width));
-                }
-            }
-
-            currentY += 1;
-        }
+        try self.drawTextBuffer(text_buffer_view, x, y, clip_rect);
     }
 
     /// Draw a box with borders and optional fill

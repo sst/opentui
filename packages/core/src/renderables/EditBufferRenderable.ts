@@ -1,0 +1,378 @@
+import { Renderable, type RenderableOptions } from "../Renderable"
+import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
+import { EditBuffer, type CursorPosition } from "../edit-buffer"
+import { EditorView } from "../editor-view"
+import { RGBA, parseColor } from "../lib/RGBA"
+import { type RenderContext } from "../types"
+import type { OptimizedBuffer } from "../buffer"
+import { MeasureMode } from "yoga-layout"
+
+export interface EditBufferOptions extends RenderableOptions<EditBufferRenderable> {
+  fg?: string | RGBA
+  bg?: string | RGBA
+  selectionBg?: string | RGBA
+  selectionFg?: string | RGBA
+  selectable?: boolean
+  attributes?: number
+  wrap?: boolean
+  wrapMode?: "char" | "word"
+  scrollMargin?: number
+  showCursor?: boolean
+  cursorColor?: string | RGBA
+}
+
+export abstract class EditBufferRenderable extends Renderable {
+  protected _focusable: boolean = true
+  public selectable: boolean = true
+
+  protected _defaultFg: RGBA
+  protected _defaultBg: RGBA
+  protected _defaultAttributes: number
+  protected _selectionBg: RGBA | undefined
+  protected _selectionFg: RGBA | undefined
+  protected _wrap: boolean = false
+  protected _wrapMode: "char" | "word" = "word"
+  protected _scrollMargin: number = 0.2
+  protected _showCursor: boolean = true
+  protected _cursorColor: RGBA
+  protected lastLocalSelection: LocalSelectionBounds | null = null
+
+  public editBuffer: EditBuffer
+  public editorView: EditorView
+
+  protected _defaultOptions = {
+    fg: RGBA.fromValues(1, 1, 1, 1),
+    bg: RGBA.fromValues(0, 0, 0, 0),
+    selectionBg: undefined,
+    selectionFg: undefined,
+    selectable: true,
+    attributes: 0,
+    wrap: true,
+    wrapMode: "word" as "char" | "word",
+    scrollMargin: 0.2,
+    showCursor: true,
+    cursorColor: RGBA.fromValues(1, 1, 1, 1),
+  } satisfies Partial<EditBufferOptions>
+
+  constructor(ctx: RenderContext, options: EditBufferOptions) {
+    super(ctx, options)
+
+    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
+    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+    this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
+    this.selectable = options.selectable ?? this._defaultOptions.selectable
+    this._wrap = options.wrap ?? this._defaultOptions.wrap
+    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+    this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
+    this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
+    this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
+
+    this.editBuffer = EditBuffer.create(this._ctx.widthMethod)
+    this.editorView = EditorView.create(this.editBuffer, this.width || 80, this.height || 24)
+
+    this.editorView.setWrapMode(this._wrapMode)
+    this.editorView.setScrollMargin(this._scrollMargin)
+
+    if (this._wrap) {
+      this.editorView.enableWrapping(true)
+    }
+
+    this.setupMeasureFunc()
+  }
+
+  get plainText(): string {
+    return this.editBuffer.getText()
+  }
+
+  get cursor(): CursorPosition {
+    return this.editBuffer.getCursorPosition()
+  }
+
+  get fg(): RGBA {
+    return this._defaultFg
+  }
+
+  set fg(value: RGBA | string | undefined) {
+    const newColor = parseColor(value ?? this._defaultOptions.fg)
+    if (this._defaultFg !== newColor) {
+      this._defaultFg = newColor
+      this.onFgChanged(newColor)
+      this.requestRender()
+    }
+  }
+
+  get selectionBg(): RGBA | undefined {
+    return this._selectionBg
+  }
+
+  set selectionBg(value: RGBA | string | undefined) {
+    const newColor = value ? parseColor(value) : this._defaultOptions.selectionBg
+    if (this._selectionBg !== newColor) {
+      this._selectionBg = newColor
+      if (this.lastLocalSelection) {
+        this.updateLocalSelection(this.lastLocalSelection)
+      }
+      this.requestRender()
+    }
+  }
+
+  get selectionFg(): RGBA | undefined {
+    return this._selectionFg
+  }
+
+  set selectionFg(value: RGBA | string | undefined) {
+    const newColor = value ? parseColor(value) : this._defaultOptions.selectionFg
+    if (this._selectionFg !== newColor) {
+      this._selectionFg = newColor
+      if (this.lastLocalSelection) {
+        this.updateLocalSelection(this.lastLocalSelection)
+      }
+      this.requestRender()
+    }
+  }
+
+  get bg(): RGBA {
+    return this._defaultBg
+  }
+
+  set bg(value: RGBA | string | undefined) {
+    const newColor = parseColor(value ?? this._defaultOptions.bg)
+    if (this._defaultBg !== newColor) {
+      this._defaultBg = newColor
+      this.onBgChanged(newColor)
+      this.requestRender()
+    }
+  }
+
+  get attributes(): number {
+    return this._defaultAttributes
+  }
+
+  set attributes(value: number) {
+    if (this._defaultAttributes !== value) {
+      this._defaultAttributes = value
+      this.onAttributesChanged(value)
+      this.requestRender()
+    }
+  }
+
+  get wrap(): boolean {
+    return this._wrap
+  }
+
+  set wrap(value: boolean) {
+    if (this._wrap !== value) {
+      this._wrap = value
+      this.editorView.enableWrapping(value)
+      this.requestRender()
+    }
+  }
+
+  get wrapMode(): "char" | "word" {
+    return this._wrapMode
+  }
+
+  set wrapMode(value: "char" | "word") {
+    if (this._wrapMode !== value) {
+      this._wrapMode = value
+      this.editorView.setWrapMode(value)
+      this.requestRender()
+    }
+  }
+
+  get showCursor(): boolean {
+    return this._showCursor
+  }
+
+  set showCursor(value: boolean) {
+    if (this._showCursor !== value) {
+      this._showCursor = value
+      this.requestRender()
+    }
+  }
+
+  get cursorColor(): RGBA {
+    return this._cursorColor
+  }
+
+  set cursorColor(value: RGBA | string) {
+    const newColor = parseColor(value)
+    if (this._cursorColor !== newColor) {
+      this._cursorColor = newColor
+      this.requestRender()
+    }
+  }
+
+  protected onResize(width: number, height: number): void {
+    this.editorView.setViewportSize(width, height)
+    if (this.lastLocalSelection) {
+      const changed = this.updateLocalSelection(this.lastLocalSelection)
+      if (changed) {
+        this.requestRender()
+      }
+    }
+  }
+
+  protected refreshLocalSelection(): boolean {
+    if (this.lastLocalSelection) {
+      return this.updateLocalSelection(this.lastLocalSelection)
+    }
+    return false
+  }
+
+  private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
+    if (!localSelection?.isActive) {
+      this.editorView.resetLocalSelection()
+      return true
+    }
+    return this.editorView.setLocalSelection(
+      localSelection.anchorX,
+      localSelection.anchorY,
+      localSelection.focusX,
+      localSelection.focusY,
+      this._selectionBg,
+      this._selectionFg,
+    )
+  }
+
+  shouldStartSelection(x: number, y: number): boolean {
+    if (!this.selectable) return false
+
+    const localX = x - this.x
+    const localY = y - this.y
+
+    return localX >= 0 && localX < this.width && localY >= 0 && localY < this.height
+  }
+
+  onSelectionChanged(selection: Selection | null): boolean {
+    const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
+    this.lastLocalSelection = localSelection
+
+    const changed = this.updateLocalSelection(localSelection)
+
+    if (changed) {
+      this.requestRender()
+    }
+
+    return this.hasSelection()
+  }
+
+  getSelectedText(): string {
+    return this.editorView.getSelectedText()
+  }
+
+  hasSelection(): boolean {
+    return this.editorView.hasSelection()
+  }
+
+  getSelection(): { start: number; end: number } | null {
+    return this.editorView.getSelection()
+  }
+
+  private setupMeasureFunc(): void {
+    const measureFunc = (
+      width: number,
+      widthMode: MeasureMode,
+      height: number,
+      heightMode: MeasureMode,
+    ): { width: number; height: number } => {
+      // Update viewport size to match measured dimensions
+      this.editorView.setViewportSize(width, height)
+
+      const vlineCount = this.editorView.getVirtualLineCount()
+
+      return {
+        width: Math.max(1, width),
+        height: Math.max(1, vlineCount),
+      }
+    }
+
+    this.yogaNode.setMeasureFunc(measureFunc)
+  }
+
+  render(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (!this.visible) return
+    if (this.isDestroyed) return
+
+    this.markClean()
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+
+    this.renderSelf(buffer)
+    this.renderCursor(buffer)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    const clipRect = {
+      x: this.x,
+      y: this.y,
+      width: this.width,
+      height: this.height,
+    }
+
+    buffer.drawEditorView(this.editorView, this.x, this.y, clipRect)
+  }
+
+  protected renderCursor(buffer: OptimizedBuffer): void {
+    if (!this._showCursor || !this._focused) return
+
+    const cursor = this.editBuffer.getCursorPosition()
+    const viewport = this.editorView.getViewport()
+
+    // Calculate cursor position in viewport space
+    // For now, simple mapping: cursor.line - viewport.offsetY
+    // TODO: Full implementation should map through virtual lines when wrapping is enabled
+    const cursorX = this.x + cursor.visualColumn + 1 // +1 for 1-based terminal coords
+    const cursorY = this.y + cursor.line - viewport.offsetY + 1 // +1 for 1-based terminal coords
+
+    // Only show cursor if it's within viewport bounds
+    if (cursorY > this.y && cursorY <= this.y + this.height && cursorX > this.x && cursorX <= this.x + this.width) {
+      this._ctx.setCursorPosition(cursorX, cursorY, true)
+      this._ctx.setCursorColor(this._cursorColor)
+      this._ctx.setCursorStyle("block", true)
+    } else {
+      this._ctx.setCursorPosition(0, 0, false)
+    }
+  }
+
+  public focus(): void {
+    super.focus()
+    this._ctx.setCursorStyle("block", true)
+    this._ctx.setCursorColor(this._cursorColor)
+    this.requestRender()
+  }
+
+  public blur(): void {
+    super.blur()
+    this._ctx.setCursorPosition(0, 0, false)
+    this.requestRender()
+  }
+
+  protected onRemove(): void {
+    if (this._focused) {
+      this._ctx.setCursorPosition(0, 0, false)
+    }
+  }
+
+  destroy(): void {
+    if (this._focused) {
+      this._ctx.setCursorPosition(0, 0, false)
+    }
+    this.editorView.destroy()
+    this.editBuffer.destroy()
+    super.destroy()
+  }
+
+  protected onFgChanged(newColor: RGBA): void {
+    // Override in subclasses if needed
+  }
+
+  protected onBgChanged(newColor: RGBA): void {
+    // Override in subclasses if needed
+  }
+
+  protected onAttributesChanged(newAttributes: number): void {
+    // Override in subclasses if needed
+  }
+}

@@ -375,7 +375,7 @@ pub const EditBuffer = struct {
         }
     }
 
-    fn recomputeLineWidth(self: *EditBuffer, line: *const TextLine(Rope(TextChunk))) u32 {
+    pub fn recomputeLineWidth(self: *EditBuffer, line: *const TextLine(Rope(TextChunk))) u32 {
         _ = self;
         var total: u32 = 0;
 
@@ -451,7 +451,7 @@ pub const EditBuffer = struct {
     }
 
     /// Create a LeafSplitFn callback that captures self for chunk splitting
-    fn makeChunkSplitter(self: *EditBuffer) Rope(TextChunk).Node.LeafSplitFn {
+    pub fn makeChunkSplitter(self: *EditBuffer) Rope(TextChunk).Node.LeafSplitFn {
         return .{
             .ctx = self,
             .splitFn = splitChunkCallback,
