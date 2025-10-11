@@ -9,16 +9,29 @@
 //! 3. SIMD 16-byte - Manual vectorization with 16-byte SIMD vectors
 //! 4. SIMD 32-byte - Manual vectorization with 32-byte SIMD vectors
 //! 5. Bitmask 128-byte - Zed editor-inspired bitmask approach
-//! 6. Multithreaded - Parallel scanning across multiple CPU cores
+//! 6. Multithreaded - Parallel scanning with 2, 4, and 8 threads
 //!
 //! Usage:
-//!   zig build-exe utf8-scan-bench.zig -O ReleaseFast
-//!   ./utf8-scan-bench <file_path>           # Benchmark a specific file
-//!   ./utf8-scan-bench --generate-tests      # Generate test files
-//!   ./utf8-scan-bench --bench-all           # Run benchmarks on all test files
+//!   Build:
+//!     zig build-exe utf8-scan-bench.zig -O ReleaseFast
 //!
-//! The program loads the specified file once and runs each method 100 times,
-//! collecting performance metrics and displaying a comparison table.
+//!   Benchmark a file:
+//!     ./utf8-scan-bench <file_path>
+//!
+//!   Generate test files:
+//!     ./utf8-scan-bench --generate-tests [max_size]
+//!
+//!     By default, generates 16 files from 1KB to 1GB in exponential steps.
+//!     Optional max_size parameter allows customizing the range:
+//!       ./utf8-scan-bench --generate-tests 10M    # 1KB to 10MB
+//!       ./utf8-scan-bench --generate-tests 100M   # 1KB to 100MB
+//!       ./utf8-scan-bench --generate-tests 5MB    # 1KB to 5MB
+//!
+//!     Supported size suffixes: K/KB, M/MB, G/GB (case-insensitive)
+//!
+//!   Benchmark all generated files:
+//!     ./utf8-scan-bench --bench-all
+//!
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -118,6 +131,42 @@ fn formatBytes(bytes: usize, writer: anytype) !void {
     }
 }
 
+fn parseSizeString(size_str: []const u8) !usize {
+    if (size_str.len == 0) return error.InvalidSize;
+
+    // Find where the number ends and suffix begins
+    var num_end: usize = 0;
+    while (num_end < size_str.len) : (num_end += 1) {
+        const c = size_str[num_end];
+        if (!std.ascii.isDigit(c) and c != '.') break;
+    }
+
+    if (num_end == 0) return error.InvalidSize;
+
+    const num_str = size_str[0..num_end];
+    const suffix = if (num_end < size_str.len) size_str[num_end..] else "";
+
+    // Parse the number (support both integer and float)
+    const base_value = if (std.mem.indexOfScalar(u8, num_str, '.')) |_|
+        try std.fmt.parseFloat(f64, num_str)
+    else
+        @as(f64, @floatFromInt(try std.fmt.parseInt(usize, num_str, 10)));
+
+    // Apply multiplier based on suffix
+    const multiplier: f64 = if (suffix.len == 0)
+        1.0
+    else if (std.ascii.eqlIgnoreCase(suffix, "K") or std.ascii.eqlIgnoreCase(suffix, "KB"))
+        1024.0
+    else if (std.ascii.eqlIgnoreCase(suffix, "M") or std.ascii.eqlIgnoreCase(suffix, "MB"))
+        1024.0 * 1024.0
+    else if (std.ascii.eqlIgnoreCase(suffix, "G") or std.ascii.eqlIgnoreCase(suffix, "GB"))
+        1024.0 * 1024.0 * 1024.0
+    else
+        return error.InvalidSizeSuffix;
+
+    return @intFromFloat(base_value * multiplier);
+}
+
 // Common benchmark runner for all methods
 fn runAllBenchmarks(
     text: []const u8,
@@ -170,7 +219,7 @@ fn runAllBenchmarks(
 }
 
 // Test file generation
-fn generateTestFiles() !void {
+fn generateTestFiles(max_size_arg: ?usize) !void {
     const stdout = std.io.getStdOut().writer();
 
     // Create test directory
@@ -178,8 +227,6 @@ fn generateTestFiles() !void {
     std.fs.cwd().makeDir(test_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
-
-    try stdout.print("Generating test files in '{s}/'...\n\n", .{test_dir});
 
     // Sample text with various line break patterns
     const sample_text =
@@ -195,10 +242,13 @@ fn generateTestFiles() !void {
         "Empty line above. Here's some more text to make the sample more realistic.\n";
 
     // Generate 16 files with exponentially increasing sizes
-    // Starting from 1 KB up to 1 GB
     const file_count = 16;
     const min_size: usize = 1024; // 1 KB
-    const max_size: usize = 1024 * 1024 * 1024; // 1 GB
+    const max_size: usize = max_size_arg orelse (1024 * 1024 * 1024); // Default 1 GB
+
+    try stdout.print("Generating test files in '{s}/' (1 KB to ", .{test_dir});
+    try formatBytes(max_size, stdout);
+    try stdout.writeAll(")...\n\n");
 
     // Calculate growth factor: max_size = min_size * factor^(file_count-1)
     const growth_factor = std.math.pow(f64, @as(f64, @floatFromInt(max_size)) / @as(f64, @floatFromInt(min_size)), 1.0 / @as(f64, @floatFromInt(file_count - 1)));
@@ -336,9 +386,13 @@ pub fn main() !void {
     if (args.len < 2) {
         const stderr = std.io.getStdErr().writer();
         try stderr.print("Usage:\n", .{});
-        try stderr.print("  {s} <file_path>        - Benchmark a specific file\n", .{args[0]});
-        try stderr.print("  {s} --generate-tests   - Generate test files\n", .{args[0]});
-        try stderr.print("  {s} --bench-all        - Benchmark all test files\n", .{args[0]});
+        try stderr.print("  {s} <file_path>                    - Benchmark a specific file\n", .{args[0]});
+        try stderr.print("  {s} --generate-tests [max_size]   - Generate test files (default: 1GB max)\n", .{args[0]});
+        try stderr.print("  {s} --bench-all                    - Benchmark all test files\n", .{args[0]});
+        try stderr.print("\nExamples:\n", .{});
+        try stderr.print("  {s} --generate-tests               - Generate files from 1KB to 1GB\n", .{args[0]});
+        try stderr.print("  {s} --generate-tests 10M           - Generate files from 1KB to 10MB\n", .{args[0]});
+        try stderr.print("  {s} --generate-tests 100M          - Generate files from 1KB to 100MB\n", .{args[0]});
         std.process.exit(1);
     }
 
@@ -346,7 +400,14 @@ pub fn main() !void {
 
     // Handle special commands
     if (std.mem.eql(u8, command, "--generate-tests")) {
-        try generateTestFiles();
+        var max_size: ?usize = null;
+
+        // Parse optional max size argument
+        if (args.len >= 3) {
+            max_size = try parseSizeString(args[2]);
+        }
+
+        try generateTestFiles(max_size);
         return;
     }
 
