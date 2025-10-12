@@ -158,9 +158,38 @@ pub fn findWrapBreaksStdLib(text: []const u8, result: *BreakResult) !void {
 
         // Quick check: if entire chunk is ASCII, we can process it faster
         if (!@reduce(.Or, is_non_ascii)) {
-            // All ASCII - check each byte for break chars
+            // All ASCII - check each byte using SIMD comparisons
+            // We check multiple characters at once and accumulate results
+            var match_mask: @Vector(vector_len, bool) = @splat(false);
+
+            // Check whitespace
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(' ')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\t')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Check dashes and slashes
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('-')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('/')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\\')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Check punctuation
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('.')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(',')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(';')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(':')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('!')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('?')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Check brackets
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('(')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(')')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('[')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(']')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('{')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('}')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Extract positions from the mask
             for (0..vector_len) |i| {
-                if (isAsciiWrapBreak(text[pos + i])) {
+                if (match_mask[i]) {
                     try result.breaks.append(pos + i);
                 }
             }
@@ -200,22 +229,78 @@ pub fn findWrapBreaksStdLib(text: []const u8, result: *BreakResult) !void {
     }
 }
 
-// Method 3: 16-byte chunked scanning (for comparison)
+// Method 3: 16-byte chunked scanning with SIMD + bitmask optimization
 pub fn findWrapBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
     result.reset();
     const vector_len = 16;
 
     var pos: usize = 0;
     while (pos + vector_len <= text.len) {
-        // Simple scalar check per byte
-        for (0..vector_len) |i| {
+        const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
+        const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
+        const is_non_ascii = chunk >= ascii_threshold;
+
+        // Fast path: all ASCII
+        if (!@reduce(.Or, is_non_ascii)) {
+            // Use SIMD to find break characters
+            var match_mask: @Vector(vector_len, bool) = @splat(false);
+
+            // Check whitespace
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(' ')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\t')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Check dashes and slashes
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('-')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('/')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\\')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Check punctuation
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('.')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(',')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(';')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(':')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('!')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('?')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Check brackets
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('(')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(')')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('[')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(']')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('{')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('}')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+
+            // Convert boolean mask to integer bitmask for faster iteration
+            var bitmask: u16 = 0;
+            inline for (0..vector_len) |i| {
+                if (match_mask[i]) {
+                    bitmask |= @as(u16, 1) << @intCast(i);
+                }
+            }
+
+            // Use bit manipulation to extract positions
+            while (bitmask != 0) {
+                const bit_pos = @ctz(bitmask);
+                try result.breaks.append(pos + bit_pos);
+                bitmask &= bitmask - 1; // Clear lowest set bit
+            }
+
+            pos += vector_len;
+            continue;
+        }
+
+        // Slow path: mixed ASCII/non-ASCII
+        var i: usize = 0;
+        while (i < vector_len) {
             const b0 = text[pos + i];
             if (b0 < 0x80) {
                 if (isAsciiWrapBreak(b0)) try result.breaks.append(pos + i);
+                i += 1;
             } else {
                 const dec = decodeUtf8Unchecked(text, pos + i);
                 if (pos + i + dec.len > text.len) break;
                 if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos + i);
+                i += dec.len;
             }
         }
         pos += vector_len;
