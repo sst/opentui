@@ -13,14 +13,14 @@ const TextBufferViewArray = text_buffer_view.TextBufferViewArray;
 const TextBufferViewRope = text_buffer_view.TextBufferViewRope;
 const WrapMode = text_buffer.WrapMode;
 const BenchResult = bench_utils.BenchResult;
-const MemStats = bench_utils.MemStats;
+const MemStat = bench_utils.MemStat;
 
 const BenchData = struct {
     min_ns: u64,
     avg_ns: u64,
     max_ns: u64,
     total_ns: u64,
-    mem: ?MemStats,
+    mem: ?[]const MemStat,
 };
 
 pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
@@ -115,9 +115,11 @@ fn benchWrapArray(
         total_ns += elapsed;
     }
 
-    const mem_stats = if (show_mem) MemStats{
-        .text_buffer_bytes = tb.getArenaAllocatedBytes(),
-        .view_bytes = view.getArenaAllocatedBytes(),
+    const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+        const stats = try allocator.alloc(MemStat, 2);
+        stats[0] = .{ .name = "TB", .bytes = tb.getArenaAllocatedBytes() };
+        stats[1] = .{ .name = "View", .bytes = view.getArenaAllocatedBytes() };
+        break :blk stats;
     } else null;
 
     return .{
@@ -186,9 +188,11 @@ fn benchWrapRope(
         total_ns += elapsed;
     }
 
-    const mem_stats = if (show_mem) MemStats{
-        .text_buffer_bytes = tb.getArenaAllocatedBytes(),
-        .view_bytes = view.getArenaAllocatedBytes(),
+    const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+        const stats = try allocator.alloc(MemStat, 2);
+        stats[0] = .{ .name = "TB", .bytes = tb.getArenaAllocatedBytes() };
+        stats[1] = .{ .name = "View", .bytes = view.getArenaAllocatedBytes() };
+        break :blk stats;
     } else null;
 
     return .{
