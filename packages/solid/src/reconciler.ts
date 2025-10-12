@@ -114,15 +114,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
     node = node.getSlotChild(parent)
   }
 
-  if (isTextNodeRenderable(parent)) {
-    if (typeof node !== "string" && !isTextNodeRenderable(node)) {
-      console.warn("Node not a valid child of TextNode")
-    } else {
-      parent.remove(node)
-    }
-  } else {
-    parent.remove(node.id)
-  }
+  parent.remove(node.id)
 
   process.nextTick(() => {
     if (node instanceof BaseRenderable && !node.parent) {

@@ -240,17 +240,17 @@ describe("TextNodeRenderable", () => {
       node.add(child)
       node.add("Last")
 
-      node.remove(child)
+      node.remove(child.id)
 
       expect(node.children).toEqual(["First", "Last"])
+      expect(child.parent).toBeNull()
     })
 
     it("should throw error when child not found in remove", () => {
       const node = new TextNodeRenderable({})
-      const child = new TextNodeRenderable({})
 
       expect(() => {
-        node.remove(child)
+        node.remove("nonexistent-id")
       }).toThrow("Child not found in children")
     })
   })
