@@ -3,7 +3,7 @@ import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { type TextChunk } from "../text-buffer"
 import { RGBA } from "../lib/RGBA"
 import { type RenderContext } from "../types"
-import { isTextNodeRenderable, RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
+import { RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
 
 export interface TextOptions extends TextBufferOptions {
@@ -119,10 +119,7 @@ export class TextRenderable extends TextBufferRenderable {
   }
 
   public remove(id: string): void {
-    const child = this.rootTextNode.getRenderable(id)
-    if (child && isTextNodeRenderable(child)) {
-      this.rootTextNode.remove(child)
-    }
+    this.rootTextNode.remove(id)
   }
 
   public insertBefore(obj: BaseRenderable | any, anchor?: TextNodeRenderable): number {
