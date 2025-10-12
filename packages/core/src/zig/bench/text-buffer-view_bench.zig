@@ -206,8 +206,6 @@ pub fn run(
 ) ![]BenchResult {
     const stdout = std.io.getStdOut().writer();
 
-    try stdout.print("\n=== TextBufferView Wrapping Benchmarks ===\n\n", .{});
-
     // Set up benchmark-specific dependencies
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();

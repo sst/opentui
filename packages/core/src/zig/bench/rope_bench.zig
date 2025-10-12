@@ -650,10 +650,6 @@ pub fn run(
 ) ![]BenchResult {
     _ = show_mem; // Rope benchmarks don't currently track memory
 
-    const stdout = std.io.getStdOut().writer();
-
-    try stdout.print("\n=== Rope Data Structure Benchmarks ===\n\n", .{});
-
     var all_results = std.ArrayList(BenchResult).init(allocator);
 
     const iterations: usize = 10;

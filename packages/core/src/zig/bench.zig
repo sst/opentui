@@ -23,13 +23,15 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     // Run all benchmarks
+    try stdout.print("\n=== TextBufferView Wrapping Benchmarks ===\n\n", .{});
     const text_buffer_view_results = try text_buffer_view_bench.run(allocator, show_mem);
     defer allocator.free(text_buffer_view_results);
     try bench_utils.printResults(stdout, text_buffer_view_results);
 
+    try stdout.print("\n=== Rope Data Structure Benchmarks ===\n\n", .{});
     const rope_results = try rope_bench.run(allocator, show_mem);
     defer allocator.free(rope_results);
     try bench_utils.printResults(stdout, rope_results);
 
-    try stdout.print("\n=== Benchmarks complete ===\n", .{});
+    try stdout.print("\n✓ Benchmarks complete\n", .{});
 }
