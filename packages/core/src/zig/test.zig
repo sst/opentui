@@ -19,7 +19,7 @@ const utf8_tests = @import("tests/utf8_test.zig");
 comptime {
     _ = text_buffer_tests;
     _ = text_buffer_editing_tests;
-    // _ = text_buffer_view_tests; // Temporarily disabled due to compilation errors
+    _ = text_buffer_view_tests;
     _ = edit_buffer_tests;
     _ = grapheme_tests;
     _ = syntax_style_tests;
