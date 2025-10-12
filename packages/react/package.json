@@ -35,6 +35,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "latest",
+    "@types/react": "^19.0.0",
     "@types/react-reconciler": "^0.32.0",
     "typescript": "^5"
   },
