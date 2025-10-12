@@ -99,7 +99,7 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
       height: 20,
       scrollAcceleration: new MacOSScrollAccel({ A: 0 }),
     })
-    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
     testRenderer.root.add(scrollBox)
     await renderOnce()
 
@@ -115,7 +115,7 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
       scrollAcceleration: new LinearScrollAccel(),
     })
 
-    for (let i = 0; i < 100; i++) linearBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    for (let i = 0; i < 100; i++) linearBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
     testRenderer.root.add(linearBox)
     await renderOnce()
 
@@ -132,7 +132,7 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
       scrollAcceleration: new MacOSScrollAccel(),
     })
 
-    for (let i = 0; i < 100; i++) accelBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    for (let i = 0; i < 100; i++) accelBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
     testRenderer.root.add(accelBox)
     await renderOnce()
 
@@ -148,7 +148,7 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
       height: 20,
       scrollAcceleration: new MacOSScrollAccel({ A: 0.8, tau: 3, maxMultiplier: 6 }),
     })
-    for (let i = 0; i < 200; i++) scrollBox.add(new TextRenderable(testRenderer, { text: `Line ${i}` }))
+    for (let i = 0; i < 200; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
     testRenderer.root.add(scrollBox)
     await renderOnce()
 

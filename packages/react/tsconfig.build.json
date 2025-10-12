@@ -7,7 +7,7 @@
     "outDir": "./dist",
     "noEmit": false,
     "rootDir": ".",
-    "types": ["bun", "node"],
+    "types": ["bun", "node", "react"],
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@opentui/react",

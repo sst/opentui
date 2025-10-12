@@ -193,11 +193,12 @@ export enum CliRenderEvents {
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
 }
 
-enum RendererControlState {
+export enum RendererControlState {
   IDLE = "idle",
   AUTO_STARTED = "auto_started",
   EXPLICIT_STARTED = "explicit_started",
   EXPLICIT_PAUSED = "explicit_paused",
+  EXPLICIT_SUSPENDED = "explicit_suspended",
   EXPLICIT_STOPPED = "explicit_stopped",
 }
 
@@ -244,7 +245,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private updateScheduled: boolean = false
 
   private liveRequestCounter: number = 0
-  private controlState: RendererControlState = RendererControlState.IDLE
+  private _controlState: RendererControlState = RendererControlState.IDLE
 
   private frameCallbacks: ((deltaTime: number) => Promise<void>)[] = []
   private renderStats: {
@@ -275,6 +276,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
   private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
+  private _suspendedMouseEnabled: boolean = false
+  private _previousControlState: RendererControlState = RendererControlState.IDLE
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
@@ -363,6 +366,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private warningHandler: (warning: any) => void = ((warning: any) => {
     console.warn(JSON.stringify(warning.message, null, 2))
   }).bind(this)
+
+  public get controlState(): RendererControlState {
+    return this._controlState
+  }
 
   constructor(
     lib: RenderLib,
@@ -507,7 +514,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
-    if (!this.rendering && !this.updateScheduled && !this._isRunning) {
+    if (
+      !this.rendering &&
+      !this.updateScheduled &&
+      !this._isRunning &&
+      this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
+    ) {
       this.updateScheduled = true
       process.nextTick(() => {
         this.loop()
@@ -586,7 +598,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get currentControlState(): string {
-    return this.controlState
+    return this._controlState
   }
 
   public get capabilities(): any | null {
@@ -689,10 +701,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private enableMouse(): void {
+    this._useMouse = true
     this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement)
   }
 
   private disableMouse(): void {
+    this._useMouse = false
     this.capturedRenderable = undefined
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
@@ -1147,8 +1161,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public requestLive(): void {
     this.liveRequestCounter++
 
-    if (this.controlState === RendererControlState.IDLE && this.liveRequestCounter > 0) {
-      this.controlState = RendererControlState.AUTO_STARTED
+    if (this._controlState === RendererControlState.IDLE && this.liveRequestCounter > 0) {
+      this._controlState = RendererControlState.AUTO_STARTED
       this.internalStart()
     }
   }
@@ -1156,19 +1170,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public dropLive(): void {
     this.liveRequestCounter = Math.max(0, this.liveRequestCounter - 1)
 
-    if (this.controlState === RendererControlState.AUTO_STARTED && this.liveRequestCounter === 0) {
-      this.controlState = RendererControlState.IDLE
+    if (this._controlState === RendererControlState.AUTO_STARTED && this.liveRequestCounter === 0) {
+      this._controlState = RendererControlState.IDLE
       this.internalPause()
     }
   }
 
   public start(): void {
-    this.controlState = RendererControlState.EXPLICIT_STARTED
+    this._controlState = RendererControlState.EXPLICIT_STARTED
     this.internalStart()
   }
 
   public auto(): void {
-    this.controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
+    this._controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
   }
 
   private internalStart(): void {
@@ -1184,8 +1198,45 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public pause(): void {
-    this.controlState = RendererControlState.EXPLICIT_PAUSED
+    this._controlState = RendererControlState.EXPLICIT_PAUSED
     this.internalPause()
+  }
+
+  public suspend(): void {
+    this._previousControlState = this._controlState
+
+    this._controlState = RendererControlState.EXPLICIT_SUSPENDED
+    this.internalPause()
+
+    this._suspendedMouseEnabled = this._useMouse
+
+    this.disableMouse()
+    this._keyHandler.suspend()
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+    this.stdin.pause()
+  }
+
+  public resume(): void {
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(true)
+    }
+    this.stdin.resume()
+    this._keyHandler.resume()
+
+    if (this._suspendedMouseEnabled) {
+      this.enableMouse()
+    }
+
+    this._controlState = this._previousControlState
+
+    if (
+      this._previousControlState === RendererControlState.AUTO_STARTED ||
+      this._previousControlState === RendererControlState.EXPLICIT_STARTED
+    ) {
+      this.internalStart()
+    }
   }
 
   private internalPause(): void {
@@ -1193,7 +1244,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public stop(): void {
-    this.controlState = RendererControlState.EXPLICIT_STOPPED
+    this._controlState = RendererControlState.EXPLICIT_STOPPED
     this.internalStop()
   }
 
