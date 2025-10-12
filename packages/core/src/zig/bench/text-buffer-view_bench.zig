@@ -1,4 +1,5 @@
 const std = @import("std");
+const bench_utils = @import("../bench-utils.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
@@ -11,18 +12,15 @@ const TextBufferRope = text_buffer.TextBufferRope;
 const TextBufferViewArray = text_buffer_view.TextBufferViewArray;
 const TextBufferViewRope = text_buffer_view.TextBufferViewRope;
 const WrapMode = text_buffer.WrapMode;
+const BenchResult = bench_utils.BenchResult;
+const MemStats = bench_utils.MemStats;
 
-const BenchResult = struct {
+const BenchData = struct {
     min_ns: u64,
     avg_ns: u64,
     max_ns: u64,
     total_ns: u64,
-    iterations: usize,
-};
-
-const MemStats = struct {
-    text_buffer_bytes: usize,
-    view_bytes: usize,
+    mem: ?MemStats,
 };
 
 pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
@@ -60,7 +58,7 @@ pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes:
     return try buffer.toOwnedSlice();
 }
 
-pub fn benchWrapArray(
+fn benchWrapArray(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     graphemes_ptr: *Graphemes,
@@ -70,7 +68,7 @@ pub fn benchWrapArray(
     wrap_mode: WrapMode,
     iterations: usize,
     show_mem: bool,
-) !struct { result: BenchResult, mem: ?MemStats } {
+) !BenchData {
     var tb = try TextBufferArray.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
@@ -117,23 +115,21 @@ pub fn benchWrapArray(
         total_ns += elapsed;
     }
 
-    const result = BenchResult{
-        .min_ns = min_ns,
-        .avg_ns = total_ns / iterations,
-        .max_ns = max_ns,
-        .total_ns = total_ns,
-        .iterations = iterations,
-    };
-
     const mem_stats = if (show_mem) MemStats{
         .text_buffer_bytes = tb.getArenaAllocatedBytes(),
         .view_bytes = view.getArenaAllocatedBytes(),
     } else null;
 
-    return .{ .result = result, .mem = mem_stats };
+    return .{
+        .min_ns = min_ns,
+        .avg_ns = total_ns / iterations,
+        .max_ns = max_ns,
+        .total_ns = total_ns,
+        .mem = mem_stats,
+    };
 }
 
-pub fn benchWrapRope(
+fn benchWrapRope(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     graphemes_ptr: *Graphemes,
@@ -143,7 +139,7 @@ pub fn benchWrapRope(
     wrap_mode: WrapMode,
     iterations: usize,
     show_mem: bool,
-) !struct { result: BenchResult, mem: ?MemStats } {
+) !BenchData {
     var tb = try TextBufferRope.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
@@ -190,80 +186,24 @@ pub fn benchWrapRope(
         total_ns += elapsed;
     }
 
-    const result = BenchResult{
-        .min_ns = min_ns,
-        .avg_ns = total_ns / iterations,
-        .max_ns = max_ns,
-        .total_ns = total_ns,
-        .iterations = iterations,
-    };
-
     const mem_stats = if (show_mem) MemStats{
         .text_buffer_bytes = tb.getArenaAllocatedBytes(),
         .view_bytes = view.getArenaAllocatedBytes(),
     } else null;
 
-    return .{ .result = result, .mem = mem_stats };
-}
-
-pub fn formatDuration(ns: u64) struct { value: f64, unit: []const u8 } {
-    if (ns < 1_000) {
-        return .{ .value = @as(f64, @floatFromInt(ns)), .unit = "ns" };
-    } else if (ns < 1_000_000) {
-        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000.0, .unit = "µs" };
-    } else if (ns < 1_000_000_000) {
-        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000.0, .unit = "ms" };
-    } else {
-        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000_000.0, .unit = "s" };
-    }
-}
-
-pub fn formatBytes(bytes: usize) struct { value: f64, unit: []const u8 } {
-    if (bytes < 1024) {
-        return .{ .value = @as(f64, @floatFromInt(bytes)), .unit = "B" };
-    } else if (bytes < 1024 * 1024) {
-        return .{ .value = @as(f64, @floatFromInt(bytes)) / 1024.0, .unit = "KiB" };
-    } else {
-        return .{ .value = @as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0), .unit = "MiB" };
-    }
-}
-
-fn printBenchResult(
-    writer: anytype,
-    name: []const u8,
-    result: BenchResult,
-    mem_stats: ?MemStats,
-) !void {
-    const min = formatDuration(result.min_ns);
-    const avg = formatDuration(result.avg_ns);
-    const max = formatDuration(result.max_ns);
-
-    try writer.print("{s}: min={d:.2}{s} avg={d:.2}{s} max={d:.2}{s}\n", .{
-        name,
-        min.value,
-        min.unit,
-        avg.value,
-        avg.unit,
-        max.value,
-        max.unit,
-    });
-
-    if (mem_stats) |mem| {
-        const tb_mem = formatBytes(mem.text_buffer_bytes);
-        const view_mem = formatBytes(mem.view_bytes);
-        try writer.print("  TB arena: {d:.2} {s}  |  View arena: {d:.2} {s}\n", .{
-            tb_mem.value,
-            tb_mem.unit,
-            view_mem.value,
-            view_mem.unit,
-        });
-    }
+    return .{
+        .min_ns = min_ns,
+        .avg_ns = total_ns / iterations,
+        .max_ns = max_ns,
+        .total_ns = total_ns,
+        .mem = mem_stats,
+    };
 }
 
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
-) !void {
+) ![]BenchResult {
     const stdout = std.io.getStdOut().writer();
 
     try stdout.print("\n=== TextBufferView Wrapping Benchmarks ===\n\n", .{});
@@ -293,6 +233,8 @@ pub fn run(
         try stdout.print("Memory stats enabled\n", .{});
     }
     try stdout.print("\n", .{});
+
+    var results = std.ArrayList(BenchResult).init(allocator);
 
     const scenarios = [_]struct {
         impl: []const u8,
@@ -326,10 +268,22 @@ pub fn run(
             scenario.mode,
             scenario.width,
         });
-        defer allocator.free(bench_name);
+        errdefer allocator.free(bench_name);
 
-        if (std.mem.eql(u8, scenario.impl, "Array")) {
-            const bench_data = try benchWrapArray(
+        const bench_data = if (std.mem.eql(u8, scenario.impl, "Array"))
+            try benchWrapArray(
+                allocator,
+                pool,
+                graphemes_ptr,
+                display_width_ptr,
+                text,
+                scenario.width,
+                wrap_mode,
+                iterations,
+                show_mem,
+            )
+        else
+            try benchWrapRope(
                 allocator,
                 pool,
                 graphemes_ptr,
@@ -341,21 +295,16 @@ pub fn run(
                 show_mem,
             );
 
-            try printBenchResult(stdout, bench_name, bench_data.result, bench_data.mem);
-        } else {
-            const bench_data = try benchWrapRope(
-                allocator,
-                pool,
-                graphemes_ptr,
-                display_width_ptr,
-                text,
-                scenario.width,
-                wrap_mode,
-                iterations,
-                show_mem,
-            );
-
-            try printBenchResult(stdout, bench_name, bench_data.result, bench_data.mem);
-        }
+        try results.append(BenchResult{
+            .name = bench_name,
+            .min_ns = bench_data.min_ns,
+            .avg_ns = bench_data.avg_ns,
+            .max_ns = bench_data.max_ns,
+            .total_ns = bench_data.total_ns,
+            .iterations = iterations,
+            .mem_stats = bench_data.mem,
+        });
     }
+
+    return try results.toOwnedSlice();
 }

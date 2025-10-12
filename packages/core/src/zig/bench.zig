@@ -1,4 +1,5 @@
 const std = @import("std");
+const bench_utils = @import("bench-utils.zig");
 
 // Import all benchmark modules
 const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
@@ -18,9 +19,12 @@ pub fn main() !void {
         }
     }
 
-    // Run all benchmarks
-    try text_buffer_view_bench.run(allocator, show_mem);
-
     const stdout = std.io.getStdOut().writer();
+
+    // Run all benchmarks
+    const text_buffer_view_results = try text_buffer_view_bench.run(allocator, show_mem);
+    defer allocator.free(text_buffer_view_results);
+    try bench_utils.printResults(stdout, text_buffer_view_results);
+
     try stdout.print("\n=== Benchmarks complete ===\n", .{});
 }
