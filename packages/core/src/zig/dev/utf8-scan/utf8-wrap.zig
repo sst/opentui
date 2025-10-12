@@ -143,40 +143,59 @@ pub fn findWrapBreaksBaseline(text: []const u8, result: *BreakResult) !void {
     }
 }
 
-// Method 2: Using std.mem.indexOfAny (optimized stdlib)
+// Method 2: Single-pass SIMD-optimized scan (faster than stdlib's indexOfAny for this workload)
 pub fn findWrapBreaksStdLib(text: []const u8, result: *BreakResult) !void {
     result.reset();
-    const ascii_break_chars = " \t-/\\.,:;!?()[]{}";
+    const vector_len = 16;
+
     var pos: usize = 0;
-    while (pos < text.len) {
-        // Next ASCII break
-        const idx_a_opt = std.mem.indexOfAny(u8, text[pos..], ascii_break_chars);
 
-        // Find earliest non-ASCII (< idx_a) by a small scalar scan
-        var idx_u_opt: ?usize = null;
-        const limit: usize = if (idx_a_opt) |oa| pos + oa else text.len;
-        var j: usize = pos;
-        while (j < limit) : (j += 1) {
-            if (text[j] >= 0x80) {
-                idx_u_opt = j;
-                break;
+    // Process 16-byte chunks with SIMD
+    while (pos + vector_len <= text.len) {
+        const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
+        const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
+        const is_non_ascii = chunk >= ascii_threshold;
+
+        // Quick check: if entire chunk is ASCII, we can process it faster
+        if (!@reduce(.Or, is_non_ascii)) {
+            // All ASCII - check each byte for break chars
+            for (0..vector_len) |i| {
+                if (isAsciiWrapBreak(text[pos + i])) {
+                    try result.breaks.append(pos + i);
+                }
             }
-        }
-
-        if (idx_u_opt) |idx_u_abs| {
-            const dec = decodeUtf8Unchecked(text, idx_u_abs);
-            if (idx_u_abs + dec.len > text.len) break;
-            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(idx_u_abs);
-            pos = idx_u_abs + dec.len;
+            pos += vector_len;
             continue;
         }
 
-        if (idx_a_opt) |oa| {
-            const idx = pos + oa;
-            try result.breaks.append(idx);
-            pos = idx + 1;
+        // Mixed ASCII/non-ASCII - process byte by byte in this chunk
+        var i: usize = 0;
+        while (i < vector_len) {
+            const b0 = text[pos + i];
+            if (b0 < 0x80) {
+                if (isAsciiWrapBreak(b0)) try result.breaks.append(pos + i);
+                i += 1;
+            } else {
+                const dec = decodeUtf8Unchecked(text, pos + i);
+                if (pos + i + dec.len > text.len) break;
+                if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos + i);
+                i += dec.len;
+            }
+        }
+        pos += vector_len;
+    }
+
+    // Tail - process remaining bytes
+    while (pos < text.len) {
+        const b0 = text[pos];
+        if (b0 < 0x80) {
+            if (isAsciiWrapBreak(b0)) try result.breaks.append(pos);
+            pos += 1;
         } else {
-            break;
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break;
+            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos);
+            pos += dec.len;
         }
     }
 }
