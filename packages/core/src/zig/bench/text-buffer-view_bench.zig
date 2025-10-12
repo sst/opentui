@@ -1,0 +1,261 @@
+const std = @import("std");
+const text_buffer = @import("../text-buffer.zig");
+const text_buffer_view = @import("../text-buffer-view.zig");
+const gp = @import("../grapheme.zig");
+const gwidth = @import("../gwidth.zig");
+const Graphemes = @import("Graphemes");
+const DisplayWidth = @import("DisplayWidth");
+
+const TextBufferArray = text_buffer.TextBufferArray;
+const TextBufferRope = text_buffer.TextBufferRope;
+const TextBufferViewArray = text_buffer_view.TextBufferViewArray;
+const TextBufferViewRope = text_buffer_view.TextBufferViewRope;
+const WrapMode = text_buffer.WrapMode;
+
+pub const BenchResult = struct {
+    min_ns: u64,
+    avg_ns: u64,
+    max_ns: u64,
+    total_ns: u64,
+    iterations: usize,
+};
+
+pub const MemStats = struct {
+    text_buffer_bytes: usize,
+    view_bytes: usize,
+};
+
+pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
+    var buffer = std.ArrayList(u8).init(allocator);
+    errdefer buffer.deinit();
+
+    const patterns = [_][]const u8{
+        "The quick brown fox jumps over the lazy dog. ",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ",
+        "Hello, 世界! Unicode テスト 🌍🎉 ",
+        "Mixed width: ASCII 中文字符 emoji 🚀🔥💻 and more text. ",
+        "Programming languages: Rust, Zig, Go, Python, JavaScript. ",
+        "Αυτό είναι ελληνικό κείμενο. Это русский текст. ",
+        "Numbers and symbols: 12345 !@#$%^&*() []{}|;:',.<>? ",
+        "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
+    };
+
+    var current_bytes: usize = 0;
+    var line_idx: u32 = 0;
+
+    while (current_bytes < target_bytes and line_idx < lines) : (line_idx += 1) {
+        const pattern = patterns[line_idx % patterns.len];
+        const repeat_count = 2 + (line_idx % 5);
+
+        var repeat: usize = 0;
+        while (repeat < repeat_count) : (repeat += 1) {
+            try buffer.appendSlice(pattern);
+            current_bytes += pattern.len;
+        }
+
+        try buffer.append('\n');
+        current_bytes += 1;
+    }
+
+    return try buffer.toOwnedSlice();
+}
+
+pub fn benchWrapArray(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    graphemes_ptr: *Graphemes,
+    display_width_ptr: *DisplayWidth,
+    text: []const u8,
+    wrap_width: u32,
+    wrap_mode: WrapMode,
+    iterations: usize,
+    show_mem: bool,
+) !struct { result: BenchResult, mem: ?MemStats } {
+    var tb = try TextBufferArray.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const mem_id = try tb.registerMemBuffer(text, false);
+
+    var line_start: u32 = 0;
+    for (text, 0..) |byte, i| {
+        if (byte == '\n') {
+            if (i > line_start) {
+                try tb.addLine(mem_id, line_start, @intCast(i));
+            }
+            line_start = @intCast(i + 1);
+        }
+    }
+    if (line_start < text.len) {
+        try tb.addLine(mem_id, line_start, @intCast(text.len));
+    }
+
+    var view = try TextBufferViewArray.init(allocator, tb);
+    defer view.deinit();
+
+    view.setWrapMode(wrap_mode);
+    view.setWrapWidth(wrap_width);
+
+    _ = view.getVirtualLineCount();
+
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
+    var i: usize = 0;
+    while (i < iterations) : (i += 1) {
+        view.setWrapWidth(null);
+        _ = view.getVirtualLineCount();
+
+        var timer = try std.time.Timer.start();
+        view.setWrapWidth(wrap_width);
+        const count = view.getVirtualLineCount();
+        const elapsed = timer.read();
+        _ = count;
+
+        min_ns = @min(min_ns, elapsed);
+        max_ns = @max(max_ns, elapsed);
+        total_ns += elapsed;
+    }
+
+    const result = BenchResult{
+        .min_ns = min_ns,
+        .avg_ns = total_ns / iterations,
+        .max_ns = max_ns,
+        .total_ns = total_ns,
+        .iterations = iterations,
+    };
+
+    const mem_stats = if (show_mem) MemStats{
+        .text_buffer_bytes = tb.getArenaAllocatedBytes(),
+        .view_bytes = view.getArenaAllocatedBytes(),
+    } else null;
+
+    return .{ .result = result, .mem = mem_stats };
+}
+
+pub fn benchWrapRope(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    graphemes_ptr: *Graphemes,
+    display_width_ptr: *DisplayWidth,
+    text: []const u8,
+    wrap_width: u32,
+    wrap_mode: WrapMode,
+    iterations: usize,
+    show_mem: bool,
+) !struct { result: BenchResult, mem: ?MemStats } {
+    var tb = try TextBufferRope.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const mem_id = try tb.registerMemBuffer(text, false);
+
+    var line_start: u32 = 0;
+    for (text, 0..) |byte, i| {
+        if (byte == '\n') {
+            if (i > line_start) {
+                try tb.addLine(mem_id, line_start, @intCast(i));
+            }
+            line_start = @intCast(i + 1);
+        }
+    }
+    if (line_start < text.len) {
+        try tb.addLine(mem_id, line_start, @intCast(text.len));
+    }
+
+    var view = try TextBufferViewRope.init(allocator, tb);
+    defer view.deinit();
+
+    view.setWrapMode(wrap_mode);
+    view.setWrapWidth(wrap_width);
+
+    _ = view.getVirtualLineCount();
+
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
+    var i: usize = 0;
+    while (i < iterations) : (i += 1) {
+        view.setWrapWidth(null);
+        _ = view.getVirtualLineCount();
+
+        var timer = try std.time.Timer.start();
+        view.setWrapWidth(wrap_width);
+        const count = view.getVirtualLineCount();
+        const elapsed = timer.read();
+        _ = count;
+
+        min_ns = @min(min_ns, elapsed);
+        max_ns = @max(max_ns, elapsed);
+        total_ns += elapsed;
+    }
+
+    const result = BenchResult{
+        .min_ns = min_ns,
+        .avg_ns = total_ns / iterations,
+        .max_ns = max_ns,
+        .total_ns = total_ns,
+        .iterations = iterations,
+    };
+
+    const mem_stats = if (show_mem) MemStats{
+        .text_buffer_bytes = tb.getArenaAllocatedBytes(),
+        .view_bytes = view.getArenaAllocatedBytes(),
+    } else null;
+
+    return .{ .result = result, .mem = mem_stats };
+}
+
+pub fn formatDuration(ns: u64) struct { value: f64, unit: []const u8 } {
+    if (ns < 1_000) {
+        return .{ .value = @as(f64, @floatFromInt(ns)), .unit = "ns" };
+    } else if (ns < 1_000_000) {
+        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000.0, .unit = "µs" };
+    } else if (ns < 1_000_000_000) {
+        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000.0, .unit = "ms" };
+    } else {
+        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000_000.0, .unit = "s" };
+    }
+}
+
+pub fn formatBytes(bytes: usize) struct { value: f64, unit: []const u8 } {
+    if (bytes < 1024) {
+        return .{ .value = @as(f64, @floatFromInt(bytes)), .unit = "B" };
+    } else if (bytes < 1024 * 1024) {
+        return .{ .value = @as(f64, @floatFromInt(bytes)) / 1024.0, .unit = "KiB" };
+    } else {
+        return .{ .value = @as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0), .unit = "MiB" };
+    }
+}
+
+pub fn printBenchResult(
+    writer: anytype,
+    name: []const u8,
+    result: BenchResult,
+    mem_stats: ?MemStats,
+) !void {
+    const min = formatDuration(result.min_ns);
+    const avg = formatDuration(result.avg_ns);
+    const max = formatDuration(result.max_ns);
+
+    try writer.print("{s}: min={d:.2}{s} avg={d:.2}{s} max={d:.2}{s}\n", .{
+        name,
+        min.value,
+        min.unit,
+        avg.value,
+        avg.unit,
+        max.value,
+        max.unit,
+    });
+
+    if (mem_stats) |mem| {
+        const tb_mem = formatBytes(mem.text_buffer_bytes);
+        const view_mem = formatBytes(mem.view_bytes);
+        try writer.print("  TB arena: {d:.2} {s}  |  View arena: {d:.2} {s}\n", .{
+            tb_mem.value,
+            tb_mem.unit,
+            view_mem.value,
+            view_mem.unit,
+        });
+    }
+}

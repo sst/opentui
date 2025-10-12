@@ -109,6 +109,29 @@ pub fn build(b: *std.Build) void {
 
     const run_test = b.addRunArtifact(test_exe);
     test_step.dependOn(&run_test.step);
+
+    // Add bench step
+    const bench_step = b.step("bench", "Run benchmarks");
+    const bench_target_query = std.Target.Query{
+        .cpu_arch = builtin.cpu.arch,
+        .os_tag = builtin.os.tag,
+    };
+    const bench_target = b.resolveTargetQuery(bench_target_query);
+
+    const bench_exe = b.addExecutable(.{
+        .name = "opentui-bench",
+        .root_source_file = b.path("bench.zig"),
+        .target = bench_target,
+        .optimize = optimize,
+    });
+
+    applyZgDependencies(b, bench_exe.root_module, optimize, bench_target);
+
+    const run_bench = b.addRunArtifact(bench_exe);
+    if (b.args) |args| {
+        run_bench.addArgs(args);
+    }
+    bench_step.dependOn(&run_bench.step);
 }
 
 fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {

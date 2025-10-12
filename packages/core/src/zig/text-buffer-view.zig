@@ -810,6 +810,11 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
         pub fn getPlainTextIntoBuffer(self: *const Self, out_buffer: []u8) usize {
             return self.text_buffer.getPlainTextIntoBuffer(out_buffer);
         }
+
+        /// Get the total bytes allocated by the virtual lines arena allocator
+        pub fn getArenaAllocatedBytes(self: *const Self) usize {
+            return self.virtual_lines_arena.queryCapacity();
+        }
     };
 }
 

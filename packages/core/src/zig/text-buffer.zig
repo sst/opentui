@@ -1129,6 +1129,11 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
             // Mark all views as dirty
             self.markAllViewsDirty();
         }
+
+        /// Get the total bytes allocated by the internal arena allocator
+        pub fn getArenaAllocatedBytes(self: *const Self) usize {
+            return self.arena.queryCapacity();
+        }
     };
 }
 
