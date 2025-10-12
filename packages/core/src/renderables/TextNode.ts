@@ -146,16 +146,19 @@ export class TextNodeRenderable extends BaseRenderable {
     return this
   }
 
-  public remove(child: string | TextNodeRenderable): this {
+  public remove(id: string): this {
+    const child = this.getRenderable(id)
+    if (!child || !isTextNodeRenderable(child)) {
+      throw new Error("Child not found in children")
+    }
+
     const childIndex = this._children.indexOf(child)
     if (childIndex === -1) {
       throw new Error("Child not found in children")
     }
 
     this._children.splice(childIndex, 1)
-    if (typeof child !== "string") {
-      child.parent = null
-    }
+    child.parent = null
     this.requestRender()
     return this
   }
