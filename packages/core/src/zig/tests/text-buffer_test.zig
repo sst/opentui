@@ -1833,3 +1833,290 @@ test "TextBuffer memory registry - same buffer registered multiple times" {
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Shared\nbuffer\nShared buffer", out_buffer[0..written]);
 }
+
+// ===== setText SIMD Line Break Tests =====
+
+test "TextBuffer setText - CRLF line endings (Windows)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line1\r\nLine2\r\nLine3");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[1]); // "Line1" = 5 chars
+    try std.testing.expectEqual(@as(u32, 10), lineInfo.starts[2]); // "Line1" + "Line2" = 10 chars
+
+    // Verify text content doesn't include CRLF
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line1\nLine2\nLine3", out_buffer[0..written]);
+}
+
+test "TextBuffer setText - mixed line endings (LF, CRLF, CR)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Unix\nWindows\r\nOldMac\rEnd");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.line_count);
+
+    // Verify proper parsing
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Unix\nWindows\nOldMac\nEnd", out_buffer[0..written]);
+}
+
+test "TextBuffer setText - text ending with CRLF" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello World\r\n");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 11), lineInfo.starts[1]); // "Hello World" = 11 chars
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.widths[1]); // Empty line
+}
+
+test "TextBuffer setText - consecutive CRLF sequences" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line1\r\n\r\nLine3");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]);
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[1]); // "Line1" = 5 chars
+    try std.testing.expectEqual(@as(u32, 5), lineInfo.starts[2]); // Empty line has 0 chars
+}
+
+test "TextBuffer setText - only CRLF sequences" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("\r\n\r\n\r\n");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.line_count);
+
+    // All lines should be empty
+    for (0..4) |i| {
+        try std.testing.expectEqual(@as(u32, 0), lineInfo.widths[i]);
+    }
+}
+
+test "TextBuffer setText - text starting with CRLF" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("\r\nHello World");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[0]); // Empty first line
+    try std.testing.expectEqual(@as(u32, 0), lineInfo.starts[1]); // "Hello World" starts at char 0
+}
+
+test "TextBuffer setText - CR without LF" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line1\rLine2\rLine3");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line1\nLine2\nLine3", out_buffer[0..written]);
+}
+
+test "TextBuffer setText - very long line with SIMD processing" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Create a text longer than 16 bytes (SIMD vector size) to test SIMD path
+    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
+    defer text_builder.deinit();
+
+    try text_builder.appendNTimes('A', 100);
+    try text_builder.appendSlice("\r\n");
+    try text_builder.appendNTimes('B', 100);
+    try text_builder.appendSlice("\n");
+    try text_builder.appendNTimes('C', 100);
+
+    try tb.setText(text_builder.items);
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 100), lineInfo.widths[0]);
+    try std.testing.expectEqual(@as(u32, 100), lineInfo.widths[1]);
+    try std.testing.expectEqual(@as(u32, 100), lineInfo.widths[2]);
+}
+
+test "TextBuffer setText - unicode content with various line endings" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello 世界\r\n🌟 Test\nEnd");
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
+
+    // Verify text is preserved correctly
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello 世界\n🌟 Test\nEnd", out_buffer[0..written]);
+}
+
+test "TextBuffer setText - multiple consecutive different line endings" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Mix of \n, \r\n, \r in sequence
+    try tb.setText("A\n\r\n\rB");
+    const lineInfo = tb.getLineInfo();
+
+    // "A", "", "", "B"
+    try std.testing.expectEqual(@as(u32, 4), lineInfo.line_count);
+}
+
+test "TextBuffer setText - SIMD boundary conditions" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Create text with newlines at SIMD vector boundaries (16 bytes)
+    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
+    defer text_builder.deinit();
+
+    // 15 chars + \n = exactly 16 bytes
+    try text_builder.appendNTimes('X', 15);
+    try text_builder.appendSlice("\n");
+    // 15 more chars + \n
+    try text_builder.appendNTimes('Y', 15);
+    try text_builder.appendSlice("\n");
+    // Final line
+    try text_builder.appendNTimes('Z', 10);
+
+    try tb.setText(text_builder.items);
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 3), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 15), lineInfo.widths[0]);
+    try std.testing.expectEqual(@as(u32, 15), lineInfo.widths[1]);
+    try std.testing.expectEqual(@as(u32, 10), lineInfo.widths[2]);
+}
+
+test "TextBuffer setText - CRLF at SIMD boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Create text where \r is at end of SIMD vector and \n is at start of next
+    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
+    defer text_builder.deinit();
+
+    // 15 chars + \r = 16 bytes, then \n at position 16
+    try text_builder.appendNTimes('A', 15);
+    try text_builder.appendSlice("\r\n");
+    try text_builder.appendSlice("Next line");
+
+    try tb.setText(text_builder.items);
+    const lineInfo = tb.getLineInfo();
+
+    try std.testing.expectEqual(@as(u32, 2), lineInfo.line_count);
+    try std.testing.expectEqual(@as(u32, 15), lineInfo.widths[0]);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    const expected_len = 15 + 1 + 9; // 15 A's + newline + "Next line"
+    try std.testing.expectEqual(expected_len, written);
+}

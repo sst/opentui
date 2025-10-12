@@ -95,7 +95,7 @@ const line_break_golden_tests = [_]LineBreakTestCase{
 };
 
 fn testLineBreaks(test_case: LineBreakTestCase, allocator: std.mem.Allocator) !void {
-    var result = utf8.BreakResult.init(allocator);
+    var result = utf8.LineBreakResult.init(allocator);
     defer result.deinit();
 
     try utf8.findLineBreaksSIMD16(test_case.input, &result);
@@ -110,11 +110,16 @@ fn testLineBreaks(test_case: LineBreakTestCase, allocator: std.mem.Allocator) !v
     }
 
     for (test_case.expected, 0..) |exp, i| {
-        if (result.breaks.items[i] != exp) {
+        if (result.breaks.items[i].pos != exp) {
             std.debug.print("\nLine break test FAILED on '{s}':\n", .{test_case.name});
-            std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i] });
+            std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i].pos });
             std.debug.print("  Expected: {any}\n", .{test_case.expected});
-            std.debug.print("  Got:      {any}\n", .{result.breaks.items});
+            // Print positions only for comparison
+            std.debug.print("  Got:      ", .{});
+            for (result.breaks.items) |brk| {
+                std.debug.print("{d} ", .{brk.pos});
+            }
+            std.debug.print("\n", .{});
             return error.TestFailed;
         }
     }
@@ -211,7 +216,7 @@ test "line breaks: realistic text" {
         "Multiple\n\nEmpty\n\n\nLines\n" ++
         "Mixed\r\nendings\nhere\r";
 
-    var result = utf8.BreakResult.init(testing.allocator);
+    var result = utf8.LineBreakResult.init(testing.allocator);
     defer result.deinit();
 
     try utf8.findLineBreaksSIMD16(sample_text, &result);
@@ -242,7 +247,7 @@ test "line breaks: random small buffers" {
             }
         }
 
-        var result = utf8.BreakResult.init(testing.allocator);
+        var result = utf8.LineBreakResult.init(testing.allocator);
         defer result.deinit();
         try utf8.findLineBreaksSIMD16(buf, &result);
     }
@@ -373,7 +378,7 @@ const wrap_break_golden_tests = [_]WrapBreakTestCase{
 };
 
 fn testWrapBreaks(test_case: WrapBreakTestCase, allocator: std.mem.Allocator) !void {
-    var result = utf8.BreakResult.init(allocator);
+    var result = utf8.WrapBreakResult.init(allocator);
     defer result.deinit();
 
     try utf8.findWrapBreaksSIMD16(test_case.input, &result);
@@ -503,7 +508,7 @@ test "wrap breaks: realistic text" {
         "Dashes test: pre-dash post-dash multi-word-expression\n" ++
         "Mixed: Hello, /path/to-file.txt [done]!\n";
 
-    var result = utf8.BreakResult.init(testing.allocator);
+    var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
 
     try utf8.findWrapBreaksSIMD16(sample_text, &result);
@@ -535,7 +540,7 @@ test "wrap breaks: random small buffers" {
             }
         }
 
-        var result = utf8.BreakResult.init(testing.allocator);
+        var result = utf8.WrapBreakResult.init(testing.allocator);
         defer result.deinit();
         try utf8.findWrapBreaksSIMD16(buf, &result);
     }
@@ -557,7 +562,7 @@ test "wrap breaks: large buffer" {
         }
     }
 
-    var result = utf8.BreakResult.init(testing.allocator);
+    var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
     try utf8.findWrapBreaksSIMD16(buf, &result);
 
@@ -569,57 +574,65 @@ test "wrap breaks: large buffer" {
 // ============================================================================
 
 test "edge case: result reuse" {
-    var result = utf8.BreakResult.init(testing.allocator);
-    defer result.deinit();
+    var line_result = utf8.LineBreakResult.init(testing.allocator);
+    defer line_result.deinit();
 
     // First use - line breaks
-    try utf8.findLineBreaksSIMD16("a\nb\nc", &result);
-    try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
+    try utf8.findLineBreaksSIMD16("a\nb\nc", &line_result);
+    try testing.expectEqual(@as(usize, 2), line_result.breaks.items.len);
 
     // Second use - should reset automatically
-    try utf8.findLineBreaksSIMD16("x\ny", &result);
-    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
-    try testing.expectEqual(@as(usize, 1), result.breaks.items[0]);
+    try utf8.findLineBreaksSIMD16("x\ny", &line_result);
+    try testing.expectEqual(@as(usize, 1), line_result.breaks.items.len);
+    try testing.expectEqual(@as(usize, 1), line_result.breaks.items[0].pos);
 
-    // Third use - wrap breaks
-    try utf8.findWrapBreaksSIMD16("a b c", &result);
-    try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
+    // Third use - wrap breaks (different result type)
+    var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
+    defer wrap_result.deinit();
+    try utf8.findWrapBreaksSIMD16("a b c", &wrap_result);
+    try testing.expectEqual(@as(usize, 2), wrap_result.breaks.items.len);
 }
 
 test "edge case: empty input" {
-    var result = utf8.BreakResult.init(testing.allocator);
-    defer result.deinit();
+    var line_result = utf8.LineBreakResult.init(testing.allocator);
+    defer line_result.deinit();
 
-    try utf8.findLineBreaksSIMD16("", &result);
-    try testing.expectEqual(@as(usize, 0), result.breaks.items.len);
+    try utf8.findLineBreaksSIMD16("", &line_result);
+    try testing.expectEqual(@as(usize, 0), line_result.breaks.items.len);
 
-    try utf8.findWrapBreaksSIMD16("", &result);
-    try testing.expectEqual(@as(usize, 0), result.breaks.items.len);
+    var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
+    defer wrap_result.deinit();
+    try utf8.findWrapBreaksSIMD16("", &wrap_result);
+    try testing.expectEqual(@as(usize, 0), wrap_result.breaks.items.len);
 }
 
 test "edge case: exactly 16 bytes" {
-    var result = utf8.BreakResult.init(testing.allocator);
-    defer result.deinit();
+    var line_result = utf8.LineBreakResult.init(testing.allocator);
+    defer line_result.deinit();
 
     const input = "0123456789abcdef"; // exactly 16 bytes
-    try utf8.findLineBreaksSIMD16(input, &result);
-    try testing.expectEqual(@as(usize, 0), result.breaks.items.len);
+    try utf8.findLineBreaksSIMD16(input, &line_result);
+    try testing.expectEqual(@as(usize, 0), line_result.breaks.items.len);
 
-    try utf8.findWrapBreaksSIMD16(input, &result);
-    try testing.expectEqual(@as(usize, 0), result.breaks.items.len);
+    var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
+    defer wrap_result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &wrap_result);
+    try testing.expectEqual(@as(usize, 0), wrap_result.breaks.items.len);
 }
 
 test "edge case: 17 bytes with break at 16" {
-    var result = utf8.BreakResult.init(testing.allocator);
-    defer result.deinit();
+    var line_result = utf8.LineBreakResult.init(testing.allocator);
+    defer line_result.deinit();
 
     const input = "0123456789abcde\nx"; // break at position 15
-    try utf8.findLineBreaksSIMD16(input, &result);
-    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
-    try testing.expectEqual(@as(usize, 15), result.breaks.items[0]);
+    try utf8.findLineBreaksSIMD16(input, &line_result);
+    try testing.expectEqual(@as(usize, 1), line_result.breaks.items.len);
+    try testing.expectEqual(@as(usize, 15), line_result.breaks.items[0].pos);
 
+    var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
+    defer wrap_result.deinit();
     const input2 = "0123456789abcde x"; // space at position 15
-    try utf8.findWrapBreaksSIMD16(input2, &result);
-    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
-    try testing.expectEqual(@as(usize, 15), result.breaks.items[0]);
+    try utf8.findWrapBreaksSIMD16(input2, &wrap_result);
+    try testing.expectEqual(@as(usize, 1), wrap_result.breaks.items.len);
+    try testing.expectEqual(@as(usize, 15), wrap_result.breaks.items[0]);
 }

@@ -7,6 +7,7 @@ const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const utf8 = @import("utf8.zig");
 
 pub const ArrayRope = @import("array-rope.zig").ArrayRope;
 pub const Rope = @import("rope.zig").Rope;
@@ -893,49 +894,41 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
         }
 
         /// Set the text content of the buffer
-        /// Parses UTF-8 text into lines and grapheme clusters
+        /// Parses UTF-8 text into lines and grapheme clusters using SIMD-optimized line break detection
         pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
             self.reset();
 
             if (text.len == 0) {
-                // Create empty line for empty text
                 const empty_line = try Line.init(self.allocator);
                 try self.lines.append(empty_line);
                 return;
             }
 
-            // Register the text buffer and get its ID
             const mem_id = try self.mem_registry.register(text, false);
 
-            // Parse into lines using memchr for \n
+            var break_result = utf8.LineBreakResult.init(self.allocator);
+            defer break_result.deinit();
+
+            try utf8.findLineBreaksSIMD16(text, &break_result);
+
+            // Parse lines based on detected breaks
             var line_start: u32 = 0;
-            var pos: u32 = 0;
-            var has_trailing_newline = false;
 
-            while (pos < text.len) {
-                if (std.mem.indexOfScalarPos(u8, text, pos, '\n')) |nl_pos| {
-                    var line_end: u32 = @intCast(nl_pos);
-                    // Check for \r before \n
-                    if (nl_pos > 0 and text[nl_pos - 1] == '\r') {
-                        line_end = @intCast(nl_pos - 1);
-                    }
+            for (break_result.breaks.items) |line_break| {
+                const break_pos_u32: u32 = @intCast(line_break.pos);
+                const line_end: u32 = switch (line_break.kind) {
+                    .CRLF => break_pos_u32 - 1,
+                    .CR, .LF => break_pos_u32,
+                };
 
-                    // Parse line with newline included
-                    try self.parseLine(mem_id, text, line_start, line_end, true);
+                try self.parseLine(mem_id, text, line_start, line_end, true);
 
-                    pos = @intCast(nl_pos + 1);
-                    line_start = pos;
-                    has_trailing_newline = (pos == text.len);
-                } else {
-                    // Last line (no trailing \n)
-                    try self.parseLine(mem_id, text, line_start, @intCast(text.len), false);
-                    has_trailing_newline = false;
-                    break;
-                }
+                line_start = break_pos_u32 + 1;
             }
 
-            // If text ends with \n, create an empty final line
-            if (has_trailing_newline) {
+            if (line_start < text.len) {
+                try self.parseLine(mem_id, text, line_start, @intCast(text.len), false);
+            } else if (line_start == text.len and break_result.breaks.items.len > 0) {
                 var final_line = try Line.init(self.allocator);
                 final_line.char_offset = self.char_count;
                 try self.lines.append(final_line);

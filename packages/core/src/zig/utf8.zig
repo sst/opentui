@@ -1,20 +1,48 @@
 const std = @import("std");
 
-// Result structure to hold break positions
-pub const BreakResult = struct {
-    breaks: std.ArrayList(usize),
+pub const LineBreakKind = enum {
+    LF, // \n (Unix/Linux)
+    CR, // \r (Old Mac)
+    CRLF, // \r\n (Windows)
+};
 
-    pub fn init(allocator: std.mem.Allocator) BreakResult {
+pub const LineBreak = struct {
+    pos: usize,
+    kind: LineBreakKind,
+};
+
+pub const LineBreakResult = struct {
+    breaks: std.ArrayList(LineBreak),
+
+    pub fn init(allocator: std.mem.Allocator) LineBreakResult {
         return .{
-            .breaks = std.ArrayList(usize).init(allocator),
+            .breaks = std.ArrayList(LineBreak).init(allocator),
         };
     }
 
-    pub fn deinit(self: *BreakResult) void {
+    pub fn deinit(self: *LineBreakResult) void {
         self.breaks.deinit();
     }
 
-    pub fn reset(self: *BreakResult) void {
+    pub fn reset(self: *LineBreakResult) void {
+        self.breaks.clearRetainingCapacity();
+    }
+};
+
+pub const WrapBreakResult = struct {
+    breaks: std.ArrayList(u16),
+
+    pub fn init(allocator: std.mem.Allocator) WrapBreakResult {
+        return .{
+            .breaks = std.ArrayList(u16).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *WrapBreakResult) void {
+        self.breaks.deinit();
+    }
+
+    pub fn reset(self: *WrapBreakResult) void {
         self.breaks.clearRetainingCapacity();
     }
 };
@@ -76,7 +104,7 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
     };
 }
 
-pub fn findWrapBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
+pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
     result.reset();
     const vector_len = 16;
 
@@ -127,7 +155,7 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
             // Use bit manipulation to extract positions
             while (bitmask != 0) {
                 const bit_pos = @ctz(bitmask);
-                try result.breaks.append(pos + bit_pos);
+                try result.breaks.append(@intCast(pos + bit_pos));
                 bitmask &= bitmask - 1; // Clear lowest set bit
             }
 
@@ -140,12 +168,12 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
         while (i < vector_len) {
             const b0 = text[pos + i];
             if (b0 < 0x80) {
-                if (isAsciiWrapBreak(b0)) try result.breaks.append(pos + i);
+                if (isAsciiWrapBreak(b0)) try result.breaks.append(@intCast(pos + i));
                 i += 1;
             } else {
                 const dec = decodeUtf8Unchecked(text, pos + i);
                 if (pos + i + dec.len > text.len) break;
-                if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos + i);
+                if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(@intCast(pos + i));
                 i += dec.len;
             }
         }
@@ -157,18 +185,18 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
     while (i < text.len) {
         const b0 = text[i];
         if (b0 < 0x80) {
-            if (isAsciiWrapBreak(b0)) try result.breaks.append(i);
+            if (isAsciiWrapBreak(b0)) try result.breaks.append(@intCast(i));
             i += 1;
         } else {
             const dec = decodeUtf8Unchecked(text, i);
             if (i + dec.len > text.len) break;
-            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(i);
+            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(@intCast(i));
             i += dec.len;
         }
     }
 }
 
-pub fn findLineBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
+pub fn findLineBreaksSIMD16(text: []const u8, result: *LineBreakResult) !void {
     result.reset();
     const vector_len = 16; // Use 16-byte vectors (SSE2/NEON compatible)
     const Vec = @Vector(vector_len, u8);
@@ -199,14 +227,16 @@ pub fn findLineBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
                         prev_was_cr = false;
                         continue;
                     }
-                    try result.breaks.append(absolute_index);
+                    // Check if this is part of CRLF
+                    const kind: LineBreakKind = if (absolute_index > 0 and text[absolute_index - 1] == '\r') .CRLF else .LF;
+                    try result.breaks.append(.{ .pos = absolute_index, .kind = kind });
                 } else if (b == '\r') {
                     // Check for CRLF
                     if (absolute_index + 1 < text.len and text[absolute_index + 1] == '\n') {
-                        try result.breaks.append(absolute_index + 1);
+                        try result.breaks.append(.{ .pos = absolute_index + 1, .kind = .CRLF });
                         i += 1; // Skip the \n in next iteration
                     } else {
-                        try result.breaks.append(absolute_index);
+                        try result.breaks.append(.{ .pos = absolute_index, .kind = .CR });
                     }
                 }
             }
@@ -230,13 +260,14 @@ pub fn findLineBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
                     continue;
                 }
             }
-            try result.breaks.append(pos);
+            const kind: LineBreakKind = if (pos > 0 and text[pos - 1] == '\r') .CRLF else .LF;
+            try result.breaks.append(.{ .pos = pos, .kind = kind });
         } else if (b == '\r') {
             if (pos + 1 < text.len and text[pos + 1] == '\n') {
-                try result.breaks.append(pos + 1);
+                try result.breaks.append(.{ .pos = pos + 1, .kind = .CRLF });
                 pos += 1;
             } else {
-                try result.breaks.append(pos);
+                try result.breaks.append(.{ .pos = pos, .kind = .CR });
             }
         }
         prev_was_cr = false;
