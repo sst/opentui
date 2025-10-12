@@ -3,6 +3,7 @@ const bench_utils = @import("bench-utils.zig");
 
 // Import all benchmark modules
 const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
+const rope_bench = @import("bench/rope_bench.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -25,6 +26,10 @@ pub fn main() !void {
     const text_buffer_view_results = try text_buffer_view_bench.run(allocator, show_mem);
     defer allocator.free(text_buffer_view_results);
     try bench_utils.printResults(stdout, text_buffer_view_results);
+
+    const rope_results = try rope_bench.run(allocator, show_mem);
+    defer allocator.free(rope_results);
+    try bench_utils.printResults(stdout, rope_results);
 
     try stdout.print("\n=== Benchmarks complete ===\n", .{});
 }
