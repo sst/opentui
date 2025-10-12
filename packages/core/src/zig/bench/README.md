@@ -20,7 +20,21 @@ zig build bench -Doptimize=ReleaseFast -- --mem
 
 ## Adding New Benchmarks
 
-1. Create a new `*_bench.zig` file in this directory
-2. Import it in `bench.zig`
-3. Call benchmark functions from `main()`
-4. Follow the existing pattern for result reporting
+To add a new benchmark:
+
+1. Create a new `*_bench.zig` file in the `bench/` directory
+2. Implement a `pub fn run(allocator: std.mem.Allocator, show_mem: bool) !void` function
+   - Set up any benchmark-specific dependencies (grapheme pool, Unicode data, etc.)
+   - The `show_mem` flag indicates whether to display memory statistics
+3. Import it in `bench.zig`:
+   ```zig
+   const my_new_bench = @import("bench/my_new_bench.zig");
+   ```
+4. Call it in `main()`:
+   ```zig
+   try my_new_bench.run(allocator, show_mem);
+   ```
+
+Each benchmark manages its own dependencies, so you only set up what you need.
+
+See `bench/text-buffer-view_bench.zig` for a complete example.

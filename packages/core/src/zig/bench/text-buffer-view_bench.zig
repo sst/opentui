@@ -12,7 +12,7 @@ const TextBufferViewArray = text_buffer_view.TextBufferViewArray;
 const TextBufferViewRope = text_buffer_view.TextBufferViewRope;
 const WrapMode = text_buffer.WrapMode;
 
-pub const BenchResult = struct {
+const BenchResult = struct {
     min_ns: u64,
     avg_ns: u64,
     max_ns: u64,
@@ -20,7 +20,7 @@ pub const BenchResult = struct {
     iterations: usize,
 };
 
-pub const MemStats = struct {
+const MemStats = struct {
     text_buffer_bytes: usize,
     view_bytes: usize,
 };
@@ -228,7 +228,7 @@ pub fn formatBytes(bytes: usize) struct { value: f64, unit: []const u8 } {
     }
 }
 
-pub fn printBenchResult(
+fn printBenchResult(
     writer: anytype,
     name: []const u8,
     result: BenchResult,
@@ -257,5 +257,105 @@ pub fn printBenchResult(
             view_mem.value,
             view_mem.unit,
         });
+    }
+}
+
+pub fn run(
+    allocator: std.mem.Allocator,
+    show_mem: bool,
+) !void {
+    const stdout = std.io.getStdOut().writer();
+
+    try stdout.print("\n=== TextBufferView Wrapping Benchmarks ===\n\n", .{});
+
+    // Set up benchmark-specific dependencies
+    const pool = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+
+    const unicode_data = gp.initGlobalUnicodeData(allocator);
+    defer gp.deinitGlobalUnicodeData(allocator);
+    const graphemes_ptr, const display_width_ptr = unicode_data;
+
+    const text = try generateLargeText(allocator, 5000, 2 * 1024 * 1024);
+    defer allocator.free(text);
+
+    const text_mb = @as(f64, @floatFromInt(text.len)) / (1024.0 * 1024.0);
+    const line_count = blk: {
+        var count: usize = 0;
+        for (text) |byte| {
+            if (byte == '\n') count += 1;
+        }
+        break :blk count;
+    };
+
+    try stdout.print("Generated {d:.2} MiB of text ({d} lines)\n", .{ text_mb, line_count });
+    if (show_mem) {
+        try stdout.print("Memory stats enabled\n", .{});
+    }
+    try stdout.print("\n", .{});
+
+    const scenarios = [_]struct {
+        impl: []const u8,
+        width: u32,
+        mode: []const u8,
+    }{
+        .{ .impl = "Array", .width = 40, .mode = "char" },
+        .{ .impl = "Array", .width = 80, .mode = "char" },
+        .{ .impl = "Array", .width = 120, .mode = "char" },
+        .{ .impl = "Array", .width = 40, .mode = "word" },
+        .{ .impl = "Array", .width = 80, .mode = "word" },
+        .{ .impl = "Array", .width = 120, .mode = "word" },
+        .{ .impl = "Rope", .width = 40, .mode = "char" },
+        .{ .impl = "Rope", .width = 80, .mode = "char" },
+        .{ .impl = "Rope", .width = 120, .mode = "char" },
+        .{ .impl = "Rope", .width = 40, .mode = "word" },
+        .{ .impl = "Rope", .width = 80, .mode = "word" },
+        .{ .impl = "Rope", .width = 120, .mode = "word" },
+    };
+
+    const iterations: usize = 5;
+
+    for (scenarios) |scenario| {
+        const wrap_mode = if (std.mem.eql(u8, scenario.mode, "char"))
+            WrapMode.char
+        else
+            WrapMode.word;
+
+        const bench_name = try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, {s}, width={d})", .{
+            scenario.impl,
+            scenario.mode,
+            scenario.width,
+        });
+        defer allocator.free(bench_name);
+
+        if (std.mem.eql(u8, scenario.impl, "Array")) {
+            const bench_data = try benchWrapArray(
+                allocator,
+                pool,
+                graphemes_ptr,
+                display_width_ptr,
+                text,
+                scenario.width,
+                wrap_mode,
+                iterations,
+                show_mem,
+            );
+
+            try printBenchResult(stdout, bench_name, bench_data.result, bench_data.mem);
+        } else {
+            const bench_data = try benchWrapRope(
+                allocator,
+                pool,
+                graphemes_ptr,
+                display_width_ptr,
+                text,
+                scenario.width,
+                wrap_mode,
+                iterations,
+                show_mem,
+            );
+
+            try printBenchResult(stdout, bench_name, bench_data.result, bench_data.mem);
+        }
     }
 }
