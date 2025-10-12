@@ -159,7 +159,7 @@ pub fn findWrapBreaksStdLib(text: []const u8, result: *BreakResult) !void {
         // Quick check: if entire chunk is ASCII, we can process it faster
         if (!@reduce(.Or, is_non_ascii)) {
             // All ASCII - check each byte for break chars
-            for (0..vector_len) |i| {
+            inline for (0..vector_len) |i| {
                 if (isAsciiWrapBreak(text[pos + i])) {
                     try result.breaks.append(pos + i);
                 }
