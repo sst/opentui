@@ -499,10 +499,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editBufferJoinLines: {
-      args: ["ptr"],
-      returns: "void",
-    },
     editBufferMoveCursorLeft: {
       args: ["ptr"],
       returns: "void",
@@ -642,10 +638,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewDeleteToLineEnd: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewJoinLines: {
       args: ["ptr"],
       returns: "void",
     },
@@ -1064,7 +1056,6 @@ export interface RenderLib {
   editBufferNewLine: (buffer: Pointer) => void
   editBufferDeleteLine: (buffer: Pointer) => void
   editBufferDeleteToLineEnd: (buffer: Pointer) => void
-  editBufferJoinLines: (buffer: Pointer) => void
   editBufferMoveCursorLeft: (buffer: Pointer) => void
   editBufferMoveCursorRight: (buffer: Pointer) => void
   editBufferMoveCursorUp: (buffer: Pointer) => void
@@ -1126,7 +1117,6 @@ export interface RenderLib {
   editorViewNewLine: (view: Pointer) => void
   editorViewDeleteLine: (view: Pointer) => void
   editorViewDeleteToLineEnd: (view: Pointer) => void
-  editorViewJoinLines: (view: Pointer) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2086,10 +2076,6 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferDeleteToLineEnd(buffer)
   }
 
-  public editBufferJoinLines(buffer: Pointer): void {
-    this.opentui.symbols.editBufferJoinLines(buffer)
-  }
-
   public editBufferMoveCursorLeft(buffer: Pointer): void {
     this.opentui.symbols.editBufferMoveCursorLeft(buffer)
   }
@@ -2271,10 +2257,6 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewDeleteToLineEnd(view: Pointer): void {
     this.opentui.symbols.editorViewDeleteToLineEnd(view)
-  }
-
-  public editorViewJoinLines(view: Pointer): void {
-    this.opentui.symbols.editorViewJoinLines(view)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

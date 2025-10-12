@@ -91,11 +91,6 @@ export class EditBuffer {
     this.lib.editBufferDeleteToLineEnd(this.bufferPtr)
   }
 
-  public joinLines(): void {
-    this.guard()
-    this.lib.editBufferJoinLines(this.bufferPtr)
-  }
-
   public moveCursorLeft(): void {
     this.guard()
     this.lib.editBufferMoveCursorLeft(this.bufferPtr)

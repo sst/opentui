@@ -149,16 +149,6 @@ describe("EditorView", () => {
 
       expect(view.getVirtualLineCount()).toBe(2)
     })
-
-    it("should update after line join", () => {
-      buffer.setText("Hello\nWorld")
-      expect(view.getVirtualLineCount()).toBe(2)
-
-      buffer.joinLines()
-
-      expect(view.getVirtualLineCount()).toBe(1)
-      expect(buffer.getText()).toBe("HelloWorld")
-    })
   })
 
   describe("viewport with wrapping and editing", () => {

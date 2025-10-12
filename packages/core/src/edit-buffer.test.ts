@@ -242,14 +242,6 @@ describe("EditBuffer", () => {
       expect(buffer.getText()).toBe("Hello ")
     })
 
-    it("should join lines", () => {
-      buffer.setText("Hello\nWorld")
-
-      buffer.joinLines()
-
-      expect(buffer.getText()).toBe("HelloWorld")
-    })
-
     it("should handle backspace in active edit session", () => {
       buffer.setText("")
 
@@ -301,11 +293,6 @@ describe("EditBuffer", () => {
       buffer.deleteLine()
 
       expect(buffer.getText()).toBe("Line 1\nLine 3")
-
-      buffer.gotoLine(0)
-      buffer.joinLines()
-
-      expect(buffer.getText()).toBe("Line 1Line 3")
     })
   })
 

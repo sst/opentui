@@ -200,18 +200,6 @@ describe("EditorRenderable", () => {
 
       expect(editor.plainText).toBe("Hello ")
     })
-
-    it("should join lines", async () => {
-      const { editor } = await createEditorRenderable(currentRenderer, {
-        content: "Hello\nWorld",
-        width: 40,
-        height: 10,
-      })
-
-      editor.joinLines()
-
-      expect(editor.plainText).toBe("HelloWorld")
-    })
   })
 
   describe("Cursor Movement via Methods", () => {
@@ -954,20 +942,6 @@ describe("EditorRenderable", () => {
 
       currentMockInput.pressKey("CTRL_K")
       expect(editor.plainText).toBe("Hello ")
-    })
-
-    it("should join lines with Ctrl+J", async () => {
-      const { editor } = await createEditorRenderable(currentRenderer, {
-        content: "Hello\nWorld",
-        width: 40,
-        height: 10,
-      })
-
-      editor.focus()
-
-      // Use the method directly since CTRL_J might be interpreted as newline
-      editor.joinLines()
-      expect(editor.plainText).toBe("HelloWorld")
     })
   })
 

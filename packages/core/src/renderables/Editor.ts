@@ -100,10 +100,6 @@ export class EditorRenderable extends EditBufferRenderable {
     } else if (keyCtrl && keyName === "k") {
       this.deleteToLineEnd()
       return true
-    } else if (keyCtrl && keyName === "j") {
-      // TODO: What does this do again?
-      this.joinLines()
-      return true
     }
     // Line operations
     else if (keyName === "return" || keyName === "enter") {
@@ -239,12 +235,6 @@ export class EditorRenderable extends EditBufferRenderable {
   public deleteToLineEnd(): void {
     this._ctx.clearSelection()
     this.editorView.deleteToLineEnd()
-    this.requestRender()
-  }
-
-  public joinLines(): void {
-    this._ctx.clearSelection()
-    this.editorView.joinLines()
     this.requestRender()
   }
 

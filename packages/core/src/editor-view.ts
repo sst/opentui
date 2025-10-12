@@ -217,11 +217,6 @@ export class EditorView {
     this.lib.editorViewDeleteToLineEnd(this.viewPtr)
   }
 
-  public joinLines(): void {
-    this.guard()
-    this.lib.editorViewJoinLines(this.viewPtr)
-  }
-
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

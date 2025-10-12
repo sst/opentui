@@ -688,22 +688,6 @@ export fn editBufferDeleteToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) vo
     }
 }
 
-export fn editBufferJoinLines(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    const cursor = edit_buffer.getPrimaryCursor();
-    const tb = edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-
-    if (cursor.row + 1 >= line_count) return;
-
-    // Move to end of current line and delete to start of next line
-    if (tb.getLine(cursor.row)) |line| {
-        edit_buffer.deleteRange(
-            .{ .row = cursor.row, .col = line.width },
-            .{ .row = cursor.row + 1, .col = 0 },
-        ) catch {};
-    }
-}
-
 export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     const cursor = edit_buffer.getPrimaryCursor();
     edit_buffer.setCursor(cursor.row, 0) catch {};
@@ -966,21 +950,6 @@ export fn editorViewDeleteToLineEnd(view: *editor_view.EditorView) void {
         view.edit_buffer.deleteRange(
             cursor,
             .{ .row = cursor.row, .col = line.width },
-        ) catch {};
-    }
-}
-
-export fn editorViewJoinLines(view: *editor_view.EditorView) void {
-    const cursor = view.edit_buffer.getPrimaryCursor();
-    const tb = view.edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-
-    if (cursor.row + 1 >= line_count) return;
-
-    if (tb.getLine(cursor.row)) |line| {
-        view.edit_buffer.deleteRange(
-            .{ .row = cursor.row, .col = line.width },
-            .{ .row = cursor.row + 1, .col = 0 },
         ) catch {};
     }
 }
