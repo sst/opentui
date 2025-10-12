@@ -1,0 +1,4 @@
+*.o
+utf8-scan-bench
+utf8-bench-tests
+utf8-wrap-bench

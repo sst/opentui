@@ -1,44 +1,45 @@
-//! UTF-8 Text Scanning Benchmark
+//! UTF-8 Word Wrap Break Point Detection Benchmark
 //!
 //! This program benchmarks various methods for scanning UTF-8 text
-//! for line breaks (\n, \r, \r\n) as described in "Efficient UTF-8 Text Scanning in Zig".
+//! for word wrap break points as described in "Efficient UTF-8 Text Scanning in Zig".
 //!
 //! Methods benchmarked:
 //! 1. Baseline Pure Loop - Simple byte-by-byte iteration
 //! 2. Stdlib indexOfAny - Using Zig's optimized standard library functions
 //! 3. SIMD 16-byte - Manual vectorization with 16-byte SIMD vectors
 //! 4. SIMD 32-byte - Manual vectorization with 32-byte SIMD vectors
-//! 5. Bitmask 128-byte - Zed editor-inspired bitmask approach
+//! 5. Bitmask 128-byte - Bitmask approach
 //! 6. Multithreaded - Parallel scanning with 2, 4, and 8 threads
 //!
 //! Usage:
 //!   Build:
-//!     zig build-exe utf8-scan-bench.zig -O ReleaseFast
+//!     zig build-exe utf8-wrap-bench.zig -O ReleaseFast
 //!
 //!   Benchmark a file:
-//!     ./utf8-scan-bench <file_path>
+//!     ./utf8-wrap-bench <file_path>
 //!
 //!   Generate test files:
-//!     ./utf8-scan-bench --generate-tests [max_size]
+//!     ./utf8-wrap-bench --generate-tests [max_size]
 //!
 //!     By default, generates 16 files from 1KB to 1GB in exponential steps.
 //!     Optional max_size parameter allows customizing the range:
-//!       ./utf8-scan-bench --generate-tests 10M    # 1KB to 10MB
-//!       ./utf8-scan-bench --generate-tests 100M   # 1KB to 100MB
-//!       ./utf8-scan-bench --generate-tests 5MB    # 1KB to 5MB
+//!       ./utf8-wrap-bench --generate-tests 10M    # 1KB to 10MB
+//!       ./utf8-wrap-bench --generate-tests 100M   # 1KB to 100MB
+//!       ./utf8-wrap-bench --generate-tests 5MB    # 1KB to 5MB
 //!
 //!     Supported size suffixes: K/KB, M/MB, G/GB (case-insensitive)
 //!
 //!   Benchmark all generated files:
-//!     ./utf8-scan-bench --bench-all
+//!     ./utf8-wrap-bench --bench-all
 //!
 
 const std = @import("std");
 const builtin = @import("builtin");
-const scan = @import("utf8-scan.zig");
+const wrap = @import("utf8-wrap.zig");
+const testgen = @import("test-file-generator.zig");
 
 // Re-export for convenience
-const BreakResult = scan.BreakResult;
+const BreakResult = wrap.BreakResult;
 
 // Benchmark runner
 const BenchmarkResult = struct {
@@ -119,53 +120,8 @@ fn formatNanoseconds(ns: u64, writer: anytype) !void {
     }
 }
 
-fn formatBytes(bytes: usize, writer: anytype) !void {
-    if (bytes < 1024) {
-        try writer.print("{d} B", .{bytes});
-    } else if (bytes < 1024 * 1024) {
-        try writer.print("{d:.2} KB", .{@as(f64, @floatFromInt(bytes)) / 1024.0});
-    } else if (bytes < 1024 * 1024 * 1024) {
-        try writer.print("{d:.2} MB", .{@as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0)});
-    } else {
-        try writer.print("{d:.2} GB", .{@as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0 * 1024.0)});
-    }
-}
-
-fn parseSizeString(size_str: []const u8) !usize {
-    if (size_str.len == 0) return error.InvalidSize;
-
-    // Find where the number ends and suffix begins
-    var num_end: usize = 0;
-    while (num_end < size_str.len) : (num_end += 1) {
-        const c = size_str[num_end];
-        if (!std.ascii.isDigit(c) and c != '.') break;
-    }
-
-    if (num_end == 0) return error.InvalidSize;
-
-    const num_str = size_str[0..num_end];
-    const suffix = if (num_end < size_str.len) size_str[num_end..] else "";
-
-    // Parse the number (support both integer and float)
-    const base_value = if (std.mem.indexOfScalar(u8, num_str, '.')) |_|
-        try std.fmt.parseFloat(f64, num_str)
-    else
-        @as(f64, @floatFromInt(try std.fmt.parseInt(usize, num_str, 10)));
-
-    // Apply multiplier based on suffix
-    const multiplier: f64 = if (suffix.len == 0)
-        1.0
-    else if (std.ascii.eqlIgnoreCase(suffix, "K") or std.ascii.eqlIgnoreCase(suffix, "KB"))
-        1024.0
-    else if (std.ascii.eqlIgnoreCase(suffix, "M") or std.ascii.eqlIgnoreCase(suffix, "MB"))
-        1024.0 * 1024.0
-    else if (std.ascii.eqlIgnoreCase(suffix, "G") or std.ascii.eqlIgnoreCase(suffix, "GB"))
-        1024.0 * 1024.0 * 1024.0
-    else
-        return error.InvalidSizeSuffix;
-
-    return @intFromFloat(base_value * multiplier);
-}
+const formatBytes = testgen.formatBytes;
+const parseSizeString = testgen.parseSizeString;
 
 // Common benchmark runner for all methods
 fn runAllBenchmarks(
@@ -177,120 +133,52 @@ fn runAllBenchmarks(
     var results = std.ArrayList(BenchmarkResult).init(allocator);
     errdefer results.deinit();
 
-    try results.append(try runBenchmark("Baseline Pure Loop", text, iterations, allocator, scan.findLineBreaksBaseline));
-    try results.append(try runBenchmark("Stdlib indexOfAny", text, iterations, allocator, scan.findLineBreaksStdLib));
-    try results.append(try runBenchmark("SIMD 16-byte", text, iterations, allocator, scan.findLineBreaksSIMD16));
-    try results.append(try runBenchmark("SIMD 32-byte", text, iterations, allocator, scan.findLineBreaksSIMD32));
-    try results.append(try runBenchmark("Bitmask 128-byte", text, iterations, allocator, scan.findLineBreaksBitmask128));
+    try results.append(try runBenchmark("Baseline Pure Loop", text, iterations, allocator, wrap.findWrapBreaksBaseline));
+    try results.append(try runBenchmark("Stdlib indexOfAny", text, iterations, allocator, wrap.findWrapBreaksStdLib));
+    try results.append(try runBenchmark("SIMD 16-byte", text, iterations, allocator, wrap.findWrapBreaksSIMD16));
+    try results.append(try runBenchmark("SIMD 32-byte", text, iterations, allocator, wrap.findWrapBreaksSIMD32));
+    try results.append(try runBenchmark("Bitmask 128-byte", text, iterations, allocator, wrap.findWrapBreaksBitmask128));
 
     if (include_all_mt) {
-        try results.append(try runBenchmarkWithAllocator("MT + Baseline", text, iterations, allocator, scan.findLineBreaksMultithreadedBaseline));
-        try results.append(try runBenchmarkWithAllocator("MT + StdLib", text, iterations, allocator, scan.findLineBreaksMultithreadedStdLib));
-        try results.append(try runBenchmarkWithAllocator("MT + SIMD16", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16));
-        try results.append(try runBenchmarkWithAllocator("MT + SIMD32", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD32));
-        try results.append(try runBenchmarkWithAllocator("MT + Bitmask", text, iterations, allocator, scan.findLineBreaksMultithreadedBitmask128));
+        try results.append(try runBenchmarkWithAllocator("MT + Baseline", text, iterations, allocator, wrap.findWrapBreaksMultithreadedBaseline));
+        try results.append(try runBenchmarkWithAllocator("MT + StdLib", text, iterations, allocator, wrap.findWrapBreaksMultithreadedStdLib));
+        try results.append(try runBenchmarkWithAllocator("MT + SIMD16", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16));
+        try results.append(try runBenchmarkWithAllocator("MT + SIMD32", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD32));
+        try results.append(try runBenchmarkWithAllocator("MT + Bitmask", text, iterations, allocator, wrap.findWrapBreaksMultithreadedBitmask128));
 
         // Fixed thread count variants (SIMD16 with 2, 4, 8 threads)
         const cpu_count = std.Thread.getCpuCount() catch 2;
         if (cpu_count >= 2) {
-            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (2T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_2T));
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (2T)", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16_2T));
         }
         if (cpu_count >= 4) {
-            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (4T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_4T));
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (4T)", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16_4T));
         }
         if (cpu_count >= 8) {
-            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (8T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_8T));
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (8T)", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16_8T));
         }
     } else {
         // For batch benchmarks, show thread scaling
         const cpu_count = std.Thread.getCpuCount() catch 2;
         if (cpu_count >= 2) {
-            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (2T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_2T));
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (2T)", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16_2T));
         }
         if (cpu_count >= 4) {
-            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (4T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_4T));
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (4T)", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16_4T));
         }
         if (cpu_count >= 8) {
-            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (8T)", text, iterations, allocator, scan.findLineBreaksMultithreadedSIMD16_8T));
+            try results.append(try runBenchmarkWithAllocator("MT + SIMD16 (8T)", text, iterations, allocator, wrap.findWrapBreaksMultithreadedSIMD16_8T));
         }
     }
 
     return results;
 }
 
-// Test file generation
-fn generateTestFiles(max_size_arg: ?usize) !void {
-    const stdout = std.io.getStdOut().writer();
-
-    // Create test directory
-    const test_dir = "utf8-bench-tests";
-    std.fs.cwd().makeDir(test_dir) catch |err| {
-        if (err != error.PathAlreadyExists) return err;
-    };
-
-    // Sample text with various line break patterns
-    const sample_text =
-        "The quick brown fox jumps over the lazy dog.\n" ++
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n" ++
-        "Windows uses CRLF line endings.\r\n" ++
-        "Unix uses LF line endings.\n" ++
-        "Classic Mac used CR line endings.\r" ++
-        "UTF-8 text with various whitespace: tabs\tspaces  mixed.\n" ++
-        "This is a longer line that simulates typical source code with multiple statements and expressions that might wrap.\n" ++
-        "Short line\n" ++
-        "\n" ++
-        "Empty line above. Here's some more text to make the sample more realistic.\n";
-
-    // Generate 16 files with exponentially increasing sizes
-    const file_count = 16;
-    const min_size: usize = 1024; // 1 KB
-    const max_size: usize = max_size_arg orelse (1024 * 1024 * 1024); // Default 1 GB
-
-    try stdout.print("Generating test files in '{s}/' (1 KB to ", .{test_dir});
-    try formatBytes(max_size, stdout);
-    try stdout.writeAll(")...\n\n");
-
-    // Calculate growth factor: max_size = min_size * factor^(file_count-1)
-    const growth_factor = std.math.pow(f64, @as(f64, @floatFromInt(max_size)) / @as(f64, @floatFromInt(min_size)), 1.0 / @as(f64, @floatFromInt(file_count - 1)));
-
-    var i: usize = 0;
-    while (i < file_count) : (i += 1) {
-        const target_size = @as(usize, @intFromFloat(@as(f64, @floatFromInt(min_size)) * std.math.pow(f64, growth_factor, @as(f64, @floatFromInt(i)))));
-
-        var filename_buf: [256]u8 = undefined;
-        const filename = try std.fmt.bufPrint(&filename_buf, "{s}/test_{d:0>2}.txt", .{ test_dir, i });
-
-        try stdout.print("Creating {s} (target: ", .{filename});
-        try formatBytes(target_size, stdout);
-        try stdout.writeAll(")...\n");
-
-        const file = try std.fs.cwd().createFile(filename, .{});
-        defer file.close();
-
-        var buffered = std.io.bufferedWriter(file.writer());
-        const writer = buffered.writer();
-
-        var written: usize = 0;
-        while (written < target_size) {
-            const to_write = @min(sample_text.len, target_size - written);
-            try writer.writeAll(sample_text[0..to_write]);
-            written += to_write;
-        }
-
-        try buffered.flush();
-
-        const actual_size = (try file.stat()).size;
-        try stdout.writeAll("  Actual: ");
-        try formatBytes(actual_size, stdout);
-        try stdout.writeAll("\n");
-    }
-
-    try stdout.writeAll("\n✓ Test files generated successfully!\n");
-}
+// Test file generation (using shared test directory)
+const test_dir = "utf8-bench-tests";
 
 fn benchmarkAllTestFiles(allocator: std.mem.Allocator) !void {
     const stdout = std.io.getStdOut().writer();
-    const test_dir = "utf8-bench-tests";
 
     try stdout.writeAll("\n");
     try stdout.writeAll("=" ** 80);
@@ -407,7 +295,7 @@ pub fn main() !void {
             max_size = try parseSizeString(args[2]);
         }
 
-        try generateTestFiles(max_size);
+        try testgen.generateTestFiles(test_dir, max_size);
         return;
     }
 
