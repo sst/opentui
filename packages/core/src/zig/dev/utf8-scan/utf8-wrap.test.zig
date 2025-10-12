@@ -54,12 +54,12 @@ const golden_tests = [_]TestCase{
     .{
         .name = "newline",
         .input = "a\nb",
-        .expected = &[_]usize{1},
+        .expected = &[_]usize{},
     },
     .{
         .name = "carriage return",
         .input = "a\rb",
-        .expected = &[_]usize{1},
+        .expected = &[_]usize{},
     },
     .{
         .name = "dash",
@@ -103,8 +103,39 @@ const golden_tests = [_]TestCase{
     },
     .{
         .name = "all break types",
-        .input = " \t\r\n-/\\.,:;!?()[]{}",
-        .expected = &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 },
+        .input = " \t-/\\.,:;!?()[]{}",
+        .expected = &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 },
+    },
+    // Unicode spaces and hyphens
+    .{
+        .name = "nbsp",
+        .input = "a\u{00A0}b",
+        .expected = &[_]usize{1},
+    },
+    .{
+        .name = "em space",
+        .input = "a\u{2003}b",
+        .expected = &[_]usize{1},
+    },
+    .{
+        .name = "ideo space",
+        .input = "a\u{3000}b",
+        .expected = &[_]usize{1},
+    },
+    .{
+        .name = "soft hyphen",
+        .input = "pre\u{00AD}post",
+        .expected = &[_]usize{3},
+    },
+    .{
+        .name = "unicode hyphen",
+        .input = "pre\u{2010}post",
+        .expected = &[_]usize{3},
+    },
+    .{
+        .name = "zero width space",
+        .input = "a\u{200B}b",
+        .expected = &[_]usize{1},
     },
 };
 
@@ -255,6 +286,28 @@ test "boundary: space at SIMD16 edge (15-16)" {
 
     try testMethod("SIMD16", wrap.findWrapBreaksSIMD16, .{
         .name = "space@15",
+        .input = &buf,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "boundary: unicode NBSP lead at SIMD16 edge (15)" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    // NBSP U+00A0 = 0xC2 0xA0
+    buf[15] = 0xC2;
+    buf[16] = 0xA0;
+
+    const expected = [_]usize{15};
+
+    try testMethod("Baseline", wrap.findWrapBreaksBaseline, .{
+        .name = "nbsp@15",
+        .input = &buf,
+        .expected = &expected,
+    }, testing.allocator);
+
+    try testMethod("SIMD16", wrap.findWrapBreaksSIMD16, .{
+        .name = "nbsp@15",
         .input = &buf,
         .expected = &expected,
     }, testing.allocator);
@@ -463,6 +516,9 @@ test "property: random small buffers" {
     const random = prng.random();
 
     const break_chars = " \t\r\n-/\\.,:;!?()[]{}";
+    // Adjust to match policy (no CR/LF)
+    _ = break_chars;
+    const break_chars2 = " \t-/\\.,:;!?()[]{}";
 
     var i: usize = 0;
     while (i < 100) : (i += 1) {
@@ -476,8 +532,8 @@ test "property: random small buffers" {
             const r = random.uintLessThan(u8, 100);
             if (r < 20) {
                 // 20% chance of break character
-                const break_idx = random.uintLessThan(usize, break_chars.len);
-                b.* = break_chars[break_idx];
+                const break_idx = random.uintLessThan(usize, break_chars2.len);
+                b.* = break_chars2[break_idx];
             } else {
                 // 80% chance of regular letter
                 b.* = 'a' + random.uintLessThan(u8, 26);
@@ -485,6 +541,40 @@ test "property: random small buffers" {
         }
 
         try testAllMethodsMatch(buf, testing.allocator);
+    }
+}
+
+// Minimal multithreaded correctness test (>2KB, 2 threads)
+test "mt: baseline vs simd16 2T" {
+    const size = 4096;
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    // Fill with mostly letters, periodic ASCII and Unicode breaks
+    var i: usize = 0;
+    while (i < size) : (i += 1) {
+        if (i % 97 == 0) {
+            buf[i] = ' ';
+        } else if (i % 233 == 0 and i + 1 < size) {
+            // NBSP 0xC2 0xA0
+            buf[i] = 0xC2;
+            buf[i + 1] = 0xA0;
+        } else {
+            buf[i] = 'a' + @as(u8, @intCast(i % 26));
+        }
+    }
+
+    var res_base = wrap.BreakResult.init(testing.allocator);
+    defer res_base.deinit();
+    try wrap.findWrapBreaksBaseline(buf, &res_base);
+
+    var res_mt = wrap.BreakResult.init(testing.allocator);
+    defer res_mt.deinit();
+    try wrap.findWrapBreaksMultithreadedSIMD16_2T(buf, &res_mt, testing.allocator);
+
+    try testing.expectEqual(res_base.breaks.items.len, res_mt.breaks.items.len);
+    for (res_base.breaks.items, 0..) |exp, idx| {
+        try testing.expectEqual(exp, res_mt.breaks.items[idx]);
     }
 }
 

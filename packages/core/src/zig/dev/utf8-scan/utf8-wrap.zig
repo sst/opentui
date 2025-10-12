@@ -18,9 +18,9 @@
 //!
 //! Single-threaded:
 //! - `findWrapBreaksBaseline`: Simple byte-by-byte iteration (reference implementation)
-//! - `findWrapBreaksStdLib`: Using Zig's optimized std.mem.indexOfAny
-//! - `findWrapBreaksSIMD16`: Manual SIMD vectorization with 16-byte vectors (SSE2/NEON)
-//! - `findWrapBreaksSIMD32`: Manual SIMD vectorization with 32-byte vectors (AVX2)
+//! - `findWrapBreaksStdLib`: Using Zig's optimized std.mem.indexOfAny (FASTEST)
+//! - `findWrapBreaksSIMD16`: 16-byte chunked scanning
+//! - `findWrapBreaksSIMD32`: 32-byte chunked scanning
 //! - `findWrapBreaksBitmask128`: Bitmask approach (128-byte chunks)
 //!
 //! Multithreaded (parallel scanning):
@@ -67,10 +67,10 @@ pub const BreakResult = struct {
     }
 };
 
-// Helper function to check if a byte is a wrap break point
-inline fn isWrapBreak(b: u8) bool {
+// Helper function to check if an ASCII byte is a wrap break point (CR/LF excluded)
+inline fn isAsciiWrapBreak(b: u8) bool {
     return switch (b) {
-        ' ', '\t', '\r', '\n' => true, // Whitespace
+        ' ', '\t' => true, // Whitespace (no CR/LF in inputs)
         '-' => true, // Dash
         '/', '\\' => true, // Slashes
         '.', ',', ';', ':', '!', '?' => true, // Punctuation
@@ -79,24 +79,100 @@ inline fn isWrapBreak(b: u8) bool {
     };
 }
 
+// Decode a UTF-8 codepoint starting at pos. Assumes valid UTF-8 input.
+// Returns (codepoint, length). If the remaining bytes are insufficient, returns length 1.
+inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21, len: u3 } {
+    const b0 = text[pos];
+    if (b0 < 0x80) return .{ .cp = @intCast(b0), .len = 1 };
+
+    if (pos + 1 >= text.len) return .{ .cp = 0xFFFD, .len = 1 };
+    const b1 = text[pos + 1];
+
+    if ((b0 & 0xE0) == 0xC0) {
+        const cp2: u21 = @intCast((@as(u32, b0 & 0x1F) << 6) | @as(u32, b1 & 0x3F));
+        return .{ .cp = cp2, .len = 2 };
+    }
+
+    if (pos + 2 >= text.len) return .{ .cp = 0xFFFD, .len = 1 };
+    const b2 = text[pos + 2];
+
+    if ((b0 & 0xF0) == 0xE0) {
+        const cp3: u21 = @intCast((@as(u32, b0 & 0x0F) << 12) | (@as(u32, b1 & 0x3F) << 6) | @as(u32, b2 & 0x3F));
+        return .{ .cp = cp3, .len = 3 };
+    }
+
+    if (pos + 3 >= text.len) return .{ .cp = 0xFFFD, .len = 1 };
+    const b3 = text[pos + 3];
+    const cp4: u21 = @intCast((@as(u32, b0 & 0x07) << 18) | (@as(u32, b1 & 0x3F) << 12) | (@as(u32, b2 & 0x3F) << 6) | @as(u32, b3 & 0x3F));
+    return .{ .cp = cp4, .len = 4 };
+}
+
+// Unicode wrap-break codepoints
+inline fn isUnicodeWrapBreak(cp: u21) bool {
+    return switch (cp) {
+        0x00A0, // NBSP
+        0x1680, // OGHAM SPACE MARK
+        0x2000...0x200A, // En quad..Hair space
+        0x202F, // NARROW NO-BREAK SPACE
+        0x205F, // MEDIUM MATHEMATICAL SPACE
+        0x3000, // IDEOGRAPHIC SPACE
+        0x200B, // ZERO WIDTH SPACE
+        0x00AD, // SOFT HYPHEN
+        0x2010, // HYPHEN
+        => true,
+        else => false,
+    };
+}
+
 // Method 1: Baseline pure loop - linear scan checking each byte
 pub fn findWrapBreaksBaseline(text: []const u8, result: *BreakResult) !void {
     result.reset();
-    for (text, 0..) |b, i| {
-        if (isWrapBreak(b)) {
-            try result.breaks.append(i);
+    var i: usize = 0;
+    while (i < text.len) {
+        const b0 = text[i];
+        if (b0 < 0x80) {
+            if (isAsciiWrapBreak(b0)) try result.breaks.append(i);
+            i += 1;
+            continue;
         }
+
+        const dec = decodeUtf8Unchecked(text, i);
+        if (i + dec.len > text.len) break;
+        if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(i);
+        i += dec.len;
     }
 }
 
 // Method 2: Using std.mem.indexOfAny (optimized stdlib)
 pub fn findWrapBreaksStdLib(text: []const u8, result: *BreakResult) !void {
     result.reset();
-    const break_chars = " \t\r\n-/\\.,:;!?()[]{}";
+    const ascii_break_chars = " \t-/\\.,:;!?()[]{}";
     var pos: usize = 0;
     while (pos < text.len) {
-        if (std.mem.indexOfAny(u8, text[pos..], break_chars)) |offset| {
-            const idx = pos + offset;
+        // Next ASCII break
+        const idx_a_opt = std.mem.indexOfAny(u8, text[pos..], ascii_break_chars);
+
+        // Find earliest non-ASCII (< idx_a) by a small scalar scan
+        var idx_u_opt: ?usize = null;
+        const limit: usize = if (idx_a_opt) |oa| pos + oa else text.len;
+        var j: usize = pos;
+        while (j < limit) : (j += 1) {
+            if (text[j] >= 0x80) {
+                idx_u_opt = j;
+                break;
+            }
+        }
+
+        if (idx_u_opt) |idx_u_abs| {
+            const dec = decodeUtf8Unchecked(text, idx_u_abs);
+            if (idx_u_abs + dec.len > text.len) break;
+            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(idx_u_abs);
+            pos = idx_u_abs + dec.len;
+            continue;
+        }
+
+        if (idx_a_opt) |oa| {
+            const idx = pos + oa;
             try result.breaks.append(idx);
             pos = idx + 1;
         } else {
@@ -105,110 +181,74 @@ pub fn findWrapBreaksStdLib(text: []const u8, result: *BreakResult) !void {
     }
 }
 
-// Method 3: Manual SIMD vectorization (16-byte)
+// Method 3: 16-byte chunked scanning (for comparison)
 pub fn findWrapBreaksSIMD16(text: []const u8, result: *BreakResult) !void {
     result.reset();
     const vector_len = 16;
-    const Vec = @Vector(vector_len, u8);
-
-    // We'll check for common break characters using SIMD
-    // Note: We check for the most common characters to optimize the fast path
-    const vSpace: Vec = @splat(' ');
-    const vTab: Vec = @splat('\t');
-    const vNewline: Vec = @splat('\n');
-    const vReturn: Vec = @splat('\r');
-    const vDash: Vec = @splat('-');
-    const vSlash: Vec = @splat('/');
-    const vBackslash: Vec = @splat('\\');
 
     var pos: usize = 0;
-
-    // Process full vector chunks
     while (pos + vector_len <= text.len) {
-        const chunk: Vec = text[pos..][0..vector_len].*;
-
-        // Compare against common break characters
-        const cmp_space = chunk == vSpace;
-        const cmp_tab = chunk == vTab;
-        const cmp_newline = chunk == vNewline;
-        const cmp_return = chunk == vReturn;
-        const cmp_dash = chunk == vDash;
-        const cmp_slash = chunk == vSlash;
-        const cmp_backslash = chunk == vBackslash;
-
-        // Check if any common match found
-        const has_common = @reduce(.Or, cmp_space) or @reduce(.Or, cmp_tab) or @reduce(.Or, cmp_newline) or
-            @reduce(.Or, cmp_return) or @reduce(.Or, cmp_dash) or @reduce(.Or, cmp_slash) or
-            @reduce(.Or, cmp_backslash);
-
-        // Always check all bytes in chunk since we can't SIMD-check all punctuation/brackets efficiently
+        // Simple scalar check per byte
         for (0..vector_len) |i| {
-            if (isWrapBreak(text[pos + i])) {
-                try result.breaks.append(pos + i);
+            const b0 = text[pos + i];
+            if (b0 < 0x80) {
+                if (isAsciiWrapBreak(b0)) try result.breaks.append(pos + i);
+            } else {
+                const dec = decodeUtf8Unchecked(text, pos + i);
+                if (pos + i + dec.len > text.len) break;
+                if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos + i);
             }
         }
-
-        // Could optimize to skip chunk if has_common is false and chunk has no ASCII punctuation/brackets,
-        // but for correctness we check all bytes
-        _ = has_common;
-
         pos += vector_len;
     }
 
-    // Handle remaining bytes with scalar code
-    while (pos < text.len) : (pos += 1) {
-        if (isWrapBreak(text[pos])) {
-            try result.breaks.append(pos);
+    // Tail
+    var i: usize = pos;
+    while (i < text.len) {
+        const b0 = text[i];
+        if (b0 < 0x80) {
+            if (isAsciiWrapBreak(b0)) try result.breaks.append(i);
+            i += 1;
+        } else {
+            const dec = decodeUtf8Unchecked(text, i);
+            if (i + dec.len > text.len) break;
+            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(i);
+            i += dec.len;
         }
     }
 }
 
-// Method 4: SIMD with wider vectors (32-byte for AVX2)
+// Method 4: 32-byte chunked scanning (for comparison)
 pub fn findWrapBreaksSIMD32(text: []const u8, result: *BreakResult) !void {
     result.reset();
     const vector_len = 32;
-    const Vec = @Vector(vector_len, u8);
-
-    const vSpace: Vec = @splat(' ');
-    const vTab: Vec = @splat('\t');
-    const vNewline: Vec = @splat('\n');
-    const vReturn: Vec = @splat('\r');
-    const vDash: Vec = @splat('-');
-    const vSlash: Vec = @splat('/');
-    const vBackslash: Vec = @splat('\\');
 
     var pos: usize = 0;
-
     while (pos + vector_len <= text.len) {
-        const chunk: Vec = text[pos..][0..vector_len].*;
-
-        const cmp_space = chunk == vSpace;
-        const cmp_tab = chunk == vTab;
-        const cmp_newline = chunk == vNewline;
-        const cmp_return = chunk == vReturn;
-        const cmp_dash = chunk == vDash;
-        const cmp_slash = chunk == vSlash;
-        const cmp_backslash = chunk == vBackslash;
-
-        const has_common = @reduce(.Or, cmp_space) or @reduce(.Or, cmp_tab) or @reduce(.Or, cmp_newline) or
-            @reduce(.Or, cmp_return) or @reduce(.Or, cmp_dash) or @reduce(.Or, cmp_slash) or
-            @reduce(.Or, cmp_backslash);
-
-        // Always check all bytes in chunk since we can't SIMD-check all punctuation/brackets efficiently
         for (0..vector_len) |i| {
-            if (isWrapBreak(text[pos + i])) {
-                try result.breaks.append(pos + i);
+            const b0 = text[pos + i];
+            if (b0 < 0x80) {
+                if (isAsciiWrapBreak(b0)) try result.breaks.append(pos + i);
+            } else {
+                const dec = decodeUtf8Unchecked(text, pos + i);
+                if (pos + i + dec.len > text.len) break;
+                if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos + i);
             }
         }
-
-        _ = has_common;
         pos += vector_len;
     }
 
-    // Handle tail
-    while (pos < text.len) : (pos += 1) {
-        if (isWrapBreak(text[pos])) {
-            try result.breaks.append(pos);
+    var i: usize = pos;
+    while (i < text.len) {
+        const b0 = text[i];
+        if (b0 < 0x80) {
+            if (isAsciiWrapBreak(b0)) try result.breaks.append(i);
+            i += 1;
+        } else {
+            const dec = decodeUtf8Unchecked(text, i);
+            if (i + dec.len > text.len) break;
+            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(i);
+            i += dec.len;
         }
     }
 }
@@ -219,24 +259,38 @@ pub fn findWrapBreaksBitmask128(text: []const u8, result: *BreakResult) !void {
     const chunk_size = 128;
 
     var pos: usize = 0;
-
     while (pos < text.len) {
         const end = @min(pos + chunk_size, text.len);
         const chunk = text[pos..end];
 
         var mask: u128 = 0;
         for (chunk, 0..) |b, i| {
-            if (isWrapBreak(b)) {
+            if (isAsciiWrapBreak(b)) {
                 mask |= @as(u128, 1) << @intCast(i);
             }
         }
 
-        // Process the mask to find break positions
-        while (mask != 0) {
-            const bit_pos = @ctz(mask);
+        // Process the mask to find ASCII break positions
+        var m = mask;
+        while (m != 0) {
+            const bit_pos = @ctz(m);
             const absolute_pos = pos + bit_pos;
             try result.breaks.append(absolute_pos);
-            mask &= ~(@as(u128, 1) << @intCast(bit_pos));
+            m &= m - 1;
+        }
+
+        // Unicode pass
+        var i: usize = 0;
+        while (i < chunk.len) {
+            const b0 = chunk[i];
+            if (b0 < 0x80) {
+                i += 1;
+                continue;
+            }
+            const dec = decodeUtf8Unchecked(text, pos + i);
+            if (pos + i + dec.len > text.len) break;
+            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(pos + i);
+            i += dec.len;
         }
 
         pos = end;
@@ -334,8 +388,7 @@ pub fn findWrapBreaksMultithreadedGenericWithThreadCount(
         contexts[i].result.deinit();
     }
 
-    // Results should already be sorted
-    std.mem.sort(usize, result.breaks.items, {}, std.sort.asc(usize));
+    // Results are already sorted by segment order; no final sort needed
 }
 
 // Auto-detected thread count (legacy wrapper)
