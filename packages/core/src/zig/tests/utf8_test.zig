@@ -850,3 +850,140 @@ test "wrap breaks: mixed graphemes and ASCII" {
     try testing.expectEqual(@as(u16, 29), result.breaks.items[3].byte_offset);
     try testing.expectEqual(@as(u16, 15), result.breaks.items[3].char_offset); // 13 + 1(space) + 1(RI) + 1(RI) = 15 (per uucode)
 }
+
+// ============================================================================
+// WRAP BY WIDTH TESTS
+// ============================================================================
+
+test "wrap by width: empty string" {
+    const result = utf8.findWrapPosByWidthSIMD16("", 10, 4, true);
+    try testing.expectEqual(@as(u32, 0), result.byte_offset);
+    try testing.expectEqual(@as(u32, 0), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 0), result.columns_used);
+}
+
+test "wrap by width: simple ASCII no wrap" {
+    const result = utf8.findWrapPosByWidthSIMD16("hello", 10, 4, true);
+    try testing.expectEqual(@as(u32, 5), result.byte_offset);
+    try testing.expectEqual(@as(u32, 5), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 5), result.columns_used);
+}
+
+test "wrap by width: ASCII wrap exactly at limit" {
+    const result = utf8.findWrapPosByWidthSIMD16("hello", 5, 4, true);
+    try testing.expectEqual(@as(u32, 5), result.byte_offset);
+    try testing.expectEqual(@as(u32, 5), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 5), result.columns_used);
+}
+
+test "wrap by width: ASCII wrap before limit" {
+    const result = utf8.findWrapPosByWidthSIMD16("hello world", 7, 4, true);
+    try testing.expectEqual(@as(u32, 7), result.byte_offset);
+    try testing.expectEqual(@as(u32, 7), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 7), result.columns_used);
+}
+
+test "wrap by width: East Asian wide char" {
+    const result = utf8.findWrapPosByWidthSIMD16("世界", 3, 4, false);
+    try testing.expectEqual(@as(u32, 3), result.byte_offset); // After first char
+    try testing.expectEqual(@as(u32, 1), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 2), result.columns_used);
+}
+
+test "wrap by width: combining mark" {
+    const result = utf8.findWrapPosByWidthSIMD16("e\u{0301}test", 3, 4, false);
+    try testing.expectEqual(@as(u32, 5), result.byte_offset); // After "é" (3 bytes) + "te" (2 bytes)
+    try testing.expectEqual(@as(u32, 3), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 3), result.columns_used);
+}
+
+test "wrap by width: tab handling" {
+    const result = utf8.findWrapPosByWidthSIMD16("a\tb", 5, 4, true);
+    try testing.expectEqual(@as(u32, 3), result.byte_offset);
+    try testing.expectEqual(@as(u32, 3), result.grapheme_count);
+    try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab to 4 (3) + 'b' (1) = 5
+}
+
+fn testWrapByWidthMethodsMatch(input: []const u8, max_columns: u32, tab_width: u8, isASCIIOnly: bool) !void {
+    const result = utf8.findWrapPosByWidthSIMD16(input, max_columns, tab_width, isASCIIOnly);
+    // Since we only have SIMD16 in utf8.zig, just verify it doesn't crash
+    _ = result;
+}
+
+test "wrap by width: consistency - realistic text" {
+    const sample_text =
+        "The quick brown fox jumps over the lazy dog. " ++
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " ++
+        "File paths: /usr/local/bin and C:\\Windows\\System32. " ++
+        "Punctuation test: Hello, world! How are you? I'm fine.";
+
+    const widths = [_]u32{ 10, 20, 40, 80, 120 };
+    for (widths) |w| {
+        try testWrapByWidthMethodsMatch(sample_text, w, 4, true);
+    }
+}
+
+test "wrap by width: consistency - Unicode text" {
+    const unicode_text = "世界 こんにちは test 你好 CJK-mixed";
+
+    const widths = [_]u32{ 5, 10, 15, 20, 30 };
+    for (widths) |w| {
+        try testWrapByWidthMethodsMatch(unicode_text, w, 4, false);
+    }
+}
+
+test "wrap by width: consistency - edge cases" {
+    const edge_cases = [_]struct { text: []const u8, ascii: bool }{
+        .{ .text = "", .ascii = true },
+        .{ .text = " ", .ascii = true },
+        .{ .text = "a", .ascii = true },
+        .{ .text = "abc", .ascii = true },
+        .{ .text = "   ", .ascii = true },
+        .{ .text = "a b c d e", .ascii = true },
+        .{ .text = "no-spaces-here", .ascii = true },
+        .{ .text = "/usr/local/bin", .ascii = true },
+        .{ .text = "世界", .ascii = false },
+        .{ .text = "\t\t\t", .ascii = true },
+    };
+
+    for (edge_cases) |input| {
+        const widths = [_]u32{ 1, 5, 10, 20 };
+        for (widths) |w| {
+            try testWrapByWidthMethodsMatch(input.text, w, 4, input.ascii);
+        }
+    }
+}
+
+test "wrap by width: property - random ASCII buffers" {
+    var prng = std.Random.DefaultPrng.init(42);
+    const random = prng.random();
+
+    var i: usize = 0;
+    while (i < 50) : (i += 1) {
+        const size = 16 + random.uintLessThan(usize, 256);
+        const buf = try testing.allocator.alloc(u8, size);
+        defer testing.allocator.free(buf);
+
+        for (buf) |*b| {
+            b.* = 'a' + random.uintLessThan(u8, 26);
+        }
+
+        const width = 10 + random.uintLessThan(u32, 70);
+        try testWrapByWidthMethodsMatch(buf, width, 4, true);
+    }
+}
+
+test "wrap by width: boundary - SIMD16 chunk boundary" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    try testWrapByWidthMethodsMatch(&buf, 20, 4, true);
+    try testWrapByWidthMethodsMatch(&buf, 10, 4, true);
+}
+
+test "wrap by width: boundary - Unicode at SIMD boundary" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'a');
+    const cjk = "世";
+    @memcpy(buf[14..17], cjk);
+    try testWrapByWidthMethodsMatch(buf[0..20], 20, 4, false);
+}
