@@ -6,6 +6,7 @@ const gwidth = @import("gwidth.zig");
 const utf8 = @import("utf8.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
+const uucode = @import("uucode");
 
 const RGBA = tb.RGBA;
 const TextSelection = tb.TextSelection;
@@ -188,37 +189,6 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                 self.text_buffer.width_method,
                 &self.text_buffer.display_width,
             ) catch return TextBufferViewError.OutOfMemory;
-        }
-
-        /// Calculate how many graphemes from a chunk fit within the given width
-        /// Returns the number of grapheme clusters and their total width
-        fn calculateChunkFit(_: *const Self, graphemes: []const GraphemeInfo, max_width: u32) tb.ChunkFitResult {
-            if (max_width == 0) return .{ .char_count = 0, .width = 0 };
-            if (graphemes.len == 0) return .{ .char_count = 0, .width = 0 };
-
-            var total_width: u32 = 0;
-            var count: u32 = 0;
-
-            for (graphemes) |g| {
-                if (total_width + g.width > max_width) {
-                    break;
-                }
-                total_width += g.width;
-                count += g.width; // Each grapheme contributes 'width' cells
-            }
-
-            return .{ .char_count = count, .width = total_width };
-        }
-
-        fn isWordBoundaryByte(c: u8) bool {
-            return switch (c) {
-                ' ', '\t', '\r', '\n' => true, // Whitespace
-                '-' => true, // Dash
-                '/', '\\' => true, // Slashes
-                '.', ',', ';', ':', '!', '?' => true, // Punctuation
-                '(', ')', '[', ']', '{', '}' => true, // Brackets
-                else => false,
-            };
         }
 
         fn calculateChunkFitWord(self: *const Self, chunk: *const tb.TextChunk, char_offset_in_chunk: u32, max_width: u32) tb.ChunkFitResult {
@@ -418,7 +388,9 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                     return .{};
                                 }
 
-                                // Char mode: Simple and fast - just fit remaining_width chars
+                                const chunk_bytes = chunk.getBytes(&chunk_ctx.view.text_buffer.mem_registry);
+                                const is_ascii_only = (chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: usize = 0;
                                 var char_offset: u32 = 0;
 
                                 while (char_offset < chunk.width) {
@@ -429,27 +401,46 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                             commitVirtualLine(chunk_ctx);
                                             continue;
                                         }
-                                        const forced = @min(1, chunk.width - char_offset);
-                                        addVirtualChunk(chunk_ctx, chunk_idx, char_offset, forced, forced);
-                                        char_offset += forced;
+                                        const grapheme_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch &[_]tb.GraphemeInfo{};
+                                        if (char_offset < grapheme_cache.len) {
+                                            const g = grapheme_cache[char_offset];
+                                            addVirtualChunk(chunk_ctx, chunk_idx, char_offset, 1, g.width);
+                                            char_offset += 1;
+                                            byte_offset += g.byte_len;
+                                        } else {
+                                            char_offset += 1;
+                                        }
                                         continue;
                                     }
 
-                                    const fit_count = @min(remaining_width, chunk.width - char_offset);
+                                    const remaining_bytes = chunk_bytes[byte_offset..];
+                                    const wrap_result = utf8.findWrapPosByWidthSIMD16(
+                                        remaining_bytes,
+                                        remaining_width,
+                                        8,
+                                        is_ascii_only,
+                                    );
 
-                                    if (fit_count == 0) {
+                                    if (wrap_result.grapheme_count == 0 or wrap_result.columns_used == 0) {
                                         if (chunk_ctx.line_position.* > 0) {
                                             commitVirtualLine(chunk_ctx);
                                             continue;
                                         }
-                                        const forced = @min(1, chunk.width - char_offset);
-                                        addVirtualChunk(chunk_ctx, chunk_idx, char_offset, forced, forced);
-                                        char_offset += forced;
+                                        const grapheme_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch &[_]tb.GraphemeInfo{};
+                                        if (char_offset < grapheme_cache.len) {
+                                            const g = grapheme_cache[char_offset];
+                                            addVirtualChunk(chunk_ctx, chunk_idx, char_offset, 1, g.width);
+                                            char_offset += 1;
+                                            byte_offset += g.byte_len;
+                                        } else {
+                                            char_offset += 1;
+                                        }
                                         continue;
                                     }
 
-                                    addVirtualChunk(chunk_ctx, chunk_idx, char_offset, fit_count, fit_count);
-                                    char_offset += fit_count;
+                                    addVirtualChunk(chunk_ctx, chunk_idx, char_offset, wrap_result.grapheme_count, wrap_result.columns_used);
+                                    char_offset += wrap_result.grapheme_count;
+                                    byte_offset += wrap_result.byte_offset;
 
                                     if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and char_offset < chunk.width) {
                                         commitVirtualLine(chunk_ctx);
