@@ -493,12 +493,16 @@ fn testWrapBreaks(test_case: WrapBreakTestCase, allocator: std.mem.Allocator) !v
     }
 
     for (test_case.expected, 0..) |exp, i| {
-        if (result.breaks.items[i] != exp) {
+        if (result.breaks.items[i].byte_offset != exp) {
             std.debug.print("\nWrap break test FAILED on '{s}':\n", .{test_case.name});
             std.debug.print("  Input: \"{s}\"\n", .{test_case.input});
-            std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i] });
+            std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i].byte_offset });
             std.debug.print("  Expected: {any}\n", .{test_case.expected});
-            std.debug.print("  Got:      {any}\n", .{result.breaks.items});
+            std.debug.print("  Got byte_offsets: ", .{});
+            for (result.breaks.items) |brk| {
+                std.debug.print("{d} ", .{brk.byte_offset});
+            }
+            std.debug.print("\n", .{});
             return error.TestFailed;
         }
     }
@@ -733,5 +737,6 @@ test "edge case: 17 bytes with break at 16" {
     const input2 = "0123456789abcde x"; // space at position 15
     try utf8.findWrapBreaksSIMD16(input2, &wrap_result);
     try testing.expectEqual(@as(usize, 1), wrap_result.breaks.items.len);
-    try testing.expectEqual(@as(usize, 15), wrap_result.breaks.items[0]);
+    try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].char_offset);
 }

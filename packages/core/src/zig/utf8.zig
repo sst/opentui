@@ -69,12 +69,17 @@ pub const LineBreakResult = struct {
     }
 };
 
+pub const WrapBreak = struct {
+    byte_offset: u16,
+    char_offset: u16,
+};
+
 pub const WrapBreakResult = struct {
-    breaks: std.ArrayList(u16),
+    breaks: std.ArrayList(WrapBreak),
 
     pub fn init(allocator: std.mem.Allocator) WrapBreakResult {
         return .{
-            .breaks = std.ArrayList(u16).init(allocator),
+            .breaks = std.ArrayList(WrapBreak).init(allocator),
         };
     }
 
@@ -149,6 +154,7 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
     const vector_len = 16;
 
     var pos: usize = 0;
+    var char_offset: u16 = 0;
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
         const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
@@ -195,11 +201,15 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
             // Use bit manipulation to extract positions
             while (bitmask != 0) {
                 const bit_pos = @ctz(bitmask);
-                try result.breaks.append(@intCast(pos + bit_pos));
-                bitmask &= bitmask - 1; // Clear lowest set bit
+                try result.breaks.append(.{
+                    .byte_offset = @intCast(pos + bit_pos),
+                    .char_offset = char_offset + @as(u16, @intCast(bit_pos)),
+                });
+                bitmask &= bitmask - 1;
             }
 
             pos += vector_len;
+            char_offset += vector_len;
             continue;
         }
 
@@ -208,13 +218,25 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
         while (i < vector_len) {
             const b0 = text[pos + i];
             if (b0 < 0x80) {
-                if (isAsciiWrapBreak(b0)) try result.breaks.append(@intCast(pos + i));
+                if (isAsciiWrapBreak(b0)) {
+                    try result.breaks.append(.{
+                        .byte_offset = @intCast(pos + i),
+                        .char_offset = char_offset,
+                    });
+                }
                 i += 1;
+                char_offset += 1;
             } else {
                 const dec = decodeUtf8Unchecked(text, pos + i);
                 if (pos + i + dec.len > text.len) break;
-                if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(@intCast(pos + i));
+                if (isUnicodeWrapBreak(dec.cp)) {
+                    try result.breaks.append(.{
+                        .byte_offset = @intCast(pos + i),
+                        .char_offset = char_offset,
+                    });
+                }
                 i += dec.len;
+                char_offset += 1;
             }
         }
         pos += vector_len;
@@ -225,13 +247,25 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
     while (i < text.len) {
         const b0 = text[i];
         if (b0 < 0x80) {
-            if (isAsciiWrapBreak(b0)) try result.breaks.append(@intCast(i));
+            if (isAsciiWrapBreak(b0)) {
+                try result.breaks.append(.{
+                    .byte_offset = @intCast(i),
+                    .char_offset = char_offset,
+                });
+            }
             i += 1;
+            char_offset += 1;
         } else {
             const dec = decodeUtf8Unchecked(text, i);
             if (i + dec.len > text.len) break;
-            if (isUnicodeWrapBreak(dec.cp)) try result.breaks.append(@intCast(i));
+            if (isUnicodeWrapBreak(dec.cp)) {
+                try result.breaks.append(.{
+                    .byte_offset = @intCast(i),
+                    .char_offset = char_offset,
+                });
+            }
             i += dec.len;
+            char_offset += 1;
         }
     }
 }

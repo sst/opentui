@@ -69,40 +69,37 @@ fn benchWrapArray(
     iterations: usize,
     show_mem: bool,
 ) !BenchData {
-    var tb = try TextBufferArray.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const mem_id = try tb.registerMemBuffer(text, false);
-
-    var line_start: u32 = 0;
-    for (text, 0..) |byte, i| {
-        if (byte == '\n') {
-            if (i > line_start) {
-                try tb.addLine(mem_id, line_start, @intCast(i));
-            }
-            line_start = @intCast(i + 1);
-        }
-    }
-    if (line_start < text.len) {
-        try tb.addLine(mem_id, line_start, @intCast(text.len));
-    }
-
-    var view = try TextBufferViewArray.init(allocator, tb);
-    defer view.deinit();
-
-    view.setWrapMode(wrap_mode);
-    view.setWrapWidth(wrap_width);
-
-    _ = view.getVirtualLineCount();
-
     var min_ns: u64 = std.math.maxInt(u64);
     var max_ns: u64 = 0;
     var total_ns: u64 = 0;
+    var final_tb_mem: usize = 0;
+    var final_view_mem: usize = 0;
 
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
-        view.setWrapWidth(null);
-        _ = view.getVirtualLineCount();
+        // Create fresh TB and View for each iteration to avoid memory accumulation
+        var tb = try TextBufferArray.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+        defer tb.deinit();
+
+        const mem_id = try tb.registerMemBuffer(text, false);
+
+        var line_start: u32 = 0;
+        for (text, 0..) |byte, idx| {
+            if (byte == '\n') {
+                if (idx > line_start) {
+                    try tb.addLine(mem_id, line_start, @intCast(idx));
+                }
+                line_start = @intCast(idx + 1);
+            }
+        }
+        if (line_start < text.len) {
+            try tb.addLine(mem_id, line_start, @intCast(text.len));
+        }
+
+        var view = try TextBufferViewArray.init(allocator, tb);
+        defer view.deinit();
+
+        view.setWrapMode(wrap_mode);
 
         var timer = try std.time.Timer.start();
         view.setWrapWidth(wrap_width);
@@ -113,12 +110,18 @@ fn benchWrapArray(
         min_ns = @min(min_ns, elapsed);
         max_ns = @max(max_ns, elapsed);
         total_ns += elapsed;
+
+        // Capture memory from last iteration
+        if (i == iterations - 1 and show_mem) {
+            final_tb_mem = tb.getArenaAllocatedBytes();
+            final_view_mem = view.getArenaAllocatedBytes();
+        }
     }
 
     const mem_stats: ?[]const MemStat = if (show_mem) blk: {
         const stats = try allocator.alloc(MemStat, 2);
-        stats[0] = .{ .name = "TB", .bytes = tb.getArenaAllocatedBytes() };
-        stats[1] = .{ .name = "View", .bytes = view.getArenaAllocatedBytes() };
+        stats[0] = .{ .name = "TB", .bytes = final_tb_mem };
+        stats[1] = .{ .name = "View", .bytes = final_view_mem };
         break :blk stats;
     } else null;
 
@@ -142,40 +145,37 @@ fn benchWrapRope(
     iterations: usize,
     show_mem: bool,
 ) !BenchData {
-    var tb = try TextBufferRope.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    const mem_id = try tb.registerMemBuffer(text, false);
-
-    var line_start: u32 = 0;
-    for (text, 0..) |byte, i| {
-        if (byte == '\n') {
-            if (i > line_start) {
-                try tb.addLine(mem_id, line_start, @intCast(i));
-            }
-            line_start = @intCast(i + 1);
-        }
-    }
-    if (line_start < text.len) {
-        try tb.addLine(mem_id, line_start, @intCast(text.len));
-    }
-
-    var view = try TextBufferViewRope.init(allocator, tb);
-    defer view.deinit();
-
-    view.setWrapMode(wrap_mode);
-    view.setWrapWidth(wrap_width);
-
-    _ = view.getVirtualLineCount();
-
     var min_ns: u64 = std.math.maxInt(u64);
     var max_ns: u64 = 0;
     var total_ns: u64 = 0;
+    var final_tb_mem: usize = 0;
+    var final_view_mem: usize = 0;
 
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
-        view.setWrapWidth(null);
-        _ = view.getVirtualLineCount();
+        // Create fresh TB and View for each iteration to avoid memory accumulation
+        var tb = try TextBufferRope.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+        defer tb.deinit();
+
+        const mem_id = try tb.registerMemBuffer(text, false);
+
+        var line_start: u32 = 0;
+        for (text, 0..) |byte, idx| {
+            if (byte == '\n') {
+                if (idx > line_start) {
+                    try tb.addLine(mem_id, line_start, @intCast(idx));
+                }
+                line_start = @intCast(idx + 1);
+            }
+        }
+        if (line_start < text.len) {
+            try tb.addLine(mem_id, line_start, @intCast(text.len));
+        }
+
+        var view = try TextBufferViewRope.init(allocator, tb);
+        defer view.deinit();
+
+        view.setWrapMode(wrap_mode);
 
         var timer = try std.time.Timer.start();
         view.setWrapWidth(wrap_width);
@@ -186,12 +186,18 @@ fn benchWrapRope(
         min_ns = @min(min_ns, elapsed);
         max_ns = @max(max_ns, elapsed);
         total_ns += elapsed;
+
+        // Capture memory from last iteration
+        if (i == iterations - 1 and show_mem) {
+            final_tb_mem = tb.getArenaAllocatedBytes();
+            final_view_mem = view.getArenaAllocatedBytes();
+        }
     }
 
     const mem_stats: ?[]const MemStat = if (show_mem) blk: {
         const stats = try allocator.alloc(MemStat, 2);
-        stats[0] = .{ .name = "TB", .bytes = tb.getArenaAllocatedBytes() };
-        stats[1] = .{ .name = "View", .bytes = view.getArenaAllocatedBytes() };
+        stats[0] = .{ .name = "TB", .bytes = final_tb_mem };
+        stats[1] = .{ .name = "View", .bytes = final_view_mem };
         break :blk stats;
     } else null;
 
