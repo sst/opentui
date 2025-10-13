@@ -122,41 +122,50 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     for (mem_col_widths.items) |width| {
         total_width += 3 + width;
     }
+    try writer.writeAll("\x1b[2m");
     try writer.writeByteNTimes('-', total_width);
-    try writer.writeByte('\n');
+    try writer.writeAll("\x1b[0m\n");
 
     // Column headers
+    try writer.writeAll("\x1b[36m");
     try writer.writeAll("Benchmark");
     try writer.writeByteNTimes(' ', max_name_len - 9);
-    try writer.writeAll(" | ");
+    try writer.writeAll("\x1b[0m\x1b[2m | \x1b[0m");
 
+    try writer.writeAll("\x1b[36m");
     try writer.writeAll("Min");
     try writer.writeByteNTimes(' ', min_col_width - 3);
-    try writer.writeAll(" | ");
+    try writer.writeAll("\x1b[0m\x1b[2m | \x1b[0m");
 
+    try writer.writeAll("\x1b[36m");
     try writer.writeAll("Avg");
     try writer.writeByteNTimes(' ', avg_col_width - 3);
-    try writer.writeAll(" | ");
+    try writer.writeAll("\x1b[0m\x1b[2m | \x1b[0m");
 
+    try writer.writeAll("\x1b[36m");
     try writer.writeAll("Max");
     try writer.writeByteNTimes(' ', max_col_width - 3);
+    try writer.writeAll("\x1b[0m");
 
     // Dynamic memory stat headers
     for (mem_stat_names.items, 0..) |name, i| {
-        try writer.writeAll(" | ");
+        try writer.writeAll("\x1b[2m | \x1b[0m");
+        try writer.writeAll("\x1b[36m");
         try writer.writeAll(name);
         if (name.len < mem_col_widths.items[i]) {
             try writer.writeByteNTimes(' ', mem_col_widths.items[i] - name.len);
         }
+        try writer.writeAll("\x1b[0m");
     }
 
     try writer.writeByte('\n');
 
+    try writer.writeAll("\x1b[2m");
     try writer.writeByteNTimes('-', total_width);
-    try writer.writeByte('\n');
+    try writer.writeAll("\x1b[0m\n");
 
     // Print each result
-    for (results) |result| {
+    for (results, 0..) |result, row_idx| {
         const min = formatDuration(result.min_ns);
         const avg = formatDuration(result.avg_ns);
         const max = formatDuration(result.max_ns);
@@ -171,24 +180,37 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
         var max_buf: [32]u8 = undefined;
         const max_str = try std.fmt.bufPrint(&max_buf, "{d:.2}{s}", .{ max.value, max.unit });
 
+        if (row_idx % 2 == 1) {
+            try writer.writeAll("\x1b[48;5;234m");
+        }
+
         // Benchmark name
         try writer.writeAll(result.name);
         try writer.writeByteNTimes(' ', max_name_len - result.name.len);
-        try writer.writeAll(" | ");
+        try writer.writeAll("\x1b[2m | \x1b[0m");
+        if (row_idx % 2 == 1) {
+            try writer.writeAll("\x1b[48;5;234m");
+        }
 
         // Min (right-aligned)
         if (min_str.len < min_col_width) {
             try writer.writeByteNTimes(' ', min_col_width - min_str.len);
         }
         try writer.writeAll(min_str);
-        try writer.writeAll(" | ");
+        try writer.writeAll("\x1b[2m | \x1b[0m");
+        if (row_idx % 2 == 1) {
+            try writer.writeAll("\x1b[48;5;234m");
+        }
 
         // Avg (right-aligned)
         if (avg_str.len < avg_col_width) {
             try writer.writeByteNTimes(' ', avg_col_width - avg_str.len);
         }
         try writer.writeAll(avg_str);
-        try writer.writeAll(" | ");
+        try writer.writeAll("\x1b[2m | \x1b[0m");
+        if (row_idx % 2 == 1) {
+            try writer.writeAll("\x1b[48;5;234m");
+        }
 
         // Max (right-aligned)
         if (max_str.len < max_col_width) {
@@ -198,7 +220,10 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
 
         // Dynamic memory stats columns
         for (mem_stat_names.items, 0..) |stat_name, i| {
-            try writer.writeAll(" | ");
+            try writer.writeAll("\x1b[2m | \x1b[0m");
+            if (row_idx % 2 == 1) {
+                try writer.writeAll("\x1b[48;5;234m");
+            }
 
             // Look for this stat in the result's memory stats
             var found_stat: ?usize = null;
@@ -227,9 +252,13 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
             }
         }
 
+        if (row_idx % 2 == 1) {
+            try writer.writeAll("\x1b[0m");
+        }
         try writer.writeByte('\n');
     }
 
+    try writer.writeAll("\x1b[2m");
     try writer.writeByteNTimes('-', total_width);
-    try writer.writeByte('\n');
+    try writer.writeAll("\x1b[0m\n");
 }
