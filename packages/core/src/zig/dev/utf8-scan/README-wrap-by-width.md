@@ -10,7 +10,7 @@ cd packages/core/src/zig/dev/utf8-scan
 # Run tests
 zig build test
 
-# Build benchmark
+# Build benchmark (defaults to ReleaseFast)
 zig build
 
 # Run benchmark on a file
@@ -22,12 +22,3 @@ zig build
 # Benchmark all test files
 ./zig-out/bin/utf8-wrap-by-width-bench --bench-all 80
 ```
-
-## Methods
-
-- **Baseline**: Reference implementation
-- **StdLib**: ASCII fast path (currently delegates to baseline)
-- **SIMD16**: 16-byte SIMD chunked scanning (fastest)
-- **Bitmask128**: 128-byte bitmask approach (currently delegates to baseline)
-
-All methods produce identical results and respect grapheme cluster boundaries.
