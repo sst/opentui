@@ -417,39 +417,77 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                     return .{};
                                 }
 
-                                const graphemes_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch return .{};
-                                var grapheme_idx: u32 = 0;
+                                // Char mode: simple iteration with one iterator
+                                const chunk_bytes = chunk.getBytes(&chunk_ctx.view.text_buffer.mem_registry);
+                                var iter = chunk_ctx.view.text_buffer.getGraphemeIterator(chunk_bytes);
 
-                                while (grapheme_idx < graphemes_cache.len) {
+                                var char_offset: u32 = 0;
+                                var pending_grapheme: ?struct { width: u32 } = null;
+
+                                while (char_offset < chunk.width) {
                                     const remaining_width = if (chunk_ctx.line_position.* < chunk_ctx.wrap_w) chunk_ctx.wrap_w - chunk_ctx.line_position.* else 0;
-                                    const fit = chunk_ctx.view.calculateChunkFit(graphemes_cache[grapheme_idx..], remaining_width);
 
-                                    if (fit.char_count == 0) {
+                                    var fit_count: u32 = 0;
+                                    var fit_width: u32 = 0;
+
+                                    // If we have a pending grapheme that didn't fit, try it first
+                                    if (pending_grapheme) |pending| {
+                                        if (pending.width <= remaining_width) {
+                                            fit_count = pending.width;
+                                            fit_width = pending.width;
+                                            pending_grapheme = null;
+                                        }
+                                    }
+
+                                    // Collect graphemes up to remaining_width
+                                    if (pending_grapheme == null) {
+                                        while (fit_width < remaining_width) {
+                                            const gc = iter.next() orelse break;
+                                            const gbytes = gc.bytes(chunk_bytes);
+                                            const w: u16 = gwidth.gwidth(gbytes, chunk_ctx.view.text_buffer.width_method, &chunk_ctx.view.text_buffer.display_width);
+
+                                            if (w == 0) continue;
+
+                                            const g_width: u32 = @intCast(w);
+                                            if (fit_width + g_width > remaining_width) {
+                                                pending_grapheme = .{ .width = g_width };
+                                                break;
+                                            }
+
+                                            fit_count += g_width;
+                                            fit_width += g_width;
+                                        }
+                                    }
+
+                                    if (fit_count == 0) {
                                         if (chunk_ctx.line_position.* > 0) {
                                             commitVirtualLine(chunk_ctx);
                                             continue;
                                         }
-                                        if (grapheme_idx < graphemes_cache.len) {
-                                            const g = graphemes_cache[grapheme_idx];
-                                            addVirtualChunk(chunk_ctx, chunk_idx, grapheme_idx, g.width, g.width);
-                                            grapheme_idx += 1;
-                                            continue;
+                                        // Force the pending grapheme (or get next one)
+                                        const forced_width: u32 = if (pending_grapheme) |pending| blk: {
+                                            pending_grapheme = null;
+                                            break :blk pending.width;
+                                        } else blk: {
+                                            const gc = iter.next() orelse break;
+                                            const gbytes = gc.bytes(chunk_bytes);
+                                            const w: u16 = gwidth.gwidth(gbytes, chunk_ctx.view.text_buffer.width_method, &chunk_ctx.view.text_buffer.display_width);
+                                            break :blk if (w > 0) @as(u32, @intCast(w)) else 1;
+                                        };
+
+                                        addVirtualChunk(chunk_ctx, chunk_idx, char_offset, forced_width, forced_width);
+                                        char_offset += forced_width;
+
+                                        if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and char_offset < chunk.width) {
+                                            commitVirtualLine(chunk_ctx);
                                         }
-                                        break;
+                                        continue;
                                     }
 
-                                    var chars_processed: u32 = 0;
-                                    var graphemes_processed: u32 = 0;
-                                    for (graphemes_cache[grapheme_idx..]) |g| {
-                                        if (chars_processed >= fit.char_count) break;
-                                        chars_processed += g.width;
-                                        graphemes_processed += 1;
-                                    }
+                                    addVirtualChunk(chunk_ctx, chunk_idx, char_offset, fit_count, fit_width);
+                                    char_offset += fit_count;
 
-                                    addVirtualChunk(chunk_ctx, chunk_idx, grapheme_idx, fit.char_count, fit.width);
-                                    grapheme_idx += graphemes_processed;
-
-                                    if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and grapheme_idx < graphemes_cache.len) {
+                                    if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and char_offset < chunk.width) {
                                         commitVirtualLine(chunk_ctx);
                                     }
                                 }
