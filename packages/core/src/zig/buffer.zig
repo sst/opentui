@@ -215,6 +215,10 @@ pub const OptimizedBuffer = struct {
     pub fn deinit(self: *OptimizedBuffer) void {
         self.scissor_stack.deinit();
         self.grapheme_tracker.deinit();
+        self.allocator.free(self.buffer.char);
+        self.allocator.free(self.buffer.fg);
+        self.allocator.free(self.buffer.bg);
+        self.allocator.free(self.buffer.attributes);
         self.allocator.free(self.id);
         self.allocator.destroy(self);
     }
