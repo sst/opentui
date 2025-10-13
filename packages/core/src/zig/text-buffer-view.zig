@@ -401,14 +401,14 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                             commitVirtualLine(chunk_ctx);
                                             continue;
                                         }
-                                        const grapheme_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch &[_]tb.GraphemeInfo{};
-                                        if (char_offset < grapheme_cache.len) {
-                                            const g = grapheme_cache[char_offset];
-                                            addVirtualChunk(chunk_ctx, chunk_idx, char_offset, 1, g.width);
-                                            char_offset += 1;
-                                            byte_offset += g.byte_len;
+                                        const remaining_bytes = chunk_bytes[byte_offset..];
+                                        const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, 8, is_ascii_only);
+                                        if (force_result.grapheme_count > 0) {
+                                            addVirtualChunk(chunk_ctx, chunk_idx, char_offset, force_result.grapheme_count, force_result.columns_used);
+                                            char_offset += force_result.grapheme_count;
+                                            byte_offset += force_result.byte_offset;
                                         } else {
-                                            char_offset += 1;
+                                            break;
                                         }
                                         continue;
                                     }
@@ -421,21 +421,21 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                         is_ascii_only,
                                     );
 
-                                    if (wrap_result.grapheme_count == 0 or wrap_result.columns_used == 0) {
+                                    if (wrap_result.grapheme_count == 0) {
                                         if (chunk_ctx.line_position.* > 0) {
                                             commitVirtualLine(chunk_ctx);
                                             continue;
                                         }
-                                        const grapheme_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch &[_]tb.GraphemeInfo{};
-                                        if (char_offset < grapheme_cache.len) {
-                                            const g = grapheme_cache[char_offset];
-                                            addVirtualChunk(chunk_ctx, chunk_idx, char_offset, 1, g.width);
-                                            char_offset += 1;
-                                            byte_offset += g.byte_len;
-                                        } else {
-                                            char_offset += 1;
+                                        const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, 8, is_ascii_only);
+                                        if (force_result.grapheme_count > 0) {
+                                            addVirtualChunk(chunk_ctx, chunk_idx, char_offset, force_result.grapheme_count, force_result.columns_used);
+                                            char_offset += force_result.grapheme_count;
+                                            byte_offset += force_result.byte_offset;
+                                            if (char_offset < chunk.width) {
+                                                commitVirtualLine(chunk_ctx);
+                                            }
                                         }
-                                        continue;
+                                        break;
                                     }
 
                                     addVirtualChunk(chunk_ctx, chunk_idx, char_offset, wrap_result.grapheme_count, wrap_result.columns_used);
