@@ -9,6 +9,7 @@ const TestCase = struct {
     input: []const u8,
     max_columns: u32,
     tab_width: u8,
+    isASCIIOnly: bool,
     expected_byte_offset: u32,
     expected_grapheme_count: u32,
     expected_columns_used: u32,
@@ -16,10 +17,10 @@ const TestCase = struct {
 
 fn testMethod(
     comptime method_name: []const u8,
-    method_fn: *const fn ([]const u8, u32, u8) wrap.WrapByWidthResult,
+    method_fn: *const fn ([]const u8, u32, u8, bool) wrap.WrapByWidthResult,
     test_case: TestCase,
 ) !void {
-    const result = method_fn(test_case.input, test_case.max_columns, test_case.tab_width);
+    const result = method_fn(test_case.input, test_case.max_columns, test_case.tab_width, test_case.isASCIIOnly);
 
     if (result.byte_offset != test_case.expected_byte_offset or
         result.grapheme_count != test_case.expected_grapheme_count or
@@ -48,6 +49,7 @@ test "golden: empty string" {
         .input = "",
         .max_columns = 10,
         .tab_width = 4,
+        .isASCIIOnly = true,
         .expected_byte_offset = 0,
         .expected_grapheme_count = 0,
         .expected_columns_used = 0,
@@ -62,6 +64,7 @@ test "golden: simple ASCII no wrap" {
         .input = "hello",
         .max_columns = 10,
         .tab_width = 4,
+        .isASCIIOnly = true,
         .expected_byte_offset = 5,
         .expected_grapheme_count = 5,
         .expected_columns_used = 5,
@@ -76,6 +79,7 @@ test "golden: ASCII wrap exactly at limit" {
         .input = "hello",
         .max_columns = 5,
         .tab_width = 4,
+        .isASCIIOnly = true,
         .expected_byte_offset = 5,
         .expected_grapheme_count = 5,
         .expected_columns_used = 5,
@@ -90,6 +94,7 @@ test "golden: ASCII wrap before limit" {
         .input = "hello world",
         .max_columns = 7,
         .tab_width = 4,
+        .isASCIIOnly = true,
         .expected_byte_offset = 7,
         .expected_grapheme_count = 7,
         .expected_columns_used = 7,
@@ -104,6 +109,7 @@ test "golden: East Asian wide char" {
         .input = "世界",
         .max_columns = 3,
         .tab_width = 4,
+        .isASCIIOnly = false,
         .expected_byte_offset = 3, // After first char
         .expected_grapheme_count = 1,
         .expected_columns_used = 2,
@@ -118,6 +124,7 @@ test "golden: combining mark" {
         .input = "e\u{0301}test",
         .max_columns = 3,
         .tab_width = 4,
+        .isASCIIOnly = false,
         .expected_byte_offset = 5, // After "é" (3 bytes) + "te" (2 bytes)
         .expected_grapheme_count = 3,
         .expected_columns_used = 3,
@@ -132,6 +139,7 @@ test "golden: tab handling" {
         .input = "a\tb",
         .max_columns = 5,
         .tab_width = 4,
+        .isASCIIOnly = true,
         .expected_byte_offset = 3,
         .expected_grapheme_count = 3,
         .expected_columns_used = 5, // 'a' (1) + tab to 4 (3) + 'b' (1) = 5
@@ -140,9 +148,9 @@ test "golden: tab handling" {
     try testMethod("SIMD16", wrap.findWrapPosByWidthSIMD16, tc);
 }
 
-fn testAllMethodsMatch(input: []const u8, max_columns: u32, tab_width: u8) !void {
-    const baseline = wrap.findWrapPosByWidthBaseline(input, max_columns, tab_width);
-    const simd16 = wrap.findWrapPosByWidthSIMD16(input, max_columns, tab_width);
+fn testAllMethodsMatch(input: []const u8, max_columns: u32, tab_width: u8, isASCIIOnly: bool) !void {
+    const baseline = wrap.findWrapPosByWidthBaseline(input, max_columns, tab_width, isASCIIOnly);
+    const simd16 = wrap.findWrapPosByWidthSIMD16(input, max_columns, tab_width, isASCIIOnly);
 
     if (baseline.byte_offset != simd16.byte_offset or
         baseline.grapheme_count != simd16.grapheme_count or
@@ -174,7 +182,7 @@ test "consistency: realistic text" {
 
     const widths = [_]u32{ 10, 20, 40, 80, 120 };
     for (widths) |w| {
-        try testAllMethodsMatch(sample_text, w, 4);
+        try testAllMethodsMatch(sample_text, w, 4, true);
     }
 }
 
@@ -183,28 +191,28 @@ test "consistency: Unicode text" {
 
     const widths = [_]u32{ 5, 10, 15, 20, 30 };
     for (widths) |w| {
-        try testAllMethodsMatch(unicode_text, w, 4);
+        try testAllMethodsMatch(unicode_text, w, 4, false);
     }
 }
 
 test "consistency: edge cases" {
-    const edge_cases = [_][]const u8{
-        "",
-        " ",
-        "a",
-        "abc",
-        "   ",
-        "a b c d e",
-        "no-spaces-here",
-        "/usr/local/bin",
-        "世界",
-        "\t\t\t",
+    const edge_cases = [_]struct { text: []const u8, ascii: bool }{
+        .{ .text = "", .ascii = true },
+        .{ .text = " ", .ascii = true },
+        .{ .text = "a", .ascii = true },
+        .{ .text = "abc", .ascii = true },
+        .{ .text = "   ", .ascii = true },
+        .{ .text = "a b c d e", .ascii = true },
+        .{ .text = "no-spaces-here", .ascii = true },
+        .{ .text = "/usr/local/bin", .ascii = true },
+        .{ .text = "世界", .ascii = false },
+        .{ .text = "\t\t\t", .ascii = true },
     };
 
     for (edge_cases) |input| {
         const widths = [_]u32{ 1, 5, 10, 20 };
         for (widths) |w| {
-            try testAllMethodsMatch(input, w, 4);
+            try testAllMethodsMatch(input.text, w, 4, input.ascii);
         }
     }
 }
@@ -224,15 +232,15 @@ test "property: random ASCII buffers" {
         }
 
         const width = 10 + random.uintLessThan(u32, 70);
-        try testAllMethodsMatch(buf, width, 4);
+        try testAllMethodsMatch(buf, width, 4, true);
     }
 }
 
 test "boundary: SIMD16 chunk boundary" {
     var buf: [32]u8 = undefined;
     @memset(&buf, 'x');
-    try testAllMethodsMatch(&buf, 20, 4);
-    try testAllMethodsMatch(&buf, 10, 4);
+    try testAllMethodsMatch(&buf, 20, 4, true);
+    try testAllMethodsMatch(&buf, 10, 4, true);
 }
 
 test "boundary: Unicode at SIMD boundary" {
@@ -240,5 +248,5 @@ test "boundary: Unicode at SIMD boundary" {
     @memset(&buf, 'a');
     const cjk = "世";
     @memcpy(buf[14..17], cjk);
-    try testAllMethodsMatch(buf[0..20], 20, 4);
+    try testAllMethodsMatch(buf[0..20], 20, 4, false);
 }

@@ -58,9 +58,32 @@ pub fn findWrapPosByWidthBaseline(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
+    isASCIIOnly: bool,
 ) WrapByWidthResult {
     if (text.len == 0 or max_columns == 0) {
         return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
+    }
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        var pos: usize = 0;
+        var columns_used: u32 = 0;
+
+        while (pos < text.len) {
+            const b = text[pos];
+            if (b == '\t') {
+                columns_used += tab_width - (columns_used % tab_width);
+            } else if (b >= 32 and b <= 126) {
+                columns_used += 1;
+            }
+
+            if (columns_used > max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used - 1 };
+            }
+            pos += 1;
+        }
+
+        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     var pos: usize = 0;
@@ -123,9 +146,51 @@ pub fn findWrapPosByWidthSIMD16(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
+    isASCIIOnly: bool,
 ) WrapByWidthResult {
     if (text.len == 0 or max_columns == 0) {
         return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
+    }
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        const vector_len = 16;
+        var pos: usize = 0;
+        var columns_used: u32 = 0;
+
+        while (pos + vector_len <= text.len) {
+            var i: usize = 0;
+            while (i < vector_len) : (i += 1) {
+                const b = text[pos + i];
+                if (b == '\t') {
+                    columns_used += tab_width - (columns_used % tab_width);
+                } else if (b >= 32 and b <= 126) {
+                    columns_used += 1;
+                }
+
+                if (columns_used > max_columns) {
+                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = columns_used - 1 };
+                }
+            }
+            pos += vector_len;
+        }
+
+        // Tail
+        while (pos < text.len) {
+            const b = text[pos];
+            if (b == '\t') {
+                columns_used += tab_width - (columns_used % tab_width);
+            } else if (b >= 32 and b <= 126) {
+                columns_used += 1;
+            }
+
+            if (columns_used > max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used - 1 };
+            }
+            pos += 1;
+        }
+
+        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     const vector_len = 16;
@@ -265,10 +330,10 @@ pub fn findWrapPosByWidthSIMD16(
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = grapheme_count, .columns_used = columns_used };
 }
 
-pub fn findWrapPosByWidthStdLib(text: []const u8, max_columns: u32, tab_width: u8) WrapByWidthResult {
-    return findWrapPosByWidthBaseline(text, max_columns, tab_width);
+pub fn findWrapPosByWidthStdLib(text: []const u8, max_columns: u32, tab_width: u8, isASCIIOnly: bool) WrapByWidthResult {
+    return findWrapPosByWidthBaseline(text, max_columns, tab_width, isASCIIOnly);
 }
 
-pub fn findWrapPosByWidthBitmask128(text: []const u8, max_columns: u32, tab_width: u8) WrapByWidthResult {
-    return findWrapPosByWidthBaseline(text, max_columns, tab_width);
+pub fn findWrapPosByWidthBitmask128(text: []const u8, max_columns: u32, tab_width: u8, isASCIIOnly: bool) WrapByWidthResult {
+    return findWrapPosByWidthBaseline(text, max_columns, tab_width, isASCIIOnly);
 }

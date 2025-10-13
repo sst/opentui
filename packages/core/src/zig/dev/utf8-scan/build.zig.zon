@@ -15,6 +15,5 @@
         "utf8-wrap-by-width.zig",
         "utf8-wrap-by-width.test.zig",
         "utf8-wrap-by-width-bench.zig",
-        "test-file-generator.zig",
     },
 }
