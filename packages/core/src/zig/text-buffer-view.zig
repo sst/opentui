@@ -418,9 +418,7 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                     return .{};
                                 }
 
-                                // Char mode: use wrap offsets to jump close to wrap boundaries
-                                const wrap_offsets = chunk.getWrapOffsets(&chunk_ctx.view.text_buffer.mem_registry, chunk_ctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
-
+                                // Char mode: Simple and fast - just fit remaining_width chars
                                 var char_offset: u32 = 0;
 
                                 while (char_offset < chunk.width) {
@@ -437,26 +435,7 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                         continue;
                                     }
 
-                                    // Find wrap offset close to where we need to wrap
-                                    var target_char: u32 = char_offset + remaining_width;
-                                    if (target_char > chunk.width) target_char = chunk.width;
-
-                                    // Binary search for the closest wrap offset <= target_char
-                                    var best_wrap_char: ?u32 = null;
-                                    if (wrap_offsets.len > 0) {
-                                        for (wrap_offsets) |wrap_break| {
-                                            const wrap_char = @as(u32, wrap_break.char_offset);
-                                            if (wrap_char < char_offset) continue;
-                                            if (wrap_char >= target_char) break;
-                                            best_wrap_char = wrap_char;
-                                        }
-                                    }
-
-                                    // Calculate how much to fit
-                                    const fit_count = if (best_wrap_char) |wrap_char|
-                                        @min(wrap_char + 1 - char_offset, remaining_width)
-                                    else
-                                        @min(remaining_width, chunk.width - char_offset);
+                                    const fit_count = @min(remaining_width, chunk.width - char_offset);
 
                                     if (fit_count == 0) {
                                         if (chunk_ctx.line_position.* > 0) {
