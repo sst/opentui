@@ -1,0 +1,20 @@
+.{
+    .name = .utf8_wrap_by_width,
+    .version = "0.1.0",
+    .fingerprint = 0xdc84385e96ba8293,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .uucode = .{
+            .url = "https://github.com/jacobsandlund/uucode/archive/refs/tags/v0.1.0-zig-0.14.tar.gz",
+            .hash = "uucode-0.1.0-ZZjBPpAFQABNCvd9cVPBg4I7233Ays-NWfWphPNqGbyE",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "utf8-wrap-by-width.zig",
+        "utf8-wrap-by-width.test.zig",
+        "utf8-wrap-by-width-bench.zig",
+        "test-file-generator.zig",
+    },
+}
