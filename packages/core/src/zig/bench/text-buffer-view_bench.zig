@@ -58,6 +58,34 @@ pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes:
     return try buffer.toOwnedSlice();
 }
 
+pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: usize) ![]u8 {
+    var buffer = std.ArrayList(u8).init(allocator);
+    errdefer buffer.deinit();
+
+    const patterns = [_][]const u8{
+        "The quick brown fox jumps over the lazy dog. ",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ",
+        "Hello, 世界! Unicode テスト 🌍🎉 ",
+        "Mixed width: ASCII 中文字符 emoji 🚀🔥💻 and more text. ",
+        "Programming languages: Rust, Zig, Go, Python, JavaScript. ",
+        "Αυτό είναι ελληνικό κείμενο. Это русский текст. ",
+        "Numbers and symbols: 12345 !@#$%^&*() []{}|;:',.<>? ",
+        "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
+    };
+
+    var current_bytes: usize = 0;
+    var pattern_idx: usize = 0;
+
+    while (current_bytes < target_bytes) {
+        const pattern = patterns[pattern_idx % patterns.len];
+        try buffer.appendSlice(pattern);
+        current_bytes += pattern.len;
+        pattern_idx += 1;
+    }
+
+    return try buffer.toOwnedSlice();
+}
+
 fn benchWrapArray(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
@@ -68,6 +96,7 @@ fn benchWrapArray(
     wrap_mode: WrapMode,
     iterations: usize,
     show_mem: bool,
+    use_set_text: bool,
 ) !BenchData {
     var min_ns: u64 = std.math.maxInt(u64);
     var max_ns: u64 = 0;
@@ -77,23 +106,26 @@ fn benchWrapArray(
 
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
-        // Create fresh TB and View for each iteration to avoid memory accumulation
         var tb = try TextBufferArray.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
         defer tb.deinit();
 
-        const mem_id = try tb.registerMemBuffer(text, false);
+        if (use_set_text) {
+            try tb.setText(text);
+        } else {
+            const mem_id = try tb.registerMemBuffer(text, false);
 
-        var line_start: u32 = 0;
-        for (text, 0..) |byte, idx| {
-            if (byte == '\n') {
-                if (idx > line_start) {
-                    try tb.addLine(mem_id, line_start, @intCast(idx));
+            var line_start: u32 = 0;
+            for (text, 0..) |byte, idx| {
+                if (byte == '\n') {
+                    if (idx > line_start) {
+                        try tb.addLine(mem_id, line_start, @intCast(idx));
+                    }
+                    line_start = @intCast(idx + 1);
                 }
-                line_start = @intCast(idx + 1);
             }
-        }
-        if (line_start < text.len) {
-            try tb.addLine(mem_id, line_start, @intCast(text.len));
+            if (line_start < text.len) {
+                try tb.addLine(mem_id, line_start, @intCast(text.len));
+            }
         }
 
         var view = try TextBufferViewArray.init(allocator, tb);
@@ -111,7 +143,6 @@ fn benchWrapArray(
         max_ns = @max(max_ns, elapsed);
         total_ns += elapsed;
 
-        // Capture memory from last iteration
         if (i == iterations - 1 and show_mem) {
             final_tb_mem = tb.getArenaAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
@@ -144,6 +175,7 @@ fn benchWrapRope(
     wrap_mode: WrapMode,
     iterations: usize,
     show_mem: bool,
+    use_set_text: bool,
 ) !BenchData {
     var min_ns: u64 = std.math.maxInt(u64);
     var max_ns: u64 = 0;
@@ -153,23 +185,26 @@ fn benchWrapRope(
 
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
-        // Create fresh TB and View for each iteration to avoid memory accumulation
         var tb = try TextBufferRope.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
         defer tb.deinit();
 
-        const mem_id = try tb.registerMemBuffer(text, false);
+        if (use_set_text) {
+            try tb.setText(text);
+        } else {
+            const mem_id = try tb.registerMemBuffer(text, false);
 
-        var line_start: u32 = 0;
-        for (text, 0..) |byte, idx| {
-            if (byte == '\n') {
-                if (idx > line_start) {
-                    try tb.addLine(mem_id, line_start, @intCast(idx));
+            var line_start: u32 = 0;
+            for (text, 0..) |byte, idx| {
+                if (byte == '\n') {
+                    if (idx > line_start) {
+                        try tb.addLine(mem_id, line_start, @intCast(idx));
+                    }
+                    line_start = @intCast(idx + 1);
                 }
-                line_start = @intCast(idx + 1);
             }
-        }
-        if (line_start < text.len) {
-            try tb.addLine(mem_id, line_start, @intCast(text.len));
+            if (line_start < text.len) {
+                try tb.addLine(mem_id, line_start, @intCast(text.len));
+            }
         }
 
         var view = try TextBufferViewRope.init(allocator, tb);
@@ -187,7 +222,6 @@ fn benchWrapRope(
         max_ns = @max(max_ns, elapsed);
         total_ns += elapsed;
 
-        // Capture memory from last iteration
         if (i == iterations - 1 and show_mem) {
             final_tb_mem = tb.getArenaAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
@@ -216,7 +250,6 @@ pub fn run(
 ) ![]BenchResult {
     const stdout = std.io.getStdOut().writer();
 
-    // Set up benchmark-specific dependencies
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
 
@@ -224,19 +257,24 @@ pub fn run(
     defer gp.deinitGlobalUnicodeData(allocator);
     const graphemes_ptr, const display_width_ptr = unicode_data;
 
-    const text = try generateLargeText(allocator, 5000, 2 * 1024 * 1024);
-    defer allocator.free(text);
+    const text_multiline = try generateLargeText(allocator, 5000, 2 * 1024 * 1024);
+    defer allocator.free(text_multiline);
 
-    const text_mb = @as(f64, @floatFromInt(text.len)) / (1024.0 * 1024.0);
-    const line_count = blk: {
+    const text_singleline = try generateLargeTextSingleLine(allocator, 2 * 1024 * 1024);
+    defer allocator.free(text_singleline);
+
+    const text_mb_multi = @as(f64, @floatFromInt(text_multiline.len)) / (1024.0 * 1024.0);
+    const text_mb_single = @as(f64, @floatFromInt(text_singleline.len)) / (1024.0 * 1024.0);
+    const line_count_multi = blk: {
         var count: usize = 0;
-        for (text) |byte| {
+        for (text_multiline) |byte| {
             if (byte == '\n') count += 1;
         }
         break :blk count;
     };
 
-    try stdout.print("Generated {d:.2} MiB of text ({d} lines)\n", .{ text_mb, line_count });
+    try stdout.print("Generated {d:.2} MiB multiline text ({d} lines)\n", .{ text_mb_multi, line_count_multi });
+    try stdout.print("Generated {d:.2} MiB single-line text\n", .{text_mb_single});
     if (show_mem) {
         try stdout.print("Memory stats enabled\n", .{});
     }
@@ -248,19 +286,32 @@ pub fn run(
         impl: []const u8,
         width: u32,
         mode: []const u8,
+        single_line: bool,
     }{
-        .{ .impl = "Array", .width = 40, .mode = "char" },
-        .{ .impl = "Array", .width = 80, .mode = "char" },
-        .{ .impl = "Array", .width = 120, .mode = "char" },
-        .{ .impl = "Array", .width = 40, .mode = "word" },
-        .{ .impl = "Array", .width = 80, .mode = "word" },
-        .{ .impl = "Array", .width = 120, .mode = "word" },
-        .{ .impl = "Rope", .width = 40, .mode = "char" },
-        .{ .impl = "Rope", .width = 80, .mode = "char" },
-        .{ .impl = "Rope", .width = 120, .mode = "char" },
-        .{ .impl = "Rope", .width = 40, .mode = "word" },
-        .{ .impl = "Rope", .width = 80, .mode = "word" },
-        .{ .impl = "Rope", .width = 120, .mode = "word" },
+        .{ .impl = "Array", .width = 40, .mode = "char", .single_line = false },
+        .{ .impl = "Array", .width = 80, .mode = "char", .single_line = false },
+        .{ .impl = "Array", .width = 120, .mode = "char", .single_line = false },
+        .{ .impl = "Array", .width = 40, .mode = "word", .single_line = false },
+        .{ .impl = "Array", .width = 80, .mode = "word", .single_line = false },
+        .{ .impl = "Array", .width = 120, .mode = "word", .single_line = false },
+        .{ .impl = "Rope", .width = 40, .mode = "char", .single_line = false },
+        .{ .impl = "Rope", .width = 80, .mode = "char", .single_line = false },
+        .{ .impl = "Rope", .width = 120, .mode = "char", .single_line = false },
+        .{ .impl = "Rope", .width = 40, .mode = "word", .single_line = false },
+        .{ .impl = "Rope", .width = 80, .mode = "word", .single_line = false },
+        .{ .impl = "Rope", .width = 120, .mode = "word", .single_line = false },
+        .{ .impl = "Array", .width = 40, .mode = "char", .single_line = true },
+        .{ .impl = "Array", .width = 80, .mode = "char", .single_line = true },
+        .{ .impl = "Array", .width = 120, .mode = "char", .single_line = true },
+        .{ .impl = "Array", .width = 40, .mode = "word", .single_line = true },
+        .{ .impl = "Array", .width = 80, .mode = "word", .single_line = true },
+        .{ .impl = "Array", .width = 120, .mode = "word", .single_line = true },
+        .{ .impl = "Rope", .width = 40, .mode = "char", .single_line = true },
+        .{ .impl = "Rope", .width = 80, .mode = "char", .single_line = true },
+        .{ .impl = "Rope", .width = 120, .mode = "char", .single_line = true },
+        .{ .impl = "Rope", .width = 40, .mode = "word", .single_line = true },
+        .{ .impl = "Rope", .width = 80, .mode = "word", .single_line = true },
+        .{ .impl = "Rope", .width = 120, .mode = "word", .single_line = true },
     };
 
     const iterations: usize = 5;
@@ -271,10 +322,14 @@ pub fn run(
         else
             WrapMode.word;
 
-        const bench_name = try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, {s}, width={d})", .{
+        const text = if (scenario.single_line) text_singleline else text_multiline;
+        const line_type = if (scenario.single_line) "single" else "multi";
+
+        const bench_name = try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, {s}, width={d}, {s}-line)", .{
             scenario.impl,
             scenario.mode,
             scenario.width,
+            line_type,
         });
         errdefer allocator.free(bench_name);
 
@@ -289,6 +344,7 @@ pub fn run(
                 wrap_mode,
                 iterations,
                 show_mem,
+                scenario.single_line,
             )
         else
             try benchWrapRope(
@@ -301,6 +357,7 @@ pub fn run(
                 wrap_mode,
                 iterations,
                 show_mem,
+                scenario.single_line,
             );
 
         try results.append(BenchResult{
