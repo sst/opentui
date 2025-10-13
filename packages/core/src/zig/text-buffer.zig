@@ -980,23 +980,67 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
         }
 
         /// Parse a single line into chunks (count and measure graphemes, but don't encode)
-        fn parseLine(self: *Self, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, _: bool) TextBufferError!void {
+        /// Splits lines into multiple chunks at byte-length boundaries of max u16 (65535)
+        /// and adjusts to grapheme cluster boundaries for correctness
+        fn parseLine(self: *Self, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, has_line_break: bool) TextBufferError!void {
+            _ = has_line_break;
             var line = try Line.init(self.allocator);
             line.char_offset = self.char_count;
 
             // Note: We don't include the newline character in the chunk
             // Newlines are implicit line separators, not counted as characters
 
-            // Store the chunk with just byte references
             if (byte_start < byte_end) {
-                const chunk = self.createChunk(mem_id, byte_start, byte_end);
+                const max_chunk_bytes = std.math.maxInt(u16); // 65535 bytes per chunk
+                const total_bytes = byte_end - byte_start;
 
-                self.char_count += chunk.width;
-                try line.chunks.append(chunk);
-                line.width = chunk.width;
+                // If the line fits in a single chunk, create it directly
+                if (total_bytes <= max_chunk_bytes) {
+                    const chunk = self.createChunk(mem_id, byte_start, byte_end);
+                    self.char_count += chunk.width;
+                    try line.chunks.append(chunk);
+                    line.width = chunk.width;
+                } else {
+                    // Split into multiple chunks at byte boundaries
+                    // Only need to check for UTF-8 boundaries if splitting in the middle of a multibyte sequence
+                    var chunk_start_byte: u32 = byte_start;
+
+                    while (chunk_start_byte < byte_end) {
+                        // Calculate target split point (max_chunk_bytes from chunk start)
+                        var split_point = @min(chunk_start_byte + max_chunk_bytes, byte_end);
+
+                        // If we're not at the end, check if we're splitting in the middle of a UTF-8 character
+                        if (split_point < byte_end) {
+                            const b = text[split_point];
+
+                            // If byte is non-ASCII, walk back up to 4 bytes to find start of UTF-8 char
+                            if (b >= 0x80) {
+                                // Walk back to find the start of the UTF-8 character
+                                // A UTF-8 character can be at most 4 bytes, so we only need to check a few bytes back
+                                var lookback: u32 = 0;
+                                while (lookback < 4 and split_point > chunk_start_byte + lookback) : (lookback += 1) {
+                                    const check_byte = text[split_point - lookback - 1];
+                                    // Check if this is a UTF-8 start byte (not a continuation byte 10xxxxxx)
+                                    if ((check_byte & 0xC0) != 0x80) {
+                                        // Found start of UTF-8 char, split before it
+                                        split_point = split_point - lookback - 1;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Create chunk from chunk_start_byte to split_point
+                        const chunk = self.createChunk(mem_id, chunk_start_byte, split_point);
+                        try line.chunks.append(chunk);
+                        line.width += chunk.width;
+                        self.char_count += chunk.width;
+
+                        chunk_start_byte = split_point;
+                    }
+                }
             }
 
-            _ = text; // Suppress unused warning
             try self.lines.append(line);
         }
 

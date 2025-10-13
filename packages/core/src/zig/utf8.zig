@@ -107,7 +107,7 @@ inline fn isAsciiWrapBreak(b: u8) bool {
 
 // Decode a UTF-8 codepoint starting at pos. Assumes valid UTF-8 input.
 // Returns (codepoint, length). If the remaining bytes are insufficient, returns length 1.
-inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21, len: u3 } {
+pub inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21, len: u3 } {
     const b0 = text[pos];
     if (b0 < 0x80) return .{ .cp = @intCast(b0), .len = 1 };
 
