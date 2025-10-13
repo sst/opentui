@@ -1,4 +1,5 @@
 const std = @import("std");
+const uucode = @import("uucode");
 
 /// Check if a byte slice contains only printable ASCII (32..126)
 /// Uses SIMD16 for fast checking
@@ -149,12 +150,17 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
     };
 }
 
+// Nothing needed here - using uucode.grapheme.isBreak directly
+
 pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
     result.reset();
     const vector_len = 16;
 
     var pos: usize = 0;
     var char_offset: u16 = 0;
+    var prev_cp: ?u21 = null; // Track previous codepoint for grapheme detection
+    var break_state: uucode.grapheme.BreakState = .default;
+
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
         const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
@@ -210,14 +216,20 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
 
             pos += vector_len;
             char_offset += vector_len;
+            prev_cp = text[pos - 1]; // Last ASCII char
             continue;
         }
 
-        // Slow path: mixed ASCII/non-ASCII
+        // Slow path: mixed ASCII/non-ASCII - need grapheme-aware counting
         var i: usize = 0;
         while (i < vector_len) {
             const b0 = text[pos + i];
             if (b0 < 0x80) {
+                const curr_cp: u21 = b0;
+
+                // Check if this starts a new grapheme cluster
+                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+
                 if (isAsciiWrapBreak(b0)) {
                     try result.breaks.append(.{
                         .byte_offset = @intCast(pos + i),
@@ -225,10 +237,17 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
                     });
                 }
                 i += 1;
-                char_offset += 1;
+                if (is_break) {
+                    char_offset += 1;
+                }
+                prev_cp = curr_cp;
             } else {
                 const dec = decodeUtf8Unchecked(text, pos + i);
                 if (pos + i + dec.len > text.len) break;
+
+                // Check if this starts a new grapheme cluster
+                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, dec.cp, &break_state) else true;
+
                 if (isUnicodeWrapBreak(dec.cp)) {
                     try result.breaks.append(.{
                         .byte_offset = @intCast(pos + i),
@@ -236,7 +255,10 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
                     });
                 }
                 i += dec.len;
-                char_offset += 1;
+                if (is_break) {
+                    char_offset += 1;
+                }
+                prev_cp = dec.cp;
             }
         }
         pos += vector_len;
@@ -247,6 +269,9 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
     while (i < text.len) {
         const b0 = text[i];
         if (b0 < 0x80) {
+            const curr_cp: u21 = b0;
+            const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+
             if (isAsciiWrapBreak(b0)) {
                 try result.breaks.append(.{
                     .byte_offset = @intCast(i),
@@ -254,10 +279,16 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
                 });
             }
             i += 1;
-            char_offset += 1;
+            if (is_break) {
+                char_offset += 1;
+            }
+            prev_cp = curr_cp;
         } else {
             const dec = decodeUtf8Unchecked(text, i);
             if (i + dec.len > text.len) break;
+
+            const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, dec.cp, &break_state) else true;
+
             if (isUnicodeWrapBreak(dec.cp)) {
                 try result.breaks.append(.{
                     .byte_offset = @intCast(i),
@@ -265,7 +296,10 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
                 });
             }
             i += dec.len;
-            char_offset += 1;
+            if (is_break) {
+                char_offset += 1;
+            }
+            prev_cp = dec.cp;
         }
     }
 }

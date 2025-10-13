@@ -740,3 +740,113 @@ test "edge case: 17 bytes with break at 16" {
     try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].char_offset);
 }
+
+// ============================================================================
+// GRAPHEME CLUSTER TESTS
+// ============================================================================
+
+test "wrap breaks: emoji with ZWJ - char offset should count grapheme not codepoints" {
+    // "👩‍🚀" is Woman Astronaut = 3 codepoints but 1 grapheme
+    // U+1F469 (woman) + U+200D (ZWJ) + U+1F680 (rocket)
+    // Should be counted as 1 character, not 3
+    const input = "ab 👩‍🚀 cd"; // space after "ab", space after emoji
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &result);
+
+    // Currently FAILS: char_offset at second space would be 5 (counting 3 codepoints)
+    // Should be: char_offset = 3 (a, b, space) + 1 (grapheme) = 4
+    // Byte offsets: space@2, space@(2+1+4+3+4=14)
+    try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
+    // This will fail with current implementation:
+    try testing.expectEqual(@as(u16, 14), result.breaks.items[1].byte_offset);
+    try testing.expectEqual(@as(u16, 4), result.breaks.items[1].char_offset); // Should be 4, not 6
+}
+
+test "wrap breaks: emoji with skin tone - char offset should count grapheme" {
+    // "👋🏿" is Waving Hand with Dark Skin Tone = 2 codepoints but 1 grapheme
+    // U+1F44B + U+1F3FF
+    const input = "hi 👋🏿 bye"; // space after "hi", space after emoji
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &result);
+
+    try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
+    // Byte offset: 2(hi) + 1(space) + 4(wave) + 4(tone) = 11
+    try testing.expectEqual(@as(u16, 11), result.breaks.items[1].byte_offset);
+    try testing.expectEqual(@as(u16, 4), result.breaks.items[1].char_offset); // Should be 4, not 5
+}
+
+test "wrap breaks: emoji with VS16 selector - char offset should count grapheme" {
+    // "❤️" = U+2764 + U+FE0F (VS16) = 2 codepoints but 1 grapheme
+    const input = "I ❤️ U"; // spaces around heart
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &result);
+
+    try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 1), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 1), result.breaks.items[0].char_offset);
+    // Byte offset: 1(I) + 1(space) + 3(heart) + 3(VS16) = 8
+    try testing.expectEqual(@as(u16, 8), result.breaks.items[1].byte_offset);
+    try testing.expectEqual(@as(u16, 3), result.breaks.items[1].char_offset); // Should be 3, not 4
+}
+
+test "wrap breaks: combining diacritic - char offset should count grapheme" {
+    // "é" as e + combining acute = U+0065 + U+0301 = 2 codepoints but 1 grapheme
+    const input = "cafe\u{0301} time"; // café with combining accent
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &result);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    // Byte offset: 4(cafe) + 2(combining) = 6
+    try testing.expectEqual(@as(u16, 6), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 4), result.breaks.items[0].char_offset); // Should be 4, not 5
+}
+
+test "wrap breaks: flag emoji - char offset should count grapheme" {
+    // "🇺🇸" = U+1F1FA + U+1F1F8 (Regional Indicators) = 2 codepoints, 1 grapheme per uucode
+    const input = "USA🇺🇸 flag"; // space after flag
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &result);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    // Space after flag: Byte offset: 3(USA) + 4(U) + 4(S) = 11
+    try testing.expectEqual(@as(u16, 11), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 4), result.breaks.items[0].char_offset); // 3(USA) + 1(flag) = 4
+}
+
+test "wrap breaks: mixed graphemes and ASCII" {
+    // Test mixed content with multiple grapheme types
+    const input = "Hello 👋🏿 world 🇺🇸 test"; // Multiple spaces and graphemes
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaksSIMD16(input, &result);
+
+    try testing.expectEqual(@as(usize, 4), result.breaks.items.len);
+    // First space after "Hello"
+    try testing.expectEqual(@as(u16, 5), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 5), result.breaks.items[0].char_offset);
+    // Second space: 5(Hello) + 1(space) + 8(emoji with tone) = 14
+    try testing.expectEqual(@as(u16, 14), result.breaks.items[1].byte_offset);
+    try testing.expectEqual(@as(u16, 7), result.breaks.items[1].char_offset); // 5 + 1 + 1(grapheme) = 7
+    // Third space: 14 + 1(space) + 5(world) = 20
+    try testing.expectEqual(@as(u16, 20), result.breaks.items[2].byte_offset);
+    try testing.expectEqual(@as(u16, 13), result.breaks.items[2].char_offset); // 7 + 1 + 5 = 13
+    // Fourth space: 20 + 1(space) + 8(flag emoji) = 29
+    // Note: Flag emojis like 🇺🇸 are counted by uucode as 2 graphemes (one per regional indicator)
+    try testing.expectEqual(@as(u16, 29), result.breaks.items[3].byte_offset);
+    try testing.expectEqual(@as(u16, 15), result.breaks.items[3].char_offset); // 13 + 1(space) + 1(RI) + 1(RI) = 15 (per uucode)
+}
