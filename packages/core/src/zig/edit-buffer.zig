@@ -160,13 +160,13 @@ pub const EditBuffer = struct {
 
         if (weight == 0) {
             return .{
-                .left = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0, .graphemes = null },
+                .left = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0 },
                 .right = chunk.*,
             };
         } else if (weight >= chunk_weight) {
             return .{
                 .left = chunk.*,
-                .right = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0, .graphemes = null },
+                .right = TextChunk{ .mem_id = 0, .byte_start = 0, .byte_end = 0, .width = 0 },
             };
         }
 
@@ -195,7 +195,6 @@ pub const EditBuffer = struct {
             .byte_start = chunk.byte_start,
             .byte_end = chunk.byte_start + split_byte_offset,
             .width = left_width,
-            .graphemes = null,
         };
 
         const right_chunk = TextChunk{
@@ -203,7 +202,6 @@ pub const EditBuffer = struct {
             .byte_start = chunk.byte_start + split_byte_offset,
             .byte_end = chunk.byte_end,
             .width = chunk_weight - left_width,
-            .graphemes = null,
         };
 
         return .{ .left = left_chunk, .right = right_chunk };
@@ -277,7 +275,6 @@ pub const EditBuffer = struct {
             .byte_start = chunk_ref.start,
             .byte_end = chunk_ref.end,
             .width = self.tb.measureText(bytes),
-            .graphemes = null,
         };
 
         const mut_line = @constCast(target_line);
@@ -316,7 +313,6 @@ pub const EditBuffer = struct {
             .byte_start = first_chunk_ref.start,
             .byte_end = first_chunk_ref.end,
             .width = self.tb.measureText(segments[0]),
-            .graphemes = null,
         };
         try mut_line.chunks.append(first_chunk);
         mut_line.width = self.recomputeLineWidth(target_line);
@@ -334,7 +330,6 @@ pub const EditBuffer = struct {
                 .byte_start = seg_chunk_ref.start,
                 .byte_end = seg_chunk_ref.end,
                 .width = self.tb.measureText(segments[seg_idx]),
-                .graphemes = null,
             };
 
             var new_line = try TextLine(Rope(TextChunk)).init(self.tb.allocator);
@@ -352,7 +347,6 @@ pub const EditBuffer = struct {
             .byte_start = last_chunk_ref.start,
             .byte_end = last_chunk_ref.end,
             .width = self.tb.measureText(last_seg),
-            .graphemes = null,
         };
 
         var last_line = try TextLine(Rope(TextChunk)).init(self.tb.allocator);

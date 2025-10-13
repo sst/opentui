@@ -109,7 +109,8 @@ pub const TextChunk = struct {
     byte_start: u32, // Offset into the memory buffer
     byte_end: u32, // End offset into the memory buffer
     width: u32, // Display width in cells (computed once)
-    graphemes: ?[]GraphemeInfo, // Lazy grapheme buffer (computed on first access, reused by views)
+    graphemes: ?[]GraphemeInfo = null, // Lazy grapheme buffer (computed on first access, reused by views)
+    wrap_offsets: ?[]utf8.WrapBreak = null, // Lazy wrap offset buffer (computed on first access)
 
     pub const Metrics = struct {
         total_width: u32 = 0,
@@ -133,7 +134,6 @@ pub const TextChunk = struct {
             .byte_start = 0,
             .byte_end = 0,
             .width = 0,
-            .graphemes = null,
         };
     }
 
@@ -193,6 +193,30 @@ pub const TextChunk = struct {
         mut_self.graphemes = graphemes;
 
         return graphemes;
+    }
+
+    /// Lazily compute and cache wrap offsets for this chunk
+    /// Returns a slice that is valid until the buffer is reset
+    pub fn getWrapOffsets(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+    ) TextBufferError![]const utf8.WrapBreak {
+        const mut_self = @constCast(self);
+        if (self.wrap_offsets) |cached| {
+            return cached;
+        }
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        var wrap_result = utf8.WrapBreakResult.init(allocator);
+        defer wrap_result.deinit();
+
+        try utf8.findWrapBreaksSIMD16(chunk_bytes, &wrap_result);
+
+        const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);
+        mut_self.wrap_offsets = wrap_offsets;
+
+        return wrap_offsets;
     }
 };
 
@@ -952,7 +976,6 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
                 .byte_start = byte_start,
                 .byte_end = byte_end,
                 .width = chunk_width,
-                .graphemes = null, // Computed lazily
             };
         }
 
