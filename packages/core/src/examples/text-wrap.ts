@@ -256,25 +256,25 @@ function createDemoText(): TextNodeRenderable {
   const feature1Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Word-based wrapping", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Preserves word boundaries when breaking lines", { fg: "#565f89" }),
+    TextNodeRenderable.fromString(" - Preserves word boundaries when breaking lines 📖", { fg: "#565f89" }),
   ])
 
   const feature2Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Character-based wrapping", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Breaks at any character for precise control", { fg: "#565f89" }),
+    TextNodeRenderable.fromString(" - Breaks at any character for precise control ✂️", { fg: "#565f89" }),
   ])
 
   const feature3Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Dynamic resizing", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Text reflows automatically as container dimensions change", { fg: "#565f89" }),
+    TextNodeRenderable.fromString(" - Text reflows automatically as container dimensions change 🔄", { fg: "#565f89" }),
   ])
 
   const feature4Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Rich styling", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Individual text segments can have different colors and attributes", {
+    TextNodeRenderable.fromString(" - Individual text segments can have different colors and attributes 🎨", {
       fg: "#565f89",
     }),
   ])
@@ -321,7 +321,7 @@ function createDemoText(): TextNodeRenderable {
     },
   )
 
-  const codeTitle = TextNodeRenderable.fromString("\n\n💻 Example Code:", {
+  const codeTitle = TextNodeRenderable.fromString("\n\n💻 Example Code: 🖥️", {
     fg: "#bb9af7",
     attributes: 1,
   })
@@ -383,7 +383,7 @@ textRenderable.add(styledText);`,
   )
 
   const conclusionNode = TextNodeRenderable.fromString(
-    "\n\n🚀 This demonstrates the power of OpenTUI's flexible text rendering system, combining rich styling with dynamic layout capabilities!",
+    "\n\n🚀 This demonstrates the power of OpenTUI's flexible text rendering system, combining rich styling with dynamic layout capabilities! ✨🎨📝",
     {
       fg: "#9ece6a",
       attributes: 1,
