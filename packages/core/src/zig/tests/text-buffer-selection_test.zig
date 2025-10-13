@@ -19,7 +19,7 @@ test "Selection - basic selection without wrap" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -46,7 +46,7 @@ test "Selection - with wrapped lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -77,7 +77,7 @@ test "Selection - no selection returns all bits set" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -97,7 +97,7 @@ test "Selection - with newline characters" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -126,7 +126,7 @@ test "Selection - across empty lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -153,7 +153,7 @@ test "Selection - ending in empty line" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -178,7 +178,7 @@ test "Selection - spanning multiple lines completely" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -203,7 +203,7 @@ test "Selection - including multiple line breaks" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -230,7 +230,7 @@ test "Selection - at line boundaries" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -257,7 +257,7 @@ test "Selection - empty text" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -279,7 +279,7 @@ test "Selection - single character" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -311,7 +311,7 @@ test "Selection - zero-width selection" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -333,7 +333,7 @@ test "Selection - beyond text bounds" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -360,7 +360,7 @@ test "Selection - clear selection" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -385,7 +385,7 @@ test "Selection - at wrap boundary" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -414,7 +414,7 @@ test "Selection - spanning multiple wrapped lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -444,7 +444,7 @@ test "Selection - changes when wrap width changes" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -479,7 +479,7 @@ test "Selection - with newlines and wrapping" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -506,7 +506,7 @@ test "Selection - getSelectedText simple" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -530,7 +530,7 @@ test "Selection - getSelectedText with newlines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -554,7 +554,7 @@ test "Selection - spanning multiple lines with getSelectedText" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -578,7 +578,7 @@ test "Selection - with graphemes" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);

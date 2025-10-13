@@ -17,7 +17,7 @@ test "TextBuffer line info - empty buffer" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("");
@@ -36,7 +36,7 @@ test "TextBuffer line info - simple text without newlines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -55,7 +55,7 @@ test "TextBuffer line info - single newline" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello\nWorld");
@@ -76,7 +76,7 @@ test "TextBuffer line info - multiple lines separated by newlines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -101,7 +101,7 @@ test "TextBuffer line info - text ending with newline" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World\n");
@@ -122,7 +122,7 @@ test "TextBuffer line info - consecutive newlines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1\n\nLine 3");
@@ -142,7 +142,7 @@ test "TextBuffer line info - text starting with newline" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("\nHello World");
@@ -161,7 +161,7 @@ test "TextBuffer line info - only newlines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("\n\n\n");
@@ -187,7 +187,7 @@ test "TextBuffer line info - wide characters (Unicode)" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello 世界 🌟");
@@ -206,7 +206,7 @@ test "TextBuffer line info - empty lines between content" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("First\n\nThird");
@@ -226,7 +226,7 @@ test "TextBuffer line info - very long lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create a long text with 1000 'A' characters
@@ -247,7 +247,7 @@ test "TextBuffer line info - lines with different widths" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create text with different line lengths
@@ -273,7 +273,7 @@ test "TextBuffer line info - text without styling" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // setText now handles all text at once without styling
@@ -293,7 +293,7 @@ test "TextBuffer line info - buffer with only whitespace" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("   \n \n ");
@@ -318,7 +318,7 @@ test "TextBuffer line info - single character lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("A\nB\nC");
@@ -343,7 +343,7 @@ test "TextBuffer line info - mixed content with special characters" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Normal\n123\n!@#\n测试\n");
@@ -367,7 +367,7 @@ test "TextBuffer line info - buffer resize operations" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Add text that will cause multiple resizes
@@ -391,7 +391,7 @@ test "TextBuffer line info - thousands of lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create text with 1000 lines
@@ -426,7 +426,7 @@ test "TextBuffer line info - alternating empty and content lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("\nContent\n\nMore\n\n");
@@ -450,7 +450,7 @@ test "TextBuffer line info - complex Unicode combining characters" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("café\nnaïve\nrésumé");
@@ -470,7 +470,7 @@ test "TextBuffer line info - simple multi-line text" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Test\nText");
@@ -557,7 +557,7 @@ test "TextBuffer line info - extremely long single line" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create extremely long text with 10000 'A' characters
@@ -582,7 +582,7 @@ test "TextBuffer highlights - add single highlight to line" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -605,7 +605,7 @@ test "TextBuffer highlights - add multiple highlights to same line" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -628,7 +628,7 @@ test "TextBuffer highlights - add highlights to multiple lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -651,7 +651,7 @@ test "TextBuffer highlights - remove highlights by reference" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2");
@@ -680,7 +680,7 @@ test "TextBuffer highlights - clear line highlights" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2");
@@ -702,7 +702,7 @@ test "TextBuffer highlights - clear all highlights" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -726,7 +726,7 @@ test "TextBuffer highlights - get highlights from non-existent line" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line 1");
@@ -744,7 +744,7 @@ test "TextBuffer highlights - overlapping highlights" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -765,7 +765,7 @@ test "TextBuffer highlights - reset clears highlights" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -786,7 +786,7 @@ test "TextBuffer highlights - setSyntaxStyle and getSyntaxStyle" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -812,7 +812,7 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -850,7 +850,7 @@ test "TextBuffer highlights - style spans computed correctly" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("0123456789");
@@ -881,7 +881,7 @@ test "TextBuffer highlights - priority handling in spans" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("0123456789");
@@ -913,7 +913,7 @@ test "TextBuffer char range highlights - single line highlight" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -936,7 +936,7 @@ test "TextBuffer char range highlights - multi-line highlight" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // "Hello" = 5 chars (0-4, newlines not counted)
@@ -971,7 +971,7 @@ test "TextBuffer char range highlights - spanning three lines" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line1\nLine2\nLine3");
@@ -1006,7 +1006,7 @@ test "TextBuffer char range highlights - exact line boundaries" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("AAAA\nBBBB\nCCCC");
@@ -1032,7 +1032,7 @@ test "TextBuffer char range highlights - empty range" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -1052,7 +1052,7 @@ test "TextBuffer char range highlights - invalid range" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -1072,7 +1072,7 @@ test "TextBuffer char range highlights - out of bounds range" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -1093,7 +1093,7 @@ test "TextBuffer char range highlights - multiple non-overlapping ranges" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("function hello() { return 42; }");
@@ -1118,7 +1118,7 @@ test "TextBuffer char range highlights - with reference ID for removal" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line1\nLine2\nLine3");
@@ -1147,7 +1147,7 @@ test "TextBuffer char range highlights - priority handling" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("0123456789");
@@ -1177,7 +1177,7 @@ test "TextBuffer char range highlights - unicode text" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello 世界 🌟");
@@ -1198,7 +1198,7 @@ test "TextBuffer char range highlights - preserved after setText" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -1221,7 +1221,7 @@ test "TextBuffer view registration - multiple views can be created" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Register multiple views
@@ -1248,7 +1248,7 @@ test "TextBuffer view registration - views marked dirty on setText" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -1281,7 +1281,7 @@ test "TextBuffer view registration - views marked dirty on reset" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -1304,7 +1304,7 @@ test "TextBuffer view registration - ID reuse after unregister" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Register and unregister a view
@@ -1329,7 +1329,7 @@ test "TextBuffer view registration - multiple views all marked dirty on setText"
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -1368,7 +1368,7 @@ test "TextBuffer memory registry - register and get buffer" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -1387,7 +1387,7 @@ test "TextBuffer memory registry - multiple buffers" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text1 = "First buffer";
@@ -1417,7 +1417,7 @@ test "TextBuffer memory registry - invalid ID returns null" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Try to get buffer with ID that doesn't exist
@@ -1433,7 +1433,7 @@ test "TextBuffer memory registry - addLine from single buffer" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -1460,7 +1460,7 @@ test "TextBuffer memory registry - addLine from multiple buffers" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text1 = "First line";
@@ -1492,7 +1492,7 @@ test "TextBuffer memory registry - addLine with invalid mem_id" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Try to add line with invalid mem_id
@@ -1508,7 +1508,7 @@ test "TextBuffer memory registry - mixed with setText" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // First use setText
@@ -1533,7 +1533,7 @@ test "TextBuffer memory registry - reset clears memory buffers" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text = "Hello";
@@ -1556,7 +1556,7 @@ test "TextBuffer memory registry - partial buffer slices" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const full_text = "0123456789ABCDEFGHIJ";
@@ -1584,7 +1584,7 @@ test "TextBuffer memory registry - unicode text from buffers" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text1 = "Hello 世界";
@@ -1614,7 +1614,7 @@ test "TextBuffer memory registry - getByteSize with multiple buffers" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text1 = "Hello"; // 5 bytes
@@ -1639,7 +1639,7 @@ test "TextBuffer memory registry - views marked dirty on addLine" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const view_id = try tb.registerView();
@@ -1665,7 +1665,7 @@ test "TextBuffer memory registry - empty chunk handling" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -1687,7 +1687,7 @@ test "TextBuffer memory registry - buffer limit of 255" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Register 255 buffers (the maximum for u8)
@@ -1710,7 +1710,7 @@ test "TextBuffer memory registry - owned buffer memory management" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Allocate a buffer that the TextBuffer should own and free
@@ -1735,7 +1735,7 @@ test "TextBuffer memory registry - byte range out of bounds" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text = "Hello"; // Only 5 bytes
@@ -1758,7 +1758,7 @@ test "TextBuffer memory registry - character range highlights across buffers" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text1 = "Line One";
@@ -1788,7 +1788,7 @@ test "TextBuffer memory registry - empty buffer registration" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const empty_text = "";
@@ -1807,7 +1807,7 @@ test "TextBuffer memory registry - same buffer registered multiple times" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     const text = "Shared buffer";
@@ -1844,7 +1844,7 @@ test "TextBuffer setText - CRLF line endings (Windows)" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line1\r\nLine2\r\nLine3");
@@ -1869,7 +1869,7 @@ test "TextBuffer setText - mixed line endings (LF, CRLF, CR)" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Unix\nWindows\r\nOldMac\rEnd");
@@ -1891,7 +1891,7 @@ test "TextBuffer setText - text ending with CRLF" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello World\r\n");
@@ -1911,7 +1911,7 @@ test "TextBuffer setText - consecutive CRLF sequences" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line1\r\n\r\nLine3");
@@ -1931,7 +1931,7 @@ test "TextBuffer setText - only CRLF sequences" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("\r\n\r\n\r\n");
@@ -1953,7 +1953,7 @@ test "TextBuffer setText - text starting with CRLF" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("\r\nHello World");
@@ -1972,7 +1972,7 @@ test "TextBuffer setText - CR without LF" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Line1\rLine2\rLine3");
@@ -1993,7 +1993,7 @@ test "TextBuffer setText - very long line with SIMD processing" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create a text longer than 16 bytes (SIMD vector size) to test SIMD path
@@ -2023,7 +2023,7 @@ test "TextBuffer setText - unicode content with various line endings" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     try tb.setText("Hello 世界\r\n🌟 Test\nEnd");
@@ -2045,7 +2045,7 @@ test "TextBuffer setText - multiple consecutive different line endings" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Mix of \n, \r\n, \r in sequence
@@ -2064,7 +2064,7 @@ test "TextBuffer setText - SIMD boundary conditions" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create text with newlines at SIMD vector boundaries (16 bytes)
@@ -2097,7 +2097,7 @@ test "TextBuffer setText - CRLF at SIMD boundary" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
     // Create text where \r is at end of SIMD vector and \n is at start of next

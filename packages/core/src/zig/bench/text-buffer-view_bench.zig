@@ -78,7 +78,7 @@ fn benchWrapArray(
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
         // Create fresh TB and View for each iteration to avoid memory accumulation
-        var tb = try TextBufferArray.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+        var tb = try TextBufferArray.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
         defer tb.deinit();
 
         const mem_id = try tb.registerMemBuffer(text, false);
@@ -154,7 +154,7 @@ fn benchWrapRope(
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
         // Create fresh TB and View for each iteration to avoid memory accumulation
-        var tb = try TextBufferRope.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+        var tb = try TextBufferRope.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
         defer tb.deinit();
 
         const mem_id = try tb.registerMemBuffer(text, false);
