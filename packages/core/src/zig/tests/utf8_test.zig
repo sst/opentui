@@ -7,6 +7,105 @@ const testing = std.testing;
 const utf8 = @import("../utf8.zig");
 
 // ============================================================================
+// ASCII-ONLY DETECTION TESTS
+// ============================================================================
+
+test "isAsciiOnly: empty string" {
+    try testing.expect(!utf8.isAsciiOnly(""));
+}
+
+test "isAsciiOnly: simple ASCII" {
+    try testing.expect(utf8.isAsciiOnly("Hello, World!"));
+    try testing.expect(utf8.isAsciiOnly("The quick brown fox"));
+    try testing.expect(utf8.isAsciiOnly("0123456789"));
+    try testing.expect(utf8.isAsciiOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"));
+}
+
+test "isAsciiOnly: control chars rejected" {
+    try testing.expect(!utf8.isAsciiOnly("Hello\tWorld")); // Tab
+    try testing.expect(!utf8.isAsciiOnly("Hello\nWorld")); // Newline
+    try testing.expect(!utf8.isAsciiOnly("Hello\rWorld")); // CR
+    try testing.expect(!utf8.isAsciiOnly("\x00")); // Null
+    try testing.expect(!utf8.isAsciiOnly("\x1F")); // Unit separator
+}
+
+test "isAsciiOnly: extended ASCII rejected" {
+    try testing.expect(!utf8.isAsciiOnly("Hello\x7FWorld")); // DEL
+    try testing.expect(!utf8.isAsciiOnly("Hello\x80World")); // Extended ASCII
+    try testing.expect(!utf8.isAsciiOnly("Hello\xFFWorld")); // Extended ASCII
+}
+
+test "isAsciiOnly: Unicode rejected" {
+    try testing.expect(!utf8.isAsciiOnly("Hello 👋")); // Emoji
+    try testing.expect(!utf8.isAsciiOnly("Hello 世界")); // CJK
+    try testing.expect(!utf8.isAsciiOnly("café")); // Latin with accent
+    try testing.expect(!utf8.isAsciiOnly("Привет")); // Cyrillic
+}
+
+test "isAsciiOnly: space character accepted" {
+    try testing.expect(utf8.isAsciiOnly(" "));
+    try testing.expect(utf8.isAsciiOnly("   "));
+    try testing.expect(utf8.isAsciiOnly("Hello World"));
+}
+
+test "isAsciiOnly: all printable ASCII chars" {
+    const all_printable = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+    try testing.expect(utf8.isAsciiOnly(all_printable));
+}
+
+test "isAsciiOnly: SIMD boundary tests" {
+    // Exactly 16 bytes
+    try testing.expect(utf8.isAsciiOnly("0123456789abcdef"));
+
+    // 15 bytes (just under boundary)
+    try testing.expect(utf8.isAsciiOnly("0123456789abcde"));
+
+    // 17 bytes (just over boundary)
+    try testing.expect(utf8.isAsciiOnly("0123456789abcdefg"));
+
+    // 32 bytes (two full vectors)
+    try testing.expect(utf8.isAsciiOnly("0123456789abcdef0123456789abcdef"));
+
+    // 33 bytes (two vectors + 1)
+    try testing.expect(utf8.isAsciiOnly("0123456789abcdef0123456789abcdefX"));
+}
+
+test "isAsciiOnly: non-ASCII at different positions" {
+    // Non-ASCII in first vector
+    try testing.expect(!utf8.isAsciiOnly("Hello\x00World"));
+    try testing.expect(!utf8.isAsciiOnly("\x00bcdefghijklmnop"));
+
+    // Non-ASCII at boundary (position 15)
+    try testing.expect(!utf8.isAsciiOnly("0123456789abcde\x00"));
+
+    // Non-ASCII at boundary (position 16)
+    try testing.expect(!utf8.isAsciiOnly("0123456789abcdef\x00"));
+
+    // Non-ASCII in second vector
+    try testing.expect(!utf8.isAsciiOnly("0123456789abcdef0123456789\x00bcdef"));
+
+    // Non-ASCII in tail
+    try testing.expect(!utf8.isAsciiOnly("0123456789abcdef01234\x00"));
+}
+
+test "isAsciiOnly: large ASCII text" {
+    const size = 10000;
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    // Fill with ASCII
+    for (buf, 0..) |*b, i| {
+        b.* = 32 + @as(u8, @intCast(i % 95));
+    }
+
+    try testing.expect(utf8.isAsciiOnly(buf));
+
+    // Corrupt one byte in the middle
+    buf[5000] = 0x80;
+    try testing.expect(!utf8.isAsciiOnly(buf));
+}
+
+// ============================================================================
 // LINE BREAK TESTS
 // ============================================================================
 

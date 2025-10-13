@@ -1,5 +1,45 @@
 const std = @import("std");
 
+/// Check if a byte slice contains only printable ASCII (32..126)
+/// Uses SIMD16 for fast checking
+pub fn isAsciiOnly(text: []const u8) bool {
+    if (text.len == 0) return false;
+
+    const vector_len = 16;
+    const Vec = @Vector(vector_len, u8);
+
+    const min_printable: Vec = @splat(32);
+    const max_printable: Vec = @splat(126);
+
+    var pos: usize = 0;
+
+    // Process full 16-byte vectors
+    while (pos + vector_len <= text.len) {
+        const chunk: Vec = text[pos..][0..vector_len].*;
+
+        // Check if all bytes are in [32, 126]
+        const too_low = chunk < min_printable;
+        const too_high = chunk > max_printable;
+
+        // Check if any byte is out of range
+        if (@reduce(.Or, too_low) or @reduce(.Or, too_high)) {
+            return false;
+        }
+
+        pos += vector_len;
+    }
+
+    // Handle remaining bytes with scalar code
+    while (pos < text.len) : (pos += 1) {
+        const b = text[pos];
+        if (b < 32 or b > 126) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 pub const LineBreakKind = enum {
     LF, // \n (Unix/Linux)
     CR, // \r (Old Mac)
