@@ -228,7 +228,11 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
                 const curr_cp: u21 = b0;
 
                 // Check if this starts a new grapheme cluster
-                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+                // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
+                const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
+                    if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
+                    break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
+                } else true;
 
                 if (isAsciiWrapBreak(b0)) {
                     try result.breaks.append(.{
@@ -246,7 +250,11 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
                 if (pos + i + dec.len > text.len) break;
 
                 // Check if this starts a new grapheme cluster
-                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, dec.cp, &break_state) else true;
+                // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
+                const is_break = if (dec.cp == 0xFFFD or dec.cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
+                    if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
+                    break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
+                } else true;
 
                 if (isUnicodeWrapBreak(dec.cp)) {
                     try result.breaks.append(.{
@@ -270,7 +278,10 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
         const b0 = text[i];
         if (b0 < 0x80) {
             const curr_cp: u21 = b0;
-            const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+            const is_break = if (prev_cp) |p| blk: {
+                if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
+                break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
+            } else true;
 
             if (isAsciiWrapBreak(b0)) {
                 try result.breaks.append(.{
@@ -287,7 +298,10 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
             const dec = decodeUtf8Unchecked(text, i);
             if (i + dec.len > text.len) break;
 
-            const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, dec.cp, &break_state) else true;
+            const is_break = if (dec.cp == 0xFFFD or dec.cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
+                if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
+                break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
+            } else true;
 
             if (isUnicodeWrapBreak(dec.cp)) {
                 try result.breaks.append(.{

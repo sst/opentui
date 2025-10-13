@@ -222,11 +222,105 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
 
         /// Calculate how many graphemes from a chunk fit within the given width (word wrapping)
         /// Returns the number of grapheme clusters and their total width
-        /// chunk_bytes should be the full chunk bytes, not a slice
-        fn calculateChunkFitWord(self: *const Self, chunk_bytes: []const u8, graphemes: []const GraphemeInfo, max_width: u32) tb.ChunkFitResult {
+        /// Uses cached wrap offsets where char_offset directly represents width (grapheme count)
+        /// NO GRAPHEME ITERATION - works purely with wrap offsets and chunk width
+        fn calculateChunkFitWord(self: *const Self, chunk: *const tb.TextChunk, char_offset_in_chunk: u32, max_width: u32) tb.ChunkFitResult {
             if (max_width == 0) return .{ .char_count = 0, .width = 0 };
-            if (graphemes.len == 0) return .{ .char_count = 0, .width = 0 };
 
+            // The total width remaining in this chunk from our current position
+            const total_width = chunk.width - char_offset_in_chunk;
+            if (total_width == 0) return .{ .char_count = 0, .width = 0 };
+
+            // If everything fits, return early
+            if (total_width <= max_width) {
+                return .{ .char_count = total_width, .width = total_width };
+            }
+
+            // Get cached wrap offsets for the chunk
+            const wrap_offsets = chunk.getWrapOffsets(
+                &self.text_buffer.mem_registry,
+                self.text_buffer.allocator,
+            ) catch {
+                // Fallback: if we can't get wrap offsets, fit as much as possible
+                const fit_width = @min(max_width, total_width);
+                return .{ .char_count = fit_width, .width = fit_width };
+            };
+
+            // Find the last wrap boundary that fits within max_width
+            // The char_offset in wrap_offsets IS the grapheme cluster count from chunk start
+            // which equals the display width up to that point!
+            var last_boundary_char_offset: ?u32 = null;
+
+            // The offset before our current position
+            const offset_before_position = char_offset_in_chunk;
+
+            for (wrap_offsets) |wrap_break| {
+                const char_offset = @as(u32, wrap_break.char_offset);
+
+                // Skip wrap points before our current position
+                if (char_offset < offset_before_position) continue;
+
+                // Local char offset relative to our current position
+                const local_char_offset = char_offset - offset_before_position;
+
+                // Skip if beyond our slice
+                if (local_char_offset >= total_width) break;
+
+                // The width up to this boundary is just local_char_offset + 1 (after the break char)
+                const width_to_boundary = local_char_offset + 1;
+
+                if (width_to_boundary <= max_width) {
+                    last_boundary_char_offset = width_to_boundary;
+                } else {
+                    break; // This and subsequent boundaries won't fit
+                }
+            }
+
+            if (last_boundary_char_offset) |boundary_width| {
+                // Wrap at last word boundary - char_count equals width in our system
+                return .{ .char_count = boundary_width, .width = boundary_width };
+            }
+
+            // No boundary found - either wrap at beginning or force break
+            const line_width = if (self.wrap_width) |w| w else max_width;
+
+            // Check if first word is too long for any line
+            // Find the first wrap boundary after our current position
+            var first_word_end: ?u32 = null;
+            for (wrap_offsets) |wrap_break| {
+                const char_offset = @as(u32, wrap_break.char_offset);
+                if (char_offset >= offset_before_position) {
+                    first_word_end = char_offset - offset_before_position + 1; // Width to first boundary
+                    break;
+                }
+            }
+
+            if (first_word_end) |word_width| {
+                if (word_width > line_width) {
+                    // Force break the word - fit as much as possible
+                    if (max_width < total_width) {
+                        return .{ .char_count = max_width, .width = max_width };
+                    }
+                    return .{ .char_count = total_width, .width = total_width };
+                }
+            } else {
+                // No word boundary at all in remaining text
+                // If the whole remaining text is longer than line_width, force break
+                if (total_width > line_width) {
+                    if (max_width < total_width) {
+                        return .{ .char_count = max_width, .width = max_width };
+                    }
+                    return .{ .char_count = total_width, .width = total_width };
+                }
+            }
+
+            // Word can fit on next line
+            return .{ .char_count = 0, .width = 0 };
+        }
+
+        /// Fallback implementation when wrap offsets are not available
+        fn calculateChunkFitWordFallback(self: *const Self, chunk: *const tb.TextChunk, graphemes: []const GraphemeInfo, max_width: u32) tb.ChunkFitResult {
+            const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
             var total_width: u32 = 0;
             var last_boundary_idx: ?usize = null;
             var last_boundary_width: u32 = 0;
@@ -234,15 +328,10 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
 
             for (graphemes, 0..) |g, idx| {
                 if (total_width + g.width > max_width) {
-                    // Can't fit this grapheme
                     if (last_boundary_idx) |_| {
-                        // Wrap at last word boundary
                         return .{ .char_count = last_boundary_chars, .width = last_boundary_width };
                     } else {
-                        // No boundary found - either wrap at beginning or force break
                         const line_width = if (self.wrap_width) |w| w else max_width;
-
-                        // Check if first word is too long for any line
                         var word_width: u32 = 0;
                         for (graphemes) |wg| {
                             const first_byte = chunk_bytes[wg.byte_offset];
@@ -251,7 +340,6 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                         }
 
                         if (word_width > line_width) {
-                            // Force break the word
                             var forced_width: u32 = 0;
                             var forced_count: u32 = 0;
                             for (graphemes) |fg| {
@@ -261,24 +349,19 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                             }
                             return .{ .char_count = forced_count, .width = forced_width };
                         }
-
-                        // Word can fit on next line
                         return .{ .char_count = 0, .width = 0 };
                     }
                 }
 
                 total_width += g.width;
-
-                // Check if this grapheme is a word boundary
                 const first_byte = chunk_bytes[g.byte_offset];
                 if (isWordBoundaryByte(first_byte)) {
-                    last_boundary_idx = idx + 1; // After this boundary
+                    last_boundary_idx = idx + 1;
                     last_boundary_width = total_width;
-                    last_boundary_chars = total_width; // Sum of widths so far
+                    last_boundary_chars = total_width;
                 }
             }
 
-            // All graphemes fit
             var count: u32 = 0;
             for (graphemes) |g| {
                 count += g.width;
@@ -382,8 +465,88 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
 
                             fn chunkWalker(chunk_ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, chunk_idx: u32) ChunkStorage.Node.WalkerResult {
                                 const chunk_ctx = @as(*@This(), @ptrCast(@alignCast(chunk_ctx_ptr)));
+
+                                if (chunk_ctx.view.wrap_mode == .word) {
+                                    // Word wrapping path - NO grapheme fetching needed!
+                                    var char_offset_in_chunk: u32 = 0;
+
+                                    while (char_offset_in_chunk < chunk.width) {
+                                        const remaining_width = if (chunk_ctx.line_position.* < chunk_ctx.wrap_w) chunk_ctx.wrap_w - chunk_ctx.line_position.* else 0;
+
+                                        const fit_result = chunk_ctx.view.calculateChunkFitWord(chunk, char_offset_in_chunk, remaining_width);
+
+                                        // If nothing fits and we have content on the line, wrap to next line
+                                        if (fit_result.char_count == 0 and chunk_ctx.line_position.* > 0) {
+                                            chunk_ctx.current_vline.width = chunk_ctx.line_position.*;
+                                            chunk_ctx.view.virtual_lines.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.*) catch {};
+                                            chunk_ctx.view.cached_line_starts.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.char_offset) catch {};
+                                            chunk_ctx.view.cached_line_widths.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.width) catch {};
+                                            chunk_ctx.view.cached_max_width = @max(chunk_ctx.view.cached_max_width, chunk_ctx.current_vline.width);
+
+                                            chunk_ctx.line_col_offset.* += chunk_ctx.line_position.*;
+                                            chunk_ctx.current_vline.* = VirtualLine.init();
+                                            chunk_ctx.current_vline.char_offset = chunk_ctx.global_char_offset.*;
+                                            chunk_ctx.current_vline.source_line = chunk_ctx.line_idx;
+                                            chunk_ctx.current_vline.source_col_offset = chunk_ctx.line_col_offset.*;
+                                            chunk_ctx.line_position.* = 0;
+                                            continue;
+                                        }
+
+                                        // If nothing fits even on empty line, force-add at least one char
+                                        if (fit_result.char_count == 0 and chunk_ctx.line_position.* == 0 and char_offset_in_chunk < chunk.width) {
+                                            const forced_count = @min(1, chunk.width - char_offset_in_chunk);
+
+                                            chunk_ctx.current_vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
+                                                .source_line = chunk_ctx.line_idx,
+                                                .source_chunk = chunk_idx,
+                                                .grapheme_start = char_offset_in_chunk,
+                                                .grapheme_count = forced_count,
+                                                .width = forced_count,
+                                            }) catch {};
+
+                                            char_offset_in_chunk += forced_count;
+                                            chunk_ctx.global_char_offset.* += forced_count;
+                                            chunk_ctx.line_position.* += forced_count;
+                                            continue;
+                                        }
+
+                                        if (fit_result.char_count == 0) {
+                                            break; // Move to next chunk
+                                        }
+
+                                        chunk_ctx.current_vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
+                                            .source_line = chunk_ctx.line_idx,
+                                            .source_chunk = chunk_idx,
+                                            .grapheme_start = char_offset_in_chunk,
+                                            .grapheme_count = fit_result.char_count,
+                                            .width = fit_result.width,
+                                        }) catch {};
+
+                                        char_offset_in_chunk += fit_result.char_count;
+                                        chunk_ctx.global_char_offset.* += fit_result.char_count;
+                                        chunk_ctx.line_position.* += fit_result.width;
+
+                                        // Check if we need to wrap
+                                        if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and char_offset_in_chunk < chunk.width) {
+                                            chunk_ctx.current_vline.width = chunk_ctx.line_position.*;
+                                            chunk_ctx.view.virtual_lines.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.*) catch {};
+                                            chunk_ctx.view.cached_line_starts.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.char_offset) catch {};
+                                            chunk_ctx.view.cached_line_widths.append(chunk_ctx.virtual_allocator, chunk_ctx.current_vline.width) catch {};
+                                            chunk_ctx.view.cached_max_width = @max(chunk_ctx.view.cached_max_width, chunk_ctx.current_vline.width);
+
+                                            chunk_ctx.line_col_offset.* += chunk_ctx.line_position.*;
+                                            chunk_ctx.current_vline.* = VirtualLine.init();
+                                            chunk_ctx.current_vline.char_offset = chunk_ctx.global_char_offset.*;
+                                            chunk_ctx.current_vline.source_line = chunk_ctx.line_idx;
+                                            chunk_ctx.current_vline.source_col_offset = chunk_ctx.line_col_offset.*;
+                                            chunk_ctx.line_position.* = 0;
+                                        }
+                                    }
+                                    return .{};
+                                }
+
+                                // Char wrapping path - needs graphemes
                                 const graphemes_cache = chunk_ctx.view.getOrCreateChunkCache(chunk_ctx.line_idx, chunk_idx) catch return .{};
-                                const chunk_bytes = chunk.getBytes(&chunk_ctx.view.text_buffer.mem_registry);
 
                                 var grapheme_idx: u32 = 0;
 
@@ -391,10 +554,7 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                     const remaining_width = if (chunk_ctx.line_position.* < chunk_ctx.wrap_w) chunk_ctx.wrap_w - chunk_ctx.line_position.* else 0;
                                     const remaining_graphemes = graphemes_cache[grapheme_idx..];
 
-                                    const fit_result = switch (chunk_ctx.view.wrap_mode) {
-                                        .char => chunk_ctx.view.calculateChunkFit(remaining_graphemes, remaining_width),
-                                        .word => chunk_ctx.view.calculateChunkFitWord(chunk_bytes, remaining_graphemes, remaining_width),
-                                    };
+                                    const fit_result = chunk_ctx.view.calculateChunkFit(remaining_graphemes, remaining_width);
 
                                     // If nothing fits and we have content on the line, wrap to next line
                                     if (fit_result.char_count == 0 and chunk_ctx.line_position.* > 0) {
