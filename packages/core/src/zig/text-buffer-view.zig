@@ -194,7 +194,7 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
         fn calculateChunkFitWord(self: *const Self, chunk: *const tb.TextChunk, char_offset_in_chunk: u32, max_width: u32) tb.ChunkFitResult {
             if (max_width == 0) return .{ .char_count = 0, .width = 0 };
 
-            const total_width = chunk.width - char_offset_in_chunk;
+            const total_width = @as(u32, chunk.width) - char_offset_in_chunk;
             if (total_width == 0) return .{ .char_count = 0, .width = 0 };
             if (total_width <= max_width) return .{ .char_count = total_width, .width = total_width };
 

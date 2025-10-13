@@ -108,7 +108,7 @@ pub const TextChunk = struct {
     mem_id: u8, // ID of the memory buffer this chunk references
     byte_start: u32, // Offset into the memory buffer
     byte_end: u32, // End offset into the memory buffer
-    width: u32, // Display width in cells (computed once)
+    width: u16, // Display width in cells (computed once)
     flags: u8 = 0, // Bitflags for chunk properties
     graphemes: ?[]GraphemeInfo = null, // Lazy grapheme buffer (computed on first access, reused by views)
     wrap_offsets: ?[]utf8.WrapBreak = null, // Lazy wrap offset buffer (computed on first access)
@@ -978,7 +978,7 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
         ) TextChunk {
             const mem_buf = self.mem_registry.get(mem_id).?;
             const chunk_bytes = mem_buf[byte_start..byte_end];
-            const chunk_width: u32 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
+            const chunk_width: u16 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
 
             var flags: u8 = 0;
             if (chunk_bytes.len > 0 and utf8.isAsciiOnly(chunk_bytes)) {
@@ -995,7 +995,7 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
         }
 
         /// Parse a single line into chunks (count and measure graphemes, but don't encode)
-        /// Splits lines into multiple chunks at byte-length boundaries of max u16 (65535)
+        /// Splits lines into multiple chunks at byte-length boundaries of 128 bytes
         /// and adjusts to grapheme cluster boundaries for correctness
         fn parseLine(self: *Self, mem_id: u8, text: []const u8, byte_start: u32, byte_end: u32, has_line_break: bool) TextBufferError!void {
             _ = has_line_break;
@@ -1006,7 +1006,7 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
             // Newlines are implicit line separators, not counted as characters
 
             if (byte_start < byte_end) {
-                const max_chunk_bytes = std.math.maxInt(u16); // 65535 bytes per chunk
+                const max_chunk_bytes = 1024;
                 const total_bytes = byte_end - byte_start;
 
                 // If the line fits in a single chunk, create it directly
