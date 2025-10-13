@@ -318,57 +318,6 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
             return .{ .char_count = 0, .width = 0 };
         }
 
-        /// Fallback implementation when wrap offsets are not available
-        fn calculateChunkFitWordFallback(self: *const Self, chunk: *const tb.TextChunk, graphemes: []const GraphemeInfo, max_width: u32) tb.ChunkFitResult {
-            const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
-            var total_width: u32 = 0;
-            var last_boundary_idx: ?usize = null;
-            var last_boundary_width: u32 = 0;
-            var last_boundary_chars: u32 = 0;
-
-            for (graphemes, 0..) |g, idx| {
-                if (total_width + g.width > max_width) {
-                    if (last_boundary_idx) |_| {
-                        return .{ .char_count = last_boundary_chars, .width = last_boundary_width };
-                    } else {
-                        const line_width = if (self.wrap_width) |w| w else max_width;
-                        var word_width: u32 = 0;
-                        for (graphemes) |wg| {
-                            const first_byte = chunk_bytes[wg.byte_offset];
-                            if (isWordBoundaryByte(first_byte)) break;
-                            word_width += wg.width;
-                        }
-
-                        if (word_width > line_width) {
-                            var forced_width: u32 = 0;
-                            var forced_count: u32 = 0;
-                            for (graphemes) |fg| {
-                                if (forced_width + fg.width > max_width) break;
-                                forced_width += fg.width;
-                                forced_count += fg.width;
-                            }
-                            return .{ .char_count = forced_count, .width = forced_width };
-                        }
-                        return .{ .char_count = 0, .width = 0 };
-                    }
-                }
-
-                total_width += g.width;
-                const first_byte = chunk_bytes[g.byte_offset];
-                if (isWordBoundaryByte(first_byte)) {
-                    last_boundary_idx = idx + 1;
-                    last_boundary_width = total_width;
-                    last_boundary_chars = total_width;
-                }
-            }
-
-            var count: u32 = 0;
-            for (graphemes) |g| {
-                count += g.width;
-            }
-            return .{ .char_count = count, .width = total_width };
-        }
-
         /// Update virtual lines based on current wrap width
         pub fn updateVirtualLines(self: *Self) void {
             // Check both local and buffer dirty flags
