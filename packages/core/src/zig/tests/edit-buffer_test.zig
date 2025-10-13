@@ -293,3 +293,57 @@ test "EditBuffer - deleteForward at end of line merges with next" {
 
     try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
 }
+
+test "EditBuffer - insert in middle of long line with wrap offsets" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert a long line with many wrap break points (spaces, punctuation)
+    const long_text = "This is a very long line with many words, punctuation! And more text to create wrap offsets.";
+    try eb.insertText(long_text);
+
+    // Insert text near the end (exercises wrap offset optimization in splitChunkAtWeight)
+    try eb.setCursor(0, 80);
+    try eb.insertText(" [INSERTED]");
+
+    var out_buffer: [200]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+
+    // Verify insertion happened correctly
+    try std.testing.expect(written > long_text.len);
+    try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "[INSERTED]") != null);
+}
+
+test "EditBuffer - delete range in long line with wrap offsets" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert a long line with many wrap break points
+    const long_text = "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.";
+    try eb.insertText(long_text);
+
+    // Delete a range in the middle (exercises wrap offset optimization)
+    try eb.deleteRange(.{ .row = 0, .col = 20 }, .{ .row = 0, .col = 60 });
+
+    var out_buffer: [200]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    const result = out_buffer[0..written];
+
+    // Verify deletion happened correctly
+    try std.testing.expect(result.len < long_text.len);
+    try std.testing.expect(std.mem.startsWith(u8, result, "The quick brown fox "));
+}

@@ -109,8 +109,17 @@ pub const TextChunk = struct {
     byte_start: u32, // Offset into the memory buffer
     byte_end: u32, // End offset into the memory buffer
     width: u32, // Display width in cells (computed once)
+    flags: u8 = 0, // Bitflags for chunk properties
     graphemes: ?[]GraphemeInfo = null, // Lazy grapheme buffer (computed on first access, reused by views)
     wrap_offsets: ?[]utf8.WrapBreak = null, // Lazy wrap offset buffer (computed on first access)
+
+    pub const Flags = struct {
+        pub const ASCII_ONLY: u8 = 0b00000001;
+    };
+
+    pub fn isAsciiOnly(self: *const TextChunk) bool {
+        return (self.flags & Flags.ASCII_ONLY) != 0;
+    }
 
     pub const Metrics = struct {
         total_width: u32 = 0,
@@ -960,8 +969,8 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
         }
 
         /// Create a TextChunk from a memory buffer range
-        /// Calculates width, but graphemes are computed lazily on first access
-        fn createChunk(
+        /// Calculates width and ASCII flag, but graphemes are computed lazily on first access
+        pub fn createChunk(
             self: *const Self,
             mem_id: u8,
             byte_start: u32,
@@ -971,11 +980,17 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
             const chunk_bytes = mem_buf[byte_start..byte_end];
             const chunk_width: u32 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
 
+            var flags: u8 = 0;
+            if (chunk_bytes.len > 0 and utf8.isAsciiOnly(chunk_bytes)) {
+                flags |= TextChunk.Flags.ASCII_ONLY;
+            }
+
             return TextChunk{
                 .mem_id = mem_id,
                 .byte_start = byte_start,
                 .byte_end = byte_end,
                 .width = chunk_width,
+                .flags = flags,
             };
         }
 
@@ -1193,6 +1208,11 @@ pub fn TextBuffer(comptime LineStorage: type, comptime ChunkStorage: type) type 
         /// Get the total bytes allocated by the internal arena allocator
         pub fn getArenaAllocatedBytes(self: *const Self) usize {
             return self.arena.queryCapacity();
+        }
+
+        /// Create a grapheme iterator for given bytes
+        pub fn getGraphemeIterator(self: *const Self, bytes: []const u8) Graphemes.Iterator {
+            return self.graphemes_data.iterator(bytes);
         }
     };
 }

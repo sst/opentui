@@ -151,6 +151,7 @@ pub const EditBuffer = struct {
 
     /// Split a TextChunk at a specific weight (display width)
     /// Returns left and right chunks
+    /// Uses wrap offsets to narrow down the search range and minimize grapheme iteration
     fn splitChunkAtWeight(
         self: *EditBuffer,
         chunk: *const TextChunk,
@@ -170,39 +171,68 @@ pub const EditBuffer = struct {
             };
         }
 
-        // Split inside the chunk using cached graphemes
-        const graphemes = chunk.getGraphemes(
+        const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
+
+        // Get wrap offsets to narrow down the search range
+        const wrap_offsets = chunk.getWrapOffsets(
             &self.tb.mem_registry,
             self.tb.allocator,
-            &self.tb.graphemes_data,
-            self.tb.width_method,
-            &self.tb.display_width,
         ) catch return error.OutOfMemory;
 
-        var accumulated_width: u32 = 0;
-        var split_byte_offset: u32 = 0;
-        var left_width: u32 = 0;
+        // Find the wrap offset range that contains our target weight
+        var search_start_byte: u32 = 0;
+        var search_end_byte: u32 = @intCast(chunk_bytes.len);
+        var width_before_range: u32 = 0;
 
-        for (graphemes) |g| {
-            if (accumulated_width >= weight) break;
-            accumulated_width += g.width;
-            split_byte_offset = g.byte_offset + g.byte_len;
-            left_width += g.width;
+        if (wrap_offsets.len > 0) {
+            // Binary search to find the wrap offset closest to but before the target weight
+            for (wrap_offsets) |wrap_break| {
+                if (wrap_break.char_offset >= weight) {
+                    search_end_byte = wrap_break.byte_offset;
+                    break;
+                }
+                search_start_byte = wrap_break.byte_offset;
+                width_before_range = wrap_break.char_offset;
+            }
         }
 
-        const left_chunk = TextChunk{
-            .mem_id = chunk.mem_id,
-            .byte_start = chunk.byte_start,
-            .byte_end = chunk.byte_start + split_byte_offset,
-            .width = left_width,
-        };
+        // Now iterate graphemes only in the narrowed range
+        const search_bytes = chunk_bytes[search_start_byte..search_end_byte];
+        var iter = self.tb.getGraphemeIterator(search_bytes);
 
-        const right_chunk = TextChunk{
-            .mem_id = chunk.mem_id,
-            .byte_start = chunk.byte_start + split_byte_offset,
-            .byte_end = chunk.byte_end,
-            .width = chunk_weight - left_width,
-        };
+        var accumulated_width: u32 = width_before_range;
+        var split_byte_offset: u32 = search_start_byte;
+        var left_width: u32 = width_before_range;
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(search_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width);
+
+            if (width_u16 == 0) {
+                split_byte_offset += @intCast(gbytes.len);
+                continue;
+            }
+
+            const g_width: u32 = @intCast(width_u16);
+
+            if (accumulated_width >= weight) break;
+
+            accumulated_width += g_width;
+            split_byte_offset += @intCast(gbytes.len);
+            left_width += g_width;
+        }
+
+        const left_chunk = self.tb.createChunk(
+            chunk.mem_id,
+            chunk.byte_start,
+            chunk.byte_start + split_byte_offset,
+        );
+
+        const right_chunk = self.tb.createChunk(
+            chunk.mem_id,
+            chunk.byte_start + split_byte_offset,
+            chunk.byte_end,
+        );
 
         return .{ .left = left_chunk, .right = right_chunk };
     }
@@ -270,12 +300,7 @@ pub const EditBuffer = struct {
     fn insertSingleLineAtCursor(self: *EditBuffer, target_line: *const TextLine(Rope(TextChunk)), cursor: Cursor, bytes: []const u8) !void {
         // Append to add buffer
         const chunk_ref = self.add_buffer.append(bytes);
-        const new_chunk = TextChunk{
-            .mem_id = chunk_ref.mem_id,
-            .byte_start = chunk_ref.start,
-            .byte_end = chunk_ref.end,
-            .width = self.tb.measureText(bytes),
-        };
+        const new_chunk = self.tb.createChunk(chunk_ref.mem_id, chunk_ref.start, chunk_ref.end);
 
         const mut_line = @constCast(target_line);
         const total_weight = mut_line.chunks.totalWeight();
@@ -308,12 +333,7 @@ pub const EditBuffer = struct {
 
         // Add first segment to current line (left-half)
         const first_chunk_ref = self.add_buffer.append(segments[0]);
-        const first_chunk = TextChunk{
-            .mem_id = first_chunk_ref.mem_id,
-            .byte_start = first_chunk_ref.start,
-            .byte_end = first_chunk_ref.end,
-            .width = self.tb.measureText(segments[0]),
-        };
+        const first_chunk = self.tb.createChunk(first_chunk_ref.mem_id, first_chunk_ref.start, first_chunk_ref.end);
         try mut_line.chunks.append(first_chunk);
         mut_line.width = self.recomputeLineWidth(target_line);
 
@@ -325,12 +345,7 @@ pub const EditBuffer = struct {
         var seg_idx: usize = 1;
         while (seg_idx < segments.len - 1) : (seg_idx += 1) {
             const seg_chunk_ref = self.add_buffer.append(segments[seg_idx]);
-            const seg_chunk = TextChunk{
-                .mem_id = seg_chunk_ref.mem_id,
-                .byte_start = seg_chunk_ref.start,
-                .byte_end = seg_chunk_ref.end,
-                .width = self.tb.measureText(segments[seg_idx]),
-            };
+            const seg_chunk = self.tb.createChunk(seg_chunk_ref.mem_id, seg_chunk_ref.start, seg_chunk_ref.end);
 
             var new_line = try TextLine(Rope(TextChunk)).init(self.tb.allocator);
             try new_line.chunks.append(seg_chunk);
@@ -342,12 +357,7 @@ pub const EditBuffer = struct {
         // Last segment + right-half chunks
         const last_seg = segments[segments.len - 1];
         const last_chunk_ref = self.add_buffer.append(last_seg);
-        const last_chunk = TextChunk{
-            .mem_id = last_chunk_ref.mem_id,
-            .byte_start = last_chunk_ref.start,
-            .byte_end = last_chunk_ref.end,
-            .width = self.tb.measureText(last_seg),
-        };
+        const last_chunk = self.tb.createChunk(last_chunk_ref.mem_id, last_chunk_ref.start, last_chunk_ref.end);
 
         var last_line = try TextLine(Rope(TextChunk)).init(self.tb.allocator);
         try last_line.chunks.append(last_chunk);
