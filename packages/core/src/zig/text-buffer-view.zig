@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const tb = @import("text-buffer.zig");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
+const utf8 = @import("utf8.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
@@ -417,74 +418,58 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                                     return .{};
                                 }
 
-                                // Char mode: simple iteration with one iterator
-                                const chunk_bytes = chunk.getBytes(&chunk_ctx.view.text_buffer.mem_registry);
-                                var iter = chunk_ctx.view.text_buffer.getGraphemeIterator(chunk_bytes);
+                                // Char mode: use wrap offsets to jump close to wrap boundaries
+                                const wrap_offsets = chunk.getWrapOffsets(&chunk_ctx.view.text_buffer.mem_registry, chunk_ctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
 
                                 var char_offset: u32 = 0;
-                                var pending_grapheme: ?struct { width: u32 } = null;
 
                                 while (char_offset < chunk.width) {
                                     const remaining_width = if (chunk_ctx.line_position.* < chunk_ctx.wrap_w) chunk_ctx.wrap_w - chunk_ctx.line_position.* else 0;
 
-                                    var fit_count: u32 = 0;
-                                    var fit_width: u32 = 0;
+                                    if (remaining_width == 0) {
+                                        if (chunk_ctx.line_position.* > 0) {
+                                            commitVirtualLine(chunk_ctx);
+                                            continue;
+                                        }
+                                        const forced = @min(1, chunk.width - char_offset);
+                                        addVirtualChunk(chunk_ctx, chunk_idx, char_offset, forced, forced);
+                                        char_offset += forced;
+                                        continue;
+                                    }
 
-                                    // If we have a pending grapheme that didn't fit, try it first
-                                    if (pending_grapheme) |pending| {
-                                        if (pending.width <= remaining_width) {
-                                            fit_count = pending.width;
-                                            fit_width = pending.width;
-                                            pending_grapheme = null;
+                                    // Find wrap offset close to where we need to wrap
+                                    var target_char: u32 = char_offset + remaining_width;
+                                    if (target_char > chunk.width) target_char = chunk.width;
+
+                                    // Binary search for the closest wrap offset <= target_char
+                                    var best_wrap_char: ?u32 = null;
+                                    if (wrap_offsets.len > 0) {
+                                        for (wrap_offsets) |wrap_break| {
+                                            const wrap_char = @as(u32, wrap_break.char_offset);
+                                            if (wrap_char < char_offset) continue;
+                                            if (wrap_char >= target_char) break;
+                                            best_wrap_char = wrap_char;
                                         }
                                     }
 
-                                    // Collect graphemes up to remaining_width
-                                    if (pending_grapheme == null) {
-                                        while (fit_width < remaining_width) {
-                                            const gc = iter.next() orelse break;
-                                            const gbytes = gc.bytes(chunk_bytes);
-                                            const w: u16 = gwidth.gwidth(gbytes, chunk_ctx.view.text_buffer.width_method, &chunk_ctx.view.text_buffer.display_width);
-
-                                            if (w == 0) continue;
-
-                                            const g_width: u32 = @intCast(w);
-                                            if (fit_width + g_width > remaining_width) {
-                                                pending_grapheme = .{ .width = g_width };
-                                                break;
-                                            }
-
-                                            fit_count += g_width;
-                                            fit_width += g_width;
-                                        }
-                                    }
+                                    // Calculate how much to fit
+                                    const fit_count = if (best_wrap_char) |wrap_char|
+                                        @min(wrap_char + 1 - char_offset, remaining_width)
+                                    else
+                                        @min(remaining_width, chunk.width - char_offset);
 
                                     if (fit_count == 0) {
                                         if (chunk_ctx.line_position.* > 0) {
                                             commitVirtualLine(chunk_ctx);
                                             continue;
                                         }
-                                        // Force the pending grapheme (or get next one)
-                                        const forced_width: u32 = if (pending_grapheme) |pending| blk: {
-                                            pending_grapheme = null;
-                                            break :blk pending.width;
-                                        } else blk: {
-                                            const gc = iter.next() orelse break;
-                                            const gbytes = gc.bytes(chunk_bytes);
-                                            const w: u16 = gwidth.gwidth(gbytes, chunk_ctx.view.text_buffer.width_method, &chunk_ctx.view.text_buffer.display_width);
-                                            break :blk if (w > 0) @as(u32, @intCast(w)) else 1;
-                                        };
-
-                                        addVirtualChunk(chunk_ctx, chunk_idx, char_offset, forced_width, forced_width);
-                                        char_offset += forced_width;
-
-                                        if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and char_offset < chunk.width) {
-                                            commitVirtualLine(chunk_ctx);
-                                        }
+                                        const forced = @min(1, chunk.width - char_offset);
+                                        addVirtualChunk(chunk_ctx, chunk_idx, char_offset, forced, forced);
+                                        char_offset += forced;
                                         continue;
                                     }
 
-                                    addVirtualChunk(chunk_ctx, chunk_idx, char_offset, fit_count, fit_width);
+                                    addVirtualChunk(chunk_ctx, chunk_idx, char_offset, fit_count, fit_count);
                                     char_offset += fit_count;
 
                                     if (chunk_ctx.line_position.* >= chunk_ctx.wrap_w and char_offset < chunk.width) {
