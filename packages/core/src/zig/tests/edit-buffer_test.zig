@@ -758,3 +758,43 @@ test "EditBuffer - cursor wrapping at line boundaries" {
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 3), cursor.col);
 }
+
+test "EditBuffer - insert newline on empty line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Create text with multiple empty lines in the middle
+    try eb.insertText("Line 1\n\n\n\nLine 5");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1\n\n\n\nLine 5", out_buffer[0..written]);
+
+    // Position cursor on empty line 2 (0-indexed, so row 2)
+    try eb.setCursor(2, 0);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Insert a newline (simulating Enter key)
+    try eb.insertText("\n");
+
+    // Cursor should now be on line 3, column 0 (the new empty line we just created)
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 3), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Verify the text is correct (added one more empty line)
+    written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1\n\n\n\n\nLine 5", out_buffer[0..written]);
+
+    // Verify line count increased by 1
+    try std.testing.expectEqual(@as(u32, 6), eb.getTextBuffer().lineCount());
+}

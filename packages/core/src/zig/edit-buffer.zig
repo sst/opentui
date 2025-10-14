@@ -329,6 +329,7 @@ pub const EditBuffer = struct {
 
         var local_start: u32 = 0;
         var inserted_width: u32 = 0;
+        var width_after_last_break: u32 = 0; // Width of text after the last newline
 
         for (break_result.breaks.items) |line_break| {
             const break_pos: u32 = @intCast(line_break.pos);
@@ -349,12 +350,15 @@ pub const EditBuffer = struct {
             try segments.append(Segment{ .linestart = {} });
 
             local_start = break_pos + 1;
+            // Reset width counter - text after this break goes on the new line
+            width_after_last_break = 0;
         }
 
         // Add remaining text after last break (or entire text if no breaks)
         if (local_start < bytes.len) {
             const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + @as(u32, @intCast(bytes.len)));
             try segments.append(Segment{ .text = chunk });
+            width_after_last_break = chunk.width;
             inserted_width += chunk.width;
         }
 
@@ -371,9 +375,21 @@ pub const EditBuffer = struct {
         self.tb.markViewsDirty();
 
         // Update cursor position to end of inserted text
-        const new_offset = insert_offset + inserted_width;
-        if (iter_mod.offsetToCoords(&self.tb.rope, new_offset)) |coords| {
-            self.cursors.items[0] = .{ .row = coords.row, .col = coords.col, .desired_col = coords.col };
+        const num_breaks = break_result.breaks.items.len;
+        if (num_breaks > 0) {
+            // We inserted newlines - cursor moves to a new line
+            self.cursors.items[0] = .{
+                .row = cursor.row + @as(u32, @intCast(num_breaks)),
+                .col = width_after_last_break,
+                .desired_col = width_after_last_break,
+            };
+        } else {
+            // No line breaks - cursor stays on same line, moves forward
+            self.cursors.items[0] = .{
+                .row = cursor.row,
+                .col = cursor.col + inserted_width,
+                .desired_col = cursor.col + inserted_width,
+            };
         }
     }
 
