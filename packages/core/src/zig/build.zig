@@ -143,6 +143,20 @@ pub fn build(b: *std.Build) void {
         run_bench.addArgs(args);
     }
     bench_step.dependOn(&run_bench.step);
+
+    // Add debug step for standalone debugging
+    const debug_step = b.step("debug", "Run debug executable");
+    const debug_exe = b.addExecutable(.{
+        .name = "opentui-debug",
+        .root_source_file = b.path("debug-view.zig"),
+        .target = test_target,
+        .optimize = .Debug,
+    });
+
+    applyZgDependencies(b, debug_exe.root_module, .Debug, test_target);
+
+    const run_debug = b.addRunArtifact(debug_exe);
+    debug_step.dependOn(&run_debug.step);
 }
 
 fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
