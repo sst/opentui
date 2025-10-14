@@ -208,6 +208,8 @@ test "coordsToOffset - valid coordinates" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
+    // Line 0 starts here
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -218,6 +220,8 @@ test "coordsToOffset - valid coordinates" {
         },
     });
     try rope.append(Segment{ .brk = {} });
+    // Line 1 starts here
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -247,6 +251,8 @@ test "offsetToCoords - valid offsets" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
+    // Line 0 starts here
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -257,6 +263,8 @@ test "offsetToCoords - valid offsets" {
         },
     });
     try rope.append(Segment{ .brk = {} });
+    // Line 1 starts here
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -320,6 +328,8 @@ test "coordsToOffset and offsetToCoords - round trip" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
+    // Line 0 starts here
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -330,6 +340,8 @@ test "coordsToOffset and offsetToCoords - round trip" {
         },
     });
     try rope.append(Segment{ .brk = {} });
+    // Line 1 starts here
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,

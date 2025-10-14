@@ -113,9 +113,10 @@ pub const EditBuffer = struct {
             .allocator = allocator,
         };
 
-        // Create an initial empty line (single empty text segment)
+        // Create an initial empty line (single empty text segment with linestart marker)
         const empty_mem_id = try text_buffer.registerMemBuffer(&[_]u8{}, false);
         const empty_chunk = text_buffer.createChunk(empty_mem_id, 0, 0);
+        try text_buffer.rope.append(Segment{ .linestart = {} });
         try text_buffer.rope.append(Segment{ .text = empty_chunk });
 
         return self;
@@ -303,8 +304,9 @@ pub const EditBuffer = struct {
                     const chunk = self.tb.createChunk(chunk_ref.mem_id, chunk_ref.start, chunk_ref.end);
                     try segments.append(Segment{ .text = chunk });
                 }
-                // Add break segment
+                // Add break segment and linestart for next line
                 try segments.append(Segment{ .brk = {} });
+                try segments.append(Segment{ .linestart = {} });
                 line_start = i + 1;
             }
         }

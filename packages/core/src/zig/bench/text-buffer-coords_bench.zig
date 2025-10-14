@@ -50,7 +50,7 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 100, 50);
+            var rope = try createTestBuffer(arena.allocator(), 100, 50);
 
             var timer = try std.time.Timer.start();
             // Access lines throughout the buffer
@@ -89,7 +89,7 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 1000, 50);
+            var rope = try createTestBuffer(arena.allocator(), 1000, 50);
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;
@@ -127,7 +127,7 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 10000, 50);
+            var rope = try createTestBuffer(arena.allocator(), 10000, 50);
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;
@@ -165,7 +165,7 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 1000, 50);
+            var rope = try createTestBuffer(arena.allocator(), 1000, 50);
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;
@@ -208,7 +208,7 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 100, 50);
+            var rope = try createTestBuffer(arena.allocator(), 100, 50);
             const total_width = iter_mod.getTotalWidth(&rope);
 
             var prng = std.Random.DefaultPrng.init(42);
@@ -250,7 +250,7 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 1000, 50);
+            var rope = try createTestBuffer(arena.allocator(), 1000, 50);
             const total_width = iter_mod.getTotalWidth(&rope);
 
             var prng = std.Random.DefaultPrng.init(42);
@@ -292,7 +292,7 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 10000, 50);
+            var rope = try createTestBuffer(arena.allocator(), 10000, 50);
             const total_width = iter_mod.getTotalWidth(&rope);
 
             var prng = std.Random.DefaultPrng.init(42);
@@ -340,7 +340,7 @@ fn benchGetLineCount(allocator: std.mem.Allocator, iterations: usize) ![]BenchRe
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            const rope = try createTestBuffer(arena.allocator(), 10000, 50);
+            var rope = try createTestBuffer(arena.allocator(), 10000, 50);
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;

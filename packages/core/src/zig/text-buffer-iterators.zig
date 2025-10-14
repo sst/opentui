@@ -223,69 +223,69 @@ pub fn getTotalWidth(rope: *const UnifiedRope) u32 {
 
 /// Convert (row, col) coordinates to absolute character offset
 /// Returns null if coordinates are out of bounds
-pub fn coordsToOffset(rope: *const UnifiedRope, row: u32, col: u32) ?u32 {
-    const Context = struct {
-        row: u32,
-        col: u32,
-        result: ?u32 = null,
+/// Optimized O(1) implementation using linestart marker lookups
+pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
+    const linestart_count = rope.markerCount(.linestart);
+    if (row >= linestart_count) return null;
 
-        fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
-            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-            if (line_info.line_idx == ctx.row) {
-                if (ctx.col > line_info.width) {
-                    ctx.result = null;
-                } else {
-                    ctx.result = line_info.char_offset + ctx.col;
-                }
-            }
-        }
+    // Lookup linestart marker for this row
+    const marker = rope.getMarker(.linestart, row) orelse return null;
+    const line_char_offset = marker.global_weight;
+
+    // Get line width to validate col
+    const next_line_offset = if (row + 1 < linestart_count) blk: {
+        const next_marker = rope.getMarker(.linestart, row + 1) orelse return null;
+        break :blk next_marker.global_weight;
+    } else blk: {
+        break :blk getTotalWidth(rope);
     };
 
-    var ctx = Context{ .row = row, .col = col };
-    walkLines(rope, &ctx, Context.callback);
-    return ctx.result;
+    const line_width = next_line_offset - line_char_offset;
+    if (col > line_width) return null;
+
+    return line_char_offset + col;
 }
 
 /// Convert absolute character offset to (row, col) coordinates
 /// Returns null if offset is out of bounds
-/// Note: Offsets at line boundaries belong to the START of the next line,
-/// except for the very last offset which belongs to the end of the last line
-pub fn offsetToCoords(rope: *const UnifiedRope, offset: u32) ?Coords {
-    const Context = struct {
-        offset: u32,
-        result: ?Coords = null,
-        last_line_info: ?LineInfo = null,
+/// Optimized O(log n) implementation using binary search on linestart markers
+pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
+    const linestart_count = rope.markerCount(.linestart);
+    if (linestart_count == 0) return null;
 
-        fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
-            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-            const line_end = line_info.char_offset + line_info.width;
+    const total_width = getTotalWidth(rope);
+    if (offset > total_width) return null;
 
-            // Check if offset is within this line (not including the end, unless it's the last line)
-            if (ctx.offset >= line_info.char_offset and ctx.offset < line_end) {
-                ctx.result = Coords{
-                    .row = line_info.line_idx,
-                    .col = ctx.offset - line_info.char_offset,
+    // Binary search to find the line containing this offset
+    var left: u32 = 0;
+    var right: u32 = linestart_count;
+
+    while (left < right) {
+        const mid = left + (right - left) / 2;
+        const marker = rope.getMarker(.linestart, mid) orelse return null;
+        const line_start = marker.global_weight;
+
+        if (offset < line_start) {
+            right = mid;
+        } else {
+            // Check if offset is in this line
+            const next_line_start = if (mid + 1 < linestart_count) blk: {
+                const next_marker = rope.getMarker(.linestart, mid + 1) orelse return null;
+                break :blk next_marker.global_weight;
+            } else blk: {
+                break :blk total_width;
+            };
+
+            if (offset < next_line_start or (offset == total_width and mid + 1 == linestart_count)) {
+                // Found the line
+                return Coords{
+                    .row = mid,
+                    .col = offset - line_start,
                 };
             }
-
-            ctx.last_line_info = line_info;
-        }
-    };
-
-    var ctx = Context{ .offset = offset };
-    walkLines(rope, &ctx, Context.callback);
-
-    // Special case: offset exactly at the end of the last line
-    if (ctx.result == null and ctx.last_line_info != null) {
-        const line_info = ctx.last_line_info.?;
-        const line_end = line_info.char_offset + line_info.width;
-        if (offset == line_end) {
-            ctx.result = Coords{
-                .row = line_info.line_idx,
-                .col = line_info.width,
-            };
+            left = mid + 1;
         }
     }
 
-    return ctx.result;
+    return null;
 }
