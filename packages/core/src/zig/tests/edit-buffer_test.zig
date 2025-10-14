@@ -605,3 +605,156 @@ test "EditBuffer - column preservation with wide characters" {
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 8), cursor.col); // Restored!
 }
+
+test "EditBuffer - cursor movement at boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3");
+
+    // Test left at start of line
+    try eb.setCursor(1, 0);
+    eb.moveLeft();
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row); // Moved to previous line
+    try std.testing.expectEqual(@as(u32, 6), cursor.col); // At end of "Line 1"
+
+    // Test left at start of buffer
+    try eb.setCursor(0, 0);
+    eb.moveLeft();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row); // Stays at first line
+    try std.testing.expectEqual(@as(u32, 0), cursor.col); // Stays at column 0
+
+    // Test right at end of line
+    try eb.setCursor(0, 6);
+    eb.moveRight();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row); // Moved to next line
+    try std.testing.expectEqual(@as(u32, 0), cursor.col); // At start of line
+
+    // Test right at end of buffer
+    try eb.setCursor(2, 6);
+    eb.moveRight();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row); // Stays at last line
+    try std.testing.expectEqual(@as(u32, 6), cursor.col); // Stays at end
+
+    // Test up at first line
+    try eb.setCursor(0, 3);
+    eb.moveUp();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row); // Stays at first line
+
+    // Test down at last line
+    try eb.setCursor(2, 3);
+    eb.moveDown();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row); // Stays at last line
+}
+
+test "EditBuffer - cursor movement on empty lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Create text with empty lines
+    try eb.insertText("Line 1\n\nLine 3");
+
+    // Move to empty line (line 1)
+    try eb.setCursor(1, 0);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Try to move right on empty line - should stay at 0
+    eb.moveRight();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row); // Moved to next line
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Try to move left from start of line after empty
+    eb.moveLeft();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row); // Back to empty line
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - cursor movement after editing resets desired column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Long line here\nMid\nAnother long line");
+
+    // Set cursor to column 10, move down through short line
+    try eb.setCursor(0, 10);
+    eb.moveDown();
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 3), cursor.col); // Clamped to "Mid" length
+
+    // Move right - this should reset desired column
+    eb.moveRight();
+    cursor = eb.getCursor(0).?;
+    // After moving right at end of line, we're at start of next line
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Now move up - should use column 0, not the original 10
+    eb.moveUp();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col); // Uses new desired column (0, not 10)
+}
+
+test "EditBuffer - cursor wrapping at line boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("ABC\nDEF\nGHI");
+
+    // Start at end of first line
+    try eb.setCursor(0, 3);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 3), cursor.col);
+
+    // Move right - should wrap to next line
+    eb.moveRight();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Move left - should wrap back to previous line end
+    eb.moveLeft();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 3), cursor.col);
+}
