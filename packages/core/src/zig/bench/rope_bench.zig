@@ -430,91 +430,6 @@ fn benchBulkOperations(allocator: std.mem.Allocator, iterations: usize) ![]Bench
     return try results.toOwnedSlice();
 }
 
-fn benchFingerLocality(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
-
-    var items: [10000]TestItem = undefined;
-    for (&items, 0..) |*item, i| {
-        item.* = .{ .value = @intCast(i) };
-    }
-
-    // Clustered edits with finger
-    {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var finger = rope.makeFinger(5000);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                try rope.insertAtFinger(&finger, .{ .value = i + 10000 });
-                finger.seek(finger.getIndex() + 1);
-            }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-        }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope 1k finger-based inserts near pos 5k", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
-    }
-
-    // Compare with non-finger inserts
-    {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                try rope.insert(5000 + i, .{ .value = i + 10000 });
-            }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-        }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope 1k regular inserts near pos 5k", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
-    }
-
-    return try results.toOwnedSlice();
-}
-
 fn benchAccessPatterns(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
     var results = std.ArrayList(BenchResult).init(allocator);
 
@@ -666,10 +581,6 @@ pub fn run(
     const bulk_results = try benchBulkOperations(allocator, iterations);
     defer allocator.free(bulk_results);
     try all_results.appendSlice(bulk_results);
-
-    const finger_results = try benchFingerLocality(allocator, iterations);
-    defer allocator.free(finger_results);
-    try all_results.appendSlice(finger_results);
 
     const access_results = try benchAccessPatterns(allocator, iterations);
     defer allocator.free(access_results);

@@ -407,71 +407,6 @@ pub fn Rope(comptime T: type) type {
             }
         };
 
-        /// Finger for efficient near-cursor edits
-        /// Caches the path to last accessed position for locality
-        /// External to rope, one per cursor for multi-cursor support
-        pub const Finger = struct {
-            index: u32, // Last resolved index
-            rope: *const Self, // Reference to the rope this finger belongs to
-            cached_node: ?*const Node = null, // Cached node near index
-            cached_node_start: u32 = 0, // Starting index of cached node's subtree
-
-            /// Create a finger at a specific index
-            pub fn init(rope: *const Self, index: u32) Finger {
-                return .{
-                    .index = index,
-                    .rope = rope,
-                };
-            }
-
-            /// Move finger to a new index and invalidate cache if far away
-            pub fn seek(self: *Finger, index: u32) void {
-                // If seeking far away (more than 100 items), invalidate cache
-                if (self.index > index) {
-                    if (self.index - index > 100) {
-                        self.invalidate();
-                    }
-                } else {
-                    if (index - self.index > 100) {
-                        self.invalidate();
-                    }
-                }
-                self.index = index;
-            }
-
-            /// Get current index
-            pub fn getIndex(self: *const Finger) u32 {
-                return self.index;
-            }
-
-            /// Invalidate the cache (call after structural changes)
-            pub fn invalidate(self: *Finger) void {
-                self.cached_node = null;
-                self.cached_node_start = 0;
-            }
-
-            /// Update cache with a node and its starting index
-            fn updateCache(self: *Finger, node: *const Node, start_index: u32) void {
-                self.cached_node = node;
-                self.cached_node_start = start_index;
-            }
-
-            /// Try to get data from cache, otherwise traverse from root
-            pub fn get(self: *Finger) ?*const T {
-                // Try cache first if available
-                if (self.cached_node) |node| {
-                    const node_count = node.count();
-                    const relative_index = self.index - self.cached_node_start;
-                    if (relative_index < node_count) {
-                        return node.get(relative_index);
-                    }
-                }
-
-                // Cache miss - traverse from root and update cache
-                return self.rope.root.get(self.index);
-            }
-        };
-
         /// Weight-based finger for efficient near-cursor edits by weight
         /// Caches the path to last accessed position for locality
         pub const WeightFinger = struct {
@@ -942,48 +877,6 @@ pub fn Rope(comptime T: type) type {
                 left_filtered
             else
                 try Node.join_balanced(left_filtered, split_result.right, self.allocator);
-        }
-
-        /// Create a finger at the given index
-        pub fn makeFinger(self: *const Self, index: u32) Finger {
-            return Finger.init(self, index);
-        }
-
-        /// Insert at finger position (invalidates finger cache)
-        pub fn insertAtFinger(self: *Self, finger: *Finger, data: T) !void {
-            try self.insert(finger.index, data);
-            finger.invalidate(); // Structure changed
-            // Finger now points to the inserted item
-        }
-
-        /// Delete at finger position (invalidates finger cache)
-        pub fn deleteAtFinger(self: *Self, finger: *Finger) !void {
-            try self.delete(finger.index);
-            finger.invalidate(); // Structure changed
-            // Finger index stays the same, now points to next item (or past end)
-        }
-
-        /// Replace at finger position (invalidates finger cache)
-        pub fn replaceAtFinger(self: *Self, finger: *Finger, data: T) !void {
-            try self.replace(finger.index, data);
-            finger.invalidate(); // Structure changed
-            // Finger still points to same position with new data
-        }
-
-        /// Insert slice at finger position (invalidates finger cache)
-        pub fn insertSliceAtFinger(self: *Self, finger: *Finger, items: []const T) !void {
-            try self.insert_slice(finger.index, items);
-            finger.invalidate(); // Structure changed
-            // Finger now points to first inserted item
-        }
-
-        /// Delete range using two fingers (invalidates both finger caches)
-        pub fn deleteRangeWith(self: *Self, start_finger: *Finger, end_finger: *Finger) !void {
-            const start = start_finger.index;
-            const end = end_finger.index;
-            try self.delete_range(@min(start, end), @max(start, end));
-            start_finger.invalidate(); // Structure changed
-            end_finger.invalidate(); // Structure changed
         }
 
         /// Result type for weight-based find operations

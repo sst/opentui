@@ -121,87 +121,6 @@ test "Rope - fallback to count when no weight function" {
     try std.testing.expectEqual(@as(u32, 3), metrics.weight());
 }
 
-//===== Path-Caching Finger Tests =====
-
-test "Finger - cache invalidation on structural changes" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const RopeType = rope_mod.Rope(SimpleItem);
-    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
-
-    var finger = rope.makeFinger(0);
-    try std.testing.expect(finger.cached_node == null);
-
-    // After insert, cache should be invalidated
-    try rope.insertAtFinger(&finger, .{ .value = 2 });
-    try std.testing.expect(finger.cached_node == null);
-}
-
-test "Finger - seek invalidates cache on large jumps" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const RopeType = rope_mod.Rope(SimpleItem);
-    var items: [200]SimpleItem = undefined;
-    for (&items, 0..) |*item, i| {
-        item.* = .{ .value = @intCast(i) };
-    }
-    var rope = try RopeType.from_slice(arena.allocator(), &items);
-
-    var finger = rope.makeFinger(50);
-
-    // Small seek should keep cache
-    finger.seek(55);
-    // But we can't directly test cache state - it's internal
-
-    // Large seek should invalidate
-    finger.seek(150);
-    try std.testing.expectEqual(@as(u32, 150), finger.getIndex());
-}
-
-test "Finger - get method works correctly" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const RopeType = rope_mod.Rope(SimpleItem);
-    const items = [_]SimpleItem{
-        .{ .value = 10 },
-        .{ .value = 20 },
-        .{ .value = 30 },
-    };
-    var rope = try RopeType.from_slice(arena.allocator(), &items);
-
-    var finger = rope.makeFinger(1);
-    const value = finger.get();
-    try std.testing.expect(value != null);
-    try std.testing.expectEqual(@as(u32, 20), value.?.value);
-
-    // Seek and get again
-    finger.seek(2);
-    const value2 = finger.get();
-    try std.testing.expectEqual(@as(u32, 30), value2.?.value);
-}
-
-test "Finger - operations update index correctly" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    const RopeType = rope_mod.Rope(SimpleItem);
-    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
-
-    var finger = rope.makeFinger(0);
-
-    // Insert increases available items
-    try rope.insertAtFinger(&finger, .{ .value = 2 });
-    try std.testing.expectEqual(@as(u32, 0), finger.getIndex());
-
-    // Move finger
-    finger.seek(1);
-    try rope.replaceAtFinger(&finger, .{ .value = 99 });
-    try std.testing.expectEqual(@as(u32, 99), rope.get(1).?.value);
-}
-
 //===== Configurable Undo Depth Tests =====
 
 test "Rope - unlimited undo depth by default" {
@@ -440,7 +359,7 @@ test "Rope - delete_range handles sentinels correctly" {
 
 //===== Integration Tests =====
 
-test "Integration - weight-based balancing with fingers and history limits" {
+test "Integration - weight-based balancing with history limits" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -460,9 +379,8 @@ test "Integration - weight-based balancing with fingers and history limits" {
 
     try std.testing.expectEqual(expected_count, rope.count());
 
-    // Use finger for clustered edits
-    var finger = rope.makeFinger(5);
-    try rope.insertAtFinger(&finger, .{ .value = 999, .size = 50 });
+    // Insert at position 5
+    try rope.insert(5, .{ .value = 999, .size = 50 });
     expected_count += 1;
 
     try std.testing.expectEqual(expected_count, rope.count());
@@ -503,9 +421,8 @@ test "Integration - all features working together" {
     // History limited to 3
     try std.testing.expectEqual(@as(usize, 3), rope.undo_depth);
 
-    // Use finger
-    var finger = rope.makeFinger(2);
-    const val = finger.get();
+    // Get value at index 2
+    const val = rope.get(2);
     try std.testing.expectEqual(@as(u32, 3), val.?.value);
 
     // Undo works

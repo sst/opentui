@@ -207,7 +207,7 @@ test "Rope fuzz - stress test with many items" {
     try std.testing.expect(depth <= max_expected_depth);
 }
 
-test "Rope fuzz - finger operations" {
+test "Rope fuzz - positional operations" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -223,35 +223,34 @@ test "Rope fuzz - finger operations" {
     var prng = std.Random.DefaultPrng.init(456);
     const random = prng.random();
 
-    // Create a finger and do operations near it
-    var finger = rope.makeFinger(25);
+    // Track a position and do operations near it
+    var position: u32 = 25;
 
     var j: usize = 0;
     while (j < 30) : (j += 1) {
         const op = random.intRangeAtMost(u8, 0, 2);
 
         switch (op) {
-            0 => { // Insert at finger
-                try rope.insertAtFinger(&finger, .{ .value = random.int(u32) });
-                finger.seek(finger.getIndex() + 1); // Move past inserted item
+            0 => { // Insert at position
+                try rope.insert(position, .{ .value = random.int(u32) });
+                position = position + 1; // Move past inserted item
             },
-            1 => { // Delete at finger
-                if (finger.getIndex() < rope.count()) {
-                    try rope.deleteAtFinger(&finger);
+            1 => { // Delete at position
+                if (position < rope.count()) {
+                    try rope.delete(position);
                 }
             },
-            2 => { // Replace at finger
-                if (finger.getIndex() < rope.count()) {
-                    try rope.replaceAtFinger(&finger, .{ .value = random.int(u32) });
+            2 => { // Replace at position
+                if (position < rope.count()) {
+                    try rope.replace(position, .{ .value = random.int(u32) });
                 }
             },
             else => unreachable,
         }
 
-        // Occasionally move finger
-        if (random.boolean()) {
-            const new_pos = random.intRangeAtMost(u32, 0, rope.count() - 1);
-            finger.seek(new_pos);
+        // Occasionally move position
+        if (random.boolean() and rope.count() > 0) {
+            position = random.intRangeAtMost(u32, 0, rope.count() - 1);
         }
     }
 
