@@ -224,9 +224,10 @@ pub const StyleSpan = struct {
 pub const Segment = union(enum) {
     text: TextChunk,
     brk: void,
+    linestart: void,
 
     /// Define which union tags are markers (for O(1) line lookup)
-    pub const MarkerTypes = &[_]std.meta.Tag(Segment){.brk};
+    pub const MarkerTypes = &[_]std.meta.Tag(Segment){ .brk, .linestart };
 
     /// Metrics for aggregation in the rope tree
     /// These enable O(log n) row/col coordinate mapping and efficient line queries
@@ -236,6 +237,9 @@ pub const Segment = union(enum) {
 
         /// Number of line break markers in the subtree
         break_count: u32 = 0,
+
+        /// Number of linestart markers in the subtree
+        linestart_count: u32 = 0,
 
         /// Display width from start of subtree to first break (or total if no breaks)
         first_line_width: u32 = 0,
@@ -260,6 +264,7 @@ pub const Segment = union(enum) {
 
             self.total_width += other.total_width;
             self.break_count += other.break_count;
+            self.linestart_count += other.linestart_count;
 
             // first_line_width: if left has no breaks, combine left + right first line
             // Otherwise, left's first line is already complete
@@ -312,6 +317,7 @@ pub const Segment = union(enum) {
                 break :blk Metrics{
                     .total_width = chunk.width,
                     .break_count = 0,
+                    .linestart_count = 0,
                     .first_line_width = chunk.width,
                     .last_line_width = chunk.width,
                     .max_line_width = chunk.width,
@@ -321,6 +327,16 @@ pub const Segment = union(enum) {
             .brk => Metrics{
                 .total_width = 0,
                 .break_count = 1,
+                .linestart_count = 0,
+                .first_line_width = 0,
+                .last_line_width = 0,
+                .max_line_width = 0,
+                .ascii_only = true,
+            },
+            .linestart => Metrics{
+                .total_width = 0,
+                .break_count = 0,
+                .linestart_count = 1,
                 .first_line_width = 0,
                 .last_line_width = 0,
                 .max_line_width = 0,
@@ -339,14 +355,16 @@ pub const Segment = union(enum) {
         return switch (self.*) {
             .text => |chunk| chunk.is_empty(),
             .brk => false, // Breaks are never "empty" - they represent a line boundary
+            .linestart => false, // Linestart markers are never "empty" - they represent a line start
         };
     }
 
-    /// Get the bytes for this segment (empty for breaks)
+    /// Get the bytes for this segment (empty for breaks and linestart)
     pub fn getBytes(self: *const Segment, mem_registry: *const MemRegistry) []const u8 {
         return switch (self.*) {
             .text => |chunk| chunk.getBytes(mem_registry),
             .brk => &[_]u8{},
+            .linestart => &[_]u8{},
         };
     }
 
@@ -354,6 +372,14 @@ pub const Segment = union(enum) {
     pub fn isBreak(self: *const Segment) bool {
         return switch (self.*) {
             .brk => true,
+            else => false,
+        };
+    }
+
+    /// Check if this is a linestart segment
+    pub fn isLineStart(self: *const Segment) bool {
+        return switch (self.*) {
+            .linestart => true,
             else => false,
         };
     }
