@@ -12,6 +12,7 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 const WrapMode = text_buffer.WrapMode;
+const StyledChunk = text_buffer.StyledChunk;
 
 test "drawTextBuffer - simple single line text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -678,4 +679,74 @@ test "drawTextBuffer - wrapping with mixed ASCII and Unicode" {
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len > 1);
+}
+
+test "setStyledText - basic rendering with single chunk" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const text = "Hello World";
+    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+
+    const chunks = [_]StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&fg_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+
+    try tb.setStyledText(&chunks);
+
+    // Verify the text was set correctly
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    const result = out_buffer[0..written];
+
+    try std.testing.expectEqualStrings("Hello World", result);
+}
+
+test "setStyledText - multiple chunks render correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const text0 = "Hello ";
+    const text1 = "World";
+    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+
+    const chunks = [_]StyledChunk{
+        .{ .text_ptr = text0.ptr, .text_len = text0.len, .fg_ptr = @ptrCast(&fg_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = text1.ptr, .text_len = text1.len, .fg_ptr = @ptrCast(&fg_color), .bg_ptr = null, .attributes = 0 },
+    };
+
+    try tb.setStyledText(&chunks);
+
+    // Verify the text was set correctly
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    const result = out_buffer[0..written];
+
+    try std.testing.expectEqualStrings("Hello World", result);
 }

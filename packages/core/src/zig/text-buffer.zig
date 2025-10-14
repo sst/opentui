@@ -6,6 +6,7 @@ const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const utf8 = @import("utf8.zig");
+const utils = @import("utils.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
@@ -33,6 +34,16 @@ pub const TextBuffer = UnifiedTextBuffer;
 // Legacy type aliases for FFI compatibility
 pub const TextBufferArray = UnifiedTextBuffer;
 pub const TextBufferRope = UnifiedTextBuffer;
+
+/// FFI-compatible styled chunk structure
+/// Used for passing styled text from TypeScript/C and in benchmarks
+pub const StyledChunk = extern struct {
+    text_ptr: [*]const u8,
+    text_len: usize,
+    fg_ptr: ?[*]const f32,
+    bg_ptr: ?[*]const f32,
+    attributes: u8,
+};
 
 /// UnifiedTextBuffer - TextBuffer implementation using a single unified rope
 /// instead of nested rope structures (lines → chunks)
@@ -278,7 +289,11 @@ pub const UnifiedTextBuffer = struct {
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
         self.reset(); // reset() already clears highlights
+        try self.setTextInternal(text);
+    }
 
+    /// Internal setText that doesn't call reset (for use by setStyledText)
+    fn setTextInternal(self: *Self, text: []const u8) TextBufferError!void {
         if (text.len == 0) {
             // Empty buffer - create one empty text segment to represent the single empty line
             // This matches editor semantics where an empty buffer has 1 empty line
@@ -782,49 +797,61 @@ pub const UnifiedTextBuffer = struct {
         }
     }
 
-    /// Styled text chunk for setStyledText
-    pub const StyledChunk = struct {
-        text: []const u8,
-        fg: ?RGBA,
-        bg: ?RGBA,
-        attributes: u8,
-    };
-
-    /// Set styled text from multiple chunks with individual styling
-    pub fn setStyledText(self: *Self, chunks: []const StyledChunk) TextBufferError!void {
+    /// Set styled text from chunks with individual styling
+    /// Accepts StyledChunk array for FFI compatibility
+    pub fn setStyledText(
+        self: *Self,
+        chunks: []const StyledChunk,
+    ) TextBufferError!void {
         if (chunks.len == 0) {
             self.reset();
             return;
         }
 
-        // Concatenate all chunk texts to get the full text
+        // Calculate total text length
         var total_len: usize = 0;
         for (chunks) |chunk| {
-            total_len += chunk.text.len;
+            total_len += chunk.text_len;
         }
 
+        if (total_len == 0) {
+            self.reset();
+            return;
+        }
+
+        // Reset first to clear arena and prepare for new content
+        self.reset();
+
+        // Now allocate with arena allocator (which was just reset)
         const full_text = self.allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
-        defer self.allocator.free(full_text);
 
         var offset: usize = 0;
         for (chunks) |chunk| {
-            @memcpy(full_text[offset .. offset + chunk.text.len], chunk.text);
-            offset += chunk.text.len;
+            if (chunk.text_len > 0) {
+                const chunk_text = chunk.text_ptr[0..chunk.text_len];
+                @memcpy(full_text[offset .. offset + chunk.text_len], chunk_text);
+                offset += chunk.text_len;
+            }
         }
 
-        // Set the full text
-        try self.setText(full_text);
+        // Use internal method that doesn't call reset again
+        try self.setTextInternal(full_text);
 
         // Apply styling if we have a syntax style
         if (self.syntax_style) |style| {
             var char_pos: u32 = 0;
             for (chunks, 0..) |chunk, i| {
-                const chunk_len = self.measureText(chunk.text);
+                const chunk_text = chunk.text_ptr[0..chunk.text_len];
+                const chunk_len = self.measureText(chunk_text);
 
                 if (chunk_len > 0) {
+                    // Convert color pointers to RGBA
+                    const fg = if (chunk.fg_ptr) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+                    const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+
                     // Register style for this chunk
                     const style_name = std.fmt.allocPrint(self.allocator, "chunk{d}", .{i}) catch continue;
-                    const style_id = (@constCast(style)).registerStyle(style_name, chunk.fg, chunk.bg, chunk.attributes) catch continue;
+                    const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
 
                     // Add highlight for this chunk's range
                     self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, null) catch {};

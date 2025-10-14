@@ -13,6 +13,7 @@ const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const utils = @import("utils.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -21,10 +22,6 @@ pub const RGBA = buffer.RGBA;
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
     logger.setLogCallback(callback);
-}
-
-fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
-    return .{ ptr[0], ptr[1], ptr[2], ptr[3] };
 }
 
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -59,7 +56,7 @@ export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
 }
 
 export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
-    rendererPtr.setBackgroundColor(f32PtrToRGBA(color));
+    rendererPtr.setBackgroundColor(utils.f32PtrToRGBA(color));
 }
 
 export fn setRenderOffset(rendererPtr: *renderer.CliRenderer, offset: u32) void {
@@ -155,7 +152,7 @@ export fn setCursorStyle(rendererPtr: *renderer.CliRenderer, stylePtr: [*]const 
 }
 
 export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
-    rendererPtr.terminal.setCursorColor(f32PtrToRGBA(color));
+    rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
 }
 
 export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, corner: u8) void {
@@ -182,7 +179,7 @@ export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]cons
 
 // Buffer functions
 export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const f32) void {
-    bufferPtr.clear(f32PtrToRGBA(bg), null) catch {};
+    bufferPtr.clear(utils.f32PtrToRGBA(bg), null) catch {};
 }
 
 export fn bufferGetCharPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
@@ -226,20 +223,20 @@ export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr
 }
 
 export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
-    const rgbaFg = f32PtrToRGBA(fg);
-    const rgbaBg = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     bufferPtr.drawText(text[0..textLen], x, y, rgbaFg, rgbaBg, attributes) catch {};
 }
 
 export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
-    const rgbaFg = f32PtrToRGBA(fg);
-    const rgbaBg = f32PtrToRGBA(bg);
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.setCellWithAlphaBlending(x, y, char, rgbaFg, rgbaBg, attributes) catch {};
 }
 
 export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
-    const rgbaFg = f32PtrToRGBA(fg);
-    const rgbaBg = f32PtrToRGBA(bg);
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
     const cell = buffer.Cell{
         .char = char,
         .fg = rgbaFg,
@@ -250,7 +247,7 @@ export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char
 }
 
 export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const f32) void {
-    const rgbaBg = f32PtrToRGBA(bg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.fillRect(x, y, width, height, rgbaBg) catch {};
 }
 
@@ -306,8 +303,8 @@ export fn bufferDrawBox(
         height,
         borderChars,
         borderSides,
-        f32PtrToRGBA(borderColor),
-        f32PtrToRGBA(backgroundColor),
+        utils.f32PtrToRGBA(borderColor),
+        utils.f32PtrToRGBA(backgroundColor),
         shouldFill,
         titleSlice,
         titleAlignment,
@@ -397,12 +394,12 @@ export fn textBufferReset(tb: *text_buffer.TextBufferArray) void {
 }
 
 export fn textBufferSetDefaultFg(tb: *text_buffer.TextBufferArray, fg: ?[*]const f32) void {
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     tb.setDefaultFg(fgColor);
 }
 
 export fn textBufferSetDefaultBg(tb: *text_buffer.TextBufferArray, bg: ?[*]const f32) void {
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     tb.setDefaultBg(bgColor);
 }
 
@@ -420,39 +417,14 @@ export fn textBufferSetText(tb: *text_buffer.TextBufferArray, textPtr: [*]const 
     tb.setText(text) catch {};
 }
 
-// Styled text chunk data passed from TypeScript
-pub const StyledChunk = extern struct {
-    text_ptr: [*]const u8,
-    text_len: usize,
-    fg_ptr: ?[*]const f32, // null or pointer to 4 f32s
-    bg_ptr: ?[*]const f32, // null or pointer to 4 f32s
-    attributes: u8,
-};
-
 export fn textBufferSetStyledText(
     tb: *text_buffer.TextBufferArray,
-    chunksPtr: [*]const StyledChunk,
+    chunksPtr: [*]const text_buffer.StyledChunk,
     chunkCount: usize,
 ) void {
     if (chunkCount == 0) return;
-
-    const ffi_chunks = chunksPtr[0..chunkCount];
-
-    // Convert FFI chunks to internal format
-    const internal_chunks = globalArena.alloc(text_buffer.UnifiedTextBuffer.StyledChunk, chunkCount) catch return;
-    defer globalArena.free(internal_chunks);
-
-    for (ffi_chunks, 0..) |chunk, i| {
-        internal_chunks[i] = .{
-            .text = chunk.text_ptr[0..chunk.text_len],
-            .fg = if (chunk.fg_ptr) |fgPtr| f32PtrToRGBA(fgPtr) else null,
-            .bg = if (chunk.bg_ptr) |bgPtr| f32PtrToRGBA(bgPtr) else null,
-            .attributes = chunk.attributes,
-        };
-    }
-
-    // Delegate to TextBuffer method
-    tb.setStyledText(internal_chunks) catch {};
+    const chunks = chunksPtr[0..chunkCount];
+    tb.setStyledText(chunks) catch {};
 }
 
 export fn textBufferGetLineCount(tb: *text_buffer.TextBufferArray) u32 {
@@ -477,8 +449,8 @@ export fn destroyTextBufferView(view: *text_buffer_view.TextBufferViewArray) voi
 }
 
 export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferViewArray, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     view.setSelection(start, end, bg, fg);
 }
 
@@ -491,8 +463,8 @@ export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.TextBufferViewA
 }
 
 export fn textBufferViewSetLocalSelection(view: *text_buffer_view.TextBufferViewArray, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
@@ -772,8 +744,8 @@ export fn editorViewIsWrappingEnabled(view: *editor_view.EditorView) bool {
 
 // EditorView selection methods - delegate to TextBufferView
 export fn editorViewSetSelection(view: *editor_view.EditorView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     view.text_buffer_view.setSelection(start, end, bg, fg);
 }
 
@@ -786,8 +758,8 @@ export fn editorViewGetSelection(view: *editor_view.EditorView) u64 {
 }
 
 export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     return view.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
@@ -982,8 +954,8 @@ export fn destroySyntaxStyle(style: *syntax_style.SyntaxStyle) void {
 
 export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u8) u32 {
     const name = namePtr[0..nameLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     return style.registerStyle(name, fgColor, bgColor, attributes) catch 0;
 }
 
