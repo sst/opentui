@@ -134,14 +134,14 @@ pub const UnifiedTextBuffer = struct {
 
         // Free highlight/span caches
         for (self.line_highlights.items) |*hl_list| {
-            hl_list.deinit(self.allocator);
+            hl_list.deinit(self.global_allocator);
         }
-        self.line_highlights.deinit(self.allocator);
+        self.line_highlights.deinit(self.global_allocator);
 
         for (self.line_spans.items) |*span_list| {
-            span_list.deinit(self.allocator);
+            span_list.deinit(self.global_allocator);
         }
-        self.line_spans.deinit(self.allocator);
+        self.line_spans.deinit(self.global_allocator);
 
         self.mem_registry.deinit();
         self.arena.deinit();
@@ -226,14 +226,14 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn reset(self: *Self) void {
-        // Clear highlight caches BEFORE resetting arena (they use arena allocator)
+        // Free highlight/span arrays (they use global_allocator, not arena)
         for (self.line_highlights.items) |*hl_list| {
-            hl_list.clearRetainingCapacity();
+            hl_list.deinit(self.global_allocator);
         }
         self.line_highlights.clearRetainingCapacity();
 
         for (self.line_spans.items) |*span_list| {
-            span_list.clearRetainingCapacity();
+            span_list.deinit(self.global_allocator);
         }
         self.line_spans.clearRetainingCapacity();
 
@@ -639,10 +639,10 @@ pub const UnifiedTextBuffer = struct {
     // Highlight system
     fn ensureLineHighlightStorage(self: *Self, line_idx: usize) TextBufferError!void {
         while (self.line_highlights.items.len <= line_idx) {
-            try self.line_highlights.append(self.allocator, .{});
+            try self.line_highlights.append(self.global_allocator, .{});
         }
         while (self.line_spans.items.len <= line_idx) {
-            try self.line_spans.append(self.allocator, .{});
+            try self.line_spans.append(self.global_allocator, .{});
         }
     }
 
@@ -674,7 +674,7 @@ pub const UnifiedTextBuffer = struct {
             .hl_ref = hl_ref,
         };
 
-        try self.line_highlights.items[line_idx].append(self.allocator, hl);
+        try self.line_highlights.items[line_idx].append(self.global_allocator, hl);
         try self.rebuildLineSpans(line_idx);
     }
 
@@ -712,7 +712,7 @@ pub const UnifiedTextBuffer = struct {
             hl_idx: usize,
         };
 
-        var events = std.ArrayList(Event).init(self.allocator);
+        var events = std.ArrayList(Event).init(self.global_allocator);
         defer events.deinit();
 
         for (highlights, 0..) |hl, idx| {
@@ -730,7 +730,7 @@ pub const UnifiedTextBuffer = struct {
         std.mem.sort(Event, events.items, {}, sortFn);
 
         // Build spans by tracking active highlights
-        var active = std.AutoHashMap(usize, void).init(self.allocator);
+        var active = std.AutoHashMap(usize, void).init(self.global_allocator);
         defer active.deinit();
 
         var current_col: u32 = 0;
@@ -750,7 +750,7 @@ pub const UnifiedTextBuffer = struct {
 
             // Emit span for the segment leading up to this event
             if (event.col > current_col) {
-                try self.line_spans.items[line_idx].append(self.allocator, StyleSpan{
+                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
                     .col = current_col,
                     .style_id = current_style,
                     .next_col = event.col,
