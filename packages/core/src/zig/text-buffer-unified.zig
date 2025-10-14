@@ -382,13 +382,13 @@ pub const UnifiedTextBuffer = struct {
 
             fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                
+
                 // Copy text segments in this line using walkSegments
                 const SegContext = struct {
                     buffer: *const UnifiedTextBuffer,
                     out_buffer: []u8,
                     out_index: *usize,
-                    
+
                     fn seg_callback(seg_ctx_ptr: *anyopaque, chunk: *const TextChunk, idx: u32) void {
                         _ = idx;
                         const seg_ctx = @as(*@This(), @ptrCast(@alignCast(seg_ctx_ptr)));
@@ -400,20 +400,20 @@ pub const UnifiedTextBuffer = struct {
                         }
                     }
                 };
-                
+
                 var seg_ctx = SegContext{
                     .buffer = ctx.buffer,
                     .out_buffer = ctx.out_buffer,
                     .out_index = ctx.out_index,
                 };
                 iter_mod.walkSegments(&ctx.buffer.rope, line_info.seg_start, line_info.seg_end, &seg_ctx, SegContext.seg_callback);
-                
+
                 // Add newline between lines (not after last line)
                 if (ctx.current_line_idx < ctx.line_count - 1 and ctx.out_index.* < ctx.out_buffer.len) {
                     ctx.out_buffer[ctx.out_index.*] = '\n';
                     ctx.out_index.* += 1;
                 }
-                
+
                 ctx.current_line_idx += 1;
             }
         };

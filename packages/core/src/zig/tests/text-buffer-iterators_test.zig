@@ -142,7 +142,7 @@ test "walkSegments - single segment" {
     const Context = struct {
         count: u32 = 0,
         total_width: u32 = 0,
-        
+
         fn callback(ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, idx: u32) void {
             _ = idx;
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
@@ -150,10 +150,10 @@ test "walkSegments - single segment" {
             ctx.total_width += chunk.width;
         }
     };
-    
+
     var ctx = Context{};
     iter_mod.walkSegments(&rope, 0, 1, &ctx, Context.callback);
-    
+
     try testing.expectEqual(@as(u32, 1), ctx.count);
     try testing.expectEqual(@as(u32, 10), ctx.total_width);
 }
@@ -187,7 +187,7 @@ test "walkSegments - filters breaks" {
     const Context = struct {
         count: u32 = 0,
         first_width: u32 = 0,
-        
+
         fn callback(ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, idx: u32) void {
             _ = idx;
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
@@ -197,10 +197,10 @@ test "walkSegments - filters breaks" {
             ctx.count += 1;
         }
     };
-    
+
     var ctx = Context{};
     iter_mod.walkSegments(&rope, 0, 1, &ctx, Context.callback);
-    
+
     try testing.expectEqual(@as(u32, 1), ctx.count); // Only first segment, break is filtered
     try testing.expectEqual(@as(u32, 10), ctx.first_width);
 }

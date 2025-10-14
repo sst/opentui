@@ -7,8 +7,9 @@ const UnifiedTextBuffer = unified_tb.UnifiedTextBuffer;
 const UnifiedTextBufferView = unified_view.UnifiedTextBufferView;
 
 pub fn main() !void {
-    // Use testing allocator to match test environment
-    const allocator = std.testing.allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();

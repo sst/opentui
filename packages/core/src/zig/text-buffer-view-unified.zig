@@ -138,21 +138,8 @@ pub const UnifiedTextBufferView = struct {
 
     /// Update virtual lines - simplified version for now without wrapping
     pub fn updateVirtualLines(self: *Self) void {
-        std.debug.print("[updateVirtualLines] START\n", .{});
-
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
-        std.debug.print("[updateVirtualLines] buffer_dirty={}, vlines_dirty={}\n", .{ buffer_dirty, self.virtual_lines_dirty });
-
-        if (!self.virtual_lines_dirty and !buffer_dirty) {
-            std.debug.print("[updateVirtualLines] EARLY RETURN (not dirty)\n", .{});
-            return;
-        }
-
-        const stdout = std.io.getStdOut().writer();
-        var timer = std.time.Timer.start() catch unreachable;
-        const start_time = timer.read();
-
-        std.debug.print("[updateVirtualLines] Resetting arena...\n", .{});
+        if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
@@ -160,9 +147,6 @@ pub const UnifiedTextBufferView = struct {
         self.cached_line_widths = .{};
         self.cached_max_width = 0;
         const virtual_allocator = self.virtual_lines_arena.allocator();
-
-        const after_reset = timer.read();
-        stdout.print("[DEBUG] Arena reset: {d}ms\n", .{@as(f64, @floatFromInt(after_reset - start_time)) / 1_000_000.0}) catch {};
 
         if (self.wrap_width == null) {
             // No wrapping - create 1:1 mapping to real lines using single-pass API
@@ -213,19 +197,7 @@ pub const UnifiedTextBufferView = struct {
                 .current_vline = VirtualLine.init(),
             };
 
-            const before_walk = timer.read();
-
-            std.debug.print("[updateVirtualLines] Calling walkLinesAndSegments on rope with {d} segments...\n", .{self.text_buffer.rope.count()});
-
             iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
-
-            std.debug.print("[updateVirtualLines] walkLinesAndSegments returned\n", .{});
-
-            const after_walk = timer.read();
-            stdout.print("[DEBUG] walkLinesAndSegments took: {d}ms\n", .{
-                @as(f64, @floatFromInt(after_walk - before_walk)) / 1_000_000.0,
-            }) catch {};
-            stdout.print("[DEBUG] Total updateVirtualLines: {d}ms\n", .{@as(f64, @floatFromInt(after_walk - start_time)) / 1_000_000.0}) catch {};
         } else {
             // TODO: Implement wrapping (complex, will do after basic view works)
         }
