@@ -10,6 +10,8 @@ const EditBuffer = edit_buffer.EditBuffer;
 const BenchResult = bench_utils.BenchResult;
 const MemStat = bench_utils.MemStat;
 
+pub const benchName = "EditBuffer Operations";
+
 fn benchInsertOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,

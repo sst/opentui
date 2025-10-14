@@ -5,6 +5,8 @@ const rope_mod = @import("../rope.zig");
 const BenchResult = bench_utils.BenchResult;
 const MemStats = bench_utils.MemStats;
 
+pub const benchName = "Rope Data Structure";
+
 // Simple test item type
 const TestItem = struct {
     value: u32,

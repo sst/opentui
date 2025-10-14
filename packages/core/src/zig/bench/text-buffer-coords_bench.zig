@@ -8,6 +8,8 @@ const Segment = seg_mod.Segment;
 const TextChunk = seg_mod.TextChunk;
 const UnifiedRope = seg_mod.UnifiedRope;
 
+pub const benchName = "TextBuffer Coordinate Conversion";
+
 /// Create a text buffer with N lines for testing
 fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_line: u32) !UnifiedRope {
     var segments = std.ArrayList(Segment).init(allocator);

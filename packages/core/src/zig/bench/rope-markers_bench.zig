@@ -5,6 +5,8 @@ const rope_mod = @import("../rope.zig");
 const BenchResult = bench_utils.BenchResult;
 const MemStats = bench_utils.MemStats;
 
+pub const benchName = "Rope Marker Tracking";
+
 // Test union type with markers (like Segment with .brk)
 const Token = union(enum) {
     text: u32, // Text segments (width)
