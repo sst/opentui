@@ -489,3 +489,119 @@ test "EditBuffer - insert combining characters" {
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 }
+
+test "EditBuffer - preserve column when moving up/down" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Create text with lines of varying lengths:
+    // Line 0: "Long line here" (14 chars)
+    // Line 1: "Short" (5 chars)
+    // Line 2: "Another long line" (17 chars)
+    try eb.insertText("Long line here\nShort\nAnother long line");
+
+    // Move cursor to column 10 on line 0
+    try eb.setCursor(0, 10);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 10), cursor.col);
+
+    // Move down to line 1 (only 5 chars) - should clamp to end of line
+    eb.moveDown();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col); // Clamped to line end
+
+    // Move down to line 2 (17 chars) - should restore to column 10
+    eb.moveDown();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 10), cursor.col); // Restored to desired column!
+
+    // Move up to line 1 again - should clamp to 5
+    eb.moveUp();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+
+    // Move up to line 0 - should restore to column 10
+    eb.moveUp();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 10), cursor.col); // Restored again!
+}
+
+test "EditBuffer - horizontal movement resets desired column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Long line here\nShort\nAnother long line");
+
+    // Move cursor to column 10 on line 0
+    try eb.setCursor(0, 10);
+
+    // Move down (preserves column 10)
+    eb.moveDown();
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 5), cursor.col); // Clamped to line 1 end
+
+    // Move left - this should reset desired column to 4
+    eb.moveLeft();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Move down to line 2 - should go to column 4 (not 10)
+    eb.moveDown();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 4), cursor.col); // Uses new desired column
+}
+
+test "EditBuffer - column preservation with wide characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Lines with wide characters
+    // Line 0: "Hello 東京" (Hello = 5, space = 1, 東 = 2, 京 = 2, total = 10)
+    // Line 1: "Hi" (2 chars)
+    // Line 2: "World 世界" (World = 5, space = 1, 世 = 2, 界 = 2, total = 10)
+    try eb.insertText("Hello 東京\nHi\nWorld 世界");
+
+    // Move cursor to column 8 on line 0 (after 東)
+    try eb.setCursor(0, 8);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    // Move down to line 1 - should clamp to 2
+    eb.moveDown();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move down to line 2 - should restore to column 8
+    eb.moveDown();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 8), cursor.col); // Restored!
+}

@@ -23,6 +23,7 @@ pub const EditBufferError = error{
 pub const Cursor = struct {
     row: u32,
     col: u32,
+    desired_col: u32 = 0, // Preserved column for up/down navigation
 };
 
 /// Append-only buffer for inserted text
@@ -144,9 +145,9 @@ pub const EditBuffer = struct {
 
     pub fn setCursor(self: *EditBuffer, row: u32, col: u32) !void {
         if (self.cursors.items.len == 0) {
-            try self.cursors.append(self.allocator, .{ .row = row, .col = col });
+            try self.cursors.append(self.allocator, .{ .row = row, .col = col, .desired_col = col });
         } else {
-            self.cursors.items[0] = .{ .row = row, .col = col };
+            self.cursors.items[0] = .{ .row = row, .col = col, .desired_col = col };
         }
     }
 
@@ -351,7 +352,7 @@ pub const EditBuffer = struct {
         // Update cursor position to end of inserted text
         const new_offset = insert_offset + inserted_width;
         if (iter_mod.offsetToCoords(&self.tb.rope, new_offset)) |coords| {
-            self.cursors.items[0] = .{ .row = coords.row, .col = coords.col };
+            self.cursors.items[0] = .{ .row = coords.row, .col = coords.col, .desired_col = coords.col };
         }
     }
 
@@ -393,7 +394,7 @@ pub const EditBuffer = struct {
 
         // Set cursor to start of deleted range
         if (self.cursors.items.len > 0) {
-            self.cursors.items[0] = start;
+            self.cursors.items[0] = .{ .row = start.row, .col = start.col, .desired_col = start.col };
         }
     }
 
@@ -467,7 +468,7 @@ pub const EditBuffer = struct {
 
                 // Move cursor to end of previous line (using the width we calculated before the merge)
                 if (cursor.row > 0) {
-                    self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width };
+                    self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
                 }
             }
         } else {
@@ -491,7 +492,7 @@ pub const EditBuffer = struct {
 
             // Update cursor position
             if (iter_mod.offsetToCoords(&self.tb.rope, delete_start)) |coords| {
-                self.cursors.items[0] = .{ .row = coords.row, .col = coords.col };
+                self.cursors.items[0] = .{ .row = coords.row, .col = coords.col, .desired_col = coords.col };
             }
         }
     }
@@ -605,6 +606,8 @@ pub const EditBuffer = struct {
             iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
             self.cursors.items[0].col = ctx.width;
         }
+        // Horizontal movement resets desired column
+        self.cursors.items[0].desired_col = self.cursors.items[0].col;
     }
 
     pub fn moveRight(self: *EditBuffer) void {
@@ -634,40 +637,23 @@ pub const EditBuffer = struct {
             cursor.row += 1;
             cursor.col = 0;
         }
+        // Horizontal movement resets desired column
+        cursor.desired_col = cursor.col;
     }
 
     pub fn moveUp(self: *EditBuffer) void {
         if (self.cursors.items.len == 0) return;
-        if (self.cursors.items[0].row > 0) {
-            self.cursors.items[0].row -= 1;
-            // Clamp column to line width
-            const Context = struct {
-                row: u32,
-                width: u32 = 0,
-                fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    if (line_info.line_idx == ctx.row) {
-                        ctx.width = line_info.width;
-                    }
-                }
-            };
-            var ctx = Context{ .row = self.cursors.items[0].row };
-            iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
-            if (self.cursors.items[0].col > ctx.width) {
-                self.cursors.items[0].col = ctx.width;
-            }
-        }
-    }
-
-    pub fn moveDown(self: *EditBuffer) void {
-        if (self.cursors.items.len == 0) return;
         const cursor = &self.cursors.items[0];
 
-        // Get line count
-        const line_count = self.tb.getLineCount();
-        if (cursor.row + 1 < line_count) {
-            cursor.row += 1;
-            // Clamp column to line width
+        if (cursor.row > 0) {
+            // If this is the first vertical movement, save current column as desired
+            if (cursor.desired_col == 0) {
+                cursor.desired_col = cursor.col;
+            }
+
+            cursor.row -= 1;
+
+            // Try to move to desired column, but clamp to line width
             const Context = struct {
                 row: u32,
                 width: u32 = 0,
@@ -680,9 +666,42 @@ pub const EditBuffer = struct {
             };
             var ctx = Context{ .row = cursor.row };
             iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
-            if (cursor.col > ctx.width) {
-                cursor.col = ctx.width;
+
+            // Move to desired column if possible, otherwise clamp to line end
+            cursor.col = @min(cursor.desired_col, ctx.width);
+        }
+    }
+
+    pub fn moveDown(self: *EditBuffer) void {
+        if (self.cursors.items.len == 0) return;
+        const cursor = &self.cursors.items[0];
+
+        // Get line count
+        const line_count = self.tb.getLineCount();
+        if (cursor.row + 1 < line_count) {
+            // If this is the first vertical movement, save current column as desired
+            if (cursor.desired_col == 0) {
+                cursor.desired_col = cursor.col;
             }
+
+            cursor.row += 1;
+
+            // Try to move to desired column, but clamp to line width
+            const Context = struct {
+                row: u32,
+                width: u32 = 0,
+                fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    if (line_info.line_idx == ctx.row) {
+                        ctx.width = line_info.width;
+                    }
+                }
+            };
+            var ctx = Context{ .row = cursor.row };
+            iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
+
+            // Move to desired column if possible, otherwise clamp to line end
+            cursor.col = @min(cursor.desired_col, ctx.width);
         }
     }
 };
