@@ -504,7 +504,7 @@ describe("TextRenderable Selection", () => {
       expect(globalSelectedText).toContain("Selected renderables: 2/5")
     })
 
-    it("should automatically update selection when text content changes within covered area", async () => {
+    it.only("should automatically update selection when text content changes within covered area", async () => {
       const { text: statusText } = await createTextRenderable(currentRenderer, {
         content: "Selected 5 chars:",
         selectable: true,

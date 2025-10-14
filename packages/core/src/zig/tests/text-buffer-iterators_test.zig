@@ -2,12 +2,11 @@ const std = @import("std");
 const testing = std.testing;
 const iter_mod = @import("../text-buffer-iterators.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
-const tb = @import("../text-buffer-nested.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const LineInfo = iter_mod.LineInfo;
-const SegmentIterator = iter_mod.SegmentIterator;
+const TextChunk = seg_mod.TextChunk;
 
 test "walkLines - empty rope" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
@@ -43,7 +42,7 @@ test "walkLines - single text segment" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -77,7 +76,7 @@ test "walkLines - text + break + text" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -87,7 +86,7 @@ test "walkLines - text + break + text" {
     });
     try rope.append(Segment{ .brk = {} });
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
@@ -128,7 +127,7 @@ test "walkSegments - single segment" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -141,7 +140,7 @@ test "walkSegments - single segment" {
         count: u32 = 0,
         total_width: u32 = 0,
 
-        fn callback(ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, idx: u32) void {
+        fn callback(ctx_ptr: *anyopaque, chunk: *const TextChunk, idx: u32) void {
             _ = idx;
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
             ctx.count += 1;
@@ -163,7 +162,7 @@ test "walkSegments - filters breaks" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -173,7 +172,7 @@ test "walkSegments - filters breaks" {
     });
     try rope.append(Segment{ .brk = {} });
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
@@ -186,7 +185,7 @@ test "walkSegments - filters breaks" {
         count: u32 = 0,
         first_width: u32 = 0,
 
-        fn callback(ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, idx: u32) void {
+        fn callback(ctx_ptr: *anyopaque, chunk: *const TextChunk, idx: u32) void {
             _ = idx;
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
             if (ctx.count == 0) {
@@ -210,7 +209,7 @@ test "coordsToOffset - valid coordinates" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -220,7 +219,7 @@ test "coordsToOffset - valid coordinates" {
     });
     try rope.append(Segment{ .brk = {} });
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
@@ -249,7 +248,7 @@ test "offsetToCoords - valid offsets" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -259,7 +258,7 @@ test "offsetToCoords - valid offsets" {
     });
     try rope.append(Segment{ .brk = {} });
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
@@ -291,7 +290,7 @@ test "Helper functions" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -301,7 +300,7 @@ test "Helper functions" {
     });
     try rope.append(Segment{ .brk = {} });
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
@@ -322,7 +321,7 @@ test "coordsToOffset and offsetToCoords - round trip" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -332,7 +331,7 @@ test "coordsToOffset and offsetToCoords - round trip" {
     });
     try rope.append(Segment{ .brk = {} });
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 18,

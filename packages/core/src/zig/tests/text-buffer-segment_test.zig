@@ -1,18 +1,18 @@
 const std = @import("std");
 const testing = std.testing;
 const seg_mod = @import("../text-buffer-segment.zig");
-const tb = @import("../text-buffer-nested.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
+const TextChunk = seg_mod.TextChunk;
 
 test "Segment.measure - text chunk" {
-    const chunk = tb.TextChunk{
+    const chunk = TextChunk{
         .mem_id = 0,
         .byte_start = 0,
         .byte_end = 10,
         .width = 10,
-        .flags = tb.TextChunk.Flags.ASCII_ONLY,
+        .flags = TextChunk.Flags.ASCII_ONLY,
     };
     const seg = Segment{ .text = chunk };
     const metrics = seg.measure();
@@ -44,7 +44,7 @@ test "Segment.empty and is_empty" {
 
 test "Segment.isBreak and isText" {
     const text_seg = Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -61,7 +61,7 @@ test "Segment.isBreak and isText" {
 }
 
 test "Segment.asText" {
-    const chunk = tb.TextChunk{
+    const chunk = TextChunk{
         .mem_id = 0,
         .byte_start = 0,
         .byte_end = 10,
@@ -250,12 +250,12 @@ test "UnifiedRope - basic operations" {
     var rope = try UnifiedRope.init(allocator);
 
     const text1 = Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
             .width = 10,
-            .flags = tb.TextChunk.Flags.ASCII_ONLY,
+            .flags = TextChunk.Flags.ASCII_ONLY,
         },
     };
     try rope.append(text1);
@@ -264,12 +264,12 @@ test "UnifiedRope - basic operations" {
     try rope.append(brk);
 
     const text2 = Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 15,
             .width = 5,
-            .flags = tb.TextChunk.Flags.ASCII_ONLY,
+            .flags = TextChunk.Flags.ASCII_ONLY,
         },
     };
     try rope.append(text2);
@@ -304,7 +304,7 @@ test "UnifiedRope - single text segment" {
 
     var rope = try UnifiedRope.init(allocator);
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 20,
@@ -331,7 +331,7 @@ test "UnifiedRope - multiple lines with varying widths" {
 
     // Line 1: width 10
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
             .byte_end = 10,
@@ -343,7 +343,7 @@ test "UnifiedRope - multiple lines with varying widths" {
 
     // Line 2: width 30 (should be max)
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
             .byte_end = 40,
@@ -355,7 +355,7 @@ test "UnifiedRope - multiple lines with varying widths" {
 
     // Line 3: width 15
     try rope.append(Segment{
-        .text = tb.TextChunk{
+        .text = TextChunk{
             .mem_id = 0,
             .byte_start = 40,
             .byte_end = 55,

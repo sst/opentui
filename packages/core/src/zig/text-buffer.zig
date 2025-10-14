@@ -1,6 +1,5 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const tb_nested = @import("text-buffer-nested.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const ss = @import("syntax-style.zig");
@@ -9,33 +8,29 @@ const gwidth = @import("gwidth.zig");
 const utf8 = @import("utf8.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
-const buffer = @import("buffer.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const LineInfo = iter_mod.LineInfo;
-const SegmentIterator = iter_mod.SegmentIterator;
-pub const TextChunk = tb_nested.TextChunk;
-const MemRegistry = tb_nested.MemRegistry;
-pub const RGBA = buffer.RGBA;
-pub const TextSelection = buffer.TextSelection;
+
+// Re-export types from segment module
+pub const TextChunk = seg_mod.TextChunk;
+pub const MemRegistry = seg_mod.MemRegistry;
+pub const RGBA = seg_mod.RGBA;
+pub const TextSelection = seg_mod.TextSelection;
+pub const TextBufferError = seg_mod.TextBufferError;
+pub const Highlight = seg_mod.Highlight;
+pub const StyleSpan = seg_mod.StyleSpan;
+pub const WrapMode = seg_mod.WrapMode;
+pub const ChunkFitResult = seg_mod.ChunkFitResult;
+pub const GraphemeInfo = seg_mod.GraphemeInfo;
+
 const SyntaxStyle = ss.SyntaxStyle;
-pub const TextBufferError = tb_nested.TextBufferError;
-pub const Highlight = tb_nested.Highlight;
-pub const StyleSpan = tb_nested.StyleSpan;
-pub const WrapMode = tb_nested.WrapMode;
-pub const ChunkFitResult = tb_nested.ChunkFitResult;
-pub const GraphemeInfo = tb_nested.GraphemeInfo;
-pub const TextLine = tb_nested.TextLine;
 
-// Re-export nested types for compatibility
-pub const ArrayRope = tb_nested.ArrayRope;
-pub const Rope = tb_nested.Rope;
-
-// Main TextBuffer type - now using unified rope architecture
+// Main TextBuffer type - unified rope architecture
 pub const TextBuffer = UnifiedTextBuffer;
 
-// Type aliases for compatibility with existing code
+// Legacy type aliases for FFI compatibility
 pub const TextBufferArray = UnifiedTextBuffer;
 pub const TextBufferRope = UnifiedTextBuffer;
 
@@ -580,12 +575,7 @@ pub const UnifiedTextBuffer = struct {
             ctx: *anyopaque,
             walker_fn: *const fn (ctx: *anyopaque, chunk: *const TextChunk, idx: u32) void,
         ) void {
-            var seg_iter = SegmentIterator.init(&self.buffer.rope, self.line_info.seg_start, self.line_info.seg_end);
-            var idx: u32 = 0;
-            while (seg_iter.next()) |chunk| {
-                walker_fn(ctx, chunk, idx);
-                idx += 1;
-            }
+            iter_mod.walkSegments(&self.buffer.rope, self.line_info.seg_start, self.line_info.seg_end, ctx, walker_fn);
         }
     };
 

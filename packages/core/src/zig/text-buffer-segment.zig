@@ -1,11 +1,228 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const tb = @import("text-buffer-nested.zig");
 const rope_mod = @import("rope.zig");
+const buffer = @import("buffer.zig");
+const Graphemes = @import("Graphemes");
+const DisplayWidth = @import("DisplayWidth");
+const gp = @import("grapheme.zig");
+const gwidth = @import("gwidth.zig");
+const utf8 = @import("utf8.zig");
+
+pub const RGBA = buffer.RGBA;
+pub const TextSelection = buffer.TextSelection;
+
+pub const TextBufferError = error{
+    OutOfMemory,
+    InvalidDimensions,
+    InvalidIndex,
+    InvalidId,
+    InvalidMemId,
+};
+
+pub const WrapMode = enum {
+    char,
+    word,
+};
+
+pub const ChunkFitResult = struct {
+    char_count: u32,
+    width: u32,
+};
+
+/// Cached grapheme cluster information
+pub const GraphemeInfo = struct {
+    byte_offset: u32, // Offset within the chunk's bytes
+    byte_len: u8, // Length in UTF-8 bytes
+    width: u8, // Display width (1, 2, etc.)
+};
+
+/// Memory buffer reference in the registry
+pub const MemBuffer = struct {
+    data: []const u8,
+    owned: bool, // Whether this buffer should be freed on deinit
+};
+
+/// Registry for multiple memory buffers
+pub const MemRegistry = struct {
+    buffers: std.ArrayListUnmanaged(MemBuffer),
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) MemRegistry {
+        return .{
+            .buffers = .{},
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *MemRegistry) void {
+        for (self.buffers.items) |mem_buf| {
+            if (mem_buf.owned) {
+                self.allocator.free(mem_buf.data);
+            }
+        }
+        self.buffers.deinit(self.allocator);
+    }
+
+    /// Register a memory buffer and return its ID
+    pub fn register(self: *MemRegistry, data: []const u8, owned: bool) TextBufferError!u8 {
+        if (self.buffers.items.len >= 255) {
+            return TextBufferError.OutOfMemory; // Max 255 buffers with u8 ID
+        }
+        const id: u8 = @intCast(self.buffers.items.len);
+        try self.buffers.append(self.allocator, MemBuffer{
+            .data = data,
+            .owned = owned,
+        });
+        return id;
+    }
+
+    /// Get buffer by ID
+    pub fn get(self: *const MemRegistry, id: u8) ?[]const u8 {
+        if (id >= self.buffers.items.len) return null;
+        return self.buffers.items[id].data;
+    }
+
+    /// Clear all registered buffers
+    pub fn clear(self: *MemRegistry) void {
+        for (self.buffers.items) |mem_buf| {
+            if (mem_buf.owned) {
+                self.allocator.free(mem_buf.data);
+            }
+        }
+        self.buffers.clearRetainingCapacity();
+    }
+};
+
+/// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
+pub const TextChunk = struct {
+    mem_id: u8, // ID of the memory buffer this chunk references
+    byte_start: u32, // Offset into the memory buffer
+    byte_end: u32, // End offset into the memory buffer
+    width: u16, // Display width in cells (computed once)
+    flags: u8 = 0, // Bitflags for chunk properties
+    graphemes: ?[]GraphemeInfo = null, // Lazy grapheme buffer (computed on first access, reused by views)
+    wrap_offsets: ?[]utf8.WrapBreak = null, // Lazy wrap offset buffer (computed on first access)
+
+    pub const Flags = struct {
+        pub const ASCII_ONLY: u8 = 0b00000001;
+    };
+
+    pub fn isAsciiOnly(self: *const TextChunk) bool {
+        return (self.flags & Flags.ASCII_ONLY) != 0;
+    }
+
+    pub fn empty() TextChunk {
+        return .{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 0,
+            .width = 0,
+        };
+    }
+
+    pub fn is_empty(self: *const TextChunk) bool {
+        return self.width == 0;
+    }
+
+    pub fn getBytes(self: *const TextChunk, mem_registry: *const MemRegistry) []const u8 {
+        const mem_buf = mem_registry.get(self.mem_id) orelse return &[_]u8{};
+        return mem_buf[self.byte_start..self.byte_end];
+    }
+
+    /// Lazily compute and cache grapheme info for this chunk
+    /// Returns a slice that is valid until the buffer is reset
+    pub fn getGraphemes(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        graphemes_data: *const Graphemes,
+        width_method: gwidth.WidthMethod,
+        display_width: *const DisplayWidth,
+    ) TextBufferError![]const GraphemeInfo {
+        // Need to cast to mutable to cache the graphemes
+        const mut_self = @constCast(self);
+        if (self.graphemes) |cached| {
+            return cached;
+        }
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
+        defer grapheme_list.deinit();
+
+        var iter = graphemes_data.iterator(chunk_bytes);
+        var byte_pos: u32 = 0;
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, width_method, display_width);
+
+            if (width_u16 == 0) {
+                byte_pos += @intCast(gbytes.len);
+                continue;
+            }
+
+            const width: u8 = @intCast(width_u16);
+
+            try grapheme_list.append(GraphemeInfo{
+                .byte_offset = byte_pos,
+                .byte_len = @intCast(gbytes.len),
+                .width = width,
+            });
+
+            byte_pos += @intCast(gbytes.len);
+        }
+
+        const graphemes = try allocator.dupe(GraphemeInfo, grapheme_list.items);
+        mut_self.graphemes = graphemes;
+
+        return graphemes;
+    }
+
+    /// Lazily compute and cache wrap offsets for this chunk
+    /// Returns a slice that is valid until the buffer is reset
+    pub fn getWrapOffsets(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+    ) TextBufferError![]const utf8.WrapBreak {
+        const mut_self = @constCast(self);
+        if (self.wrap_offsets) |cached| {
+            return cached;
+        }
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        var wrap_result = utf8.WrapBreakResult.init(allocator);
+        defer wrap_result.deinit();
+
+        try utf8.findWrapBreaksSIMD16(chunk_bytes, &wrap_result);
+
+        const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);
+        mut_self.wrap_offsets = wrap_offsets;
+
+        return wrap_offsets;
+    }
+};
+
+/// A highlight represents a styled region on a line
+pub const Highlight = struct {
+    col_start: u32, // Column start (in grapheme/display units)
+    col_end: u32, // Column end (in grapheme/display units)
+    style_id: u32, // ID into SyntaxStyle
+    priority: u8, // Higher priority wins for overlaps
+    hl_ref: ?u16, // Optional reference for bulk removal
+};
+
+/// Pre-computed style span for efficient rendering
+/// Represents a contiguous region with a single style
+pub const StyleSpan = struct {
+    col: u32, // Starting column
+    style_id: u32, // Style to use (0 = use default)
+    next_col: u32, // Column where next style change happens
+};
 
 /// A segment in the unified rope - either text content or a line break marker
 pub const Segment = union(enum) {
-    text: tb.TextChunk,
+    text: TextChunk,
     brk: void,
 
     /// Metrics for aggregation in the rope tree
@@ -88,7 +305,7 @@ pub const Segment = union(enum) {
     pub fn measure(self: *const Segment) Metrics {
         return switch (self.*) {
             .text => |chunk| blk: {
-                const is_ascii = (chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
+                const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 break :blk Metrics{
                     .total_width = chunk.width,
                     .break_count = 0,
@@ -111,7 +328,7 @@ pub const Segment = union(enum) {
 
     /// Create an empty segment (used by rope for initialization)
     pub fn empty() Segment {
-        return .{ .text = tb.TextChunk.empty() };
+        return .{ .text = TextChunk.empty() };
     }
 
     /// Check if this segment is empty
@@ -123,7 +340,7 @@ pub const Segment = union(enum) {
     }
 
     /// Get the bytes for this segment (empty for breaks)
-    pub fn getBytes(self: *const Segment, mem_registry: *const tb.MemRegistry) []const u8 {
+    pub fn getBytes(self: *const Segment, mem_registry: *const MemRegistry) []const u8 {
         return switch (self.*) {
             .text => |chunk| chunk.getBytes(mem_registry),
             .brk => &[_]u8{},
@@ -147,7 +364,7 @@ pub const Segment = union(enum) {
     }
 
     /// Get the text chunk if this is a text segment, null otherwise
-    pub fn asText(self: *const Segment) ?*const tb.TextChunk {
+    pub fn asText(self: *const Segment) ?*const TextChunk {
         return switch (self.*) {
             .text => |*chunk| chunk,
             else => null,
@@ -164,221 +381,3 @@ pub fn combineMetrics(left: Segment.Metrics, right: Segment.Metrics) Segment.Met
 
 /// Unified rope type for text buffer - stores text segments and break markers in a single tree
 pub const UnifiedRope = rope_mod.Rope(Segment);
-
-// Tests
-const testing = std.testing;
-
-test "Segment.measure - text chunk" {
-    const chunk = tb.TextChunk{
-        .mem_id = 0,
-        .byte_start = 0,
-        .byte_end = 10,
-        .width = 10,
-        .flags = tb.TextChunk.Flags.ASCII_ONLY,
-    };
-    const seg = Segment{ .text = chunk };
-    const metrics = seg.measure();
-
-    try testing.expectEqual(@as(u32, 10), metrics.total_width);
-    try testing.expectEqual(@as(u32, 0), metrics.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 10), metrics.last_line_width);
-    try testing.expectEqual(@as(u32, 10), metrics.max_line_width);
-    try testing.expect(metrics.ascii_only);
-}
-
-test "Segment.measure - break" {
-    const seg = Segment{ .brk = {} };
-    const metrics = seg.measure();
-
-    try testing.expectEqual(@as(u32, 0), metrics.total_width);
-    try testing.expectEqual(@as(u32, 1), metrics.break_count);
-    try testing.expectEqual(@as(u32, 0), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 0), metrics.last_line_width);
-    try testing.expectEqual(@as(u32, 0), metrics.max_line_width);
-    try testing.expect(metrics.ascii_only);
-}
-
-test "Metrics.add - two text segments" {
-    var left = Segment.Metrics{
-        .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
-        .max_line_width = 10,
-        .ascii_only = true,
-    };
-
-    const right = Segment.Metrics{
-        .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
-        .max_line_width = 5,
-        .ascii_only = true,
-    };
-
-    left.add(right);
-
-    try testing.expectEqual(@as(u32, 15), left.total_width);
-    try testing.expectEqual(@as(u32, 0), left.break_count);
-    try testing.expectEqual(@as(u32, 15), left.first_line_width); // Combined
-    try testing.expectEqual(@as(u32, 15), left.last_line_width); // Combined
-    try testing.expectEqual(@as(u32, 15), left.max_line_width);
-    try testing.expect(left.ascii_only);
-}
-
-test "Metrics.add - text, break, text" {
-    // Simulate: [text(10)] + [break] + [text(5)]
-    var left = Segment.Metrics{
-        .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
-        .max_line_width = 10,
-        .ascii_only = true,
-    };
-
-    const middle = Segment.Metrics{
-        .total_width = 0,
-        .break_count = 1,
-        .first_line_width = 0,
-        .last_line_width = 0,
-        .max_line_width = 0,
-        .ascii_only = true,
-    };
-
-    left.add(middle);
-
-    // After adding break: first_line stays 10, last_line becomes 0
-    try testing.expectEqual(@as(u32, 10), left.total_width);
-    try testing.expectEqual(@as(u32, 1), left.break_count);
-    try testing.expectEqual(@as(u32, 10), left.first_line_width); // First line ends at break
-    try testing.expectEqual(@as(u32, 0), left.last_line_width); // After break, nothing yet
-
-    const right = Segment.Metrics{
-        .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
-        .max_line_width = 5,
-        .ascii_only = true,
-    };
-
-    left.add(right);
-
-    // Final: two lines (10 width and 5 width)
-    try testing.expectEqual(@as(u32, 15), left.total_width);
-    try testing.expectEqual(@as(u32, 1), left.break_count);
-    try testing.expectEqual(@as(u32, 10), left.first_line_width); // First line still 10
-    try testing.expectEqual(@as(u32, 5), left.last_line_width); // Second line is 5
-    try testing.expectEqual(@as(u32, 10), left.max_line_width); // Max is 10
-}
-
-test "Metrics.add - multiple breaks" {
-    // Simulate: [text(10)] + [break] + [text(20)] + [break] + [text(5)]
-    var metrics = Segment.Metrics{
-        .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
-        .max_line_width = 10,
-        .ascii_only = true,
-    };
-
-    // Add break
-    metrics.add(Segment.Metrics{
-        .total_width = 0,
-        .break_count = 1,
-        .first_line_width = 0,
-        .last_line_width = 0,
-        .max_line_width = 0,
-        .ascii_only = true,
-    });
-
-    // Add text(20)
-    metrics.add(Segment.Metrics{
-        .total_width = 20,
-        .break_count = 0,
-        .first_line_width = 20,
-        .last_line_width = 20,
-        .max_line_width = 20,
-        .ascii_only = true,
-    });
-
-    try testing.expectEqual(@as(u32, 30), metrics.total_width);
-    try testing.expectEqual(@as(u32, 1), metrics.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 20), metrics.last_line_width);
-    try testing.expectEqual(@as(u32, 20), metrics.max_line_width);
-
-    // Add another break
-    metrics.add(Segment.Metrics{
-        .total_width = 0,
-        .break_count = 1,
-        .first_line_width = 0,
-        .last_line_width = 0,
-        .max_line_width = 0,
-        .ascii_only = true,
-    });
-
-    // Add text(5)
-    metrics.add(Segment.Metrics{
-        .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
-        .max_line_width = 5,
-        .ascii_only = true,
-    });
-
-    // Final: three lines (10, 20, 5)
-    try testing.expectEqual(@as(u32, 35), metrics.total_width);
-    try testing.expectEqual(@as(u32, 2), metrics.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 5), metrics.last_line_width);
-    try testing.expectEqual(@as(u32, 20), metrics.max_line_width); // Middle line is max
-}
-
-test "UnifiedRope - basic operations" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    // Create a simple rope: [text(10)] + [break] + [text(5)]
-    var rope = try UnifiedRope.init(allocator);
-
-    const text1 = Segment{
-        .text = tb.TextChunk{
-            .mem_id = 0,
-            .byte_start = 0,
-            .byte_end = 10,
-            .width = 10,
-            .flags = tb.TextChunk.Flags.ASCII_ONLY,
-        },
-    };
-    try rope.append(text1);
-
-    const brk = Segment{ .brk = {} };
-    try rope.append(brk);
-
-    const text2 = Segment{
-        .text = tb.TextChunk{
-            .mem_id = 0,
-            .byte_start = 10,
-            .byte_end = 15,
-            .width = 5,
-            .flags = tb.TextChunk.Flags.ASCII_ONLY,
-        },
-    };
-    try rope.append(text2);
-
-    // Check metrics
-    const metrics = rope.root.metrics();
-    try testing.expectEqual(@as(u32, 3), rope.count()); // 3 segments
-    try testing.expectEqual(@as(u32, 15), metrics.custom.total_width);
-    try testing.expectEqual(@as(u32, 1), metrics.custom.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.custom.first_line_width);
-    try testing.expectEqual(@as(u32, 5), metrics.custom.last_line_width);
-    try testing.expectEqual(@as(u32, 10), metrics.custom.max_line_width);
-}

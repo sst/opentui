@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const tb = @import("text-buffer.zig");
-const tb_nested = @import("text-buffer-nested.zig");
+const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
@@ -10,13 +10,12 @@ const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
-const LineIterator = iter_mod.LineIterator;
-const SegmentIterator = iter_mod.SegmentIterator;
 const RGBA = tb.RGBA;
 const TextSelection = tb.TextSelection;
 pub const WrapMode = tb.WrapMode;
-const TextChunk = tb_nested.TextChunk;
+const TextChunk = seg_mod.TextChunk;
 const StyleSpan = tb.StyleSpan;
+const GraphemeInfo = seg_mod.GraphemeInfo;
 
 pub const TextBufferViewError = error{
     OutOfMemory,
@@ -61,10 +60,10 @@ pub const LocalSelection = struct {
     isActive: bool,
 };
 
-/// Main TextBufferView type - now using unified architecture
+/// Main TextBufferView type - unified architecture
 pub const TextBufferView = UnifiedTextBufferView;
 
-// Type aliases for compatibility with existing code
+// Legacy type aliases for FFI/test compatibility
 pub const TextBufferViewArray = UnifiedTextBufferView;
 pub const TextBufferViewRope = UnifiedTextBufferView;
 

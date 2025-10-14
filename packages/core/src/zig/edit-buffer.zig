@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const tb = @import("text-buffer.zig");
-const tb_nested = @import("text-buffer-nested.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const gp = @import("grapheme.zig");
@@ -11,7 +10,7 @@ const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
-const TextChunk = tb_nested.TextChunk;
+const TextChunk = seg_mod.TextChunk;
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 

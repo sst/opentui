@@ -1,10 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
-const tb = @import("text-buffer-nested.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
+const TextChunk = seg_mod.TextChunk;
 
 /// Information about a logical line in the unified rope
 pub const LineInfo = struct {
@@ -105,7 +105,7 @@ pub fn walkLines(
 pub fn walkLinesAndSegments(
     rope: *const UnifiedRope,
     ctx: *anyopaque,
-    segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const tb.TextChunk, chunk_idx_in_line: u32) void,
+    segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
     line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
     // Special case: empty rope - emit nothing (0 lines)
@@ -116,7 +116,7 @@ pub fn walkLinesAndSegments(
 
     const WalkContext = struct {
         user_ctx: *anyopaque,
-        seg_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const tb.TextChunk, chunk_idx_in_line: u32) void,
+        seg_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
         line_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
         current_line_idx: u32 = 0,
         current_char_offset: u32 = 0,
@@ -185,7 +185,7 @@ pub fn walkSegments(
     seg_start: u32,
     seg_end: u32,
     ctx: *anyopaque,
-    callback: *const fn (ctx: *anyopaque, chunk: *const tb.TextChunk, idx: u32) void,
+    callback: *const fn (ctx: *anyopaque, chunk: *const TextChunk, idx: u32) void,
 ) void {
     if (seg_start >= seg_end) return;
 

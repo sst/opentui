@@ -3,7 +3,6 @@ const bench_utils = @import("bench-utils.zig");
 
 // Import all benchmark modules
 const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
-const text_buffer_unified_bench = @import("bench/text-buffer-unified_bench.zig");
 const edit_buffer_bench = @import("bench/edit-buffer_bench.zig");
 const rope_bench = @import("bench/rope_bench.zig");
 
@@ -25,15 +24,10 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     // Run all benchmarks
-    try stdout.print("\n=== TextBufferView Wrapping Benchmarks ===\n\n", .{});
+    try stdout.print("\n=== TextBuffer Benchmarks ===\n\n", .{});
     const text_buffer_view_results = try text_buffer_view_bench.run(allocator, show_mem);
     defer allocator.free(text_buffer_view_results);
     try bench_utils.printResults(stdout, text_buffer_view_results);
-
-    try stdout.print("\n=== UnifiedTextBuffer Benchmarks ===\n\n", .{});
-    const text_buffer_unified_results = try text_buffer_unified_bench.run(allocator, show_mem);
-    defer allocator.free(text_buffer_unified_results);
-    try bench_utils.printResults(stdout, text_buffer_unified_results);
 
     try stdout.print("\n=== EditBuffer Operations Benchmarks ===\n\n", .{});
     const edit_buffer_results = try edit_buffer_bench.run(allocator, show_mem);
