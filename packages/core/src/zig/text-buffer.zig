@@ -590,7 +590,7 @@ pub const UnifiedTextBuffer = struct {
     };
 
     // TODO: should not be necessary to access a line like this
-    pub fn getLine(self: *const Self, idx: u32) ?LineCompat {
+    pub fn getLine(self: *Self, idx: u32) ?LineCompat {
         // Use linestart marker to get line start (O(1))
         const linestart_marker = self.rope.getMarker(.linestart, idx) orelse return null;
         const char_offset = linestart_marker.global_weight;
