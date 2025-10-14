@@ -27,6 +27,11 @@ pub const VirtualChunk = struct {
     grapheme_start: u32,
     grapheme_count: u32,
     width: u16,
+    // Direct access to source chunk data (eliminates need for getLine)
+    mem_id: u8,
+    byte_start: u32,
+    byte_end: u32,
+    graphemes: []const GraphemeInfo,
 };
 
 /// A virtual line represents a display line after text wrapping
@@ -93,6 +98,9 @@ pub const UnifiedTextBufferView = struct {
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
 
+    // Per-view grapheme cache (chunk pointer -> graphemes slice)
+    chunk_grapheme_cache: std.AutoHashMapUnmanaged(*const TextChunk, []const GraphemeInfo),
+
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
@@ -117,6 +125,7 @@ pub const UnifiedTextBufferView = struct {
             .cached_max_width = 0,
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
+            .chunk_grapheme_cache = .{},
         };
 
         return self;
@@ -124,6 +133,7 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn deinit(self: *Self) void {
         self.text_buffer.unregisterView(self.view_id);
+        self.chunk_grapheme_cache.deinit(self.global_allocator);
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
         self.global_allocator.destroy(self);
@@ -143,20 +153,45 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    /// Get grapheme info for a chunk (for compatibility with buffer.zig drawing)
-    pub fn getOrCreateChunkCache(self: *Self, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const tb.GraphemeInfo {
-        const line = self.text_buffer.getLine(@intCast(line_idx)) orelse return TextBufferViewError.OutOfMemory;
+    /// Compute graphemes for a chunk and cache in the view arena
+    fn computeChunkGraphemes(self: *Self, chunk: *const TextChunk, allocator: Allocator) TextBufferViewError![]const GraphemeInfo {
+        // Check cache first
+        if (self.chunk_grapheme_cache.get(chunk)) |cached| {
+            return cached;
+        }
 
-        // Get the chunk at the specified index using the chunks field
-        const chunk = line.chunks.get(@intCast(chunk_idx)) orelse return TextBufferViewError.OutOfMemory;
+        const chunk_bytes = chunk.getBytes(&self.text_buffer.mem_registry);
+        var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
+        defer grapheme_list.deinit();
 
-        return chunk.getGraphemes(
-            &self.text_buffer.mem_registry,
-            self.text_buffer.allocator,
-            &self.text_buffer.graphemes_data,
-            self.text_buffer.width_method,
-            &self.text_buffer.display_width,
-        ) catch return TextBufferViewError.OutOfMemory;
+        var iter = self.text_buffer.graphemes_data.iterator(chunk_bytes);
+        var byte_pos: u32 = 0;
+
+        while (iter.next()) |gc| {
+            const gbytes = gc.bytes(chunk_bytes);
+            const width_u16: u16 = gwidth.gwidth(gbytes, self.text_buffer.width_method, &self.text_buffer.display_width);
+
+            if (width_u16 == 0) {
+                byte_pos += @intCast(gbytes.len);
+                continue;
+            }
+
+            const width: u8 = @intCast(width_u16);
+
+            try grapheme_list.append(GraphemeInfo{
+                .byte_offset = byte_pos,
+                .byte_len = @intCast(gbytes.len),
+                .width = width,
+            });
+
+            byte_pos += @intCast(gbytes.len);
+        }
+
+        const graphemes = try allocator.dupe(GraphemeInfo, grapheme_list.items);
+        // Use global_allocator for HashMap operations, not arena allocator
+        try self.chunk_grapheme_cache.put(self.global_allocator, chunk, graphemes);
+
+        return graphemes;
     }
 
     /// Calculate how much of a chunk fits in remaining width for word wrapping
@@ -213,6 +248,7 @@ pub const UnifiedTextBufferView = struct {
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
         self.cached_max_width = 0;
+        self.chunk_grapheme_cache.clearRetainingCapacity();
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         if (self.wrap_width == null) {
@@ -226,6 +262,9 @@ pub const UnifiedTextBufferView = struct {
                     _ = line_idx;
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
+                    // Compute graphemes for this chunk
+                    const graphemes = ctx.view.computeChunkGraphemes(chunk, ctx.virtual_allocator) catch return;
+
                     // Append chunk to current virtual line
                     if (ctx.current_vline) |*vline| {
                         vline.chunks.append(ctx.virtual_allocator, VirtualChunk{
@@ -233,6 +272,10 @@ pub const UnifiedTextBufferView = struct {
                             .grapheme_start = 0,
                             .grapheme_count = chunk.width,
                             .width = chunk.width,
+                            .mem_id = chunk.mem_id,
+                            .byte_start = chunk.byte_start,
+                            .byte_end = chunk.byte_end,
+                            .graphemes = graphemes,
                         }) catch {};
                     }
                 }
@@ -295,12 +338,16 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_position = 0;
                 }
 
-                fn addVirtualChunk(wctx: *@This(), chunk_idx: u32, start: u32, count: u32, width: u32) void {
+                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, chunk_idx: u32, start: u32, count: u32, width: u32, graphemes: []const GraphemeInfo) void {
                     wctx.current_vline.chunks.append(wctx.virtual_allocator, VirtualChunk{
                         .source_chunk = chunk_idx,
                         .grapheme_start = start,
                         .grapheme_count = count,
                         .width = @intCast(width),
+                        .mem_id = chunk.mem_id,
+                        .byte_start = chunk.byte_start,
+                        .byte_end = chunk.byte_end,
+                        .graphemes = graphemes,
                     }) catch {};
                     wctx.global_char_offset += count;
                     wctx.line_position += width;
@@ -310,6 +357,9 @@ pub const UnifiedTextBufferView = struct {
                     _ = line_idx;
                     const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     wctx.chunk_idx_in_line = chunk_idx_in_line;
+
+                    // Compute graphemes once for this chunk
+                    const graphemes = wctx.view.computeChunkGraphemes(chunk, wctx.virtual_allocator) catch return;
 
                     if (wctx.view.wrap_mode == .word) {
                         // Word wrapping
@@ -325,14 +375,14 @@ pub const UnifiedTextBufferView = struct {
                                 }
                                 if (char_offset < chunk.width) {
                                     const forced = @min(1, chunk.width - char_offset);
-                                    addVirtualChunk(wctx, chunk_idx_in_line, char_offset, forced, forced);
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, forced, forced, graphemes);
                                     char_offset += forced;
                                     continue;
                                 }
                                 break;
                             }
 
-                            addVirtualChunk(wctx, chunk_idx_in_line, char_offset, fit.char_count, fit.width);
+                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, fit.char_count, fit.width, graphemes);
                             char_offset += fit.char_count;
 
                             if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
@@ -357,7 +407,7 @@ pub const UnifiedTextBufferView = struct {
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, 8, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk_idx_in_line, char_offset, force_result.grapheme_count, force_result.columns_used);
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.grapheme_count, force_result.columns_used, graphemes);
                                     char_offset += force_result.grapheme_count;
                                     byte_offset += force_result.byte_offset;
                                 } else {
@@ -381,7 +431,7 @@ pub const UnifiedTextBufferView = struct {
                                 }
                                 const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, 8, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk_idx_in_line, char_offset, force_result.grapheme_count, force_result.columns_used);
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.grapheme_count, force_result.columns_used, graphemes);
                                     char_offset += force_result.grapheme_count;
                                     byte_offset += force_result.byte_offset;
                                     if (char_offset < chunk.width) {
@@ -391,7 +441,7 @@ pub const UnifiedTextBufferView = struct {
                                 break;
                             }
 
-                            addVirtualChunk(wctx, chunk_idx_in_line, char_offset, wrap_result.grapheme_count, wrap_result.columns_used);
+                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.grapheme_count, wrap_result.columns_used, graphemes);
                             char_offset += wrap_result.grapheme_count;
                             byte_offset += wrap_result.byte_offset;
 

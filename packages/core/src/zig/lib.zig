@@ -677,15 +677,8 @@ export fn editBufferDeleteLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
 }
 
 export fn editBufferDeleteToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    const cursor = edit_buffer.getPrimaryCursor();
-    const tb = edit_buffer.getTextBuffer();
-
-    if (tb.getLine(cursor.row)) |line| {
-        edit_buffer.deleteRange(
-            cursor,
-            .{ .row = cursor.row, .col = line.width },
-        ) catch {};
-    }
+    // TODO: Reimplement using rope iterators
+    _ = edit_buffer;
 }
 
 export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
@@ -694,12 +687,8 @@ export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuff
 }
 
 export fn editBufferMoveCursorToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    const cursor = edit_buffer.getPrimaryCursor();
-    const tb = edit_buffer.getTextBuffer();
-
-    if (tb.getLine(cursor.row)) |line| {
-        edit_buffer.setCursor(cursor.row, line.width) catch {};
-    }
+    // TODO: Reimplement using rope iterators
+    _ = edit_buffer;
 }
 
 export fn editBufferMoveCursorToBufferStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
@@ -707,14 +696,8 @@ export fn editBufferMoveCursorToBufferStart(edit_buffer: *edit_buffer_mod.EditBu
 }
 
 export fn editBufferMoveCursorToBufferEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    const tb = edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-
-    if (line_count > 0) {
-        if (tb.getLine(line_count - 1)) |line| {
-            edit_buffer.setCursor(@intCast(line_count - 1), line.width) catch {};
-        }
-    }
+    // TODO: Reimplement using rope iterators
+    _ = edit_buffer;
 }
 
 export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32) void {
@@ -726,21 +709,11 @@ export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32
 
 export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outCharPos: *u32, outVisualCol: *u32) void {
     const cursor = edit_buffer.getPrimaryCursor();
-    const tb = edit_buffer.getTextBuffer();
 
     outLine.* = cursor.row;
-    outVisualCol.* = cursor.col; // Visual column is the column position on the current line
-
-    // Calculate absolute character position
-    var char_pos: u32 = 0;
-    var row: u32 = 0;
-    while (row < cursor.row) : (row += 1) {
-        if (tb.getLine(row)) |line| {
-            char_pos += line.width;
-        }
-    }
-    char_pos += cursor.col;
-    outCharPos.* = char_pos;
+    outVisualCol.* = cursor.col;
+    // TODO: Reimplement absolute character position calculation using rope iterators
+    outCharPos.* = cursor.col;
 }
 
 // ===== EditorView Exports =====
@@ -877,11 +850,8 @@ export fn editorViewMoveCursorToLineStart(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewMoveCursorToLineEnd(view: *editor_view.EditorView) void {
-    const cursor = view.edit_buffer.getPrimaryCursor();
-    const tb = view.edit_buffer.getTextBuffer();
-    if (tb.getLine(cursor.row)) |line| {
-        view.edit_buffer.setCursor(cursor.row, line.width) catch {};
-    }
+    // TODO: Reimplement using rope iterators
+    _ = view;
 }
 
 export fn editorViewMoveCursorToBufferStart(view: *editor_view.EditorView) void {
@@ -889,13 +859,8 @@ export fn editorViewMoveCursorToBufferStart(view: *editor_view.EditorView) void 
 }
 
 export fn editorViewMoveCursorToBufferEnd(view: *editor_view.EditorView) void {
-    const tb = view.edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-    if (line_count > 0) {
-        if (tb.getLine(line_count - 1)) |line| {
-            view.edit_buffer.setCursor(@intCast(line_count - 1), line.width) catch {};
-        }
-    }
+    // TODO: Reimplement using rope iterators
+    _ = view;
 }
 
 export fn editorViewGotoLine(view: *editor_view.EditorView, line: u32) void {
@@ -943,15 +908,8 @@ export fn editorViewDeleteLine(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewDeleteToLineEnd(view: *editor_view.EditorView) void {
-    const cursor = view.edit_buffer.getPrimaryCursor();
-    const tb = view.edit_buffer.getTextBuffer();
-
-    if (tb.getLine(cursor.row)) |line| {
-        view.edit_buffer.deleteRange(
-            cursor,
-            .{ .row = cursor.row, .col = line.width },
-        ) catch {};
-    }
+    // TODO: Reimplement using rope iterators
+    _ = view;
 }
 
 export fn bufferDrawEditorView(

@@ -901,12 +901,10 @@ pub const OptimizedBuffer = struct {
             }
 
             for (vline.chunks.items) |vchunk| {
-                const source_line = text_buffer.getLine(@intCast(vline.source_line)) orelse continue;
-                const source_chunk = source_line.chunks.get(@intCast(vchunk.source_chunk)) orelse continue;
-
-                // Get cached grapheme info for this chunk
-                const graphemes_cache = text_buffer_view.getOrCreateChunkCache(vline.source_line, vchunk.source_chunk) catch continue;
-                const chunk_bytes = source_chunk.getBytes(&text_buffer.mem_registry);
+                // Get graphemes and bytes directly from VirtualChunk
+                const graphemes_cache = vchunk.graphemes;
+                const chunk_bytes = text_buffer.mem_registry.get(vchunk.mem_id) orelse continue;
+                const chunk_bytes_slice = chunk_bytes[vchunk.byte_start..vchunk.byte_end];
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.grapheme_count;
@@ -920,7 +918,7 @@ pub const OptimizedBuffer = struct {
 
                 while (grapheme_idx < grapheme_end) : (grapheme_idx += 1) {
                     const g = graphemes_cache[grapheme_idx];
-                    const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
+                    const grapheme_bytes = chunk_bytes_slice[g.byte_offset .. g.byte_offset + g.byte_len];
 
                     // Skip if completely out of bounds (left of visible area)
                     if (currentX < -@as(i32, @intCast(g.width))) {
