@@ -5,9 +5,9 @@ const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const EditBuffer = eb.EditBuffer;
 
-// Use the rope-based types to match EditBuffer
-const TextBufferRope = tb.TextBufferRope;
-const TextBufferViewRope = tbv.TextBufferViewRope;
+// Use the unified types to match EditBuffer
+const UnifiedTextBuffer = tb.UnifiedTextBuffer;
+const UnifiedTextBufferView = tbv.UnifiedTextBufferView;
 const VirtualLine = tbv.VirtualLine;
 
 pub const EditorViewError = error{
@@ -32,7 +32,7 @@ pub const LineInfo = struct {
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
 /// It also holds a reference to an EditBuffer for cursor/editing operations
 pub const EditorView = struct {
-    text_buffer_view: *TextBufferViewRope,
+    text_buffer_view: *UnifiedTextBufferView,
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     viewport: ?Viewport,
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
@@ -48,7 +48,7 @@ pub const EditorView = struct {
 
         // Get TextBuffer from EditBuffer and create TextBufferView
         const text_buffer = edit_buffer.getTextBuffer();
-        const text_buffer_view = TextBufferViewRope.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
+        const text_buffer_view = UnifiedTextBufferView.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
         errdefer text_buffer_view.deinit();
 
         const line_info_internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return EditorViewError.OutOfMemory;
@@ -221,7 +221,7 @@ pub const EditorView = struct {
     }
 
     /// Get the underlying TextBufferView
-    pub fn getTextBufferView(self: *EditorView) *TextBufferViewRope {
+    pub fn getTextBufferView(self: *EditorView) *UnifiedTextBufferView {
         return self.text_buffer_view;
     }
 
