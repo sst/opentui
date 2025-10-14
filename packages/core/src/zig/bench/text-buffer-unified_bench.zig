@@ -2,6 +2,7 @@ const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const unified_tb = @import("../text-buffer-unified.zig");
 const unified_view = @import("../text-buffer-view-unified.zig");
+const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
@@ -158,7 +159,7 @@ fn benchSetText(
     return try results.toOwnedSlice();
 }
 
-fn benchViewNoWrap(
+fn benchViewWrapping(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     graphemes_ptr: *Graphemes,
@@ -171,37 +172,6 @@ fn benchViewNoWrap(
     const text = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
     defer allocator.free(text);
 
-    var min_ns: u64 = std.math.maxInt(u64);
-    var max_ns: u64 = 0;
-    var total_ns: u64 = 0;
-    var final_tb_mem: usize = 0;
-    var final_view_mem: usize = 0;
-
-    var i: usize = 0;
-    while (i < iterations) : (i += 1) {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
-        defer tb.deinit();
-
-        try tb.setText(text);
-
-        var view = try UnifiedTextBufferView.init(allocator, tb);
-        defer view.deinit();
-
-        var timer = try std.time.Timer.start();
-        const count = view.getVirtualLineCount();
-        const elapsed = timer.read();
-        _ = count;
-
-        min_ns = @min(min_ns, elapsed);
-        max_ns = @max(max_ns, elapsed);
-        total_ns += elapsed;
-
-        if (i == iterations - 1 and show_mem) {
-            final_tb_mem = tb.getArenaAllocatedBytes();
-            final_view_mem = view.getArenaAllocatedBytes();
-        }
-    }
-
     const text_mb = @as(f64, @floatFromInt(text.len)) / (1024.0 * 1024.0);
     const line_count = blk: {
         var count: usize = 1;
@@ -211,27 +181,77 @@ fn benchViewNoWrap(
         break :blk count;
     };
 
-    const name = try std.fmt.allocPrint(
-        allocator,
-        "UnifiedView no-wrap ({d} lines, {d:.2} MiB)",
-        .{ line_count, text_mb },
-    );
-    const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-        const stats = try allocator.alloc(MemStat, 2);
-        stats[0] = .{ .name = "TB", .bytes = final_tb_mem };
-        stats[1] = .{ .name = "View", .bytes = final_view_mem };
-        break :blk stats;
-    } else null;
+    // Test different wrapping scenarios
+    const scenarios = [_]struct {
+        width: u32,
+        mode: unified_view.WrapMode,
+        mode_str: []const u8,
+    }{
+        .{ .width = 40, .mode = .char, .mode_str = "char" },
+        .{ .width = 80, .mode = .char, .mode_str = "char" },
+        .{ .width = 120, .mode = .char, .mode_str = "char" },
+        .{ .width = 40, .mode = .word, .mode_str = "word" },
+        .{ .width = 80, .mode = .word, .mode_str = "word" },
+        .{ .width = 120, .mode = .word, .mode_str = "word" },
+    };
 
-    try results.append(BenchResult{
-        .name = name,
-        .min_ns = min_ns,
-        .avg_ns = total_ns / iterations,
-        .max_ns = max_ns,
-        .total_ns = total_ns,
-        .iterations = iterations,
-        .mem_stats = mem_stats,
-    });
+    for (scenarios) |scenario| {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+        var final_tb_mem: usize = 0;
+        var final_view_mem: usize = 0;
+
+        var i: usize = 0;
+        while (i < iterations) : (i += 1) {
+            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            defer tb.deinit();
+
+            try tb.setText(text);
+
+            var view = try UnifiedTextBufferView.init(allocator, tb);
+            defer view.deinit();
+
+            view.setWrapMode(scenario.mode);
+
+            var timer = try std.time.Timer.start();
+            view.setWrapWidth(scenario.width);
+            const count = view.getVirtualLineCount();
+            const elapsed = timer.read();
+            _ = count;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+
+            if (i == iterations - 1 and show_mem) {
+                final_tb_mem = tb.getArenaAllocatedBytes();
+                final_view_mem = view.getArenaAllocatedBytes();
+            }
+        }
+
+        const name = try std.fmt.allocPrint(
+            allocator,
+            "UnifiedView wrap ({s}, width={d}, {d} lines, {d:.2} MiB)",
+            .{ scenario.mode_str, scenario.width, line_count, text_mb },
+        );
+        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+            const stats = try allocator.alloc(MemStat, 2);
+            stats[0] = .{ .name = "TB", .bytes = final_tb_mem };
+            stats[1] = .{ .name = "View", .bytes = final_view_mem };
+            break :blk stats;
+        } else null;
+
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = mem_stats,
+        });
+    }
 
     return try results.toOwnedSlice();
 }
@@ -262,10 +282,9 @@ pub fn run(
     defer allocator.free(setText_results);
     try all_results.appendSlice(setText_results);
 
-    const viewNoWrap_results = try benchViewNoWrap(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
-    defer allocator.free(viewNoWrap_results);
-    try all_results.appendSlice(viewNoWrap_results);
+    const viewWrapping_results = try benchViewWrapping(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    defer allocator.free(viewWrapping_results);
+    try all_results.appendSlice(viewWrapping_results);
 
     return try all_results.toOwnedSlice();
 }
-
