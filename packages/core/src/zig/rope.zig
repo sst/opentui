@@ -22,6 +22,70 @@ pub fn Rope(comptime T: type) type {
             max_undo_depth: ?usize = null, // null = unlimited
         };
 
+        /// Marker tracking - enabled when T has a MarkerTypes slice
+        /// T should define: pub const MarkerTypes = &[_]std.meta.Tag(T){.brk, .other_marker};
+        pub const MarkerTracker = if (@typeInfo(T) == .@"union" and @hasDecl(T, "MarkerTypes")) struct {
+            // For each marker tag, store array of (leaf_index, weight) pairs
+            positions: std.AutoHashMap(std.meta.Tag(T), std.ArrayList(MarkerPosition)),
+            allocator: Allocator,
+            marker_tags: []const std.meta.Tag(T), // Which tags to track
+
+            pub const MarkerPosition = struct {
+                leaf_index: u32, // Which leaf in the rope (by count)
+                global_weight: u32, // Position by weight
+            };
+
+            pub fn init(allocator: Allocator) MarkerTracker {
+                return .{
+                    .positions = std.AutoHashMap(std.meta.Tag(T), std.ArrayList(MarkerPosition)).init(allocator),
+                    .allocator = allocator,
+                    .marker_tags = T.MarkerTypes,
+                };
+            }
+
+            pub fn deinit(self: *MarkerTracker) void {
+                var iter = self.positions.valueIterator();
+                while (iter.next()) |list| {
+                    list.deinit();
+                }
+                self.positions.deinit();
+            }
+
+            /// Check if a tag is a marker type we should track
+            fn isMarkerTag(self: *const MarkerTracker, tag: std.meta.Tag(T)) bool {
+                for (self.marker_tags) |marker_tag| {
+                    if (tag == marker_tag) return true;
+                }
+                return false;
+            }
+
+            /// Get marker position by occurrence (O(1))
+            pub fn get(self: *const MarkerTracker, tag: std.meta.Tag(T), occurrence: u32) ?MarkerPosition {
+                const list = self.positions.get(tag) orelse return null;
+                if (occurrence >= list.items.len) return null;
+                return list.items[occurrence];
+            }
+
+            /// Get count of markers with specific tag (O(1))
+            pub fn count(self: *const MarkerTracker, tag: std.meta.Tag(T)) u32 {
+                const list = self.positions.get(tag) orelse return 0;
+                return @intCast(list.items.len);
+            }
+
+            pub fn clear(self: *MarkerTracker) void {
+                var iter = self.positions.valueIterator();
+                while (iter.next()) |list| {
+                    list.clearRetainingCapacity();
+                }
+            }
+        } else struct {
+            pub fn init(_: Allocator) @This() {
+                return .{};
+            }
+            pub fn deinit(_: *@This()) void {}
+            pub fn clear(_: *@This()) void {}
+        };
+
         /// Metrics tracked by the rope
         pub const Metrics = struct {
             count: u32 = 0, // Number of items (leaves) - default 0, leaves set to 1
@@ -428,6 +492,7 @@ pub fn Rope(comptime T: type) type {
         curr_history: ?*UndoNode = null,
         config: Config = .{},
         undo_depth: usize = 0, // Current undo stack depth
+        markers: MarkerTracker, // Automatic marker tracking
 
         pub fn init(allocator: Allocator) !Self {
             return initWithConfig(allocator, .{});
@@ -448,11 +513,16 @@ pub fn Rope(comptime T: type) type {
                 .allocator = allocator,
                 .empty_leaf = empty_leaf,
                 .config = config,
+                .markers = MarkerTracker.init(allocator),
             };
         }
 
         /// Create from a single item
         pub fn from_item(allocator: Allocator, data: T) !Self {
+            return from_itemWithConfig(allocator, data, .{});
+        }
+
+        pub fn from_itemWithConfig(allocator: Allocator, data: T, config: Config) !Self {
             const root = try Node.new_leaf(allocator, data);
             const empty_data = if (@hasDecl(T, "empty"))
                 T.empty()
@@ -463,13 +533,19 @@ pub fn Rope(comptime T: type) type {
                 .root = root,
                 .allocator = allocator,
                 .empty_leaf = empty_leaf,
+                .config = config,
+                .markers = MarkerTracker.init(allocator),
             };
         }
 
         /// Create from a slice of items
         pub fn from_slice(allocator: Allocator, items: []const T) !Self {
+            return from_sliceWithConfig(allocator, items, .{});
+        }
+
+        pub fn from_sliceWithConfig(allocator: Allocator, items: []const T, config: Config) !Self {
             if (items.len == 0) {
-                return try init(allocator);
+                return try initWithConfig(allocator, config);
             }
 
             var leaves = try std.ArrayList(*const Node).initCapacity(allocator, items.len);
@@ -490,6 +566,8 @@ pub fn Rope(comptime T: type) type {
                 .root = root,
                 .allocator = allocator,
                 .empty_leaf = empty_leaf,
+                .config = config,
+                .markers = MarkerTracker.init(allocator),
             };
         }
 
@@ -658,6 +736,7 @@ pub fn Rope(comptime T: type) type {
                 .undo_history = null,
                 .redo_history = null,
                 .curr_history = null,
+                .markers = MarkerTracker.init(self.allocator), // Split creates new rope without marker tracking
             };
         }
 
@@ -781,6 +860,7 @@ pub fn Rope(comptime T: type) type {
                 .undo_history = null,
                 .redo_history = null,
                 .curr_history = null,
+                .markers = MarkerTracker.init(self.allocator),
             };
         }
 
@@ -969,6 +1049,269 @@ pub fn Rope(comptime T: type) type {
             self.redo_history = null;
             self.curr_history = null;
             self.undo_depth = 0;
+        }
+
+        /// Rebuild marker index by walking the entire rope
+        /// Only works when T is a union type and has MarkerTypes defined
+        pub fn rebuildMarkerIndex(self: *Self) !void {
+            if (@typeInfo(T) != .@"union") return;
+            if (!@hasDecl(T, "MarkerTypes")) return;
+
+            self.markers.clear();
+
+            const RebuildContext = struct {
+                markers: *MarkerTracker,
+                current_leaf: u32 = 0,
+                current_weight: u32 = 0,
+
+                fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
+                    _ = idx;
+                    const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+                    // Get the active union tag
+                    const tag = std.meta.activeTag(data.*);
+
+                    // Only track if this tag is in the marker list
+                    if (!context.markers.isMarkerTag(tag)) {
+                        context.current_leaf += 1;
+                        // Still need to update weight
+                        const leaf_weight = if (@hasDecl(T, "Metrics")) blk: {
+                            if (@hasDecl(T, "measure")) {
+                                const metrics = data.measure();
+                                break :blk if (@hasDecl(T.Metrics, "weight")) metrics.weight() else 1;
+                            }
+                            break :blk 1;
+                        } else 1;
+                        context.current_weight += leaf_weight;
+                        return .{};
+                    }
+
+                    // Get weight of this leaf
+                    const leaf_weight = if (@hasDecl(T, "Metrics")) blk: {
+                        if (@hasDecl(T, "measure")) {
+                            const metrics = data.measure();
+                            break :blk if (@hasDecl(T.Metrics, "weight")) metrics.weight() else 1;
+                        }
+                        break :blk 1;
+                    } else 1;
+
+                    // Add this marker position to the index
+                    const gop = context.markers.positions.getOrPut(tag) catch |e| {
+                        return .{ .keep_walking = false, .err = e };
+                    };
+                    if (!gop.found_existing) {
+                        gop.value_ptr.* = std.ArrayList(MarkerTracker.MarkerPosition).init(context.markers.allocator);
+                    }
+
+                    gop.value_ptr.append(.{
+                        .leaf_index = context.current_leaf,
+                        .global_weight = context.current_weight,
+                    }) catch |e| {
+                        return .{ .keep_walking = false, .err = e };
+                    };
+
+                    context.current_leaf += 1;
+                    context.current_weight += leaf_weight;
+                    return .{};
+                }
+            };
+
+            var ctx = RebuildContext{ .markers = &self.markers };
+            try self.walk(&ctx, RebuildContext.walker);
+        }
+
+        /// Get marker position by tag and occurrence (O(1))
+        /// Only available when T is a union and has MarkerTypes defined
+        pub fn getMarker(self: *const Self, tag: std.meta.Tag(T), occurrence: u32) ?MarkerTracker.MarkerPosition {
+            if (@typeInfo(T) != .@"union") return null;
+            if (!@hasDecl(T, "MarkerTypes")) return null;
+            return self.markers.get(tag, occurrence);
+        }
+
+        /// Get count of markers with specific tag (O(1))
+        /// Only available when T is a union and has MarkerTypes defined
+        pub fn markerCount(self: *const Self, tag: std.meta.Tag(T)) u32 {
+            if (@typeInfo(T) != .@"union") return 0;
+            if (!@hasDecl(T, "MarkerTypes")) return 0;
+            return self.markers.count(tag);
+        }
+
+        /// Marker index for O(1) lookup by marker occurrence
+        ///
+        /// Maintains a flat index mapping marker occurrence numbers to positions in the rope.
+        /// This enables O(1) lookup of markers by their occurrence index (e.g., "find line 42").
+        ///
+        /// Usage:
+        /// 1. Define your marker types as an enum
+        /// 2. Add a `getMarkers()` method to your leaf type T that returns []const struct{type: MarkerType, offset: u32}
+        /// 3. Create a MarkerIndex instance and call `rebuild()` after rope changes
+        /// 4. Use `get(marker_type, occurrence)` for O(1) lookups
+        ///
+        /// Example for line-based text editing:
+        /// ```zig
+        /// const MarkerType = enum { linestart, linebreak };
+        /// const MyRope = Rope(TextChunk);
+        /// const Index = MyRope.MarkerIndex(MarkerType);
+        ///
+        /// var index = Index.init(allocator);
+        /// defer index.deinit();
+        /// try index.rebuild(&rope);
+        ///
+        /// // O(1) lookup: find where line 42 starts
+        /// if (index.get(.linestart, 42)) |entry| {
+        ///     const byte_pos = entry.global_weight;
+        ///     const chunk_idx = entry.leaf_index;
+        /// }
+        /// ```
+        pub fn MarkerIndex(comptime MarkerTypeEnum: type) type {
+            return struct {
+                const IndexSelf = @This();
+
+                /// Entry in the marker index
+                pub const Entry = struct {
+                    leaf_index: u32, // Which leaf (by count index) contains this marker
+                    global_weight: u32, // Position in rope (by weight/bytes)
+
+                    pub fn compare(_: void, a: Entry, b: Entry) std.math.Order {
+                        return std.math.order(a.global_weight, b.global_weight);
+                    }
+                };
+
+                allocator: Allocator,
+                indexes: std.AutoHashMap(MarkerTypeEnum, std.ArrayList(Entry)),
+
+                pub fn init(allocator: Allocator) IndexSelf {
+                    return .{
+                        .allocator = allocator,
+                        .indexes = std.AutoHashMap(MarkerTypeEnum, std.ArrayList(Entry)).init(allocator),
+                    };
+                }
+
+                pub fn deinit(self: *IndexSelf) void {
+                    var iter = self.indexes.valueIterator();
+                    while (iter.next()) |list| {
+                        list.deinit();
+                    }
+                    self.indexes.deinit();
+                }
+
+                /// Get marker position by occurrence index (0-based)
+                /// Returns null if index out of bounds
+                /// O(1) operation
+                pub fn get(self: *const IndexSelf, marker_type: MarkerTypeEnum, occurrence: u32) ?Entry {
+                    const list = self.indexes.get(marker_type) orelse return null;
+                    if (occurrence >= list.items.len) return null;
+                    return list.items[occurrence];
+                }
+
+                /// Get total count of markers of a type
+                /// O(1) operation
+                pub fn count(self: *const IndexSelf, marker_type: MarkerTypeEnum) u32 {
+                    const list = self.indexes.get(marker_type) orelse return 0;
+                    return @intCast(list.items.len);
+                }
+
+                /// Add a marker entry
+                fn addEntry(self: *IndexSelf, marker_type: MarkerTypeEnum, entry: Entry) !void {
+                    const gop = try self.indexes.getOrPut(marker_type);
+                    if (!gop.found_existing) {
+                        gop.value_ptr.* = std.ArrayList(Entry).init(self.allocator);
+                    }
+                    try gop.value_ptr.append(entry);
+                }
+
+                /// Insert marker entry at specific occurrence index
+                fn insertEntry(self: *IndexSelf, marker_type: MarkerTypeEnum, occurrence: u32, entry: Entry) !void {
+                    const gop = try self.indexes.getOrPut(marker_type);
+                    if (!gop.found_existing) {
+                        gop.value_ptr.* = std.ArrayList(Entry).init(self.allocator);
+                    }
+                    try gop.value_ptr.insert(occurrence, entry);
+
+                    // Update indices of following markers
+                    for (gop.value_ptr.items[occurrence + 1 ..]) |*e| {
+                        e.leaf_index += 1;
+                    }
+                }
+
+                /// Remove marker entry at occurrence index
+                fn removeEntry(self: *IndexSelf, marker_type: MarkerTypeEnum, occurrence: u32) !void {
+                    const list = self.indexes.getPtr(marker_type) orelse return;
+                    if (occurrence >= list.items.len) return;
+                    _ = list.orderedRemove(occurrence);
+
+                    // Update indices of following markers
+                    for (list.items[occurrence..]) |*e| {
+                        if (e.leaf_index > 0) e.leaf_index -= 1;
+                    }
+                }
+
+                /// Clear all markers of a type
+                pub fn clear(self: *IndexSelf, marker_type: MarkerTypeEnum) void {
+                    if (self.indexes.getPtr(marker_type)) |list| {
+                        list.clearRetainingCapacity();
+                    }
+                }
+
+                /// Clear all markers
+                pub fn clearAll(self: *IndexSelf) void {
+                    var iter = self.indexes.valueIterator();
+                    while (iter.next()) |list| {
+                        list.clearRetainingCapacity();
+                    }
+                }
+
+                /// Rebuild index from rope
+                /// Requires T to have: fn getMarkers(self: *const T) []const struct{type: MarkerTypeEnum, offset: u32}
+                pub fn rebuild(self: *IndexSelf, rope: *const Self) !void {
+                    self.clearAll();
+
+                    if (!@hasDecl(T, "getMarkers")) {
+                        @compileError("T must have getMarkers() method for marker index support");
+                    }
+
+                    const RebuildContext = struct {
+                        index: *IndexSelf,
+                        current_leaf: u32 = 0,
+                        current_weight: u32 = 0,
+                        err: ?anyerror = null,
+
+                        fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
+                            _ = idx;
+                            const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+                            // Get markers from this leaf
+                            const markers = data.getMarkers();
+
+                            // Get weight of this leaf
+                            const leaf_metrics = if (@hasDecl(T, "measure")) data.measure() else T.Metrics{};
+                            const leaf_weight = if (@hasDecl(T.Metrics, "weight"))
+                                leaf_metrics.weight()
+                            else
+                                1;
+
+                            // Add each marker to index
+                            for (markers) |marker| {
+                                const entry = Entry{
+                                    .leaf_index = context.current_leaf,
+                                    .global_weight = context.current_weight + marker.offset,
+                                };
+                                context.index.addEntry(marker.type, entry) catch |e| {
+                                    context.err = e;
+                                    return .{ .keep_walking = false, .err = e };
+                                };
+                            }
+
+                            context.current_leaf += 1;
+                            context.current_weight += leaf_weight;
+                            return .{};
+                        }
+                    };
+
+                    var ctx = RebuildContext{ .index = self };
+                    try rope.walk(&ctx, RebuildContext.walker);
+                }
+            };
         }
     };
 }

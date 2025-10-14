@@ -379,11 +379,13 @@ const Line = struct {
 
     pub fn empty() Line {
         // Use static empty chunk rope - safe because it's immutable
+        const ChunkRope = rope_mod.Rope(Chunk);
         return .{
             .chunks = .{
                 .root = &empty_chunk_leaf_node,
                 .allocator = undefined, // Never used for empty
                 .empty_leaf = &empty_chunk_leaf_node,
+                .markers = ChunkRope.MarkerTracker.init(undefined),
             },
             .line_id = 0,
         };
@@ -2368,4 +2370,413 @@ test "Rope - findByWeight" {
     // Out of bounds
     const result100 = rope.findByWeight(100);
     try std.testing.expect(result100 == null);
+}
+
+//===== Marker Index Tests =====
+
+const MarkerType = enum {
+    linestart,
+    linebreak,
+    bookmark,
+};
+
+const MarkerEntry = struct {
+    type: MarkerType,
+    offset: u32, // Offset within the chunk
+};
+
+const TextChunkWithMarkers = struct {
+    data: []const u8,
+    markers: []const MarkerEntry,
+
+    pub const Metrics = struct {
+        bytes: u32 = 0,
+
+        pub fn add(self: *Metrics, other: Metrics) void {
+            self.bytes += other.bytes;
+        }
+
+        pub fn weight(self: *const Metrics) u32 {
+            return self.bytes;
+        }
+    };
+
+    pub fn measure(self: *const TextChunkWithMarkers) Metrics {
+        return .{ .bytes = @intCast(self.data.len) };
+    }
+
+    pub fn getMarkers(self: *const TextChunkWithMarkers) []const MarkerEntry {
+        return self.markers;
+    }
+
+    pub fn empty() TextChunkWithMarkers {
+        return .{ .data = "", .markers = &[_]MarkerEntry{} };
+    }
+
+    pub fn is_empty(self: *const TextChunkWithMarkers) bool {
+        return self.data.len == 0;
+    }
+};
+
+test "Marker Index - O(1) lookup by occurrence" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const RopeType = rope_mod.Rope(TextChunkWithMarkers);
+    const IndexType = RopeType.MarkerIndex(MarkerType);
+
+    // Create chunks with markers
+    const linestart1 = MarkerEntry{ .type = .linestart, .offset = 0 };
+    const linebreak1 = MarkerEntry{ .type = .linebreak, .offset = 11 };
+    const linestart2 = MarkerEntry{ .type = .linestart, .offset = 0 };
+    const linebreak2 = MarkerEntry{ .type = .linebreak, .offset = 11 };
+    const linestart3 = MarkerEntry{ .type = .linestart, .offset = 0 };
+
+    const chunks = [_]TextChunkWithMarkers{
+        .{ .data = "Hello World\n", .markers = &[_]MarkerEntry{ linestart1, linebreak1 } },
+        .{ .data = "Second Line\n", .markers = &[_]MarkerEntry{ linestart2, linebreak2 } },
+        .{ .data = "Third Line", .markers = &[_]MarkerEntry{linestart3} },
+    };
+
+    var rope = try RopeType.from_slice(allocator, &chunks);
+
+    // Build marker index
+    var marker_index = IndexType.init(allocator);
+    defer marker_index.deinit();
+    try marker_index.rebuild(&rope);
+
+    // Test O(1) lookup of linestart markers
+    try std.testing.expectEqual(@as(u32, 3), marker_index.count(.linestart));
+
+    // Get 1st linestart (line 0)
+    const line0 = marker_index.get(.linestart, 0);
+    try std.testing.expect(line0 != null);
+    try std.testing.expectEqual(@as(u32, 0), line0.?.global_weight);
+    try std.testing.expectEqual(@as(u32, 0), line0.?.leaf_index);
+
+    // Get 2nd linestart (line 1)
+    const line1 = marker_index.get(.linestart, 1);
+    try std.testing.expect(line1 != null);
+    try std.testing.expectEqual(@as(u32, 12), line1.?.global_weight); // After "Hello World\n"
+    try std.testing.expectEqual(@as(u32, 1), line1.?.leaf_index);
+
+    // Get 3rd linestart (line 2)
+    const line2 = marker_index.get(.linestart, 2);
+    try std.testing.expect(line2 != null);
+    try std.testing.expectEqual(@as(u32, 24), line2.?.global_weight); // After two chunks
+    try std.testing.expectEqual(@as(u32, 2), line2.?.leaf_index);
+
+    // Test linebreak markers
+    try std.testing.expectEqual(@as(u32, 2), marker_index.count(.linebreak));
+
+    const break0 = marker_index.get(.linebreak, 0);
+    try std.testing.expect(break0 != null);
+    try std.testing.expectEqual(@as(u32, 11), break0.?.global_weight);
+
+    const break1 = marker_index.get(.linebreak, 1);
+    try std.testing.expect(break1 != null);
+    try std.testing.expectEqual(@as(u32, 23), break1.?.global_weight);
+
+    // Test out of bounds
+    const line99 = marker_index.get(.linestart, 99);
+    try std.testing.expect(line99 == null);
+}
+
+test "Marker Index - bookmarks" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const RopeType = rope_mod.Rope(TextChunkWithMarkers);
+    const IndexType = RopeType.MarkerIndex(MarkerType);
+
+    // Create chunks with bookmark markers
+    const markers1 = [_]MarkerEntry{
+        .{ .type = .bookmark, .offset = 0 },
+        .{ .type = .bookmark, .offset = 5 },
+    };
+    const markers2 = [_]MarkerEntry{
+        .{ .type = .bookmark, .offset = 3 },
+    };
+
+    const chunks = [_]TextChunkWithMarkers{
+        .{ .data = "First chunk", .markers = &markers1 },
+        .{ .data = "Second chunk", .markers = &markers2 },
+    };
+
+    var rope = try RopeType.from_slice(allocator, &chunks);
+
+    var marker_index = IndexType.init(allocator);
+    defer marker_index.deinit();
+    try marker_index.rebuild(&rope);
+
+    // Should have 3 bookmarks total
+    try std.testing.expectEqual(@as(u32, 3), marker_index.count(.bookmark));
+
+    // Get each bookmark
+    const bm0 = marker_index.get(.bookmark, 0).?;
+    try std.testing.expectEqual(@as(u32, 0), bm0.global_weight);
+    try std.testing.expectEqual(@as(u32, 0), bm0.leaf_index);
+
+    const bm1 = marker_index.get(.bookmark, 1).?;
+    try std.testing.expectEqual(@as(u32, 5), bm1.global_weight);
+    try std.testing.expectEqual(@as(u32, 0), bm1.leaf_index);
+
+    const bm2 = marker_index.get(.bookmark, 2).?;
+    try std.testing.expectEqual(@as(u32, 14), bm2.global_weight); // 11 bytes + 3 offset
+    try std.testing.expectEqual(@as(u32, 1), bm2.leaf_index);
+}
+
+test "Marker Index - empty rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const RopeType = rope_mod.Rope(TextChunkWithMarkers);
+    const IndexType = RopeType.MarkerIndex(MarkerType);
+
+    var rope = try RopeType.init(allocator);
+
+    var marker_index = IndexType.init(allocator);
+    defer marker_index.deinit();
+    try marker_index.rebuild(&rope);
+
+    try std.testing.expectEqual(@as(u32, 0), marker_index.count(.linestart));
+    try std.testing.expectEqual(@as(u32, 0), marker_index.count(.linebreak));
+    try std.testing.expectEqual(@as(u32, 0), marker_index.count(.bookmark));
+
+    try std.testing.expect(marker_index.get(.linestart, 0) == null);
+}
+
+test "Marker Index - clear operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const RopeType = rope_mod.Rope(TextChunkWithMarkers);
+    const IndexType = RopeType.MarkerIndex(MarkerType);
+
+    const markers = [_]MarkerEntry{
+        .{ .type = .linestart, .offset = 0 },
+        .{ .type = .bookmark, .offset = 5 },
+    };
+
+    const chunks = [_]TextChunkWithMarkers{
+        .{ .data = "Test", .markers = &markers },
+    };
+
+    var rope = try RopeType.from_slice(allocator, &chunks);
+
+    var marker_index = IndexType.init(allocator);
+    defer marker_index.deinit();
+    try marker_index.rebuild(&rope);
+
+    try std.testing.expectEqual(@as(u32, 1), marker_index.count(.linestart));
+    try std.testing.expectEqual(@as(u32, 1), marker_index.count(.bookmark));
+
+    // Clear just linestart
+    marker_index.clear(.linestart);
+    try std.testing.expectEqual(@as(u32, 0), marker_index.count(.linestart));
+    try std.testing.expectEqual(@as(u32, 1), marker_index.count(.bookmark));
+
+    // Clear all
+    marker_index.clearAll();
+    try std.testing.expectEqual(@as(u32, 0), marker_index.count(.linestart));
+    try std.testing.expectEqual(@as(u32, 0), marker_index.count(.bookmark));
+}
+
+test "Marker Index - many markers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const RopeType = rope_mod.Rope(TextChunkWithMarkers);
+    const IndexType = RopeType.MarkerIndex(MarkerType);
+
+    // Create 100 lines
+    var chunks_array: [100]TextChunkWithMarkers = undefined;
+    var markers_arrays: [100][2]MarkerEntry = undefined;
+
+    for (&chunks_array, &markers_arrays, 0..) |*chunk, *markers, i| {
+        markers[0] = .{ .type = .linestart, .offset = 0 };
+        markers[1] = .{ .type = .linebreak, .offset = 9 };
+        chunk.* = .{
+            .data = "Line text\n",
+            .markers = markers,
+        };
+        _ = i;
+    }
+
+    var rope = try RopeType.from_slice(allocator, &chunks_array);
+
+    var marker_index = IndexType.init(allocator);
+    defer marker_index.deinit();
+    try marker_index.rebuild(&rope);
+
+    // Should have 100 linestart markers
+    try std.testing.expectEqual(@as(u32, 100), marker_index.count(.linestart));
+    try std.testing.expectEqual(@as(u32, 100), marker_index.count(.linebreak));
+
+    // Test O(1) random access
+    const line50 = marker_index.get(.linestart, 50).?;
+    try std.testing.expectEqual(@as(u32, 50), line50.leaf_index);
+    try std.testing.expectEqual(@as(u32, 500), line50.global_weight); // 50 * 10 bytes
+
+    const line99 = marker_index.get(.linestart, 99).?;
+    try std.testing.expectEqual(@as(u32, 99), line99.leaf_index);
+    try std.testing.expectEqual(@as(u32, 990), line99.global_weight);
+
+    // Test linebreak at same positions
+    const break50 = marker_index.get(.linebreak, 50).?;
+    try std.testing.expectEqual(@as(u32, 509), break50.global_weight); // 50 * 10 + 9
+}
+
+//===== Integrated Marker Tracking Tests (Union Types) =====
+
+// Simple union type for testing automatic marker tracking
+const TokenType = union(enum) {
+    word: u32,
+    space: u32,
+    newline: void, // Marker type
+
+    // Define which tags are markers (only track these!)
+    pub const MarkerTypes = &[_]std.meta.Tag(TokenType){.newline};
+
+    pub const Metrics = struct {
+        width: u32 = 0,
+
+        pub fn add(self: *Metrics, other: Metrics) void {
+            self.width += other.width;
+        }
+
+        pub fn weight(self: *const Metrics) u32 {
+            return self.width;
+        }
+    };
+
+    pub fn measure(self: *const TokenType) Metrics {
+        return switch (self.*) {
+            .word => |w| .{ .width = w },
+            .space => |s| .{ .width = s },
+            .newline => .{ .width = 0 },
+        };
+    }
+
+    pub fn empty() TokenType {
+        return .{ .space = 0 };
+    }
+
+    pub fn is_empty(self: *const TokenType) bool {
+        return switch (self.*) {
+            .space => |s| s == 0,
+            else => false,
+        };
+    }
+};
+
+test "Rope - automatic marker tracking with union type" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+
+    // Create rope with marker tracking enabled
+    const tokens = [_]TokenType{
+        .{ .word = 5 }, // "Hello"
+        .{ .space = 1 }, // " "
+        .{ .word = 5 }, // "World"
+        .{ .newline = {} }, // Line break marker
+        .{ .word = 6 }, // "Second"
+        .{ .space = 1 }, // " "
+        .{ .word = 4 }, // "Line"
+        .{ .newline = {} }, // Line break marker
+        .{ .word = 5 }, // "Third"
+    };
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens);
+    try rope.rebuildMarkerIndex();
+
+    // O(1) lookup: find newline markers (only .newline is tracked, not .word or .space)
+    try std.testing.expectEqual(@as(u32, 2), rope.markerCount(.newline));
+
+    // Get first newline (end of line 0)
+    const nl0 = rope.getMarker(.newline, 0);
+    try std.testing.expect(nl0 != null);
+    try std.testing.expectEqual(@as(u32, 3), nl0.?.leaf_index); // After word, space, word
+    try std.testing.expectEqual(@as(u32, 11), nl0.?.global_weight); // 5 + 1 + 5
+
+    // Get second newline (end of line 1)
+    const nl1 = rope.getMarker(.newline, 1);
+    try std.testing.expect(nl1 != null);
+    try std.testing.expectEqual(@as(u32, 7), nl1.?.leaf_index);
+    try std.testing.expectEqual(@as(u32, 22), nl1.?.global_weight); // 11 + 6 + 1 + 4
+
+    // Word and space are NOT markers - should return 0
+    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.word));
+    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.space));
+}
+
+test "Rope - marker tracking with empty rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+    var rope = try RopeType.init(arena.allocator());
+
+    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.newline));
+    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.word)); // Not a marker type
+    try std.testing.expect(rope.getMarker(.newline, 0) == null);
+}
+
+test "Rope - marker tracking requires rebuild" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+    const tokens = [_]TokenType{
+        .{ .word = 5 },
+        .{ .newline = {} },
+    };
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens);
+
+    // Before rebuilding - should return 0/null
+    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.newline));
+    try std.testing.expect(rope.getMarker(.newline, 0) == null);
+
+    // After rebuilding - should find markers
+    try rope.rebuildMarkerIndex();
+    try std.testing.expectEqual(@as(u32, 1), rope.markerCount(.newline));
+    try std.testing.expect(rope.getMarker(.newline, 0) != null);
+}
+
+test "Rope - marker tracking with many markers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+
+    // Create 100 lines
+    var tokens_array: [199]TokenType = undefined; // 100 words + 99 newlines
+    for (0..100) |i| {
+        if (i > 0) {
+            tokens_array[i * 2 - 1] = .{ .newline = {} };
+        }
+        tokens_array[i * 2] = .{ .word = 5 };
+    }
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens_array);
+    try rope.rebuildMarkerIndex();
+
+    // Should have 99 newlines (only newlines are tracked as markers)
+    try std.testing.expectEqual(@as(u32, 99), rope.markerCount(.newline));
+
+    // Test O(1) random access to specific lines
+    const nl50 = rope.getMarker(.newline, 50).?;
+    try std.testing.expectEqual(@as(u32, 101), nl50.leaf_index); // word, nl, word, nl, ... (50th newline is at index 101)
+    try std.testing.expectEqual(@as(u32, 255), nl50.global_weight); // 51 words * 5 width
+
+    const nl98 = rope.getMarker(.newline, 98).?;
+    try std.testing.expectEqual(@as(u32, 197), nl98.leaf_index);
 }

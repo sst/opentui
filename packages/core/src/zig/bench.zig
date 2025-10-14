@@ -5,6 +5,7 @@ const bench_utils = @import("bench-utils.zig");
 const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
 const edit_buffer_bench = @import("bench/edit-buffer_bench.zig");
 const rope_bench = @import("bench/rope_bench.zig");
+const rope_markers_bench = @import("bench/rope-markers_bench.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -38,6 +39,11 @@ pub fn main() !void {
     const rope_results = try rope_bench.run(allocator, show_mem);
     defer allocator.free(rope_results);
     try bench_utils.printResults(stdout, rope_results);
+
+    try stdout.print("\n=== Rope Marker Tracking Benchmarks ===\n\n", .{});
+    const rope_markers_results = try rope_markers_bench.run(allocator, show_mem);
+    defer allocator.free(rope_markers_results);
+    try bench_utils.printResults(stdout, rope_markers_results);
 
     try stdout.print("\n✓ Benchmarks complete\n", .{});
 }
