@@ -407,55 +407,6 @@ pub fn Rope(comptime T: type) type {
             }
         };
 
-        /// Weight-based finger for efficient near-cursor edits by weight
-        /// Caches the path to last accessed position for locality
-        pub const WeightFinger = struct {
-            weight: u32, // Last resolved weight
-            rope: *const Self, // Reference to the rope this finger belongs to
-            cached_node: ?*const Node = null, // Cached node near weight
-            cached_node_start_weight: u32 = 0, // Starting weight of cached node's subtree
-
-            /// Create a weight finger at a specific weight
-            pub fn init(rope: *const Self, weight: u32) WeightFinger {
-                return .{
-                    .weight = weight,
-                    .rope = rope,
-                };
-            }
-
-            /// Move finger to a new weight and invalidate cache if far away
-            pub fn seekWeight(self: *WeightFinger, weight: u32) void {
-                // If seeking far away (more than 100 weight units), invalidate cache
-                if (self.weight > weight) {
-                    if (self.weight - weight > 100) {
-                        self.invalidate();
-                    }
-                } else {
-                    if (weight - self.weight > 100) {
-                        self.invalidate();
-                    }
-                }
-                self.weight = weight;
-            }
-
-            /// Get current weight
-            pub fn getWeight(self: *const WeightFinger) u32 {
-                return self.weight;
-            }
-
-            /// Invalidate the cache (call after structural changes)
-            pub fn invalidate(self: *WeightFinger) void {
-                self.cached_node = null;
-                self.cached_node_start_weight = 0;
-            }
-
-            /// Update cache with a node and its starting weight
-            fn updateCache(self: *WeightFinger, node: *const Node, start_weight: u32) void {
-                self.cached_node = node;
-                self.cached_node_start_weight = start_weight;
-            }
-        };
-
         pub const UndoNode = struct {
             root: *const Node,
             next: ?*UndoNode = null,
@@ -910,27 +861,6 @@ pub fn Rope(comptime T: type) type {
                     return null;
                 },
             };
-        }
-
-        /// Create a weight finger at the given weight
-        pub fn makeWeightFinger(self: *const Self, weight: u32) WeightFinger {
-            return WeightFinger.init(self, weight);
-        }
-
-        /// Insert slice at weight finger position (invalidates finger cache)
-        pub fn insertSliceAtWeightFinger(self: *Self, finger: *WeightFinger, items: []const T, split_leaf_fn: *const Node.LeafSplitFn) !void {
-            try self.insertSliceByWeight(finger.weight, items, split_leaf_fn);
-            finger.invalidate(); // Structure changed
-            // Finger now points to first inserted item
-        }
-
-        /// Delete range using two weight fingers (invalidates both finger caches)
-        pub fn deleteRangeByWeightWith(self: *Self, start_finger: *WeightFinger, end_finger: *WeightFinger, split_leaf_fn: *const Node.LeafSplitFn) !void {
-            const start = start_finger.weight;
-            const end = end_finger.weight;
-            try self.deleteRangeByWeight(@min(start, end), @max(start, end), split_leaf_fn);
-            start_finger.invalidate(); // Structure changed
-            end_finger.invalidate(); // Structure changed
         }
 
         /// Undo/Redo operations
