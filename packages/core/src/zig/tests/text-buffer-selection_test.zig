@@ -1,14 +1,11 @@
 const std = @import("std");
-const text_buffer = @import("../text-buffer-nested.zig");
-const text_buffer_view = @import("../text-buffer-view-nested.zig");
+const text_buffer = @import("../text-buffer.zig");
+const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
-const ArrayRope = @import("../array-rope.zig").ArrayRope;
 
-const TextChunk = text_buffer.TextChunk;
-const TextLine = text_buffer.TextLine;
-const TextBuffer = text_buffer.TextBufferArray;
-const TextBufferView = text_buffer_view.TextBufferView(ArrayRope(TextLine(ArrayRope(TextChunk))), ArrayRope(TextChunk));
+const TextBuffer = text_buffer.TextBuffer;
+const TextBufferView = text_buffer_view.TextBufferView;
 const RGBA = text_buffer.RGBA;
 
 test "Selection - basic selection without wrap" {

@@ -526,10 +526,53 @@ pub const UnifiedTextBuffer = struct {
     /// Compatibility: Get a specific line's info
     /// Returns a temporary struct that provides chunk access
     pub const LineCompat = struct {
+        /// Chunks accessor for compatibility with buffer.zig
+        pub const ChunksAccessor = struct {
+            buffer: *const UnifiedTextBuffer,
+            line_info: iter_mod.LineInfo,
+
+            pub fn get(self: *const @This(), idx: u32) ?*const TextChunk {
+                // Get the chunk at the given index within this line's segments
+                const seg_start = self.line_info.seg_start;
+                const seg_end = self.line_info.seg_end;
+
+                var chunk_idx: u32 = 0;
+                var seg_idx = seg_start;
+
+                while (seg_idx < seg_end) : (seg_idx += 1) {
+                    if (self.buffer.rope.get(seg_idx)) |seg| {
+                        if (seg.asText()) |chunk| {
+                            if (chunk_idx == idx) {
+                                return chunk;
+                            }
+                            chunk_idx += 1;
+                        }
+                    }
+                }
+
+                return null;
+            }
+        };
+
+        // All fields must come before declarations
         buffer: *const UnifiedTextBuffer,
         line_info: iter_mod.LineInfo,
         char_offset: u32,
         width: u32,
+        chunks: ChunksAccessor,
+
+        pub fn init(buf: *const UnifiedTextBuffer, line_inf: iter_mod.LineInfo) LineCompat {
+            return .{
+                .buffer = buf,
+                .line_info = line_inf,
+                .char_offset = line_inf.char_offset,
+                .width = line_inf.width,
+                .chunks = ChunksAccessor{
+                    .buffer = buf,
+                    .line_info = line_inf,
+                },
+            };
+        }
 
         /// Walk chunks in this line
         pub fn walkChunks(
@@ -555,12 +598,7 @@ pub const UnifiedTextBuffer = struct {
             fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                 if (line_info.line_idx == ctx.target_idx) {
-                    ctx.result = LineCompat{
-                        .buffer = ctx.buffer,
-                        .line_info = line_info,
-                        .char_offset = line_info.char_offset,
-                        .width = line_info.width,
-                    };
+                    ctx.result = LineCompat.init(ctx.buffer, line_info);
                 }
             }
         };
@@ -583,12 +621,7 @@ pub const UnifiedTextBuffer = struct {
 
             fn callback(cb_ctx_ptr: *anyopaque, line_info: LineInfo) void {
                 const cb_ctx = @as(*@This(), @ptrCast(@alignCast(cb_ctx_ptr)));
-                const line_compat = LineCompat{
-                    .buffer = cb_ctx.buffer,
-                    .line_info = line_info,
-                    .char_offset = line_info.char_offset,
-                    .width = line_info.width,
-                };
+                const line_compat = LineCompat.init(cb_ctx.buffer, line_info);
                 cb_ctx.user_fn(cb_ctx.user_ctx, &line_compat, line_info.line_idx);
             }
         };

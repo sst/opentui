@@ -144,6 +144,22 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
+    /// Get grapheme info for a chunk (for compatibility with buffer.zig drawing)
+    pub fn getOrCreateChunkCache(self: *Self, line_idx: usize, chunk_idx: usize) TextBufferViewError![]const tb.GraphemeInfo {
+        const line = self.text_buffer.getLine(@intCast(line_idx)) orelse return TextBufferViewError.OutOfMemory;
+
+        // Get the chunk at the specified index using the chunks field
+        const chunk = line.chunks.get(@intCast(chunk_idx)) orelse return TextBufferViewError.OutOfMemory;
+
+        return chunk.getGraphemes(
+            &self.text_buffer.mem_registry,
+            self.text_buffer.allocator,
+            &self.text_buffer.graphemes_data,
+            self.text_buffer.width_method,
+            &self.text_buffer.display_width,
+        ) catch return TextBufferViewError.OutOfMemory;
+    }
+
     /// Calculate how much of a chunk fits in remaining width for word wrapping
     fn calculateChunkFitWord(self: *const Self, chunk: *const TextChunk, char_offset_in_chunk: u32, max_width: u32) tb.ChunkFitResult {
         if (max_width == 0) return .{ .char_count = 0, .width = 0 };
@@ -605,7 +621,7 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    /// Get selected text into buffer
+    /// Get selected text into buffer - using efficient single-pass API
     pub fn getSelectedTextIntoBuffer(self: *Self, out_buffer: []u8) usize {
         const selection = self.selection orelse return 0;
         const start = selection.start;
@@ -613,7 +629,6 @@ pub const UnifiedTextBufferView = struct {
 
         var out_index: usize = 0;
         var char_offset: u32 = 0;
-
         const line_count = self.text_buffer.getLineCount();
 
         const Context = struct {
@@ -624,70 +639,56 @@ pub const UnifiedTextBufferView = struct {
             start: u32,
             end: u32,
             line_count: u32,
+            line_had_selection: bool = false,
 
-            fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+            fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
+                _ = line_idx;
+                _ = chunk_idx_in_line;
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                var line_had_selection = false;
 
-                const SegContext = struct {
-                    view: *Self,
-                    out_buffer: []u8,
-                    out_index: *usize,
-                    char_offset: *u32,
-                    start: u32,
-                    end: u32,
-                    line_had_selection: *bool,
+                // Get graphemes for this chunk
+                const chunk_bytes = chunk.getBytes(&ctx.view.text_buffer.mem_registry);
+                const graphemes = chunk.getGraphemes(
+                    &ctx.view.text_buffer.mem_registry,
+                    ctx.view.text_buffer.allocator,
+                    &ctx.view.text_buffer.graphemes_data,
+                    ctx.view.text_buffer.width_method,
+                    &ctx.view.text_buffer.display_width,
+                ) catch return;
 
-                    fn seg_callback(seg_ctx_ptr: *anyopaque, chunk: *const TextChunk, idx: u32) void {
-                        _ = idx;
-                        const seg_ctx = @as(*@This(), @ptrCast(@alignCast(seg_ctx_ptr)));
-                        const chunk_bytes = chunk.getBytes(&seg_ctx.view.text_buffer.mem_registry);
+                for (graphemes) |g| {
+                    if (ctx.char_offset.* >= ctx.end) return;
 
-                        // For unified implementation, we need to get graphemes differently
-                        // For now, iterate through bytes assuming ASCII or use simple iteration
-                        var byte_offset: usize = 0;
-                        var local_char_offset: u32 = 0;
+                    const grapheme_start_count = ctx.char_offset.*;
+                    const grapheme_end_count = ctx.char_offset.* + g.width;
 
-                        while (local_char_offset < chunk.width) : (local_char_offset += 1) {
-                            if (seg_ctx.char_offset.* >= seg_ctx.end) return;
+                    if (grapheme_end_count > ctx.start and grapheme_start_count < ctx.end) {
+                        ctx.line_had_selection = true;
 
-                            const grapheme_start_count = seg_ctx.char_offset.*;
-                            const grapheme_end_count = seg_ctx.char_offset.* + 1;
+                        const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
+                        const copy_len = @min(grapheme_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
 
-                            if (grapheme_end_count > seg_ctx.start and grapheme_start_count < seg_ctx.end) {
-                                seg_ctx.line_had_selection.* = true;
-
-                                // Simple copy - for now just copy one byte per char (needs proper grapheme support)
-                                if (byte_offset < chunk_bytes.len and seg_ctx.out_index.* < seg_ctx.out_buffer.len) {
-                                    seg_ctx.out_buffer[seg_ctx.out_index.*] = chunk_bytes[byte_offset];
-                                    seg_ctx.out_index.* += 1;
-                                }
-                            }
-
-                            if (byte_offset < chunk_bytes.len) {
-                                byte_offset += 1;
-                            }
-                            seg_ctx.char_offset.* += 1;
+                        if (copy_len > 0) {
+                            @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], grapheme_bytes[0..copy_len]);
+                            ctx.out_index.* += copy_len;
                         }
                     }
-                };
 
-                var seg_ctx = SegContext{
-                    .view = ctx.view,
-                    .out_buffer = ctx.out_buffer,
-                    .out_index = ctx.out_index,
-                    .char_offset = ctx.char_offset,
-                    .start = ctx.start,
-                    .end = ctx.end,
-                    .line_had_selection = &line_had_selection,
-                };
-                iter_mod.walkSegments(&ctx.view.text_buffer.rope, line_info.seg_start, line_info.seg_end, &seg_ctx, SegContext.seg_callback);
+                    ctx.char_offset.* += g.width;
+                }
+            }
+
+            fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
                 // Add newline between lines if we had selection and not at last line
-                if (line_had_selection and line_info.line_idx < ctx.line_count - 1 and ctx.char_offset.* < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
+                if (ctx.line_had_selection and line_info.line_idx < ctx.line_count - 1 and ctx.char_offset.* < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
                     ctx.out_buffer[ctx.out_index.*] = '\n';
                     ctx.out_index.* += 1;
                 }
+
+                // Reset flag for next line
+                ctx.line_had_selection = false;
             }
         };
 
@@ -700,7 +701,8 @@ pub const UnifiedTextBufferView = struct {
             .end = end,
             .line_count = line_count,
         };
-        iter_mod.walkLines(&self.text_buffer.rope, &ctx, Context.callback);
+
+        iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
 
         return out_index;
     }
