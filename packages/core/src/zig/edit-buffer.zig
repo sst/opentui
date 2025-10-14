@@ -291,30 +291,49 @@ pub const EditBuffer = struct {
         // Convert cursor position to character offset
         const insert_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
 
-        // Parse the input text into segments
+        // Append entire bytes to AddBuffer once (single copy)
+        const chunk_ref = self.add_buffer.append(bytes);
+        const base_mem_id = chunk_ref.mem_id;
+        const base_start = chunk_ref.start;
+
+        // Detect line breaks using SIMD16
+        var break_result = utf8.LineBreakResult.init(self.allocator);
+        defer break_result.deinit();
+        try utf8.findLineBreaksSIMD16(bytes, &break_result);
+
+        // Build segments from the single appended range
         var segments = std.ArrayList(Segment).init(self.allocator);
         defer segments.deinit();
 
-        var line_start: usize = 0;
-        for (bytes, 0..) |byte, i| {
-            if (byte == '\n') {
-                // Add text segment for content before newline
-                if (i > line_start) {
-                    const chunk_ref = self.add_buffer.append(bytes[line_start..i]);
-                    const chunk = self.tb.createChunk(chunk_ref.mem_id, chunk_ref.start, chunk_ref.end);
-                    try segments.append(Segment{ .text = chunk });
-                }
-                // Add break segment and linestart for next line
-                try segments.append(Segment{ .brk = {} });
-                try segments.append(Segment{ .linestart = {} });
-                line_start = i + 1;
+        var local_start: u32 = 0;
+        var inserted_width: u32 = 0;
+
+        for (break_result.breaks.items) |line_break| {
+            const break_pos: u32 = @intCast(line_break.pos);
+            const local_end: u32 = switch (line_break.kind) {
+                .CRLF => break_pos - 1,
+                .CR, .LF => break_pos,
+            };
+
+            // Add text segment for content before the break (if any)
+            if (local_end > local_start) {
+                const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + local_end);
+                try segments.append(Segment{ .text = chunk });
+                inserted_width += chunk.width;
             }
+
+            // Add break segment and linestart for next line
+            try segments.append(Segment{ .brk = {} });
+            try segments.append(Segment{ .linestart = {} });
+
+            local_start = break_pos + 1;
         }
-        // Add remaining text after last newline
-        if (line_start < bytes.len) {
-            const chunk_ref = self.add_buffer.append(bytes[line_start..]);
-            const chunk = self.tb.createChunk(chunk_ref.mem_id, chunk_ref.start, chunk_ref.end);
+
+        // Add remaining text after last break (or entire text if no breaks)
+        if (local_start < bytes.len) {
+            const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + @as(u32, @intCast(bytes.len)));
             try segments.append(Segment{ .text = chunk });
+            inserted_width += chunk.width;
         }
 
         // Insert segments into rope at the offset
@@ -323,18 +342,14 @@ pub const EditBuffer = struct {
             try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
 
             // Update char count
-            for (segments.items) |seg| {
-                if (seg.asText()) |chunk| {
-                    self.tb.char_count += chunk.width;
-                }
-            }
+            self.tb.char_count += inserted_width;
         }
 
         // Mark views dirty
         self.tb.markViewsDirty();
 
         // Update cursor position to end of inserted text
-        const new_offset = insert_offset + self.tb.measureText(bytes);
+        const new_offset = insert_offset + inserted_width;
         if (iter_mod.offsetToCoords(&self.tb.rope, new_offset)) |coords| {
             self.cursors.items[0] = .{ .row = coords.row, .col = coords.col };
         }
@@ -439,6 +454,14 @@ pub const EditBuffer = struct {
                 // Delete the break segment
                 try self.tb.rope.delete(break_idx);
 
+                // Also remove the following linestart if present
+                // After deleting break_idx, the linestart that was at break_idx+1 is now at break_idx
+                if (self.tb.rope.get(break_idx)) |seg| {
+                    if (seg.isLineStart()) {
+                        try self.tb.rope.delete(break_idx);
+                    }
+                }
+
                 // Mark views dirty
                 self.tb.markViewsDirty();
 
@@ -521,6 +544,14 @@ pub const EditBuffer = struct {
             if (ctx.break_seg_idx) |break_idx| {
                 // Delete the break segment
                 try self.tb.rope.delete(break_idx);
+
+                // Also remove the following linestart if present
+                // After deleting break_idx, the linestart that was at break_idx+1 is now at break_idx
+                if (self.tb.rope.get(break_idx)) |seg| {
+                    if (seg.isLineStart()) {
+                        try self.tb.rope.delete(break_idx);
+                    }
+                }
 
                 // Mark views dirty
                 self.tb.markViewsDirty();

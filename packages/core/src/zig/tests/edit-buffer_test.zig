@@ -347,3 +347,145 @@ test "EditBuffer - delete range in long line with wrap offsets" {
     try std.testing.expect(result.len < long_text.len);
     try std.testing.expect(std.mem.startsWith(u8, result, "The quick brown fox "));
 }
+
+test "EditBuffer - backspace at BOL removes linestart marker" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3");
+
+    // Verify we have 3 lines
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Move to start of line 2
+    try eb.setCursor(1, 0);
+    try eb.backspace();
+
+    // Should merge to 2 lines
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1Line 2\nLine 3", out_buffer[0..written]);
+
+    // Cursor should be at end of previous line
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}
+
+test "EditBuffer - deleteForward at EOL removes linestart marker" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3");
+
+    // Verify we have 3 lines
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Move to end of line 1
+    try eb.setCursor(0, 6);
+    try eb.deleteForward();
+
+    // Should merge to 2 lines
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1Line 2\nLine 3", out_buffer[0..written]);
+
+    // Cursor should stay at same position
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}
+
+test "EditBuffer - insert wide Unicode characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert wide characters (東京 = 4 display width, 6 bytes)
+    try eb.insertText("Hello 東京 World");
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello 東京 World", out_buffer[0..written]);
+
+    // Cursor should account for wide character display width
+    // "Hello " = 6, "東京" = 4, " World" = 6 => total 16
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 16), cursor.col);
+}
+
+test "EditBuffer - delete wide Unicode characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("ABC東京DEF");
+
+    // "ABC" = 3 cols, "東" = 2, "京" = 2, "DEF" = 3
+    // Total: 3 + 2 + 2 + 3 = 10
+    // Delete from col 3 to col 7 (delete 東京)
+    try eb.deleteRange(.{ .row = 0, .col = 3 }, .{ .row = 0, .col = 7 });
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("ABCDEF", out_buffer[0..written]);
+
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 3), cursor.col);
+}
+
+test "EditBuffer - insert combining characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert text with combining diacritical marks (e + combining acute = é)
+    try eb.insertText("Cafe\u{0301}"); // Café with combining accent
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Cafe\u{0301}", out_buffer[0..written]);
+
+    // Cursor position should be 4 (combining mark doesn't add width)
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+}
