@@ -37,7 +37,7 @@ test "UnifiedTextBuffer - setText single line" {
 
     try testing.expectEqual(@as(u32, 13), tb.getLength());
     try testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try testing.expectEqual(@as(u32, 1), tb.rope.count()); // 1 text segment
+    try testing.expectEqual(@as(u32, 2), tb.rope.count()); // linestart + text segment
 
     // Verify we can extract the text back
     var out_buffer: [100]u8 = undefined;
@@ -62,7 +62,7 @@ test "UnifiedTextBuffer - setText multiple lines" {
 
     try testing.expectEqual(@as(u32, 18), tb.getLength()); // 6 + 6 + 6 chars
     try testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try testing.expectEqual(@as(u32, 5), tb.rope.count()); // 3 text + 2 breaks
+    try testing.expectEqual(@as(u32, 8), tb.rope.count()); // 3 linestart + 3 text + 2 breaks
 
     // Verify extraction
     var out_buffer: [100]u8 = undefined;
@@ -87,8 +87,8 @@ test "UnifiedTextBuffer - setText with trailing newline" {
 
     // Trailing newline creates an empty 3rd line (matches editor semantics)
     try testing.expectEqual(@as(u32, 3), tb.getLineCount()); // 3 lines (last is empty)
-    // Rope structure: [text "Line 1"] [break] [text "Line 2"] [break]
-    try testing.expectEqual(@as(u32, 4), tb.rope.count());
+    // Rope structure: [linestart] [text "Line 1"] [break] [linestart] [text "Line 2"] [break] [linestart]
+    try testing.expectEqual(@as(u32, 7), tb.rope.count());
 }
 
 test "UnifiedTextBuffer - setText empty text" {
@@ -106,7 +106,7 @@ test "UnifiedTextBuffer - setText empty text" {
 
     try testing.expectEqual(@as(u32, 0), tb.getLength());
     try testing.expectEqual(@as(u32, 1), tb.getLineCount()); // setText("") creates 1 empty line
-    try testing.expectEqual(@as(u32, 1), tb.rope.count()); // One empty text segment
+    try testing.expectEqual(@as(u32, 2), tb.rope.count()); // linestart + one empty text segment
 }
 
 test "UnifiedTextBuffer - line iteration" {

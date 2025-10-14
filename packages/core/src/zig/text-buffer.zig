@@ -284,7 +284,9 @@ pub const UnifiedTextBuffer = struct {
             // This matches editor semantics where an empty buffer has 1 empty line
             const mem_id = try self.mem_registry.register(&[_]u8{}, false);
             const empty_chunk = self.createChunk(mem_id, 0, 0);
+            try self.rope.append(Segment{ .linestart = {} });
             try self.rope.append(Segment{ .text = empty_chunk });
+            self.rope.rebuildMarkerIndex() catch return TextBufferError.OutOfMemory;
             self.markAllViewsDirty();
             return;
         }
@@ -296,11 +298,15 @@ pub const UnifiedTextBuffer = struct {
 
         try utf8.findLineBreaksSIMD16(text, &break_result);
 
-        // Build segments: [text] [break] [text] [break] ... [text]
+        // Build segments: [linestart] [text] [break] [linestart] [text] [break] ... [linestart] [text]
         var segments = std.ArrayList(Segment).init(self.allocator);
         defer segments.deinit();
 
         var line_start: u32 = 0;
+        var line_num: u32 = 0;
+
+        // First line starts at position 0
+        try segments.append(Segment{ .linestart = {} });
 
         for (break_result.breaks.items) |line_break| {
             const break_pos_u32: u32 = @intCast(line_break.pos);
@@ -320,6 +326,12 @@ pub const UnifiedTextBuffer = struct {
             try segments.append(Segment{ .brk = {} });
 
             line_start = break_pos_u32 + 1;
+            line_num += 1;
+
+            // Add linestart marker for next line (if there's more content)
+            if (line_start < text.len or line_start == text.len) {
+                try segments.append(Segment{ .linestart = {} });
+            }
         }
 
         // Handle final line (after last break, or entire text if no breaks)
@@ -327,12 +339,11 @@ pub const UnifiedTextBuffer = struct {
             const chunk = self.createChunk(mem_id, line_start, @intCast(text.len));
             try segments.append(Segment{ .text = chunk });
             self.char_count += chunk.width;
-        } else if (line_start == text.len and break_result.breaks.items.len > 0) {
-            // Empty final line after trailing newline - no segment needed
         }
 
-        // Build rope from segments
+        // Build rope from segments and rebuild marker index
         self.rope = try UnifiedRope.from_slice(self.allocator, segments.items);
+        self.rope.rebuildMarkerIndex() catch return TextBufferError.OutOfMemory;
 
         self.markAllViewsDirty();
     }
@@ -520,6 +531,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Compatibility: Get a specific line's info
     /// Returns a temporary struct that provides chunk access
+    /// TODO: get rid of this shit
     pub const LineCompat = struct {
         /// Chunks accessor for compatibility with buffer.zig
         pub const ChunksAccessor = struct {
@@ -579,23 +591,45 @@ pub const UnifiedTextBuffer = struct {
         }
     };
 
+    // TODO: should not be necessary to access a line like this
     pub fn getLine(self: *const Self, idx: u32) ?LineCompat {
-        const Context = struct {
-            buffer: *const UnifiedTextBuffer,
-            target_idx: u32,
-            result: ?LineCompat = null,
+        // Use linestart marker to get line start (O(1))
+        const linestart_marker = self.rope.getMarker(.linestart, idx) orelse return null;
+        const char_offset = linestart_marker.global_weight;
+        const seg_start = linestart_marker.leaf_index + 1; // Content starts after linestart marker
 
-            fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                if (line_info.line_idx == ctx.target_idx) {
-                    ctx.result = LineCompat.init(ctx.buffer, line_info);
-                }
+        // Use brk marker to get line end (O(1))
+        var seg_end: u32 = undefined;
+        var line_width: u32 = undefined;
+
+        if (self.rope.getMarker(.brk, idx)) |brk_marker| {
+            // This line has a break - use it to determine the end
+            seg_end = brk_marker.leaf_index; // Exclusive, don't include the break
+            line_width = brk_marker.global_weight - char_offset;
+        } else {
+            // Last line without a break - find where it ends
+            // Check if there's a next linestart marker
+            if (self.rope.getMarker(.linestart, idx + 1)) |next_linestart| {
+                seg_end = next_linestart.leaf_index; // Up to next line's start
+                line_width = next_linestart.global_weight - char_offset;
+            } else {
+                // This is the very last line - goes to end of rope
+                seg_end = self.rope.count();
+                // Calculate width by looking at total rope weight
+                line_width = self.rope.totalWeight() - char_offset;
             }
+        }
+
+        // Build LineInfo - all O(1) operations!
+        const line_info = LineInfo{
+            .line_idx = idx,
+            .char_offset = char_offset,
+            .width = line_width,
+            .seg_start = seg_start,
+            .seg_end = seg_end,
         };
 
-        var ctx = Context{ .buffer = self, .target_idx = idx };
-        iter_mod.walkLines(&self.rope, &ctx, Context.callback);
-        return ctx.result;
+        return LineCompat.init(self, line_info);
     }
 
     /// Walk all lines in order
