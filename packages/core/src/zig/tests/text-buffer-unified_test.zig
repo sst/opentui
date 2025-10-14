@@ -1,10 +1,10 @@
 const std = @import("std");
 const testing = std.testing;
-const unified_tb = @import("../text-buffer-unified.zig");
+const text_buffer = @import("../text-buffer.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 const gp = @import("../grapheme.zig");
 
-const UnifiedTextBuffer = unified_tb.UnifiedTextBuffer;
+const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
 
 test "UnifiedTextBuffer - init and deinit" {
     const pool = gp.initGlobalPool(testing.allocator);
@@ -18,7 +18,7 @@ test "UnifiedTextBuffer - init and deinit" {
     defer tb.deinit();
 
     try testing.expectEqual(@as(u32, 0), tb.getLength());
-    try testing.expectEqual(@as(u32, 1), tb.getLineCount()); // Empty rope = 1 line
+    try testing.expectEqual(@as(u32, 0), tb.getLineCount()); // Empty rope = 0 lines (use setText("") for 1 empty line)
 }
 
 test "UnifiedTextBuffer - setText single line" {
@@ -105,8 +105,8 @@ test "UnifiedTextBuffer - setText empty text" {
     try tb.setText("");
 
     try testing.expectEqual(@as(u32, 0), tb.getLength());
-    try testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try testing.expectEqual(@as(u32, 0), tb.rope.count());
+    try testing.expectEqual(@as(u32, 1), tb.getLineCount()); // setText("") creates 1 empty line
+    try testing.expectEqual(@as(u32, 1), tb.rope.count()); // One empty text segment
 }
 
 test "UnifiedTextBuffer - line iteration" {
@@ -218,7 +218,7 @@ test "UnifiedTextBuffer - reset" {
 
     tb.reset();
     try testing.expectEqual(@as(u32, 0), tb.getLength());
-    try testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try testing.expectEqual(@as(u32, 0), tb.getLineCount()); // After reset, truly empty (0 lines)
 }
 
 test "UnifiedTextBuffer - getLineInfo" {

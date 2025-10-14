@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const tb = @import("text-buffer.zig");
+const tb = @import("text-buffer-nested.zig");
 const rope_mod = @import("rope.zig");
 
 /// A segment in the unified rope - either text content or a line break marker

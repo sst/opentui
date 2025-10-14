@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const tb = @import("text-buffer.zig");
+const tb = @import("text-buffer-nested.zig");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const Graphemes = @import("Graphemes");

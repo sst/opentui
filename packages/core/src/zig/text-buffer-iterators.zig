@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
-const tb = @import("text-buffer.zig");
+const tb = @import("text-buffer-nested.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
@@ -34,15 +34,9 @@ pub fn walkLines(
     ctx: *anyopaque,
     callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
-    // Special case: empty rope
+    // Special case: empty rope - emit nothing (0 lines)
+    // setText("") will handle creating the single empty line
     if (rope.count() == 0) {
-        callback(ctx, LineInfo{
-            .line_idx = 0,
-            .char_offset = 0,
-            .width = 0,
-            .seg_start = 0,
-            .seg_end = 0,
-        });
         return;
     }
 
@@ -87,8 +81,12 @@ pub fn walkLines(
     };
     rope.walk(&walk_ctx, WalkContext.walker) catch {};
 
-    // Emit final line if we have any content
-    if (walk_ctx.line_start_seg < walk_ctx.current_seg_idx) {
+    // Emit final line if we have content after last break OR if we had at least one break
+    // (A trailing break creates an empty final line)
+    const had_breaks = walk_ctx.current_line_idx > 0;
+    const has_content_after_break = walk_ctx.line_start_seg < walk_ctx.current_seg_idx;
+
+    if (has_content_after_break or had_breaks) {
         callback(ctx, LineInfo{
             .line_idx = walk_ctx.current_line_idx,
             .char_offset = walk_ctx.current_char_offset,
@@ -110,15 +108,9 @@ pub fn walkLinesAndSegments(
     segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const tb.TextChunk, chunk_idx_in_line: u32) void,
     line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
-    // Special case: empty rope
+    // Special case: empty rope - emit nothing (0 lines)
+    // setText("") will handle creating the single empty line
     if (rope.count() == 0) {
-        line_end_callback(ctx, LineInfo{
-            .line_idx = 0,
-            .char_offset = 0,
-            .width = 0,
-            .seg_start = 0,
-            .seg_end = 0,
-        });
         return;
     }
 
@@ -170,8 +162,12 @@ pub fn walkLinesAndSegments(
     };
     rope.walk(&walk_ctx, WalkContext.walker) catch {};
 
-    // Emit final line if we have any content
-    if (walk_ctx.line_start_seg < walk_ctx.current_seg_idx) {
+    // Emit final line if we have content after last break OR if we had at least one break
+    // (A trailing break creates an empty final line)
+    const had_breaks = walk_ctx.current_line_idx > 0;
+    const has_content_after_break = walk_ctx.line_start_seg < walk_ctx.current_seg_idx;
+
+    if (has_content_after_break or had_breaks) {
         line_end_callback(ctx, LineInfo{
             .line_idx = walk_ctx.current_line_idx,
             .char_offset = walk_ctx.current_char_offset,

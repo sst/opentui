@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 const iter_mod = @import("../text-buffer-iterators.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
-const tb = @import("../text-buffer.zig");
+const tb = @import("../text-buffer-nested.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
@@ -32,10 +32,8 @@ test "walkLines - empty rope" {
     var ctx = Context{};
     iter_mod.walkLines(&rope, &ctx, Context.callback);
 
-    try testing.expectEqual(@as(u32, 1), ctx.count);
-    try testing.expect(ctx.first_line != null);
-    try testing.expectEqual(@as(u32, 0), ctx.first_line.?.line_idx);
-    try testing.expectEqual(@as(u32, 0), ctx.first_line.?.width);
+    // Empty rope = 0 lines (caller should use setText("") to create 1 empty line)
+    try testing.expectEqual(@as(u32, 0), ctx.count);
 }
 
 test "walkLines - single text segment" {

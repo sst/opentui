@@ -1,12 +1,11 @@
 const std = @import("std");
 const testing = std.testing;
-const unified_tb = @import("../text-buffer-unified.zig");
-const unified_view = @import("../text-buffer-view-unified.zig");
 const text_buffer = @import("../text-buffer.zig");
+const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
-const UnifiedTextBuffer = unified_tb.UnifiedTextBuffer;
-const UnifiedTextBufferView = unified_view.UnifiedTextBufferView;
+const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
+const UnifiedTextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = text_buffer.RGBA;
 
 test "UnifiedTextBufferView - init and deinit" {

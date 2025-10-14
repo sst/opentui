@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 const seg_mod = @import("../text-buffer-segment.zig");
-const tb = @import("../text-buffer.zig");
+const tb = @import("../text-buffer-nested.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
