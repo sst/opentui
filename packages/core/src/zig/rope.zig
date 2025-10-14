@@ -645,7 +645,7 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn walk_from(self: *const Self, start_index: u32, ctx: *anyopaque, f: Node.WalkerFn) !void {
-            var current_index: u32 = start_index;
+            var current_index: u32 = 0;
             const result = self.walkFromNode(self.root, start_index, ctx, f, &current_index);
             if (result.err) |e| return e;
         }
