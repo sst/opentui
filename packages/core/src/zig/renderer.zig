@@ -216,8 +216,8 @@ pub const CliRenderer = struct {
             .hitGridHeight = height,
         };
 
-        try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, CLEAR_CHAR);
-        try nextBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, null);
+        try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
+        try nextBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null);
 
         return self;
     }
@@ -386,7 +386,7 @@ pub const CliRenderer = struct {
         try self.nextRenderBuffer.resize(width, height);
 
         try self.currentRenderBuffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, CLEAR_CHAR);
-        try self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, null);
+        try self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null);
 
         const newHitGridSize = width * height;
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
@@ -589,9 +589,16 @@ pub const CliRenderer = struct {
                     const bgR = rgbaComponentToU8(cell.bg[0]);
                     const bgG = rgbaComponentToU8(cell.bg[1]);
                     const bgB = rgbaComponentToU8(cell.bg[2]);
+                    const bgA = cell.bg[3];
 
                     ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
-                    ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+
+                    // If alpha is 0 (transparent), use terminal default background instead of black
+                    if (bgA < 0.001) {
+                        writer.writeAll("\x1b[49m") catch {};
+                    } else {
+                        ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+                    }
 
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
@@ -686,7 +693,7 @@ pub const CliRenderer = struct {
         self.renderStats.cellsUpdated = cellsUpdated;
         self.renderStats.renderTime = renderTime;
 
-        self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 }, null) catch {};
+        self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
         const temp = self.currentHitGrid;
         self.currentHitGrid = self.nextHitGrid;

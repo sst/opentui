@@ -8,7 +8,7 @@ export const App = () => {
   const [password, setPassword] = useState("")
   const [focused, setFocused] = useState<"username" | "password">("username")
   const [status, setStatus] = useState<"idle" | "invalid" | "success">("idle")
-
+  renderer.setBackgroundColor("transparent")
   useKeyboard((key) => {
     if (key.name === "tab") {
       setFocused((prevFocused) => (prevFocused === "username" ? "password" : "username"))

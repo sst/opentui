@@ -128,6 +128,45 @@ if [ "$LINK_REACT" = true ]; then
     else
         echo "Warning: $REACT_PATH not found"
     fi
+
+    # Only link react, react-dom, and react-reconciler when not in copy mode
+    if [ "$COPY_MODE" = false ]; then
+        # Link react
+        remove_if_exists "$NODE_MODULES_DIR/react"
+        if [ -d "$OPENTUI_ROOT/node_modules/react" ]; then
+            ln -s "$OPENTUI_ROOT/node_modules/react" "$NODE_MODULES_DIR/react"
+            echo "✓ Linked react"
+        elif [ -d "$OPENTUI_ROOT/packages/react/node_modules/react" ]; then
+            ln -s "$OPENTUI_ROOT/packages/react/node_modules/react" "$NODE_MODULES_DIR/react"
+            echo "✓ Linked react (from packages/react/node_modules)"
+        else
+            echo "Warning: react not found in OpenTUI node_modules"
+        fi
+
+        # Link react-dom
+        remove_if_exists "$NODE_MODULES_DIR/react-dom"
+        if [ -d "$OPENTUI_ROOT/node_modules/react-dom" ]; then
+            ln -s "$OPENTUI_ROOT/node_modules/react-dom" "$NODE_MODULES_DIR/react-dom"
+            echo "✓ Linked react-dom"
+        elif [ -d "$OPENTUI_ROOT/packages/react/node_modules/react-dom" ]; then
+            ln -s "$OPENTUI_ROOT/packages/react/node_modules/react-dom" "$NODE_MODULES_DIR/react-dom"
+            echo "✓ Linked react-dom (from packages/react/node_modules)"
+        else
+            echo "Warning: react-dom not found in OpenTUI node_modules"
+        fi
+
+        # Link react-reconciler
+        remove_if_exists "$NODE_MODULES_DIR/react-reconciler"
+        if [ -d "$OPENTUI_ROOT/node_modules/react-reconciler" ]; then
+            ln -s "$OPENTUI_ROOT/node_modules/react-reconciler" "$NODE_MODULES_DIR/react-reconciler"
+            echo "✓ Linked react-reconciler"
+        elif [ -d "$OPENTUI_ROOT/packages/react/node_modules/react-reconciler" ]; then
+            ln -s "$OPENTUI_ROOT/packages/react/node_modules/react-reconciler" "$NODE_MODULES_DIR/react-reconciler"
+            echo "✓ Linked react-reconciler (from packages/react/node_modules)"
+        else
+            echo "Warning: react-reconciler not found in OpenTUI node_modules"
+        fi
+    fi
 fi
 
 # Link Solid and solid-js if requested

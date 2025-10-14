@@ -514,5 +514,5 @@ const renderer = await createCliRenderer({
   // useAlternateScreen: false,
 })
 
-renderer.setBackgroundColor("#001122")
+renderer.setBackgroundColor("transparent")
 new ExampleSelector(renderer)
