@@ -286,7 +286,6 @@ pub const UnifiedTextBuffer = struct {
             const empty_chunk = self.createChunk(mem_id, 0, 0);
             try self.rope.append(Segment{ .linestart = {} });
             try self.rope.append(Segment{ .text = empty_chunk });
-            self.rope.rebuildMarkerIndex() catch return TextBufferError.OutOfMemory;
             self.markAllViewsDirty();
             return;
         }
@@ -341,9 +340,8 @@ pub const UnifiedTextBuffer = struct {
             self.char_count += chunk.width;
         }
 
-        // Build rope from segments and rebuild marker index
+        // Build rope from segments
         self.rope = try UnifiedRope.from_slice(self.allocator, segments.items);
-        self.rope.rebuildMarkerIndex() catch return TextBufferError.OutOfMemory;
 
         self.markAllViewsDirty();
     }

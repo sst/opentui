@@ -78,9 +78,9 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 1000, 10);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 1000, 10);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -88,7 +88,7 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             total_ns += elapsed;
         }
 
-        const name = try std.fmt.allocPrint(allocator, "Rebuild index: 1k tokens, marker every 10 (~100 markers)", .{});
+        const name = try std.fmt.allocPrint(allocator, "Create rope with markers: 1k tokens, marker every 10 (~100 markers)", .{});
         try results.append(BenchResult{
             .name = name,
             .min_ns = min_ns,
@@ -111,9 +111,9 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 1000, 100);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 1000, 100);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -144,9 +144,9 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 10000, 10);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 10000, 10);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -177,9 +177,9 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 10000, 100);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 10000, 100);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -210,9 +210,9 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 50000, 50);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 50000, 50);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -243,9 +243,9 @@ fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 100000, 200);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 100000, 200);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -283,7 +283,7 @@ fn benchMarkerLookup(allocator: std.mem.Allocator, iterations: usize) ![]BenchRe
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 1000, 10);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;
@@ -321,7 +321,7 @@ fn benchMarkerLookup(allocator: std.mem.Allocator, iterations: usize) ![]BenchRe
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 10000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;
@@ -359,7 +359,7 @@ fn benchMarkerLookup(allocator: std.mem.Allocator, iterations: usize) ![]BenchRe
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 50000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
             const marker_count = rope.markerCount(.marker);
 
             var prng = std.Random.DefaultPrng.init(42);
@@ -402,7 +402,7 @@ fn benchMarkerLookup(allocator: std.mem.Allocator, iterations: usize) ![]BenchRe
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 10000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
             const marker_count = rope.markerCount(.marker);
 
             var timer = try std.time.Timer.start();
@@ -447,7 +447,7 @@ fn benchMarkerCount(allocator: std.mem.Allocator, iterations: usize) ![]BenchRes
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 10000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
 
             var timer = try std.time.Timer.start();
             var i: u32 = 0;
@@ -490,9 +490,9 @@ fn benchDepthVsPerformance(allocator: std.mem.Allocator, iterations: usize) ![]B
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 10000, 50);
+            _ = rope; // Markers are automatically indexed during rope creation
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -500,7 +500,7 @@ fn benchDepthVsPerformance(allocator: std.mem.Allocator, iterations: usize) ![]B
             total_ns += elapsed;
         }
 
-        const name = try std.fmt.allocPrint(allocator, "Rebuild on BALANCED tree: 10k tokens, ~200 markers", .{});
+        const name = try std.fmt.allocPrint(allocator, "Create BALANCED tree with markers: 10k tokens, ~200 markers", .{});
         try results.append(BenchResult{
             .name = name,
             .min_ns = min_ns,
@@ -534,7 +534,7 @@ fn benchDepthVsPerformance(allocator: std.mem.Allocator, iterations: usize) ![]B
             }
 
             var timer = try std.time.Timer.start();
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -572,7 +572,7 @@ fn benchEditThenRebuild(allocator: std.mem.Allocator, iterations: usize) ![]Benc
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 10000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
 
             var timer = try std.time.Timer.start();
             // Simulate typing at line 50
@@ -585,7 +585,7 @@ fn benchEditThenRebuild(allocator: std.mem.Allocator, iterations: usize) ![]Benc
             try rope.insert(insert_pos + 2, .{ .text = 10 });
 
             // Rebuild index after edit
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -617,12 +617,12 @@ fn benchEditThenRebuild(allocator: std.mem.Allocator, iterations: usize) ![]Benc
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 10000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
 
             var timer = try std.time.Timer.start();
             // Insert new line (marker) at position 100
             try rope.insert(100, .{ .marker = {} });
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -654,13 +654,13 @@ fn benchEditThenRebuild(allocator: std.mem.Allocator, iterations: usize) ![]Benc
             defer arena.deinit();
 
             var rope = try createRope(arena.allocator(), 10000, 50);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
 
             var timer = try std.time.Timer.start();
             // Delete marker at position
             const marker_pos = rope.getMarker(.marker, 50).?.leaf_index;
             try rope.delete(marker_pos);
-            try rope.rebuildMarkerIndex();
+            // Markers are automatically indexed in the tree structure
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -730,8 +730,8 @@ fn benchMemoryUsage(allocator: std.mem.Allocator, iterations: usize) ![]BenchRes
             var arena = std.heap.ArenaAllocator.init(allocator);
             defer arena.deinit();
 
-            var rope = try createRope(arena.allocator(), 50000, 50);
-            try rope.rebuildMarkerIndex();
+            const rope = try createRope(arena.allocator(), 50000, 50);
+            _ = rope; // Markers are automatically indexed in the tree structure
 
             const elapsed: u64 = 0; // Placeholder for memory measurement
 

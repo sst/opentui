@@ -379,13 +379,11 @@ const Line = struct {
 
     pub fn empty() Line {
         // Use static empty chunk rope - safe because it's immutable
-        const ChunkRope = rope_mod.Rope(Chunk);
         return .{
             .chunks = .{
                 .root = &empty_chunk_leaf_node,
                 .allocator = undefined, // Never used for empty
                 .empty_leaf = &empty_chunk_leaf_node,
-                .markers = ChunkRope.MarkerTracker.init(undefined),
             },
             .line_id = 0,
         };
@@ -2435,7 +2433,6 @@ test "Rope - automatic marker tracking with union type" {
     };
 
     var rope = try RopeType.from_slice(arena.allocator(), &tokens);
-    try rope.rebuildMarkerIndex();
 
     // O(1) lookup: find newline markers (only .newline is tracked, not .word or .space)
     try std.testing.expectEqual(@as(u32, 2), rope.markerCount(.newline));
@@ -2481,12 +2478,7 @@ test "Rope - marker tracking requires rebuild" {
 
     var rope = try RopeType.from_slice(arena.allocator(), &tokens);
 
-    // Before rebuilding - should return 0/null
-    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.newline));
-    try std.testing.expect(rope.getMarker(.newline, 0) == null);
-
-    // After rebuilding - should find markers
-    try rope.rebuildMarkerIndex();
+    // Markers are automatically tracked in the tree
     try std.testing.expectEqual(@as(u32, 1), rope.markerCount(.newline));
     try std.testing.expect(rope.getMarker(.newline, 0) != null);
 }
@@ -2507,7 +2499,6 @@ test "Rope - marker tracking with many markers" {
     }
 
     var rope = try RopeType.from_slice(arena.allocator(), &tokens_array);
-    try rope.rebuildMarkerIndex();
 
     // Should have 99 newlines (only newlines are tracked as markers)
     try std.testing.expectEqual(@as(u32, 99), rope.markerCount(.newline));
