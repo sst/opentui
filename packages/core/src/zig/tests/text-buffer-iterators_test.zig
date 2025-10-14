@@ -359,3 +359,219 @@ test "coordsToOffset and offsetToCoords - round trip" {
         try testing.expectEqual(tc.col, coords.?.col);
     }
 }
+
+//===== Fast (Marker-Optimized) Coordinate Conversion Tests =====
+
+test "coordsToOffsetFast - matches original implementation" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 10,
+            .width = 10,
+            .flags = 0,
+        },
+    });
+    try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 10,
+            .byte_end = 15,
+            .width = 5,
+            .flags = 0,
+        },
+    });
+    try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 15,
+            .byte_end = 23,
+            .width = 8,
+            .flags = 0,
+        },
+    });
+
+    try rope.rebuildMarkerIndex();
+
+    // Test various coordinates
+    const test_cases = [_]struct { row: u32, col: u32 }{
+        .{ .row = 0, .col = 0 },
+        .{ .row = 0, .col = 5 },
+        .{ .row = 0, .col = 10 },
+        .{ .row = 1, .col = 0 },
+        .{ .row = 1, .col = 5 },
+        .{ .row = 2, .col = 0 },
+        .{ .row = 2, .col = 4 },
+        .{ .row = 2, .col = 8 },
+    };
+
+    for (test_cases) |tc| {
+        const offset_orig = iter_mod.coordsToOffset(&rope, tc.row, tc.col);
+        const offset_fast = iter_mod.coordsToOffsetFast(&rope, tc.row, tc.col);
+
+        try testing.expectEqual(offset_orig, offset_fast);
+    }
+}
+
+test "offsetToCoordsFast - matches original implementation" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 10,
+            .width = 10,
+            .flags = 0,
+        },
+    });
+    try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 10,
+            .byte_end = 15,
+            .width = 5,
+            .flags = 0,
+        },
+    });
+    try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 15,
+            .byte_end = 23,
+            .width = 8,
+            .flags = 0,
+        },
+    });
+
+    try rope.rebuildMarkerIndex();
+
+    // Test various offsets
+    const offsets = [_]u32{ 0, 1, 5, 9, 10, 11, 14, 15, 16, 20, 23 };
+
+    for (offsets) |offset| {
+        const coords_orig = iter_mod.offsetToCoords(&rope, offset);
+        const coords_fast = iter_mod.offsetToCoordsFast(&rope, offset);
+
+        try testing.expectEqual(coords_orig, coords_fast);
+    }
+}
+
+test "coordsToOffsetFast - single line document" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 20,
+            .width = 20,
+            .flags = 0,
+        },
+    });
+
+    try rope.rebuildMarkerIndex();
+
+    // Test on single line
+    const offset1 = iter_mod.coordsToOffsetFast(&rope, 0, 10);
+    try testing.expectEqual(@as(u32, 10), offset1.?);
+
+    const offset2 = iter_mod.coordsToOffsetFast(&rope, 0, 20);
+    try testing.expectEqual(@as(u32, 20), offset2.?);
+
+    // Out of bounds
+    const offset_oob = iter_mod.coordsToOffsetFast(&rope, 1, 0);
+    try testing.expect(offset_oob == null);
+}
+
+test "offsetToCoordsFast - single line document" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 20,
+            .width = 20,
+            .flags = 0,
+        },
+    });
+
+    try rope.rebuildMarkerIndex();
+
+    const coords1 = iter_mod.offsetToCoordsFast(&rope, 10);
+    try testing.expect(coords1 != null);
+    try testing.expectEqual(@as(u32, 0), coords1.?.row);
+    try testing.expectEqual(@as(u32, 10), coords1.?.col);
+
+    const coords2 = iter_mod.offsetToCoordsFast(&rope, 20);
+    try testing.expect(coords2 != null);
+    try testing.expectEqual(@as(u32, 0), coords2.?.row);
+    try testing.expectEqual(@as(u32, 20), coords2.?.col);
+}
+
+test "fast coordinate conversion - round trip" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 10,
+            .width = 10,
+            .flags = 0,
+        },
+    });
+    try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 10,
+            .byte_end = 18,
+            .width = 8,
+            .flags = 0,
+        },
+    });
+
+    try rope.rebuildMarkerIndex();
+
+    const test_cases = [_]struct { row: u32, col: u32 }{
+        .{ .row = 0, .col = 0 },
+        .{ .row = 0, .col = 5 },
+        .{ .row = 0, .col = 9 },
+        .{ .row = 1, .col = 0 },
+        .{ .row = 1, .col = 4 },
+        .{ .row = 1, .col = 7 },
+    };
+
+    for (test_cases) |tc| {
+        const offset = iter_mod.coordsToOffsetFast(&rope, tc.row, tc.col);
+        try testing.expect(offset != null);
+
+        const coords = iter_mod.offsetToCoordsFast(&rope, offset.?);
+        try testing.expect(coords != null);
+        try testing.expectEqual(tc.row, coords.?.row);
+        try testing.expectEqual(tc.col, coords.?.col);
+    }
+}

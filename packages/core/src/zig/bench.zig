@@ -6,6 +6,7 @@ const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
 const edit_buffer_bench = @import("bench/edit-buffer_bench.zig");
 const rope_bench = @import("bench/rope_bench.zig");
 const rope_markers_bench = @import("bench/rope-markers_bench.zig");
+const text_buffer_coords_bench = @import("bench/text-buffer-coords_bench.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -44,6 +45,11 @@ pub fn main() !void {
     const rope_markers_results = try rope_markers_bench.run(allocator, show_mem);
     defer allocator.free(rope_markers_results);
     try bench_utils.printResults(stdout, rope_markers_results);
+
+    try stdout.print("\n=== TextBuffer Coordinate Conversion Benchmarks ===\n\n", .{});
+    const coords_results = try text_buffer_coords_bench.run(allocator, show_mem);
+    defer allocator.free(coords_results);
+    try bench_utils.printResults(stdout, coords_results);
 
     try stdout.print("\n✓ Benchmarks complete\n", .{});
 }

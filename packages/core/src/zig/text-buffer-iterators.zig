@@ -246,6 +246,119 @@ pub fn coordsToOffset(rope: *const UnifiedRope, row: u32, col: u32) ?u32 {
     return ctx.result;
 }
 
+/// Convert (row, col) coordinates to absolute character offset using marker index
+/// O(1) marker lookup + O(segments in line) walk
+/// Much faster than coordsToOffset for large documents
+pub fn coordsToOffsetFast(rope: *const UnifiedRope, row: u32, col: u32) ?u32 {
+    // Fast path: use marker index if available
+    const line_count = getLineCount(rope);
+    if (row >= line_count) return null;
+
+    // Line 0 special case - start from beginning
+    if (row == 0) {
+        return coordsToOffsetFromStart(rope, col);
+    }
+
+    // Get the line break marker for row - 1 (the break BEFORE our target line)
+    const marker_pos = rope.getMarker(.brk, row - 1) orelse return null;
+    const line_start_seg = marker_pos.leaf_index + 1; // Start after the break
+    const line_start_offset = marker_pos.global_weight;
+
+    // Walk from the line start to accumulate width until we hit next break or end
+    const Context = struct {
+        line_start_seg: u32,
+        col: u32,
+        current_width: u32 = 0,
+        result: ?u32 = null,
+        line_start_offset: u32,
+
+        fn walker(ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+            // Are we in the target line?
+            if (idx < ctx.line_start_seg) return .{};
+
+            // Hit a break? Line ended
+            if (seg.isBreak()) {
+                // Column is beyond line end
+                if (ctx.col > ctx.current_width) {
+                    ctx.result = null;
+                } else {
+                    ctx.result = ctx.line_start_offset + ctx.col;
+                }
+                return .{ .keep_walking = false };
+            }
+
+            // Accumulate text width
+            if (seg.asText()) |chunk| {
+                ctx.current_width += chunk.width;
+
+                // Check if we've accumulated enough
+                if (ctx.current_width >= ctx.col) {
+                    ctx.result = ctx.line_start_offset + ctx.col;
+                    return .{ .keep_walking = false };
+                }
+            }
+
+            return .{};
+        }
+    };
+
+    var ctx = Context{
+        .line_start_seg = line_start_seg,
+        .col = col,
+        .line_start_offset = line_start_offset,
+    };
+    rope.walk_from(line_start_seg, &ctx, Context.walker) catch return null;
+
+    // If we didn't find result yet, col is at or past line end
+    if (ctx.result == null and ctx.col <= ctx.current_width) {
+        return line_start_offset + ctx.col;
+    }
+
+    return ctx.result;
+}
+
+/// Helper for line 0
+fn coordsToOffsetFromStart(rope: *const UnifiedRope, col: u32) ?u32 {
+    const Context = struct {
+        col: u32,
+        current_width: u32 = 0,
+        result: ?u32 = null,
+
+        fn walker(ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
+            _ = idx;
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+            if (seg.isBreak()) {
+                if (ctx.col <= ctx.current_width) {
+                    ctx.result = ctx.col;
+                }
+                return .{ .keep_walking = false };
+            }
+
+            if (seg.asText()) |chunk| {
+                ctx.current_width += chunk.width;
+                if (ctx.current_width >= ctx.col) {
+                    ctx.result = ctx.col;
+                    return .{ .keep_walking = false };
+                }
+            }
+
+            return .{};
+        }
+    };
+
+    var ctx = Context{ .col = col };
+    rope.walk(&ctx, Context.walker) catch return null;
+
+    if (ctx.result == null and ctx.col <= ctx.current_width) {
+        return ctx.col;
+    }
+
+    return ctx.result;
+}
+
 /// Convert absolute character offset to (row, col) coordinates
 /// Returns null if offset is out of bounds
 /// Note: Offsets at line boundaries belong to the START of the next line,
@@ -284,6 +397,104 @@ pub fn offsetToCoords(rope: *const UnifiedRope, offset: u32) ?Coords {
                 .row = line_info.line_idx,
                 .col = line_info.width,
             };
+        }
+    }
+
+    return ctx.result;
+}
+
+/// Convert absolute character offset to (row, col) coordinates using marker index
+/// O(log lines) binary search on markers + O(segments in line) walk
+/// Much faster than offsetToCoords for large documents
+pub fn offsetToCoordsFast(rope: *const UnifiedRope, offset: u32) ?Coords {
+    const line_count = getLineCount(rope);
+    if (line_count == 0) return null;
+
+    const marker_count = rope.markerCount(.brk);
+    if (marker_count == 0) {
+        // Single line document
+        const total_width = getTotalWidth(rope);
+        if (offset > total_width) return null;
+        return Coords{ .row = 0, .col = offset };
+    }
+
+    // Binary search to find the last marker whose position is <= offset
+    var target_line: u32 = 0;
+    var line_start_offset: u32 = 0;
+    var line_start_seg: u32 = 0;
+
+    var left: u32 = 0;
+    var right: u32 = marker_count;
+    var result_idx: ?u32 = null;
+
+    while (left < right) {
+        const mid = left + (right - left) / 2;
+        const marker = rope.getMarker(.brk, mid) orelse break;
+
+        if (marker.global_weight <= offset) {
+            result_idx = mid;
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+
+    // If we found a marker <= offset, we're on the line after it
+    if (result_idx) |idx| {
+        const marker = rope.getMarker(.brk, idx) orelse return null;
+        target_line = idx + 1;
+        line_start_offset = marker.global_weight;
+        line_start_seg = marker.leaf_index + 1;
+    }
+
+    // Walk from line start to find exact column
+    const Context = struct {
+        line_start_seg: u32,
+        target_offset: u32,
+        line_start_offset: u32,
+        current_width: u32 = 0,
+        target_row: u32,
+        result: ?Coords = null,
+
+        fn walker(ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+            if (idx < ctx.line_start_seg) return .{};
+
+            if (seg.isBreak()) {
+                // Offset is within this line
+                const col = ctx.target_offset - ctx.line_start_offset;
+                if (col <= ctx.current_width) {
+                    ctx.result = Coords{ .row = ctx.target_row, .col = col };
+                } else {
+                    // Offset is at the line break itself - belongs to next line
+                    ctx.result = Coords{ .row = ctx.target_row + 1, .col = 0 };
+                }
+                return .{ .keep_walking = false };
+            }
+
+            if (seg.asText()) |chunk| {
+                ctx.current_width += chunk.width;
+            }
+
+            return .{};
+        }
+    };
+
+    var ctx = Context{
+        .line_start_seg = line_start_seg,
+        .target_offset = offset,
+        .line_start_offset = line_start_offset,
+        .target_row = target_line,
+    };
+
+    rope.walk_from(line_start_seg, &ctx, Context.walker) catch return null;
+
+    // If we hit end of rope, check if offset is within last line
+    if (ctx.result == null) {
+        const col = offset - line_start_offset;
+        if (col <= ctx.current_width) {
+            return Coords{ .row = target_line, .col = col };
         }
     }
 
