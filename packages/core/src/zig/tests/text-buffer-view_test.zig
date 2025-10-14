@@ -2663,11 +2663,6 @@ test "TextBufferView accessor methods - with wrapping" {
 
     // Get real line count - should be 1
     try std.testing.expectEqual(@as(u32, 1), tb.lineCount());
-
-    // Verify virtual chunks reference the real line
-    for (virtual_lines[0].chunks.items) |vchunk| {
-        try std.testing.expectEqual(@as(usize, 0), vchunk.source_line);
-    }
 }
 
 // ===== Virtual Line Relationship Tests =====

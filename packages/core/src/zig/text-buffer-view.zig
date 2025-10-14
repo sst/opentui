@@ -20,11 +20,10 @@ pub const TextBufferViewError = error{
 
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
-    source_line: usize,
     source_chunk: usize,
     grapheme_start: u32, // Index into cached graphemes
     grapheme_count: u32, // Number of grapheme clusters
-    width: u32,
+    width: u16,
 };
 
 /// A virtual line represents a display line after text wrapping
@@ -273,7 +272,6 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
                             fn chunkWalker(chunk_ctx_ptr: *anyopaque, chunk: *const tb.TextChunk, chunk_idx: u32) ChunkStorage.Node.WalkerResult {
                                 const chunk_ctx = @as(*@This(), @ptrCast(@alignCast(chunk_ctx_ptr)));
                                 chunk_ctx.vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
-                                    .source_line = chunk_ctx.line_idx,
                                     .source_chunk = chunk_idx,
                                     .grapheme_start = 0,
                                     .grapheme_count = chunk.width,
@@ -345,11 +343,10 @@ pub fn TextBufferView(comptime LineStorage: type, comptime ChunkStorage: type) t
 
                             fn addVirtualChunk(chunk_ctx: *@This(), chunk_idx: u32, start: u32, count: u32, width: u32) void {
                                 chunk_ctx.current_vline.chunks.append(chunk_ctx.virtual_allocator, VirtualChunk{
-                                    .source_line = chunk_ctx.line_idx,
                                     .source_chunk = chunk_idx,
                                     .grapheme_start = start,
                                     .grapheme_count = count,
-                                    .width = width,
+                                    .width = @intCast(width),
                                 }) catch {};
                                 chunk_ctx.global_char_offset.* += count;
                                 chunk_ctx.line_position.* += width;
