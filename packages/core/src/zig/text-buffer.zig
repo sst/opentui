@@ -781,4 +781,57 @@ pub const UnifiedTextBuffer = struct {
             span_list.clearRetainingCapacity();
         }
     }
+
+    /// Styled text chunk for setStyledText
+    pub const StyledChunk = struct {
+        text: []const u8,
+        fg: ?RGBA,
+        bg: ?RGBA,
+        attributes: u8,
+    };
+
+    /// Set styled text from multiple chunks with individual styling
+    pub fn setStyledText(self: *Self, chunks: []const StyledChunk) TextBufferError!void {
+        if (chunks.len == 0) {
+            self.reset();
+            return;
+        }
+
+        // Concatenate all chunk texts to get the full text
+        var total_len: usize = 0;
+        for (chunks) |chunk| {
+            total_len += chunk.text.len;
+        }
+
+        const full_text = self.allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
+        defer self.allocator.free(full_text);
+
+        var offset: usize = 0;
+        for (chunks) |chunk| {
+            @memcpy(full_text[offset .. offset + chunk.text.len], chunk.text);
+            offset += chunk.text.len;
+        }
+
+        // Set the full text
+        try self.setText(full_text);
+
+        // Apply styling if we have a syntax style
+        if (self.syntax_style) |style| {
+            var char_pos: u32 = 0;
+            for (chunks, 0..) |chunk, i| {
+                const chunk_len = self.measureText(chunk.text);
+
+                if (chunk_len > 0) {
+                    // Register style for this chunk
+                    const style_name = std.fmt.allocPrint(self.allocator, "chunk{d}", .{i}) catch continue;
+                    const style_id = (@constCast(style)).registerStyle(style_name, chunk.fg, chunk.bg, chunk.attributes) catch continue;
+
+                    // Add highlight for this chunk's range
+                    self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, null) catch {};
+                }
+
+                char_pos += chunk_len;
+            }
+        }
+    }
 };

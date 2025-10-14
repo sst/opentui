@@ -436,50 +436,23 @@ export fn textBufferSetStyledText(
 ) void {
     if (chunkCount == 0) return;
 
-    const chunks = chunksPtr[0..chunkCount];
+    const ffi_chunks = chunksPtr[0..chunkCount];
 
-    // First, concatenate all chunk texts to get the full text
-    var total_len: usize = 0;
-    for (chunks) |chunk| {
-        total_len += chunk.text_len;
+    // Convert FFI chunks to internal format
+    const internal_chunks = globalArena.alloc(text_buffer.UnifiedTextBuffer.StyledChunk, chunkCount) catch return;
+    defer globalArena.free(internal_chunks);
+
+    for (ffi_chunks, 0..) |chunk, i| {
+        internal_chunks[i] = .{
+            .text = chunk.text_ptr[0..chunk.text_len],
+            .fg = if (chunk.fg_ptr) |fgPtr| f32PtrToRGBA(fgPtr) else null,
+            .bg = if (chunk.bg_ptr) |bgPtr| f32PtrToRGBA(bgPtr) else null,
+            .attributes = chunk.attributes,
+        };
     }
 
-    const full_text = globalArena.alloc(u8, total_len) catch return;
-    defer globalArena.free(full_text);
-
-    var offset: usize = 0;
-    for (chunks) |chunk| {
-        const chunk_text = chunk.text_ptr[0..chunk.text_len];
-        @memcpy(full_text[offset .. offset + chunk.text_len], chunk_text);
-        offset += chunk.text_len;
-    }
-
-    // Set the full text
-    tb.setText(full_text) catch return;
-
-    // Clear all highlights
-    tb.clearAllHighlights();
-
-    if (tb.syntax_style) |style| {
-        var char_pos: u32 = 0;
-        for (chunks, 0..) |chunk, i| {
-            const chunk_len = tb.measureText(chunk.text_ptr[0..chunk.text_len]);
-
-            if (chunk_len > 0) {
-                // Register style for this chunk
-                const fg = if (chunk.fg_ptr) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-                const bg = if (chunk.bg_ptr) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-
-                const style_name = std.fmt.allocPrint(globalArena, "chunk{d}", .{i}) catch continue;
-                const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
-
-                // Add highlight for this chunk's range
-                tb.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, null) catch {};
-            }
-
-            char_pos += chunk_len;
-        }
-    }
+    // Delegate to TextBuffer method
+    tb.setStyledText(internal_chunks) catch {};
 }
 
 export fn textBufferGetLineCount(tb: *text_buffer.TextBufferArray) u32 {
