@@ -231,23 +231,24 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn reset(self: *Self) void {
+        // Clear highlight caches BEFORE resetting arena (they use arena allocator)
+        for (self.line_highlights.items) |*hl_list| {
+            hl_list.clearRetainingCapacity();
+        }
+        self.line_highlights.clearRetainingCapacity();
+
+        for (self.line_spans.items) |*span_list| {
+            span_list.clearRetainingCapacity();
+        }
+        self.line_spans.clearRetainingCapacity();
+
+        // Now reset the arena (frees all the internal memory)
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.mem_registry.clear();
         self.char_count = 0;
 
         self.rope = UnifiedRope.init(self.allocator) catch return;
-
-        // Clear highlight caches
-        for (self.line_highlights.items) |*hl_list| {
-            hl_list.deinit(self.allocator);
-        }
-        self.line_highlights.clearRetainingCapacity();
-
-        for (self.line_spans.items) |*span_list| {
-            span_list.deinit(self.allocator);
-        }
-        self.line_spans.clearRetainingCapacity();
 
         self.markAllViewsDirty();
     }
@@ -281,7 +282,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
-        self.reset();
+        self.reset(); // reset() already clears highlights
 
         if (text.len == 0) {
             // Empty buffer - create one empty text segment to represent the single empty line
@@ -612,7 +613,16 @@ pub const UnifiedTextBuffer = struct {
         }
     }
 
-    // Highlight support - to be implemented in next phase
+    // Highlight system
+    fn ensureLineHighlightStorage(self: *Self, line_idx: usize) TextBufferError!void {
+        while (self.line_highlights.items.len <= line_idx) {
+            try self.line_highlights.append(self.allocator, .{});
+        }
+        while (self.line_spans.items.len <= line_idx) {
+            try self.line_spans.append(self.allocator, .{});
+        }
+    }
+
     pub fn addHighlight(
         self: *Self,
         line_idx: usize,
@@ -622,26 +632,116 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: ?u16,
     ) TextBufferError!void {
-        _ = self;
-        _ = line_idx;
-        _ = col_start;
-        _ = col_end;
-        _ = style_id;
-        _ = priority;
-        _ = hl_ref;
-        // TODO: Implement highlight caching
+        const line_count = self.getLineCount();
+        if (line_idx >= line_count) {
+            return TextBufferError.InvalidIndex;
+        }
+
+        if (col_start >= col_end) {
+            return; // Empty range
+        }
+
+        try self.ensureLineHighlightStorage(line_idx);
+
+        const hl = Highlight{
+            .col_start = col_start,
+            .col_end = col_end,
+            .style_id = style_id,
+            .priority = priority,
+            .hl_ref = hl_ref,
+        };
+
+        try self.line_highlights.items[line_idx].append(self.allocator, hl);
+        try self.rebuildLineSpans(line_idx);
     }
 
     pub fn getLineHighlights(self: *const Self, line_idx: usize) []const Highlight {
-        _ = self;
-        _ = line_idx;
+        if (line_idx < self.line_highlights.items.len) {
+            return self.line_highlights.items[line_idx].items;
+        }
         return &[_]Highlight{};
     }
 
     pub fn getLineSpans(self: *const Self, line_idx: usize) []const StyleSpan {
-        _ = self;
-        _ = line_idx;
+        if (line_idx < self.line_spans.items.len) {
+            return self.line_spans.items[line_idx].items;
+        }
         return &[_]StyleSpan{};
+    }
+
+    fn rebuildLineSpans(self: *Self, line_idx: usize) TextBufferError!void {
+        if (line_idx >= self.line_spans.items.len) {
+            return TextBufferError.InvalidIndex;
+        }
+
+        self.line_spans.items[line_idx].clearRetainingCapacity();
+
+        if (line_idx >= self.line_highlights.items.len or self.line_highlights.items[line_idx].items.len == 0) {
+            return; // No highlights
+        }
+
+        const highlights = self.line_highlights.items[line_idx].items;
+
+        // Collect all boundary columns
+        const Event = struct {
+            col: u32,
+            is_start: bool,
+            hl_idx: usize,
+        };
+
+        var events = std.ArrayList(Event).init(self.allocator);
+        defer events.deinit();
+
+        for (highlights, 0..) |hl, idx| {
+            try events.append(.{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
+            try events.append(.{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
+        }
+
+        // Sort by column, ends before starts at same position
+        const sortFn = struct {
+            fn lessThan(_: void, a: Event, b: Event) bool {
+                if (a.col != b.col) return a.col < b.col;
+                return !a.is_start;
+            }
+        }.lessThan;
+        std.mem.sort(Event, events.items, {}, sortFn);
+
+        // Build spans by tracking active highlights
+        var active = std.AutoHashMap(usize, void).init(self.allocator);
+        defer active.deinit();
+
+        var current_col: u32 = 0;
+
+        for (events.items) |event| {
+            // Find current highest priority style before processing event
+            var current_priority: i16 = -1;
+            var current_style: u32 = 0;
+            var it = active.keyIterator();
+            while (it.next()) |hl_idx| {
+                const hl = highlights[hl_idx.*];
+                if (hl.priority > current_priority) {
+                    current_priority = @intCast(hl.priority);
+                    current_style = hl.style_id;
+                }
+            }
+
+            // Emit span for the segment leading up to this event
+            if (event.col > current_col) {
+                try self.line_spans.items[line_idx].append(self.allocator, StyleSpan{
+                    .col = current_col,
+                    .style_id = current_style,
+                    .next_col = event.col,
+                });
+                current_col = event.col;
+            }
+
+            // Process event
+            if (event.is_start) {
+                try active.put(event.hl_idx, {});
+            } else {
+                _ = active.remove(event.hl_idx);
+            }
+        }
     }
 
     /// Add highlight by row/col coordinates
@@ -669,32 +769,102 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: ?u16,
     ) TextBufferError!void {
-        _ = self;
-        _ = char_start;
-        _ = char_end;
-        _ = style_id;
-        _ = priority;
-        _ = hl_ref;
-        // TODO: Implement using unified rope - store highlights globally and compute per-line on demand
+        const line_count = self.getLineCount();
+        if (char_start >= char_end or line_count == 0) {
+            return;
+        }
+
+        // Walk lines to find which lines this highlight affects
+        const Context = struct {
+            buffer: *Self,
+            char_start: u32,
+            char_end: u32,
+            style_id: u32,
+            priority: u8,
+            hl_ref: ?u16,
+            start_line_idx: ?usize = null,
+
+            fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                const line_start_char = line_info.char_offset;
+                const line_end_char = line_info.char_offset + line_info.width;
+
+                // Skip lines before the highlight
+                if (line_end_char <= ctx.char_start) return;
+                // Stop after the highlight ends
+                if (line_start_char >= ctx.char_end) return;
+
+                // This line overlaps with the highlight
+                const col_start = if (ctx.char_start > line_start_char)
+                    ctx.char_start - line_start_char
+                else
+                    0;
+
+                const col_end = if (ctx.char_end < line_end_char)
+                    ctx.char_end - line_start_char
+                else
+                    line_info.width;
+
+                ctx.buffer.addHighlight(
+                    line_info.line_idx,
+                    col_start,
+                    col_end,
+                    ctx.style_id,
+                    ctx.priority,
+                    ctx.hl_ref,
+                ) catch {};
+            }
+        };
+
+        var ctx = Context{
+            .buffer = self,
+            .char_start = char_start,
+            .char_end = char_end,
+            .style_id = style_id,
+            .priority = priority,
+            .hl_ref = hl_ref,
+        };
+        iter_mod.walkLines(&self.rope, &ctx, Context.callback);
     }
 
     /// Remove all highlights with a specific reference ID
     pub fn removeHighlightsByRef(self: *Self, hl_ref: u16) void {
-        _ = self;
-        _ = hl_ref;
-        // TODO: Implement
+        for (self.line_highlights.items, 0..) |*hl_list, line_idx| {
+            var i: usize = 0;
+            var changed = false;
+            while (i < hl_list.items.len) {
+                if (hl_list.items[i].hl_ref) |ref| {
+                    if (ref == hl_ref) {
+                        _ = hl_list.orderedRemove(i);
+                        changed = true;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+            if (changed) {
+                self.rebuildLineSpans(line_idx) catch {};
+            }
+        }
     }
 
     /// Clear all highlights from a specific line
     pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
-        _ = self;
-        _ = line_idx;
-        // TODO: Implement
+        if (line_idx < self.line_highlights.items.len) {
+            self.line_highlights.items[line_idx].clearRetainingCapacity();
+        }
+        if (line_idx < self.line_spans.items.len) {
+            self.line_spans.items[line_idx].clearRetainingCapacity();
+        }
     }
 
     /// Clear all highlights
     pub fn clearAllHighlights(self: *Self) void {
-        _ = self;
-        // TODO: Implement
+        for (self.line_highlights.items) |*hl_list| {
+            hl_list.clearRetainingCapacity();
+        }
+        for (self.line_spans.items) |*span_list| {
+            span_list.clearRetainingCapacity();
+        }
     }
 };
