@@ -156,6 +156,27 @@ pub const EditBuffer = struct {
         try self.add_buffer.ensureCapacity(self.tb, need);
     }
 
+    /// Get line width using O(1) marker lookups
+    /// Uses linestart markers to determine line boundaries
+    fn getLineWidth(self: *const EditBuffer, row: u32) u32 {
+        const linestart_count = self.tb.rope.markerCount(.linestart);
+        if (row >= linestart_count) return 0;
+
+        // Get the character offset at the start of this line
+        const line_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
+        const line_start_offset = line_marker.global_weight;
+
+        // Get the character offset at the start of the next line (or end of buffer)
+        const line_end_offset = if (row + 1 < linestart_count) blk: {
+            const next_marker = self.tb.rope.getMarker(.linestart, row + 1) orelse return 0;
+            break :blk next_marker.global_weight;
+        } else blk: {
+            break :blk iter_mod.getTotalWidth(&self.tb.rope);
+        };
+
+        return line_end_offset - line_start_offset;
+    }
+
     /// Split a TextChunk at a specific weight (display width)
     /// Returns left and right chunks
     /// Uses wrap offsets to narrow down the search range and minimize grapheme iteration
@@ -435,22 +456,11 @@ pub const EditBuffer = struct {
 
             if (ctx.break_seg_idx) |break_idx| {
                 // Calculate the width of the previous line BEFORE deleting the break
-                var prev_line_width: u32 = 0;
-                if (cursor.row > 0) {
-                    const FindWidth = struct {
-                        row: u32,
-                        width: u32 = 0,
-                        fn line_callback(line_ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                            const line_ctx = @as(*@This(), @ptrCast(@alignCast(line_ctx_ptr)));
-                            if (line_info.line_idx == line_ctx.row) {
-                                line_ctx.width = line_info.width;
-                            }
-                        }
-                    };
-                    var find_ctx = FindWidth{ .row = cursor.row - 1 };
-                    iter_mod.walkLines(&self.tb.rope, &find_ctx, FindWidth.line_callback);
-                    prev_line_width = find_ctx.width;
-                }
+                // Use O(1) marker lookup instead of walking all lines
+                const prev_line_width = if (cursor.row > 0)
+                    self.getLineWidth(cursor.row - 1)
+                else
+                    0;
 
                 // Delete the break segment
                 try self.tb.rope.delete(break_idx);
@@ -501,23 +511,10 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len == 0) return;
         const cursor = self.cursors.items[0];
 
-        // Check if we're at end of a line
-        const FindLineWidth = struct {
-            row: u32,
-            width: u32 = 0,
-            found: bool = false,
-            fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                if (line_info.line_idx == ctx.row) {
-                    ctx.width = line_info.width;
-                    ctx.found = true;
-                }
-            }
-        };
-        var line_ctx = FindLineWidth{ .row = cursor.row };
-        iter_mod.walkLines(&self.tb.rope, &line_ctx, FindLineWidth.callback);
+        // Check if we're at end of a line using O(1) marker lookup
+        const line_width = self.getLineWidth(cursor.row);
 
-        if (line_ctx.found and cursor.col >= line_ctx.width) {
+        if (cursor.col >= line_width) {
             // At end of line - delete the break segment after this line to merge with next
             const Context = struct {
                 target_row: u32,
@@ -591,20 +588,9 @@ pub const EditBuffer = struct {
         } else if (self.cursors.items[0].row > 0) {
             // Move to end of previous line
             self.cursors.items[0].row -= 1;
-            // Find the width of the previous line
-            const Context = struct {
-                row: u32,
-                width: u32 = 0,
-                fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    if (line_info.line_idx == ctx.row) {
-                        ctx.width = line_info.width;
-                    }
-                }
-            };
-            var ctx = Context{ .row = self.cursors.items[0].row };
-            iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
-            self.cursors.items[0].col = ctx.width;
+            // Get the width of the previous line using O(1) marker lookup
+            const line_width = self.getLineWidth(self.cursors.items[0].row);
+            self.cursors.items[0].col = line_width;
         }
         // Horizontal movement resets desired column
         self.cursors.items[0].desired_col = self.cursors.items[0].col;
@@ -614,25 +600,13 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len == 0) return;
         const cursor = &self.cursors.items[0];
 
-        // Find current line width
-        const Context = struct {
-            row: u32,
-            width: u32 = 0,
-            line_count: u32 = 0,
-            fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                if (line_info.line_idx == ctx.row) {
-                    ctx.width = line_info.width;
-                }
-                ctx.line_count = line_info.line_idx + 1;
-            }
-        };
-        var ctx = Context{ .row = cursor.row };
-        iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
+        // Get current line width using O(1) marker lookup
+        const line_width = self.getLineWidth(cursor.row);
+        const line_count = self.tb.getLineCount();
 
-        if (cursor.col < ctx.width) {
+        if (cursor.col < line_width) {
             cursor.col += 1;
-        } else if (cursor.row + 1 < ctx.line_count) {
+        } else if (cursor.row + 1 < line_count) {
             // Move to start of next line
             cursor.row += 1;
             cursor.col = 0;
@@ -653,22 +627,11 @@ pub const EditBuffer = struct {
 
             cursor.row -= 1;
 
-            // Try to move to desired column, but clamp to line width
-            const Context = struct {
-                row: u32,
-                width: u32 = 0,
-                fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    if (line_info.line_idx == ctx.row) {
-                        ctx.width = line_info.width;
-                    }
-                }
-            };
-            var ctx = Context{ .row = cursor.row };
-            iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
+            // Get line width using O(1) marker lookup
+            const line_width = self.getLineWidth(cursor.row);
 
             // Move to desired column if possible, otherwise clamp to line end
-            cursor.col = @min(cursor.desired_col, ctx.width);
+            cursor.col = @min(cursor.desired_col, line_width);
         }
     }
 
@@ -686,22 +649,11 @@ pub const EditBuffer = struct {
 
             cursor.row += 1;
 
-            // Try to move to desired column, but clamp to line width
-            const Context = struct {
-                row: u32,
-                width: u32 = 0,
-                fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    if (line_info.line_idx == ctx.row) {
-                        ctx.width = line_info.width;
-                    }
-                }
-            };
-            var ctx = Context{ .row = cursor.row };
-            iter_mod.walkLines(&self.tb.rope, &ctx, Context.callback);
+            // Get line width using O(1) marker lookup
+            const line_width = self.getLineWidth(cursor.row);
 
             // Move to desired column if possible, otherwise clamp to line end
-            cursor.col = @min(cursor.desired_col, ctx.width);
+            cursor.col = @min(cursor.desired_col, line_width);
         }
     }
 };
