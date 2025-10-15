@@ -18,9 +18,6 @@ test "Segment.measure - text chunk" {
     const metrics = seg.measure();
 
     try testing.expectEqual(@as(u32, 10), metrics.total_width);
-    try testing.expectEqual(@as(u32, 0), metrics.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 10), metrics.last_line_width);
     try testing.expectEqual(@as(u32, 10), metrics.max_line_width);
     try testing.expect(metrics.ascii_only);
 }
@@ -30,9 +27,6 @@ test "Segment.measure - break" {
     const metrics = seg.measure();
 
     try testing.expectEqual(@as(u32, 0), metrics.total_width);
-    try testing.expectEqual(@as(u32, 1), metrics.break_count);
-    try testing.expectEqual(@as(u32, 0), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 0), metrics.last_line_width);
     try testing.expectEqual(@as(u32, 0), metrics.max_line_width);
     try testing.expect(metrics.ascii_only);
 }
@@ -80,18 +74,12 @@ test "Segment.asText" {
 test "Metrics.add - two text segments" {
     var left = Segment.Metrics{
         .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
     const right = Segment.Metrics{
         .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
     };
@@ -99,146 +87,93 @@ test "Metrics.add - two text segments" {
     left.add(right);
 
     try testing.expectEqual(@as(u32, 15), left.total_width);
-    try testing.expectEqual(@as(u32, 0), left.break_count);
-    try testing.expectEqual(@as(u32, 15), left.first_line_width); // Combined
-    try testing.expectEqual(@as(u32, 15), left.last_line_width); // Combined
-    try testing.expectEqual(@as(u32, 15), left.max_line_width);
+    try testing.expectEqual(@as(u32, 10), left.max_line_width);
     try testing.expect(left.ascii_only);
 }
 
 test "Metrics.add - text, break, text" {
-    // Simulate: [text(10)] + [break] + [text(5)]
     var left = Segment.Metrics{
         .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
     const middle = Segment.Metrics{
         .total_width = 0,
-        .break_count = 1,
-        .first_line_width = 0,
-        .last_line_width = 0,
         .max_line_width = 0,
         .ascii_only = true,
     };
 
     left.add(middle);
 
-    // After adding break: first_line stays 10, last_line becomes 0
     try testing.expectEqual(@as(u32, 10), left.total_width);
-    try testing.expectEqual(@as(u32, 1), left.break_count);
-    try testing.expectEqual(@as(u32, 10), left.first_line_width); // First line ends at break
-    try testing.expectEqual(@as(u32, 0), left.last_line_width); // After break, nothing yet
+    try testing.expectEqual(@as(u32, 10), left.max_line_width);
 
     const right = Segment.Metrics{
         .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
     };
 
     left.add(right);
 
-    // Final: two lines (10 width and 5 width)
     try testing.expectEqual(@as(u32, 15), left.total_width);
-    try testing.expectEqual(@as(u32, 1), left.break_count);
-    try testing.expectEqual(@as(u32, 10), left.first_line_width); // First line still 10
-    try testing.expectEqual(@as(u32, 5), left.last_line_width); // Second line is 5
-    try testing.expectEqual(@as(u32, 10), left.max_line_width); // Max is 10
+    try testing.expectEqual(@as(u32, 10), left.max_line_width);
 }
 
 test "Metrics.add - multiple breaks" {
-    // Simulate: [text(10)] + [break] + [text(20)] + [break] + [text(5)]
     var metrics = Segment.Metrics{
         .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
-    // Add break
     metrics.add(Segment.Metrics{
         .total_width = 0,
-        .break_count = 1,
-        .first_line_width = 0,
-        .last_line_width = 0,
         .max_line_width = 0,
         .ascii_only = true,
     });
 
-    // Add text(20)
     metrics.add(Segment.Metrics{
         .total_width = 20,
-        .break_count = 0,
-        .first_line_width = 20,
-        .last_line_width = 20,
         .max_line_width = 20,
         .ascii_only = true,
     });
 
     try testing.expectEqual(@as(u32, 30), metrics.total_width);
-    try testing.expectEqual(@as(u32, 1), metrics.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 20), metrics.last_line_width);
     try testing.expectEqual(@as(u32, 20), metrics.max_line_width);
 
-    // Add another break
     metrics.add(Segment.Metrics{
         .total_width = 0,
-        .break_count = 1,
-        .first_line_width = 0,
-        .last_line_width = 0,
         .max_line_width = 0,
         .ascii_only = true,
     });
 
-    // Add text(5)
     metrics.add(Segment.Metrics{
         .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
     });
 
-    // Final: three lines (10, 20, 5)
     try testing.expectEqual(@as(u32, 35), metrics.total_width);
-    try testing.expectEqual(@as(u32, 2), metrics.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.first_line_width);
-    try testing.expectEqual(@as(u32, 5), metrics.last_line_width);
-    try testing.expectEqual(@as(u32, 20), metrics.max_line_width); // Middle line is max
+    try testing.expectEqual(@as(u32, 20), metrics.max_line_width);
 }
 
 test "Metrics.add - non-ASCII propagation" {
     var left = Segment.Metrics{
         .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
     const right = Segment.Metrics{
         .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
         .max_line_width = 5,
-        .ascii_only = false, // Non-ASCII
+        .ascii_only = false,
     };
 
     left.add(right);
-    try testing.expect(!left.ascii_only); // Should be false
+    try testing.expect(!left.ascii_only);
 }
 
 test "UnifiedRope - basic operations" {
@@ -274,13 +209,9 @@ test "UnifiedRope - basic operations" {
     };
     try rope.append(text2);
 
-    // Check metrics
     const metrics = rope.root.metrics();
-    try testing.expectEqual(@as(u32, 3), rope.count()); // 3 segments
+    try testing.expectEqual(@as(u32, 3), rope.count());
     try testing.expectEqual(@as(u32, 15), metrics.custom.total_width);
-    try testing.expectEqual(@as(u32, 1), metrics.custom.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.custom.first_line_width);
-    try testing.expectEqual(@as(u32, 5), metrics.custom.last_line_width);
     try testing.expectEqual(@as(u32, 10), metrics.custom.max_line_width);
 }
 
@@ -294,7 +225,6 @@ test "UnifiedRope - empty rope metrics" {
 
     try testing.expectEqual(@as(u32, 0), rope.count());
     try testing.expectEqual(@as(u32, 0), metrics.custom.total_width);
-    try testing.expectEqual(@as(u32, 0), metrics.custom.break_count);
 }
 
 test "UnifiedRope - single text segment" {
@@ -316,9 +246,6 @@ test "UnifiedRope - single text segment" {
     const metrics = rope.root.metrics();
     try testing.expectEqual(@as(u32, 1), rope.count());
     try testing.expectEqual(@as(u32, 20), metrics.custom.total_width);
-    try testing.expectEqual(@as(u32, 0), metrics.custom.break_count);
-    try testing.expectEqual(@as(u32, 20), metrics.custom.first_line_width);
-    try testing.expectEqual(@as(u32, 20), metrics.custom.last_line_width);
     try testing.expectEqual(@as(u32, 20), metrics.custom.max_line_width);
 }
 
@@ -365,29 +292,20 @@ test "UnifiedRope - multiple lines with varying widths" {
     });
 
     const metrics = rope.root.metrics();
-    try testing.expectEqual(@as(u32, 5), rope.count()); // 3 text + 2 breaks
-    try testing.expectEqual(@as(u32, 55), metrics.custom.total_width); // 10 + 30 + 15
-    try testing.expectEqual(@as(u32, 2), metrics.custom.break_count);
-    try testing.expectEqual(@as(u32, 10), metrics.custom.first_line_width);
-    try testing.expectEqual(@as(u32, 15), metrics.custom.last_line_width);
-    try testing.expectEqual(@as(u32, 30), metrics.custom.max_line_width); // Line 2 is max
+    try testing.expectEqual(@as(u32, 5), rope.count());
+    try testing.expectEqual(@as(u32, 55), metrics.custom.total_width);
+    try testing.expectEqual(@as(u32, 30), metrics.custom.max_line_width);
 }
 
 test "combineMetrics helper function" {
     const left = Segment.Metrics{
         .total_width = 10,
-        .break_count = 0,
-        .first_line_width = 10,
-        .last_line_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
     const right = Segment.Metrics{
         .total_width = 5,
-        .break_count = 0,
-        .first_line_width = 5,
-        .last_line_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
     };
@@ -395,9 +313,6 @@ test "combineMetrics helper function" {
     const combined = seg_mod.combineMetrics(left, right);
 
     try testing.expectEqual(@as(u32, 15), combined.total_width);
-    try testing.expectEqual(@as(u32, 0), combined.break_count);
-    try testing.expectEqual(@as(u32, 15), combined.first_line_width);
-    try testing.expectEqual(@as(u32, 15), combined.last_line_width);
-    try testing.expectEqual(@as(u32, 15), combined.max_line_width);
+    try testing.expectEqual(@as(u32, 10), combined.max_line_width);
     try testing.expect(combined.ascii_only);
 }

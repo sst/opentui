@@ -413,6 +413,9 @@ pub const UnifiedTextBuffer = struct {
             try self.rope.append(Segment{ .brk = {} });
         }
 
+        // Add linestart marker for this line
+        try self.rope.append(Segment{ .linestart = {} });
+
         // Add text segment (even if empty)
         try self.rope.append(Segment{ .text = chunk });
         self.char_count += chunk.width;

@@ -256,20 +256,10 @@ pub const Segment = union(enum) {
         /// Total byte size (sum of all text segment byte lengths, breaks contribute 0)
         total_bytes: u32 = 0,
 
-        /// Number of line break markers in the subtree
-        break_count: u32 = 0,
-
         /// Number of linestart markers in the subtree
         linestart_count: u32 = 0,
 
-        /// Display width from start of subtree to first break (or total if no breaks)
-        first_line_width: u32 = 0,
-
-        /// Display width from last break to end of subtree (or total if no breaks)
-        last_line_width: u32 = 0,
-
         /// Maximum line width in the entire subtree
-        /// For internal nodes, this is max(left.max, right.max, left.last + right.first)
         max_line_width: u32 = 0,
 
         /// Whether all text segments in subtree are ASCII-only (for fast wrapping paths)
@@ -278,49 +268,12 @@ pub const Segment = union(enum) {
         /// Combine metrics from two child nodes
         /// This is called when building internal rope nodes
         pub fn add(self: *Metrics, other: Metrics) void {
-            // Save original state for boundary calculation
-            const left_break_count = self.break_count;
-            const left_last_width = self.last_line_width;
-            const right_first_width = other.first_line_width;
-
             self.total_width += other.total_width;
             self.total_bytes += other.total_bytes;
-            self.break_count += other.break_count;
             self.linestart_count += other.linestart_count;
 
-            // first_line_width: if left has no breaks, combine left + right first line
-            // Otherwise, left's first line is already complete
-            if (left_break_count == 0) {
-                self.first_line_width = self.first_line_width + other.first_line_width;
-            }
-            // else: self.first_line_width stays as is (left's first line ends at left's first break)
+            self.max_line_width = @max(self.max_line_width, other.max_line_width);
 
-            // last_line_width: if right has breaks, use right's last line width
-            // Otherwise, combine left's last line with right's total width
-            if (other.break_count > 0) {
-                self.last_line_width = other.last_line_width;
-            } else {
-                self.last_line_width = self.last_line_width + other.last_line_width;
-            }
-
-            // max_line_width: max of left's max, right's max, and potentially the combined/boundary width
-            if (left_break_count == 0 and other.break_count == 0) {
-                // No breaks anywhere - single line, use combined width
-                self.max_line_width = self.first_line_width; // Already combined above
-            } else {
-                // At least one break exists - check boundary
-                const boundary_width = if (left_break_count > 0)
-                    left_last_width + right_first_width
-                else
-                    0; // Left has no breaks, so no boundary to join
-
-                self.max_line_width = @max(
-                    @max(self.max_line_width, other.max_line_width),
-                    boundary_width,
-                );
-            }
-
-            // ascii_only: only true if both subtrees are ASCII-only
             self.ascii_only = self.ascii_only and other.ascii_only;
         }
 
@@ -340,10 +293,7 @@ pub const Segment = union(enum) {
                 break :blk Metrics{
                     .total_width = chunk.width,
                     .total_bytes = byte_len,
-                    .break_count = 0,
                     .linestart_count = 0,
-                    .first_line_width = chunk.width,
-                    .last_line_width = chunk.width,
                     .max_line_width = chunk.width,
                     .ascii_only = is_ascii,
                 };
@@ -351,20 +301,14 @@ pub const Segment = union(enum) {
             .brk => Metrics{
                 .total_width = 0,
                 .total_bytes = 0,
-                .break_count = 1,
                 .linestart_count = 0,
-                .first_line_width = 0,
-                .last_line_width = 0,
                 .max_line_width = 0,
                 .ascii_only = true,
             },
             .linestart => Metrics{
                 .total_width = 0,
                 .total_bytes = 0,
-                .break_count = 0,
                 .linestart_count = 1,
-                .first_line_width = 0,
-                .last_line_width = 0,
                 .max_line_width = 0,
                 .ascii_only = true,
             },

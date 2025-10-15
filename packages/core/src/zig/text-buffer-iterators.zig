@@ -206,7 +206,7 @@ pub fn walkSegments(
 /// Get the total number of logical lines in a unified rope
 pub fn getLineCount(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
-    return metrics.custom.break_count + 1;
+    return metrics.custom.linestart_count;
 }
 
 /// Get the maximum line width in the entire rope

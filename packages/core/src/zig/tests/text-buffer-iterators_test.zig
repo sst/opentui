@@ -297,6 +297,7 @@ test "Helper functions" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -307,6 +308,7 @@ test "Helper functions" {
         },
     });
     try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,

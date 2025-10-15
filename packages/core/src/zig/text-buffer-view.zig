@@ -106,7 +106,6 @@ pub const UnifiedTextBufferView = struct {
     // Cached line info
     cached_line_starts: std.ArrayListUnmanaged(u32),
     cached_line_widths: std.ArrayListUnmanaged(u32),
-    cached_max_width: u32,
 
     // Memory management
     global_allocator: Allocator,
@@ -134,7 +133,6 @@ pub const UnifiedTextBufferView = struct {
             .virtual_lines_dirty = true,
             .cached_line_starts = .{},
             .cached_line_widths = .{},
-            .cached_max_width = 0,
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
         };
@@ -253,7 +251,6 @@ pub const UnifiedTextBufferView = struct {
         self.virtual_lines = .{};
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
-        self.cached_max_width = 0;
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         if (self.wrap_mode == .none or self.wrap_width == null) {
@@ -292,7 +289,6 @@ pub const UnifiedTextBufferView = struct {
                     ctx.view.virtual_lines.append(ctx.virtual_allocator, vline) catch {};
                     ctx.view.cached_line_starts.append(ctx.virtual_allocator, vline.char_offset) catch {};
                     ctx.view.cached_line_widths.append(ctx.virtual_allocator, vline.width) catch {};
-                    ctx.view.cached_max_width = @max(ctx.view.cached_max_width, vline.width);
 
                     // Reset for next line
                     ctx.current_vline = VirtualLine.init();
@@ -328,7 +324,6 @@ pub const UnifiedTextBufferView = struct {
                     wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
                     wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
                     wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
-                    wctx.view.cached_max_width = @max(wctx.view.cached_max_width, wctx.current_vline.width);
 
                     wctx.line_col_offset += wctx.line_position;
                     wctx.current_vline = VirtualLine.init();
@@ -454,7 +449,6 @@ pub const UnifiedTextBufferView = struct {
                         wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
                         wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
                         wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
-                        wctx.view.cached_max_width = @max(wctx.view.cached_max_width, wctx.current_vline.width);
                     }
 
                     // Reset for next logical line
@@ -527,7 +521,7 @@ pub const UnifiedTextBufferView = struct {
         return LineInfo{
             .starts = self.cached_line_starts.items,
             .widths = self.cached_line_widths.items,
-            .max_width = self.cached_max_width,
+            .max_width = iter_mod.getMaxLineWidth(&self.text_buffer.rope),
         };
     }
 
