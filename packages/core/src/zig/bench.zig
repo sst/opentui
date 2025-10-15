@@ -47,6 +47,7 @@ const rope_bench = @import("bench/rope_bench.zig");
 const rope_markers_bench = @import("bench/rope-markers_bench.zig");
 const text_buffer_coords_bench = @import("bench/text-buffer-coords_bench.zig");
 const styled_text_bench = @import("bench/styled-text_bench.zig");
+const buffer_draw_text_buffer_bench = @import("bench/buffer-draw-text-buffer_bench.zig");
 
 fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
     if (filter == null) return true;
@@ -105,6 +106,7 @@ pub fn main() !void {
             try stdout.print("  - {s}\n", .{rope_markers_bench.benchName});
             try stdout.print("  - {s}\n", .{text_buffer_coords_bench.benchName});
             try stdout.print("  - {s}\n", .{styled_text_bench.benchName});
+            try stdout.print("  - {s}\n", .{buffer_draw_text_buffer_bench.benchName});
             return;
         }
     }
@@ -163,6 +165,14 @@ pub fn main() !void {
         const styled_text_results = try styled_text_bench.run(allocator, show_mem);
         defer allocator.free(styled_text_results);
         try bench_utils.printResults(stdout, styled_text_results);
+        ran_any = true;
+    }
+
+    if (matchesFilter(buffer_draw_text_buffer_bench.benchName, filter)) {
+        try stdout.print("\n=== {s} Benchmarks ===\n\n", .{buffer_draw_text_buffer_bench.benchName});
+        const buffer_draw_results = try buffer_draw_text_buffer_bench.run(allocator, show_mem);
+        defer allocator.free(buffer_draw_results);
+        try bench_utils.printResults(stdout, buffer_draw_results);
         ran_any = true;
     }
 
