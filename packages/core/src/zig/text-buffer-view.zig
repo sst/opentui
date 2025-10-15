@@ -21,6 +21,21 @@ pub const TextBufferViewError = error{
     OutOfMemory,
 };
 
+/// Viewport defines a rectangular window into the virtual line space
+pub const Viewport = struct {
+    x: u32, // Column offset (for horizontal scroll)
+    y: u32, // Virtual line offset (first visible line)
+    width: u32, // Viewport width in columns
+    height: u32, // Viewport height in rows (virtual lines)
+};
+
+/// Line info struct for cached line information
+pub const LineInfo = struct {
+    starts: []const u32,
+    widths: []const u32,
+    max_width: u32,
+};
+
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
     source_chunk: usize,
@@ -83,6 +98,9 @@ pub const UnifiedTextBufferView = struct {
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
 
+    // Viewport state
+    viewport: ?Viewport,
+
     // Wrapping state
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -116,6 +134,7 @@ pub const UnifiedTextBufferView = struct {
             .view_id = view_id,
             .selection = null,
             .local_selection = null,
+            .viewport = null,
             .wrap_width = null,
             .wrap_mode = .char,
             .virtual_lines = .{},
@@ -139,10 +158,64 @@ pub const UnifiedTextBufferView = struct {
         self.global_allocator.destroy(self);
     }
 
+    /// Set the viewport. If wrapping is enabled and viewport has width, it will override wrap width.
+    pub fn setViewport(self: *Self, vp: ?Viewport) void {
+        self.viewport = vp;
+
+        // If wrapping is enabled and viewport has width, override wrap width
+        if (vp) |viewport| {
+            if (self.wrap_width != null) {
+                // Only update if different to avoid redundant reflows
+                if (self.wrap_width.? != viewport.width) {
+                    self.wrap_width = viewport.width;
+                    self.virtual_lines_dirty = true;
+                }
+            }
+        }
+    }
+
+    pub fn getViewport(self: *const Self) ?Viewport {
+        return self.viewport;
+    }
+
+    /// Set viewport size (width and height only)
+    /// This is a convenience method that preserves existing offset
+    pub fn setViewportSize(self: *Self, width: u32, height: u32) void {
+        if (self.viewport) |vp| {
+            self.setViewport(Viewport{
+                .x = vp.x,
+                .y = vp.y,
+                .width = width,
+                .height = height,
+            });
+        } else {
+            self.setViewport(Viewport{
+                .x = 0,
+                .y = 0,
+                .width = width,
+                .height = height,
+            });
+        }
+    }
+
     pub fn setWrapWidth(self: *Self, width: ?u32) void {
         if (self.wrap_width != width) {
             self.wrap_width = width;
             self.virtual_lines_dirty = true;
+
+            // If viewport exists and wrapping is enabled, sync viewport width
+            if (self.viewport) |vp| {
+                if (width) |w| {
+                    if (vp.width != w) {
+                        self.viewport = Viewport{
+                            .x = vp.x,
+                            .y = vp.y,
+                            .width = w,
+                            .height = vp.height,
+                        };
+                    }
+                }
+            }
         }
     }
 
@@ -496,17 +569,44 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getVirtualLines(self: *Self) []const VirtualLine {
         self.updateVirtualLines();
-        return self.virtual_lines.items;
+
+        const all_vlines = self.virtual_lines.items;
+
+        // If viewport is set, return only the visible lines
+        if (self.viewport) |vp| {
+            const start_idx = @min(vp.y, @as(u32, @intCast(all_vlines.len)));
+            const end_idx = @min(start_idx + vp.height, @as(u32, @intCast(all_vlines.len)));
+            return all_vlines[start_idx..end_idx];
+        }
+
+        return all_vlines;
     }
 
-    pub fn getCachedLineInfo(self: *Self) struct {
-        starts: []const u32,
-        widths: []const u32,
-        max_width: u32,
-    } {
+    pub fn getCachedLineInfo(self: *Self) LineInfo {
         self.updateVirtualLines();
 
-        return .{
+        // If viewport is set, return only the visible lines' info
+        if (self.viewport) |vp| {
+            const start_idx = @min(vp.y, @as(u32, @intCast(self.cached_line_starts.items.len)));
+            const end_idx = @min(start_idx + vp.height, @as(u32, @intCast(self.cached_line_starts.items.len)));
+
+            const viewport_starts = self.cached_line_starts.items[start_idx..end_idx];
+            const viewport_widths = self.cached_line_widths.items[start_idx..end_idx];
+
+            // Calculate max width for viewport lines
+            var max_width: u32 = 0;
+            for (viewport_widths) |w| {
+                max_width = @max(max_width, w);
+            }
+
+            return LineInfo{
+                .starts = viewport_starts,
+                .widths = viewport_widths,
+                .max_width = max_width,
+            };
+        }
+
+        return LineInfo{
             .starts = self.cached_line_starts.items,
             .widths = self.cached_line_widths.items,
             .max_width = self.cached_max_width,

@@ -9,7 +9,6 @@ const text_buffer_drawing_tests = @import("tests/text-buffer-drawing_test.zig");
 const text_buffer_segment_tests = @import("tests/text-buffer-segment_test.zig");
 const text_buffer_iterators_tests = @import("tests/text-buffer-iterators_test.zig");
 const text_buffer_unified_tests = @import("tests/text-buffer-unified_test.zig");
-const text_buffer_view_unified_tests = @import("tests/text-buffer-view-unified_test.zig");
 const edit_buffer_tests = @import("tests/edit-buffer_test.zig");
 const grapheme_tests = @import("tests/grapheme_test.zig");
 const syntax_style_tests = @import("tests/syntax-style_test.zig");
@@ -30,7 +29,6 @@ comptime {
     _ = text_buffer_segment_tests;
     _ = text_buffer_iterators_tests;
     _ = text_buffer_unified_tests;
-    // _ = text_buffer_view_unified_tests;  // DISABLED - hangs in test environment
     _ = edit_buffer_tests;
     _ = grapheme_tests;
     _ = syntax_style_tests;
