@@ -50,6 +50,18 @@ export class TextBuffer {
     this._lineInfo = undefined
   }
 
+  public loadFile(path: string): void {
+    this.guard()
+    const success = this.lib.textBufferLoadFile(this.bufferPtr, path)
+    if (!success) {
+      throw new Error(`Failed to load file: ${path}`)
+    }
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    this._textBytes = undefined
+  }
+
   public setStyledText(text: StyledText): void {
     this.guard()
 

@@ -861,4 +861,30 @@ pub const UnifiedTextBuffer = struct {
             }
         }
     }
+
+    /// Load text from a file path (relative to cwd)
+    /// The file content is allocated in the arena and will be freed when the buffer is destroyed
+    pub fn loadFile(self: *Self, path: []const u8) TextBufferError!void {
+        // Open file (handles relative paths from cwd automatically)
+        const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+            return switch (err) {
+                error.FileNotFound => TextBufferError.InvalidIndex,
+                error.AccessDenied => TextBufferError.InvalidIndex,
+                else => TextBufferError.OutOfMemory,
+            };
+        };
+        defer file.close();
+
+        // Get file size
+        const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
+
+        // Allocate in arena
+        const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;
+
+        // Read file content
+        const bytes_read = file.readAll(content) catch return TextBufferError.OutOfMemory;
+
+        // Set the text (setText will use the arena-allocated memory)
+        try self.setText(content[0..bytes_read]);
+    }
 };

@@ -313,6 +313,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
+    textBufferLoadFile: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "bool",
+    },
     textBufferSetStyledText: {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
@@ -956,6 +960,7 @@ export interface RenderLib {
 
   textBufferReset: (buffer: Pointer) => void
   textBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
+  textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
@@ -1617,6 +1622,11 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
     this.opentui.symbols.textBufferSetText(buffer, textBytes, textBytes.length)
+  }
+
+  public textBufferLoadFile(buffer: Pointer, path: string): boolean {
+    const pathBytes = this.encoder.encode(path)
+    return this.opentui.symbols.textBufferLoadFile(buffer, pathBytes, pathBytes.length)
   }
 
   public textBufferSetStyledText(

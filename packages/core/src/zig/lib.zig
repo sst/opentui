@@ -417,6 +417,12 @@ export fn textBufferSetText(tb: *text_buffer.TextBufferArray, textPtr: [*]const 
     tb.setText(text) catch {};
 }
 
+export fn textBufferLoadFile(tb: *text_buffer.TextBufferArray, pathPtr: [*]const u8, pathLen: usize) bool {
+    const path = pathPtr[0..pathLen];
+    tb.loadFile(path) catch return false;
+    return true;
+}
+
 export fn textBufferSetStyledText(
     tb: *text_buffer.TextBufferArray,
     chunksPtr: [*]const text_buffer.StyledChunk,
