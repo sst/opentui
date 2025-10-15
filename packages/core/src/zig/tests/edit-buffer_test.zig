@@ -1186,3 +1186,53 @@ test "EditBuffer - backspace on third line with empty middle line" {
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 }
+
+test "EditBuffer - deleteForward on first line with empty middle line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Create 3 lines: [text, empty, text]
+    try eb.insertText("First\n\nThird");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("First\n\nThird", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Position cursor at start of first line
+    try eb.setCursor(0, 0);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Delete forward through "First"
+    try eb.deleteForward(); // Delete 'F'
+    cursor = eb.getCursor(0).?;
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+    try std.testing.expectEqualStrings("irst\n\nThird", out_buffer[0..written]);
+
+    // Continue deleting through "irst"
+    try eb.deleteForward(); // Delete 'i'
+    try eb.deleteForward(); // Delete 'r'
+    try eb.deleteForward(); // Delete 's'
+    try eb.deleteForward(); // Delete 't'
+
+    cursor = eb.getCursor(0).?;
+    written = eb.getText(&out_buffer);
+
+    // After deleting all chars on first line, cursor should be at row 0, col 0
+    // with empty line and "Third" preserved
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+    try std.testing.expectEqualStrings("\n\nThird", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+}

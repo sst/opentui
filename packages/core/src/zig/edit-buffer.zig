@@ -604,27 +604,85 @@ pub const EditBuffer = struct {
                 // Cursor stays at same position
             }
         } else {
-            // Delete one character after cursor
-            const cursor_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
+            // Delete one character after cursor within the same line
+            // Get the linestart marker for the current row to find the segment index
+            const linestart_marker = self.tb.rope.getMarker(.linestart, cursor.row) orelse return;
+            const linestart_seg_idx = linestart_marker.leaf_index;
 
-            // Check if we're at the end
-            if (cursor_offset >= self.tb.char_count) return;
+            // Walk forward from the linestart to find text segments and accumulate width
+            var accumulated_width: u32 = 0;
+            var current_seg_idx: u32 = linestart_seg_idx + 1; // Start after linestart
+            const target_col = cursor.col; // Position of character to delete
 
-            const delete_start = cursor_offset;
-            const delete_end = cursor_offset + 1;
+            // Find which segment contains the character at target_col
+            while (current_seg_idx < self.tb.rope.count()) : (current_seg_idx += 1) {
+                const seg = self.tb.rope.get(current_seg_idx) orelse break;
 
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.deleteRangeByWeight(delete_start, delete_end, &splitter);
+                // Stop if we hit a break (end of line)
+                if (seg.isBreak()) break;
 
-            // Update char count
-            if (self.tb.char_count > 0) {
-                self.tb.char_count -= 1;
+                // Skip non-text segments
+                if (!seg.isText()) continue;
+
+                const chunk = seg.asText() orelse continue;
+                const seg_width = chunk.width;
+
+                // Check if target_col falls within this segment
+                if (accumulated_width + seg_width > target_col) {
+                    // The character is in this segment
+                    const offset_in_seg = target_col - accumulated_width;
+
+                    // Check if we need to delete the entire segment or just part of it
+                    if (seg_width == 1 and offset_in_seg == 0) {
+                        // Special case: deleting a 1-character segment
+                        // Delete the segment directly to avoid empty line issues with deleteRangeByWeight
+                        try self.tb.rope.delete(current_seg_idx);
+
+                        // Update char count
+                        if (self.tb.char_count > 0) {
+                            self.tb.char_count -= 1;
+                        }
+
+                        // Mark views dirty
+                        self.tb.markViewsDirty();
+
+                        // Cursor stays at same position
+                        return;
+                    }
+
+                    // For multi-character segments, use deleteRangeByWeight
+                    // Calculate the global offset by walking from the START of the rope
+                    var global_offset: u32 = 0;
+                    var seg_idx: u32 = 0;
+                    while (seg_idx < current_seg_idx) : (seg_idx += 1) {
+                        if (self.tb.rope.get(seg_idx)) |s| {
+                            if (s.asText()) |c| {
+                                global_offset += c.width;
+                            }
+                        }
+                    }
+                    global_offset += offset_in_seg;
+
+                    const splitter = self.makeSegmentSplitter();
+                    try self.tb.rope.deleteRangeByWeight(global_offset, global_offset + 1, &splitter);
+
+                    // Update char count
+                    if (self.tb.char_count > 0) {
+                        self.tb.char_count -= 1;
+                    }
+
+                    // Mark views dirty
+                    self.tb.markViewsDirty();
+
+                    // Cursor stays at same position (content shifted left)
+                    return;
+                }
+
+                accumulated_width += seg_width;
             }
 
-            // Mark views dirty
-            self.tb.markViewsDirty();
-
-            // Cursor stays at same position (content shifted left)
+            // If we get here, we didn't find the character (shouldn't happen)
+            // Just return without doing anything
         }
     }
 
