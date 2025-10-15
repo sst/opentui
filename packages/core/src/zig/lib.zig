@@ -672,7 +672,7 @@ export fn destroyEditorView(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewSetViewport(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32) void {
-    view.setViewport(editor_view.Viewport{ .x = x, .y = y, .width = width, .height = height });
+    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height });
 }
 
 export fn editorViewClearViewport(view: *editor_view.EditorView) void {

@@ -14,10 +14,6 @@ pub const EditorViewError = error{
     OutOfMemory,
 };
 
-// Re-export types from text-buffer-view for convenience
-pub const Viewport = tbv.Viewport;
-pub const LineInfo = tbv.LineInfo;
-
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
 /// It also holds a reference to an EditBuffer for cursor/editing operations
 pub const EditorView = struct {
@@ -45,7 +41,7 @@ pub const EditorView = struct {
         };
 
         // Set initial viewport on the text buffer view
-        text_buffer_view.setViewport(Viewport{
+        text_buffer_view.setViewport(tbv.Viewport{
             .x = 0,
             .y = 0,
             .width = viewport_width,
@@ -62,11 +58,11 @@ pub const EditorView = struct {
 
     /// Set the viewport. If wrapping is enabled and viewport width differs from current wrap width,
     /// this will trigger a reflow by updating the TextBufferView's wrap width.
-    pub fn setViewport(self: *EditorView, vp: ?Viewport) void {
+    pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport) void {
         self.text_buffer_view.setViewport(vp);
     }
 
-    pub fn getViewport(self: *const EditorView) ?Viewport {
+    pub fn getViewport(self: *const EditorView) ?tbv.Viewport {
         return self.text_buffer_view.getViewport();
     }
 
@@ -110,7 +106,7 @@ pub const EditorView = struct {
 
         // Update viewport if offset changed
         if (new_offset_y != vp.y) {
-            self.text_buffer_view.setViewport(Viewport{
+            self.text_buffer_view.setViewport(tbv.Viewport{
                 .x = vp.x,
                 .y = new_offset_y,
                 .width = vp.width,
@@ -129,7 +125,7 @@ pub const EditorView = struct {
     /// Get cached line info for the viewport
     /// Returns character offsets, widths, and max width for viewport lines only
     /// The TextBufferView handles viewport slicing internally
-    pub fn getCachedLineInfo(self: *EditorView) LineInfo {
+    pub fn getCachedLineInfo(self: *EditorView) tbv.LineInfo {
         return self.text_buffer_view.getCachedLineInfo();
     }
 
