@@ -750,3 +750,612 @@ test "setStyledText - multiple chunks render correctly" {
 
     try std.testing.expectEqualStrings("Hello World", result);
 }
+
+// Viewport Tests
+
+test "viewport - basic vertical scrolling limits returned lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Create 10 lines
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+
+    // Set viewport to show only 5 lines starting at line 2
+    view.setViewport(.{ .x = 0, .y = 2, .width = 20, .height = 5 });
+
+    const visible_lines = view.getVirtualLines();
+
+    // Should return exactly 5 lines (lines 2-6)
+    try std.testing.expectEqual(@as(usize, 5), visible_lines.len);
+    try std.testing.expectEqual(@as(usize, 2), visible_lines[0].source_line);
+    try std.testing.expectEqual(@as(usize, 6), visible_lines[4].source_line);
+}
+
+test "viewport - vertical scrolling at start boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+
+    // Viewport at start (y=0)
+    view.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 3 });
+
+    const visible_lines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 3), visible_lines.len);
+    try std.testing.expectEqual(@as(usize, 0), visible_lines[0].source_line);
+    try std.testing.expectEqual(@as(usize, 2), visible_lines[2].source_line);
+}
+
+test "viewport - vertical scrolling at end boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+
+    // Viewport at end (y=3, height=3 but only 2 lines available)
+    view.setViewport(.{ .x = 0, .y = 3, .width = 20, .height = 3 });
+
+    const visible_lines = view.getVirtualLines();
+
+    // Should return only 2 lines (lines 3-4)
+    try std.testing.expectEqual(@as(usize, 2), visible_lines.len);
+    try std.testing.expectEqual(@as(usize, 3), visible_lines[0].source_line);
+    try std.testing.expectEqual(@as(usize, 4), visible_lines[1].source_line);
+}
+
+test "viewport - vertical scrolling beyond content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2");
+
+    // Viewport completely beyond content
+    view.setViewport(.{ .x = 0, .y = 10, .width = 20, .height = 5 });
+
+    const visible_lines = view.getVirtualLines();
+
+    // Should return 0 lines
+    try std.testing.expectEqual(@as(usize, 0), visible_lines.len);
+}
+
+test "viewport - with wrapping vertical scrolling" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Text that will wrap into multiple virtual lines
+    try tb.setText("This is a long line that will wrap\nShort\nAnother long line that wraps");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(15);
+    view.updateVirtualLines();
+
+    // Get total virtual lines first
+    const total_vlines = view.getVirtualLineCount();
+    try std.testing.expect(total_vlines > 3); // Should have more than 3 due to wrapping
+
+    // Set viewport to show middle portion
+    view.setViewport(.{ .x = 0, .y = 2, .width = 15, .height = 3 });
+
+    const visible_lines = view.getVirtualLines();
+
+    // Should return exactly 3 virtual lines starting from virtual line 2
+    try std.testing.expectEqual(@as(usize, 3), visible_lines.len);
+}
+
+test "viewport - getCachedLineInfo returns only viewport lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5");
+
+    // Set viewport
+    view.setViewport(.{ .x = 0, .y = 1, .width = 20, .height = 3 });
+
+    const line_info = view.getCachedLineInfo();
+
+    // Should return info for only 3 lines
+    try std.testing.expectEqual(@as(usize, 3), line_info.starts.len);
+    try std.testing.expectEqual(@as(usize, 3), line_info.widths.len);
+}
+
+test "viewport - changing viewport updates returned lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5");
+
+    // Initial viewport
+    view.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 2 });
+    const lines1 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines1.len);
+    try std.testing.expectEqual(@as(usize, 0), lines1[0].source_line);
+
+    // Change viewport position
+    view.setViewport(.{ .x = 0, .y = 3, .width = 20, .height = 2 });
+    const lines2 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines2.len);
+    try std.testing.expectEqual(@as(usize, 3), lines2[0].source_line);
+
+    // Change viewport height
+    view.setViewport(.{ .x = 0, .y = 1, .width = 20, .height = 4 });
+    const lines3 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 4), lines3.len);
+    try std.testing.expectEqual(@as(usize, 1), lines3[0].source_line);
+}
+
+test "viewport - null viewport returns all lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+
+    // No viewport set
+    const all_lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 5), all_lines.len);
+
+    // Set viewport
+    view.setViewport(.{ .x = 0, .y = 1, .width = 20, .height = 2 });
+    const viewport_lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), viewport_lines.len);
+
+    // Clear viewport
+    view.setViewport(null);
+    const all_lines_again = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 5), all_lines_again.len);
+}
+
+test "viewport - setViewportSize convenience method" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2\nLine 3");
+
+    // Use setViewportSize without existing viewport
+    view.setViewportSize(20, 2);
+    const vp1 = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp1.x);
+    try std.testing.expectEqual(@as(u32, 0), vp1.y);
+    try std.testing.expectEqual(@as(u32, 20), vp1.width);
+    try std.testing.expectEqual(@as(u32, 2), vp1.height);
+
+    // Change position manually
+    view.setViewport(.{ .x = 5, .y = 1, .width = 20, .height = 2 });
+
+    // Use setViewportSize to update size while preserving position
+    view.setViewportSize(30, 3);
+    const vp2 = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 5), vp2.x);
+    try std.testing.expectEqual(@as(u32, 1), vp2.y);
+    try std.testing.expectEqual(@as(u32, 30), vp2.width);
+    try std.testing.expectEqual(@as(u32, 3), vp2.height);
+}
+
+test "viewport - stores horizontal offset value with no wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    // Ensure no wrapping - horizontal offset only makes sense without wrapping
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    // Set viewport with horizontal offset (x=5)
+    view.setViewport(.{ .x = 5, .y = 0, .width = 10, .height = 1 });
+
+    const vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 5), vp.x);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+    try std.testing.expectEqual(@as(u32, 10), vp.width);
+    try std.testing.expectEqual(@as(u32, 1), vp.height);
+
+    // Line should not be wrapped since we disabled wrapping
+    const lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), lines.len);
+}
+
+test "viewport - preserves horizontal offset when changing vertical (no wrap)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ1234");
+
+    // Disable wrapping - horizontal offset only relevant without wrapping
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    // Set viewport with horizontal offset
+    view.setViewport(.{ .x = 3, .y = 0, .width = 8, .height = 2 });
+
+    var vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 3), vp.x);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+
+    // Change vertical position, preserving horizontal offset
+    view.setViewport(.{ .x = 3, .y = 1, .width = 8, .height = 2 });
+
+    vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 3), vp.x);
+    try std.testing.expectEqual(@as(u32, 1), vp.y);
+
+    // Verify correct lines are returned (y offset affects this)
+    const visible_lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), visible_lines.len);
+    try std.testing.expectEqual(@as(usize, 1), visible_lines[0].source_line);
+}
+
+test "viewport - can set large horizontal offset (no wrap)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Short\nLonger line here\nTiny");
+
+    // Disable wrapping - horizontal offset only relevant without wrapping
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    // Set horizontal offset beyond first line's width (for scrolling long lines)
+    view.setViewport(.{ .x = 10, .y = 0, .width = 10, .height = 3 });
+
+    const vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 10), vp.x);
+
+    // Still returns correct number of vertical lines
+    const visible_lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 3), visible_lines.len);
+}
+
+test "viewport - horizontal and vertical offset combined (no wrap)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0: ABCDEFGHIJ\nLine 1: KLMNOPQRST\nLine 2: UVWXYZ1234\nLine 3: 567890ABCD");
+
+    // Disable wrapping - horizontal offset only relevant without wrapping
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    // Skip first line (y=1), skip first 8 chars (x=8), show 15 chars wide, 2 lines
+    view.setViewport(.{ .x = 8, .y = 1, .width = 15, .height = 2 });
+
+    const vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 8), vp.x);
+    try std.testing.expectEqual(@as(u32, 1), vp.y);
+
+    const visible_lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), visible_lines.len);
+    try std.testing.expectEqual(@as(usize, 1), visible_lines[0].source_line);
+    try std.testing.expectEqual(@as(usize, 2), visible_lines[1].source_line);
+}
+
+test "viewport - horizontal scrolling only for no-wrap mode" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const long_text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    try tb.setText(long_text);
+
+    // Test 1: With wrapping disabled - horizontal offset is relevant
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 10, .y = 0, .width = 15, .height = 1 });
+    view.updateVirtualLines();
+
+    var vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 10), vp.x);
+
+    // Single line - text extends beyond viewport, horizontal scrolling applies
+    var lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), lines.len);
+    // Line width is full text width (38), viewport shows columns 10-24
+
+    // Test 2: With wrapping enabled - horizontal offset not used
+    view.setWrapMode(.char);
+    view.setViewport(.{ .x = 10, .y = 0, .width = 15, .height = 5 });
+    view.updateVirtualLines();
+
+    vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 10), vp.x); // X is stored but not used
+
+    // Multiple wrapped lines - text wraps to viewport width, no horizontal overflow
+    lines = view.getVirtualLines();
+    try std.testing.expect(lines.len > 1); // Text wrapped into multiple lines
+    // Each wrapped line fits within viewport width (15)
+}
+
+test "viewport - horizontal offset irrelevant with wrapping enabled" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("This is a very long line that will wrap into multiple virtual lines");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+    view.updateVirtualLines();
+
+    // Get total virtual lines with wrapping
+    const total_vlines = view.getVirtualLineCount();
+    try std.testing.expect(total_vlines > 1);
+
+    // Set viewport with horizontal offset - x value stored but not used for wrapping
+    view.setViewport(.{ .x = 5, .y = 1, .width = 15, .height = 2 });
+
+    const vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 5), vp.x); // X is stored
+    try std.testing.expectEqual(@as(u32, 1), vp.y);
+    try std.testing.expectEqual(@as(u32, 15), vp.width);
+
+    // Text wraps to viewport width, so horizontal offset is not applicable
+    const visible_lines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), visible_lines.len);
+
+    // When wrapping, text fits within viewport width - no horizontal overflow
+}
+
+test "viewport - zero width or height" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 0\nLine 1\nLine 2");
+
+    // Zero height viewport
+    view.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 0 });
+    const lines1 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 0), lines1.len);
+
+    // Zero width viewport - should still return lines but drawing will be affected
+    view.setViewport(.{ .x = 0, .y = 0, .width = 0, .height = 2 });
+    const lines2 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines2.len);
+}
+
+test "viewport - viewport sets wrap width automatically" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDD");
+
+    view.setWrapMode(.char);
+
+    // Setting viewport should automatically set wrap width to viewport width
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 5 });
+    view.updateVirtualLines();
+
+    const vline_count_10 = view.getVirtualLineCount();
+
+    // Change viewport width
+    view.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 5 });
+    view.updateVirtualLines();
+
+    const vline_count_20 = view.getVirtualLineCount();
+
+    // Narrower viewport should create more wrapped lines
+    try std.testing.expect(vline_count_10 > vline_count_20);
+}
+
+test "viewport - moving viewport dynamically (no wrap)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("0123456789\nABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ!@#$");
+
+    // Disable wrapping for horizontal scrolling
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    // Start at origin
+    view.setViewport(.{ .x = 0, .y = 0, .width = 5, .height = 2 });
+    var vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp.x);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+    const lines1 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines1.len);
+    try std.testing.expectEqual(@as(usize, 0), lines1[0].source_line);
+
+    // Scroll down
+    view.setViewport(.{ .x = 0, .y = 1, .width = 5, .height = 2 });
+    vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp.x);
+    try std.testing.expectEqual(@as(u32, 1), vp.y);
+    const lines2 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines2.len);
+    try std.testing.expectEqual(@as(usize, 1), lines2[0].source_line);
+
+    // Scroll right (horizontal offset stored for no-wrap mode)
+    view.setViewport(.{ .x = 3, .y = 1, .width = 5, .height = 2 });
+    vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 3), vp.x);
+    try std.testing.expectEqual(@as(u32, 1), vp.y);
+    const lines3 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines3.len);
+
+    // Scroll to bottom-right
+    view.setViewport(.{ .x = 5, .y = 2, .width = 5, .height = 2 });
+    vp = view.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 5), vp.x);
+    try std.testing.expectEqual(@as(u32, 2), vp.y);
+    const lines4 = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), lines4.len);
+    try std.testing.expectEqual(@as(usize, 2), lines4[0].source_line);
+}
