@@ -130,10 +130,12 @@ pub fn Rope(comptime T: type) type {
 
         pub const Leaf = struct {
             data: T,
+            is_sentinel: bool = false, // True only for the empty_leaf sentinel
 
             fn metrics(self: *const Leaf) Metrics {
+                // Sentinel leaves have count = 0 for natural filtering
                 var m = Metrics{
-                    .count = 1, // Leaves count as 1 item
+                    .count = if (self.is_sentinel) 0 else 1,
                     .depth = 1,
                 };
 
@@ -144,8 +146,8 @@ pub fn Rope(comptime T: type) type {
                     }
                 }
 
-                // Populate marker counts based on active tag
-                if (marker_enabled) {
+                // Populate marker counts based on active tag (only for non-sentinel leaves)
+                if (!self.is_sentinel and marker_enabled) {
                     const tag = std.meta.activeTag(self.data);
                     inline for (T.MarkerTypes, 0..) |mt, i| {
                         if (tag == mt) {
@@ -377,7 +379,15 @@ pub fn Rope(comptime T: type) type {
             /// Weight-aware join that maintains balance
             /// O(log |weight difference|) operation
             /// Balances on weight (bytes/chars) if T provides weight(), else on count
+            /// Auto-filters empty nodes (count = 0)
             pub fn join_balanced(left: *const Node, right: *const Node, allocator: Allocator) error{OutOfMemory}!*const Node {
+                // Auto-filter empties based on count (includes sentinel empties)
+                const left_count = left.metrics().count;
+                const right_count = right.metrics().count;
+
+                if (left_count == 0) return right;
+                if (right_count == 0) return left;
+
                 const left_weight = left.metrics().weight();
                 const right_weight = right.metrics().weight();
                 const total_weight = left_weight + right_weight;
@@ -509,13 +519,14 @@ pub fn Rope(comptime T: type) type {
             else
                 std.mem.zeroes(T);
 
-            // Use same empty_leaf for both root and split operations
-            // This allows sentinel filtering to work correctly
-            const empty_leaf = try Node.new_leaf(allocator, empty_data);
+            // Create sentinel empty_leaf with is_sentinel flag set
+            const node = try allocator.create(Node);
+            node.* = .{ .leaf = .{ .data = empty_data, .is_sentinel = true } };
+
             return .{
-                .root = empty_leaf,
+                .root = node,
                 .allocator = allocator,
-                .empty_leaf = empty_leaf,
+                .empty_leaf = node,
                 .config = config,
                 .marker_cache = MarkerCache.init(allocator),
             };
@@ -532,11 +543,15 @@ pub fn Rope(comptime T: type) type {
                 T.empty()
             else
                 std.mem.zeroes(T);
-            const empty_leaf = try Node.new_leaf(allocator, empty_data);
+
+            // Create sentinel empty_leaf with is_sentinel flag set
+            const empty_node = try allocator.create(Node);
+            empty_node.* = .{ .leaf = .{ .data = empty_data, .is_sentinel = true } };
+
             return .{
                 .root = root,
                 .allocator = allocator,
-                .empty_leaf = empty_leaf,
+                .empty_leaf = empty_node,
                 .config = config,
                 .marker_cache = MarkerCache.init(allocator),
             };
@@ -565,59 +580,28 @@ pub fn Rope(comptime T: type) type {
                 T.empty()
             else
                 std.mem.zeroes(T);
-            const empty_leaf = try Node.new_leaf(allocator, empty_data);
+
+            // Create sentinel empty_leaf with is_sentinel flag set
+            const empty_node = try allocator.create(Node);
+            empty_node.* = .{ .leaf = .{ .data = empty_data, .is_sentinel = true } };
+
             return .{
                 .root = root,
                 .allocator = allocator,
-                .empty_leaf = empty_leaf,
+                .empty_leaf = empty_node,
                 .config = config,
                 .marker_cache = MarkerCache.init(allocator),
             };
         }
 
         pub fn count(self: *const Self) u32 {
-            return self.countExcludingSentinel();
-        }
-
-        /// Count items excluding sentinel empties
-        fn countExcludingSentinel(self: *const Self) u32 {
-            return self.countNodeExcludingSentinel(self.root);
-        }
-
-        fn countNodeExcludingSentinel(self: *const Self, node: *const Node) u32 {
-            if (node.is_sentinel(self.empty_leaf)) {
-                return 0;
-            }
-
-            return switch (node.*) {
-                .branch => |*b| {
-                    return self.countNodeExcludingSentinel(b.left) +
-                        self.countNodeExcludingSentinel(b.right);
-                },
-                .leaf => 1,
-            };
+            // Metrics now naturally exclude empties (count = 0)
+            return self.root.count();
         }
 
         pub fn get(self: *const Self, index: u32) ?*const T {
-            return self.getFromNode(self.root, index);
-        }
-
-        fn getFromNode(self: *const Self, node: *const Node, index: u32) ?*const T {
-            // Skip sentinel empties
-            if (node.is_sentinel(self.empty_leaf)) {
-                return null;
-            }
-
-            return switch (node.*) {
-                .branch => |*b| {
-                    const left_count = self.countNodeExcludingSentinel(b.left);
-                    if (index < left_count) {
-                        return self.getFromNode(b.left, index);
-                    }
-                    return self.getFromNode(b.right, index - left_count);
-                },
-                .leaf => |*l| if (index == 0) &l.data else null,
-            };
+            // Metrics now naturally exclude empties (count = 0)
+            return self.root.get(index);
         }
 
         pub fn walk(self: *const Self, ctx: *anyopaque, f: Node.WalkerFn) !void {
@@ -627,11 +611,6 @@ pub fn Rope(comptime T: type) type {
         }
 
         fn walkNode(self: *const Self, node: *const Node, ctx: *anyopaque, f: Node.WalkerFn, current_index: *u32) Node.WalkerResult {
-            // Skip sentinel empties
-            if (node.is_sentinel(self.empty_leaf)) {
-                return .{};
-            }
-
             return switch (node.*) {
                 .branch => |*b| {
                     const left_result = self.walkNode(b.left, ctx, f, current_index);
@@ -641,6 +620,10 @@ pub fn Rope(comptime T: type) type {
                     return self.walkNode(b.right, ctx, f, current_index);
                 },
                 .leaf => |*l| {
+                    // Skip empty leaves (count = 0) automatically
+                    if (node.count() == 0) {
+                        return .{};
+                    }
                     const result = f(ctx, &l.data, current_index.*);
                     current_index.* += 1;
                     return result;
@@ -655,14 +638,9 @@ pub fn Rope(comptime T: type) type {
         }
 
         fn walkFromNode(self: *const Self, node: *const Node, start_index: u32, ctx: *anyopaque, f: Node.WalkerFn, current_index: *u32) Node.WalkerResult {
-            // Skip sentinel empties
-            if (node.is_sentinel(self.empty_leaf)) {
-                return .{};
-            }
-
             return switch (node.*) {
                 .branch => |*b| {
-                    const left_count = self.countNodeExcludingSentinel(b.left);
+                    const left_count = b.left_metrics.count;
                     if (start_index >= left_count) {
                         return self.walkFromNode(b.right, start_index - left_count, ctx, f, current_index);
                     }
@@ -674,6 +652,10 @@ pub fn Rope(comptime T: type) type {
                     return self.walkNode(b.right, ctx, f, current_index);
                 },
                 .leaf => |*l| {
+                    // Skip empty leaves (count = 0)
+                    if (node.count() == 0) {
+                        return .{};
+                    }
                     if (start_index == 0) {
                         const result = f(ctx, &l.data, current_index.*);
                         current_index.* += 1;
@@ -718,14 +700,8 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn concat(self: *Self, other: *const Self) !void {
-            // Filter empty sentinels during concat
-            if (self.root.is_sentinel(self.empty_leaf)) {
-                self.root = other.root;
-            } else if (other.root.is_sentinel(other.empty_leaf)) {
-                // Keep self.root as is
-            } else {
-                self.root = try Node.join_balanced(self.root, other.root, self.allocator);
-            }
+            // join_balanced now auto-filters empties
+            self.root = try Node.join_balanced(self.root, other.root, self.allocator);
             self.version += 1; // Invalidate cache
         }
 
@@ -791,14 +767,8 @@ pub fn Rope(comptime T: type) type {
             const second_split = try Node.split_at(first_split.right, end - start, self.allocator, self.empty_leaf);
 
             // Join left part with the part after the deleted range
-            // Filter split-boundary empties
-            if (first_split.left == self.empty_leaf) {
-                self.root = second_split.right;
-            } else if (second_split.right == self.empty_leaf) {
-                self.root = first_split.left;
-            } else {
-                self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
-            }
+            // join_balanced now auto-filters empties
+            self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
 
             self.version += 1; // Invalidate cache
         }
@@ -815,16 +785,9 @@ pub fn Rope(comptime T: type) type {
             const split_result = try Node.split_at(self.root, index, self.allocator, self.empty_leaf);
 
             // Join: left + insert + right
-            // Filter split-boundary empties (pointer equality with self.empty_leaf)
-            const left_filtered = if (split_result.left == self.empty_leaf)
-                insert_rope.root
-            else
-                try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
-
-            self.root = if (split_result.right == self.empty_leaf)
-                left_filtered
-            else
-                try Node.join_balanced(left_filtered, split_result.right, self.allocator);
+            // join_balanced now auto-filters empties
+            const left_joined = try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
+            self.root = try Node.join_balanced(left_joined, split_result.right, self.allocator);
 
             self.version += 1; // Invalidate cache
         }
@@ -886,14 +849,8 @@ pub fn Rope(comptime T: type) type {
             const second_split = try Node.split_at_weight(first_split.right, end - start, self.allocator, self.empty_leaf, split_leaf_fn);
 
             // Join left part with the part after the deleted range
-            // Filter split-boundary empties
-            if (first_split.left == self.empty_leaf) {
-                self.root = second_split.right;
-            } else if (second_split.right == self.empty_leaf) {
-                self.root = first_split.left;
-            } else {
-                self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
-            }
+            // join_balanced now auto-filters empties
+            self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
 
             self.version += 1; // Invalidate cache
         }
@@ -911,16 +868,9 @@ pub fn Rope(comptime T: type) type {
             const split_result = try Node.split_at_weight(self.root, weight, self.allocator, self.empty_leaf, split_leaf_fn);
 
             // Join: left + insert + right
-            // Filter split-boundary empties (pointer equality with self.empty_leaf)
-            const left_filtered = if (split_result.left == self.empty_leaf)
-                insert_rope.root
-            else
-                try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
-
-            self.root = if (split_result.right == self.empty_leaf)
-                left_filtered
-            else
-                try Node.join_balanced(left_filtered, split_result.right, self.allocator);
+            // join_balanced now auto-filters empties
+            const left_joined = try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
+            self.root = try Node.join_balanced(left_joined, split_result.right, self.allocator);
 
             self.version += 1; // Invalidate cache
         }
@@ -935,11 +885,6 @@ pub fn Rope(comptime T: type) type {
         }
 
         fn findByWeightInNode(self: *const Self, node: *const Node, target_weight: u32, current_weight: u32) ?WeightFindResult {
-            // Skip sentinel empties
-            if (node.is_sentinel(self.empty_leaf)) {
-                return null;
-            }
-
             return switch (node.*) {
                 .branch => |*b| {
                     const left_weight = b.left_metrics.weight();
