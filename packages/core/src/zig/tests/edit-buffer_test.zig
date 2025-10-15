@@ -1089,3 +1089,39 @@ test "EditBuffer - getCursorPosition with wide characters" {
     try std.testing.expectEqual(@as(u32, 0), pos.line);
     try std.testing.expectEqual(@as(u32, 10), pos.visual_col);
 }
+
+test "EditBuffer - setText followed by insertText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // This test verifies that setText properly re-registers the AddBuffer
+    // (without allocating new memory) so that subsequent insertText operations
+    // don't crash (the original bug). The exact text manipulation behavior
+    // is tested by the TypeScript tests.
+
+    // Set initial text
+    try eb.setText("Line 1\nLine 2\nLine 3");
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Verify setText worked
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", out_buffer[0..written]);
+
+    // Move to start of last line (different from TypeScript test which uses gotoLine)
+    try eb.setCursor(0, 0);
+
+    // Insert some text - this should NOT crash after setText
+    try eb.insertText("X");
+
+    // Verify insertion worked
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("XLine 1\nLine 2\nLine 3", out_buffer[0..written]);
+}

@@ -37,8 +37,9 @@ const AddBuffer = struct {
 
     fn init(allocator: Allocator, text_buffer: *UnifiedTextBuffer, initial_cap: usize) !AddBuffer {
         const mem = try allocator.alloc(u8, initial_cap);
-        // Register the full buffer with the text buffer (we'll track len separately)
-        const mem_id = try text_buffer.registerMemBuffer(mem, true);
+        // Register with owned=false so reset() won't free our buffer
+        // EditBuffer is responsible for freeing this memory in deinit
+        const mem_id = try text_buffer.registerMemBuffer(mem, false);
 
         return .{
             .mem_id = mem_id,
@@ -55,9 +56,14 @@ const AddBuffer = struct {
         // Allocate new buffer with doubled capacity
         const new_cap = @max(self.cap * 2, self.len + need);
         const new_mem = try self.allocator.alloc(u8, new_cap);
-        const new_mem_id = try text_buffer.registerMemBuffer(new_mem, true);
+        // Register with owned=false so EditBuffer owns the memory
+        const new_mem_id = try text_buffer.registerMemBuffer(new_mem, false);
 
-        // Switch to new buffer (old buffer remains registered for existing chunks)
+        // Free the old buffer (we own it)
+        const old_mem = self.ptr[0..self.cap];
+        self.allocator.free(old_mem);
+
+        // Switch to new buffer
         self.mem_id = new_mem_id;
         self.ptr = new_mem.ptr;
         self.len = 0;
@@ -124,6 +130,10 @@ pub const EditBuffer = struct {
     }
 
     pub fn deinit(self: *EditBuffer) void {
+        // Free the AddBuffer memory (we own it)
+        const add_buffer_mem = self.add_buffer.ptr[0..self.add_buffer.cap];
+        self.allocator.free(add_buffer_mem);
+
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
         self.allocator.destroy(self);
@@ -632,6 +642,15 @@ pub const EditBuffer = struct {
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
         try self.tb.setText(text);
+
+        // IMPORTANT: tb.setText() calls reset() which clears the memory registry.
+        // Since we registered AddBuffer with owned=false, the memory wasn't freed.
+        // We just need to re-register it and reset the length.
+        const add_buffer_mem = self.add_buffer.ptr[0..self.add_buffer.cap];
+        const new_mem_id = try self.tb.registerMemBuffer(add_buffer_mem, false);
+        self.add_buffer.mem_id = new_mem_id;
+        self.add_buffer.len = 0;
+
         try self.setCursor(0, 0);
     }
 
