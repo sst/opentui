@@ -878,13 +878,16 @@ pub const UnifiedTextBuffer = struct {
         // Get file size
         const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
 
-        // Allocate in arena
+        // Reset first to clear arena, then allocate (so our allocation survives)
+        self.reset();
+
+        // Allocate in arena AFTER reset
         const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;
 
         // Read file content
         const bytes_read = file.readAll(content) catch return TextBufferError.OutOfMemory;
 
-        // Set the text (setText will use the arena-allocated memory)
-        try self.setText(content[0..bytes_read]);
+        // Use internal setText that doesn't call reset again
+        try self.setTextInternal(content[0..bytes_read]);
     }
 };

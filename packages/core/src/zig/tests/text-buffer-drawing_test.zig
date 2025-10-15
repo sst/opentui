@@ -1359,3 +1359,69 @@ test "viewport - moving viewport dynamically (no wrap)" {
     try std.testing.expectEqual(@as(usize, 2), lines4.len);
     try std.testing.expectEqual(@as(usize, 2), lines4[0].source_line);
 }
+
+test "loadFile - loads and renders file correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Create a temporary test file with known content
+    const test_content = "ABC\nDEF";
+    const tmpdir = std.testing.tmpDir(.{});
+    var tmp = tmpdir;
+    defer tmp.cleanup();
+
+    // Write test file
+    const file = try tmp.dir.createFile("test.txt", .{});
+    try file.writeAll(test_content);
+    file.close();
+
+    // Get absolute path to test file
+    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir_path);
+
+    const file_path = try std.fs.path.join(std.testing.allocator, &[_][]const u8{ dir_path, "test.txt" });
+    defer std.testing.allocator.free(file_path);
+
+    // Load test file
+    try tb.loadFile(file_path);
+
+    // Verify line count
+    const line_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 2), line_count);
+
+    // Verify character count is correct
+    const char_count = tb.getLength();
+    try std.testing.expectEqual(@as(u32, 6), char_count); // "ABC" + "DEF" = 6 chars
+
+    // Create buffer and render to verify content displays correctly
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    // Verify rendering by checking buffer contents
+    var render_buffer: [200]u8 = undefined;
+    const render_written = try opt_buffer.writeResolvedChars(&render_buffer, false);
+    const render_result = render_buffer[0..render_written];
+
+    // Should contain "ABC" on first line
+    try std.testing.expect(std.mem.startsWith(u8, render_result, "ABC"));
+}

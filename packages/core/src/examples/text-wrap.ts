@@ -571,42 +571,37 @@ export function run(renderer: CliRenderer): void {
     hideFileInput()
 
     try {
-      // Resolve path relative to cwd
-      const filePath = resolve(process.cwd(), value.trim())
-
-      if (!existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`)
-      }
+      const filePath = value.trim()
 
       // Update status to show loading
       if (instructionsText2) {
         instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Loading file...")}`
       }
 
-      // Read file
-      const content = await Bun.file(filePath).text()
+      // Get file size for display
       const fileStats = await Bun.file(filePath).stat()
       const fileSizeBytes = fileStats.size
       const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2)
 
-      // Create a new TextNodeRenderable with the file content
-      const fileTextNode = TextNodeRenderable.fromString(
-        `// Loaded from: ${filePath}\n// Size: ${content.length.toLocaleString()} chars, ${fileSizeMB} MB\n\n${content}`,
-        {
-          fg: "#c0caf5",
-        },
-      )
-
-      // Replace the current content
+      // Replace the current content and load file directly into buffer
       if (textRenderable) {
         textRenderable.clear()
-        textRenderable.add(fileTextNode)
 
-        // Trigger the lifecycle pass to commit text to buffer
+        // Add header text node
+        const headerNode = TextNodeRenderable.fromString(`// Loaded from: ${filePath}\n// Size: ${fileSizeMB} MB\n\n`, {
+          fg: "#9ece6a",
+        })
+        textRenderable.add(headerNode)
+
+        // Trigger lifecycle to commit header
         textRenderable.onLifecyclePass()
 
+        // Load file directly into the text buffer
+        const textBuffer = (textRenderable as any).textBuffer
+        textBuffer.loadFile(filePath)
+
         // Get the text buffer size after loading (in bytes)
-        const textBufferBytes = (textRenderable as any).textBuffer.byteSize
+        const textBufferBytes = textBuffer.byteSize
         const textBufferMB = (textBufferBytes / (1024 * 1024)).toFixed(2)
 
         // Update status
