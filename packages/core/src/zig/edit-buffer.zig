@@ -169,22 +169,7 @@ pub const EditBuffer = struct {
     /// Get line width using O(1) marker lookups
     /// Uses linestart markers to determine line boundaries
     fn getLineWidth(self: *const EditBuffer, row: u32) u32 {
-        const linestart_count = self.tb.rope.markerCount(.linestart);
-        if (row >= linestart_count) return 0;
-
-        // Get the character offset at the start of this line
-        const line_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
-        const line_start_offset = line_marker.global_weight;
-
-        // Get the character offset at the start of the next line (or end of buffer)
-        const line_end_offset = if (row + 1 < linestart_count) blk: {
-            const next_marker = self.tb.rope.getMarker(.linestart, row + 1) orelse return 0;
-            break :blk next_marker.global_weight;
-        } else blk: {
-            break :blk iter_mod.getTotalWidth(&self.tb.rope);
-        };
-
-        return line_end_offset - line_start_offset;
+        return iter_mod.lineWidthAt(&self.tb.rope, row);
     }
 
     /// Split a TextChunk at a specific weight (display width)

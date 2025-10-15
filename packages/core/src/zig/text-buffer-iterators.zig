@@ -289,3 +289,23 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
 
     return null;
 }
+
+/// Get the display width of a specific line using O(1) marker lookups
+pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
+    const linestart_count = rope.markerCount(.linestart);
+    if (row >= linestart_count) return 0;
+
+    // Get the character offset at the start of this line
+    const line_marker = rope.getMarker(.linestart, row) orelse return 0;
+    const line_start_offset = line_marker.global_weight;
+
+    // Get the character offset at the start of the next line (or end of buffer)
+    const line_end_offset = if (row + 1 < linestart_count) blk: {
+        const next_marker = rope.getMarker(.linestart, row + 1) orelse return 0;
+        break :blk next_marker.global_weight;
+    } else blk: {
+        break :blk getTotalWidth(rope);
+    };
+
+    return line_end_offset - line_start_offset;
+}
