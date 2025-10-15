@@ -38,7 +38,6 @@ pub const LineInfo = struct {
 
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
-    source_chunk: usize,
     grapheme_start: u32,
     grapheme_count: u32,
     width: u16,
@@ -264,14 +263,13 @@ pub const UnifiedTextBufferView = struct {
                 virtual_allocator: Allocator,
                 current_vline: ?VirtualLine = null,
 
-                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
+                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
                     _ = line_idx;
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
                     // Append chunk to current virtual line
                     if (ctx.current_vline) |*vline| {
                         vline.chunks.append(ctx.virtual_allocator, VirtualChunk{
-                            .source_chunk = chunk_idx_in_line,
                             .grapheme_start = 0,
                             .grapheme_count = chunk.width,
                             .width = chunk.width,
@@ -338,9 +336,8 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_position = 0;
                 }
 
-                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, chunk_idx: u32, start: u32, count: u32, width: u32) void {
+                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, count: u32, width: u32) void {
                     wctx.current_vline.chunks.append(wctx.virtual_allocator, VirtualChunk{
-                        .source_chunk = chunk_idx,
                         .grapheme_start = start,
                         .grapheme_count = count,
                         .width = @intCast(width),

@@ -918,18 +918,19 @@ pub const OptimizedBuffer = struct {
                 var special_idx: usize = 0;
                 var byte_offset: u32 = 0;
 
+                // Compute initial byte_offset for our starting column
+                // Formula: byte_offset = col + Σ(byte_len - width) for all specials before col
+                byte_offset = col;
+                var si: usize = 0;
+                while (si < specials.len and specials[si].col_offset < col) {
+                    const s = specials[si];
+                    // Each special contributes (byte_len - width) extra bytes beyond its column width
+                    byte_offset += @as(u32, s.byte_len) - @as(u32, s.width);
+                    si += 1;
+                }
+
                 // Fast-forward special_idx to first special at or after our starting column
-                // Also compute initial byte_offset
-                while (special_idx < specials.len and specials[special_idx].col_offset < col) {
-                    const s = specials[special_idx];
-                    byte_offset += @as(u32, s.byte_len);
-                    special_idx += 1;
-                }
-                // Add ASCII bytes before first special or before our starting column
-                if (special_idx == 0 or col > 0) {
-                    const prev_col = if (special_idx > 0) specials[special_idx - 1].col_offset + specials[special_idx - 1].width else 0;
-                    byte_offset += (col - prev_col);
-                }
+                special_idx = si;
 
                 while (col < col_end) {
                     // Check if we have a special at this column
