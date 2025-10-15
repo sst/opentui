@@ -551,6 +551,12 @@ export function run(renderer: CliRenderer): void {
     cursorColor: "#7aa2f7",
     value: "",
     maxLength: 500,
+    onKeyDown: (key) => {
+      // If backspace is pressed and input is empty, close the prompt
+      if (key.name === "backspace" && filePathInput && filePathInput.value === "" && isInputVisible) {
+        hideFileInput()
+      }
+    },
   })
   fileInputContainer.add(filePathInput)
 
@@ -560,6 +566,9 @@ export function run(renderer: CliRenderer): void {
       hideFileInput()
       return
     }
+
+    // Close prompt immediately before loading
+    hideFileInput()
 
     try {
       // Resolve path relative to cwd
@@ -605,8 +614,6 @@ export function run(renderer: CliRenderer): void {
           instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("File: ")} ${fg("#9ece6a")(fileSizeMB)}${fg("#c0caf5")(" MB, Buffer: ")} ${fg("#9ece6a")(textBufferMB)}${fg("#c0caf5")(" MB, Mode: ")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
         }
       }
-
-      hideFileInput()
     } catch (error) {
       // Show error in text renderable
       const errorMessage = error instanceof Error ? error.message : "Unknown error"
@@ -622,8 +629,6 @@ export function run(renderer: CliRenderer): void {
       if (instructionsText2) {
         instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Error loading file")}`
       }
-
-      hideFileInput()
     }
   })
 
