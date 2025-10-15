@@ -236,13 +236,14 @@ test "coordsToOffset - valid coordinates" {
     try testing.expect(offset1 != null);
     try testing.expectEqual(@as(u32, 5), offset1.?);
 
+    // With newline weight, line 1 starts at offset 11 (line0_width=10 + newline=1)
     const offset2 = iter_mod.coordsToOffset(&rope, 1, 0);
     try testing.expect(offset2 != null);
-    try testing.expectEqual(@as(u32, 10), offset2.?);
+    try testing.expectEqual(@as(u32, 11), offset2.?);
 
     const offset3 = iter_mod.coordsToOffset(&rope, 1, 3);
     try testing.expect(offset3 != null);
-    try testing.expectEqual(@as(u32, 13), offset3.?);
+    try testing.expectEqual(@as(u32, 14), offset3.?);
 }
 
 test "offsetToCoords - valid offsets" {
@@ -280,12 +281,19 @@ test "offsetToCoords - valid offsets" {
     try testing.expectEqual(@as(u32, 0), coords1.?.row);
     try testing.expectEqual(@as(u32, 5), coords1.?.col);
 
+    // Offset 10 is the newline at end of line 0, which maps to col=10 on row 0
     const coords2 = iter_mod.offsetToCoords(&rope, 10);
     try testing.expect(coords2 != null);
-    try testing.expectEqual(@as(u32, 1), coords2.?.row);
-    try testing.expectEqual(@as(u32, 0), coords2.?.col);
+    try testing.expectEqual(@as(u32, 0), coords2.?.row);
+    try testing.expectEqual(@as(u32, 10), coords2.?.col);
 
-    const coords3 = iter_mod.offsetToCoords(&rope, 13);
+    // Offset 11 is the start of line 1
+    const coords2b = iter_mod.offsetToCoords(&rope, 11);
+    try testing.expect(coords2b != null);
+    try testing.expectEqual(@as(u32, 1), coords2b.?.row);
+    try testing.expectEqual(@as(u32, 0), coords2b.?.col);
+
+    const coords3 = iter_mod.offsetToCoords(&rope, 14);
     try testing.expect(coords3 != null);
     try testing.expectEqual(@as(u32, 1), coords3.?.row);
     try testing.expectEqual(@as(u32, 3), coords3.?.col);

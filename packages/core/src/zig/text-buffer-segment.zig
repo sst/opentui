@@ -259,6 +259,9 @@ pub const Segment = union(enum) {
         /// Number of linestart markers in the subtree
         linestart_count: u32 = 0,
 
+        /// Number of line breaks (newlines) in the subtree
+        newline_count: u32 = 0,
+
         /// Maximum line width in the entire subtree
         max_line_width: u32 = 0,
 
@@ -271,6 +274,7 @@ pub const Segment = union(enum) {
             self.total_width += other.total_width;
             self.total_bytes += other.total_bytes;
             self.linestart_count += other.linestart_count;
+            self.newline_count += other.newline_count;
 
             self.max_line_width = @max(self.max_line_width, other.max_line_width);
 
@@ -278,9 +282,10 @@ pub const Segment = union(enum) {
         }
 
         /// Get the balancing weight for the rope
-        /// We use total_width as the weight metric
+        /// We use total_width + newline_count to give each break a weight of 1
+        /// This eliminates boundary ambiguity in coordinate/offset conversions
         pub fn weight(self: *const Metrics) u32 {
-            return self.total_width;
+            return self.total_width + self.newline_count;
         }
     };
 
@@ -294,6 +299,7 @@ pub const Segment = union(enum) {
                     .total_width = chunk.width,
                     .total_bytes = byte_len,
                     .linestart_count = 0,
+                    .newline_count = 0,
                     .max_line_width = chunk.width,
                     .ascii_only = is_ascii,
                 };
@@ -302,6 +308,7 @@ pub const Segment = union(enum) {
                 .total_width = 0,
                 .total_bytes = 0,
                 .linestart_count = 0,
+                .newline_count = 1,
                 .max_line_width = 0,
                 .ascii_only = true,
             },
@@ -309,6 +316,7 @@ pub const Segment = union(enum) {
                 .total_width = 0,
                 .total_bytes = 0,
                 .linestart_count = 1,
+                .newline_count = 0,
                 .max_line_width = 0,
                 .ascii_only = true,
             },

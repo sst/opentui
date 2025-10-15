@@ -308,29 +308,6 @@ pub const EditBuffer = struct {
         // Convert cursor position to character offset
         const insert_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
 
-        // Special case: if we're at the end of a line (col == line_width), we need to insert
-        // BEFORE the break marker, not after it. Since breaks have 0 weight, both the end of
-        // the line text and the break are at the same offset. When insertSliceByWeight splits
-        // at that offset, the break ends up on the wrong side.
-        //
-        // To fix this, we check if we're at line end, and if so, use segment-level insertion
-        // directly before the break marker instead of weight-based insertion.
-        const line_width = self.getLineWidth(cursor.row);
-        const at_line_end = cursor.col == line_width and line_width > 0;
-        const line_count = self.tb.getLineCount();
-        const has_next_line = cursor.row + 1 < line_count;
-
-        var use_segment_insertion = false;
-        var segment_insert_idx: u32 = 0;
-
-        if (at_line_end and has_next_line) {
-            // Find the break marker for this line to insert directly before it
-            if (self.tb.rope.getMarker(.brk, cursor.row)) |break_marker| {
-                use_segment_insertion = true;
-                segment_insert_idx = break_marker.leaf_index;
-            }
-        }
-
         // Append entire bytes to AddBuffer once (single copy)
         const chunk_ref = self.add_buffer.append(bytes);
         const base_mem_id = chunk_ref.mem_id;
@@ -380,16 +357,10 @@ pub const EditBuffer = struct {
             inserted_width += chunk.width;
         }
 
-        // Insert segments into rope
+        // Insert segments into rope using weight-based insertion
         if (segments.items.len > 0) {
-            if (use_segment_insertion) {
-                // Insert directly at segment index (before the break marker)
-                try self.tb.rope.insert_slice(segment_insert_idx, segments.items);
-            } else {
-                // Use weight-based insertion
-                const splitter = self.makeSegmentSplitter();
-                try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
-            }
+            const splitter = self.makeSegmentSplitter();
+            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
 
             // Update char count
             self.tb.char_count += inserted_width;
@@ -498,91 +469,23 @@ pub const EditBuffer = struct {
             }
         } else {
             // Delete one character before cursor within the same line
-            if (cursor.col == 0) {
-                // Safety check - shouldn't happen since we check earlier
-                return;
+            const target_col = cursor.col - 1;
+            const start_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, target_col) orelse return;
+            const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
+
+            const splitter = self.makeSegmentSplitter();
+            try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
+
+            // Update char count
+            if (self.tb.char_count > 0) {
+                self.tb.char_count -= 1;
             }
 
-            // Get the linestart marker for the current row to find the segment index
-            const linestart_marker = self.tb.rope.getMarker(.linestart, cursor.row) orelse return;
-            const linestart_seg_idx = linestart_marker.leaf_index;
+            // Mark views dirty
+            self.tb.markViewsDirty();
 
-            // Walk forward from the linestart to find text segments and accumulate width
-            var accumulated_width: u32 = 0;
-            var current_seg_idx: u32 = linestart_seg_idx + 1; // Start after linestart
-            const target_col = cursor.col - 1; // Position of character to delete
-
-            // Find which segment contains the character at target_col
-            while (current_seg_idx < self.tb.rope.count()) : (current_seg_idx += 1) {
-                const seg = self.tb.rope.get(current_seg_idx) orelse break;
-
-                // Stop if we hit a break (end of line)
-                if (seg.isBreak()) break;
-
-                // Skip non-text segments
-                if (!seg.isText()) continue;
-
-                const chunk = seg.asText() orelse continue;
-                const seg_width = chunk.width;
-
-                // Check if target_col falls within this segment
-                if (accumulated_width + seg_width > target_col) {
-                    // The character is in this segment
-                    const offset_in_seg = target_col - accumulated_width;
-
-                    // Check if we need to delete the entire segment or just part of it
-                    if (seg_width == 1 and offset_in_seg == 0) {
-                        // Special case: deleting a 1-character segment
-                        // Delete the segment directly to avoid empty line issues with deleteRangeByWeight
-                        try self.tb.rope.delete(current_seg_idx);
-
-                        // Update char count
-                        if (self.tb.char_count > 0) {
-                            self.tb.char_count -= 1;
-                        }
-
-                        // Mark views dirty
-                        self.tb.markViewsDirty();
-
-                        // Update cursor position
-                        self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
-                        return;
-                    }
-
-                    // For multi-character segments, use deleteRangeByWeight
-                    // Calculate the global offset by walking from the START of the rope
-                    var global_offset: u32 = 0;
-                    var seg_idx: u32 = 0;
-                    while (seg_idx < current_seg_idx) : (seg_idx += 1) {
-                        if (self.tb.rope.get(seg_idx)) |s| {
-                            if (s.asText()) |c| {
-                                global_offset += c.width;
-                            }
-                        }
-                    }
-                    global_offset += offset_in_seg;
-
-                    const splitter = self.makeSegmentSplitter();
-                    try self.tb.rope.deleteRangeByWeight(global_offset, global_offset + 1, &splitter);
-
-                    // Update char count
-                    if (self.tb.char_count > 0) {
-                        self.tb.char_count -= 1;
-                    }
-
-                    // Mark views dirty
-                    self.tb.markViewsDirty();
-
-                    // Update cursor position
-                    self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
-                    return;
-                }
-
-                accumulated_width += seg_width;
-            }
-
-            // If we get here, we didn't find the character (shouldn't happen)
-            // Just return without doing anything
+            // Update cursor position
+            self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
         }
     }
 
@@ -619,84 +522,21 @@ pub const EditBuffer = struct {
             }
         } else {
             // Delete one character after cursor within the same line
-            // Get the linestart marker for the current row to find the segment index
-            const linestart_marker = self.tb.rope.getMarker(.linestart, cursor.row) orelse return;
-            const linestart_seg_idx = linestart_marker.leaf_index;
+            const start_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
+            const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col + 1) orelse return;
 
-            // Walk forward from the linestart to find text segments and accumulate width
-            var accumulated_width: u32 = 0;
-            var current_seg_idx: u32 = linestart_seg_idx + 1; // Start after linestart
-            const target_col = cursor.col; // Position of character to delete
+            const splitter = self.makeSegmentSplitter();
+            try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
 
-            // Find which segment contains the character at target_col
-            while (current_seg_idx < self.tb.rope.count()) : (current_seg_idx += 1) {
-                const seg = self.tb.rope.get(current_seg_idx) orelse break;
-
-                // Stop if we hit a break (end of line)
-                if (seg.isBreak()) break;
-
-                // Skip non-text segments
-                if (!seg.isText()) continue;
-
-                const chunk = seg.asText() orelse continue;
-                const seg_width = chunk.width;
-
-                // Check if target_col falls within this segment
-                if (accumulated_width + seg_width > target_col) {
-                    // The character is in this segment
-                    const offset_in_seg = target_col - accumulated_width;
-
-                    // Check if we need to delete the entire segment or just part of it
-                    if (seg_width == 1 and offset_in_seg == 0) {
-                        // Special case: deleting a 1-character segment
-                        // Delete the segment directly to avoid empty line issues with deleteRangeByWeight
-                        try self.tb.rope.delete(current_seg_idx);
-
-                        // Update char count
-                        if (self.tb.char_count > 0) {
-                            self.tb.char_count -= 1;
-                        }
-
-                        // Mark views dirty
-                        self.tb.markViewsDirty();
-
-                        // Cursor stays at same position
-                        return;
-                    }
-
-                    // For multi-character segments, use deleteRangeByWeight
-                    // Calculate the global offset by walking from the START of the rope
-                    var global_offset: u32 = 0;
-                    var seg_idx: u32 = 0;
-                    while (seg_idx < current_seg_idx) : (seg_idx += 1) {
-                        if (self.tb.rope.get(seg_idx)) |s| {
-                            if (s.asText()) |c| {
-                                global_offset += c.width;
-                            }
-                        }
-                    }
-                    global_offset += offset_in_seg;
-
-                    const splitter = self.makeSegmentSplitter();
-                    try self.tb.rope.deleteRangeByWeight(global_offset, global_offset + 1, &splitter);
-
-                    // Update char count
-                    if (self.tb.char_count > 0) {
-                        self.tb.char_count -= 1;
-                    }
-
-                    // Mark views dirty
-                    self.tb.markViewsDirty();
-
-                    // Cursor stays at same position (content shifted left)
-                    return;
-                }
-
-                accumulated_width += seg_width;
+            // Update char count
+            if (self.tb.char_count > 0) {
+                self.tb.char_count -= 1;
             }
 
-            // If we get here, we didn't find the character (shouldn't happen)
-            // Just return without doing anything
+            // Mark views dirty
+            self.tb.markViewsDirty();
+
+            // Cursor stays at same position (content shifted left)
         }
     }
 
@@ -807,38 +647,20 @@ pub const EditBuffer = struct {
                 .{ .row = cursor.row + 1, .col = 0 },
             );
         } else if (cursor.row > 0) {
-            // Last line but not the only line - use O(1) marker lookup to find the break
-            // The break before line N is break marker at index N-1
-            const marker_pos = self.tb.rope.getMarker(.brk, cursor.row - 1);
+            // Last line but not the only line
+            // Delete from end of previous line (including newline) to end of current line
+            const prev_line_width = self.getLineWidth(cursor.row - 1);
+            const curr_line_width = self.getLineWidth(cursor.row);
 
-            if (marker_pos) |pos| {
-                const break_idx = pos.leaf_index;
+            try self.deleteRange(
+                .{ .row = cursor.row - 1, .col = prev_line_width },
+                .{ .row = cursor.row, .col = curr_line_width },
+            );
 
-                // First delete the line content
-                const line_width = self.getLineWidth(cursor.row);
-                if (line_width > 0) {
-                    try self.deleteRange(
-                        .{ .row = cursor.row, .col = 0 },
-                        .{ .row = cursor.row, .col = line_width },
-                    );
-                }
+            self.tb.markViewsDirty();
 
-                // Then delete the break segment
-                try self.tb.rope.delete(break_idx);
-
-                // And remove the following linestart
-                if (self.tb.rope.get(break_idx)) |seg| {
-                    if (seg.isLineStart()) {
-                        try self.tb.rope.delete(break_idx);
-                    }
-                }
-
-                self.tb.markViewsDirty();
-
-                // Move cursor to end of previous line
-                const prev_line_width = self.getLineWidth(cursor.row - 1);
-                self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
-            }
+            // Move cursor to end of previous line
+            self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
         } else {
             // Only line - clear content
             const line_width = self.getLineWidth(cursor.row);

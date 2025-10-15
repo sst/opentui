@@ -224,37 +224,43 @@ pub fn getTotalWidth(rope: *const UnifiedRope) u32 {
 /// Convert (row, col) coordinates to absolute character offset
 /// Returns null if coordinates are out of bounds
 /// Optimized O(1) implementation using linestart marker lookups
+/// Note: Rope weight includes newlines (each .brk adds +1), but col is still display width
 pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return null;
 
     // Lookup linestart marker for this row
     const marker = rope.getMarker(.linestart, row) orelse return null;
-    const line_char_offset = marker.global_weight;
+    const line_start_weight = marker.global_weight;
 
-    // Get line width to validate col
-    const next_line_offset = if (row + 1 < linestart_count) blk: {
+    // Calculate line's display width (excluding newline)
+    const line_width = if (row + 1 < linestart_count) blk: {
+        // Non-final line: next line starts at (current_start + text_width + 1_for_newline)
+        // So text_width = next_start - current_start - 1
         const next_marker = rope.getMarker(.linestart, row + 1) orelse return null;
-        break :blk next_marker.global_weight;
+        const next_line_start_weight = next_marker.global_weight;
+        break :blk next_line_start_weight - line_start_weight - 1;
     } else blk: {
-        break :blk getTotalWidth(rope);
+        // Final line: width = total_weight - line_start (total weight includes all previous newlines)
+        const total_weight = rope.totalWeight();
+        break :blk total_weight - line_start_weight;
     };
 
-    const line_width = next_line_offset - line_char_offset;
     if (col > line_width) return null;
 
-    return line_char_offset + col;
+    return line_start_weight + col;
 }
 
 /// Convert absolute character offset to (row, col) coordinates
 /// Returns null if offset is out of bounds
 /// Optimized O(log n) implementation using binary search on linestart markers
+/// Note: Rope weight includes newlines, so valid offsets are 0..totalWeight() inclusive
 pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
     const linestart_count = rope.markerCount(.linestart);
     if (linestart_count == 0) return null;
 
-    const total_width = getTotalWidth(rope);
-    if (offset > total_width) return null;
+    const total_weight = rope.totalWeight();
+    if (offset > total_weight) return null;
 
     // Binary search to find the line containing this offset
     var left: u32 = 0;
@@ -263,24 +269,27 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
     while (left < right) {
         const mid = left + (right - left) / 2;
         const marker = rope.getMarker(.linestart, mid) orelse return null;
-        const line_start = marker.global_weight;
+        const line_start_weight = marker.global_weight;
 
-        if (offset < line_start) {
+        if (offset < line_start_weight) {
             right = mid;
         } else {
-            // Check if offset is in this line
-            const next_line_start = if (mid + 1 < linestart_count) blk: {
+            // Check if offset is in this line (including its newline if present)
+            const next_line_start_weight = if (mid + 1 < linestart_count) blk: {
                 const next_marker = rope.getMarker(.linestart, mid + 1) orelse return null;
                 break :blk next_marker.global_weight;
             } else blk: {
-                break :blk total_width;
+                // Last line: ends at total weight
+                break :blk total_weight;
             };
 
-            if (offset < next_line_start or (offset == total_width and mid + 1 == linestart_count)) {
-                // Found the line
+            // Offset belongs to this line if it's before the next line starts
+            // (newline offset at end of non-final line maps to col==line_width)
+            if (offset < next_line_start_weight or (offset == total_weight and mid + 1 == linestart_count)) {
+                // Found the line - compute display column
                 return Coords{
                     .row = mid,
-                    .col = offset - line_start,
+                    .col = offset - line_start_weight,
                 };
             }
             left = mid + 1;
@@ -291,21 +300,24 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
 }
 
 /// Get the display width of a specific line using O(1) marker lookups
+/// Note: Returns display width only (excludes newline weight)
 pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return 0;
 
-    // Get the character offset at the start of this line
+    // Get the weight offset at the start of this line
     const line_marker = rope.getMarker(.linestart, row) orelse return 0;
-    const line_start_offset = line_marker.global_weight;
+    const line_start_weight = line_marker.global_weight;
 
-    // Get the character offset at the start of the next line (or end of buffer)
-    const line_end_offset = if (row + 1 < linestart_count) blk: {
+    // Calculate display width (excluding newline)
+    if (row + 1 < linestart_count) {
+        // Non-final line: width = (next_line_start - current_start - 1_for_newline)
         const next_marker = rope.getMarker(.linestart, row + 1) orelse return 0;
-        break :blk next_marker.global_weight;
-    } else blk: {
-        break :blk getTotalWidth(rope);
-    };
-
-    return line_end_offset - line_start_offset;
+        const next_line_start_weight = next_marker.global_weight;
+        return next_line_start_weight - line_start_weight - 1;
+    } else {
+        // Final line: width = total_weight - line_start (total weight includes all previous newlines)
+        const total_weight = rope.totalWeight();
+        return total_weight - line_start_weight;
+    }
 }
