@@ -402,6 +402,12 @@ pub const WrapByWidthResult = struct {
     columns_used: u32,
 };
 
+pub const PosByWidthResult = struct {
+    byte_offset: u32,
+    grapheme_count: u32,
+    columns_used: u32,
+};
+
 // Simple East Asian Width detection
 inline fn eastAsianWidth(cp: u21) u32 {
     return switch (cp) {
@@ -596,6 +602,205 @@ pub fn findWrapPosByWidthSIMD16(
     // Final cluster
     if (prev_cp != null and cluster_width > 0) {
         if (columns_used + cluster_width > max_columns) {
+            return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
+        }
+        columns_used += cluster_width;
+        grapheme_count += 1;
+    }
+
+    return .{ .byte_offset = @intCast(text.len), .grapheme_count = grapheme_count, .columns_used = columns_used };
+}
+
+/// Find position by column width, including graphemes that start before the limit
+/// This is for selection - include any grapheme that starts before max_columns
+/// even if it extends past it.
+pub fn findPosByWidth(
+    text: []const u8,
+    max_columns: u32,
+    tab_width: u8,
+    isASCIIOnly: bool,
+) PosByWidthResult {
+    if (text.len == 0 or max_columns == 0) {
+        return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
+    }
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        const vector_len = 16;
+        var pos: usize = 0;
+        var columns_used: u32 = 0;
+
+        while (pos + vector_len <= text.len) {
+            var i: usize = 0;
+            while (i < vector_len) : (i += 1) {
+                const b = text[pos + i];
+                const prev_columns = columns_used;
+
+                if (b == '\t') {
+                    columns_used += tab_width - (columns_used % tab_width);
+                } else if (b >= 32 and b <= 126) {
+                    columns_used += 1;
+                }
+
+                // Include this character if it started before max_columns
+                if (prev_columns >= max_columns) {
+                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = prev_columns };
+                }
+            }
+            pos += vector_len;
+        }
+
+        // Tail
+        while (pos < text.len) {
+            const b = text[pos];
+            const prev_columns = columns_used;
+
+            if (b == '\t') {
+                columns_used += tab_width - (columns_used % tab_width);
+            } else if (b >= 32 and b <= 126) {
+                columns_used += 1;
+            }
+
+            if (prev_columns >= max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
+            }
+            pos += 1;
+        }
+
+        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
+    }
+
+    const vector_len = 16;
+    var pos: usize = 0;
+    var grapheme_count: u32 = 0;
+    var columns_used: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+    var cluster_width: u32 = 0;
+    var cluster_start: usize = 0;
+
+    while (pos + vector_len <= text.len) {
+        const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
+        const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
+        const is_non_ascii = chunk >= ascii_threshold;
+
+        if (!@reduce(.Or, is_non_ascii)) {
+            // All ASCII
+            var i: usize = 0;
+            while (i < vector_len) : (i += 1) {
+                const b = text[pos + i];
+                const curr_cp: u21 = b;
+                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+
+                if (is_break) {
+                    if (prev_cp != null) {
+                        // Include this grapheme if it started before max_columns
+                        if (columns_used >= max_columns) {
+                            return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
+                        }
+                        columns_used += cluster_width;
+                        grapheme_count += 1;
+                    }
+                    cluster_width = 0;
+                    cluster_start = pos + i;
+                }
+
+                if (b == '\t') {
+                    cluster_width += tab_width - (columns_used % tab_width);
+                } else if (b >= 32 and b <= 126) {
+                    cluster_width += 1;
+                }
+
+                prev_cp = curr_cp;
+            }
+            pos += vector_len;
+            continue;
+        }
+
+        // Mixed ASCII/non-ASCII - process rest of chunk
+        var i: usize = 0;
+        while (i < vector_len and pos + i < text.len) {
+            const b0 = text[pos + i];
+            const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos + i).cp;
+            const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos + i).len;
+
+            if (pos + i + cp_len > text.len) break;
+
+            const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF)
+                true
+            else if (prev_cp) |p|
+                if (p == 0xFFFD or p > 0x10FFFF) true else uucode.grapheme.isBreak(p, curr_cp, &break_state)
+            else
+                true;
+
+            if (is_break) {
+                if (prev_cp != null) {
+                    // Include this grapheme if it started before max_columns
+                    if (columns_used >= max_columns) {
+                        return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
+                    }
+                    columns_used += cluster_width;
+                    grapheme_count += 1;
+                }
+                cluster_width = 0;
+                cluster_start = pos + i;
+            }
+
+            if (b0 == '\t') {
+                cluster_width += tab_width - (columns_used % tab_width);
+            } else if (b0 < 0x80 and b0 >= 32 and b0 <= 126) {
+                cluster_width += 1;
+            } else if (b0 >= 0x80) {
+                cluster_width += eastAsianWidth(curr_cp);
+            }
+
+            prev_cp = curr_cp;
+            i += cp_len;
+        }
+        pos += i; // Advance by how much we actually processed
+    }
+
+    // Tail
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos).cp;
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF)
+            true
+        else if (prev_cp) |p|
+            if (p == 0xFFFD or p > 0x10FFFF) true else uucode.grapheme.isBreak(p, curr_cp, &break_state)
+        else
+            true;
+
+        if (is_break) {
+            if (prev_cp != null) {
+                // Include this grapheme if it started before max_columns
+                if (columns_used >= max_columns) {
+                    return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
+                }
+                columns_used += cluster_width;
+                grapheme_count += 1;
+            }
+            cluster_width = 0;
+            cluster_start = pos;
+        }
+
+        if (b0 == '\t') {
+            cluster_width += tab_width - (columns_used % tab_width);
+        } else if (b0 < 0x80 and b0 >= 32 and b0 <= 126) {
+            cluster_width += 1;
+        } else if (b0 >= 0x80) {
+            cluster_width += eastAsianWidth(curr_cp);
+        }
+
+        prev_cp = curr_cp;
+        pos += cp_len;
+    }
+
+    // Final cluster - always include if we have one
+    if (prev_cp != null and cluster_width > 0) {
+        if (columns_used >= max_columns) {
             return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
         }
         columns_used += cluster_width;

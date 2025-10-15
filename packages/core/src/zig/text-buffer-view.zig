@@ -778,36 +778,52 @@ pub const UnifiedTextBufferView = struct {
                 _ = chunk_idx_in_line;
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
-                // Get graphemes for this chunk
-                const chunk_bytes = chunk.getBytes(&ctx.view.text_buffer.mem_registry);
-                const graphemes = chunk.getGraphemes(
-                    &ctx.view.text_buffer.mem_registry,
-                    ctx.view.text_buffer.allocator,
-                    &ctx.view.text_buffer.graphemes_data,
-                    ctx.view.text_buffer.width_method,
-                    &ctx.view.text_buffer.display_width,
-                ) catch return;
+                const chunk_start_offset = ctx.char_offset.*;
+                const chunk_end_offset = chunk_start_offset + chunk.width;
 
-                for (graphemes) |g| {
-                    if (ctx.char_offset.* >= ctx.end) return;
-
-                    const grapheme_start_count = ctx.char_offset.*;
-                    const grapheme_end_count = ctx.char_offset.* + g.width;
-
-                    if (grapheme_end_count > ctx.start and grapheme_start_count < ctx.end) {
-                        ctx.line_had_selection = true;
-
-                        const grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
-                        const copy_len = @min(grapheme_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
-
-                        if (copy_len > 0) {
-                            @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], grapheme_bytes[0..copy_len]);
-                            ctx.out_index.* += copy_len;
-                        }
-                    }
-
-                    ctx.char_offset.* += g.width;
+                // Skip chunk if it's entirely outside selection
+                if (chunk_end_offset <= ctx.start or chunk_start_offset >= ctx.end) {
+                    ctx.char_offset.* = chunk_end_offset;
+                    return;
                 }
+
+                ctx.line_had_selection = true;
+
+                const chunk_bytes = chunk.getBytes(&ctx.view.text_buffer.mem_registry);
+                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+
+                // Calculate the column range within this chunk to include
+                const local_start_col: u32 = if (ctx.start > chunk_start_offset) ctx.start - chunk_start_offset else 0;
+                const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width);
+
+                // Find byte offsets corresponding to column positions
+                var byte_start: u32 = 0;
+                var byte_end: u32 = @intCast(chunk_bytes.len);
+
+                if (local_start_col > 0) {
+                    const start_result = utf8.findWrapPosByWidthSIMD16(chunk_bytes, local_start_col, 8, is_ascii_only);
+                    byte_start = start_result.byte_offset;
+                }
+
+                if (local_end_col < chunk.width) {
+                    // Use findPosByWidth for selection - includes graphemes that start before limit
+                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, 8, is_ascii_only);
+                    byte_end = end_result.byte_offset;
+                }
+
+                // Copy the selected byte range
+                if (byte_start < byte_end and byte_start < chunk_bytes.len) {
+                    const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
+                    const selected_bytes = chunk_bytes[byte_start..actual_end];
+                    const copy_len = @min(selected_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
+
+                    if (copy_len > 0) {
+                        @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], selected_bytes[0..copy_len]);
+                        ctx.out_index.* += copy_len;
+                    }
+                }
+
+                ctx.char_offset.* = chunk_end_offset;
             }
 
             fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {

@@ -597,3 +597,31 @@ test "Selection - with graphemes" {
     try std.testing.expect(std.mem.indexOf(u8, text, "Hello") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "🌍") != null);
 }
+
+test "Selection - wide emoji at boundary (reproduces TypeScript test)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello 🌍 World");
+
+    // Select "Hello 🌍" which is 7 columns: H(0),e(1),l(2),l(3),o(4),space(5),🌍(6-7)
+    // Note: 🌍 is a 2-wide character
+    // Selection [0, 7) should include the emoji because it starts at column 6
+    view.setSelection(0, 7, null, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("Hello 🌍", text);
+}
