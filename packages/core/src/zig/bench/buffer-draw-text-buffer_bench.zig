@@ -872,11 +872,9 @@ pub fn run(
 ) ![]BenchResult {
     const stdout = std.io.getStdOut().writer();
 
+    // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    defer gp.deinitGlobalPool();
-
     const unicode_data = gp.initGlobalUnicodeData(allocator);
-    defer gp.deinitGlobalUnicodeData(allocator);
     const graphemes_ptr, const display_width_ptr = unicode_data;
 
     if (show_mem) {

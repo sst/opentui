@@ -39,6 +39,7 @@
 
 const std = @import("std");
 const bench_utils = @import("bench-utils.zig");
+const gp = @import("grapheme.zig");
 
 // Import all benchmark modules
 const text_buffer_view_bench = @import("bench/text-buffer-view_bench.zig");
@@ -76,6 +77,14 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    // Initialize global pool and unicode data ONCE with base GPA allocator
+    // This ensures they persist across all benchmarks (even with arena allocators)
+    _ = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+
+    _ = gp.initGlobalUnicodeData(allocator);
+    defer gp.deinitGlobalUnicodeData(allocator);
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -119,59 +128,73 @@ pub fn main() !void {
 
     var ran_any = false;
 
-    // Run benchmarks
+    // Run benchmarks (each with isolated arena allocator)
     if (matchesFilter(text_buffer_view_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{text_buffer_view_bench.benchName});
-        const text_buffer_view_results = try text_buffer_view_bench.run(allocator, show_mem);
-        defer allocator.free(text_buffer_view_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const text_buffer_view_results = try text_buffer_view_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, text_buffer_view_results);
         ran_any = true;
     }
 
     if (matchesFilter(edit_buffer_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{edit_buffer_bench.benchName});
-        const edit_buffer_results = try edit_buffer_bench.run(allocator, show_mem);
-        defer allocator.free(edit_buffer_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const edit_buffer_results = try edit_buffer_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, edit_buffer_results);
         ran_any = true;
     }
 
     if (matchesFilter(rope_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{rope_bench.benchName});
-        const rope_results = try rope_bench.run(allocator, show_mem);
-        defer allocator.free(rope_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const rope_results = try rope_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, rope_results);
         ran_any = true;
     }
 
     if (matchesFilter(rope_markers_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{rope_markers_bench.benchName});
-        const rope_markers_results = try rope_markers_bench.run(allocator, show_mem);
-        defer allocator.free(rope_markers_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const rope_markers_results = try rope_markers_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, rope_markers_results);
         ran_any = true;
     }
 
     if (matchesFilter(text_buffer_coords_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{text_buffer_coords_bench.benchName});
-        const coords_results = try text_buffer_coords_bench.run(allocator, show_mem);
-        defer allocator.free(coords_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const coords_results = try text_buffer_coords_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, coords_results);
         ran_any = true;
     }
 
     if (matchesFilter(styled_text_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{styled_text_bench.benchName});
-        const styled_text_results = try styled_text_bench.run(allocator, show_mem);
-        defer allocator.free(styled_text_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const styled_text_results = try styled_text_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, styled_text_results);
         ran_any = true;
     }
 
     if (matchesFilter(buffer_draw_text_buffer_bench.benchName, filter)) {
         try stdout.print("\n=== {s} Benchmarks ===\n\n", .{buffer_draw_text_buffer_bench.benchName});
-        const buffer_draw_results = try buffer_draw_text_buffer_bench.run(allocator, show_mem);
-        defer allocator.free(buffer_draw_results);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const arena_allocator = arena.allocator();
+        const buffer_draw_results = try buffer_draw_text_buffer_bench.run(arena_allocator, show_mem);
         try bench_utils.printResults(stdout, buffer_draw_results);
         ran_any = true;
     }
