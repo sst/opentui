@@ -12,7 +12,7 @@ const WrapMode = text_buffer.WrapMode;
 const BenchResult = bench_utils.BenchResult;
 const MemStat = bench_utils.MemStat;
 
-pub const benchName = "TextBuffer";
+pub const benchName = "TextBuffer Wrapping";
 
 const BenchData = struct {
     min_ns: u64,
