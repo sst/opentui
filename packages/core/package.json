@@ -17,7 +17,7 @@
     "build": "bun run build:native && bun run build:lib",
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
-    "test:native": "cd src/zig && zig build test --summary all",
+    "test:native": "cd src/zig && zig build test --summary all --",
     "bench:native": "cd src/zig && zig build bench -Doptimize=ReleaseFast --",
     "publish": "bun scripts/publish.ts",
     "test:js": "bun test",

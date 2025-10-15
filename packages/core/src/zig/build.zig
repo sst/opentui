@@ -119,6 +119,9 @@ pub fn build(b: *std.Build) void {
     applyZgDependencies(b, test_exe.root_module, .Debug, test_target);
 
     const run_test = b.addRunArtifact(test_exe);
+    if (b.args) |args| {
+        run_test.addArgs(args);
+    }
     test_step.dependOn(&run_test.step);
 
     // Add bench step
