@@ -696,12 +696,6 @@ pub const EditBuffer = struct {
         }
     }
 
-    // TODO Remove
-    pub fn moveCursorToLineStart(self: *EditBuffer) !void {
-        const cursor = self.getPrimaryCursor();
-        try self.setCursor(cursor.row, 0);
-    }
-
     pub fn gotoLine(self: *EditBuffer, line: u32) !void {
         const line_count = self.tb.lineCount();
         const target_line = @min(line, line_count -| 1);

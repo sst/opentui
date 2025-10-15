@@ -146,11 +146,6 @@ export class EditorView {
     this.lib.editorViewMoveCursorDown(this.viewPtr)
   }
 
-  public moveCursorToLineStart(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorToLineStart(this.viewPtr)
-  }
-
   public gotoLine(line: number): void {
     this.guard()
     this.lib.editorViewGotoLine(this.viewPtr, line)

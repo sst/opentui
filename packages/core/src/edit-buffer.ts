@@ -106,11 +106,6 @@ export class EditBuffer {
     this.lib.editBufferMoveCursorDown(this.bufferPtr)
   }
 
-  public moveCursorToLineStart(): void {
-    this.guard()
-    this.lib.editBufferMoveCursorToLineStart(this.bufferPtr)
-  }
-
   public gotoLine(line: number): void {
     this.guard()
     this.lib.editBufferGotoLine(this.bufferPtr, line)

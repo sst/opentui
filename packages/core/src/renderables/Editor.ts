@@ -66,7 +66,8 @@ export class EditorRenderable extends EditBufferRenderable {
     // Line navigation
     else if (keyName === "home") {
       this.handleShiftSelection(keyShift, true)
-      this.moveCursorToLineStart()
+      const cursor = this.editBuffer.getCursorPosition()
+      this.editBuffer.setCursor(cursor.line, 0)
       this.handleShiftSelection(keyShift, false)
       return true
     }
@@ -227,11 +228,6 @@ export class EditorRenderable extends EditBufferRenderable {
 
   public moveCursorDown(): void {
     this.editorView.moveCursorDown()
-    this.requestRender()
-  }
-
-  public moveCursorToLineStart(): void {
-    this.editorView.moveCursorToLineStart()
     this.requestRender()
   }
 

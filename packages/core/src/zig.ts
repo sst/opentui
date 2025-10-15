@@ -503,10 +503,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editBufferMoveCursorToLineStart: {
-      args: ["ptr"],
-      returns: "void",
-    },
     editBufferGotoLine: {
       args: ["ptr", "u32"],
       returns: "void",
@@ -566,10 +562,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewMoveCursorDown: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewMoveCursorToLineStart: {
       args: ["ptr"],
       returns: "void",
     },
@@ -1019,7 +1011,6 @@ export interface RenderLib {
   editBufferMoveCursorRight: (buffer: Pointer) => void
   editBufferMoveCursorUp: (buffer: Pointer) => void
   editBufferMoveCursorDown: (buffer: Pointer) => void
-  editBufferMoveCursorToLineStart: (buffer: Pointer) => void
   editBufferGotoLine: (buffer: Pointer, line: number) => void
   editBufferSetCursor: (buffer: Pointer, line: number, byteOffset: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
@@ -1059,7 +1050,6 @@ export interface RenderLib {
   editorViewMoveCursorRight: (view: Pointer) => void
   editorViewMoveCursorUp: (view: Pointer) => void
   editorViewMoveCursorDown: (view: Pointer) => void
-  editorViewMoveCursorToLineStart: (view: Pointer) => void
   editorViewGotoLine: (view: Pointer, line: number) => void
   editorViewInsertChar: (view: Pointer, char: string) => void
   editorViewInsertText: (view: Pointer, text: string) => void
@@ -2030,10 +2020,6 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferMoveCursorDown(buffer)
   }
 
-  public editBufferMoveCursorToLineStart(buffer: Pointer): void {
-    this.opentui.symbols.editBufferMoveCursorToLineStart(buffer)
-  }
-
   public editBufferGotoLine(buffer: Pointer, line: number): void {
     this.opentui.symbols.editBufferGotoLine(buffer, line)
   }
@@ -2133,10 +2119,6 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewMoveCursorDown(view: Pointer): void {
     this.opentui.symbols.editorViewMoveCursorDown(view)
-  }
-
-  public editorViewMoveCursorToLineStart(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorToLineStart(view)
   }
 
   public editorViewGotoLine(view: Pointer, line: number): void {

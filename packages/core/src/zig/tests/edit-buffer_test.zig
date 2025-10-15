@@ -956,7 +956,7 @@ test "EditBuffer - deleteLine on last line" {
     try std.testing.expectEqualStrings("Line 1\nLine 2", out_buffer[0..written]);
 }
 
-test "EditBuffer - moveCursorToLineStart" {
+test "EditBuffer - setCursor to move to line start" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -975,15 +975,16 @@ test "EditBuffer - moveCursorToLineStart" {
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 8), cursor.col);
 
-    // Move to line start
-    try eb.moveCursorToLineStart();
+    // Move to line start using setCursor
+    try eb.setCursor(cursor.row, 0);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
     // Move to line 0 and do it again
     try eb.setCursor(0, 5);
-    try eb.moveCursorToLineStart();
+    cursor = eb.getCursor(0).?;
+    try eb.setCursor(cursor.row, 0);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);

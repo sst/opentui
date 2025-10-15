@@ -104,7 +104,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 11) // Move to end
       expect(buffer.getCursorPosition().visualColumn).toBe(11)
 
-      buffer.moveCursorToLineStart()
+      const cursor = buffer.getCursorPosition()
+      buffer.setCursor(cursor.line, 0)
       expect(buffer.getCursorPosition().visualColumn).toBe(0)
     })
 

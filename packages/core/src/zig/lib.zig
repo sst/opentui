@@ -606,10 +606,6 @@ export fn editBufferDeleteLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     edit_buffer.deleteLine() catch {};
 }
 
-export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    edit_buffer.moveCursorToLineStart() catch {};
-}
-
 export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32) void {
     edit_buffer.gotoLine(line) catch {};
 }
@@ -740,10 +736,6 @@ export fn editorViewMoveCursorUp(view: *editor_view.EditorView) void {
 
 export fn editorViewMoveCursorDown(view: *editor_view.EditorView) void {
     view.edit_buffer.moveDown();
-}
-
-export fn editorViewMoveCursorToLineStart(view: *editor_view.EditorView) void {
-    view.edit_buffer.moveCursorToLineStart() catch {};
 }
 
 export fn editorViewGotoLine(view: *editor_view.EditorView, line: u32) void {

@@ -254,7 +254,7 @@ describe("EditorRenderable", () => {
       editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
       expect(editor.cursor.visualColumn).toBe(11)
 
-      editor.moveCursorToLineStart()
+      editor.editBuffer.setCursor(editor.cursor.line, 0)
       expect(editor.cursor.visualColumn).toBe(0)
     })
 
@@ -607,7 +607,7 @@ describe("EditorRenderable", () => {
       expect(editor.plainText).toBe("Hello\nWo")
 
       // Move to start of line and backspace to join
-      editor.moveCursorToLineStart()
+      editor.editBuffer.setCursor(editor.cursor.line, 0)
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("HelloWo")
     })
@@ -723,7 +723,7 @@ describe("EditorRenderable", () => {
       currentMockInput.pressKey("F")
 
       // Join and verify cursor advances
-      editor.moveCursorToLineStart()
+      editor.editBuffer.setCursor(editor.cursor.line, 0)
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
       expect(editor.cursor.visualColumn).toBe(3)
