@@ -210,26 +210,15 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getByteSize(self: *const Self) u32 {
-        var total: u32 = 0;
-        var seg_idx: u32 = 0;
-        const seg_count = self.rope.count();
-
-        while (seg_idx < seg_count) : (seg_idx += 1) {
-            if (self.rope.get(seg_idx)) |seg| {
-                if (seg.asText()) |chunk| {
-                    total += chunk.byte_end - chunk.byte_start;
-                }
-                // Breaks don't contribute bytes (we add \n when extracting text)
-            }
-        }
+        const metrics = self.rope.root.metrics();
+        const total_bytes = metrics.custom.total_bytes;
 
         // Add newlines between lines (line_count - 1)
         const line_count = iter_mod.getLineCount(&self.rope);
         if (line_count > 0) {
-            total += line_count - 1; // newlines
+            return total_bytes + (line_count - 1); // newlines
         }
-
-        return total;
+        return total_bytes;
     }
 
     pub fn measureText(self: *const Self, text: []const u8) u32 {

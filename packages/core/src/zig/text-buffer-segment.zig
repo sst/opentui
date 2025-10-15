@@ -253,6 +253,9 @@ pub const Segment = union(enum) {
         /// Total display width (sum of all text segments, breaks contribute 0)
         total_width: u32 = 0,
 
+        /// Total byte size (sum of all text segment byte lengths, breaks contribute 0)
+        total_bytes: u32 = 0,
+
         /// Number of line break markers in the subtree
         break_count: u32 = 0,
 
@@ -281,6 +284,7 @@ pub const Segment = union(enum) {
             const right_first_width = other.first_line_width;
 
             self.total_width += other.total_width;
+            self.total_bytes += other.total_bytes;
             self.break_count += other.break_count;
             self.linestart_count += other.linestart_count;
 
@@ -332,8 +336,10 @@ pub const Segment = union(enum) {
         return switch (self.*) {
             .text => |chunk| blk: {
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const byte_len = chunk.byte_end - chunk.byte_start;
                 break :blk Metrics{
                     .total_width = chunk.width,
+                    .total_bytes = byte_len,
                     .break_count = 0,
                     .linestart_count = 0,
                     .first_line_width = chunk.width,
@@ -344,6 +350,7 @@ pub const Segment = union(enum) {
             },
             .brk => Metrics{
                 .total_width = 0,
+                .total_bytes = 0,
                 .break_count = 1,
                 .linestart_count = 0,
                 .first_line_width = 0,
@@ -353,6 +360,7 @@ pub const Segment = union(enum) {
             },
             .linestart => Metrics{
                 .total_width = 0,
+                .total_bytes = 0,
                 .break_count = 0,
                 .linestart_count = 1,
                 .first_line_width = 0,
