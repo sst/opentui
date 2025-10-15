@@ -31,10 +31,12 @@ pub const ChunkFitResult = struct {
 };
 
 /// Cached grapheme cluster information
+/// Only stored for multibyte (non-ASCII) graphemes
 pub const GraphemeInfo = struct {
     byte_offset: u32, // Offset within the chunk's bytes
     byte_len: u8, // Length in UTF-8 bytes
     width: u8, // Display width (1, 2, etc.)
+    col_offset: u32, // Column position within the chunk
 };
 
 /// Memory buffer reference in the registry
@@ -132,6 +134,8 @@ pub const TextChunk = struct {
 
     /// Lazily compute and cache grapheme info for this chunk
     /// Returns a slice that is valid until the buffer is reset
+    /// For ASCII-only chunks, returns an empty slice (sentinel)
+    /// For mixed chunks, returns only multibyte (non-ASCII) graphemes with their column offsets
     pub fn getGraphemes(
         self: *const TextChunk,
         mem_registry: *const MemRegistry,
@@ -146,12 +150,20 @@ pub const TextChunk = struct {
             return cached;
         }
 
+        // Fast path for ASCII-only chunks: cache empty slice and return
+        if (self.isAsciiOnly()) {
+            const empty_slice = try allocator.alloc(GraphemeInfo, 0);
+            mut_self.graphemes = empty_slice;
+            return empty_slice;
+        }
+
         const chunk_bytes = self.getBytes(mem_registry);
         var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
         defer grapheme_list.deinit();
 
         var iter = graphemes_data.iterator(chunk_bytes);
         var byte_pos: u32 = 0;
+        var col: u32 = 0;
 
         while (iter.next()) |gc| {
             const gbytes = gc.bytes(chunk_bytes);
@@ -164,13 +176,18 @@ pub const TextChunk = struct {
 
             const width: u8 = @intCast(width_u16);
 
-            try grapheme_list.append(GraphemeInfo{
-                .byte_offset = byte_pos,
-                .byte_len = @intCast(gbytes.len),
-                .width = width,
-            });
+            // Only cache multibyte graphemes
+            if (gbytes.len != 1) {
+                try grapheme_list.append(GraphemeInfo{
+                    .byte_offset = byte_pos,
+                    .byte_len = @intCast(gbytes.len),
+                    .width = width,
+                    .col_offset = col,
+                });
+            }
 
             byte_pos += @intCast(gbytes.len);
+            col += width;
         }
 
         const graphemes = try allocator.dupe(GraphemeInfo, grapheme_list.items);

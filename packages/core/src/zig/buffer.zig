@@ -901,10 +901,10 @@ pub const OptimizedBuffer = struct {
             }
 
             for (vline.chunks.items) |vchunk| {
-                // Get graphemes and bytes directly from VirtualChunk
-                const graphemes_cache = vchunk.graphemes;
-                const chunk_bytes = text_buffer.mem_registry.get(vchunk.mem_id) orelse continue;
-                const chunk_bytes_slice = chunk_bytes[vchunk.byte_start..vchunk.byte_end];
+                // Get chunk and its data
+                const chunk = vchunk.chunk;
+                const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
+                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width) catch continue;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.grapheme_count;
@@ -912,26 +912,59 @@ pub const OptimizedBuffer = struct {
                     continue;
                 }
 
-                // Iterate through the graphemes in this virtual chunk
-                const grapheme_end = @min(vchunk.grapheme_start + vchunk.grapheme_count, @as(u32, @intCast(graphemes_cache.len)));
-                var grapheme_idx = vchunk.grapheme_start;
+                // Iterate through columns in this virtual chunk
+                const col_end = vchunk.grapheme_start + vchunk.grapheme_count;
+                var col = vchunk.grapheme_start;
+                var special_idx: usize = 0;
+                var byte_offset: u32 = 0;
 
-                while (grapheme_idx < grapheme_end) : (grapheme_idx += 1) {
-                    const g = graphemes_cache[grapheme_idx];
-                    const grapheme_bytes = chunk_bytes_slice[g.byte_offset .. g.byte_offset + g.byte_len];
+                // Fast-forward special_idx to first special at or after our starting column
+                // Also compute initial byte_offset
+                while (special_idx < specials.len and specials[special_idx].col_offset < col) {
+                    const s = specials[special_idx];
+                    byte_offset += @as(u32, s.byte_len);
+                    special_idx += 1;
+                }
+                // Add ASCII bytes before first special or before our starting column
+                if (special_idx == 0 or col > 0) {
+                    const prev_col = if (special_idx > 0) specials[special_idx - 1].col_offset + specials[special_idx - 1].width else 0;
+                    byte_offset += (col - prev_col);
+                }
+
+                while (col < col_end) {
+                    // Check if we have a special at this column
+                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+
+                    var grapheme_bytes: []const u8 = undefined;
+                    var g_width: u8 = undefined;
+
+                    if (at_special) {
+                        // Multibyte grapheme
+                        const g = specials[special_idx];
+                        grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
+                        g_width = g.width;
+                        byte_offset += g.byte_len;
+                        special_idx += 1;
+                    } else {
+                        // ASCII character
+                        if (byte_offset >= chunk_bytes.len) break;
+                        grapheme_bytes = chunk_bytes[byte_offset .. byte_offset + 1];
+                        g_width = 1;
+                        byte_offset += 1;
+                    }
 
                     // Skip if completely out of bounds (left of visible area)
-                    if (currentX < -@as(i32, @intCast(g.width))) {
-                        globalCharPos += g.width;
-                        currentX += @as(i32, @intCast(g.width));
+                    if (currentX < -@as(i32, @intCast(g_width))) {
+                        globalCharPos += g_width;
+                        currentX += @as(i32, @intCast(g_width));
+                        col += g_width;
                         continue;
                     }
 
                     // Stop if we're past the buffer width
                     if (currentX >= @as(i32, @intCast(self.width))) {
-                        for (graphemes_cache[grapheme_idx..grapheme_end]) |remaining_g| {
-                            globalCharPos += remaining_g.width;
-                        }
+                        // Fast-forward globalCharPos for remaining columns
+                        globalCharPos += (col_end - col);
                         break;
                     }
 
@@ -944,8 +977,9 @@ pub const OptimizedBuffer = struct {
                         false;
 
                     if (should_skip_clip or !self.isPointInScissor(currentX, currentY)) {
-                        globalCharPos += g.width;
-                        currentX += @as(i32, @intCast(g.width));
+                        globalCharPos += g_width;
+                        currentX += @as(i32, @intCast(g_width));
+                        col += g_width;
                         continue;
                     }
 
@@ -985,7 +1019,7 @@ pub const OptimizedBuffer = struct {
 
                     // Handle selection highlighting (for each cell of this grapheme)
                     var cell_idx: u32 = 0;
-                    while (cell_idx < g.width) : (cell_idx += 1) {
+                    while (cell_idx < g_width) : (cell_idx += 1) {
                         if (text_buffer_view.selection) |sel| {
                             const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
                             if (isSelected) {
@@ -1017,15 +1051,16 @@ pub const OptimizedBuffer = struct {
 
                     // Encode the grapheme on the fly
                     var encoded_char: u32 = 0;
-                    if (grapheme_bytes.len == 1 and g.width == 1 and grapheme_bytes[0] >= 32) {
+                    if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
                         encoded_char = @as(u32, grapheme_bytes[0]);
                     } else {
                         const gid = self.pool.alloc(grapheme_bytes) catch {
-                            globalCharPos += g.width;
-                            currentX += @as(i32, @intCast(g.width));
+                            globalCharPos += g_width;
+                            currentX += @as(i32, @intCast(g_width));
+                            col += g_width;
                             continue;
                         };
-                        encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g.width);
+                        encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
                     }
 
                     // Render the grapheme (this handles placing start + continuation chars)
@@ -1043,8 +1078,9 @@ pub const OptimizedBuffer = struct {
                     }
 
                     // Advance by the grapheme's full width
-                    globalCharPos += g.width;
-                    currentX += @as(i32, @intCast(g.width));
+                    globalCharPos += g_width;
+                    currentX += @as(i32, @intCast(g_width));
+                    col += g_width;
                 }
             }
 
