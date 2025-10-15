@@ -114,14 +114,12 @@ pub fn build(b: *std.Build) void {
     const test_exe = b.addTest(.{
         .root_source_file = b.path("test.zig"),
         .target = test_target,
+        .filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter"),
     });
 
     applyZgDependencies(b, test_exe.root_module, .Debug, test_target);
 
     const run_test = b.addRunArtifact(test_exe);
-    if (b.args) |args| {
-        run_test.addArgs(args);
-    }
     test_step.dependOn(&run_test.step);
 
     // Add bench step

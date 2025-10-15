@@ -45,6 +45,10 @@ To run native tests for `packages/core`, run
 `bun run test:native`
 FROM THE `packages/core` DIRECTORY.
 
+To filter native tests, use:
+`bun run test:native -Dtest-filter="test name"`
+FROM THE `packages/core` DIRECTORY.
+
 ## Code Style
 
 - **Runtime**: Bun with TypeScript
