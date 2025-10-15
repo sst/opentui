@@ -584,18 +584,13 @@ export fn editBufferSetCursorToLineCol(edit_buffer: *edit_buffer_mod.EditBuffer,
 }
 
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
-    // For EditBuffer with rope-based storage, we need to clear and insert
-    // For now, just use insertText at cursor 0,0
-    edit_buffer.setCursor(0, 0) catch {};
     const text = textPtr[0..textLen];
-    edit_buffer.insertText(text) catch {};
+    edit_buffer.setText(text) catch {};
 }
 
 export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
-    // Get text from the underlying TextBuffer
-    const tb = edit_buffer.getTextBuffer();
     const outBuffer = outPtr[0..maxLen];
-    return tb.getPlainTextIntoBuffer(outBuffer);
+    return edit_buffer.getText(outBuffer);
 }
 
 export fn editBufferInsertChar(edit_buffer: *edit_buffer_mod.EditBuffer, charPtr: [*]const u8, charLen: usize) void {
@@ -608,39 +603,22 @@ export fn editBufferNewLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
 }
 
 export fn editBufferDeleteLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    const cursor = edit_buffer.getPrimaryCursor();
-    const tb = edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-
-    if (cursor.row >= line_count) return;
-
-    // Delete entire line content and newline
-    const end_row = if (cursor.row + 1 < line_count) cursor.row + 1 else cursor.row;
-    edit_buffer.deleteRange(
-        .{ .row = cursor.row, .col = 0 },
-        .{ .row = end_row, .col = 0 },
-    ) catch {};
+    edit_buffer.deleteLine() catch {};
 }
 
 export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    const cursor = edit_buffer.getPrimaryCursor();
-    edit_buffer.setCursor(cursor.row, 0) catch {};
+    edit_buffer.moveCursorToLineStart() catch {};
 }
 
 export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32) void {
-    const tb = edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-    const target_line = @min(line, line_count - 1);
-    edit_buffer.setCursor(target_line, 0) catch {};
+    edit_buffer.gotoLine(line) catch {};
 }
 
 export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outCharPos: *u32, outVisualCol: *u32) void {
-    const cursor = edit_buffer.getPrimaryCursor();
-
-    outLine.* = cursor.row;
-    outVisualCol.* = cursor.col;
-    // TODO: Reimplement absolute character position calculation using rope iterators
-    outCharPos.* = cursor.col;
+    const pos = edit_buffer.getCursorPosition();
+    outLine.* = pos.line;
+    outCharPos.* = pos.char_pos;
+    outVisualCol.* = pos.visual_col;
 }
 
 // ===== EditorView Exports =====
@@ -765,15 +743,11 @@ export fn editorViewMoveCursorDown(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewMoveCursorToLineStart(view: *editor_view.EditorView) void {
-    const cursor = view.edit_buffer.getPrimaryCursor();
-    view.edit_buffer.setCursor(cursor.row, 0) catch {};
+    view.edit_buffer.moveCursorToLineStart() catch {};
 }
 
 export fn editorViewGotoLine(view: *editor_view.EditorView, line: u32) void {
-    const tb = view.edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-    const target_line = @min(line, line_count - 1);
-    view.edit_buffer.setCursor(target_line, 0) catch {};
+    view.edit_buffer.gotoLine(line) catch {};
 }
 
 // EditorView editing - delegate to EditBuffer
@@ -800,17 +774,7 @@ export fn editorViewNewLine(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewDeleteLine(view: *editor_view.EditorView) void {
-    const cursor = view.edit_buffer.getPrimaryCursor();
-    const tb = view.edit_buffer.getTextBuffer();
-    const line_count = tb.lineCount();
-
-    if (cursor.row >= line_count) return;
-
-    const end_row = if (cursor.row + 1 < line_count) cursor.row + 1 else cursor.row;
-    view.edit_buffer.deleteRange(
-        .{ .row = cursor.row, .col = 0 },
-        .{ .row = end_row, .col = 0 },
-    ) catch {};
+    view.edit_buffer.deleteLine() catch {};
 }
 
 export fn bufferDrawEditorView(

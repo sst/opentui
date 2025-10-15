@@ -798,3 +798,293 @@ test "EditBuffer - insert newline on empty line" {
     // Verify line count increased by 1
     try std.testing.expectEqual(@as(u32, 6), eb.getTextBuffer().lineCount());
 }
+
+test "EditBuffer - setText clears and sets new content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert some initial text
+    try eb.insertText("Old content\nTo be replaced");
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+
+    // Set new text
+    try eb.setText("New content\nLine 2\nLine 3");
+
+    // Verify old content is gone and new content is present
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("New content\nLine 2\nLine 3", out_buffer[0..written]);
+
+    // Verify line count
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Verify cursor is reset to (0, 0)
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - setText with empty string" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert some text first
+    try eb.insertText("Some text");
+
+    // Set to empty
+    try eb.setText("");
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqual(@as(usize, 0), written);
+
+    // Should have 1 empty line
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
+
+    // Cursor at (0, 0)
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - getText returns correct content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    const test_text = "Hello\nWorld\nFrom\nEditBuffer";
+    try eb.insertText(test_text);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings(test_text, out_buffer[0..written]);
+}
+
+test "EditBuffer - deleteLine removes current line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3\nLine 4");
+    try std.testing.expectEqual(@as(u32, 4), eb.getTextBuffer().lineCount());
+
+    // Delete line 2 (0-indexed: line 1)
+    try eb.setCursor(1, 3);
+    try eb.deleteLine();
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1\nLine 3\nLine 4", out_buffer[0..written]);
+
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Cursor should be at start of the line that moved up
+    const cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - deleteLine on first line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3");
+    try eb.setCursor(0, 0);
+    try eb.deleteLine();
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Line 2\nLine 3", out_buffer[0..written]);
+
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+}
+
+test "EditBuffer - deleteLine on last line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 1\nLine 2\nLine 3");
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    try eb.setCursor(2, 0);
+    try eb.deleteLine();
+
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Line 1\nLine 2", out_buffer[0..written]);
+}
+
+test "EditBuffer - moveCursorToLineStart" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World\nAnother Line");
+
+    // Position cursor in the middle of line 1
+    try eb.setCursor(1, 8);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    // Move to line start
+    try eb.moveCursorToLineStart();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Move to line 0 and do it again
+    try eb.setCursor(0, 5);
+    try eb.moveCursorToLineStart();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - gotoLine moves to specified line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+
+    // Start at line 0
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 4), cursor.row); // Cursor is at end after insert
+
+    // Go to line 2
+    try eb.gotoLine(2);
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Go to line 0
+    try eb.gotoLine(0);
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Go to last line
+    try eb.gotoLine(4);
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 4), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - gotoLine clamps to valid range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line 0\nLine 1\nLine 2");
+
+    // Try to go to line 100 (out of bounds)
+    try eb.gotoLine(100);
+    const cursor = eb.getCursor(0).?;
+    // Should clamp to last line (line 2)
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - getCursorPosition returns correct info" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld\nFrom\nZig");
+
+    // Move to a specific position
+    try eb.setCursor(2, 3);
+
+    const pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 2), pos.line);
+    try std.testing.expectEqual(@as(u32, 3), pos.visual_col);
+    // char_pos currently equals visual_col (TODO in implementation)
+    try std.testing.expectEqual(@as(u32, 3), pos.char_pos);
+}
+
+test "EditBuffer - getCursorPosition with wide characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // "東京" has 4 display width but 6 bytes
+    try eb.insertText("Hello 東京 World");
+    try eb.setCursor(0, 10); // After "東京 "
+
+    const pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 0), pos.line);
+    try std.testing.expectEqual(@as(u32, 10), pos.visual_col);
+}

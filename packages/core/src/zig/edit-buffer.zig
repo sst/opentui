@@ -443,57 +443,32 @@ pub const EditBuffer = struct {
         if (cursor.row == 0 and cursor.col == 0) return;
 
         if (cursor.col == 0) {
-            // At start of line - delete the break segment before this line to merge with previous
-            // Need to find the break segment that precedes this line
-            const Context = struct {
-                target_row: u32,
-                break_seg_idx: ?u32 = null,
-                current_line: u32 = 0,
-                seg_idx: u32 = 0,
+            // At start of line - use O(1) marker lookup to find the break before this line
+            // The break before line N is break marker at index N-1
+            if (cursor.row > 0) {
+                const marker_pos = self.tb.rope.getMarker(.brk, cursor.row - 1);
 
-                fn callback(ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    ctx.seg_idx = idx;
+                if (marker_pos) |pos| {
+                    const break_idx = pos.leaf_index;
 
-                    if (seg.isBreak()) {
-                        // This break ends line current_line and starts line current_line+1
-                        if (ctx.current_line + 1 == ctx.target_row) {
-                            ctx.break_seg_idx = idx;
-                            return .{ .keep_walking = false };
+                    // Calculate the width of the previous line BEFORE deleting the break
+                    const prev_line_width = self.getLineWidth(cursor.row - 1);
+
+                    // Delete the break segment
+                    try self.tb.rope.delete(break_idx);
+
+                    // Also remove the following linestart if present
+                    // After deleting break_idx, the linestart that was at break_idx+1 is now at break_idx
+                    if (self.tb.rope.get(break_idx)) |seg| {
+                        if (seg.isLineStart()) {
+                            try self.tb.rope.delete(break_idx);
                         }
-                        ctx.current_line += 1;
                     }
-                    return .{};
-                }
-            };
 
-            var ctx = Context{ .target_row = cursor.row };
-            self.tb.rope.walk(&ctx, Context.callback) catch {};
+                    // Mark views dirty
+                    self.tb.markViewsDirty();
 
-            if (ctx.break_seg_idx) |break_idx| {
-                // Calculate the width of the previous line BEFORE deleting the break
-                // Use O(1) marker lookup instead of walking all lines
-                const prev_line_width = if (cursor.row > 0)
-                    self.getLineWidth(cursor.row - 1)
-                else
-                    0;
-
-                // Delete the break segment
-                try self.tb.rope.delete(break_idx);
-
-                // Also remove the following linestart if present
-                // After deleting break_idx, the linestart that was at break_idx+1 is now at break_idx
-                if (self.tb.rope.get(break_idx)) |seg| {
-                    if (seg.isLineStart()) {
-                        try self.tb.rope.delete(break_idx);
-                    }
-                }
-
-                // Mark views dirty
-                self.tb.markViewsDirty();
-
-                // Move cursor to end of previous line (using the width we calculated before the merge)
-                if (cursor.row > 0) {
+                    // Move cursor to end of previous line (using the width we calculated before the merge)
                     self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
                 }
             }
@@ -531,31 +506,13 @@ pub const EditBuffer = struct {
         const line_width = self.getLineWidth(cursor.row);
 
         if (cursor.col >= line_width) {
-            // At end of line - delete the break segment after this line to merge with next
-            const Context = struct {
-                target_row: u32,
-                break_seg_idx: ?u32 = null,
-                current_line: u32 = 0,
+            // At end of line - use O(1) marker lookup to find the break ending this line
+            // The break that ends line N is break marker at index N
+            const marker_pos = self.tb.rope.getMarker(.brk, cursor.row);
 
-                fn callback(ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            if (marker_pos) |pos| {
+                const break_idx = pos.leaf_index;
 
-                    if (seg.isBreak()) {
-                        // This break ends line current_line
-                        if (ctx.current_line == ctx.target_row) {
-                            ctx.break_seg_idx = idx;
-                            return .{ .keep_walking = false };
-                        }
-                        ctx.current_line += 1;
-                    }
-                    return .{};
-                }
-            };
-
-            var ctx = Context{ .target_row = cursor.row };
-            self.tb.rope.walk(&ctx, Context.callback) catch {};
-
-            if (ctx.break_seg_idx) |break_idx| {
                 // Delete the break segment
                 try self.tb.rope.delete(break_idx);
 
@@ -671,5 +628,94 @@ pub const EditBuffer = struct {
             // Move to desired column if possible, otherwise clamp to line end
             cursor.col = @min(cursor.desired_col, line_width);
         }
+    }
+
+    pub fn setText(self: *EditBuffer, text: []const u8) !void {
+        try self.tb.setText(text);
+        try self.setCursor(0, 0);
+    }
+
+    pub fn getText(self: *EditBuffer, out_buffer: []u8) usize {
+        return self.tb.getPlainTextIntoBuffer(out_buffer);
+    }
+
+    pub fn deleteLine(self: *EditBuffer) !void {
+        const cursor = self.getPrimaryCursor();
+        const line_count = self.tb.lineCount();
+
+        if (cursor.row >= line_count) return;
+
+        if (cursor.row + 1 < line_count) {
+            // Not the last line - delete line content and merge with next
+            try self.deleteRange(
+                .{ .row = cursor.row, .col = 0 },
+                .{ .row = cursor.row + 1, .col = 0 },
+            );
+        } else if (cursor.row > 0) {
+            // Last line but not the only line - use O(1) marker lookup to find the break
+            // The break before line N is break marker at index N-1
+            const marker_pos = self.tb.rope.getMarker(.brk, cursor.row - 1);
+
+            if (marker_pos) |pos| {
+                const break_idx = pos.leaf_index;
+
+                // First delete the line content
+                const line_width = self.getLineWidth(cursor.row);
+                if (line_width > 0) {
+                    try self.deleteRange(
+                        .{ .row = cursor.row, .col = 0 },
+                        .{ .row = cursor.row, .col = line_width },
+                    );
+                }
+
+                // Then delete the break segment
+                try self.tb.rope.delete(break_idx);
+
+                // And remove the following linestart
+                if (self.tb.rope.get(break_idx)) |seg| {
+                    if (seg.isLineStart()) {
+                        try self.tb.rope.delete(break_idx);
+                    }
+                }
+
+                self.tb.markViewsDirty();
+
+                // Move cursor to end of previous line
+                const prev_line_width = self.getLineWidth(cursor.row - 1);
+                self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
+            }
+        } else {
+            // Only line - clear content
+            const line_width = self.getLineWidth(cursor.row);
+            if (line_width > 0) {
+                try self.deleteRange(
+                    .{ .row = cursor.row, .col = 0 },
+                    .{ .row = cursor.row, .col = line_width },
+                );
+            }
+        }
+    }
+
+    // TODO Remove
+    pub fn moveCursorToLineStart(self: *EditBuffer) !void {
+        const cursor = self.getPrimaryCursor();
+        try self.setCursor(cursor.row, 0);
+    }
+
+    pub fn gotoLine(self: *EditBuffer, line: u32) !void {
+        const line_count = self.tb.lineCount();
+        const target_line = @min(line, line_count -| 1);
+        try self.setCursor(target_line, 0);
+    }
+
+    pub fn getCursorPosition(self: *const EditBuffer) struct { line: u32, char_pos: u32, visual_col: u32 } {
+        const cursor = self.getPrimaryCursor();
+
+        return .{
+            .line = cursor.row,
+            .visual_col = cursor.col,
+            // TODO: Reimplement absolute character position calculation using rope iterators
+            .char_pos = cursor.col,
+        };
     }
 };
