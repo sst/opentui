@@ -1043,9 +1043,9 @@ test "EditBuffer - gotoLine clamps to valid range" {
     // Try to go to line 100 (out of bounds)
     try eb.gotoLine(100);
     const cursor = eb.getCursor(0).?;
-    // Should clamp to last line (line 2)
+    // Should clamp to last line (line 2) and go to end of that line
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
-    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col); // "Line 2" has 6 characters
 }
 
 test "EditBuffer - getCursorPosition returns correct info" {

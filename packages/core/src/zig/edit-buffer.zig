@@ -154,10 +154,18 @@ pub const EditBuffer = struct {
     }
 
     pub fn setCursor(self: *EditBuffer, row: u32, col: u32) !void {
+        // Clamp row to valid line range
+        const line_count = self.tb.lineCount();
+        const clamped_row = @min(row, line_count -| 1);
+
+        // Clamp column to line width
+        const line_width = self.getLineWidth(clamped_row);
+        const clamped_col = @min(col, line_width);
+
         if (self.cursors.items.len == 0) {
-            try self.cursors.append(self.allocator, .{ .row = row, .col = col, .desired_col = col });
+            try self.cursors.append(self.allocator, .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col });
         } else {
-            self.cursors.items[0] = .{ .row = row, .col = col, .desired_col = col };
+            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
         }
     }
 
@@ -170,6 +178,89 @@ pub const EditBuffer = struct {
     /// Uses linestart markers to determine line boundaries
     fn getLineWidth(self: *const EditBuffer, row: u32) u32 {
         return iter_mod.lineWidthAt(&self.tb.rope, row);
+    }
+
+    /// Get the display width of the grapheme at or after the given column on a line
+    /// Returns 0 if at end of line
+    fn getGraphemeWidthAt(self: *const EditBuffer, row: u32, col: u32) u32 {
+        const line_width = self.getLineWidth(row);
+        if (col >= line_width) return 0;
+
+        // Find the text segments for this line
+        const linestart_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
+        const line_start_idx = linestart_marker.leaf_index;
+
+        // Walk segments from linestart to accumulate width until we reach target column
+        var accumulated_width: u32 = 0;
+        var seg_idx = line_start_idx + 1; // Skip the linestart marker itself
+
+        while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
+            const seg = self.tb.rope.get(seg_idx) orelse break;
+
+            if (seg.isBreak() or seg.isLineStart()) break;
+
+            if (seg.asText()) |chunk| {
+                const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
+                var iter = self.tb.getGraphemeIterator(chunk_bytes);
+
+                while (iter.next()) |gc| {
+                    const gbytes = gc.bytes(chunk_bytes);
+                    const g_width: u32 = @intCast(gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width));
+
+                    if (accumulated_width == col) {
+                        return g_width;
+                    }
+
+                    accumulated_width += g_width;
+                    if (accumulated_width > col) break;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    /// Get the display width of the grapheme before the given column on a line
+    /// Returns 0 if at start of line
+    fn getPrevGraphemeWidth(self: *const EditBuffer, row: u32, col: u32) u32 {
+        if (col == 0) return 0;
+
+        const line_width = self.getLineWidth(row);
+        if (col > line_width) return 0;
+
+        // Find the text segments for this line
+        const linestart_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
+        const line_start_idx = linestart_marker.leaf_index;
+
+        // Walk segments and track grapheme widths
+        var accumulated_width: u32 = 0;
+        var prev_g_width: u32 = 0;
+        var seg_idx = line_start_idx + 1; // Skip the linestart marker itself
+
+        while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
+            const seg = self.tb.rope.get(seg_idx) orelse break;
+
+            if (seg.isBreak() or seg.isLineStart()) break;
+
+            if (seg.asText()) |chunk| {
+                const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
+                var iter = self.tb.getGraphemeIterator(chunk_bytes);
+
+                while (iter.next()) |gc| {
+                    const gbytes = gc.bytes(chunk_bytes);
+                    const g_width: u32 = @intCast(gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width));
+
+                    if (accumulated_width == col) {
+                        return prev_g_width;
+                    }
+
+                    prev_g_width = g_width;
+                    accumulated_width += g_width;
+                }
+            }
+        }
+
+        return prev_g_width;
     }
 
     /// Split a TextChunk at a specific weight (display width)
@@ -542,17 +633,21 @@ pub const EditBuffer = struct {
 
     pub fn moveLeft(self: *EditBuffer) void {
         if (self.cursors.items.len == 0) return;
-        if (self.cursors.items[0].col > 0) {
-            self.cursors.items[0].col -= 1;
-        } else if (self.cursors.items[0].row > 0) {
+        const cursor = &self.cursors.items[0];
+
+        if (cursor.col > 0) {
+            // Get width of previous grapheme and move left by that amount
+            const prev_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
+            cursor.col -= prev_width;
+        } else if (cursor.row > 0) {
             // Move to end of previous line
-            self.cursors.items[0].row -= 1;
+            cursor.row -= 1;
             // Get the width of the previous line using O(1) marker lookup
-            const line_width = self.getLineWidth(self.cursors.items[0].row);
-            self.cursors.items[0].col = line_width;
+            const line_width = self.getLineWidth(cursor.row);
+            cursor.col = line_width;
         }
         // Horizontal movement resets desired column
-        self.cursors.items[0].desired_col = self.cursors.items[0].col;
+        cursor.desired_col = cursor.col;
     }
 
     pub fn moveRight(self: *EditBuffer) void {
@@ -564,7 +659,9 @@ pub const EditBuffer = struct {
         const line_count = self.tb.getLineCount();
 
         if (cursor.col < line_width) {
-            cursor.col += 1;
+            // Get width of current grapheme and move right by that amount
+            const grapheme_width = self.getGraphemeWidthAt(cursor.row, cursor.col);
+            cursor.col += grapheme_width;
         } else if (cursor.row + 1 < line_count) {
             // Move to start of next line
             cursor.row += 1;
@@ -676,7 +773,14 @@ pub const EditBuffer = struct {
     pub fn gotoLine(self: *EditBuffer, line: u32) !void {
         const line_count = self.tb.lineCount();
         const target_line = @min(line, line_count -| 1);
-        try self.setCursor(target_line, 0);
+
+        // If line is beyond the last line, go to end of last line
+        if (line >= line_count) {
+            const last_line_width = self.getLineWidth(target_line);
+            try self.setCursor(target_line, last_line_width);
+        } else {
+            try self.setCursor(target_line, 0);
+        }
     }
 
     pub fn getCursorPosition(self: *const EditBuffer) struct { line: u32, char_pos: u32, visual_col: u32 } {

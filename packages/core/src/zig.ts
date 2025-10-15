@@ -1062,7 +1062,7 @@ export interface RenderLib {
   editBufferMoveCursorUp: (buffer: Pointer) => void
   editBufferMoveCursorDown: (buffer: Pointer) => void
   editBufferGotoLine: (buffer: Pointer, line: number) => void
-  editBufferSetCursor: (buffer: Pointer, line: number, byteOffset: number) => void
+  editBufferSetCursor: (buffer: Pointer, line: number, col: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
   editBufferGetCursorPosition: (buffer: Pointer) => { line: number; charPos: number; visualColumn: number }
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer

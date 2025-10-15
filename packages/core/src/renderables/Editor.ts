@@ -70,6 +70,29 @@ export class EditorRenderable extends EditBufferRenderable {
       this.editorView.setCursor(cursor.row, 0)
       this.handleShiftSelection(keyShift, false)
       return true
+    } else if (keyName === "end") {
+      this.handleShiftSelection(keyShift, true)
+      this.gotoLineEnd()
+      this.handleShiftSelection(keyShift, false)
+      return true
+    }
+    // Control commands
+    else if (keyCtrl && keyName === "a") {
+      // Ctrl+A: Move to start of buffer
+      this.editorView.setCursor(0, 0)
+      return true
+    } else if (keyCtrl && keyName === "e") {
+      // Ctrl+E: Move to end of buffer
+      this.gotoBufferEnd()
+      return true
+    } else if (keyCtrl && keyName === "d") {
+      // Ctrl+D: Delete line
+      this.deleteLine()
+      return true
+    } else if (keyCtrl && keyName === "k") {
+      // Ctrl+K: Delete to line end
+      this.deleteToLineEnd()
+      return true
     }
     // Deletion
     else if (keyName === "backspace") {
@@ -235,6 +258,49 @@ export class EditorRenderable extends EditBufferRenderable {
 
   public gotoLine(line: number): void {
     this.editorView.gotoLine(line)
+    this.requestRender()
+  }
+
+  public gotoLineEnd(): void {
+    const cursor = this.editorView.getCursor()
+    // Get line width and move cursor to end of current line
+    this.editorView.gotoLine(9999) // Temp hack - move to way past end to trigger end-of-line
+    const afterCursor = this.editorView.getCursor()
+    // If we're not on the same line, we went too far, so set to the line we want
+    if (afterCursor.row !== cursor.row) {
+      this.editorView.setCursor(cursor.row, 9999) // Will clamp to line width
+    }
+    this.requestRender()
+  }
+
+  public gotoBufferEnd(): void {
+    this.editorView.gotoLine(999999) // Will clamp to last line and go to end
+    this.requestRender()
+  }
+
+  public deleteToLineEnd(): void {
+    // Get current cursor position
+    const cursor = this.editorView.getCursor()
+    const startCol = cursor.col
+
+    // Temporarily move to end of line to get the line width
+    const tempCursor = this.editorView.getCursor()
+    this.editorView.setCursor(tempCursor.row, 9999)
+    const endCursor = this.editorView.getCursor()
+    const endCol = endCursor.col
+
+    // Restore cursor and delete if there's content to delete
+    this.editorView.setCursor(cursor.row, startCol)
+
+    if (endCol > startCol) {
+      // Delete characters from cursor to end of line
+      // We need to implement this via selection and delete
+      // For now, just repeatedly delete forward
+      for (let i = 0; i < endCol - startCol; i++) {
+        this.deleteChar()
+      }
+    }
+
     this.requestRender()
   }
 

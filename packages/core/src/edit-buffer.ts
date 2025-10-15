@@ -111,9 +111,9 @@ export class EditBuffer {
     this.lib.editBufferGotoLine(this.bufferPtr, line)
   }
 
-  public setCursor(line: number, byteOffset: number): void {
+  public setCursor(line: number, col: number): void {
     this.guard()
-    this.lib.editBufferSetCursor(this.bufferPtr, line, byteOffset)
+    this.lib.editBufferSetCursor(this.bufferPtr, line, col)
   }
 
   public setCursorToLineCol(line: number, col: number): void {
