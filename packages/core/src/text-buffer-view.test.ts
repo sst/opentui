@@ -59,6 +59,7 @@ describe("TextBufferView", () => {
       expect(unwrappedInfo.lineWidths.length).toBe(1)
       expect(unwrappedInfo.lineWidths[0]).toBe(76)
 
+      view.setWrapMode("char") // Enable wrapping
       view.setWrapWidth(20)
 
       const wrappedInfo = view.lineInfo
@@ -111,6 +112,7 @@ describe("TextBufferView", () => {
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
 
+      view.setWrapMode("char") // Enable wrapping
       view.setWrapWidth(15)
 
       const lineInfo1 = view.lineInfo
@@ -132,11 +134,13 @@ describe("TextBufferView", () => {
       const originalInfo = view.lineInfo
       expect(originalInfo.lineStarts).toEqual([0, 6, 12])
 
+      view.setWrapMode("char") // Enable wrapping
       view.setWrapWidth(5)
 
       const wrappedInfo = view.lineInfo
       expect(wrappedInfo.lineStarts.length).toBeGreaterThan(3)
 
+      view.setWrapMode("none") // Disable wrapping
       view.setWrapWidth(null)
 
       const unwrappedInfo = view.lineInfo
