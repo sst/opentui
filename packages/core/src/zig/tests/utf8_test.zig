@@ -1061,37 +1061,42 @@ test "find pos by width: wide emoji at boundary - INCLUDES grapheme" {
     const input = "Hello 🌍 World";
 
     // Selection ending at column 7 should INCLUDE emoji (starts at col 6)
-    const result7 = utf8.findPosByWidth(input, 7, 8, false);
+    const result7 = utf8.findPosByWidth(input, 7, 8, false, true);
     try testing.expectEqual(@as(u32, 10), result7.byte_offset); // "Hello 🌍" (6 + 4 bytes)
     try testing.expectEqual(@as(u32, 8), result7.columns_used); // emoji extends to col 8
 
     // Selection ending at column 8 should include emoji
-    const result8 = utf8.findPosByWidth(input, 8, 8, false);
+    const result8 = utf8.findPosByWidth(input, 8, 8, false, true);
     try testing.expectEqual(@as(u32, 10), result8.byte_offset); // "Hello 🌍"
     try testing.expectEqual(@as(u32, 8), result8.columns_used);
 
     // Selection ending at column 6 should stop before emoji
-    const result6 = utf8.findPosByWidth(input, 6, 8, false);
+    const result6 = utf8.findPosByWidth(input, 6, 8, false, true);
     try testing.expectEqual(@as(u32, 6), result6.byte_offset); // "Hello "
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
+
+    // Selection STARTING at column 7 should EXCLUDE emoji (starts at col 6)
+    const start7 = utf8.findPosByWidth(input, 7, 8, false, false);
+    try testing.expectEqual(@as(u32, 10), start7.byte_offset); // Skip to space at col 8
+    try testing.expectEqual(@as(u32, 8), start7.columns_used);
 }
 
 test "find pos by width: empty string" {
-    const result = utf8.findPosByWidth("", 10, 4, true);
+    const result = utf8.findPosByWidth("", 10, 4, true, true);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
 }
 
 test "find pos by width: simple ASCII no limit" {
-    const result = utf8.findPosByWidth("hello", 10, 4, true);
+    const result = utf8.findPosByWidth("hello", 10, 4, true, true);
     try testing.expectEqual(@as(u32, 5), result.byte_offset);
     try testing.expectEqual(@as(u32, 5), result.grapheme_count);
     try testing.expectEqual(@as(u32, 5), result.columns_used);
 }
 
 test "find pos by width: ASCII exactly at limit" {
-    const result = utf8.findPosByWidth("hello", 5, 4, true);
+    const result = utf8.findPosByWidth("hello", 5, 4, true, true);
     try testing.expectEqual(@as(u32, 5), result.byte_offset);
     try testing.expectEqual(@as(u32, 5), result.grapheme_count);
     try testing.expectEqual(@as(u32, 5), result.columns_used);
@@ -1101,15 +1106,15 @@ test "find pos by width: wide emoji at start" {
     const input = "🌍 World";
 
     // Emoji at columns 0-1, selecting col 1 should INCLUDE emoji
-    const result1 = utf8.findPosByWidth(input, 1, 8, false);
+    const result1 = utf8.findPosByWidth(input, 1, 8, false, true);
     try testing.expectEqual(@as(u32, 4), result1.byte_offset); // Include emoji
     try testing.expectEqual(@as(u32, 2), result1.columns_used);
 
-    const result2 = utf8.findPosByWidth(input, 2, 8, false);
+    const result2 = utf8.findPosByWidth(input, 2, 8, false, true);
     try testing.expectEqual(@as(u32, 4), result2.byte_offset); // Just emoji
     try testing.expectEqual(@as(u32, 2), result2.columns_used);
 
-    const result3 = utf8.findPosByWidth(input, 3, 8, false);
+    const result3 = utf8.findPosByWidth(input, 3, 8, false, true);
     try testing.expectEqual(@as(u32, 5), result3.byte_offset); // Emoji + space
     try testing.expectEqual(@as(u32, 3), result3.columns_used);
 }
@@ -1119,12 +1124,12 @@ test "find pos by width: multiple wide characters" {
     // A(0) B(1) 🌍(2-3) C(4) D(5) 🌎(6-7) E(8) F(9)
 
     // Select 5 cols [0,5) - includes graphemes starting at cols 0,1,2,4 but not 5
-    const result5 = utf8.findPosByWidth(input, 5, 8, false);
+    const result5 = utf8.findPosByWidth(input, 5, 8, false, true);
     try testing.expectEqual(@as(u32, 7), result5.byte_offset); // "AB🌍C" (2+4+1 bytes)
     try testing.expectEqual(@as(u32, 5), result5.columns_used);
 
     // Select 7 cols [0,7) - should include 🌎 that starts at col 6
-    const result7 = utf8.findPosByWidth(input, 7, 8, false);
+    const result7 = utf8.findPosByWidth(input, 7, 8, false, true);
     try testing.expectEqual(@as(u32, 12), result7.byte_offset); // "AB🌍CD🌎" (2+4+2+4 bytes)
     try testing.expectEqual(@as(u32, 8), result7.columns_used);
 }
@@ -1134,25 +1139,25 @@ test "find pos by width: CJK wide characters" {
     // h(0) e(1) l(2) l(3) o(4) 世(5-6) 界(7-8) t(9) e(10) s(11) t(12)
 
     // Select 6 cols - should include 世 that starts at col 5
-    const result6 = utf8.findPosByWidth(input, 6, 8, false);
+    const result6 = utf8.findPosByWidth(input, 6, 8, false, true);
     try testing.expectEqual(@as(u32, 8), result6.byte_offset); // "hello世" (5+3 bytes)
     try testing.expectEqual(@as(u32, 7), result6.columns_used);
 
     // Select 8 cols - should include 界 that starts at col 7
-    const result8 = utf8.findPosByWidth(input, 8, 8, false);
+    const result8 = utf8.findPosByWidth(input, 8, 8, false, true);
     try testing.expectEqual(@as(u32, 11), result8.byte_offset); // "hello世界" (5+3+3 bytes)
     try testing.expectEqual(@as(u32, 9), result8.columns_used);
 }
 
 test "find pos by width: combining mark" {
-    const result = utf8.findPosByWidth("e\u{0301}test", 3, 4, false);
+    const result = utf8.findPosByWidth("e\u{0301}test", 3, 4, false, true);
     try testing.expectEqual(@as(u32, 5), result.byte_offset); // After "é" (3 bytes) + "te" (2 bytes)
     try testing.expectEqual(@as(u32, 3), result.grapheme_count);
     try testing.expectEqual(@as(u32, 3), result.columns_used);
 }
 
 test "find pos by width: tab handling" {
-    const result = utf8.findPosByWidth("a\tb", 5, 4, true);
+    const result = utf8.findPosByWidth("a\tb", 5, 4, true, true);
     try testing.expectEqual(@as(u32, 3), result.byte_offset);
     try testing.expectEqual(@as(u32, 3), result.grapheme_count);
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab to 4 (3) + 'b' (1) = 5

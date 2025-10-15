@@ -611,14 +611,15 @@ pub fn findWrapPosByWidthSIMD16(
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = grapheme_count, .columns_used = columns_used };
 }
 
-/// Find position by column width, including graphemes that start before the limit
-/// This is for selection - include any grapheme that starts before max_columns
-/// even if it extends past it.
+/// Find position by column width, with control over boundary behavior
+/// - If include_start_before: include graphemes that START before max_columns (for selection end)
+/// - If !include_start_before: exclude graphemes that START before max_columns (for selection start)
 pub fn findPosByWidth(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
     isASCIIOnly: bool,
+    include_start_before: bool,
 ) PosByWidthResult {
     if (text.len == 0 or max_columns == 0) {
         return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
@@ -642,7 +643,7 @@ pub fn findPosByWidth(
                     columns_used += 1;
                 }
 
-                // Include this character if it started before max_columns
+                // Check if this character starts at or after max_columns
                 if (prev_columns >= max_columns) {
                     return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = prev_columns };
                 }
@@ -694,12 +695,16 @@ pub fn findPosByWidth(
 
                 if (is_break) {
                     if (prev_cp != null) {
-                        // Include this grapheme if it started before max_columns
+                        // Check if this grapheme starts at or after max_columns
                         if (columns_used >= max_columns) {
+                            // This grapheme starts at or after limit
                             return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
                         }
+                        // This grapheme starts before limit
                         columns_used += cluster_width;
-                        grapheme_count += 1;
+                        if (include_start_before) {
+                            grapheme_count += 1;
+                        }
                     }
                     cluster_width = 0;
                     cluster_start = pos + i;
@@ -735,12 +740,16 @@ pub fn findPosByWidth(
 
             if (is_break) {
                 if (prev_cp != null) {
-                    // Include this grapheme if it started before max_columns
+                    // Check if this grapheme starts at or after max_columns
                     if (columns_used >= max_columns) {
+                        // This grapheme starts at or after limit
                         return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
                     }
+                    // This grapheme starts before limit
                     columns_used += cluster_width;
-                    grapheme_count += 1;
+                    if (include_start_before) {
+                        grapheme_count += 1;
+                    }
                 }
                 cluster_width = 0;
                 cluster_start = pos + i;
@@ -775,12 +784,16 @@ pub fn findPosByWidth(
 
         if (is_break) {
             if (prev_cp != null) {
-                // Include this grapheme if it started before max_columns
+                // Check if this grapheme starts at or after max_columns
                 if (columns_used >= max_columns) {
+                    // This grapheme starts at or after limit
                     return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
                 }
+                // This grapheme starts before limit
                 columns_used += cluster_width;
-                grapheme_count += 1;
+                if (include_start_before) {
+                    grapheme_count += 1;
+                }
             }
             cluster_width = 0;
             cluster_start = pos;
@@ -798,13 +811,15 @@ pub fn findPosByWidth(
         pos += cp_len;
     }
 
-    // Final cluster - always include if we have one
+    // Final cluster
     if (prev_cp != null and cluster_width > 0) {
         if (columns_used >= max_columns) {
             return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
         }
         columns_used += cluster_width;
-        grapheme_count += 1;
+        if (include_start_before) {
+            grapheme_count += 1;
+        }
     }
 
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = grapheme_count, .columns_used = columns_used };

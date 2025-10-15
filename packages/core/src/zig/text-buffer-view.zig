@@ -801,13 +801,14 @@ pub const UnifiedTextBufferView = struct {
                 var byte_end: u32 = @intCast(chunk_bytes.len);
 
                 if (local_start_col > 0) {
-                    const start_result = utf8.findWrapPosByWidthSIMD16(chunk_bytes, local_start_col, 8, is_ascii_only);
+                    // For start: exclude graphemes that start before limit
+                    const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, 8, is_ascii_only, false);
                     byte_start = start_result.byte_offset;
                 }
 
                 if (local_end_col < chunk.width) {
-                    // Use findPosByWidth for selection - includes graphemes that start before limit
-                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, 8, is_ascii_only);
+                    // For end: include graphemes that start before limit
+                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, 8, is_ascii_only, true);
                     byte_end = end_result.byte_offset;
                 }
 

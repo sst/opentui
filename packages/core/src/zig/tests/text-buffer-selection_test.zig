@@ -625,3 +625,32 @@ test "Selection - wide emoji at boundary (reproduces TypeScript test)" {
 
     try std.testing.expectEqualStrings("Hello 🌍", text);
 }
+
+test "Selection - wide emoji BEFORE selection start should be excluded" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello 🌍 World");
+
+    // Layout: H(0) e(1) l(2) l(3) o(4) space(5) 🌍(6-7) space(8) W(9) o(10) r(11) l(12) d(13)
+    // Select [7, 10) - should be " W" (space at col 8, W at col 9)
+    // Should NOT include emoji at cols 6-7 because it starts before col 7
+    // Should NOT include 'o' at col 10 because selection is [7, 10) exclusive end
+    view.setSelection(7, 10, null, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings(" W", text);
+}
