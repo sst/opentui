@@ -66,8 +66,8 @@ export class EditorRenderable extends EditBufferRenderable {
     // Line navigation
     else if (keyName === "home") {
       this.handleShiftSelection(keyShift, true)
-      const cursor = this.editBuffer.getCursorPosition()
-      this.editBuffer.setCursor(cursor.line, 0)
+      const cursor = this.editorView.getCursor()
+      this.editorView.setCursor(cursor.row, 0)
       this.handleShiftSelection(keyShift, false)
       return true
     }
@@ -120,7 +120,7 @@ export class EditorRenderable extends EditBufferRenderable {
   }
 
   private updateContent(content: string): void {
-    this.editBuffer.setText(content)
+    this.editorView.setText(content)
     this.yogaNode.markDirty()
     this.requestRender()
   }
@@ -177,12 +177,12 @@ export class EditorRenderable extends EditBufferRenderable {
     const { start, end } = selection
 
     // Get the text before and after the selection
-    const fullText = this.editBuffer.getText()
+    const fullText = this.editorView.getText()
     const before = fullText.substring(0, start)
     const after = fullText.substring(end)
 
-    // Set the new text (this will reset cursor to start)
-    this.editBuffer.setText(before + after)
+    // Set the new text (this will reset cursor to start and ensure it's visible)
+    this.editorView.setText(before + after)
 
     // Calculate the line and byte offset for the cursor position
     // Count newlines in 'before' to get the line number
@@ -190,8 +190,8 @@ export class EditorRenderable extends EditBufferRenderable {
     const targetLine = beforeLines.length - 1
     const byteOffsetInLine = beforeLines[beforeLines.length - 1].length
 
-    // Set cursor to the start of where the deletion occurred
-    this.editBuffer.setCursor(targetLine, byteOffsetInLine)
+    // Set cursor to the start of where the deletion occurred (viewport-aware)
+    this.editorView.setCursor(targetLine, byteOffsetInLine)
 
     // Clear the selection
     this._ctx.clearSelection()

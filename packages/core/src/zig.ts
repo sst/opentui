@@ -593,6 +593,22 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    editorViewSetCursor: {
+      args: ["ptr", "u32", "u32"],
+      returns: "void",
+    },
+    editorViewGetCursor: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewSetText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editorViewGetText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
 
     getArenaAllocatedBytes: {
       args: [],
@@ -1057,6 +1073,10 @@ export interface RenderLib {
   editorViewDeleteCharBackward: (view: Pointer) => void
   editorViewNewLine: (view: Pointer) => void
   editorViewDeleteLine: (view: Pointer) => void
+  editorViewSetCursor: (view: Pointer, row: number, col: number) => void
+  editorViewGetCursor: (view: Pointer) => { row: number; col: number }
+  editorViewSetText: (view: Pointer, text: string) => void
+  editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2149,6 +2169,30 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewDeleteLine(view: Pointer): void {
     this.opentui.symbols.editorViewDeleteLine(view)
+  }
+
+  public editorViewSetCursor(view: Pointer, row: number, col: number): void {
+    this.opentui.symbols.editorViewSetCursor(view, row, col)
+  }
+
+  public editorViewGetCursor(view: Pointer): { row: number; col: number } {
+    const row = new Uint32Array(1)
+    const col = new Uint32Array(1)
+    this.opentui.symbols.editorViewGetCursor(view, ptr(row), ptr(col))
+    return { row: row[0], col: col[0] }
+  }
+
+  public editorViewSetText(view: Pointer, text: string): void {
+    const textBytes = this.encoder.encode(text)
+    this.opentui.symbols.editorViewSetText(view, textBytes, textBytes.length)
+  }
+
+  public editorViewGetText(view: Pointer, maxLength: number): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editorViewGetText(view, ptr(outBuffer), maxLength)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

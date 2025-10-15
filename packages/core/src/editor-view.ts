@@ -182,6 +182,30 @@ export class EditorView {
     this.lib.editorViewDeleteLine(this.viewPtr)
   }
 
+  // Cursor and text access methods - viewport-aware
+  public setCursor(row: number, col: number): void {
+    this.guard()
+    this.lib.editorViewSetCursor(this.viewPtr, row, col)
+  }
+
+  public getCursor(): { row: number; col: number } {
+    this.guard()
+    return this.lib.editorViewGetCursor(this.viewPtr)
+  }
+
+  public setText(text: string): void {
+    this.guard()
+    this.lib.editorViewSetText(this.viewPtr, text)
+  }
+
+  public getText(): string {
+    this.guard()
+    const maxLength = 1024 * 1024 // 1MB buffer
+    const textBytes = this.lib.editorViewGetText(this.viewPtr, maxLength)
+    if (!textBytes) return ""
+    return this.lib.decoder.decode(textBytes)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
