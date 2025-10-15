@@ -1236,3 +1236,68 @@ test "EditBuffer - deleteForward on first line with empty middle line" {
     try std.testing.expectEqualStrings("\n\nThird", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 }
+
+test "EditBuffer - moveLeft to end of line then insertText one char at a time" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert two lines
+    try eb.insertText("First\nSecond");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("First\nSecond", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+
+    // Cursor should be at end of second line (row=1, col=6)
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Move cursor to start of second line
+    try eb.setCursor(1, 0);
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Move left once - should wrap to end of first line
+    eb.moveLeft();
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col); // At end of "First"
+
+    // Now insert characters one at a time
+    try eb.insertText("X");
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("FirstX\nSecond", out_buffer[0..written]);
+
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    try eb.insertText("Y");
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("FirstXY\nSecond", out_buffer[0..written]);
+
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 7), cursor.col);
+
+    try eb.insertText("Z");
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("FirstXYZ\nSecond", out_buffer[0..written]);
+
+    cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    // Verify we still have 2 lines
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+}

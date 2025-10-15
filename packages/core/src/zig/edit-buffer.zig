@@ -308,6 +308,29 @@ pub const EditBuffer = struct {
         // Convert cursor position to character offset
         const insert_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
 
+        // Special case: if we're at the end of a line (col == line_width), we need to insert
+        // BEFORE the break marker, not after it. Since breaks have 0 weight, both the end of
+        // the line text and the break are at the same offset. When insertSliceByWeight splits
+        // at that offset, the break ends up on the wrong side.
+        //
+        // To fix this, we check if we're at line end, and if so, use segment-level insertion
+        // directly before the break marker instead of weight-based insertion.
+        const line_width = self.getLineWidth(cursor.row);
+        const at_line_end = cursor.col == line_width and line_width > 0;
+        const line_count = self.tb.getLineCount();
+        const has_next_line = cursor.row + 1 < line_count;
+
+        var use_segment_insertion = false;
+        var segment_insert_idx: u32 = 0;
+
+        if (at_line_end and has_next_line) {
+            // Find the break marker for this line to insert directly before it
+            if (self.tb.rope.getMarker(.brk, cursor.row)) |break_marker| {
+                use_segment_insertion = true;
+                segment_insert_idx = break_marker.leaf_index;
+            }
+        }
+
         // Append entire bytes to AddBuffer once (single copy)
         const chunk_ref = self.add_buffer.append(bytes);
         const base_mem_id = chunk_ref.mem_id;
@@ -357,10 +380,16 @@ pub const EditBuffer = struct {
             inserted_width += chunk.width;
         }
 
-        // Insert segments into rope at the offset
+        // Insert segments into rope
         if (segments.items.len > 0) {
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
+            if (use_segment_insertion) {
+                // Insert directly at segment index (before the break marker)
+                try self.tb.rope.insert_slice(segment_insert_idx, segments.items);
+            } else {
+                // Use weight-based insertion
+                const splitter = self.makeSegmentSplitter();
+                try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
+            }
 
             // Update char count
             self.tb.char_count += inserted_width;
