@@ -483,28 +483,92 @@ pub const EditBuffer = struct {
                 }
             }
         } else {
-            // Delete one character before cursor
-            const cursor_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
-            if (cursor_offset == 0) return;
-
-            const delete_start = cursor_offset - 1;
-            const delete_end = cursor_offset;
-
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.deleteRangeByWeight(delete_start, delete_end, &splitter);
-
-            // Update char count
-            if (self.tb.char_count > 0) {
-                self.tb.char_count -= 1;
+            // Delete one character before cursor within the same line
+            if (cursor.col == 0) {
+                // Safety check - shouldn't happen since we check earlier
+                return;
             }
 
-            // Mark views dirty
-            self.tb.markViewsDirty();
+            // Get the linestart marker for the current row to find the segment index
+            const linestart_marker = self.tb.rope.getMarker(.linestart, cursor.row) orelse return;
+            const linestart_seg_idx = linestart_marker.leaf_index;
 
-            // Update cursor position
-            if (iter_mod.offsetToCoords(&self.tb.rope, delete_start)) |coords| {
-                self.cursors.items[0] = .{ .row = coords.row, .col = coords.col, .desired_col = coords.col };
+            // Walk forward from the linestart to find text segments and accumulate width
+            var accumulated_width: u32 = 0;
+            var current_seg_idx: u32 = linestart_seg_idx + 1; // Start after linestart
+            const target_col = cursor.col - 1; // Position of character to delete
+
+            // Find which segment contains the character at target_col
+            while (current_seg_idx < self.tb.rope.count()) : (current_seg_idx += 1) {
+                const seg = self.tb.rope.get(current_seg_idx) orelse break;
+
+                // Stop if we hit a break (end of line)
+                if (seg.isBreak()) break;
+
+                // Skip non-text segments
+                if (!seg.isText()) continue;
+
+                const chunk = seg.asText() orelse continue;
+                const seg_width = chunk.width;
+
+                // Check if target_col falls within this segment
+                if (accumulated_width + seg_width > target_col) {
+                    // The character is in this segment
+                    const offset_in_seg = target_col - accumulated_width;
+
+                    // Check if we need to delete the entire segment or just part of it
+                    if (seg_width == 1 and offset_in_seg == 0) {
+                        // Special case: deleting a 1-character segment
+                        // Delete the segment directly to avoid empty line issues with deleteRangeByWeight
+                        try self.tb.rope.delete(current_seg_idx);
+
+                        // Update char count
+                        if (self.tb.char_count > 0) {
+                            self.tb.char_count -= 1;
+                        }
+
+                        // Mark views dirty
+                        self.tb.markViewsDirty();
+
+                        // Update cursor position
+                        self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
+                        return;
+                    }
+
+                    // For multi-character segments, use deleteRangeByWeight
+                    // Calculate the global offset by walking from the START of the rope
+                    var global_offset: u32 = 0;
+                    var seg_idx: u32 = 0;
+                    while (seg_idx < current_seg_idx) : (seg_idx += 1) {
+                        if (self.tb.rope.get(seg_idx)) |s| {
+                            if (s.asText()) |c| {
+                                global_offset += c.width;
+                            }
+                        }
+                    }
+                    global_offset += offset_in_seg;
+
+                    const splitter = self.makeSegmentSplitter();
+                    try self.tb.rope.deleteRangeByWeight(global_offset, global_offset + 1, &splitter);
+
+                    // Update char count
+                    if (self.tb.char_count > 0) {
+                        self.tb.char_count -= 1;
+                    }
+
+                    // Mark views dirty
+                    self.tb.markViewsDirty();
+
+                    // Update cursor position
+                    self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
+                    return;
+                }
+
+                accumulated_width += seg_width;
             }
+
+            // If we get here, we didn't find the character (shouldn't happen)
+            // Just return without doing anything
         }
     }
 

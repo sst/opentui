@@ -3,6 +3,7 @@ const edit_buffer = @import("../edit-buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const iter_mod = @import("../text-buffer-iterators.zig");
 
 const EditBuffer = edit_buffer.EditBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
@@ -1124,4 +1125,64 @@ test "EditBuffer - setText followed by insertText" {
     // Verify insertion worked
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("XLine 1\nLine 2\nLine 3", out_buffer[0..written]);
+}
+
+test "EditBuffer - backspace on third line with empty middle line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Create 3 lines: [text, empty, text]
+    try eb.insertText("First\n\nThird");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("First\n\nThird", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Position cursor on third line at column 5 (end of "Third")
+    try eb.setCursor(2, 5);
+    var cursor = eb.getCursor(0).?;
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+
+    // Backspace once - should delete 'd' and cursor should be at col 4
+    try eb.backspace();
+    cursor = eb.getCursor(0).?;
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+    try std.testing.expectEqualStrings("First\n\nThir", out_buffer[0..written]);
+
+    // Continue backspacing through "Thir"
+    try eb.backspace();
+    try eb.backspace();
+    try eb.backspace();
+
+    // After backspacing 'T' (the first and only char on line 2)
+    try eb.backspace();
+    cursor = eb.getCursor(0).?;
+    written = eb.getText(&out_buffer);
+
+    // After deleting 'T', we should still be on row 2, col 0, with the empty line preserved
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+    try std.testing.expectEqualStrings("First\n\n", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
+
+    // Next backspace should merge with empty line (row 1)
+    try eb.backspace();
+    cursor = eb.getCursor(0).?;
+    written = eb.getText(&out_buffer);
+
+    // Now we should be on row 1 (the previous empty line), col 0
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 }
