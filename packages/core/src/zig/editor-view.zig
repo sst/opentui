@@ -149,4 +149,111 @@ pub const EditorView = struct {
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
         self.text_buffer_view.setWrapMode(mode);
     }
+
+    // ============================================================================
+    // Viewport-aware EditBuffer wrappers
+    // These methods wrap EditBuffer operations and ensure cursor visibility
+    // ============================================================================
+
+    /// Set cursor position and ensure it's visible in viewport
+    pub fn setCursor(self: *EditorView, row: u32, col: u32) !void {
+        try self.edit_buffer.setCursor(row, col);
+        self.ensureCursorVisible(row);
+    }
+
+    /// Insert text at cursor and ensure cursor remains visible
+    pub fn insertText(self: *EditorView, bytes: []const u8) !void {
+        try self.edit_buffer.insertText(bytes);
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Delete range and ensure cursor remains visible
+    pub fn deleteRange(self: *EditorView, start_cursor: eb.Cursor, end_cursor: eb.Cursor) !void {
+        try self.edit_buffer.deleteRange(start_cursor, end_cursor);
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Backspace and ensure cursor remains visible
+    pub fn backspace(self: *EditorView) !void {
+        try self.edit_buffer.backspace();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Delete forward and ensure cursor remains visible
+    pub fn deleteForward(self: *EditorView) !void {
+        try self.edit_buffer.deleteForward();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Move cursor left and ensure it remains visible
+    pub fn moveLeft(self: *EditorView) void {
+        self.edit_buffer.moveLeft();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Move cursor right and ensure it remains visible
+    pub fn moveRight(self: *EditorView) void {
+        self.edit_buffer.moveRight();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Move cursor up and ensure it remains visible
+    pub fn moveUp(self: *EditorView) void {
+        self.edit_buffer.moveUp();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Move cursor down and ensure it remains visible
+    pub fn moveDown(self: *EditorView) void {
+        self.edit_buffer.moveDown();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Delete current line and ensure cursor remains visible
+    pub fn deleteLine(self: *EditorView) !void {
+        try self.edit_buffer.deleteLine();
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Go to line and ensure cursor is visible
+    pub fn gotoLine(self: *EditorView, line: u32) !void {
+        try self.edit_buffer.gotoLine(line);
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
+    }
+
+    /// Set text and ensure cursor is visible (resets to 0,0)
+    pub fn setText(self: *EditorView, text: []const u8) !void {
+        try self.edit_buffer.setText(text);
+        self.ensureCursorVisible(0);
+    }
+
+    /// Get primary cursor position
+    pub fn getPrimaryCursor(self: *const EditorView) eb.Cursor {
+        return self.edit_buffer.getPrimaryCursor();
+    }
+
+    /// Get cursor by index
+    pub fn getCursor(self: *const EditorView, idx: usize) ?eb.Cursor {
+        return self.edit_buffer.getCursor(idx);
+    }
+
+    /// Get text content
+    pub fn getText(self: *EditorView, out_buffer: []u8) usize {
+        return self.edit_buffer.getText(out_buffer);
+    }
+
+    /// Get the EditBuffer for direct access when needed
+    pub fn getEditBuffer(self: *EditorView) *EditBuffer {
+        return self.edit_buffer;
+    }
 };
