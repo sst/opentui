@@ -622,28 +622,9 @@ export fn editBufferDeleteLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     ) catch {};
 }
 
-export fn editBufferDeleteToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    // TODO: Reimplement using rope iterators
-    _ = edit_buffer;
-}
-
 export fn editBufferMoveCursorToLineStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     const cursor = edit_buffer.getPrimaryCursor();
     edit_buffer.setCursor(cursor.row, 0) catch {};
-}
-
-export fn editBufferMoveCursorToLineEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    // TODO: Reimplement using rope iterators
-    _ = edit_buffer;
-}
-
-export fn editBufferMoveCursorToBufferStart(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    edit_buffer.setCursor(0, 0) catch {};
-}
-
-export fn editBufferMoveCursorToBufferEnd(edit_buffer: *edit_buffer_mod.EditBuffer) void {
-    // TODO: Reimplement using rope iterators
-    _ = edit_buffer;
 }
 
 export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32) void {
@@ -788,20 +769,6 @@ export fn editorViewMoveCursorToLineStart(view: *editor_view.EditorView) void {
     view.edit_buffer.setCursor(cursor.row, 0) catch {};
 }
 
-export fn editorViewMoveCursorToLineEnd(view: *editor_view.EditorView) void {
-    // TODO: Reimplement using rope iterators
-    _ = view;
-}
-
-export fn editorViewMoveCursorToBufferStart(view: *editor_view.EditorView) void {
-    view.edit_buffer.setCursor(0, 0) catch {};
-}
-
-export fn editorViewMoveCursorToBufferEnd(view: *editor_view.EditorView) void {
-    // TODO: Reimplement using rope iterators
-    _ = view;
-}
-
 export fn editorViewGotoLine(view: *editor_view.EditorView, line: u32) void {
     const tb = view.edit_buffer.getTextBuffer();
     const line_count = tb.lineCount();
@@ -844,11 +811,6 @@ export fn editorViewDeleteLine(view: *editor_view.EditorView) void {
         .{ .row = cursor.row, .col = 0 },
         .{ .row = end_row, .col = 0 },
     ) catch {};
-}
-
-export fn editorViewDeleteToLineEnd(view: *editor_view.EditorView) void {
-    // TODO: Reimplement using rope iterators
-    _ = view;
 }
 
 export fn bufferDrawEditorView(

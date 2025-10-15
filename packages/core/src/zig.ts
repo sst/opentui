@@ -487,10 +487,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editBufferDeleteToLineEnd: {
-      args: ["ptr"],
-      returns: "void",
-    },
     editBufferMoveCursorLeft: {
       args: ["ptr"],
       returns: "void",
@@ -508,18 +504,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferMoveCursorToLineStart: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editBufferMoveCursorToLineEnd: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editBufferMoveCursorToBufferStart: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editBufferMoveCursorToBufferEnd: {
       args: ["ptr"],
       returns: "void",
     },
@@ -589,18 +573,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editorViewMoveCursorToLineEnd: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewMoveCursorToBufferStart: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewMoveCursorToBufferEnd: {
-      args: ["ptr"],
-      returns: "void",
-    },
     editorViewGotoLine: {
       args: ["ptr", "u32"],
       returns: "void",
@@ -626,10 +598,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewDeleteLine: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewDeleteToLineEnd: {
       args: ["ptr"],
       returns: "void",
     },
@@ -1047,15 +1015,11 @@ export interface RenderLib {
   editBufferDeleteCharBackward: (buffer: Pointer) => void
   editBufferNewLine: (buffer: Pointer) => void
   editBufferDeleteLine: (buffer: Pointer) => void
-  editBufferDeleteToLineEnd: (buffer: Pointer) => void
   editBufferMoveCursorLeft: (buffer: Pointer) => void
   editBufferMoveCursorRight: (buffer: Pointer) => void
   editBufferMoveCursorUp: (buffer: Pointer) => void
   editBufferMoveCursorDown: (buffer: Pointer) => void
   editBufferMoveCursorToLineStart: (buffer: Pointer) => void
-  editBufferMoveCursorToLineEnd: (buffer: Pointer) => void
-  editBufferMoveCursorToBufferStart: (buffer: Pointer) => void
-  editBufferMoveCursorToBufferEnd: (buffer: Pointer) => void
   editBufferGotoLine: (buffer: Pointer, line: number) => void
   editBufferSetCursor: (buffer: Pointer, line: number, byteOffset: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
@@ -1096,9 +1060,6 @@ export interface RenderLib {
   editorViewMoveCursorUp: (view: Pointer) => void
   editorViewMoveCursorDown: (view: Pointer) => void
   editorViewMoveCursorToLineStart: (view: Pointer) => void
-  editorViewMoveCursorToLineEnd: (view: Pointer) => void
-  editorViewMoveCursorToBufferStart: (view: Pointer) => void
-  editorViewMoveCursorToBufferEnd: (view: Pointer) => void
   editorViewGotoLine: (view: Pointer, line: number) => void
   editorViewInsertChar: (view: Pointer, char: string) => void
   editorViewInsertText: (view: Pointer, text: string) => void
@@ -1106,7 +1067,6 @@ export interface RenderLib {
   editorViewDeleteCharBackward: (view: Pointer) => void
   editorViewNewLine: (view: Pointer) => void
   editorViewDeleteLine: (view: Pointer) => void
-  editorViewDeleteToLineEnd: (view: Pointer) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2054,10 +2014,6 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferDeleteLine(buffer)
   }
 
-  public editBufferDeleteToLineEnd(buffer: Pointer): void {
-    this.opentui.symbols.editBufferDeleteToLineEnd(buffer)
-  }
-
   public editBufferMoveCursorLeft(buffer: Pointer): void {
     this.opentui.symbols.editBufferMoveCursorLeft(buffer)
   }
@@ -2076,18 +2032,6 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferMoveCursorToLineStart(buffer: Pointer): void {
     this.opentui.symbols.editBufferMoveCursorToLineStart(buffer)
-  }
-
-  public editBufferMoveCursorToLineEnd(buffer: Pointer): void {
-    this.opentui.symbols.editBufferMoveCursorToLineEnd(buffer)
-  }
-
-  public editBufferMoveCursorToBufferStart(buffer: Pointer): void {
-    this.opentui.symbols.editBufferMoveCursorToBufferStart(buffer)
-  }
-
-  public editBufferMoveCursorToBufferEnd(buffer: Pointer): void {
-    this.opentui.symbols.editBufferMoveCursorToBufferEnd(buffer)
   }
 
   public editBufferGotoLine(buffer: Pointer, line: number): void {
@@ -2195,18 +2139,6 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewMoveCursorToLineStart(view)
   }
 
-  public editorViewMoveCursorToLineEnd(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorToLineEnd(view)
-  }
-
-  public editorViewMoveCursorToBufferStart(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorToBufferStart(view)
-  }
-
-  public editorViewMoveCursorToBufferEnd(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorToBufferEnd(view)
-  }
-
   public editorViewGotoLine(view: Pointer, line: number): void {
     this.opentui.symbols.editorViewGotoLine(view, line)
   }
@@ -2235,10 +2167,6 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewDeleteLine(view: Pointer): void {
     this.opentui.symbols.editorViewDeleteLine(view)
-  }
-
-  public editorViewDeleteToLineEnd(view: Pointer): void {
-    this.opentui.symbols.editorViewDeleteToLineEnd(view)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

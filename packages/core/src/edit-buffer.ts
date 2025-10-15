@@ -86,11 +86,6 @@ export class EditBuffer {
     this.lib.editBufferDeleteLine(this.bufferPtr)
   }
 
-  public deleteToLineEnd(): void {
-    this.guard()
-    this.lib.editBufferDeleteToLineEnd(this.bufferPtr)
-  }
-
   public moveCursorLeft(): void {
     this.guard()
     this.lib.editBufferMoveCursorLeft(this.bufferPtr)
@@ -114,21 +109,6 @@ export class EditBuffer {
   public moveCursorToLineStart(): void {
     this.guard()
     this.lib.editBufferMoveCursorToLineStart(this.bufferPtr)
-  }
-
-  public moveCursorToLineEnd(): void {
-    this.guard()
-    this.lib.editBufferMoveCursorToLineEnd(this.bufferPtr)
-  }
-
-  public moveCursorToBufferStart(): void {
-    this.guard()
-    this.lib.editBufferMoveCursorToBufferStart(this.bufferPtr)
-  }
-
-  public moveCursorToBufferEnd(): void {
-    this.guard()
-    this.lib.editBufferMoveCursorToBufferEnd(this.bufferPtr)
   }
 
   public gotoLine(line: number): void {

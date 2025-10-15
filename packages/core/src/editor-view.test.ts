@@ -135,7 +135,7 @@ describe("EditorView", () => {
       buffer.setText("Line 1\nLine 2\nLine 3")
       expect(view.getVirtualLineCount()).toBe(3)
 
-      buffer.moveCursorToBufferEnd()
+      buffer.gotoLine(9999) // Go to end
       buffer.newLine()
       buffer.insertText("Line 4")
 
@@ -162,7 +162,7 @@ describe("EditorView", () => {
 
       expect(view.getVirtualLineCount()).toBe(1)
 
-      buffer.moveCursorToBufferEnd()
+      buffer.gotoLine(9999) // Go to end
       buffer.insertText(" that becomes very long and should wrap now")
 
       expect(view.getVirtualLineCount()).toBeGreaterThan(1)

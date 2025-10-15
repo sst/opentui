@@ -151,21 +151,6 @@ export class EditorView {
     this.lib.editorViewMoveCursorToLineStart(this.viewPtr)
   }
 
-  public moveCursorToLineEnd(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorToLineEnd(this.viewPtr)
-  }
-
-  public moveCursorToBufferStart(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorToBufferStart(this.viewPtr)
-  }
-
-  public moveCursorToBufferEnd(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorToBufferEnd(this.viewPtr)
-  }
-
   public gotoLine(line: number): void {
     this.guard()
     this.lib.editorViewGotoLine(this.viewPtr, line)
@@ -200,11 +185,6 @@ export class EditorView {
   public deleteLine(): void {
     this.guard()
     this.lib.editorViewDeleteLine(this.viewPtr)
-  }
-
-  public deleteToLineEnd(): void {
-    this.guard()
-    this.lib.editorViewDeleteToLineEnd(this.viewPtr)
   }
 
   public destroy(): void {

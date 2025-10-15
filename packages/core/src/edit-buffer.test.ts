@@ -75,7 +75,7 @@ describe("EditBuffer", () => {
     it("should move cursor left and right", () => {
       buffer.setText("ABCDE")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 5) // Move to end
       expect(buffer.getCursorPosition().visualColumn).toBe(5)
 
       buffer.moveCursorLeft()
@@ -101,25 +101,11 @@ describe("EditBuffer", () => {
     it("should move to line start and end", () => {
       buffer.setText("Hello World")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 11) // Move to end
       expect(buffer.getCursorPosition().visualColumn).toBe(11)
 
       buffer.moveCursorToLineStart()
       expect(buffer.getCursorPosition().visualColumn).toBe(0)
-    })
-
-    it("should move to buffer start and end", () => {
-      buffer.setText("Line 1\nLine 2\nLine 3")
-
-      buffer.moveCursorToBufferEnd()
-      let cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(2)
-      expect(cursor.visualColumn).toBe(6)
-
-      buffer.moveCursorToBufferStart()
-      cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(0)
     })
 
     it("should goto specific line", () => {
@@ -152,7 +138,7 @@ describe("EditBuffer", () => {
     it("should insert single character", () => {
       buffer.setText("Hello World")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 11) // Move to end
       buffer.insertChar("!")
 
       expect(buffer.getText()).toBe("Hello World!")
@@ -161,7 +147,7 @@ describe("EditBuffer", () => {
     it("should insert text at cursor", () => {
       buffer.setText("Hello")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 5) // Move to end
       buffer.insertText(" World")
 
       expect(buffer.getText()).toBe("Hello World")
@@ -189,7 +175,7 @@ describe("EditBuffer", () => {
     it("should insert Unicode characters", () => {
       buffer.setText("Hello")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 5) // Move to end
       buffer.insertText(" 世界 🌟")
 
       expect(buffer.getText()).toBe("Hello 世界 🌟")
@@ -233,11 +219,12 @@ describe("EditBuffer", () => {
       expect(buffer.getText()).toBe("Line 1\nLine 3")
     })
 
-    it("should delete to line end", () => {
+    // TODO: Re-implement deleteToLineEnd as scripted method
+    it.skip("should delete to line end", () => {
       buffer.setText("Hello World")
 
       buffer.setCursorToLineCol(0, 6)
-      buffer.deleteToLineEnd()
+      // buffer.deleteToLineEnd()
 
       expect(buffer.getText()).toBe("Hello ")
     })
@@ -257,13 +244,13 @@ describe("EditBuffer", () => {
     it("should handle multiple edit operations in sequence", () => {
       buffer.setText("Hello World")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 11) // Move to end
       buffer.insertText("!")
 
-      buffer.moveCursorToBufferStart()
+      buffer.setCursorToLineCol(0, 0) // Move to start
       buffer.insertText(">> ")
 
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(0, 99) // Move to end of line
       buffer.newLine()
       buffer.insertText("New line")
 
@@ -274,7 +261,7 @@ describe("EditBuffer", () => {
       buffer.setText("AAAA\nBBBB\nCCCC")
 
       buffer.gotoLine(1)
-      buffer.moveCursorToLineEnd()
+      buffer.setCursorToLineCol(1, 4) // Move to end of line 1
       buffer.insertText("X")
 
       const text1 = buffer.getText()

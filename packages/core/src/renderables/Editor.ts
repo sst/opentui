@@ -69,23 +69,6 @@ export class EditorRenderable extends EditBufferRenderable {
       this.moveCursorToLineStart()
       this.handleShiftSelection(keyShift, false)
       return true
-    } else if (keyName === "end") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorToLineEnd()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    }
-    // Buffer navigation
-    else if (keyCtrl && keyName === "a") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorToBufferStart()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyCtrl && keyName === "e") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorToBufferEnd()
-      this.handleShiftSelection(keyShift, false)
-      return true
     }
     // Deletion
     else if (keyName === "backspace") {
@@ -93,12 +76,6 @@ export class EditorRenderable extends EditBufferRenderable {
       return true
     } else if (keyName === "delete") {
       this.deleteChar()
-      return true
-    } else if (keyCtrl && keyName === "d") {
-      this.deleteLine()
-      return true
-    } else if (keyCtrl && keyName === "k") {
-      this.deleteToLineEnd()
       return true
     }
     // Line operations
@@ -232,12 +209,6 @@ export class EditorRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public deleteToLineEnd(): void {
-    this._ctx.clearSelection()
-    this.editorView.deleteToLineEnd()
-    this.requestRender()
-  }
-
   // Cursor movement - delegate to EditorView (which handles EditBuffer + auto-scroll)
   public moveCursorLeft(): void {
     this.editorView.moveCursorLeft()
@@ -261,21 +232,6 @@ export class EditorRenderable extends EditBufferRenderable {
 
   public moveCursorToLineStart(): void {
     this.editorView.moveCursorToLineStart()
-    this.requestRender()
-  }
-
-  public moveCursorToLineEnd(): void {
-    this.editorView.moveCursorToLineEnd()
-    this.requestRender()
-  }
-
-  public moveCursorToBufferStart(): void {
-    this.editorView.moveCursorToBufferStart()
-    this.requestRender()
-  }
-
-  public moveCursorToBufferEnd(): void {
-    this.editorView.moveCursorToBufferEnd()
     this.requestRender()
   }
 
