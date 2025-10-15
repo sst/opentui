@@ -222,12 +222,14 @@ export class EditorRenderable extends EditBufferRenderable {
   }
 
   public moveCursorUp(): void {
-    this.editorView.moveCursorUp()
+    // Use visual movement to handle wrapped lines correctly
+    this.editorView.moveUpVisual()
     this.requestRender()
   }
 
   public moveCursorDown(): void {
-    this.editorView.moveCursorDown()
+    // Use visual movement to handle wrapped lines correctly
+    this.editorView.moveDownVisual()
     this.requestRender()
   }
 
@@ -250,13 +252,15 @@ export class EditorRenderable extends EditBufferRenderable {
       return
     }
 
-    // Get current cursor position
-    const cursor = this.cursor
+    // Get current visual cursor position (accounts for wrapping)
+    const visualCursor = this.editorView.getVisualCursor()
+    if (!visualCursor) return
+
     const viewport = this.editorView.getViewport()
 
-    // Calculate screen position accounting for viewport scrolling
-    const cursorX = this.x + cursor.visualColumn
-    const cursorY = this.y + (cursor.line - viewport.offsetY)
+    // Calculate screen position accounting for viewport scrolling using visual coordinates
+    const cursorX = this.x + visualCursor.visualCol
+    const cursorY = this.y + (visualCursor.visualRow - viewport.offsetY)
 
     if (isBeforeMovement) {
       // Before movement: start selection if not already active

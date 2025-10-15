@@ -796,6 +796,63 @@ export fn editorViewGetText(view: *editor_view.EditorView, outPtr: [*]u8, maxLen
     return view.getText(outBuffer);
 }
 
+// ===== EditorView VisualCursor Exports =====
+
+export fn editorViewGetVisualCursor(
+    view: *editor_view.EditorView,
+    outVisualRow: *u32,
+    outVisualCol: *u32,
+    outLogicalRow: *u32,
+    outLogicalCol: *u32,
+) bool {
+    if (view.getVisualCursor()) |vcursor| {
+        outVisualRow.* = vcursor.visual_row;
+        outVisualCol.* = vcursor.visual_col;
+        outLogicalRow.* = vcursor.logical_row;
+        outLogicalCol.* = vcursor.logical_col;
+        return true;
+    }
+    return false;
+}
+
+export fn editorViewLogicalToVisualCursor(
+    view: *editor_view.EditorView,
+    logical_row: u32,
+    logical_col: u32,
+    outVisualRow: *u32,
+    outVisualCol: *u32,
+) bool {
+    if (view.logicalToVisualCursor(logical_row, logical_col)) |vcursor| {
+        outVisualRow.* = vcursor.visual_row;
+        outVisualCol.* = vcursor.visual_col;
+        return true;
+    }
+    return false;
+}
+
+export fn editorViewVisualToLogicalCursor(
+    view: *editor_view.EditorView,
+    visual_row: u32,
+    visual_col: u32,
+    outLogicalRow: *u32,
+    outLogicalCol: *u32,
+) bool {
+    if (view.visualToLogicalCursor(visual_row, visual_col)) |vcursor| {
+        outLogicalRow.* = vcursor.logical_row;
+        outLogicalCol.* = vcursor.logical_col;
+        return true;
+    }
+    return false;
+}
+
+export fn editorViewMoveUpVisual(view: *editor_view.EditorView) void {
+    view.moveUpVisual();
+}
+
+export fn editorViewMoveDownVisual(view: *editor_view.EditorView) void {
+    view.moveDownVisual();
+}
+
 export fn bufferDrawEditorView(
     bufferPtr: *buffer.OptimizedBuffer,
     viewPtr: *editor_view.EditorView,

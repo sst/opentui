@@ -499,6 +499,352 @@ test "EditorView - rapid cursor movements maintain visibility" {
     try std.testing.expect(cursor.row < vp.y + vp.height);
 }
 
+// ============================================================================
+// VisualCursor Tests - Wrapping-aware cursor translation
+// ============================================================================
+
+test "EditorView - VisualCursor without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert text without wrapping
+    try ev.insertText("Hello World\nSecond Line\nThird Line");
+
+    // Go to line 1, col 3
+    try ev.setCursor(1, 3);
+
+    // Without wrapping, visual and logical should match
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 3), vcursor.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 3), vcursor.?.logical_col);
+}
+
+test "EditorView - VisualCursor with character wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    // Enable character wrapping
+    ev.setWrapMode(.char);
+
+    // Insert a long line that will wrap
+    try ev.setText("This is a very long line that will definitely wrap at 20 characters");
+
+    // Go to logical position (0, 25) - should be on second visual line
+    try ev.setCursor(0, 25);
+
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 25), vcursor.?.logical_col);
+    // Visual row should be > 0 since line wraps
+    try std.testing.expect(vcursor.?.visual_row > 0);
+    // Visual col should be within wrap width
+    try std.testing.expect(vcursor.?.visual_col <= 20);
+}
+
+test "EditorView - VisualCursor with word wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    // Enable word wrapping
+    ev.setWrapMode(.word);
+
+    // Insert text that will wrap at word boundaries
+    try ev.setText("Hello world this is a test of word wrapping");
+
+    // Move to end of line
+    const line_count = eb.getTextBuffer().getLineCount();
+    try std.testing.expectEqual(@as(u32, 1), line_count);
+
+    // Cursor should translate correctly
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+}
+
+test "EditorView - moveUpVisual with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    // Enable character wrapping
+    ev.setWrapMode(.char);
+
+    // Insert a long line that wraps
+    try ev.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
+
+    // Move to end of line
+    try ev.setCursor(0, 50);
+
+    const vcursor_before = ev.getVisualCursor();
+    try std.testing.expect(vcursor_before != null);
+    const visual_row_before = vcursor_before.?.visual_row;
+
+    // Move up one visual line
+    ev.moveUpVisual();
+
+    const vcursor_after = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after != null);
+
+    // Should have moved up one visual line
+    try std.testing.expectEqual(visual_row_before - 1, vcursor_after.?.visual_row);
+
+    // Should still be on logical line 0
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
+}
+
+test "EditorView - moveDownVisual with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    // Enable character wrapping
+    ev.setWrapMode(.char);
+
+    // Insert a long line that wraps
+    try ev.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
+
+    // Start at beginning
+    try ev.setCursor(0, 0);
+
+    const vcursor_before = ev.getVisualCursor();
+    try std.testing.expect(vcursor_before != null);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_before.?.visual_row);
+
+    // Move down one visual line
+    ev.moveDownVisual();
+
+    const vcursor_after = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after != null);
+
+    // Should have moved down one visual line
+    try std.testing.expectEqual(@as(u32, 1), vcursor_after.?.visual_row);
+
+    // Should still be on logical line 0
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
+}
+
+test "EditorView - visualToLogicalCursor conversion" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+
+    // Insert wrapped text
+    try ev.setText("12345678901234567890123456789012345");
+
+    // Virtual line 1, col 5 should map to logical line 0, col 25
+    const vcursor = ev.visualToLogicalCursor(1, 5);
+    try std.testing.expect(vcursor != null);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 25), vcursor.?.logical_col);
+}
+
+test "EditorView - moveUpVisual at top boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+    try ev.setText("Short line");
+
+    // At top - should not move
+    try ev.setCursor(0, 0);
+
+    const before = ev.getPrimaryCursor();
+    ev.moveUpVisual();
+    const after = ev.getPrimaryCursor();
+
+    try std.testing.expectEqual(before.row, after.row);
+    try std.testing.expectEqual(before.col, after.col);
+}
+
+test "EditorView - moveDownVisual at bottom boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+    try ev.setText("Short line\nSecond line");
+
+    // Move to last line
+    try ev.setCursor(1, 0);
+
+    const before = ev.getPrimaryCursor();
+    ev.moveDownVisual();
+    const after = ev.getPrimaryCursor();
+
+    // Should not move past last line
+    try std.testing.expectEqual(before.row, after.row);
+}
+
+test "EditorView - VisualCursor preserves desired column across wrapped lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+
+    // Insert long wrapped line
+    try ev.setText("12345678901234567890123456789012345678901234567890");
+
+    // Move to column 15 on first visual line
+    try ev.setCursor(0, 15);
+
+    // Move down and up - should try to maintain column
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    ev.moveUpVisual();
+
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+
+    // Visual column should be close to 15 (within wrap width)
+    try std.testing.expect(vcursor.?.visual_col <= 20);
+}
+
+test "EditorView - VisualCursor with multiple logical lines and wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+
+    // Insert multiple lines, some that wrap
+    try ev.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3");
+
+    // Move to line 1 (the long wrapped line)
+    try ev.setCursor(1, 30);
+
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.?.logical_row);
+
+    // Visual row should be greater than 1 (line 0 + wrapped portions of line 1)
+    try std.testing.expect(vcursor.?.visual_row > 1);
+}
+
+test "EditorView - logicalToVisualCursor handles cursor past line end" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try ev.setText("Short");
+
+    // Try to convert logical position past line end
+    const vcursor = ev.logicalToVisualCursor(0, 100);
+    try std.testing.expect(vcursor != null);
+
+    // Should clamp to line end
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
+}
+
 test "EditorView - getTextBufferView returns correct view" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

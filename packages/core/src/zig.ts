@@ -614,6 +614,28 @@ function getOpenTUILib(libPath?: string) {
       returns: "usize",
     },
 
+    // EditorView VisualCursor methods
+    editorViewGetVisualCursor: {
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
+      returns: "bool",
+    },
+    editorViewLogicalToVisualCursor: {
+      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "bool",
+    },
+    editorViewVisualToLogicalCursor: {
+      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "bool",
+    },
+    editorViewMoveUpVisual: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    editorViewMoveDownVisual: {
+      args: ["ptr"],
+      returns: "void",
+    },
+
     getArenaAllocatedBytes: {
       args: [],
       returns: "usize",
@@ -831,6 +853,13 @@ export interface LineInfo {
   lineStarts: number[]
   lineWidths: number[]
   maxLineWidth: number
+}
+
+export interface VisualCursor {
+  visualRow: number
+  visualCol: number
+  logicalRow: number
+  logicalCol: number
 }
 
 export interface RenderLib {
@@ -1082,6 +1111,11 @@ export interface RenderLib {
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
   editorViewSetText: (view: Pointer, text: string) => void
   editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
+  editorViewGetVisualCursor: (view: Pointer) => VisualCursor | null
+  editorViewLogicalToVisualCursor: (view: Pointer, logicalRow: number, logicalCol: number) => VisualCursor | null
+  editorViewVisualToLogicalCursor: (view: Pointer, visualRow: number, visualCol: number) => VisualCursor | null
+  editorViewMoveUpVisual: (view: Pointer) => void
+  editorViewMoveDownVisual: (view: Pointer) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2203,6 +2237,82 @@ class FFIRenderLib implements RenderLib {
     const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
+  }
+
+  public editorViewGetVisualCursor(view: Pointer): VisualCursor | null {
+    const visualRow = new Uint32Array(1)
+    const visualCol = new Uint32Array(1)
+    const logicalRow = new Uint32Array(1)
+    const logicalCol = new Uint32Array(1)
+
+    const success = this.opentui.symbols.editorViewGetVisualCursor(
+      view,
+      ptr(visualRow),
+      ptr(visualCol),
+      ptr(logicalRow),
+      ptr(logicalCol),
+    )
+
+    if (!success) return null
+
+    return {
+      visualRow: visualRow[0],
+      visualCol: visualCol[0],
+      logicalRow: logicalRow[0],
+      logicalCol: logicalCol[0],
+    }
+  }
+
+  public editorViewLogicalToVisualCursor(view: Pointer, logicalRow: number, logicalCol: number): VisualCursor | null {
+    const visualRow = new Uint32Array(1)
+    const visualCol = new Uint32Array(1)
+
+    const success = this.opentui.symbols.editorViewLogicalToVisualCursor(
+      view,
+      logicalRow,
+      logicalCol,
+      ptr(visualRow),
+      ptr(visualCol),
+    )
+
+    if (!success) return null
+
+    return {
+      visualRow: visualRow[0],
+      visualCol: visualCol[0],
+      logicalRow,
+      logicalCol,
+    }
+  }
+
+  public editorViewVisualToLogicalCursor(view: Pointer, visualRow: number, visualCol: number): VisualCursor | null {
+    const logicalRow = new Uint32Array(1)
+    const logicalCol = new Uint32Array(1)
+
+    const success = this.opentui.symbols.editorViewVisualToLogicalCursor(
+      view,
+      visualRow,
+      visualCol,
+      ptr(logicalRow),
+      ptr(logicalCol),
+    )
+
+    if (!success) return null
+
+    return {
+      visualRow,
+      visualCol,
+      logicalRow: logicalRow[0],
+      logicalCol: logicalCol[0],
+    }
+  }
+
+  public editorViewMoveUpVisual(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveUpVisual(view)
+  }
+
+  public editorViewMoveDownVisual(view: Pointer): void {
+    this.opentui.symbols.editorViewMoveDownVisual(view)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

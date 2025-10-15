@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const tb = @import("text-buffer.zig");
 const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
+const iter_mod = @import("text-buffer-iterators.zig");
 const EditBuffer = eb.EditBuffer;
 
 // Use the unified types to match EditBuffer
@@ -12,6 +13,13 @@ const VirtualLine = tbv.VirtualLine;
 
 pub const EditorViewError = error{
     OutOfMemory,
+};
+
+pub const VisualCursor = struct {
+    visual_row: u32,
+    visual_col: u32,
+    logical_row: u32,
+    logical_col: u32,
 };
 
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
@@ -255,5 +263,152 @@ pub const EditorView = struct {
     /// Get the EditBuffer for direct access when needed
     pub fn getEditBuffer(self: *EditorView) *EditBuffer {
         return self.edit_buffer;
+    }
+
+    // ============================================================================
+    // VisualCursor - Wrapping-aware cursor translation
+    // ============================================================================
+
+    /// Translate EditBuffer cursor (logical row/col) to visual cursor (accounting for wrapping)
+    /// Returns null if cursor is out of bounds
+    pub fn getVisualCursor(self: *EditorView) ?VisualCursor {
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        return self.logicalToVisualCursor(cursor.row, cursor.col);
+    }
+
+    /// Convert logical (row, col) to visual cursor position
+    /// This accounts for line wrapping by finding which virtual line contains the logical position
+    pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) ?VisualCursor {
+        // Update virtual lines to ensure we have current wrapping info
+        self.text_buffer_view.updateVirtualLines();
+
+        const vlines = self.text_buffer_view.virtual_lines.items;
+        if (vlines.len == 0) return null;
+
+        // Find virtual lines that belong to this logical line
+        for (vlines, 0..) |vline, idx| {
+            if (vline.source_line == logical_row) {
+                const vline_start_col = vline.source_col_offset;
+                const vline_end_col = vline_start_col + vline.width;
+
+                // Check if logical_col falls within this virtual line
+                // Use < for end check instead of <=, except for the last virtual line
+                const is_last_vline_for_line = idx + 1 >= vlines.len or vlines[idx + 1].source_line != logical_row;
+                const end_check = if (is_last_vline_for_line) logical_col <= vline_end_col else logical_col < vline_end_col;
+
+                if (logical_col >= vline_start_col and end_check) {
+                    return VisualCursor{
+                        .visual_row = @intCast(idx),
+                        .visual_col = logical_col - vline_start_col,
+                        .logical_row = logical_row,
+                        .logical_col = logical_col,
+                    };
+                }
+            }
+        }
+
+        // If not found, return cursor at end of last virtual line for this logical line
+        var last_vline_idx: ?usize = null;
+        for (vlines, 0..) |vline, idx| {
+            if (vline.source_line == logical_row) {
+                last_vline_idx = idx;
+            } else if (vline.source_line > logical_row) {
+                break;
+            }
+        }
+
+        if (last_vline_idx) |idx| {
+            const vline = &vlines[idx];
+            return VisualCursor{
+                .visual_row = @intCast(idx),
+                .visual_col = vline.width,
+                .logical_row = logical_row,
+                .logical_col = logical_col,
+            };
+        }
+
+        return null;
+    }
+
+    /// Convert visual (row, col) to logical cursor position
+    pub fn visualToLogicalCursor(self: *EditorView, visual_row: u32, visual_col: u32) ?VisualCursor {
+        self.text_buffer_view.updateVirtualLines();
+
+        const vlines = self.text_buffer_view.virtual_lines.items;
+        if (visual_row >= vlines.len) return null;
+
+        const vline = &vlines[visual_row];
+        const clamped_visual_col = @min(visual_col, vline.width);
+        const logical_col = vline.source_col_offset + clamped_visual_col;
+
+        return VisualCursor{
+            .visual_row = visual_row,
+            .visual_col = clamped_visual_col,
+            .logical_row = @intCast(vline.source_line),
+            .logical_col = logical_col,
+        };
+    }
+
+    /// Move cursor up by one visual line (handles wrapped lines)
+    pub fn moveUpVisual(self: *EditorView) void {
+        const vcursor = self.getVisualCursor() orelse return;
+
+        if (vcursor.visual_row == 0) {
+            // Already at top
+            return;
+        }
+
+        // Move to previous visual line
+        const target_visual_row = vcursor.visual_row - 1;
+
+        // Use visual column for desired position (not logical column from EditBuffer's desired_col)
+        // This ensures consistent behavior when moving through wrapped lines
+        const desired_visual_col = vcursor.visual_col;
+
+        // Convert to new position
+        if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
+            // Update EditBuffer cursor
+            if (self.edit_buffer.cursors.items.len > 0) {
+                self.edit_buffer.cursors.items[0] = .{
+                    .row = new_vcursor.logical_row,
+                    .col = new_vcursor.logical_col,
+                    .desired_col = new_vcursor.logical_col,
+                };
+                self.ensureCursorVisible(new_vcursor.visual_row);
+            }
+        }
+    }
+
+    /// Move cursor down by one visual line (handles wrapped lines)
+    pub fn moveDownVisual(self: *EditorView) void {
+        const vcursor = self.getVisualCursor() orelse return;
+
+        self.text_buffer_view.updateVirtualLines();
+        const vlines = self.text_buffer_view.virtual_lines.items;
+
+        if (vcursor.visual_row + 1 >= vlines.len) {
+            // Already at bottom
+            return;
+        }
+
+        // Move to next visual line
+        const target_visual_row = vcursor.visual_row + 1;
+
+        // Use visual column for desired position (not logical column from EditBuffer's desired_col)
+        // This ensures consistent behavior when moving through wrapped lines
+        const desired_visual_col = vcursor.visual_col;
+
+        // Convert to new position
+        if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
+            // Update EditBuffer cursor
+            if (self.edit_buffer.cursors.items.len > 0) {
+                self.edit_buffer.cursors.items[0] = .{
+                    .row = new_vcursor.logical_row,
+                    .col = new_vcursor.logical_col,
+                    .desired_col = new_vcursor.logical_col,
+                };
+                self.ensureCursorVisible(new_vcursor.visual_row);
+            }
+        }
     }
 };

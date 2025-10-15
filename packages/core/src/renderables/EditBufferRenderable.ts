@@ -297,14 +297,18 @@ export abstract class EditBufferRenderable extends Renderable {
   protected renderCursor(buffer: OptimizedBuffer): void {
     if (!this._showCursor || !this._focused) return
 
-    const cursor = this.editBuffer.getCursorPosition()
+    const visualCursor = this.editorView.getVisualCursor()
+    if (!visualCursor) {
+      this._ctx.setCursorPosition(0, 0, false)
+      return
+    }
+
     const viewport = this.editorView.getViewport()
 
-    // Calculate cursor position in viewport space
-    // For now, simple mapping: cursor.line - viewport.offsetY
-    // TODO: Full implementation should map through virtual lines when wrapping is enabled
-    const cursorX = this.x + cursor.visualColumn + 1 // +1 for 1-based terminal coords
-    const cursorY = this.y + cursor.line - viewport.offsetY + 1 // +1 for 1-based terminal coords
+    // Calculate cursor position in viewport space using visual coordinates
+    // Visual row is already accounting for wrapping
+    const cursorX = this.x + visualCursor.visualCol + 1 // +1 for 1-based terminal coords
+    const cursorY = this.y + visualCursor.visualRow - viewport.offsetY + 1 // +1 for 1-based terminal coords
 
     // Only show cursor if it's within viewport bounds
     if (cursorY > this.y && cursorY <= this.y + this.height && cursorX > this.x && cursorX <= this.x + this.width) {

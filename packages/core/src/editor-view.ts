@@ -1,5 +1,5 @@
 import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { resolveRenderLib, type RenderLib, type VisualCursor } from "./zig"
 import { type Pointer } from "bun:ffi"
 import type { EditBuffer } from "./edit-buffer"
 
@@ -9,6 +9,8 @@ export interface Viewport {
   height: number
   width: number
 }
+
+export type { VisualCursor }
 
 /**
  * EditorView provides a viewport-managed view over a TextBuffer,
@@ -204,6 +206,32 @@ export class EditorView {
     const textBytes = this.lib.editorViewGetText(this.viewPtr, maxLength)
     if (!textBytes) return ""
     return this.lib.decoder.decode(textBytes)
+  }
+
+  // VisualCursor methods - wrap-aware cursor translation and movement
+  public getVisualCursor(): VisualCursor | null {
+    this.guard()
+    return this.lib.editorViewGetVisualCursor(this.viewPtr)
+  }
+
+  public logicalToVisualCursor(logicalRow: number, logicalCol: number): VisualCursor | null {
+    this.guard()
+    return this.lib.editorViewLogicalToVisualCursor(this.viewPtr, logicalRow, logicalCol)
+  }
+
+  public visualToLogicalCursor(visualRow: number, visualCol: number): VisualCursor | null {
+    this.guard()
+    return this.lib.editorViewVisualToLogicalCursor(this.viewPtr, visualRow, visualCol)
+  }
+
+  public moveUpVisual(): void {
+    this.guard()
+    this.lib.editorViewMoveUpVisual(this.viewPtr)
+  }
+
+  public moveDownVisual(): void {
+    this.guard()
+    this.lib.editorViewMoveDownVisual(this.viewPtr)
   }
 
   public destroy(): void {
