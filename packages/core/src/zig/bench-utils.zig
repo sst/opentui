@@ -15,15 +15,36 @@ pub const BenchResult = struct {
     mem_stats: ?[]const MemStat,
 };
 
-pub fn formatDuration(ns: u64) struct { value: f64, unit: []const u8 } {
+pub fn formatDuration(ns: u64) struct { value: f64, unit: []const u8, color: []const u8 } {
     if (ns < 1_000) {
-        return .{ .value = @as(f64, @floatFromInt(ns)), .unit = "ns" };
+        // Bright green for nanoseconds
+        return .{ .value = @as(f64, @floatFromInt(ns)), .unit = "ns", .color = "\x1b[92m" };
     } else if (ns < 1_000_000) {
-        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000.0, .unit = "us" };
+        // Normal green for microseconds
+        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000.0, .unit = "us", .color = "\x1b[32m" };
     } else if (ns < 1_000_000_000) {
-        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000.0, .unit = "ms" };
+        const ms = @as(f64, @floatFromInt(ns)) / 1_000_000.0;
+        if (ms < 1.0) {
+            // Normal green for < 1ms
+            return .{ .value = ms, .unit = "ms", .color = "\x1b[32m" };
+        } else if (ms < 3.0) {
+            // Yellow to red gradient from 1ms to 3ms
+            if (ms < 1.5) {
+                return .{ .value = ms, .unit = "ms", .color = "\x1b[33m" }; // Yellow
+            } else if (ms < 2.0) {
+                return .{ .value = ms, .unit = "ms", .color = "\x1b[38;5;208m" }; // Orange
+            } else if (ms < 2.5) {
+                return .{ .value = ms, .unit = "ms", .color = "\x1b[38;5;202m" }; // Dark orange
+            } else {
+                return .{ .value = ms, .unit = "ms", .color = "\x1b[31m" }; // Red
+            }
+        } else {
+            // Full red for >= 3ms
+            return .{ .value = ms, .unit = "ms", .color = "\x1b[31m" };
+        }
     } else {
-        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000_000.0, .unit = "s" };
+        // Red for seconds
+        return .{ .value = @as(f64, @floatFromInt(ns)) / 1_000_000_000.0, .unit = "s", .color = "\x1b[31m" };
     }
 }
 
@@ -192,31 +213,37 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
             try writer.writeAll("\x1b[48;5;234m");
         }
 
-        // Min (right-aligned)
+        // Min (right-aligned with color)
         if (min_str.len < min_col_width) {
             try writer.writeByteNTimes(' ', min_col_width - min_str.len);
         }
+        try writer.writeAll(min.color);
         try writer.writeAll(min_str);
+        try writer.writeAll("\x1b[0m");
         try writer.writeAll("\x1b[2m | \x1b[0m");
         if (row_idx % 2 == 1) {
             try writer.writeAll("\x1b[48;5;234m");
         }
 
-        // Avg (right-aligned)
+        // Avg (right-aligned with color)
         if (avg_str.len < avg_col_width) {
             try writer.writeByteNTimes(' ', avg_col_width - avg_str.len);
         }
+        try writer.writeAll(avg.color);
         try writer.writeAll(avg_str);
+        try writer.writeAll("\x1b[0m");
         try writer.writeAll("\x1b[2m | \x1b[0m");
         if (row_idx % 2 == 1) {
             try writer.writeAll("\x1b[48;5;234m");
         }
 
-        // Max (right-aligned)
+        // Max (right-aligned with color)
         if (max_str.len < max_col_width) {
             try writer.writeByteNTimes(' ', max_col_width - max_str.len);
         }
+        try writer.writeAll(max.color);
         try writer.writeAll(max_str);
+        try writer.writeAll("\x1b[0m");
 
         // Dynamic memory stats columns
         for (mem_stat_names.items, 0..) |stat_name, i| {
