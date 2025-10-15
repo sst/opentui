@@ -145,25 +145,8 @@ pub const EditorView = struct {
         self.text_buffer_view.setViewportSize(width, height);
     }
 
-    /// Enable or disable text wrapping
-    pub fn enableWrapping(self: *EditorView, enabled: bool) void {
-        if (enabled) {
-            // Enable wrapping with current viewport width (or 80 if no viewport)
-            const wrap_width = if (self.text_buffer_view.getViewport()) |vp| vp.width else 80;
-            self.text_buffer_view.setWrapWidth(wrap_width);
-        } else {
-            // Disable wrapping
-            self.text_buffer_view.setWrapWidth(null);
-        }
-    }
-
-    /// Set wrap mode (char or word)
+    /// Set wrap mode (none, char, or word)
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
         self.text_buffer_view.setWrapMode(mode);
-    }
-
-    /// Check if wrapping is currently enabled
-    pub fn isWrappingEnabled(self: *const EditorView) bool {
-        return self.text_buffer_view.wrap_width != null;
     }
 };

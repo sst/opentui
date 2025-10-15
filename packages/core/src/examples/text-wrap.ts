@@ -466,8 +466,7 @@ export function run(renderer: CliRenderer): void {
   textRenderable = new TextRenderable(renderer, {
     id: "text-renderable",
     fg: "#c0caf5",
-    wrapMode: "word",
-    wrap: true, // Enable text wrapping
+    wrapMode: "word", // Enable text wrapping with word mode
   })
   textRenderable.add(createDemoText())
   textBox.add(textRenderable)
@@ -486,12 +485,12 @@ export function run(renderer: CliRenderer): void {
   // Instructions with styled text
   instructionsText1 = new TextRenderable(renderer, {
     id: "instructions-1",
-    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Toggle wrapping")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Switch mode (char/word)")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("D"))} ${fg("#c0caf5")("Download Babylon.js")} ${fg("#565f89")("|")} ${bold(fg("#ff9e64")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
+    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Cycle wrap mode")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Toggle char/word")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("D"))} ${fg("#c0caf5")("Download Babylon.js")} ${fg("#565f89")("|")} ${bold(fg("#ff9e64")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
   })
 
   instructionsText2 = new TextRenderable(renderer, {
     id: "instructions-2",
-    content: t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")("word")}${fg("#c0caf5")(")")}`,
+    content: t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Wrap mode:")} ${fg("#bb9af7")("word")}`,
   })
 
   instructionsBox.add(instructionsText1)
@@ -506,19 +505,26 @@ export function run(renderer: CliRenderer): void {
     const key = data.toString()
 
     if (key === "w" || key === "W") {
-      // Toggle wrap on the text
+      // Cycle through wrap modes: word -> char -> none -> word
       if (textRenderable && instructionsText2) {
-        textRenderable.wrap = !textRenderable.wrap
-        if (textRenderable.wrap) {
-          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+        if (textRenderable.wrapMode === "word") {
+          textRenderable.wrapMode = "char"
+        } else if (textRenderable.wrapMode === "char") {
+          textRenderable.wrapMode = "none"
         } else {
-          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#f7768e")("false")}${fg("#c0caf5")(")")}`
+          textRenderable.wrapMode = "word"
         }
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Wrap mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}`
       }
     } else if (key === "m" || key === "M") {
-      if (textRenderable && textRenderable.wrap && instructionsText2) {
-        textRenderable.wrapMode = textRenderable.wrapMode === "char" ? "word" : "char"
-        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+      // Cycle through word/char modes (skip none)
+      if (textRenderable && instructionsText2) {
+        if (textRenderable.wrapMode === "none") {
+          textRenderable.wrapMode = "word"
+        } else {
+          textRenderable.wrapMode = textRenderable.wrapMode === "char" ? "word" : "char"
+        }
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Wrap mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}`
       }
     } else if (key === "d" || key === "D") {
       // Download Babylon.js and display it
@@ -557,7 +563,7 @@ export function run(renderer: CliRenderer): void {
           textRenderable.add(babylonTextNode)
 
           // Update status
-          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Babylon.js loaded (")} ${fg("#9ece6a")(loadedContent.length.toString())}${fg("#c0caf5")(" chars, wrap:")} ${textRenderable.wrap ? fg("#9ece6a")("true") : fg("#f7768e")("false")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Babylon.js loaded (")} ${fg("#9ece6a")(loadedContent.length.toString())}${fg("#c0caf5")(" chars, mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
         } catch (error) {
           // Show error in status
           instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Download failed:")} ${fg("#c0caf5")(error instanceof Error ? error.message : "Unknown error")}`

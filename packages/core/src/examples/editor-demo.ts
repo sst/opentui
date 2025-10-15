@@ -88,7 +88,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     bg: "#0D1117",
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
-    wrap: true,
     wrapMode: "word",
     showCursor: true,
     cursorColor: "#4ECDC4",

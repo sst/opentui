@@ -1195,21 +1195,21 @@ describe("EditorRenderable", () => {
   })
 
   describe("Wrapping", () => {
-    it("should handle wrap property", async () => {
+    it("should handle wrap mode property", async () => {
       const longText = "A".repeat(100)
       const { editor } = await createEditorRenderable(currentRenderer, {
         content: longText,
         width: 20,
         height: 10,
-        wrap: true,
+        wrapMode: "word",
       })
 
-      expect(editor.wrap).toBe(true)
+      expect(editor.wrapMode).toBe("word")
       const wrappedCount = editor.editorView.getVirtualLineCount()
       expect(wrappedCount).toBeGreaterThan(1)
 
-      editor.wrap = false
-      expect(editor.wrap).toBe(false)
+      editor.wrapMode = "none"
+      expect(editor.wrapMode).toBe("none")
       const unwrappedCount = editor.editorView.getVirtualLineCount()
       expect(unwrappedCount).toBe(1)
     })
@@ -1219,7 +1219,6 @@ describe("EditorRenderable", () => {
         content: "Hello wonderful world",
         width: 12,
         height: 10,
-        wrap: true,
         wrapMode: "char",
       })
 
@@ -1681,7 +1680,6 @@ describe("EditorRenderable", () => {
         content: Array.from({ length: 10 }, (_, i) => (i === 5 ? longLine : `Line ${i}`)).join("\n"),
         width: 20,
         height: 5,
-        wrap: true,
         wrapMode: "word",
       })
 
@@ -1850,7 +1848,6 @@ describe("EditorRenderable", () => {
         content: "Start",
         width: 20,
         height: 5,
-        wrap: true,
         wrapMode: "word",
       })
 
@@ -2086,7 +2083,7 @@ describe("EditorRenderable", () => {
         content: "ABCDEFGHIJKLMNOP",
         width: 10,
         height: 10,
-        wrap: true,
+        wrapMode: "word",
         selectable: true,
       })
 

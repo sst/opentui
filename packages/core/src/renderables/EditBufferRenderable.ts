@@ -14,8 +14,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   selectionFg?: string | RGBA
   selectable?: boolean
   attributes?: number
-  wrap?: boolean
-  wrapMode?: "char" | "word"
+  wrapMode?: "none" | "char" | "word"
   scrollMargin?: number
   showCursor?: boolean
   cursorColor?: string | RGBA
@@ -30,8 +29,7 @@ export abstract class EditBufferRenderable extends Renderable {
   protected _defaultAttributes: number
   protected _selectionBg: RGBA | undefined
   protected _selectionFg: RGBA | undefined
-  protected _wrap: boolean = false
-  protected _wrapMode: "char" | "word" = "word"
+  protected _wrapMode: "none" | "char" | "word" = "word"
   protected _scrollMargin: number = 0.2
   protected _showCursor: boolean = true
   protected _cursorColor: RGBA
@@ -47,8 +45,7 @@ export abstract class EditBufferRenderable extends Renderable {
     selectionFg: undefined,
     selectable: true,
     attributes: 0,
-    wrap: true,
-    wrapMode: "word" as "char" | "word",
+    wrapMode: "word" as "none" | "char" | "word",
     scrollMargin: 0.2,
     showCursor: true,
     cursorColor: RGBA.fromValues(1, 1, 1, 1),
@@ -63,7 +60,6 @@ export abstract class EditBufferRenderable extends Renderable {
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
-    this._wrap = options.wrap ?? this._defaultOptions.wrap
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
     this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
@@ -74,10 +70,6 @@ export abstract class EditBufferRenderable extends Renderable {
 
     this.editorView.setWrapMode(this._wrapMode)
     this.editorView.setScrollMargin(this._scrollMargin)
-
-    if (this._wrap) {
-      this.editorView.enableWrapping(true)
-    }
 
     this.setupMeasureFunc()
   }
@@ -158,23 +150,11 @@ export abstract class EditBufferRenderable extends Renderable {
     }
   }
 
-  get wrap(): boolean {
-    return this._wrap
-  }
-
-  set wrap(value: boolean) {
-    if (this._wrap !== value) {
-      this._wrap = value
-      this.editorView.enableWrapping(value)
-      this.requestRender()
-    }
-  }
-
-  get wrapMode(): "char" | "word" {
+  get wrapMode(): "none" | "char" | "word" {
     return this._wrapMode
   }
 
-  set wrapMode(value: "char" | "word") {
+  set wrapMode(value: "none" | "char" | "word") {
     if (this._wrapMode !== value) {
       this._wrapMode = value
       this.editorView.setWrapMode(value)

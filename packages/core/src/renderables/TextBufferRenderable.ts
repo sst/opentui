@@ -16,8 +16,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   selectionFg?: string | RGBA
   selectable?: boolean
   attributes?: number
-  wrap?: boolean
-  wrapMode?: "char" | "word"
+  wrapMode?: "none" | "char" | "word"
 }
 
 export abstract class TextBufferRenderable extends Renderable {
@@ -28,8 +27,7 @@ export abstract class TextBufferRenderable extends Renderable {
   protected _defaultAttributes: number
   protected _selectionBg: RGBA | undefined
   protected _selectionFg: RGBA | undefined
-  protected _wrap: boolean = false
-  protected _wrapMode: "char" | "word" = "word"
+  protected _wrapMode: "none" | "char" | "word" = "word"
   protected lastLocalSelection: LocalSelectionBounds | null = null
 
   protected textBuffer: TextBuffer
@@ -43,8 +41,7 @@ export abstract class TextBufferRenderable extends Renderable {
     selectionFg: undefined,
     selectable: true,
     attributes: 0,
-    wrap: true,
-    wrapMode: "word" as "char" | "word",
+    wrapMode: "word" as "none" | "char" | "word",
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -56,7 +53,6 @@ export abstract class TextBufferRenderable extends Renderable {
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
-    this._wrap = options.wrap ?? this._defaultOptions.wrap
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
@@ -74,7 +70,7 @@ export abstract class TextBufferRenderable extends Renderable {
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
 
-    if (this._wrap && this.width > 0) {
+    if (this._wrapMode !== "none" && this.width > 0) {
       this.updateWrapWidth(this.width)
     }
 
@@ -160,27 +156,17 @@ export abstract class TextBufferRenderable extends Renderable {
     }
   }
 
-  get wrap(): boolean {
-    return this._wrap
-  }
-
-  set wrap(value: boolean) {
-    if (this._wrap !== value) {
-      this._wrap = value
-      // Set or clear wrap width based on current setting
-      this.textBufferView.setWrapWidth(this._wrap ? this.width : null)
-      this.requestRender()
-    }
-  }
-
-  get wrapMode(): "char" | "word" {
+  get wrapMode(): "none" | "char" | "word" {
     return this._wrapMode
   }
 
-  set wrapMode(value: "char" | "word") {
+  set wrapMode(value: "none" | "char" | "word") {
     if (this._wrapMode !== value) {
       this._wrapMode = value
       this.textBufferView.setWrapMode(this._wrapMode)
+      if (value !== "none" && this.width > 0) {
+        this.updateWrapWidth(this.width)
+      }
       this.requestRender()
     }
   }
@@ -248,7 +234,7 @@ export abstract class TextBufferRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      if (this._wrap && this.width !== width) {
+      if (this._wrapMode !== "none" && this.width !== width) {
         this.updateWrapWidth(width)
       } else {
         this.updateLineInfo()

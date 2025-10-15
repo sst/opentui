@@ -433,17 +433,9 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "f32"],
       returns: "void",
     },
-    editorViewEnableWrapping: {
-      args: ["ptr", "bool"],
-      returns: "void",
-    },
     editorViewSetWrapMode: {
       args: ["ptr", "u8"],
       returns: "void",
-    },
-    editorViewIsWrappingEnabled: {
-      args: ["ptr"],
-      returns: "bool",
     },
     editorViewGetVirtualLineCount: {
       args: ["ptr"],
@@ -1022,7 +1014,7 @@ export interface RenderLib {
   ) => boolean
   textBufferViewResetLocalSelection: (view: Pointer) => void
   textBufferViewSetWrapWidth: (view: Pointer, width: number) => void
-  textBufferViewSetWrapMode: (view: Pointer, mode: "char" | "word") => void
+  textBufferViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
   textBufferViewGetLineInfo: (view: Pointer) => LineInfo
   textBufferViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
@@ -1076,9 +1068,7 @@ export interface RenderLib {
   editorViewSetViewportSize: (view: Pointer, width: number, height: number) => void
   editorViewGetViewport: (view: Pointer) => { offsetY: number; offsetX: number; height: number; width: number }
   editorViewSetScrollMargin: (view: Pointer, margin: number) => void
-  editorViewEnableWrapping: (view: Pointer, enabled: boolean) => void
-  editorViewSetWrapMode: (view: Pointer, mode: "char" | "word") => void
-  editorViewIsWrappingEnabled: (view: Pointer) => boolean
+  editorViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
   editorViewGetVirtualLineCount: (view: Pointer) => number
   editorViewGetTextBufferView: (view: Pointer) => Pointer
   editorViewSetSelection: (
@@ -1813,8 +1803,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewSetWrapWidth(view, width)
   }
 
-  public textBufferViewSetWrapMode(view: Pointer, mode: "char" | "word"): void {
-    const modeValue = mode === "char" ? 0 : 1
+  public textBufferViewSetWrapMode(view: Pointer, mode: "none" | "char" | "word"): void {
+    const modeValue = mode === "none" ? 0 : mode === "char" ? 1 : 2
     this.opentui.symbols.textBufferViewSetWrapMode(view, modeValue)
   }
 
@@ -1994,17 +1984,9 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewSetScrollMargin(view, margin)
   }
 
-  public editorViewEnableWrapping(view: Pointer, enabled: boolean): void {
-    this.opentui.symbols.editorViewEnableWrapping(view, enabled)
-  }
-
-  public editorViewSetWrapMode(view: Pointer, mode: "char" | "word"): void {
-    const modeValue = mode === "char" ? 0 : 1
+  public editorViewSetWrapMode(view: Pointer, mode: "none" | "char" | "word"): void {
+    const modeValue = mode === "none" ? 0 : mode === "char" ? 1 : 2
     this.opentui.symbols.editorViewSetWrapMode(view, modeValue)
-  }
-
-  public editorViewIsWrappingEnabled(view: Pointer): boolean {
-    return this.opentui.symbols.editorViewIsWrappingEnabled(view)
   }
 
   public editorViewGetVirtualLineCount(view: Pointer): number {

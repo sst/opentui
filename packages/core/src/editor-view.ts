@@ -58,19 +58,9 @@ export class EditorView {
     this.lib.editorViewSetScrollMargin(this.viewPtr, margin)
   }
 
-  public enableWrapping(enabled: boolean): void {
-    this.guard()
-    this.lib.editorViewEnableWrapping(this.viewPtr, enabled)
-  }
-
-  public setWrapMode(mode: "char" | "word"): void {
+  public setWrapMode(mode: "none" | "char" | "word"): void {
     this.guard()
     this.lib.editorViewSetWrapMode(this.viewPtr, mode)
-  }
-
-  public isWrappingEnabled(): boolean {
-    this.guard()
-    return this.lib.editorViewIsWrappingEnabled(this.viewPtr)
   }
 
   public getVirtualLineCount(): number {

@@ -510,7 +510,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 0,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
@@ -518,7 +518,7 @@ describe("TextRenderable Selection", () => {
         content: '"Hello"',
         selectable: true,
         fg: "#7dd3fc",
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: debugText } = await createTextRenderable(currentRenderer, {
@@ -526,7 +526,7 @@ describe("TextRenderable Selection", () => {
         content: "Selected renderables: 2/5",
         selectable: true,
         fg: "#e6edf3",
-        wrap: false,
+        wrapMode: "none",
       })
 
       await currentMouse.drag(0, 0, 50, 5)
@@ -563,7 +563,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 0,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const statusNode = new TextNodeRenderable({})
@@ -575,7 +575,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 1,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const selectionNode = new TextNodeRenderable({})
@@ -587,7 +587,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#e6edf3",
         top: 2,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const debugNode = new TextNodeRenderable({})
@@ -634,7 +634,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 2,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
@@ -642,7 +642,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 3,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: selectionEndText } = await createTextRenderable(currentRenderer, {
@@ -650,7 +650,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 4,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: debugText } = await createTextRenderable(currentRenderer, {
@@ -658,7 +658,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#e6edf3",
         top: 5,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const allRenderables = [statusText, selectionStartText, selectionEndText, debugText]
@@ -1373,7 +1373,6 @@ describe("TextRenderable Selection", () => {
     it("should render text with character wrapping correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "This is a very long text that should wrap to multiple lines when wrap is enabled",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 15, // Force wrapping at 15 characters width
         left: 0,
@@ -1387,7 +1386,6 @@ describe("TextRenderable Selection", () => {
     it("should render wrapped text with different content", async () => {
       await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 10, // Force wrapping at 10 characters width
         left: 2,
@@ -1401,7 +1399,6 @@ describe("TextRenderable Selection", () => {
     it("should render wrapped text with emojis and graphemes", async () => {
       await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World 👋 This is a test with emojis 🚀 that should wrap properly",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 12, // Force wrapping at 12 characters width
         left: 1,
@@ -1415,7 +1412,6 @@ describe("TextRenderable Selection", () => {
     it("should render wrapped multiline text correctly", async () => {
       await createTextRenderable(currentRenderer, {
         content: "First line with long content\nSecond line also with content\nThird line",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 8, // Force wrapping at 8 characters width
         left: 0,
@@ -1432,7 +1428,6 @@ describe("TextRenderable Selection", () => {
       const { text: firstText } = await createTextRenderable(currentRenderer, {
         content: "",
         width: 20,
-        wrap: true,
         wrapMode: "char",
       })
 
@@ -1468,7 +1463,6 @@ describe("TextRenderable Selection", () => {
       resize(20, 10)
       const { text: firstText } = await createTextRenderable(currentRenderer, {
         width: 10,
-        wrap: true,
         wrapMode: "word",
       })
 
@@ -1480,7 +1474,6 @@ describe("TextRenderable Selection", () => {
 
       const { text: secondText } = await createTextRenderable(currentRenderer, {
         width: 12,
-        wrap: true,
         wrapMode: "word",
       })
       secondText.add("Middle text")
@@ -1523,7 +1516,6 @@ describe("TextRenderable Selection", () => {
     it("should wrap at word boundaries when using word mode", async () => {
       await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps over the lazy dog",
-        wrap: true,
         wrapMode: "word",
         width: 15,
         left: 0,
@@ -1537,7 +1529,6 @@ describe("TextRenderable Selection", () => {
     it("should wrap at character boundaries when using char mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps over the lazy dog",
-        wrap: true,
         wrapMode: "char",
         width: 15,
         left: 0,
@@ -1551,7 +1542,6 @@ describe("TextRenderable Selection", () => {
     it("should handle word wrapping with punctuation", async () => {
       await createTextRenderable(currentRenderer, {
         content: "Hello,World.Test-Example/Path",
-        wrap: true,
         wrapMode: "word",
         width: 10,
         left: 0,
@@ -1565,7 +1555,6 @@ describe("TextRenderable Selection", () => {
     it("should handle word wrapping with hyphens and dashes", async () => {
       await createTextRenderable(currentRenderer, {
         content: "self-contained multi-line text-wrapping example",
-        wrap: true,
         wrapMode: "word",
         width: 12,
         left: 0,
@@ -1579,7 +1568,6 @@ describe("TextRenderable Selection", () => {
     it("should dynamically change wrap mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps",
-        wrap: true,
         wrapMode: "char",
         width: 10,
         left: 0,
@@ -1600,7 +1588,6 @@ describe("TextRenderable Selection", () => {
     it("should handle long words that exceed wrap width in word mode", async () => {
       await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        wrap: true,
         wrapMode: "word",
         width: 10,
         left: 0,
@@ -1615,7 +1602,6 @@ describe("TextRenderable Selection", () => {
     it("should preserve empty lines with word wrapping", async () => {
       await createTextRenderable(currentRenderer, {
         content: "First line\n\nThird line",
-        wrap: true,
         wrapMode: "word",
         width: 8,
         left: 0,
@@ -1629,7 +1615,6 @@ describe("TextRenderable Selection", () => {
     it("should handle word wrapping with single character words", async () => {
       await createTextRenderable(currentRenderer, {
         content: "a b c d e f g h i j k l m n o p",
-        wrap: true,
         wrapMode: "word",
         width: 8,
         left: 0,
@@ -1646,7 +1631,6 @@ describe("TextRenderable Selection", () => {
       // Test with char mode
       const { text: charText } = await createTextRenderable(currentRenderer, {
         content,
-        wrap: true,
         wrapMode: "char",
         width: 12,
         left: 0,
@@ -1661,7 +1645,6 @@ describe("TextRenderable Selection", () => {
 
       await createTextRenderable(currentRenderer, {
         content,
-        wrap: true,
         wrapMode: "word",
         width: 12,
         left: 0,

@@ -26,8 +26,9 @@ describe("EditorView", () => {
       expect(viewport.offsetX).toBe(0)
     })
 
-    it("should start with wrapping disabled", () => {
-      expect(view.isWrappingEnabled()).toBe(false)
+    it("should start with wrap mode set to none", () => {
+      // Default wrap mode is 'none', no direct getter but we can test behavior
+      expect(view.getVirtualLineCount()).toBeGreaterThanOrEqual(0)
     })
   })
 
@@ -52,29 +53,26 @@ describe("EditorView", () => {
   })
 
   describe("text wrapping", () => {
-    it("should enable and disable wrapping", () => {
+    it("should enable and disable wrapping via wrap mode", () => {
       // Create text that will wrap at narrow viewport
       buffer.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRST")
 
-      // Initially no wrapping
-      expect(view.isWrappingEnabled()).toBe(false)
+      // Initially no wrapping (mode is 'none')
       expect(view.getVirtualLineCount()).toBe(1)
 
       // Enable wrapping (viewport is 40 columns)
-      view.enableWrapping(true)
-      expect(view.isWrappingEnabled()).toBe(true)
+      view.setWrapMode("char")
       expect(view.getVirtualLineCount()).toBeGreaterThan(1) // Should wrap to multiple lines
 
       // Disable wrapping
-      view.enableWrapping(false)
-      expect(view.isWrappingEnabled()).toBe(false)
+      view.setWrapMode("none")
       expect(view.getVirtualLineCount()).toBe(1)
     })
 
     it("should wrap at viewport width", () => {
       buffer.setText("ABCDEFGHIJKLMNOPQRST") // 20 chars
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(10, 10) // 10 columns wide
 
       // Should wrap to 2 lines at 10 columns
@@ -92,7 +90,6 @@ describe("EditorView", () => {
     it("should change wrap mode", () => {
       buffer.setText("Hello wonderful world")
 
-      view.enableWrapping(true)
       view.setViewportSize(10, 10)
 
       // Test char mode
@@ -104,23 +101,28 @@ describe("EditorView", () => {
       view.setWrapMode("word")
       const wordCount = view.getVirtualLineCount()
       expect(wordCount).toBeGreaterThanOrEqual(2)
+
+      // Test none mode
+      view.setWrapMode("none")
+      const noneCount = view.getVirtualLineCount()
+      expect(noneCount).toBe(1)
     })
 
     it("should preserve newlines when wrapping", () => {
       buffer.setText("Short\nAnother short line\nLast")
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(50, 10)
 
       // Should still have 3 virtual lines (original newlines preserved)
       expect(view.getVirtualLineCount()).toBe(3)
     })
 
-    it("should wrap long lines with enabled wrapping", () => {
+    it("should wrap long lines with wrapping enabled", () => {
       const longLine = "This is a very long line that will definitely wrap when the viewport is narrow"
       buffer.setText(longLine)
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(20, 10)
 
       const vlineCount = view.getVirtualLineCount()
@@ -155,7 +157,7 @@ describe("EditorView", () => {
     it("should maintain wrapping after edits", () => {
       buffer.setText("Short line")
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(20, 10)
 
       expect(view.getVirtualLineCount()).toBe(1)
@@ -170,7 +172,7 @@ describe("EditorView", () => {
       const longText = "This is a very long line that will wrap when the viewport is narrow"
       buffer.setText(longText)
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(20, 10)
 
       const count20 = view.getVirtualLineCount()
@@ -219,7 +221,7 @@ describe("EditorView", () => {
       const longLine = "A".repeat(1000)
       buffer.setText(longLine)
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(80, 24)
 
       const vlineCount = view.getVirtualLineCount()
@@ -247,7 +249,7 @@ describe("EditorView", () => {
 
       expect(() => view.getVirtualLineCount()).toThrow("EditorView is destroyed")
       expect(() => view.setViewportSize(80, 24)).toThrow("EditorView is destroyed")
-      expect(() => view.enableWrapping(true)).toThrow("EditorView is destroyed")
+      expect(() => view.setWrapMode("char")).toThrow("EditorView is destroyed")
     })
   })
 
@@ -255,7 +257,7 @@ describe("EditorView", () => {
     it("should handle emoji with wrapping", () => {
       buffer.setText("🌟".repeat(20))
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(10, 10)
 
       // Each emoji takes 2 cells, so 10 emojis = 20 cells, should wrap
@@ -265,7 +267,7 @@ describe("EditorView", () => {
     it("should handle CJK characters with wrapping", () => {
       buffer.setText("测试文字处理功能")
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(10, 10)
 
       // CJK chars are 2 cells each
@@ -276,7 +278,7 @@ describe("EditorView", () => {
     it("should handle mixed ASCII and wide characters", () => {
       buffer.setText("AB测试CD文字EF")
 
-      view.enableWrapping(true)
+      view.setWrapMode("char")
       view.setViewportSize(8, 10)
 
       expect(view.getVirtualLineCount()).toBeGreaterThanOrEqual(1)

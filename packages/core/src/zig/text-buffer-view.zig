@@ -136,7 +136,7 @@ pub const UnifiedTextBufferView = struct {
             .local_selection = null,
             .viewport = null,
             .wrap_width = null,
-            .wrap_mode = .char,
+            .wrap_mode = .none,
             .virtual_lines = .{},
             .virtual_lines_dirty = true,
             .cached_line_starts = .{},
@@ -158,18 +158,15 @@ pub const UnifiedTextBufferView = struct {
         self.global_allocator.destroy(self);
     }
 
-    /// Set the viewport. If wrapping is enabled and viewport has width, it will override wrap width.
+    /// Set the viewport. Automatically sets wrap width to viewport width.
     pub fn setViewport(self: *Self, vp: ?Viewport) void {
         self.viewport = vp;
 
-        // If wrapping is enabled and viewport has width, override wrap width
+        // If viewport has width, set wrap width (wrapping behavior depends on wrap_mode)
         if (vp) |viewport| {
-            if (self.wrap_width != null) {
-                // Only update if different to avoid redundant reflows
-                if (self.wrap_width.? != viewport.width) {
-                    self.wrap_width = viewport.width;
-                    self.virtual_lines_dirty = true;
-                }
+            if (self.wrap_width != viewport.width) {
+                self.wrap_width = viewport.width;
+                self.virtual_lines_dirty = true;
             }
         }
     }
@@ -202,20 +199,6 @@ pub const UnifiedTextBufferView = struct {
         if (self.wrap_width != width) {
             self.wrap_width = width;
             self.virtual_lines_dirty = true;
-
-            // If viewport exists and wrapping is enabled, sync viewport width
-            if (self.viewport) |vp| {
-                if (width) |w| {
-                    if (vp.width != w) {
-                        self.viewport = Viewport{
-                            .x = vp.x,
-                            .y = vp.y,
-                            .width = w,
-                            .height = vp.height,
-                        };
-                    }
-                }
-            }
         }
     }
 
@@ -324,7 +307,7 @@ pub const UnifiedTextBufferView = struct {
         self.chunk_grapheme_cache.clearRetainingCapacity();
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
-        if (self.wrap_width == null) {
+        if (self.wrap_mode == .none or self.wrap_width == null) {
             // No wrapping - create 1:1 mapping to real lines using single-pass API
             const Context = struct {
                 view: *Self,

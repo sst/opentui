@@ -51,6 +51,7 @@ test "Selection - with wrapped lines" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
+    view.setWrapMode(.char);
     view.setWrapWidth(10);
 
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
@@ -390,6 +391,7 @@ test "Selection - at wrap boundary" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
+    view.setWrapMode(.char);
     view.setWrapWidth(10);
 
     _ = view.setLocalSelection(9, 0, 1, 1, null, null);
@@ -419,6 +421,7 @@ test "Selection - spanning multiple wrapped lines" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123");
 
+    view.setWrapMode(.char);
     view.setWrapWidth(10);
     try std.testing.expectEqual(@as(u32, 3), view.getVirtualLineCount());
 
@@ -449,6 +452,7 @@ test "Selection - changes when wrap width changes" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
+    view.setWrapMode(.char);
     view.setWrapWidth(10);
     _ = view.setLocalSelection(5, 0, 5, 1, null, null);
 
@@ -484,6 +488,7 @@ test "Selection - with newlines and wrapping" {
 
     try tb.setText("ABCDEFGHIJKLMNO\nPQRSTUVWXYZ");
 
+    view.setWrapMode(.char);
     view.setWrapWidth(10);
 
     const vline_count = view.getVirtualLineCount();

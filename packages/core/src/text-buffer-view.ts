@@ -81,7 +81,7 @@ export class TextBufferView {
     this.lib.textBufferViewSetWrapWidth(this.viewPtr, width ?? 0)
   }
 
-  public setWrapMode(mode: "char" | "word"): void {
+  public setWrapMode(mode: "none" | "char" | "word"): void {
     this.guard()
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
   }

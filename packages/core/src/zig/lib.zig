@@ -478,9 +478,10 @@ export fn textBufferViewSetWrapWidth(view: *text_buffer_view.TextBufferViewArray
 
 export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferViewArray, mode: u8) void {
     const wrapMode: text_buffer.WrapMode = switch (mode) {
-        0 => .char,
-        1 => .word,
-        else => .char,
+        0 => .none,
+        1 => .char,
+        2 => .word,
+        else => .none,
     };
     view.setWrapMode(wrapMode);
 }
@@ -725,21 +726,14 @@ export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, h
     view.setViewportSize(width, height);
 }
 
-export fn editorViewEnableWrapping(view: *editor_view.EditorView, enabled: bool) void {
-    view.enableWrapping(enabled);
-}
-
 export fn editorViewSetWrapMode(view: *editor_view.EditorView, mode: u8) void {
     const wrapMode: text_buffer.WrapMode = switch (mode) {
-        0 => .char,
-        1 => .word,
-        else => .char,
+        0 => .none,
+        1 => .char,
+        2 => .word,
+        else => .none,
     };
     view.setWrapMode(wrapMode);
-}
-
-export fn editorViewIsWrappingEnabled(view: *editor_view.EditorView) bool {
-    return view.isWrappingEnabled();
 }
 
 // EditorView selection methods - delegate to TextBufferView

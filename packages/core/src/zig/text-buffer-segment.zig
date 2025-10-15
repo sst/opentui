@@ -20,6 +20,7 @@ pub const TextBufferError = error{
 };
 
 pub const WrapMode = enum {
+    none,
     char,
     word,
 };
