@@ -36,6 +36,12 @@ pub const LineInfo = struct {
     max_width: u32,
 };
 
+/// Wrap info struct for logical-to-virtual line mapping
+pub const WrapInfo = struct {
+    line_first_vline: []const u32,
+    line_vline_counts: []const u32,
+};
+
 /// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
     grapheme_start: u32,
@@ -107,6 +113,10 @@ pub const UnifiedTextBufferView = struct {
     cached_line_starts: std.ArrayListUnmanaged(u32),
     cached_line_widths: std.ArrayListUnmanaged(u32),
 
+    // Cached wrap info (logical line -> virtual line mapping)
+    cached_line_first_vline: std.ArrayListUnmanaged(u32),
+    cached_line_vline_counts: std.ArrayListUnmanaged(u32),
+
     // Memory management
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
@@ -133,6 +143,8 @@ pub const UnifiedTextBufferView = struct {
             .virtual_lines_dirty = true,
             .cached_line_starts = .{},
             .cached_line_widths = .{},
+            .cached_line_first_vline = .{},
+            .cached_line_vline_counts = .{},
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
         };
@@ -251,6 +263,8 @@ pub const UnifiedTextBufferView = struct {
         self.virtual_lines = .{};
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
+        self.cached_line_first_vline = .{};
+        self.cached_line_vline_counts = .{};
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         if (self.wrap_mode == .none or self.wrap_width == null) {
@@ -277,6 +291,11 @@ pub const UnifiedTextBufferView = struct {
 
                 fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+                    // Record first virtual line index for this logical line (1:1 mapping)
+                    const first_vline_idx: u32 = @intCast(ctx.view.virtual_lines.items.len);
+                    ctx.view.cached_line_first_vline.append(ctx.virtual_allocator, first_vline_idx) catch {};
+                    ctx.view.cached_line_vline_counts.append(ctx.virtual_allocator, 1) catch {};
 
                     // If we have a pending vline from segments, finalize it
                     // Otherwise create empty vline
@@ -316,6 +335,8 @@ pub const UnifiedTextBufferView = struct {
                 line_position: u32 = 0,
                 current_vline: VirtualLine = VirtualLine.init(),
                 chunk_idx_in_line: u32 = 0,
+                current_line_first_vline_idx: u32 = 0,
+                current_line_vline_count: u32 = 0,
 
                 fn commitVirtualLine(wctx: *@This()) void {
                     wctx.current_vline.width = wctx.line_position;
@@ -324,6 +345,8 @@ pub const UnifiedTextBufferView = struct {
                     wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
                     wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
                     wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
+
+                    wctx.current_line_vline_count += 1;
 
                     wctx.line_col_offset += wctx.line_position;
                     wctx.current_vline = VirtualLine.init();
@@ -449,7 +472,12 @@ pub const UnifiedTextBufferView = struct {
                         wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
                         wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
                         wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
+                        wctx.current_line_vline_count += 1;
                     }
+
+                    // Record wrap info for this logical line
+                    wctx.view.cached_line_first_vline.append(wctx.virtual_allocator, wctx.current_line_first_vline_idx) catch {};
+                    wctx.view.cached_line_vline_counts.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
 
                     // Reset for next logical line
                     wctx.line_idx += 1;
@@ -458,6 +486,8 @@ pub const UnifiedTextBufferView = struct {
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.char_offset = wctx.global_char_offset;
                     wctx.chunk_idx_in_line = 0;
+                    wctx.current_line_first_vline_idx = @intCast(wctx.view.virtual_lines.items.len);
+                    wctx.current_line_vline_count = 0;
                 }
             };
 
@@ -523,6 +553,60 @@ pub const UnifiedTextBufferView = struct {
             .widths = self.cached_line_widths.items,
             .max_width = iter_mod.getMaxLineWidth(&self.text_buffer.rope),
         };
+    }
+
+    pub fn getWrapInfo(self: *Self) WrapInfo {
+        self.updateVirtualLines();
+        return WrapInfo{
+            .line_first_vline = self.cached_line_first_vline.items,
+            .line_vline_counts = self.cached_line_vline_counts.items,
+        };
+    }
+
+    /// Find the visual line index for a given logical (row, col) position
+    pub fn findVisualLineIndex(self: *Self, logical_row: u32, logical_col: u32) ?u32 {
+        self.updateVirtualLines();
+
+        const vlines = self.virtual_lines.items;
+        if (vlines.len == 0) return null;
+
+        const wrap_info = self.getWrapInfo();
+        
+        // Check if logical_row is in bounds
+        if (logical_row >= wrap_info.line_first_vline.len) return null;
+
+        const first_vline_idx = wrap_info.line_first_vline[logical_row];
+        const vline_count = wrap_info.line_vline_counts[logical_row];
+
+        // If no virtual lines for this logical line, return null
+        if (vline_count == 0) return null;
+
+        // Search through virtual lines for this logical line
+        var i: u32 = 0;
+        while (i < vline_count) : (i += 1) {
+            const vline_idx = first_vline_idx + i;
+            if (vline_idx >= vlines.len) break;
+
+            const vline = &vlines[vline_idx];
+            const vline_start_col = vline.source_col_offset;
+            const vline_end_col = vline_start_col + vline.width;
+
+            // Check if logical_col falls within this virtual line
+            const is_last_vline = (i == vline_count - 1);
+            const end_check = if (is_last_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
+
+            if (logical_col >= vline_start_col and end_check) {
+                return vline_idx;
+            }
+        }
+
+        // If not found, return last virtual line for this logical line
+        const last_vline_idx = first_vline_idx + vline_count - 1;
+        if (last_vline_idx < vlines.len) {
+            return last_vline_idx;
+        }
+
+        return null;
     }
 
     pub fn getPlainTextIntoBuffer(self: *const Self, out_buffer: []u8) usize {

@@ -132,7 +132,9 @@ pub const EditorView = struct {
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
     pub fn updateBeforeRender(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
+        // Find the visual line for the cursor position
+        const visual_row = self.text_buffer_view.findVisualLineIndex(cursor.row, cursor.col) orelse cursor.row;
+        self.ensureCursorVisible(visual_row);
     }
 
     /// Get virtual lines for the current viewport
@@ -210,55 +212,27 @@ pub const EditorView = struct {
     /// Convert logical (row, col) to visual cursor position
     /// This accounts for line wrapping by finding which virtual line contains the logical position
     pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) ?VisualCursor {
-        // Update virtual lines to ensure we have current wrapping info
-        self.text_buffer_view.updateVirtualLines();
+        // Find the visual line index for this logical position
+        const visual_row_idx = self.text_buffer_view.findVisualLineIndex(logical_row, logical_col) orelse return null;
 
         const vlines = self.text_buffer_view.virtual_lines.items;
-        if (vlines.len == 0) return null;
+        if (visual_row_idx >= vlines.len) return null;
 
-        // Find virtual lines that belong to this logical line
-        for (vlines, 0..) |vline, idx| {
-            if (vline.source_line == logical_row) {
-                const vline_start_col = vline.source_col_offset;
-                const vline_end_col = vline_start_col + vline.width;
+        const vline = &vlines[visual_row_idx];
+        const vline_start_col = vline.source_col_offset;
+        
+        // Calculate visual column within this virtual line
+        const visual_col = if (logical_col >= vline_start_col) 
+            logical_col - vline_start_col 
+        else 
+            0;
 
-                // Check if logical_col falls within this virtual line
-                // Use < for end check instead of <=, except for the last virtual line
-                const is_last_vline_for_line = idx + 1 >= vlines.len or vlines[idx + 1].source_line != logical_row;
-                const end_check = if (is_last_vline_for_line) logical_col <= vline_end_col else logical_col < vline_end_col;
-
-                if (logical_col >= vline_start_col and end_check) {
-                    return VisualCursor{
-                        .visual_row = @intCast(idx),
-                        .visual_col = logical_col - vline_start_col,
-                        .logical_row = logical_row,
-                        .logical_col = logical_col,
-                    };
-                }
-            }
-        }
-
-        // If not found, return cursor at end of last virtual line for this logical line
-        var last_vline_idx: ?usize = null;
-        for (vlines, 0..) |vline, idx| {
-            if (vline.source_line == logical_row) {
-                last_vline_idx = idx;
-            } else if (vline.source_line > logical_row) {
-                break;
-            }
-        }
-
-        if (last_vline_idx) |idx| {
-            const vline = &vlines[idx];
-            return VisualCursor{
-                .visual_row = @intCast(idx),
-                .visual_col = vline.width,
-                .logical_row = logical_row,
-                .logical_col = logical_col,
-            };
-        }
-
-        return null;
+        return VisualCursor{
+            .visual_row = visual_row_idx,
+            .visual_col = visual_col,
+            .logical_row = logical_row,
+            .logical_col = logical_col,
+        };
     }
 
     /// Convert visual (row, col) to logical cursor position
