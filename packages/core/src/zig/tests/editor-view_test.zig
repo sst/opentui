@@ -1091,3 +1091,154 @@ test "EditorView - horizontal movement resets desired visual column" {
     // Should use current column (11), not the old desired column (10)
     try std.testing.expectEqual(@as(u32, 11), vcursor_final.?.visual_col);
 }
+
+test "EditorView - rope corruption when inserting newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert initial text with some lines
+    try eb.insertText("Line 0\nLine 1\nLine 2");
+
+    // Check initial state - should be valid
+    const rope_init = &eb.getTextBuffer().rope;
+    const line_count_init = eb.getTextBuffer().lineCount();
+    try std.testing.expectEqual(@as(u32, 3), line_count_init);
+
+    // Insert first newline at the end
+    try eb.insertText("\n");
+
+    const line_count_1 = eb.getTextBuffer().lineCount();
+    try std.testing.expectEqual(@as(u32, 4), line_count_1);
+
+    // Verify no duplicate weights after first newline
+    if (rope_init.getMarker(.linestart, 2)) |m2| {
+        if (rope_init.getMarker(.linestart, 3)) |m3| {
+            try std.testing.expect(m2.global_weight != m3.global_weight);
+        }
+    }
+
+    // Insert second newline
+    try eb.insertText("\n");
+
+    const line_count_2 = eb.getTextBuffer().lineCount();
+    try std.testing.expectEqual(@as(u32, 5), line_count_2);
+
+    // Verify no duplicate weights after second newline
+    if (rope_init.getMarker(.linestart, 3)) |m3| {
+        if (rope_init.getMarker(.linestart, 4)) |m4| {
+            try std.testing.expect(m3.global_weight != m4.global_weight);
+        }
+    }
+}
+
+test "EditorView - visual cursor stays in sync after scrolling and moving up" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert initial text - 5 lines
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+
+    // Verify cursor is at end of line 4
+    var cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Get visual lines to trigger viewport update
+    _ = ev.getVirtualLines();
+
+    // Viewport should be at top since everything fits
+    var vp = ev.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+
+    // Now insert several newlines to move cursor down and scroll viewport
+    var i: u32 = 0;
+    while (i < 6) : (i += 1) {
+        try eb.insertText("\n");
+        _ = ev.getVirtualLines();
+    }
+
+    // Cursor should now be at line 10
+    cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 10), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Viewport should have scrolled down
+    vp = ev.getViewport().?;
+    try std.testing.expect(vp.y > 0);
+
+    // Get visual cursor before moving up
+    const vcursor_before = ev.getVisualCursor();
+    try std.testing.expect(vcursor_before != null);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.logical_row);
+
+    // Move visual cursor up once
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    // Get visual and logical cursor positions after moving up
+    const vcursor_after_up = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after_up != null);
+    const logical_cursor_after_up = ev.getPrimaryCursor();
+
+    try std.testing.expectEqual(@as(u32, 9), logical_cursor_after_up.row);
+    try std.testing.expectEqual(@as(u32, 9), vcursor_after_up.?.logical_row);
+
+    // The visual row should be one less than before
+    try std.testing.expect(vcursor_after_up.?.visual_row < vcursor_before.?.visual_row);
+
+    // Now insert text - this should go at the logical cursor position
+    try eb.insertText("X");
+    _ = ev.getVirtualLines();
+
+    // Get the cursor position after insertion
+    const cursor_after_insert = ev.getPrimaryCursor();
+    const vcursor_after_insert = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after_insert != null);
+
+    // The cursor should still be on row 9 (where we moved to), col 1 (after 'X')
+    try std.testing.expectEqual(@as(u32, 9), cursor_after_insert.row);
+    try std.testing.expectEqual(@as(u32, 1), cursor_after_insert.col);
+
+    // Visual cursor logical position should match
+    try std.testing.expectEqual(@as(u32, 9), vcursor_after_insert.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_after_insert.?.logical_col);
+
+    // Verify the text is actually at line 9
+    var out_buffer: [200]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    const text = out_buffer[0..written];
+
+    // Count lines to verify X is on line 9
+    var line_count: u32 = 0;
+    var line_start: usize = 0;
+    for (text, 0..) |c, idx| {
+        if (c == '\n') {
+            if (line_count == 9) {
+                // This is the line after line 9, so line 9 should have X
+                const line_9 = text[line_start..idx];
+                try std.testing.expect(line_9.len >= 1);
+                try std.testing.expectEqual(@as(u8, 'X'), line_9[0]);
+                break;
+            }
+            line_count += 1;
+            line_start = idx + 1;
+        }
+    }
+}

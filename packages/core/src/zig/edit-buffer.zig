@@ -390,6 +390,21 @@ pub const EditBuffer = struct {
         var segments = std.ArrayList(Segment).init(self.allocator);
         defer segments.deinit();
 
+        // Special handling for insertion at column 0 (start of line):
+        // Linestart markers have weight 0, so inserting at their weight position
+        // places content BEFORE the marker, which puts it on the previous line.
+        // Solution: When at col==0 on row>0, use the rope's insert-by-index API
+        // to insert AFTER the linestart marker instead of before it.
+        const insert_at_line_start = (cursor.col == 0 and cursor.row > 0);
+        var insert_after_marker_index: ?usize = null;
+
+        if (insert_at_line_start) {
+            // Find the linestart marker for this row and get its leaf index
+            if (self.tb.rope.getMarker(.linestart, cursor.row)) |marker| {
+                insert_after_marker_index = marker.leaf_index;
+            }
+        }
+
         var local_start: u32 = 0;
         var inserted_width: u32 = 0;
         var width_after_last_break: u32 = 0; // Width of text after the last newline
@@ -425,10 +440,21 @@ pub const EditBuffer = struct {
             inserted_width += chunk.width;
         }
 
-        // Insert segments into rope using weight-based insertion
+        // Insert segments into rope
         if (segments.items.len > 0) {
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
+            if (insert_after_marker_index) |marker_idx| {
+                // Insert at column 0: use index-based insertion to go AFTER the linestart marker
+                // Insert segments one by one after the marker
+                var idx: usize = marker_idx + 1;
+                for (segments.items) |seg| {
+                    try self.tb.rope.insert(@intCast(idx), seg);
+                    idx += 1;
+                }
+            } else {
+                // Normal insertion: use weight-based insertion
+                const splitter = self.makeSegmentSplitter();
+                try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
+            }
 
             // Update char count
             self.tb.char_count += inserted_width;

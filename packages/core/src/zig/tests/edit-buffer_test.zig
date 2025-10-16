@@ -1301,3 +1301,130 @@ test "EditBuffer - moveLeft to end of line then insertText one char at a time" {
     // Verify we still have 2 lines
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 }
+
+test "EditBuffer - newline at col 0 then insertText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Initial text
+    try eb.insertText("Line 1\nLine 2");
+
+    var out_buffer: [200]u8 = undefined;
+
+    // Go to start of line 1 (row=1, col=0)
+    try eb.setCursor(1, 0);
+
+    // Insert a newline
+    try eb.insertText("\n");
+
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Now insert text - should go at start of line 2
+    try eb.insertText("X");
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 1), cursor.col);
+
+    const written = eb.getText(&out_buffer);
+
+    // Verify text structure: Line 1, empty line, X on line 2, then Line 2
+    try std.testing.expectEqualStrings("Line 1\n\nXLine 2", out_buffer[0..written]);
+
+    // Verify all markers have distinct weights
+    const rope = &eb.getTextBuffer().rope;
+    const line_count = eb.getTextBuffer().lineCount();
+    var prev_weight: ?u32 = null;
+    var i: u32 = 0;
+    while (i < line_count) : (i += 1) {
+        if (rope.getMarker(.linestart, i)) |m| {
+            if (prev_weight) |pw| {
+                try std.testing.expect(m.global_weight != pw);
+            }
+            prev_weight = m.global_weight;
+        }
+    }
+}
+
+test "EditBuffer - multiple newlines then char-by-char typing" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Start with some text
+    try eb.insertText("Line 1\nLine 2");
+
+    // Insert several newlines at the end (simulating user pressing Enter multiple times)
+    try eb.insertText("\n");
+    try eb.insertText("\n");
+    try eb.insertText("\n");
+
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Type characters one by one (simulating user typing)
+    try eb.insertText("h");
+    try eb.insertText("e");
+    try eb.insertText("l");
+    try eb.insertText("l");
+    try eb.insertText("o");
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+
+    // Move cursor up 2 lines
+    eb.moveUp();
+    eb.moveUp();
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Type more characters
+    try eb.insertText("t");
+    try eb.insertText("e");
+    try eb.insertText("s");
+    try eb.insertText("t");
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    var out_buffer: [200]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+
+    // Verify markers are all distinct (no corruption)
+    const rope = &eb.getTextBuffer().rope;
+    const line_count = eb.getTextBuffer().lineCount();
+    var i: u32 = 0;
+    var prev_weight: ?u32 = null;
+    while (i < line_count) : (i += 1) {
+        if (rope.getMarker(.linestart, i)) |m| {
+            if (prev_weight) |pw| {
+                try std.testing.expect(m.global_weight != pw);
+            }
+            prev_weight = m.global_weight;
+        }
+    }
+
+    // Verify text is correct
+    try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "test") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "hello") != null);
+}
