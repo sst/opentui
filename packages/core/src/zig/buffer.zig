@@ -917,10 +917,28 @@ pub const OptimizedBuffer = struct {
                 var special_idx: usize = 0;
                 var byte_offset: u32 = 0;
 
+                // Initialize byte_offset and special_idx for the starting column
+                // Both col and col_offset are relative to chunk start
+                if (vchunk.grapheme_start > 0) {
+                    // Fast-forward to the correct position
+                    var init_col: u32 = 0;
+                    while (init_col < vchunk.grapheme_start) {
+                        const at_init_special = special_idx < specials.len and specials[special_idx].col_offset == init_col;
+                        if (at_init_special) {
+                            const g = specials[special_idx];
+                            byte_offset = g.byte_offset + g.byte_len;
+                            init_col += g.width;
+                            special_idx += 1;
+                        } else {
+                            byte_offset += 1;
+                            init_col += 1;
+                        }
+                    }
+                }
+
                 while (col < col_end) {
-                    // Check if we have a special at this column (col_offset is relative to chunk start)
-                    const col_in_chunk = col - vchunk.grapheme_start;
-                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col_in_chunk;
+                    // Check if we have a special at this column (both col and col_offset are relative to chunk start)
+                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
                     var grapheme_bytes: []const u8 = undefined;
                     var g_width: u8 = undefined;

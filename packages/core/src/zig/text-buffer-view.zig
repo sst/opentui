@@ -393,8 +393,8 @@ pub const UnifiedTextBufferView = struct {
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, 8, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.grapheme_count, force_result.columns_used);
-                                    char_offset += force_result.grapheme_count;
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
+                                    char_offset += force_result.columns_used;
                                     byte_offset += force_result.byte_offset;
                                 } else {
                                     break;
@@ -417,8 +417,8 @@ pub const UnifiedTextBufferView = struct {
                                 }
                                 const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, 8, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.grapheme_count, force_result.columns_used);
-                                    char_offset += force_result.grapheme_count;
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
+                                    char_offset += force_result.columns_used;
                                     byte_offset += force_result.byte_offset;
                                     if (char_offset < chunk.width) {
                                         commitVirtualLine(wctx);
@@ -427,8 +427,8 @@ pub const UnifiedTextBufferView = struct {
                                 break;
                             }
 
-                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.grapheme_count, wrap_result.columns_used);
-                            char_offset += wrap_result.grapheme_count;
+                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.columns_used, wrap_result.columns_used);
+                            char_offset += wrap_result.columns_used;
                             byte_offset += wrap_result.byte_offset;
 
                             if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {

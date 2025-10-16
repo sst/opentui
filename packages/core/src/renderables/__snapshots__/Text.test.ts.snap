@@ -21,8 +21,8 @@ exports[`TextRenderable Selection Text Content Snapshots should render multiline
 exports[`TextRenderable Selection Text Content Snapshots should render text with graphemes/emojis correctly 1`] = `
 "                    
                     
-Hello 🌍  World 👋    
- Test 🚀  Emoji      
+Hello 🌍 World 👋   
+ Test 🚀 Emoji      
                     
 "
 `;
@@ -73,10 +73,10 @@ exports[`TextRenderable Selection Text Content Snapshots should render wrapped t
 `;
 
 exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with emojis and graphemes 1`] = `
-" Hello 🌍  Wor       
- ld 👋  This i       
+" Hello 🌍 Wor       
+ ld 👋 This i       
  s a test wit       
- h emojis 🚀         
+ h emojis 🚀        
  that should        
 "
 `;
