@@ -1153,3 +1153,130 @@ test "GraphemePool - allocUnowned zero-length slice" {
 
     try pool.decref(id);
 }
+
+// ===== GraphemePool Configuration Tests =====
+
+test "GraphemePool - initWithOptions with small slots_per_page" {
+    // Create a pool with very small slots_per_page to test exhaustion
+    const small_slots = [_]u32{ 2, 2, 2, 2, 2 }; // Only 2 slots per page for each class
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = small_slots,
+    });
+    defer pool.deinit();
+
+    // Should be able to allocate at least 2 items of same size class
+    const id1 = try pool.alloc("abc");
+    const id2 = try pool.alloc("def");
+
+    try std.testing.expectEqualSlices(u8, "abc", try pool.get(id1));
+    try std.testing.expectEqualSlices(u8, "def", try pool.get(id2));
+
+    try pool.decref(id1);
+    try pool.decref(id2);
+}
+
+test "GraphemePool - small pool exhaustion and growth" {
+    // Create a tiny pool that will need to grow
+    const tiny_slots = [_]u32{ 1, 1, 1, 1, 1 }; // Only 1 slot per page initially
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer pool.deinit();
+
+    // Allocate first item - uses initial page
+    const id1 = try pool.alloc("a");
+
+    // Allocate second item - should trigger growth (new page)
+    const id2 = try pool.alloc("b");
+
+    // Both should be accessible
+    try std.testing.expectEqualSlices(u8, "a", try pool.get(id1));
+    try std.testing.expectEqualSlices(u8, "b", try pool.get(id2));
+
+    try pool.decref(id1);
+    try pool.decref(id2);
+}
+
+test "GraphemePool - small pool with refcount prevents exhaustion" {
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer pool.deinit();
+
+    // Allocate 2 items (fills the first page)
+    const id1 = try pool.alloc("aa");
+    const id2 = try pool.alloc("bb");
+
+    // Free one
+    try pool.decref(id1);
+
+    // Should be able to reuse the freed slot
+    const id3 = try pool.alloc("cc");
+
+    try std.testing.expectEqualSlices(u8, "bb", try pool.get(id2));
+    try std.testing.expectEqualSlices(u8, "cc", try pool.get(id3));
+
+    // Old id1 should be invalid due to generation change
+    const result = pool.get(id1);
+    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+
+    try pool.decref(id2);
+    try pool.decref(id3);
+}
+
+test "GraphemePool - different size classes with small limits" {
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer pool.deinit();
+
+    // Allocate different sizes (should use different classes)
+    const id_small = try pool.alloc("ab"); // 2 bytes -> class 0 (8-byte slots)
+    const id_medium = try pool.alloc("0123456789abc"); // 13 bytes -> class 1 (16-byte slots)
+    const id_large = try pool.alloc("012345678901234567890"); // 21 bytes -> class 2 (32-byte slots)
+
+    try std.testing.expectEqualSlices(u8, "ab", try pool.get(id_small));
+    try std.testing.expectEqualSlices(u8, "0123456789abc", try pool.get(id_medium));
+    try std.testing.expectEqualSlices(u8, "012345678901234567890", try pool.get(id_large));
+
+    try pool.decref(id_small);
+    try pool.decref(id_medium);
+    try pool.decref(id_large);
+}
+
+test "GraphemePool - tracker with small pool" {
+    const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer pool.deinit();
+
+    var tracker = gp.GraphemeTracker.init(std.testing.allocator, &pool);
+    defer tracker.deinit();
+
+    // Add multiple graphemes
+    const id1 = try pool.alloc("🌟");
+    const id2 = try pool.alloc("🎨");
+    const id3 = try pool.alloc("🚀");
+
+    tracker.add(id1);
+    tracker.add(id2);
+    tracker.add(id3);
+
+    try std.testing.expectEqual(@as(u32, 3), tracker.getGraphemeCount());
+
+    // Clear tracker should free all refs
+    tracker.clear();
+    try std.testing.expectEqual(@as(u32, 0), tracker.getGraphemeCount());
+
+    // After tracker.clear(), the graphemes have been decref'd by tracker
+    // but the original alloc() still holds a reference, so they're still valid
+    try std.testing.expectEqualSlices(u8, "🌟", try pool.get(id1));
+
+    // Clean up original refs
+    try pool.decref(id1);
+    try pool.decref(id2);
+    try pool.decref(id3);
+}

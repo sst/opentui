@@ -38,9 +38,15 @@ pub const SLOT_MASK: u32 = (@as(u32, 1) << SLOT_BITS) - 1; // 0xFFFF
 pub const GraphemePool = struct {
     const MAX_CLASSES: u5 = 5; // 0..4 => 8,16,32,64,128
     const CLASS_SIZES = [_]u32{ 8, 16, 32, 64, 128 };
-    const SLOTS_PER_PAGE = [_]u32{ 256, 128, 64, 16, 8 };
+    const DEFAULT_SLOTS_PER_PAGE = [_]u32{ 256, 128, 64, 16, 8 };
 
     pub const IdPayload = u32;
+
+    pub const InitOptions = struct {
+        /// Slots per page for each size class. If null, uses DEFAULT_SLOTS_PER_PAGE.
+        /// Used to limit pool size for testing.
+        slots_per_page: ?[MAX_CLASSES]u32 = null,
+    };
 
     allocator: std.mem.Allocator,
     classes: [MAX_CLASSES]ClassPool,
@@ -53,10 +59,15 @@ pub const GraphemePool = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator) GraphemePool {
+        return initWithOptions(allocator, .{});
+    }
+
+    pub fn initWithOptions(allocator: std.mem.Allocator, options: InitOptions) GraphemePool {
+        const slots_per_page = options.slots_per_page orelse DEFAULT_SLOTS_PER_PAGE;
         var classes: [MAX_CLASSES]ClassPool = undefined;
         var i: usize = 0;
         while (i < MAX_CLASSES) : (i += 1) {
-            classes[i] = ClassPool.init(allocator, CLASS_SIZES[i], SLOTS_PER_PAGE[i]);
+            classes[i] = ClassPool.init(allocator, CLASS_SIZES[i], slots_per_page[i]);
         }
         return .{ .allocator = allocator, .classes = classes };
     }
@@ -318,8 +329,12 @@ pub fn encodedCharWidth(c: u32) u32 {
 var GLOBAL_POOL_STORAGE: ?GraphemePool = null;
 
 pub fn initGlobalPool(allocator: std.mem.Allocator) *GraphemePool {
+    return initGlobalPoolWithOptions(allocator, .{});
+}
+
+pub fn initGlobalPoolWithOptions(allocator: std.mem.Allocator, options: GraphemePool.InitOptions) *GraphemePool {
     if (GLOBAL_POOL_STORAGE == null) {
-        GLOBAL_POOL_STORAGE = GraphemePool.init(allocator);
+        GLOBAL_POOL_STORAGE = GraphemePool.initWithOptions(allocator, options);
     }
     return &GLOBAL_POOL_STORAGE.?;
 }
