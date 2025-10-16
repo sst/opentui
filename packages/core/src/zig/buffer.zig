@@ -1062,7 +1062,8 @@ pub const OptimizedBuffer = struct {
                     if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
                         encoded_char = @as(u32, grapheme_bytes[0]);
                     } else {
-                        const gid = self.pool.alloc(grapheme_bytes) catch {
+                        const gid = self.pool.alloc(grapheme_bytes) catch |err| {
+                            logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
                             globalCharPos += g_width;
                             currentX += @as(i32, @intCast(g_width));
                             col += g_width;
