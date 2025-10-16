@@ -338,7 +338,7 @@ pub const UnifiedTextBufferView = struct {
                         .width = @intCast(width),
                         .chunk = chunk,
                     }) catch {};
-                    wctx.global_char_offset += count;
+                    wctx.global_char_offset += width;
                     wctx.line_position += width;
                 }
 

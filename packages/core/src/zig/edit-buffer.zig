@@ -37,9 +37,9 @@ const AddBuffer = struct {
 
     fn init(allocator: Allocator, text_buffer: *UnifiedTextBuffer, initial_cap: usize) !AddBuffer {
         const mem = try allocator.alloc(u8, initial_cap);
-        // Register with owned=false so reset() won't free our buffer
-        // EditBuffer is responsible for freeing this memory in deinit
-        const mem_id = try text_buffer.registerMemBuffer(mem, false);
+        // Register with owned=true so registry manages the lifetime
+        // Never free this manually - registry owns it
+        const mem_id = try text_buffer.registerMemBuffer(mem, true);
 
         return .{
             .mem_id = mem_id,
@@ -56,14 +56,11 @@ const AddBuffer = struct {
         // Allocate new buffer with doubled capacity
         const new_cap = @max(self.cap * 2, self.len + need);
         const new_mem = try self.allocator.alloc(u8, new_cap);
-        // Register with owned=false so EditBuffer owns the memory
-        const new_mem_id = try text_buffer.registerMemBuffer(new_mem, false);
+        // Register with owned=true so registry manages it
+        // Never free old buffer - rope may still reference it
+        const new_mem_id = try text_buffer.registerMemBuffer(new_mem, true);
 
-        // Free the old buffer (we own it)
-        const old_mem = self.ptr[0..self.cap];
-        self.allocator.free(old_mem);
-
-        // Switch to new buffer
+        // Switch to new buffer (old buffer remains in registry)
         self.mem_id = new_mem_id;
         self.ptr = new_mem.ptr;
         self.len = 0;
@@ -130,10 +127,7 @@ pub const EditBuffer = struct {
     }
 
     pub fn deinit(self: *EditBuffer) void {
-        // Free the AddBuffer memory (we own it)
-        const add_buffer_mem = self.add_buffer.ptr[0..self.add_buffer.cap];
-        self.allocator.free(add_buffer_mem);
-
+        // Registry owns all AddBuffer memory, don't free it manually
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
         self.allocator.destroy(self);
@@ -265,7 +259,7 @@ pub const EditBuffer = struct {
 
     /// Split a TextChunk at a specific weight (display width)
     /// Returns left and right chunks
-    /// Uses wrap offsets to narrow down the search range and minimize grapheme iteration
+    /// Simple grapheme iteration accumulating display width
     fn splitChunkAtWeight(
         self: *EditBuffer,
         chunk: *const TextChunk,
@@ -286,40 +280,13 @@ pub const EditBuffer = struct {
         }
 
         const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
+        var iter = self.tb.getGraphemeIterator(chunk_bytes);
 
-        // Get wrap offsets to narrow down the search range
-        const wrap_offsets = chunk.getWrapOffsets(
-            &self.tb.mem_registry,
-            self.tb.allocator,
-        ) catch return error.OutOfMemory;
-
-        // Find the wrap offset range that contains our target weight
-        var search_start_byte: u32 = 0;
-        var search_end_byte: u32 = @intCast(chunk_bytes.len);
-        var width_before_range: u32 = 0;
-
-        if (wrap_offsets.len > 0) {
-            // Binary search to find the wrap offset closest to but before the target weight
-            for (wrap_offsets) |wrap_break| {
-                if (wrap_break.char_offset >= weight) {
-                    search_end_byte = wrap_break.byte_offset;
-                    break;
-                }
-                search_start_byte = wrap_break.byte_offset;
-                width_before_range = wrap_break.char_offset;
-            }
-        }
-
-        // Now iterate graphemes only in the narrowed range
-        const search_bytes = chunk_bytes[search_start_byte..search_end_byte];
-        var iter = self.tb.getGraphemeIterator(search_bytes);
-
-        var accumulated_width: u32 = width_before_range;
-        var split_byte_offset: u32 = search_start_byte;
-        var left_width: u32 = width_before_range;
+        var accumulated_width: u32 = 0;
+        var split_byte_offset: u32 = 0;
 
         while (iter.next()) |gc| {
-            const gbytes = gc.bytes(search_bytes);
+            const gbytes = gc.bytes(chunk_bytes);
             const width_u16: u16 = gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width);
 
             if (width_u16 == 0) {
@@ -329,11 +296,11 @@ pub const EditBuffer = struct {
 
             const g_width: u32 = @intCast(width_u16);
 
+            // Stop when we've accumulated the target weight
             if (accumulated_width >= weight) break;
 
             accumulated_width += g_width;
             split_byte_offset += @intCast(gbytes.len);
-            left_width += g_width;
         }
 
         const left_chunk = self.tb.createChunk(
@@ -551,6 +518,11 @@ pub const EditBuffer = struct {
                         }
                     }
 
+                    // Decrement char_count by 1 (newline has weight 1)
+                    if (self.tb.char_count > 0) {
+                        self.tb.char_count -= 1;
+                    }
+
                     // Mark views dirty
                     self.tb.markViewsDirty();
 
@@ -604,6 +576,11 @@ pub const EditBuffer = struct {
                     if (seg.isLineStart()) {
                         try self.tb.rope.delete(break_idx);
                     }
+                }
+
+                // Decrement char_count by 1 (newline has weight 1)
+                if (self.tb.char_count > 0) {
+                    self.tb.char_count -= 1;
                 }
 
                 // Mark views dirty
@@ -717,11 +694,11 @@ pub const EditBuffer = struct {
         try self.tb.setText(text);
 
         // IMPORTANT: tb.setText() calls reset() which clears the memory registry.
-        // Since we registered AddBuffer with owned=false, the memory wasn't freed.
-        // We just need to re-register it and reset the length.
-        const add_buffer_mem = self.add_buffer.ptr[0..self.add_buffer.cap];
-        const new_mem_id = try self.tb.registerMemBuffer(add_buffer_mem, false);
+        // Allocate a fresh AddBuffer since the old one is now orphaned in the registry.
+        const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
+        const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
         self.add_buffer.mem_id = new_mem_id;
+        self.add_buffer.ptr = new_mem.ptr;
         self.add_buffer.len = 0;
 
         try self.setCursor(0, 0);
