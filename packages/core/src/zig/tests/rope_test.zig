@@ -2513,3 +2513,164 @@ test "Rope - marker tracking with many markers" {
     const nl98 = rope.getMarker(.newline, 98).?;
     try std.testing.expectEqual(@as(u32, 197), nl98.leaf_index);
 }
+//===== Debug toText Tests =====
+
+test "Rope - toText shows basic structure" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const debug_text = try rope.toText(arena.allocator());
+
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "branch") != null or std.mem.indexOf(u8, debug_text, "leaf") != null);
+}
+
+test "Rope - toText shows empty rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    const debug_text = try rope.toText(arena.allocator());
+
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[empty]") != null);
+}
+
+test "Rope - toText with union type shows tags" {
+    const TestSegment = union(enum) {
+        text: struct { width: u32 },
+        brk: void,
+        linestart: void,
+
+        pub const MarkerTypes = &[_]std.meta.Tag(@This()){ .brk, .linestart };
+
+        pub const Metrics = struct {
+            width: u32 = 0,
+
+            pub fn add(self: *Metrics, other: Metrics) void {
+                self.width += other.width;
+            }
+
+            pub fn weight(self: *const Metrics) u32 {
+                return self.width;
+            }
+        };
+
+        pub fn measure(self: *const @This()) Metrics {
+            return switch (self.*) {
+                .text => |t| Metrics{ .width = t.width },
+                .brk => Metrics{ .width = 1 },
+                .linestart => Metrics{ .width = 0 },
+            };
+        }
+
+        pub fn empty() @This() {
+            return .{ .text = .{ .width = 0 } };
+        }
+
+        pub fn is_empty(self: *const @This()) bool {
+            return switch (self.*) {
+                .text => |t| t.width == 0,
+                else => false,
+            };
+        }
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const TestRope = rope_mod.Rope(TestSegment);
+    var rope = try TestRope.from_slice(arena.allocator(), &[_]TestSegment{
+        .linestart,
+        .{ .text = .{ .width = 5 } },
+        .brk,
+        .linestart,
+        .{ .text = .{ .width = 10 } },
+    });
+
+    const debug_text = try rope.toText(arena.allocator());
+
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "brk") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "linestart") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "w5") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "w10") != null);
+}
+
+test "Rope - toText with nested structure" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    
+    // Create a larger rope that will have branches
+    var items: [10]SimpleItem = undefined;
+    for (&items, 0..) |*item, i| {
+        item.* = .{ .value = @intCast(i) };
+    }
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const debug_text = try rope.toText(arena.allocator());
+
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[branch") != null);
+}
+
+test "Rope - toText after insertions shows updated structure" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    const before = try rope.toText(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, before, "[root") != null);
+
+    try rope.append(.{ .value = 2 });
+    try rope.append(.{ .value = 3 });
+
+    const after = try rope.toText(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, after, "[root") != null);
+    try std.testing.expect(after.len >= before.len);
+}
+
+test "Rope - toText with custom metrics shows width info" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(ItemWithMetrics);
+    const items = [_]ItemWithMetrics{
+        .{ .value = 1, .size = 100 },
+        .{ .value = 2, .size = 200 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    const debug_text = try rope.toText(arena.allocator());
+
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "w") != null);
+}
+
+test "Rope - toText shows single leaf" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 42 });
+
+    const debug_text = try rope.toText(arena.allocator());
+
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "[leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, debug_text, "]") != null);
+}

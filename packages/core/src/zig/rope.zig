@@ -814,6 +814,68 @@ pub fn Rope(comptime T: type) type {
             return context.items.toOwnedSlice();
         }
 
+        /// Debug helper: convert rope structure to text representation
+        /// Shows tree structure with node types and metrics
+        /// Example output: [root[branch[leaf{text:w5}][leaf{brk}]]]
+        pub fn toText(self: *const Self, allocator: Allocator) ![]u8 {
+            var buffer = std.ArrayList(u8).init(allocator);
+            errdefer buffer.deinit();
+
+            try buffer.appendSlice("[root");
+            try nodeToText(self.root, &buffer);
+            try buffer.append(']');
+
+            return buffer.toOwnedSlice();
+        }
+
+        fn nodeToText(node: *const Node, buffer: *std.ArrayList(u8)) !void {
+            switch (node.*) {
+                .branch => |*b| {
+                    try buffer.appendSlice("[branch");
+                    try nodeToText(b.left, buffer);
+                    try nodeToText(b.right, buffer);
+                    try buffer.append(']');
+                },
+                .leaf => |*l| {
+                    if (l.is_sentinel) {
+                        try buffer.appendSlice("[empty]");
+                        return;
+                    }
+
+                    if (@typeInfo(T) == .@"union") {
+                        const tag = std.meta.activeTag(l.data);
+                        const tag_name = @tagName(tag);
+
+                        try buffer.append('[');
+                        try buffer.appendSlice(tag_name);
+
+                        if (@hasDecl(T, "Metrics")) {
+                            const metrics = l.metrics();
+                            try buffer.append(':');
+                            try std.fmt.format(buffer.writer(), "w{d}", .{metrics.weight()});
+
+                            if (@hasDecl(T.Metrics, "total_width")) {
+                                try std.fmt.format(buffer.writer(), ",tw{d}", .{metrics.custom.total_width});
+                            }
+                            if (@hasDecl(T.Metrics, "total_bytes")) {
+                                try std.fmt.format(buffer.writer(), ",b{d}", .{metrics.custom.total_bytes});
+                            }
+                        }
+
+                        try buffer.append(']');
+                    } else {
+                        try buffer.appendSlice("[leaf");
+                        if (@hasDecl(T, "Metrics")) {
+                            const metrics = l.metrics();
+                            try buffer.append(':');
+                            try std.fmt.format(buffer.writer(), "w{d}", .{metrics.weight()});
+                        }
+                        try buffer.append(']');
+                    }
+                },
+            }
+        }
+
         /// Get total weight of the rope
         /// Uses T.Metrics.weight() if available, else falls back to count
         pub fn totalWeight(self: *const Self) u32 {
