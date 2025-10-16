@@ -956,3 +956,87 @@ test "EditorView - setViewportSize maintains cursor visibility" {
     // Note: setViewportSize doesn't automatically adjust scroll position
     // That would need to be handled separately if desired
 }
+
+test "EditorView - moveDownVisual across empty line preserves desired column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert text with an empty line in the middle
+    try eb.setText("Line with some text\n\nAnother line with text");
+
+    // Start at column 10 on line 0
+    try eb.setCursor(0, 10);
+
+    const vcursor_before = ev.getVisualCursor();
+    try std.testing.expect(vcursor_before != null);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.visual_col);
+
+    // Move down to empty line
+    ev.moveDownVisual();
+
+    const vcursor_empty = ev.getVisualCursor();
+    try std.testing.expect(vcursor_empty != null);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_empty.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col); // Clamped to 0 on empty line
+
+    // Move down again to line with text
+    ev.moveDownVisual();
+
+    const vcursor_after = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after != null);
+    try std.testing.expectEqual(@as(u32, 2), vcursor_after.?.logical_row);
+    // Should restore to column 10, not stay at 0
+    try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
+}
+
+test "EditorView - moveUpVisual across empty line preserves desired column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert text with an empty line in the middle
+    try eb.setText("Line with some text\n\nAnother line with text");
+
+    // Start at column 10 on line 2
+    try eb.setCursor(2, 10);
+
+    const vcursor_before = ev.getVisualCursor();
+    try std.testing.expect(vcursor_before != null);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.visual_col);
+
+    // Move up to empty line
+    ev.moveUpVisual();
+
+    const vcursor_empty = ev.getVisualCursor();
+    try std.testing.expect(vcursor_empty != null);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_empty.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col); // Clamped to 0 on empty line
+
+    // Move up again to line with text
+    ev.moveUpVisual();
+
+    const vcursor_after = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after != null);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
+    // Should restore to column 10, not stay at 0
+    try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
+}

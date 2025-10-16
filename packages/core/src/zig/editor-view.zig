@@ -31,6 +31,7 @@ pub const EditorView = struct {
     text_buffer_view: *UnifiedTextBufferView,
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
+    desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
 
     // Memory management
     global_allocator: Allocator,
@@ -48,6 +49,7 @@ pub const EditorView = struct {
             .text_buffer_view = text_buffer_view,
             .edit_buffer = edit_buffer,
             .scroll_margin = 0.15, // Default 15% margin
+            .desired_visual_col = null,
             .global_allocator = global_allocator,
         };
 
@@ -266,9 +268,12 @@ pub const EditorView = struct {
         // Move to previous visual line
         const target_visual_row = vcursor.visual_row - 1;
 
-        // Use visual column for desired position (not logical column from EditBuffer's desired_col)
-        // This ensures consistent behavior when moving through wrapped lines
-        const desired_visual_col = vcursor.visual_col;
+        // Initialize or use desired visual column
+        // This persists across empty/narrow lines to restore column when possible
+        if (self.desired_visual_col == null) {
+            self.desired_visual_col = vcursor.visual_col;
+        }
+        const desired_visual_col = self.desired_visual_col.?;
 
         // Convert to new position
         if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
@@ -299,9 +304,12 @@ pub const EditorView = struct {
         // Move to next visual line
         const target_visual_row = vcursor.visual_row + 1;
 
-        // Use visual column for desired position (not logical column from EditBuffer's desired_col)
-        // This ensures consistent behavior when moving through wrapped lines
-        const desired_visual_col = vcursor.visual_col;
+        // Initialize or use desired visual column
+        // This persists across empty/narrow lines to restore column when possible
+        if (self.desired_visual_col == null) {
+            self.desired_visual_col = vcursor.visual_col;
+        }
+        const desired_visual_col = self.desired_visual_col.?;
 
         // Convert to new position
         if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
