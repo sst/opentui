@@ -84,7 +84,7 @@ pub const EditorView = struct {
 
     pub fn deinit(self: *EditorView) void {
         // Unregister listener from EditBuffer
-        self.edit_buffer.events.off(.cursorChanged, self);
+        self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
         self.text_buffer_view.deinit(); // We own this
         self.global_allocator.destroy(self);
     }

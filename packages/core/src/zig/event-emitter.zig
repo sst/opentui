@@ -40,12 +40,13 @@ pub fn EventEmitter(comptime EventType: type) type {
             try list_ptr.append(self.allocator, listener);
         }
 
-        pub fn off(self: *Self, event: EventType, ctx: *anyopaque) void {
+        pub fn off(self: *Self, event: EventType, listener: Listener) void {
             const list_ptr = self.listeners.getPtr(event) orelse return;
 
             var i: usize = 0;
             while (i < list_ptr.items.len) {
-                if (list_ptr.items[i].ctx == ctx) {
+                const item = list_ptr.items[i];
+                if (item.ctx == listener.ctx and item.handle == listener.handle) {
                     _ = list_ptr.swapRemove(i);
                 } else {
                     i += 1;

@@ -155,7 +155,7 @@ test "EventEmitter - can remove listener with off" {
     var list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 1), list.?.items.len);
 
-    emitter.off(.start, &counter);
+    emitter.off(.start, listener);
 
     list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 0), list.?.items.len);
@@ -185,7 +185,7 @@ test "EventEmitter - off removes only matching listener by reference" {
     var list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 2), list.?.items.len);
 
-    emitter.off(.start, &counter1);
+    emitter.off(.start, listener1);
 
     list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 1), list.?.items.len);
