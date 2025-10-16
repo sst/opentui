@@ -853,7 +853,6 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = text_buffer_view.text_buffer;
-        const graphemeAware = self.grapheme_tracker.hasAny();
 
         const line_info = text_buffer_view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)
@@ -973,7 +972,7 @@ pub const OptimizedBuffer = struct {
                     const should_skip_clip = if (clip_rect) |clip|
                         currentX < clip.x or currentY < clip.y or
                             currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                            currentY > clip.y + @as(i32, @intCast(clip.height))
+                            currentY >= clip.y + @as(i32, @intCast(clip.height))
                     else
                         false;
 
@@ -1065,18 +1064,16 @@ pub const OptimizedBuffer = struct {
                     }
 
                     // Render the grapheme (this handles placing start + continuation chars)
-                    if (graphemeAware) {
-                        try self.setCellWithAlphaBlending(
-                            @intCast(currentX),
-                            @intCast(currentY),
-                            encoded_char,
-                            drawFg,
-                            drawBg,
-                            drawAttributes,
-                        );
-                    } else {
-                        self.setCellWithAlphaBlendingRaw(@intCast(currentX), @intCast(currentY), encoded_char, drawFg, drawBg, drawAttributes) catch {};
-                    }
+                    // Always use grapheme-aware writes to properly manage multi-cell graphemes
+                    // and clear old spans when overwriting
+                    try self.setCellWithAlphaBlending(
+                        @intCast(currentX),
+                        @intCast(currentY),
+                        encoded_char,
+                        drawFg,
+                        drawBg,
+                        drawAttributes,
+                    );
 
                     // Advance by the grapheme's full width
                     globalCharPos += g_width;

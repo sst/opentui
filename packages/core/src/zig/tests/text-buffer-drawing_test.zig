@@ -1425,3 +1425,69 @@ test "loadFile - loads and renders file correctly" {
     // Should contain "ABC" on first line
     try std.testing.expect(std.mem.startsWith(u8, render_result, "ABC"));
 }
+
+test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost chars" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    // First draw: render text with a wide character (世 is 2 cells wide)
+    try tb.setText("世界");
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    // Verify first wide char is encoded correctly
+    const first_cell = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expect(gp.isGraphemeChar(first_cell.char));
+    try std.testing.expectEqual(@as(u32, 2), gp.encodedCharWidth(first_cell.char));
+
+    // Second cell should be a continuation character
+    const second_cell = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expect(gp.isContinuationChar(second_cell.char));
+
+    // Second draw: overwrite with ASCII text
+    try tb.setText("ABC");
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    // Verify cells contain ASCII without ghost continuation chars
+    const cell_a = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'A'), cell_a.char);
+    try std.testing.expect(!gp.isGraphemeChar(cell_a.char));
+    try std.testing.expect(!gp.isContinuationChar(cell_a.char));
+
+    const cell_b = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_b.char);
+    try std.testing.expect(!gp.isGraphemeChar(cell_b.char));
+    try std.testing.expect(!gp.isContinuationChar(cell_b.char));
+
+    const cell_c = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'C'), cell_c.char);
+    try std.testing.expect(!gp.isGraphemeChar(cell_c.char));
+    try std.testing.expect(!gp.isContinuationChar(cell_c.char));
+
+    // Verify rendered text is correct
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+    try std.testing.expect(std.mem.startsWith(u8, result, "ABC"));
+}
