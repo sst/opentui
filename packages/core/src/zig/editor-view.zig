@@ -5,6 +5,7 @@ const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
+const event_emitter = @import("event-emitter.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 const EditBuffer = eb.EditBuffer;
@@ -32,9 +33,15 @@ pub const EditorView = struct {
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
+    cursor_changed_listener: event_emitter.EventListener(*EditorView),
 
     // Memory management
     global_allocator: Allocator,
+
+    fn onCursorChanged(ctx: *EditorView) void {
+        // Reset desired visual column when cursor changes via non-visual means
+        ctx.desired_visual_col = null;
+    }
 
     pub fn init(global_allocator: Allocator, edit_buffer: *EditBuffer, viewport_width: u32, viewport_height: u32) EditorViewError!*EditorView {
         const self = global_allocator.create(EditorView) catch return EditorViewError.OutOfMemory;
@@ -50,8 +57,18 @@ pub const EditorView = struct {
             .edit_buffer = edit_buffer,
             .scroll_margin = 0.15, // Default 15% margin
             .desired_visual_col = null,
+            .cursor_changed_listener = .{
+                .ctx = undefined, // Will be set below
+                .handle = onCursorChanged,
+            },
             .global_allocator = global_allocator,
         };
+
+        // Set self reference in listener
+        self.cursor_changed_listener.ctx = self;
+
+        // Register listener with EditBuffer
+        edit_buffer.events.on(.cursorChanged, &self.cursor_changed_listener) catch return EditorViewError.OutOfMemory;
 
         // Set initial viewport on the text buffer view
         text_buffer_view.setViewport(tbv.Viewport{
@@ -65,6 +82,8 @@ pub const EditorView = struct {
     }
 
     pub fn deinit(self: *EditorView) void {
+        // Unregister listener from EditBuffer
+        self.edit_buffer.events.off(.cursorChanged, &self.cursor_changed_listener);
         self.text_buffer_view.deinit(); // We own this
         self.global_allocator.destroy(self);
     }
@@ -285,6 +304,9 @@ pub const EditorView = struct {
                     .desired_col = new_vcursor.logical_col,
                 };
                 self.ensureCursorVisible(new_vcursor.visual_row);
+
+                // Restore desired_visual_col after the cursor change event resets it
+                self.desired_visual_col = desired_visual_col;
             }
         }
     }
@@ -321,6 +343,9 @@ pub const EditorView = struct {
                     .desired_col = new_vcursor.logical_col,
                 };
                 self.ensureCursorVisible(new_vcursor.visual_row);
+
+                // Restore desired_visual_col after the cursor change event resets it
+                self.desired_visual_col = desired_visual_col;
             }
         }
     }

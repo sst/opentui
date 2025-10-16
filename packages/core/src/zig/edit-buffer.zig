@@ -6,6 +6,7 @@ const seg_mod = @import("text-buffer-segment.zig");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const utf8 = @import("utf8.zig");
+const event_emitter = @import("event-emitter.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
@@ -17,6 +18,10 @@ const UnifiedRope = seg_mod.UnifiedRope;
 pub const EditBufferError = error{
     OutOfMemory,
     InvalidCursor,
+};
+
+pub const EditBufferEvent = enum {
+    cursorChanged,
 };
 
 /// Cursor position (row, col in display-width coordinates)
@@ -87,6 +92,7 @@ pub const EditBuffer = struct {
     add_buffer: AddBuffer,
     cursors: std.ArrayListUnmanaged(Cursor),
     allocator: Allocator,
+    events: event_emitter.EventEmitter(EditBufferEvent),
 
     pub fn init(
         allocator: Allocator,
@@ -115,6 +121,7 @@ pub const EditBuffer = struct {
             .add_buffer = add_buffer,
             .cursors = cursors,
             .allocator = allocator,
+            .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
         };
 
         // Create an initial empty line (single empty text segment with linestart marker)
@@ -128,6 +135,7 @@ pub const EditBuffer = struct {
 
     pub fn deinit(self: *EditBuffer) void {
         // Registry owns all AddBuffer memory, don't free it manually
+        self.events.deinit();
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
         self.allocator.destroy(self);
@@ -161,6 +169,8 @@ pub const EditBuffer = struct {
         } else {
             self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
         }
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     /// Ensure add buffer has capacity for n bytes
@@ -444,6 +454,8 @@ pub const EditBuffer = struct {
                 .desired_col = cursor.col + inserted_width,
             };
         }
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
@@ -486,6 +498,8 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len > 0) {
             self.cursors.items[0] = .{ .row = start.row, .col = start.col, .desired_col = start.col };
         }
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn backspace(self: *EditBuffer) !void {
@@ -550,6 +564,8 @@ pub const EditBuffer = struct {
             // Update cursor position
             self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
         }
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn deleteForward(self: *EditBuffer) !void {
@@ -625,6 +641,8 @@ pub const EditBuffer = struct {
         }
         // Horizontal movement resets desired column
         cursor.desired_col = cursor.col;
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn moveRight(self: *EditBuffer) void {
@@ -646,6 +664,8 @@ pub const EditBuffer = struct {
         }
         // Horizontal movement resets desired column
         cursor.desired_col = cursor.col;
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn moveUp(self: *EditBuffer) void {
@@ -666,6 +686,8 @@ pub const EditBuffer = struct {
             // Move to desired column if possible, otherwise clamp to line end
             cursor.col = @min(cursor.desired_col, line_width);
         }
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn moveDown(self: *EditBuffer) void {
@@ -688,6 +710,8 @@ pub const EditBuffer = struct {
             // Move to desired column if possible, otherwise clamp to line end
             cursor.col = @min(cursor.desired_col, line_width);
         }
+
+        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
     }
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {

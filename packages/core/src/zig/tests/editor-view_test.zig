@@ -1040,3 +1040,54 @@ test "EditorView - moveUpVisual across empty line preserves desired column" {
     // Should restore to column 10, not stay at 0
     try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
 }
+
+test "EditorView - horizontal movement resets desired visual column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert text with an empty line in the middle
+    try eb.setText("Line with some text\n\nAnother line with text");
+
+    // Start at column 10 on line 0
+    try eb.setCursor(0, 10);
+
+    const vcursor_initial = ev.getVisualCursor();
+    try std.testing.expect(vcursor_initial != null);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_initial.?.visual_col);
+
+    // Move down visually twice to get to line 2 (establishes desired_visual_col = 10)
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+
+    const vcursor_after_down = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after_down != null);
+    try std.testing.expectEqual(@as(u32, 2), vcursor_after_down.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_after_down.?.visual_col);
+
+    // Now move right (should reset the visual column tracking)
+    eb.moveRight();
+
+    const vcursor_after_right = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after_right != null);
+    try std.testing.expectEqual(@as(u32, 11), vcursor_after_right.?.visual_col); // Moved right one position
+
+    // Move up visually twice - should use current column (11), not the old desired column (10)
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+
+    const vcursor_final = ev.getVisualCursor();
+    try std.testing.expect(vcursor_final != null);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.logical_row);
+    // Should use current column (11), not the old desired column (10)
+    try std.testing.expectEqual(@as(u32, 11), vcursor_final.?.visual_col);
+}
