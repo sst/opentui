@@ -170,7 +170,7 @@ pub const EditBuffer = struct {
             self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
         }
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     /// Ensure add buffer has capacity for n bytes
@@ -455,7 +455,7 @@ pub const EditBuffer = struct {
             };
         }
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
@@ -499,7 +499,7 @@ pub const EditBuffer = struct {
             self.cursors.items[0] = .{ .row = start.row, .col = start.col, .desired_col = start.col };
         }
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn backspace(self: *EditBuffer) !void {
@@ -565,7 +565,7 @@ pub const EditBuffer = struct {
             self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
         }
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn deleteForward(self: *EditBuffer) !void {
@@ -642,7 +642,7 @@ pub const EditBuffer = struct {
         // Horizontal movement resets desired column
         cursor.desired_col = cursor.col;
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn moveRight(self: *EditBuffer) void {
@@ -665,7 +665,7 @@ pub const EditBuffer = struct {
         // Horizontal movement resets desired column
         cursor.desired_col = cursor.col;
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn moveUp(self: *EditBuffer) void {
@@ -687,7 +687,7 @@ pub const EditBuffer = struct {
             cursor.col = @min(cursor.desired_col, line_width);
         }
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn moveDown(self: *EditBuffer) void {
@@ -711,7 +711,7 @@ pub const EditBuffer = struct {
             cursor.col = @min(cursor.desired_col, line_width);
         }
 
-        self.events.emit(.cursorChanged, event_emitter.EventListener(?*anyopaque));
+        self.events.emit(.cursorChanged);
     }
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {

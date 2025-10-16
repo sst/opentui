@@ -10,16 +10,16 @@ const EventType = enum {
 const Counter = struct {
     count: u32,
 
-    pub fn increment(ctx: *Counter) void {
-        ctx.count += 1;
+    pub fn increment(ctx: *anyopaque) void {
+        const self: *Counter = @ptrCast(@alignCast(ctx));
+        self.count += 1;
     }
 
-    pub fn reset(ctx: *Counter) void {
-        ctx.count = 0;
+    pub fn reset(ctx: *anyopaque) void {
+        const self: *Counter = @ptrCast(@alignCast(ctx));
+        self.count = 0;
     }
 };
-
-const CounterListener = event_emitter.EventListener(*Counter);
 
 test "EventEmitter - can initialize and deinitialize" {
     const Emitter = event_emitter.EventEmitter(EventType);
@@ -33,12 +33,12 @@ test "EventEmitter - can add listener with on" {
     defer emitter.deinit();
 
     var counter = Counter{ .count = 0 };
-    const listener = CounterListener{
+    const listener = Emitter.Listener{
         .ctx = &counter,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.start, @ptrCast(&listener));
+    try emitter.on(.start, listener);
 
     const list = emitter.listeners.get(.start);
     try std.testing.expect(list != null);
@@ -53,18 +53,18 @@ test "EventEmitter - can add multiple listeners to same event" {
     var counter1 = Counter{ .count = 0 };
     var counter2 = Counter{ .count = 0 };
 
-    const listener1 = CounterListener{
+    const listener1 = Emitter.Listener{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = CounterListener{
+    const listener2 = Emitter.Listener{
         .ctx = &counter2,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.start, @ptrCast(&listener1));
-    try emitter.on(.start, @ptrCast(&listener2));
+    try emitter.on(.start, listener1);
+    try emitter.on(.start, listener2);
 
     const list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 2), list.?.items.len);
@@ -78,18 +78,18 @@ test "EventEmitter - can add listeners to different events" {
     var counter1 = Counter{ .count = 0 };
     var counter2 = Counter{ .count = 0 };
 
-    const listener1 = CounterListener{
+    const listener1 = Emitter.Listener{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = CounterListener{
+    const listener2 = Emitter.Listener{
         .ctx = &counter2,
         .handle = Counter.reset,
     };
 
-    try emitter.on(.start, @ptrCast(&listener1));
-    try emitter.on(.stop, @ptrCast(&listener2));
+    try emitter.on(.start, listener1);
+    try emitter.on(.stop, listener2);
 
     const start_list = emitter.listeners.get(.start);
     const stop_list = emitter.listeners.get(.stop);
@@ -107,32 +107,32 @@ test "EventEmitter - emit calls all listeners for event" {
     var counter2 = Counter{ .count = 0 };
     var counter3 = Counter{ .count = 0 };
 
-    const listener1 = CounterListener{
+    const listener1 = Emitter.Listener{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = CounterListener{
+    const listener2 = Emitter.Listener{
         .ctx = &counter2,
         .handle = Counter.increment,
     };
 
-    const listener3 = CounterListener{
+    const listener3 = Emitter.Listener{
         .ctx = &counter3,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.start, @ptrCast(&listener1));
-    try emitter.on(.start, @ptrCast(&listener2));
-    try emitter.on(.stop, @ptrCast(&listener3));
+    try emitter.on(.start, listener1);
+    try emitter.on(.start, listener2);
+    try emitter.on(.stop, listener3);
 
-    emitter.emit(.start, CounterListener);
+    emitter.emit(.start);
 
     try std.testing.expectEqual(@as(u32, 1), counter1.count);
     try std.testing.expectEqual(@as(u32, 1), counter2.count);
     try std.testing.expectEqual(@as(u32, 0), counter3.count);
 
-    emitter.emit(.stop, CounterListener);
+    emitter.emit(.stop);
 
     try std.testing.expectEqual(@as(u32, 1), counter1.count);
     try std.testing.expectEqual(@as(u32, 1), counter2.count);
@@ -145,17 +145,17 @@ test "EventEmitter - can remove listener with off" {
     defer emitter.deinit();
 
     var counter = Counter{ .count = 0 };
-    const listener = CounterListener{
+    const listener = Emitter.Listener{
         .ctx = &counter,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.start, @ptrCast(&listener));
+    try emitter.on(.start, listener);
 
     var list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 1), list.?.items.len);
 
-    emitter.off(.start, @ptrCast(&listener));
+    emitter.off(.start, &counter);
 
     list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 0), list.?.items.len);
@@ -169,28 +169,28 @@ test "EventEmitter - off removes only matching listener by reference" {
     var counter1 = Counter{ .count = 0 };
     var counter2 = Counter{ .count = 0 };
 
-    const listener1 = CounterListener{
+    const listener1 = Emitter.Listener{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = CounterListener{
+    const listener2 = Emitter.Listener{
         .ctx = &counter2,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.start, @ptrCast(&listener1));
-    try emitter.on(.start, @ptrCast(&listener2));
+    try emitter.on(.start, listener1);
+    try emitter.on(.start, listener2);
 
     var list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 2), list.?.items.len);
 
-    emitter.off(.start, @ptrCast(&listener1));
+    emitter.off(.start, &counter1);
 
     list = emitter.listeners.get(.start);
     try std.testing.expectEqual(@as(usize, 1), list.?.items.len);
 
-    emitter.emit(.start, CounterListener);
+    emitter.emit(.start);
     try std.testing.expectEqual(@as(u32, 0), counter1.count);
     try std.testing.expectEqual(@as(u32, 1), counter2.count);
 }
@@ -200,9 +200,9 @@ test "EventEmitter - emit with no listeners does not crash" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    emitter.emit(.start, CounterListener);
-    emitter.emit(.stop, CounterListener);
-    emitter.emit(.update, CounterListener);
+    emitter.emit(.start);
+    emitter.emit(.stop);
+    emitter.emit(.update);
 }
 
 test "EventEmitter - multiple emits increment counter correctly" {
@@ -211,16 +211,16 @@ test "EventEmitter - multiple emits increment counter correctly" {
     defer emitter.deinit();
 
     var counter = Counter{ .count = 0 };
-    const listener = CounterListener{
+    const listener = Emitter.Listener{
         .ctx = &counter,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.update, @ptrCast(&listener));
+    try emitter.on(.update, listener);
 
-    emitter.emit(.update, CounterListener);
-    emitter.emit(.update, CounterListener);
-    emitter.emit(.update, CounterListener);
+    emitter.emit(.update);
+    emitter.emit(.update);
+    emitter.emit(.update);
 
     try std.testing.expectEqual(@as(u32, 3), counter.count);
 }
@@ -231,19 +231,19 @@ test "EventEmitter - listeners are isolated per event type" {
     defer emitter.deinit();
 
     var counter = Counter{ .count = 0 };
-    const listener = CounterListener{
+    const listener = Emitter.Listener{
         .ctx = &counter,
         .handle = Counter.increment,
     };
 
-    try emitter.on(.start, @ptrCast(&listener));
+    try emitter.on(.start, listener);
 
-    emitter.emit(.start, CounterListener);
+    emitter.emit(.start);
     try std.testing.expectEqual(@as(u32, 1), counter.count);
 
-    emitter.emit(.stop, CounterListener);
+    emitter.emit(.stop);
     try std.testing.expectEqual(@as(u32, 1), counter.count);
 
-    emitter.emit(.start, CounterListener);
+    emitter.emit(.start);
     try std.testing.expectEqual(@as(u32, 2), counter.count);
 }
