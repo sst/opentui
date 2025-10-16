@@ -134,6 +134,11 @@ export class EditBuffer {
     return this.lib.editBufferGetTextBuffer(this.bufferPtr)
   }
 
+  public debugLogRope(): void {
+    this.guard()
+    this.lib.editBufferDebugLogRope(this.bufferPtr)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

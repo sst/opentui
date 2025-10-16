@@ -527,6 +527,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    editBufferDebugLogRope: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -1014,6 +1018,7 @@ export interface RenderLib {
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
   editBufferGetCursorPosition: (buffer: Pointer) => { line: number; charPos: number; visualColumn: number }
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer
+  editBufferDebugLogRope: (buffer: Pointer) => void
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -2048,6 +2053,10 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to get TextBuffer from EditBuffer")
     }
     return result
+  }
+
+  public editBufferDebugLogRope(buffer: Pointer): void {
+    this.opentui.symbols.editBufferDebugLogRope(buffer)
   }
 
   // EditorView selection and editing implementations

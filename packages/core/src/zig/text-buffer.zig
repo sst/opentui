@@ -842,4 +842,21 @@ pub const UnifiedTextBuffer = struct {
         // Use internal setText that doesn't call reset again
         try self.setTextInternal(content[0..bytes_read]);
     }
+
+    /// Debug log the rope structure using rope.toText
+    pub fn debugLogRope(self: *const Self) void {
+        const logger = @import("logger.zig");
+
+        logger.debug("=== TextBuffer Rope Debug ===", .{});
+        logger.debug("Line count: {}", .{self.getLineCount()});
+        logger.debug("Char count: {}", .{self.char_count});
+        logger.debug("Byte size: {}", .{self.getByteSize()});
+
+        const rope_text = self.rope.toText(self.allocator) catch {
+            logger.debug("Failed to generate rope text representation", .{});
+            return;
+        };
+        logger.debug("Rope structure: {s}", .{rope_text});
+        logger.debug("=== End Rope Debug ===", .{});
+    }
 };

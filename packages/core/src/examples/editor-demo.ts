@@ -5,6 +5,7 @@ import {
   BoxRenderable,
   TextRenderable,
   type ParsedKey,
+  KeyEvent,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
@@ -62,7 +63,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content: "ESC to return | Type to edit | Arrows to move | Backspace/Del | Enter for newline | Shift+W toggle wrap",
+    content:
+      "ESC to return | Type to edit | Arrows to move | Backspace/Del | Enter for newline | Shift+W toggle wrap | Ctrl+L debug rope",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -117,6 +119,16 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         statusText.content = `Line ${cursor.line + 1}, Col ${cursor.visualColumn + 1} | Virtual Lines: ${vlines} | Viewport: ${viewport.height}x${viewport.width} (offset ${viewport.offsetY}) | Wrap: ${wrap}`
       } catch (error) {
         // Ignore errors during shutdown
+      }
+    }
+  })
+
+  // Add keypress handler for debug logging
+  rendererInstance.keyInput.on("keypress", (key: KeyEvent) => {
+    if (key.ctrl && key.name === "l") {
+      // Ctrl+L to debug log rope
+      if (editor && !editor.isDestroyed) {
+        editor.editBuffer.debugLogRope()
       }
     }
   })

@@ -623,6 +623,10 @@ export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, 
     outVisualCol.* = pos.visual_col;
 }
 
+export fn editBufferDebugLogRope(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.debugLogRope();
+}
+
 // ===== EditorView Exports =====
 
 export fn createEditorView(edit_buffer: *edit_buffer_mod.EditBuffer, viewport_width: u32, viewport_height: u32) ?*editor_view.EditorView {

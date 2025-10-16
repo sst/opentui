@@ -794,4 +794,8 @@ pub const EditBuffer = struct {
             .char_pos = cursor.col,
         };
     }
+
+    pub fn debugLogRope(self: *const EditBuffer) void {
+        self.tb.debugLogRope();
+    }
 };
