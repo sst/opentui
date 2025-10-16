@@ -9,7 +9,7 @@ const TextBuffer = text_buffer.TextBufferArray;
 const TextBufferView = text_buffer_view.TextBufferViewArray;
 const RGBA = buffer_mod.RGBA;
 
-// ===== Basic Buffer Tests =====
+// ==Test:==
 
 test "OptimizedBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -97,7 +97,7 @@ test "OptimizedBuffer - drawText with ASCII" {
     try std.testing.expectEqual(@as(u32, 'e'), cell_e.char);
 }
 
-// ===== Grapheme Pool Exhaustion Tests =====
+// ==Test:==
 
 test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -616,8 +616,8 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     std.debug.print("\nCompleted 10000 renders successfully\n", .{});
 }
 
-test "OptimizedBuffer - extreme pool exhaustion with unique graphemes (SMALL POOL)" {
-    // Create a TINY pool to actually trigger exhaustion
+test "OptimizedBuffer - many unique graphemes with small pool" {
+    // Create a small pool to test growth
     const tiny_slots = [_]u32{ 4, 4, 4, 4, 4 }; // Only 4 slots per page
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -672,7 +672,7 @@ test "OptimizedBuffer - extreme pool exhaustion with unique graphemes (SMALL POO
         tb.setText(text_builder.items) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\nFirst setText failure at iteration {d}: {}\n", .{ render_count, err });
+                std.debug.print("\nsetText failure at iteration {d}: {}\n", .{ render_count, err });
             }
             continue;
         };
@@ -685,9 +685,8 @@ test "OptimizedBuffer - extreme pool exhaustion with unique graphemes (SMALL POO
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED at iteration {d}: {} ***\n", .{ render_count, err });
+                std.debug.print("\ndrawTextBuffer failure at iteration {d}: {}\n", .{ render_count, err });
                 std.debug.print("Grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-                std.debug.print("This confirms grapheme pool exhaustion occurs!\n", .{});
             }
             continue;
         };
@@ -695,14 +694,11 @@ test "OptimizedBuffer - extreme pool exhaustion with unique graphemes (SMALL POO
         success_count += 1;
     }
 
-    std.debug.print("\nRender attempts: {d}, Success: {d}, Failures: {d}\n", .{ render_count, success_count, failure_count });
+    std.debug.print("\nRender attempts: {d}, Success: {d}\n", .{ render_count, success_count });
     std.debug.print("Final grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
-    // If we got failures, that reproduces the issue
-    if (failure_count > 0) {
-        std.debug.print("\n*** Pool exhaustion confirmed - test successfully reproduced the issue! ***\n", .{});
-        return error.TestExpectedPoolExhaustion; // Expected failure
-    }
+    // Should complete without exhausting pool
+    try std.testing.expect(failure_count == 0);
 }
 
 test "OptimizedBuffer - continuous rendering without buffer recreation" {
@@ -741,7 +737,7 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
                 std.debug.print("Grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
                 return error.PoolExhausted;
             }
@@ -809,19 +805,19 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
         buf1.drawTextBuffer(view, 0, 0, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED in buf1 at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed in buf1 at iteration {d}: {} ***\n", .{ i, err });
             }
         };
         buf2.drawTextBuffer(view, 0, 0, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED in buf2 at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed in buf2 at iteration {d}: {} ***\n", .{ i, err });
             }
         };
         buf3.drawTextBuffer(view, 0, 0, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED in buf3 at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed in buf3 at iteration {d}: {} ***\n", .{ i, err });
             }
         };
     }
@@ -837,8 +833,8 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
     }
 }
 
-test "OptimizedBuffer - REPRODUCE ISSUE: continuous render without clear (TINY POOL)" {
-    // Create an extremely small pool
+test "OptimizedBuffer - continuous render without clear with small pool" {
+    // Create a small pool
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 }; // Only 2 slots per page
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -879,10 +875,10 @@ test "OptimizedBuffer - REPRODUCE ISSUE: continuous render without clear (TINY P
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
                 std.debug.print("Buffer grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
                 std.debug.print("This reproduces the reported grapheme pool exhaustion!\n", .{});
-                return error.PoolExhaustedAsExpected;
+                return error.PoolExhausted;
             }
             break;
         };
@@ -896,7 +892,7 @@ test "OptimizedBuffer - REPRODUCE ISSUE: continuous render without clear (TINY P
     }
 }
 
-test "OptimizedBuffer - LEAK: graphemes allocated but clipped by scissor (TINY POOL)" {
+test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     // Create an extremely small pool to trigger exhaustion quickly
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 }; // Only 3 slots per page
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -944,10 +940,10 @@ test "OptimizedBuffer - LEAK: graphemes allocated but clipped by scissor (TINY P
         buf.drawTextBuffer(view, 20, 20, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
                 std.debug.print("Buffer grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
                 std.debug.print("Graphemes allocated but clipped by scissor leaked!\n", .{});
-                return error.PoolExhaustedAsExpected;
+                return error.PoolExhausted;
             }
             break;
         };
@@ -957,12 +953,12 @@ test "OptimizedBuffer - LEAK: graphemes allocated but clipped by scissor (TINY P
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     if (failure_count > 0) {
-        std.debug.print("\n*** CONFIRMED: Scissor clipping causes grapheme leak! ***\n", .{});
-        return error.PoolExhaustedAsExpected;
+        std.debug.print("\nVerified: Scissor clipping causes grapheme leak! ***\n", .{});
+        return error.PoolExhausted;
     }
 }
 
-test "OptimizedBuffer - LEAK: drawText with alpha blending and clipping (TINY POOL)" {
+test "OptimizedBuffer - drawText with alpha blending and scissor" {
     // Create an extremely small pool
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1002,9 +998,9 @@ test "OptimizedBuffer - LEAK: drawText with alpha blending and clipping (TINY PO
         buf.drawText("• • • •", 50, 0, fg, bg_alpha, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
                 std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-                return error.PoolExhaustedAsExpected;
+                return error.PoolExhausted;
             }
             break;
         };
@@ -1014,11 +1010,11 @@ test "OptimizedBuffer - LEAK: drawText with alpha blending and clipping (TINY PO
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     if (failure_count > 0) {
-        return error.PoolExhaustedAsExpected;
+        return error.PoolExhausted;
     }
 }
 
-test "OptimizedBuffer - LEAK: many unique graphemes with alpha (TINY POOL)" {
+test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
     // Create very small pool
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1067,10 +1063,10 @@ test "OptimizedBuffer - LEAK: many unique graphemes with alpha (TINY POOL)" {
         buf.drawText(&text, @intCast(i % 70), @intCast(i / 70), fg, bg_alpha, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
-                std.debug.print("\n*** ISSUE REPRODUCED at iteration {d}: {} ***\n", .{ i, err });
+                std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
                 std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
                 std.debug.print("Allocating unique graphemes without proper cleanup!\n", .{});
-                return error.PoolExhaustedAsExpected;
+                return error.PoolExhausted;
             }
             break;
         };
@@ -1080,11 +1076,11 @@ test "OptimizedBuffer - LEAK: many unique graphemes with alpha (TINY POOL)" {
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     if (failure_count > 0) {
-        return error.PoolExhaustedAsExpected;
+        return error.PoolExhausted;
     }
 }
 
-test "OptimizedBuffer - LEAK: fill buffer with unique graphemes (VERY TINY POOL)" {
+test "OptimizedBuffer - fill buffer with many unique graphemes" {
     // Create an EXTREMELY small pool that cannot grow enough
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 }; // Only 2 slots per page
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1131,10 +1127,10 @@ test "OptimizedBuffer - LEAK: fill buffer with unique graphemes (VERY TINY POOL)
             buf.drawText(&char_bytes, x, y, fg, bg, 0) catch |err| {
                 failure_count += 1;
                 if (failure_count == 1) {
-                    std.debug.print("\n*** ISSUE REPRODUCED after {d} unique graphemes: {} ***\n", .{ success_count, err });
+                    std.debug.print("\nTest failed after {d} unique graphemes: {} ***\n", .{ success_count, err });
                     std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
                     std.debug.print("Pool exhausted when many unique graphemes held simultaneously!\n", .{});
-                    return error.PoolExhaustedAsExpected;
+                    return error.PoolExhausted;
                 }
             };
 
@@ -1153,7 +1149,7 @@ test "OptimizedBuffer - LEAK: fill buffer with unique graphemes (VERY TINY POOL)
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     if (failure_count > 0) {
-        return error.PoolExhaustedAsExpected;
+        return error.PoolExhausted;
     }
 }
 
@@ -1209,12 +1205,12 @@ test "OptimizedBuffer - verify pool growth works correctly" {
 
     std.debug.print("\nSuccessfully placed {d} unique graphemes with pool growing from 1 slot/page\n", .{success_count});
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-    std.debug.print("This proves pool growth mechanism works correctly\n", .{});
+    std.debug.print("Shows pool growth mechanism works correctly\n", .{});
 
     try std.testing.expect(success_count >= 100);
 }
 
-test "OptimizedBuffer - CRITICAL BUG: refcount leak when overwriting graphemes" {
+test "OptimizedBuffer - repeated overwriting of same grapheme" {
     // Use TINY pool to trigger the bug quickly
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1239,7 +1235,7 @@ test "OptimizedBuffer - CRITICAL BUG: refcount leak when overwriting graphemes" 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    std.debug.print("\n=== TESTING REFCOUNT LEAK HYPOTHESIS ===\n", .{});
+    std.debug.print("\nTesting:\n", .{});
 
     // Test the suspected bug:
     // pool.alloc() -> refcount=1
@@ -1258,9 +1254,9 @@ test "OptimizedBuffer - CRITICAL BUG: refcount leak when overwriting graphemes" 
     var alloc_failed = false;
     while (i < 500) : (i += 1) {
         buf.drawText("•", 0, 0, fg, bg, 0) catch |err| {
-            std.debug.print("\n*** BUG REPRODUCED at iteration {d}: {} ***\n", .{ i + 1, err });
+            std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i + 1, err });
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-            std.debug.print("\nROOT CAUSE CONFIRMED:\n", .{});
+            std.debug.print("\nAnalysis CONFIRMED:\n", .{});
             std.debug.print("  1. pool.alloc() creates grapheme with refcount=1\n", .{});
             std.debug.print("  2. set() calls tracker.add() which increfs to refcount=2\n", .{});
             std.debug.print("  3. We never decref our initial ownership!\n", .{});
@@ -1283,15 +1279,15 @@ test "OptimizedBuffer - CRITICAL BUG: refcount leak when overwriting graphemes" 
 
         // Even if it didn't fail, check if tracker count grew (indicates leak)
         if (buf.grapheme_tracker.getGraphemeCount() > 2) {
-            std.debug.print("\n*** LEAK DETECTED: Tracker count should be 1, but is {d} ***\n", .{buf.grapheme_tracker.getGraphemeCount()});
-            return error.RefcountLeakDetected;
+            std.debug.print("\nTracker count issue: Tracker count should be 1, but is {d} ***\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            return error.RefcountLeak;
         }
     } else {
-        return error.RefcountLeakReproduced;
+        return error.RefcountLeak;
     }
 }
 
-test "OptimizedBuffer - CRITICAL BUG REPRODUCED: setRaw does not track graphemes!" {
+test "OptimizedBuffer - two-buffer pattern with setRaw" {
     // This reproduces the EXACT bug in renderer.zig
     const tiny_slots = [_]u32{ 4, 4, 4, 4, 4 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1327,7 +1323,7 @@ test "OptimizedBuffer - CRITICAL BUG REPRODUCED: setRaw does not track graphemes
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    std.debug.print("\n=== REPRODUCING RENDERER BUG ===\n", .{});
+    std.debug.print("\nTest:\n", .{});
 
     var frame: u32 = 0;
     var alloc_failed = false;
@@ -1337,7 +1333,7 @@ test "OptimizedBuffer - CRITICAL BUG REPRODUCED: setRaw does not track graphemes
 
         // 1. Draw to nextBuffer (like renderables do)
         nextBuffer.drawText("• Test •", 0, 0, fg, bg, 0) catch |err| {
-            std.debug.print("\n*** BUG REPRODUCED at frame {d}: {} ***\n", .{ frame, err });
+            std.debug.print("\nTest failed at frame {d}: {} ***\n", .{ frame, err });
             std.debug.print("Next buffer tracker: {d}\n", .{nextBuffer.grapheme_tracker.getGraphemeCount()});
             std.debug.print("Current buffer tracker: {d}\n", .{currentBuffer.grapheme_tracker.getGraphemeCount()});
             std.debug.print("\nBUG CONFIRMED:\n", .{});
@@ -1360,15 +1356,15 @@ test "OptimizedBuffer - CRITICAL BUG REPRODUCED: setRaw does not track graphemes
     }
 
     if (alloc_failed) {
-        std.debug.print("\n✓✓✓ RENDERER BUG SUCCESSFULLY REPRODUCED ✓✓✓\n", .{});
-        return error.SetRawLeaksGraphemes;
+        std.debug.print("\n\n", .{});
+        return error.SetRawLeak;
     }
 
     std.debug.print("\nCompleted {d} frames\n", .{frame});
     std.debug.print("This should have failed if setRaw() doesn't track graphemes properly\n", .{});
 }
 
-test "OptimizedBuffer - REPRODUCE: grapheme refcount leak via set()+clear() cycle" {
+test "OptimizedBuffer - set and clear cycle" {
     // Use TINY pool
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1393,7 +1389,7 @@ test "OptimizedBuffer - REPRODUCE: grapheme refcount leak via set()+clear() cycl
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    std.debug.print("\n=== TESTING ALLOC->SET->CLEAR CYCLE ===\n", .{});
+    std.debug.print("\nTesting:\n", .{});
 
     // The bug happens when:
     // 1. We allocate a grapheme in pool (refcount=1)
@@ -1408,9 +1404,9 @@ test "OptimizedBuffer - REPRODUCE: grapheme refcount leak via set()+clear() cycl
     while (frame < 200) : (frame += 1) {
         // Draw grapheme
         buf.drawText("•", 0, 0, fg, bg, 0) catch |err| {
-            std.debug.print("\n*** BUG REPRODUCED at frame {d}: {} ***\n", .{ frame, err });
+            std.debug.print("\nTest failed at frame {d}: {} ***\n", .{ frame, err });
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-            std.debug.print("\nThis proves graphemes leak via alloc()->set()->clear() cycle!\n", .{});
+            std.debug.print("\nShows graphemes leak via alloc()->set()->clear() cycle!\n", .{});
             alloc_failed = true;
             break;
         };
@@ -1424,14 +1420,14 @@ test "OptimizedBuffer - REPRODUCE: grapheme refcount leak via set()+clear() cycl
     }
 
     if (alloc_failed) {
-        std.debug.print("\n✓✓✓ BUG REPRODUCED: alloc()->set()->clear() leaks graphemes ✓✓✓\n", .{});
-        return error.AllocSetClearLeaksGraphemes;
+        std.debug.print("\n\n", .{});
+        return error.AllocSetClearLeak;
     }
 
     std.debug.print("\nCompleted {d} alloc->set->clear cycles without pool exhaustion\n", .{frame});
 }
 
-test "OptimizedBuffer - REPRODUCE: repeated drawTextBuffer without clear (EDITOR SCENARIO)" {
+test "OptimizedBuffer - repeated drawTextBuffer without clear" {
     //Use EXTREMELY TINY pool
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1465,7 +1461,7 @@ test "OptimizedBuffer - REPRODUCE: repeated drawTextBuffer without clear (EDITOR
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\n=== SIMULATING EDITOR AT 60FPS (setText once, render repeatedly) ===\n", .{});
+    std.debug.print("\nTest:\n", .{});
 
     var frame: u32 = 0;
     var alloc_failed = false;
@@ -1475,9 +1471,9 @@ test "OptimizedBuffer - REPRODUCE: repeated drawTextBuffer without clear (EDITOR
     while (frame < 500) : (frame += 1) {
         // Draw text buffer (like editor does every frame)
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
-            std.debug.print("\n✓✓✓ BUG REPRODUCED at frame {d}: {} ✓✓✓\n", .{ frame, err });
+            std.debug.print("\n\n", .{ frame, err });
             std.debug.print("Buffer tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-            std.debug.print("\nROOT CAUSE:\n", .{});
+            std.debug.print("\nAnalysis:\n", .{});
             std.debug.print("  Every call to drawTextBuffer() does pool.alloc() for each grapheme\n", .{});
             std.debug.print("  The new grapheme ID is passed to set() which tracker.add()s it\n", .{});
             std.debug.print("  But the PREVIOUS grapheme at that position is tracker.remove()d\n", .{});
@@ -1493,15 +1489,15 @@ test "OptimizedBuffer - REPRODUCE: repeated drawTextBuffer without clear (EDITOR
     }
 
     if (alloc_failed) {
-        std.debug.print("\n✓✓✓ EDITOR SCENARIO BUG REPRODUCED ✓✓✓\n", .{});
-        return error.DrawTextBufferLeaksOnEveryFrame;
+        std.debug.print("\n\n", .{});
+        return error.DrawTextBufferLeak;
     }
 
     std.debug.print("\nCompleted {d} drawTextBuffer calls\n", .{frame});
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
-test "OptimizedBuffer - REPRODUCE: exact renderer two-buffer pattern with setRaw" {
+test "OptimizedBuffer - renderer two-buffer swap pattern" {
     // TINY POOL
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1545,7 +1541,7 @@ test "OptimizedBuffer - REPRODUCE: exact renderer two-buffer pattern with setRaw
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try current.clear(bg, null);
 
-    std.debug.print("\n=== EXACT RENDERER PATTERN: draw to next, setRaw to current, clear next ===\n", .{});
+    std.debug.print("\nTest:\n", .{});
 
     var frame: u32 = 0;
     var alloc_failed = false;
@@ -1553,7 +1549,7 @@ test "OptimizedBuffer - REPRODUCE: exact renderer two-buffer pattern with setRaw
     while (frame < 300) : (frame += 1) {
         // 1. Renderables draw to next buffer
         next.drawTextBuffer(view, 0, 0, null) catch |err| {
-            std.debug.print("\n✓✓✓ BUG REPRODUCED at frame {d}: {} ✓✓✓\n", .{ frame, err });
+            std.debug.print("\n\n", .{ frame, err });
             std.debug.print("Next tracker: {d}, Current tracker: {d}\n", .{ next.grapheme_tracker.getGraphemeCount(), current.grapheme_tracker.getGraphemeCount() });
             std.debug.print("\nThe bug is in drawTextBuffer + set/setRaw pattern!\n", .{});
             alloc_failed = true;
@@ -1577,14 +1573,14 @@ test "OptimizedBuffer - REPRODUCE: exact renderer two-buffer pattern with setRaw
     }
 
     if (alloc_failed) {
-        std.debug.print("\n✓✓✓ EXACT RENDERER PATTERN REPRODUCED THE BUG ✓✓✓\n", .{});
-        return error.RendererTwoBufferPatternLeaks;
+        std.debug.print("\n\n", .{});
+        return error.RendererPatternLeak;
     }
 
     std.debug.print("\nCompleted {d} frames with renderer pattern\n", .{frame});
 }
 
-test "OptimizedBuffer - REPRODUCE: sustained rendering like real editor (TINY POOL, 3000 frames)" {
+test "OptimizedBuffer - sustained rendering 3000 frames" {
     // EXTREMELY TINY POOL - smallest possible
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1618,7 +1614,7 @@ test "OptimizedBuffer - REPRODUCE: sustained rendering like real editor (TINY PO
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\n=== SUSTAINED RENDERING: 3000 frames (50 seconds at 60fps) ===\n", .{});
+    std.debug.print("\nTest:\n", .{});
 
     var frame: u32 = 0;
     var alloc_failed = false;
@@ -1626,7 +1622,7 @@ test "OptimizedBuffer - REPRODUCE: sustained rendering like real editor (TINY PO
     // Simulate 50 seconds at 60fps = 3000 frames
     while (frame < 3000) : (frame += 1) {
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
-            std.debug.print("\n✓✓✓ BUG FINALLY REPRODUCED at frame {d} ({d:.1}s at 60fps) ✓✓✓\n", .{ frame, @as(f32, @floatFromInt(frame)) / 60.0 });
+            std.debug.print("\n\n", .{ frame, @as(f32, @floatFromInt(frame)) / 60.0 });
             std.debug.print("Error: {}\n", .{err});
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
             alloc_failed = true;
@@ -1641,14 +1637,14 @@ test "OptimizedBuffer - REPRODUCE: sustained rendering like real editor (TINY PO
     }
 
     if (alloc_failed) {
-        return error.SustainedRenderingLeaksGraphemes;
+        return error.SustainedRenderingLeak;
     }
 
     std.debug.print("\nCompleted {d} frames ({d} seconds at 60fps)\n", .{ frame, frame / 60 });
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
-test "OptimizedBuffer - SMOKING GUN: render CHANGING content repeatedly (TINY POOL)" {
+test "OptimizedBuffer - rendering with changing content" {
     // TINY POOL
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1679,7 +1675,7 @@ test "OptimizedBuffer - SMOKING GUN: render CHANGING content repeatedly (TINY PO
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\n=== CHANGING CONTENT EACH FRAME (should trigger leak) ===\n", .{});
+    std.debug.print("\nTest:\n", .{});
 
     var frame: u32 = 0;
     var alloc_failed = false;
@@ -1705,7 +1701,7 @@ test "OptimizedBuffer - SMOKING GUN: render CHANGING content repeatedly (TINY PO
         tb.setText(&text) catch continue;
 
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
-            std.debug.print("\n✓✓✓ BUG REPRODUCED at frame {d} ✓✓✓\n", .{frame});
+            std.debug.print("\n\n", .{frame});
             std.debug.print("Error: {}\n", .{err});
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
             std.debug.print("\nCause: pool.alloc() returns refcount=1, tracker.add() increfs to 2,\n", .{});
@@ -1720,14 +1716,14 @@ test "OptimizedBuffer - SMOKING GUN: render CHANGING content repeatedly (TINY PO
     }
 
     if (alloc_failed) {
-        return error.ChangingContentLeaksGraphemes;
+        return error.ChangingContentLeak;
     }
 
     std.debug.print("\nCompleted {d} frames with changing content\n", .{frame});
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
-test "OptimizedBuffer - FINAL ATTEMPT: multiple TextBuffers + multiple renders (ABSURDLY TINY)" {
+test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
     // ABSURDLY TINY - 1 slot per page!
     const one_slot = [_]u32{ 1, 1, 1, 1, 1 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1772,7 +1768,7 @@ test "OptimizedBuffer - FINAL ATTEMPT: multiple TextBuffers + multiple renders (
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\n=== COMPLEX SCENARIO: 3 TextBuffers, multiple renders per frame ===\n", .{});
+    std.debug.print("\nTest:\n", .{});
 
     var frame: u32 = 0;
     var alloc_failed = false;
@@ -1802,7 +1798,7 @@ test "OptimizedBuffer - FINAL ATTEMPT: multiple TextBuffers + multiple renders (
 
     if (alloc_failed) {
         std.debug.print("Tracker: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-        return error.MultipleTextBuffersLeakGraphemes;
+        return error.MultipleTextBuffersLeak;
     }
 
     std.debug.print("\nCompleted {d} frames with 3 TextBuffers ({d} total renders)\n", .{ frame, frame * 3 });
