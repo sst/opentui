@@ -917,36 +917,23 @@ pub const OptimizedBuffer = struct {
                 var special_idx: usize = 0;
                 var byte_offset: u32 = 0;
 
-                // Compute initial byte_offset for our starting column
-                // Formula: byte_offset = col + Σ(byte_len - width) for all specials before col
-                byte_offset = col;
-                var si: usize = 0;
-                while (si < specials.len and specials[si].col_offset < col) {
-                    const s = specials[si];
-                    // Each special contributes (byte_len - width) extra bytes beyond its column width
-                    byte_offset += @as(u32, s.byte_len) - @as(u32, s.width);
-                    si += 1;
-                }
-
-                // Fast-forward special_idx to first special at or after our starting column
-                special_idx = si;
-
                 while (col < col_end) {
-                    // Check if we have a special at this column
-                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+                    // Check if we have a special at this column (col_offset is relative to chunk start)
+                    const col_in_chunk = col - vchunk.grapheme_start;
+                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col_in_chunk;
 
                     var grapheme_bytes: []const u8 = undefined;
                     var g_width: u8 = undefined;
 
                     if (at_special) {
-                        // Multibyte grapheme
+                        // Multibyte grapheme - use the special's byte_offset directly
                         const g = specials[special_idx];
                         grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
                         g_width = g.width;
-                        byte_offset += g.byte_len;
+                        byte_offset = g.byte_offset + g.byte_len;
                         special_idx += 1;
                     } else {
-                        // ASCII character
+                        // ASCII character - use current byte_offset
                         if (byte_offset >= chunk_bytes.len) break;
                         grapheme_bytes = chunk_bytes[byte_offset .. byte_offset + 1];
                         g_width = 1;

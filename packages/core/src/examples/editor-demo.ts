@@ -112,7 +112,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         const cursor = editor.cursor
         const viewport = editor.editorView.getViewport()
         const vlines = editor.editorView.getVirtualLineCount()
-        const wrap = editor.wrap ? "ON" : "OFF"
+        const wrap = editor.wrapMode !== "none" ? "ON" : "OFF"
 
         statusText.content = `Line ${cursor.line + 1}, Col ${cursor.visualColumn + 1} | Virtual Lines: ${vlines} | Viewport: ${viewport.height}x${viewport.width} (offset ${viewport.offsetY}) | Wrap: ${wrap}`
       } catch (error) {
