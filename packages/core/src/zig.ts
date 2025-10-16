@@ -605,10 +605,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "ptr"],
       returns: "void",
     },
-    editorViewSetText: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "void",
-    },
     editorViewGetText: {
       args: ["ptr", "ptr", "usize"],
       returns: "usize",
@@ -1049,7 +1045,7 @@ export interface RenderLib {
   // EditBuffer methods
   createEditBuffer: (widthMethod: WidthMethod) => Pointer
   destroyEditBuffer: (buffer: Pointer) => void
-  editBufferSetText: (buffer: Pointer, text: string) => void
+  editBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
   editBufferGetText: (buffer: Pointer, maxLength: number) => Uint8Array | null
   editBufferInsertChar: (buffer: Pointer, char: string) => void
   editBufferInsertText: (buffer: Pointer, text: string) => void
@@ -1109,7 +1105,6 @@ export interface RenderLib {
   editorViewDeleteLine: (view: Pointer) => void
   editorViewSetCursor: (view: Pointer, row: number, col: number) => void
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
-  editorViewSetText: (view: Pointer, text: string) => void
   editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetVisualCursor: (view: Pointer) => VisualCursor | null
   editorViewLogicalToVisualCursor: (view: Pointer, logicalRow: number, logicalCol: number) => VisualCursor | null
@@ -2029,8 +2024,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.destroyEditBuffer(buffer)
   }
 
-  public editBufferSetText(buffer: Pointer, text: string): void {
-    const textBytes = this.encoder.encode(text)
+  public editBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
     this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length)
   }
 
@@ -2224,11 +2218,6 @@ class FFIRenderLib implements RenderLib {
     const col = new Uint32Array(1)
     this.opentui.symbols.editorViewGetCursor(view, ptr(row), ptr(col))
     return { row: row[0], col: col[0] }
-  }
-
-  public editorViewSetText(view: Pointer, text: string): void {
-    const textBytes = this.encoder.encode(text)
-    this.opentui.symbols.editorViewSetText(view, textBytes, textBytes.length)
   }
 
   public editorViewGetText(view: Pointer, maxLength: number): Uint8Array | null {

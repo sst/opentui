@@ -361,11 +361,14 @@ test "EditorView - setText resets viewport to top" {
     var vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0); // Scrolled down
 
-    // setText should reset to top
-    try ev.setText("New Line 0\nNew Line 1\nNew Line 2");
+    // setText should reset cursor to top, and EditorView should react to dirty flag
+    try eb.setText("New Line 0\nNew Line 1\nNew Line 2");
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
+
+    // Trigger updateIfDirty by getting virtual lines (simulates rendering)
+    _ = ev.getVirtualLines();
 
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
@@ -550,7 +553,7 @@ test "EditorView - VisualCursor with character wrapping" {
     ev.setWrapMode(.char);
 
     // Insert a long line that will wrap
-    try ev.setText("This is a very long line that will definitely wrap at 20 characters");
+    try eb.setText("This is a very long line that will definitely wrap at 20 characters");
 
     // Go to logical position (0, 25) - should be on second visual line
     try ev.setCursor(0, 25);
@@ -583,7 +586,7 @@ test "EditorView - VisualCursor with word wrapping" {
     ev.setWrapMode(.word);
 
     // Insert text that will wrap at word boundaries
-    try ev.setText("Hello world this is a test of word wrapping");
+    try eb.setText("Hello world this is a test of word wrapping");
 
     // Move to end of line
     const line_count = eb.getTextBuffer().getLineCount();
@@ -612,7 +615,7 @@ test "EditorView - moveUpVisual with wrapping" {
     ev.setWrapMode(.char);
 
     // Insert a long line that wraps
-    try ev.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
+    try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
     // Move to end of line
     try ev.setCursor(0, 50);
@@ -652,7 +655,7 @@ test "EditorView - moveDownVisual with wrapping" {
     ev.setWrapMode(.char);
 
     // Insert a long line that wraps
-    try ev.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
+    try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
     // Start at beginning
     try ev.setCursor(0, 0);
@@ -691,7 +694,7 @@ test "EditorView - visualToLogicalCursor conversion" {
     ev.setWrapMode(.char);
 
     // Insert wrapped text
-    try ev.setText("12345678901234567890123456789012345");
+    try eb.setText("12345678901234567890123456789012345");
 
     // Virtual line 1, col 5 should map to logical line 0, col 25
     const vcursor = ev.visualToLogicalCursor(1, 5);
@@ -716,7 +719,7 @@ test "EditorView - moveUpVisual at top boundary" {
     defer ev.deinit();
 
     ev.setWrapMode(.char);
-    try ev.setText("Short line");
+    try eb.setText("Short line");
 
     // At top - should not move
     try ev.setCursor(0, 0);
@@ -744,7 +747,7 @@ test "EditorView - moveDownVisual at bottom boundary" {
     defer ev.deinit();
 
     ev.setWrapMode(.char);
-    try ev.setText("Short line\nSecond line");
+    try eb.setText("Short line\nSecond line");
 
     // Move to last line
     try ev.setCursor(1, 0);
@@ -774,7 +777,7 @@ test "EditorView - VisualCursor preserves desired column across wrapped lines" {
     ev.setWrapMode(.char);
 
     // Insert long wrapped line
-    try ev.setText("12345678901234567890123456789012345678901234567890");
+    try eb.setText("12345678901234567890123456789012345678901234567890");
 
     // Move to column 15 on first visual line
     try ev.setCursor(0, 15);
@@ -808,7 +811,7 @@ test "EditorView - VisualCursor with multiple logical lines and wrapping" {
     ev.setWrapMode(.char);
 
     // Insert multiple lines, some that wrap
-    try ev.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3");
+    try eb.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3");
 
     // Move to line 1 (the long wrapped line)
     try ev.setCursor(1, 30);
@@ -835,7 +838,7 @@ test "EditorView - logicalToVisualCursor handles cursor past line end" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    try ev.setText("Short");
+    try eb.setText("Short");
 
     // Try to convert logical position past line end
     const vcursor = ev.logicalToVisualCursor(0, 100);

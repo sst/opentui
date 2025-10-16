@@ -195,11 +195,6 @@ export class EditorView {
     return this.lib.editorViewGetCursor(this.viewPtr)
   }
 
-  public setText(text: string): void {
-    this.guard()
-    this.lib.editorViewSetText(this.viewPtr, text)
-  }
-
   public getText(): string {
     this.guard()
     const maxLength = 1024 * 1024 // 1MB buffer

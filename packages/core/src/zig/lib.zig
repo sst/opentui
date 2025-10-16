@@ -786,11 +786,6 @@ export fn editorViewGetCursor(view: *editor_view.EditorView, outRow: *u32, outCo
     outCol.* = cursor.col;
 }
 
-export fn editorViewSetText(view: *editor_view.EditorView, textPtr: [*]const u8, textLen: usize) void {
-    const text = textPtr[0..textLen];
-    view.setText(text) catch {};
-}
-
 export fn editorViewGetText(view: *editor_view.EditorView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getText(outBuffer);

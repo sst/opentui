@@ -4,6 +4,9 @@ const tb = @import("text-buffer.zig");
 const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
+const gp = @import("grapheme.zig");
+const Graphemes = @import("Graphemes");
+const DisplayWidth = @import("DisplayWidth");
 const EditBuffer = eb.EditBuffer;
 
 // Use the unified types to match EditBuffer
@@ -123,17 +126,32 @@ pub const EditorView = struct {
         }
     }
 
+    /// Update and ensure cursor is visible if the buffer is dirty
+    /// This should be called before rendering to react to buffer changes (e.g., setText)
+    pub fn updateIfDirty(self: *EditorView) void {
+        const buffer_dirty = self.text_buffer_view.text_buffer.isViewDirty(self.text_buffer_view.view_id);
+        if (buffer_dirty) {
+            // Buffer changed (e.g., setText was called), ensure cursor is visible
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            self.ensureCursorVisible(cursor.row);
+        }
+    }
+
     /// Get virtual lines for the current viewport
     /// Returns a slice of virtual lines that are visible in the viewport
     /// The TextBufferView handles viewport slicing internally
+    /// Automatically ensures cursor is visible if buffer is dirty
     pub fn getVirtualLines(self: *EditorView) []const VirtualLine {
+        self.updateIfDirty();
         return self.text_buffer_view.getVirtualLines();
     }
 
     /// Get cached line info for the viewport
     /// Returns character offsets, widths, and max width for viewport lines only
     /// The TextBufferView handles viewport slicing internally
+    /// Automatically ensures cursor is visible if buffer is dirty
     pub fn getCachedLineInfo(self: *EditorView) tbv.LineInfo {
+        self.updateIfDirty();
         return self.text_buffer_view.getCachedLineInfo();
     }
 
@@ -239,12 +257,6 @@ pub const EditorView = struct {
         self.ensureCursorVisible(cursor.row);
     }
 
-    /// Set text and ensure cursor is visible (resets to 0,0)
-    pub fn setText(self: *EditorView, text: []const u8) !void {
-        try self.edit_buffer.setText(text);
-        self.ensureCursorVisible(0);
-    }
-
     /// Get primary cursor position
     pub fn getPrimaryCursor(self: *const EditorView) eb.Cursor {
         return self.edit_buffer.getPrimaryCursor();
@@ -271,7 +283,9 @@ pub const EditorView = struct {
 
     /// Translate EditBuffer cursor (logical row/col) to visual cursor (accounting for wrapping)
     /// Returns null if cursor is out of bounds
+    /// Automatically ensures cursor is visible if buffer is dirty
     pub fn getVisualCursor(self: *EditorView) ?VisualCursor {
+        self.updateIfDirty();
         const cursor = self.edit_buffer.getPrimaryCursor();
         return self.logicalToVisualCursor(cursor.row, cursor.col);
     }

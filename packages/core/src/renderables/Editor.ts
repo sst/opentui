@@ -4,7 +4,6 @@ import type { KeyEvent } from "../lib/KeyHandler"
 
 export interface EditorOptions extends EditBufferOptions {
   content?: string
-  interactive?: boolean
 }
 
 /**
@@ -13,18 +12,15 @@ export interface EditorOptions extends EditBufferOptions {
  */
 export class EditorRenderable extends EditBufferRenderable {
   private _content: string
-  private _interactive: boolean
 
   protected _contentDefaultOptions = {
     content: "",
-    interactive: true,
   } satisfies Partial<EditorOptions>
 
   constructor(ctx: RenderContext, options: EditorOptions) {
     super(ctx, options)
 
     this._content = options.content ?? this._contentDefaultOptions.content
-    this._interactive = options.interactive ?? this._contentDefaultOptions.interactive
     this.updateContent(this._content)
   }
 
@@ -33,8 +29,6 @@ export class EditorRenderable extends EditBufferRenderable {
    * This is called automatically when the editor is focused and a key is pressed.
    */
   public handleKeyPress(key: KeyEvent | string): boolean {
-    if (!this._interactive) return false
-
     const keyName = typeof key === "string" ? key : key.name
     const keySequence = typeof key === "string" ? key : key.sequence
     const keyCtrl = typeof key === "string" ? false : key.ctrl
@@ -143,7 +137,7 @@ export class EditorRenderable extends EditBufferRenderable {
   }
 
   private updateContent(content: string): void {
-    this.editorView.setText(content)
+    this.editBuffer.setText(content)
     this.yogaNode.markDirty()
     this.requestRender()
   }
@@ -204,8 +198,8 @@ export class EditorRenderable extends EditBufferRenderable {
     const before = fullText.substring(0, start)
     const after = fullText.substring(end)
 
-    // Set the new text (this will reset cursor to start and ensure it's visible)
-    this.editorView.setText(before + after)
+    // Set the new text (this will reset cursor to start)
+    this.editBuffer.setText(before + after)
 
     // Calculate the line and byte offset for the cursor position
     // Count newlines in 'before' to get the line number

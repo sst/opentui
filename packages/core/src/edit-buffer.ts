@@ -17,7 +17,7 @@ export class EditBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _destroyed: boolean = false
-  private _textBytes?: Uint8Array // Keep UTF-8 bytes alive for Zig reference
+  private _textBytes?: Uint8Array
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -42,7 +42,8 @@ export class EditBuffer {
   public setText(text: string): void {
     this.guard()
     this._textBytes = this.lib.encoder.encode(text)
-    this.lib.editBufferSetText(this.bufferPtr, text)
+    console.log("setText: textBytes", this._textBytes)
+    this.lib.editBufferSetText(this.bufferPtr, this._textBytes)
   }
 
   public getText(): string {
@@ -63,6 +64,7 @@ export class EditBuffer {
 
   public insertText(text: string): void {
     this.guard()
+    console.log("insertText: text", text)
     this.lib.editBufferInsertText(this.bufferPtr, text)
   }
 
