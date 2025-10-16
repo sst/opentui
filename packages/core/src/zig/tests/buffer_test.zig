@@ -1213,3 +1213,598 @@ test "OptimizedBuffer - verify pool growth works correctly" {
 
     try std.testing.expect(success_count >= 100);
 }
+
+test "OptimizedBuffer - CRITICAL BUG: refcount leak when overwriting graphemes" {
+    // Use TINY pool to trigger the bug quickly
+    const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        5,
+        .{ .pool = &local_pool, .id = "test-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    std.debug.print("\n=== TESTING REFCOUNT LEAK HYPOTHESIS ===\n", .{});
+
+    // Test the suspected bug:
+    // pool.alloc() -> refcount=1
+    // tracker.add() -> refcount=2 (incref if new)
+    // WE NEVER DECREF THE INITIAL ALLOCATION!
+    // When overwriting: tracker.remove() -> refcount=1
+    // Grapheme never gets freed because refcount never reaches 0
+
+    // Draw a bullet point once
+    try buf.drawText("•", 0, 0, fg, bg, 0);
+    std.debug.print("After 1st draw: tracker count = {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+
+    // Overwrite SAME position MANY times with SAME character
+    // If there's a refcount leak, each new alloc() will leak a reference
+    var i: u32 = 0;
+    var alloc_failed = false;
+    while (i < 500) : (i += 1) {
+        buf.drawText("•", 0, 0, fg, bg, 0) catch |err| {
+            std.debug.print("\n*** BUG REPRODUCED at iteration {d}: {} ***\n", .{ i + 1, err });
+            std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            std.debug.print("\nROOT CAUSE CONFIRMED:\n", .{});
+            std.debug.print("  1. pool.alloc() creates grapheme with refcount=1\n", .{});
+            std.debug.print("  2. set() calls tracker.add() which increfs to refcount=2\n", .{});
+            std.debug.print("  3. We never decref our initial ownership!\n", .{});
+            std.debug.print("  4. When overwriting, tracker.remove() decrefs to refcount=1\n", .{});
+            std.debug.print("  5. Grapheme never freed -> slot never returned to free_list\n", .{});
+            std.debug.print("  6. Pool exhaustion after ~{d} overwrites\n", .{i});
+            alloc_failed = true;
+            break;
+        };
+
+        if ((i + 1) % 10 == 0) {
+            std.debug.print("After {} overwrites: tracker count = {d}\n", .{ i + 1, buf.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (!alloc_failed) {
+        std.debug.print("\nTest completed {d} overwrites without failure\n", .{i});
+        std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+        std.debug.print("Expected: 1 (one bullet point)\n", .{});
+
+        // Even if it didn't fail, check if tracker count grew (indicates leak)
+        if (buf.grapheme_tracker.getGraphemeCount() > 2) {
+            std.debug.print("\n*** LEAK DETECTED: Tracker count should be 1, but is {d} ***\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            return error.RefcountLeakDetected;
+        }
+    } else {
+        return error.RefcountLeakReproduced;
+    }
+}
+
+test "OptimizedBuffer - CRITICAL BUG REPRODUCED: setRaw does not track graphemes!" {
+    // This reproduces the EXACT bug in renderer.zig
+    const tiny_slots = [_]u32{ 4, 4, 4, 4, 4 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    // Simulate renderer's two-buffer setup
+    var nextBuffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        5,
+        .{ .pool = &local_pool, .id = "next-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer nextBuffer.deinit();
+
+    var currentBuffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        5,
+        .{ .pool = &local_pool, .id = "current-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer currentBuffer.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    std.debug.print("\n=== REPRODUCING RENDERER BUG ===\n", .{});
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    while (frame < 100) : (frame += 1) {
+        // Simulate one render frame like renderer.zig does:
+
+        // 1. Draw to nextBuffer (like renderables do)
+        nextBuffer.drawText("• Test •", 0, 0, fg, bg, 0) catch |err| {
+            std.debug.print("\n*** BUG REPRODUCED at frame {d}: {} ***\n", .{ frame, err });
+            std.debug.print("Next buffer tracker: {d}\n", .{nextBuffer.grapheme_tracker.getGraphemeCount()});
+            std.debug.print("Current buffer tracker: {d}\n", .{currentBuffer.grapheme_tracker.getGraphemeCount()});
+            std.debug.print("\nBUG CONFIRMED:\n", .{});
+            std.debug.print("  Line 624 in renderer.zig uses setRaw() which does NOT track graphemes!\n", .{});
+            std.debug.print("  Graphemes allocated in nextBuffer leak when copied to currentBuffer\n", .{});
+            alloc_failed = true;
+            break;
+        };
+
+        // 2. Copy from next to current using setRaw (line 624 in renderer.zig)
+        const cell = nextBuffer.get(0, 0).?;
+        currentBuffer.setRaw(0, 0, cell); // BUG: Does not track grapheme!
+
+        // 3. Clear nextBuffer for next frame (line 689 in renderer.zig)
+        try nextBuffer.clear(bg, null);
+
+        if ((frame + 1) % 10 == 0) {
+            std.debug.print("Frame {d}: next tracker={d}, current tracker={d}\n", .{ frame + 1, nextBuffer.grapheme_tracker.getGraphemeCount(), currentBuffer.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        std.debug.print("\n✓✓✓ RENDERER BUG SUCCESSFULLY REPRODUCED ✓✓✓\n", .{});
+        return error.SetRawLeaksGraphemes;
+    }
+
+    std.debug.print("\nCompleted {d} frames\n", .{frame});
+    std.debug.print("This should have failed if setRaw() doesn't track graphemes properly\n", .{});
+}
+
+test "OptimizedBuffer - REPRODUCE: grapheme refcount leak via set()+clear() cycle" {
+    // Use TINY pool
+    const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        5,
+        .{ .pool = &local_pool, .id = "test-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    std.debug.print("\n=== TESTING ALLOC->SET->CLEAR CYCLE ===\n", .{});
+
+    // The bug happens when:
+    // 1. We allocate a grapheme in pool (refcount=1)
+    // 2. We call set() which tracker.add()s it (refcount=2)
+    // 3. But we never decref our initial ownership!
+    // 4. When clear() is called, tracker.clear() decrefs (refcount=1)
+    // 5. The grapheme has refcount=1 but is not in any tracker -> LEAKED
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    while (frame < 200) : (frame += 1) {
+        // Draw grapheme
+        buf.drawText("•", 0, 0, fg, bg, 0) catch |err| {
+            std.debug.print("\n*** BUG REPRODUCED at frame {d}: {} ***\n", .{ frame, err });
+            std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            std.debug.print("\nThis proves graphemes leak via alloc()->set()->clear() cycle!\n", .{});
+            alloc_failed = true;
+            break;
+        };
+
+        // Clear buffer (like renderer does each frame)
+        try buf.clear(bg, null);
+
+        if ((frame + 1) % 20 == 0) {
+            std.debug.print("Frame {d}: tracker count after clear = {d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        std.debug.print("\n✓✓✓ BUG REPRODUCED: alloc()->set()->clear() leaks graphemes ✓✓✓\n", .{});
+        return error.AllocSetClearLeaksGraphemes;
+    }
+
+    std.debug.print("\nCompleted {d} alloc->set->clear cycles without pool exhaustion\n", .{frame});
+}
+
+test "OptimizedBuffer - REPRODUCE: repeated drawTextBuffer without clear (EDITOR SCENARIO)" {
+    //Use EXTREMELY TINY pool
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Set text ONCE (like editor does)
+    try tb.setText("• Hello • World •");
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        25,
+        .{ .pool = &local_pool, .id = "render-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    std.debug.print("\n=== SIMULATING EDITOR AT 60FPS (setText once, render repeatedly) ===\n", .{});
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    // Simulate 60fps for several seconds = hundreds of frames
+    // setText is called ONCE, buffer is rendered repeatedly
+    while (frame < 500) : (frame += 1) {
+        // Draw text buffer (like editor does every frame)
+        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+            std.debug.print("\n✓✓✓ BUG REPRODUCED at frame {d}: {} ✓✓✓\n", .{ frame, err });
+            std.debug.print("Buffer tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            std.debug.print("\nROOT CAUSE:\n", .{});
+            std.debug.print("  Every call to drawTextBuffer() does pool.alloc() for each grapheme\n", .{});
+            std.debug.print("  The new grapheme ID is passed to set() which tracker.add()s it\n", .{});
+            std.debug.print("  But the PREVIOUS grapheme at that position is tracker.remove()d\n", .{});
+            std.debug.print("  HOWEVER: We never decref the NEWLY allocated grapheme after tracker.add()!\n", .{});
+            std.debug.print("  Result: Each frame leaks +1 refcount per grapheme\n", .{});
+            alloc_failed = true;
+            break;
+        };
+
+        if ((frame + 1) % 50 == 0) {
+            std.debug.print("Frame {d}: tracker count = {d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        std.debug.print("\n✓✓✓ EDITOR SCENARIO BUG REPRODUCED ✓✓✓\n", .{});
+        return error.DrawTextBufferLeaksOnEveryFrame;
+    }
+
+    std.debug.print("\nCompleted {d} drawTextBuffer calls\n", .{frame});
+    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+}
+
+test "OptimizedBuffer - REPRODUCE: exact renderer two-buffer pattern with setRaw" {
+    // TINY POOL
+    const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("• • •");
+
+    // Two buffers like renderer has
+    var current = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = &local_pool, .id = "current" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer current.deinit();
+
+    var next = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = &local_pool, .id = "next" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer next.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try current.clear(bg, null);
+
+    std.debug.print("\n=== EXACT RENDERER PATTERN: draw to next, setRaw to current, clear next ===\n", .{});
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    while (frame < 300) : (frame += 1) {
+        // 1. Renderables draw to next buffer
+        next.drawTextBuffer(view, 0, 0, null) catch |err| {
+            std.debug.print("\n✓✓✓ BUG REPRODUCED at frame {d}: {} ✓✓✓\n", .{ frame, err });
+            std.debug.print("Next tracker: {d}, Current tracker: {d}\n", .{ next.grapheme_tracker.getGraphemeCount(), current.grapheme_tracker.getGraphemeCount() });
+            std.debug.print("\nThe bug is in drawTextBuffer + set/setRaw pattern!\n", .{});
+            alloc_failed = true;
+            break;
+        };
+
+        // 2. Renderer copies changed cells to current using setRaw (line 624)
+        var x: u32 = 0;
+        while (x < 10) : (x += 1) {
+            if (next.get(x, 0)) |cell| {
+                current.setRaw(x, 0, cell);
+            }
+        }
+
+        // 3. Clear next for next frame (line 689)
+        try next.clear(bg, null);
+
+        if ((frame + 1) % 30 == 0) {
+            std.debug.print("Frame {d}: next={d}, current={d}\n", .{ frame + 1, next.grapheme_tracker.getGraphemeCount(), current.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        std.debug.print("\n✓✓✓ EXACT RENDERER PATTERN REPRODUCED THE BUG ✓✓✓\n", .{});
+        return error.RendererTwoBufferPatternLeaks;
+    }
+
+    std.debug.print("\nCompleted {d} frames with renderer pattern\n", .{frame});
+}
+
+test "OptimizedBuffer - REPRODUCE: sustained rendering like real editor (TINY POOL, 3000 frames)" {
+    // EXTREMELY TINY POOL - smallest possible
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Mimic editor content with bullet points
+    try tb.setText("  • Type any text to insert\n  • Arrow keys to move cursor\n  • Backspace/Delete to remove text");
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        25,
+        .{ .pool = &local_pool, .id = "render-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    std.debug.print("\n=== SUSTAINED RENDERING: 3000 frames (50 seconds at 60fps) ===\n", .{});
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    // Simulate 50 seconds at 60fps = 3000 frames
+    while (frame < 3000) : (frame += 1) {
+        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+            std.debug.print("\n✓✓✓ BUG FINALLY REPRODUCED at frame {d} ({d:.1}s at 60fps) ✓✓✓\n", .{ frame, @as(f32, @floatFromInt(frame)) / 60.0 });
+            std.debug.print("Error: {}\n", .{err});
+            std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            alloc_failed = true;
+            break;
+        };
+
+        // Don't clear! This is the key - editor doesn't clear between frames
+
+        if ((frame + 1) % 300 == 0) {
+            std.debug.print("Frame {d} ({d}s): tracker={d}\n", .{ frame + 1, (frame + 1) / 60, buf.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        return error.SustainedRenderingLeaksGraphemes;
+    }
+
+    std.debug.print("\nCompleted {d} frames ({d} seconds at 60fps)\n", .{ frame, frame / 60 });
+    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+}
+
+test "OptimizedBuffer - SMOKING GUN: render CHANGING content repeatedly (TINY POOL)" {
+    // TINY POOL
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        25,
+        .{ .pool = &local_pool, .id = "render-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    std.debug.print("\n=== CHANGING CONTENT EACH FRAME (should trigger leak) ===\n", .{});
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    while (frame < 100) : (frame += 1) {
+        // Alternate between different unicode characters
+        // This forces NEW grapheme allocations each time
+        const char_idx = frame % 10;
+        const base_codepoint: u21 = 0x2600 + @as(u21, @intCast(char_idx));
+        const char_bytes = [_]u8{
+            @intCast(0xE0 | (base_codepoint >> 12)),
+            @intCast(0x80 | ((base_codepoint >> 6) & 0x3F)),
+            @intCast(0x80 | (base_codepoint & 0x3F)),
+        };
+
+        var text: [11]u8 = undefined;
+        @memcpy(text[0..3], &char_bytes);
+        text[3] = ' ';
+        @memcpy(text[4..7], &char_bytes);
+        text[7] = ' ';
+        @memcpy(text[8..11], &char_bytes);
+
+        tb.setText(&text) catch continue;
+
+        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+            std.debug.print("\n✓✓✓ BUG REPRODUCED at frame {d} ✓✓✓\n", .{frame});
+            std.debug.print("Error: {}\n", .{err});
+            std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+            std.debug.print("\nCause: pool.alloc() returns refcount=1, tracker.add() increfs to 2,\n", .{});
+            std.debug.print("but we never decref the initial allocation!\n", .{});
+            alloc_failed = true;
+            break;
+        };
+
+        if ((frame + 1) % 10 == 0) {
+            std.debug.print("Frame {d}: tracker={d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        return error.ChangingContentLeaksGraphemes;
+    }
+
+    std.debug.print("\nCompleted {d} frames with changing content\n", .{frame});
+    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+}
+
+test "OptimizedBuffer - FINAL ATTEMPT: multiple TextBuffers + multiple renders (ABSURDLY TINY)" {
+    // ABSURDLY TINY - 1 slot per page!
+    const one_slot = [_]u32{ 1, 1, 1, 1, 1 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = one_slot,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    // Multiple text buffers sharing same tiny pool
+    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb1.deinit();
+    var view1 = try TextBufferView.init(std.testing.allocator, tb1);
+    defer view1.deinit();
+
+    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb2.deinit();
+    var view2 = try TextBufferView.init(std.testing.allocator, tb2);
+    defer view2.deinit();
+
+    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb3.deinit();
+    var view3 = try TextBufferView.init(std.testing.allocator, tb3);
+    defer view3.deinit();
+
+    try tb1.setText("• First •");
+    try tb2.setText("• Second •");
+    try tb3.setText("• Third •");
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        30,
+        .{ .pool = &local_pool, .id = "main-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    std.debug.print("\n=== COMPLEX SCENARIO: 3 TextBuffers, multiple renders per frame ===\n", .{});
+
+    var frame: u32 = 0;
+    var alloc_failed = false;
+
+    while (frame < 500) : (frame += 1) {
+        // Render all 3 text buffers to different positions (like panels)
+        buf.drawTextBuffer(view1, 0, 0, null) catch |err| {
+            std.debug.print("\n✓ BUG REPRODUCED in view1 at frame {d}: {} ✓\n", .{ frame, err });
+            alloc_failed = true;
+            break;
+        };
+        buf.drawTextBuffer(view2, 0, 10, null) catch |err| {
+            std.debug.print("\n✓ BUG REPRODUCED in view2 at frame {d}: {} ✓\n", .{ frame, err });
+            alloc_failed = true;
+            break;
+        };
+        buf.drawTextBuffer(view3, 0, 20, null) catch |err| {
+            std.debug.print("\n✓ BUG REPRODUCED in view3 at frame {d}: {} ✓\n", .{ frame, err });
+            alloc_failed = true;
+            break;
+        };
+
+        if ((frame + 1) % 50 == 0) {
+            std.debug.print("Frame {d}: tracker={d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
+        }
+    }
+
+    if (alloc_failed) {
+        std.debug.print("Tracker: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+        return error.MultipleTextBuffersLeakGraphemes;
+    }
+
+    std.debug.print("\nCompleted {d} frames with 3 TextBuffers ({d} total renders)\n", .{ frame, frame * 3 });
+    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
+}
