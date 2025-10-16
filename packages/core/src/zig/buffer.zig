@@ -302,6 +302,9 @@ pub const OptimizedBuffer = struct {
 
         const size = width * height;
 
+        // Clear grapheme tracker since resize invalidates all buffer contents
+        self.grapheme_tracker.clear();
+
         self.buffer.char = self.allocator.realloc(self.buffer.char, size) catch return BufferError.OutOfMemory;
         self.buffer.fg = self.allocator.realloc(self.buffer.fg, size) catch return BufferError.OutOfMemory;
         self.buffer.bg = self.allocator.realloc(self.buffer.bg, size) catch return BufferError.OutOfMemory;
