@@ -1059,7 +1059,7 @@ test "OptimizedBuffer - LEAK: many unique graphemes with alpha (TINY POOL)" {
             @intCast(0x80 | ((base_codepoint >> 6) & 0x3F)),
             @intCast(0x80 | (base_codepoint & 0x3F)),
         };
-        
+
         var text: [4]u8 = undefined;
         @memcpy(text[0..3], &char_bytes);
         text[3] = ' ';
