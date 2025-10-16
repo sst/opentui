@@ -553,54 +553,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "usize",
     },
-    editorViewMoveCursorLeft: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewMoveCursorRight: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewMoveCursorUp: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewMoveCursorDown: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewGotoLine: {
-      args: ["ptr", "u32"],
-      returns: "void",
-    },
-    editorViewInsertChar: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "void",
-    },
-    editorViewInsertText: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "void",
-    },
-    editorViewDeleteChar: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewDeleteCharBackward: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewNewLine: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewDeleteLine: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    editorViewSetCursor: {
-      args: ["ptr", "u32", "u32"],
-      returns: "void",
-    },
     editorViewGetCursor: {
       args: ["ptr", "ptr", "ptr"],
       returns: "void",
@@ -1092,18 +1044,6 @@ export interface RenderLib {
   ) => boolean
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
-  editorViewMoveCursorLeft: (view: Pointer) => void
-  editorViewMoveCursorRight: (view: Pointer) => void
-  editorViewMoveCursorUp: (view: Pointer) => void
-  editorViewMoveCursorDown: (view: Pointer) => void
-  editorViewGotoLine: (view: Pointer, line: number) => void
-  editorViewInsertChar: (view: Pointer, char: string) => void
-  editorViewInsertText: (view: Pointer, text: string) => void
-  editorViewDeleteChar: (view: Pointer) => void
-  editorViewDeleteCharBackward: (view: Pointer) => void
-  editorViewNewLine: (view: Pointer) => void
-  editorViewDeleteLine: (view: Pointer) => void
-  editorViewSetCursor: (view: Pointer, row: number, col: number) => void
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
   editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetVisualCursor: (view: Pointer) => VisualCursor | null
@@ -2161,56 +2101,6 @@ class FFIRenderLib implements RenderLib {
     const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
-  }
-
-  public editorViewMoveCursorLeft(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorLeft(view)
-  }
-
-  public editorViewMoveCursorRight(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorRight(view)
-  }
-
-  public editorViewMoveCursorUp(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorUp(view)
-  }
-
-  public editorViewMoveCursorDown(view: Pointer): void {
-    this.opentui.symbols.editorViewMoveCursorDown(view)
-  }
-
-  public editorViewGotoLine(view: Pointer, line: number): void {
-    this.opentui.symbols.editorViewGotoLine(view, line)
-  }
-
-  public editorViewInsertChar(view: Pointer, char: string): void {
-    const charBytes = this.encoder.encode(char)
-    this.opentui.symbols.editorViewInsertChar(view, charBytes, charBytes.length)
-  }
-
-  public editorViewInsertText(view: Pointer, text: string): void {
-    const textBytes = this.encoder.encode(text)
-    this.opentui.symbols.editorViewInsertText(view, textBytes, textBytes.length)
-  }
-
-  public editorViewDeleteChar(view: Pointer): void {
-    this.opentui.symbols.editorViewDeleteChar(view)
-  }
-
-  public editorViewDeleteCharBackward(view: Pointer): void {
-    this.opentui.symbols.editorViewDeleteCharBackward(view)
-  }
-
-  public editorViewNewLine(view: Pointer): void {
-    this.opentui.symbols.editorViewNewLine(view)
-  }
-
-  public editorViewDeleteLine(view: Pointer): void {
-    this.opentui.symbols.editorViewDeleteLine(view)
-  }
-
-  public editorViewSetCursor(view: Pointer, row: number, col: number): void {
-    this.opentui.symbols.editorViewSetCursor(view, row, col)
   }
 
   public editorViewGetCursor(view: Pointer): { row: number; col: number } {

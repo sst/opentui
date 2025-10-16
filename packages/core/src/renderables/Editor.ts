@@ -61,7 +61,7 @@ export class EditorRenderable extends EditBufferRenderable {
     else if (keyName === "home") {
       this.handleShiftSelection(keyShift, true)
       const cursor = this.editorView.getCursor()
-      this.editorView.setCursor(cursor.row, 0)
+      this.editBuffer.setCursor(cursor.row, 0)
       this.handleShiftSelection(keyShift, false)
       return true
     } else if (keyName === "end") {
@@ -73,7 +73,7 @@ export class EditorRenderable extends EditBufferRenderable {
     // Control commands
     else if (keyCtrl && keyName === "a") {
       // Ctrl+A: Move to start of buffer
-      this.editorView.setCursor(0, 0)
+      this.editBuffer.setCursor(0, 0)
       return true
     } else if (keyCtrl && keyName === "e") {
       // Ctrl+E: Move to end of buffer
@@ -142,14 +142,14 @@ export class EditorRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  // Editor operations - delegate to EditorView (which handles EditBuffer + auto-scroll)
+  // Editor operations - call EditBuffer directly
   public insertChar(char: string): void {
     // If there's a selection, delete it first (replace behavior)
     if (this.hasSelection()) {
       this.deleteSelectedText()
     }
 
-    this.editorView.insertChar(char)
+    this.editBuffer.insertChar(char)
     this.requestRender()
   }
 
@@ -159,7 +159,7 @@ export class EditorRenderable extends EditBufferRenderable {
       this.deleteSelectedText()
     }
 
-    this.editorView.insertText(text)
+    this.editBuffer.insertText(text)
     this.requestRender()
   }
 
@@ -171,7 +171,7 @@ export class EditorRenderable extends EditBufferRenderable {
     }
 
     this._ctx.clearSelection()
-    this.editorView.deleteChar()
+    this.editBuffer.deleteChar()
     this.requestRender()
   }
 
@@ -183,7 +183,7 @@ export class EditorRenderable extends EditBufferRenderable {
     }
 
     this._ctx.clearSelection()
-    this.editorView.deleteCharBackward()
+    this.editBuffer.deleteCharBackward()
     this.requestRender()
   }
 
@@ -207,8 +207,8 @@ export class EditorRenderable extends EditBufferRenderable {
     const targetLine = beforeLines.length - 1
     const byteOffsetInLine = beforeLines[beforeLines.length - 1].length
 
-    // Set cursor to the start of where the deletion occurred (viewport-aware)
-    this.editorView.setCursor(targetLine, byteOffsetInLine)
+    // Set cursor to the start of where the deletion occurred
+    this.editBuffer.setCursor(targetLine, byteOffsetInLine)
 
     // Clear the selection
     this._ctx.clearSelection()
@@ -217,24 +217,24 @@ export class EditorRenderable extends EditBufferRenderable {
 
   public newLine(): void {
     this._ctx.clearSelection()
-    this.editorView.newLine()
+    this.editBuffer.newLine()
     this.requestRender()
   }
 
   public deleteLine(): void {
     this._ctx.clearSelection()
-    this.editorView.deleteLine()
+    this.editBuffer.deleteLine()
     this.requestRender()
   }
 
-  // Cursor movement - delegate to EditorView (which handles EditBuffer + auto-scroll)
+  // Cursor movement - call EditBuffer directly
   public moveCursorLeft(): void {
-    this.editorView.moveCursorLeft()
+    this.editBuffer.moveCursorLeft()
     this.requestRender()
   }
 
   public moveCursorRight(): void {
-    this.editorView.moveCursorRight()
+    this.editBuffer.moveCursorRight()
     this.requestRender()
   }
 
@@ -251,24 +251,24 @@ export class EditorRenderable extends EditBufferRenderable {
   }
 
   public gotoLine(line: number): void {
-    this.editorView.gotoLine(line)
+    this.editBuffer.gotoLine(line)
     this.requestRender()
   }
 
   public gotoLineEnd(): void {
     const cursor = this.editorView.getCursor()
     // Get line width and move cursor to end of current line
-    this.editorView.gotoLine(9999) // Temp hack - move to way past end to trigger end-of-line
+    this.editBuffer.gotoLine(9999) // Temp hack - move to way past end to trigger end-of-line
     const afterCursor = this.editorView.getCursor()
     // If we're not on the same line, we went too far, so set to the line we want
     if (afterCursor.row !== cursor.row) {
-      this.editorView.setCursor(cursor.row, 9999) // Will clamp to line width
+      this.editBuffer.setCursor(cursor.row, 9999) // Will clamp to line width
     }
     this.requestRender()
   }
 
   public gotoBufferEnd(): void {
-    this.editorView.gotoLine(999999) // Will clamp to last line and go to end
+    this.editBuffer.gotoLine(999999) // Will clamp to last line and go to end
     this.requestRender()
   }
 
@@ -279,12 +279,12 @@ export class EditorRenderable extends EditBufferRenderable {
 
     // Temporarily move to end of line to get the line width
     const tempCursor = this.editorView.getCursor()
-    this.editorView.setCursor(tempCursor.row, 9999)
+    this.editBuffer.setCursor(tempCursor.row, 9999)
     const endCursor = this.editorView.getCursor()
     const endCol = endCursor.col
 
     // Restore cursor and delete if there's content to delete
-    this.editorView.setCursor(cursor.row, startCol)
+    this.editBuffer.setCursor(cursor.row, startCol)
 
     if (endCol > startCol) {
       // Delete characters from cursor to end of line

@@ -19,11 +19,13 @@ export type { VisualCursor }
 export class EditorView {
   private lib: RenderLib
   private viewPtr: Pointer
+  private editBuffer: EditBuffer
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: Pointer) {
+  constructor(lib: RenderLib, ptr: Pointer, editBuffer: EditBuffer) {
     this.lib = lib
     this.viewPtr = ptr
+    this.editBuffer = editBuffer
   }
 
   /**
@@ -33,7 +35,7 @@ export class EditorView {
   static create(editBuffer: EditBuffer, viewportWidth: number, viewportHeight: number): EditorView {
     const lib = resolveRenderLib()
     const viewPtr = lib.createEditorView(editBuffer.ptr, viewportWidth, viewportHeight)
-    return new EditorView(lib, viewPtr)
+    return new EditorView(lib, viewPtr, editBuffer)
   }
 
   private guard(): void {
@@ -125,69 +127,6 @@ export class EditorView {
     if (!selectedBytes) return ""
 
     return this.lib.decoder.decode(selectedBytes)
-  }
-
-  // Cursor movement methods - delegate to EditBuffer and auto-scroll
-  public moveCursorLeft(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorLeft(this.viewPtr)
-  }
-
-  public moveCursorRight(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorRight(this.viewPtr)
-  }
-
-  public moveCursorUp(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorUp(this.viewPtr)
-  }
-
-  public moveCursorDown(): void {
-    this.guard()
-    this.lib.editorViewMoveCursorDown(this.viewPtr)
-  }
-
-  public gotoLine(line: number): void {
-    this.guard()
-    this.lib.editorViewGotoLine(this.viewPtr, line)
-  }
-
-  // Editing operations - delegate to EditBuffer and auto-scroll
-  public insertChar(char: string): void {
-    this.guard()
-    this.lib.editorViewInsertChar(this.viewPtr, char)
-  }
-
-  public insertText(text: string): void {
-    this.guard()
-    this.lib.editorViewInsertText(this.viewPtr, text)
-  }
-
-  public deleteChar(): void {
-    this.guard()
-    this.lib.editorViewDeleteChar(this.viewPtr)
-  }
-
-  public deleteCharBackward(): void {
-    this.guard()
-    this.lib.editorViewDeleteCharBackward(this.viewPtr)
-  }
-
-  public newLine(): void {
-    this.guard()
-    this.lib.editorViewNewLine(this.viewPtr)
-  }
-
-  public deleteLine(): void {
-    this.guard()
-    this.lib.editorViewDeleteLine(this.viewPtr)
-  }
-
-  // Cursor and text access methods - viewport-aware
-  public setCursor(row: number, col: number): void {
-    this.guard()
-    this.lib.editorViewSetCursor(this.viewPtr, row, col)
   }
 
   public getCursor(): { row: number; col: number } {

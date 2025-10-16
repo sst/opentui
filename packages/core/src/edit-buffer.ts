@@ -42,7 +42,6 @@ export class EditBuffer {
   public setText(text: string): void {
     this.guard()
     this._textBytes = this.lib.encoder.encode(text)
-    console.log("setText: textBytes", this._textBytes)
     this.lib.editBufferSetText(this.bufferPtr, this._textBytes)
   }
 
@@ -64,7 +63,6 @@ export class EditBuffer {
 
   public insertText(text: string): void {
     this.guard()
-    console.log("insertText: text", text)
     this.lib.editBufferInsertText(this.bufferPtr, text)
   }
 

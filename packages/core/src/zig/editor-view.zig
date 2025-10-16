@@ -115,6 +115,7 @@ pub const EditorView = struct {
             new_offset_y = @min(desired_offset, max_offset);
         }
 
+        // TODO: Why only when y changed? What about x?
         // Update viewport if offset changed
         if (new_offset_y != vp.y) {
             self.text_buffer_view.setViewport(tbv.Viewport{
@@ -126,32 +127,29 @@ pub const EditorView = struct {
         }
     }
 
-    /// Update and ensure cursor is visible if the buffer is dirty
-    /// This should be called before rendering to react to buffer changes (e.g., setText)
-    pub fn updateIfDirty(self: *EditorView) void {
-        const buffer_dirty = self.text_buffer_view.text_buffer.isViewDirty(self.text_buffer_view.view_id);
-        if (buffer_dirty) {
-            // Buffer changed (e.g., setText was called), ensure cursor is visible
-            const cursor = self.edit_buffer.getPrimaryCursor();
-            self.ensureCursorVisible(cursor.row);
-        }
+    /// Ensure cursor is visible before rendering
+    /// This should be called before rendering to react to buffer/cursor changes
+    /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
+    pub fn updateBeforeRender(self: *EditorView) void {
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        self.ensureCursorVisible(cursor.row);
     }
 
     /// Get virtual lines for the current viewport
     /// Returns a slice of virtual lines that are visible in the viewport
     /// The TextBufferView handles viewport slicing internally
-    /// Automatically ensures cursor is visible if buffer is dirty
+    /// Automatically ensures cursor is visible before rendering
     pub fn getVirtualLines(self: *EditorView) []const VirtualLine {
-        self.updateIfDirty();
+        self.updateBeforeRender();
         return self.text_buffer_view.getVirtualLines();
     }
 
     /// Get cached line info for the viewport
     /// Returns character offsets, widths, and max width for viewport lines only
     /// The TextBufferView handles viewport slicing internally
-    /// Automatically ensures cursor is visible if buffer is dirty
+    /// Automatically ensures cursor is visible before rendering
     pub fn getCachedLineInfo(self: *EditorView) tbv.LineInfo {
-        self.updateIfDirty();
+        self.updateBeforeRender();
         return self.text_buffer_view.getCachedLineInfo();
     }
 
@@ -174,87 +172,6 @@ pub const EditorView = struct {
     /// Set wrap mode (none, char, or word)
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
         self.text_buffer_view.setWrapMode(mode);
-    }
-
-    // ============================================================================
-    // Viewport-aware EditBuffer wrappers
-    // These methods wrap EditBuffer operations and ensure cursor visibility
-    // ============================================================================
-
-    /// Set cursor position and ensure it's visible in viewport
-    pub fn setCursor(self: *EditorView, row: u32, col: u32) !void {
-        try self.edit_buffer.setCursor(row, col);
-        self.ensureCursorVisible(row);
-    }
-
-    /// Insert text at cursor and ensure cursor remains visible
-    pub fn insertText(self: *EditorView, bytes: []const u8) !void {
-        try self.edit_buffer.insertText(bytes);
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Delete range and ensure cursor remains visible
-    pub fn deleteRange(self: *EditorView, start_cursor: eb.Cursor, end_cursor: eb.Cursor) !void {
-        try self.edit_buffer.deleteRange(start_cursor, end_cursor);
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Backspace and ensure cursor remains visible
-    pub fn backspace(self: *EditorView) !void {
-        try self.edit_buffer.backspace();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Delete forward and ensure cursor remains visible
-    pub fn deleteForward(self: *EditorView) !void {
-        try self.edit_buffer.deleteForward();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Move cursor left and ensure it remains visible
-    pub fn moveLeft(self: *EditorView) void {
-        self.edit_buffer.moveLeft();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Move cursor right and ensure it remains visible
-    pub fn moveRight(self: *EditorView) void {
-        self.edit_buffer.moveRight();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Move cursor up and ensure it remains visible
-    pub fn moveUp(self: *EditorView) void {
-        self.edit_buffer.moveUp();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Move cursor down and ensure it remains visible
-    pub fn moveDown(self: *EditorView) void {
-        self.edit_buffer.moveDown();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Delete current line and ensure cursor remains visible
-    pub fn deleteLine(self: *EditorView) !void {
-        try self.edit_buffer.deleteLine();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
-    }
-
-    /// Go to line and ensure cursor is visible
-    pub fn gotoLine(self: *EditorView, line: u32) !void {
-        try self.edit_buffer.gotoLine(line);
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        self.ensureCursorVisible(cursor.row);
     }
 
     /// Get primary cursor position
@@ -283,9 +200,9 @@ pub const EditorView = struct {
 
     /// Translate EditBuffer cursor (logical row/col) to visual cursor (accounting for wrapping)
     /// Returns null if cursor is out of bounds
-    /// Automatically ensures cursor is visible if buffer is dirty
+    /// Automatically ensures cursor is visible before rendering
     pub fn getVisualCursor(self: *EditorView) ?VisualCursor {
-        self.updateIfDirty();
+        self.updateBeforeRender();
         const cursor = self.edit_buffer.getPrimaryCursor();
         return self.logicalToVisualCursor(cursor.row, cursor.col);
     }

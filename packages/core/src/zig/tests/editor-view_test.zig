@@ -47,11 +47,14 @@ test "EditorView - ensureCursorVisible scrolls down when cursor moves below view
     defer ev.deinit();
 
     // Insert 20 lines of text
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
     // Cursor should be on line 19 now (last line)
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 19), cursor.row);
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     // Viewport should have scrolled to show cursor
     const vp = ev.getViewport().?;
@@ -75,14 +78,20 @@ test "EditorView - ensureCursorVisible scrolls up when cursor moves above viewpo
     defer ev.deinit();
 
     // Insert 20 lines of text
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     // Viewport should have scrolled down
     var vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0);
 
     // Now go to line 0 - should scroll back up
-    try ev.gotoLine(0);
+    try eb.gotoLine(0);
+
+    // Trigger updateIfDirty again
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
@@ -107,18 +116,22 @@ test "EditorView - moveDown scrolls viewport automatically" {
     defer ev.deinit();
 
     // Insert 20 lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
     // Go to line 0
-    try ev.setCursor(0, 0);
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines(); // Trigger updateIfDirty
     var vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
     // Move down 15 times - should cause viewport to scroll
     var i: u32 = 0;
     while (i < 15) : (i += 1) {
-        ev.moveDown();
+        eb.moveDown();
     }
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 15), cursor.row);
@@ -144,7 +157,10 @@ test "EditorView - moveUp scrolls viewport automatically" {
     defer ev.deinit();
 
     // Insert 20 lines and cursor will be at end
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     // Viewport should be scrolled down
     var vp = ev.getViewport().?;
@@ -154,8 +170,11 @@ test "EditorView - moveUp scrolls viewport automatically" {
     // Move up 10 times - should scroll viewport up
     var i: u32 = 0;
     while (i < 10) : (i += 1) {
-        ev.moveUp();
+        eb.moveUp();
     }
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 9), cursor.row);
@@ -185,10 +204,10 @@ test "EditorView - scroll margin keeps cursor away from edges" {
     ev.setScrollMargin(0.2);
 
     // Insert many lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
     // Go to line 5
-    try ev.gotoLine(5);
+    try eb.gotoLine(5);
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 5), cursor.row);
@@ -217,7 +236,10 @@ test "EditorView - insertText with newlines maintains cursor visibility" {
     defer ev.deinit();
 
     // Insert text that creates many lines all at once
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     // Cursor should be visible
     const cursor = ev.getPrimaryCursor();
@@ -242,10 +264,13 @@ test "EditorView - backspace at line start maintains visibility" {
     defer ev.deinit();
 
     // Insert many lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
     // Backspace should merge lines and keep cursor visible
-    try ev.backspace();
+    try eb.backspace();
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     const vp = ev.getViewport().?;
@@ -269,13 +294,16 @@ test "EditorView - deleteForward at line end maintains visibility" {
     defer ev.deinit();
 
     // Insert many lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
     // Go to line 8 end
-    try ev.setCursor(8, 6);
+    try eb.setCursor(8, 6);
 
     // Delete forward to merge with next line
-    try ev.deleteForward();
+    try eb.deleteForward();
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     const vp = ev.getViewport().?;
@@ -299,10 +327,13 @@ test "EditorView - deleteRange maintains cursor visibility" {
     defer ev.deinit();
 
     // Insert many lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
     // Delete range across multiple lines
-    try ev.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 7, .col = 6 });
+    try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 7, .col = 6 });
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     const vp = ev.getViewport().?;
@@ -326,13 +357,16 @@ test "EditorView - deleteLine maintains cursor visibility" {
     defer ev.deinit();
 
     // Insert many lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
     // Go to line 7
-    try ev.gotoLine(7);
+    try eb.gotoLine(7);
 
     // Delete line
-    try ev.deleteLine();
+    try eb.deleteLine();
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     const vp = ev.getViewport().?;
@@ -356,12 +390,15 @@ test "EditorView - setText resets viewport to top" {
     defer ev.deinit();
 
     // Insert many lines to scroll viewport
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     var vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0); // Scrolled down
 
-    // setText should reset cursor to top, and EditorView should react to dirty flag
+    // setText should reset cursor to top, and EditorView should ensure cursor visible before rendering
     try eb.setText("New Line 0\nNew Line 1\nNew Line 2");
 
     const cursor = ev.getPrimaryCursor();
@@ -389,10 +426,10 @@ test "EditorView - viewport respects total line count as max offset" {
     defer ev.deinit();
 
     // Insert only 5 lines (less than viewport height)
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
 
     // Go to last line
-    try ev.gotoLine(4);
+    try eb.gotoLine(4);
 
     // Viewport should still be at 0 since all lines fit
     const vp = ev.getViewport().?;
@@ -414,17 +451,17 @@ test "EditorView - horizontal movement doesn't affect vertical scroll" {
     defer ev.deinit();
 
     // Insert some lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
 
     // Go to line 2
-    try ev.setCursor(2, 0);
+    try eb.setCursor(2, 0);
 
     const vp_before = ev.getViewport().?;
 
     // Move right several times
-    ev.moveRight();
-    ev.moveRight();
-    ev.moveRight();
+    eb.moveRight();
+    eb.moveRight();
+    eb.moveRight();
 
     // Viewport Y should not change
     const vp_after = ev.getViewport().?;
@@ -446,26 +483,26 @@ test "EditorView - cursor at boundaries doesn't cause invalid viewport" {
     defer ev.deinit();
 
     // Start with empty buffer
-    try ev.setCursor(0, 0);
+    try eb.setCursor(0, 0);
 
     var vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
     // Insert a line
-    try ev.insertText("First line");
+    try eb.insertText("First line");
 
     // Move to start
-    try ev.setCursor(0, 0);
+    try eb.setCursor(0, 0);
 
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
     // All operations should maintain valid viewport
-    ev.moveLeft(); // At boundary
+    eb.moveLeft(); // At boundary
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
-    ev.moveUp(); // At boundary
+    eb.moveUp(); // At boundary
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
@@ -485,14 +522,17 @@ test "EditorView - rapid cursor movements maintain visibility" {
     defer ev.deinit();
 
     // Insert 30 lines all at once
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20\nLine 21\nLine 22\nLine 23\nLine 24\nLine 25\nLine 26\nLine 27\nLine 28\nLine 29");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20\nLine 21\nLine 22\nLine 23\nLine 24\nLine 25\nLine 26\nLine 27\nLine 28\nLine 29");
 
     // Rapid movements
-    try ev.gotoLine(0);
-    try ev.gotoLine(29);
-    try ev.gotoLine(15);
-    try ev.gotoLine(5);
-    try ev.gotoLine(25);
+    try eb.gotoLine(0);
+    try eb.gotoLine(29);
+    try eb.gotoLine(15);
+    try eb.gotoLine(5);
+    try eb.gotoLine(25);
+
+    // Trigger updateBeforeRender to ensure cursor visibility
+    _ = ev.getVirtualLines();
 
     // After each movement, cursor should be visible
     const cursor = ev.getPrimaryCursor();
@@ -521,10 +561,10 @@ test "EditorView - VisualCursor without wrapping" {
     defer ev.deinit();
 
     // Insert text without wrapping
-    try ev.insertText("Hello World\nSecond Line\nThird Line");
+    try eb.insertText("Hello World\nSecond Line\nThird Line");
 
     // Go to line 1, col 3
-    try ev.setCursor(1, 3);
+    try eb.setCursor(1, 3);
 
     // Without wrapping, visual and logical should match
     const vcursor = ev.getVisualCursor();
@@ -556,7 +596,7 @@ test "EditorView - VisualCursor with character wrapping" {
     try eb.setText("This is a very long line that will definitely wrap at 20 characters");
 
     // Go to logical position (0, 25) - should be on second visual line
-    try ev.setCursor(0, 25);
+    try eb.setCursor(0, 25);
 
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
@@ -618,7 +658,7 @@ test "EditorView - moveUpVisual with wrapping" {
     try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
     // Move to end of line
-    try ev.setCursor(0, 50);
+    try eb.setCursor(0, 50);
 
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
@@ -658,7 +698,7 @@ test "EditorView - moveDownVisual with wrapping" {
     try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
     // Start at beginning
-    try ev.setCursor(0, 0);
+    try eb.setCursor(0, 0);
 
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
@@ -722,7 +762,7 @@ test "EditorView - moveUpVisual at top boundary" {
     try eb.setText("Short line");
 
     // At top - should not move
-    try ev.setCursor(0, 0);
+    try eb.setCursor(0, 0);
 
     const before = ev.getPrimaryCursor();
     ev.moveUpVisual();
@@ -750,7 +790,7 @@ test "EditorView - moveDownVisual at bottom boundary" {
     try eb.setText("Short line\nSecond line");
 
     // Move to last line
-    try ev.setCursor(1, 0);
+    try eb.setCursor(1, 0);
 
     const before = ev.getPrimaryCursor();
     ev.moveDownVisual();
@@ -780,7 +820,7 @@ test "EditorView - VisualCursor preserves desired column across wrapped lines" {
     try eb.setText("12345678901234567890123456789012345678901234567890");
 
     // Move to column 15 on first visual line
-    try ev.setCursor(0, 15);
+    try eb.setCursor(0, 15);
 
     // Move down and up - should try to maintain column
     ev.moveDownVisual();
@@ -814,7 +854,7 @@ test "EditorView - VisualCursor with multiple logical lines and wrapping" {
     try eb.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3");
 
     // Move to line 1 (the long wrapped line)
-    try ev.setCursor(1, 30);
+    try eb.setCursor(1, 30);
 
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
@@ -901,10 +941,10 @@ test "EditorView - setViewportSize maintains cursor visibility" {
     defer ev.deinit();
 
     // Insert many lines
-    try ev.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14");
+    try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14");
 
     // Go to line 10
-    try ev.gotoLine(10);
+    try eb.gotoLine(10);
 
     // Resize viewport to smaller height
     ev.setViewportSize(80, 5);

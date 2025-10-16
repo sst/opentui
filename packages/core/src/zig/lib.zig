@@ -727,59 +727,7 @@ export fn editorViewGetSelectedTextBytes(view: *editor_view.EditorView, outPtr: 
     return view.text_buffer_view.getSelectedTextIntoBuffer(outBuffer);
 }
 
-// EditorView cursor movement - use EditorView viewport-aware wrappers
-export fn editorViewMoveCursorLeft(view: *editor_view.EditorView) void {
-    view.moveLeft();
-}
-
-export fn editorViewMoveCursorRight(view: *editor_view.EditorView) void {
-    view.moveRight();
-}
-
-export fn editorViewMoveCursorUp(view: *editor_view.EditorView) void {
-    view.moveUp();
-}
-
-export fn editorViewMoveCursorDown(view: *editor_view.EditorView) void {
-    view.moveDown();
-}
-
-export fn editorViewGotoLine(view: *editor_view.EditorView, line: u32) void {
-    view.gotoLine(line) catch {};
-}
-
-// EditorView editing - use EditorView viewport-aware wrappers
-export fn editorViewInsertChar(view: *editor_view.EditorView, charPtr: [*]const u8, charLen: usize) void {
-    const text = charPtr[0..charLen];
-    view.insertText(text) catch {};
-}
-
-export fn editorViewInsertText(view: *editor_view.EditorView, textPtr: [*]const u8, textLen: usize) void {
-    const text = textPtr[0..textLen];
-    view.insertText(text) catch {};
-}
-
-export fn editorViewDeleteChar(view: *editor_view.EditorView) void {
-    view.deleteForward() catch {};
-}
-
-export fn editorViewDeleteCharBackward(view: *editor_view.EditorView) void {
-    view.backspace() catch {};
-}
-
-export fn editorViewNewLine(view: *editor_view.EditorView) void {
-    view.insertText("\n") catch {};
-}
-
-export fn editorViewDeleteLine(view: *editor_view.EditorView) void {
-    view.deleteLine() catch {};
-}
-
 // EditorView cursor and text methods
-export fn editorViewSetCursor(view: *editor_view.EditorView, row: u32, col: u32) void {
-    view.setCursor(row, col) catch {};
-}
-
 export fn editorViewGetCursor(view: *editor_view.EditorView, outRow: *u32, outCol: *u32) void {
     const cursor = view.getPrimaryCursor();
     outRow.* = cursor.row;
