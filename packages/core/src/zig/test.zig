@@ -17,6 +17,7 @@ const rope_tests = @import("tests/rope_test.zig");
 const rope_fuzz_tests = @import("tests/rope_fuzz_test.zig");
 const rope_improvements_tests = @import("tests/rope_improvements_test.zig");
 const utf8_tests = @import("tests/utf8_test.zig");
+const event_emitter_tests = @import("tests/event-emitter_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -38,5 +39,6 @@ comptime {
     _ = rope_fuzz_tests;
     _ = rope_improvements_tests;
     _ = utf8_tests;
+    _ = event_emitter_tests;
     // _ = example_tests;
 }
