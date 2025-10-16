@@ -221,7 +221,7 @@ test "UnifiedTextBuffer - reset" {
     try testing.expectEqual(@as(u32, 0), tb.getLineCount()); // After reset, truly empty (0 lines)
 }
 
-test "UnifiedTextBuffer - getLineInfo" {
+test "UnifiedTextBuffer - line queries via rope" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -234,19 +234,21 @@ test "UnifiedTextBuffer - getLineInfo" {
 
     try tb.setText("First\nSecond\nThird");
 
-    const line_info = tb.getLineInfo();
-    try testing.expectEqual(@as(u32, 3), line_info.line_count);
-    try testing.expectEqual(@as(usize, 3), line_info.starts.len);
-    try testing.expectEqual(@as(usize, 3), line_info.widths.len);
+    // Check line count
+    try testing.expectEqual(@as(u32, 3), tb.getLineCount());
 
-    try testing.expectEqual(@as(u32, 0), line_info.starts[0]);
-    try testing.expectEqual(@as(u32, 5), line_info.widths[0]);
+    // Check line 0: starts at 0, width 5
+    try testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
+    try testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(&tb.rope, 0));
 
-    try testing.expectEqual(@as(u32, 5), line_info.starts[1]);
-    try testing.expectEqual(@as(u32, 6), line_info.widths[1]);
+    // Check line 1: starts at 6 (First 5 + 1 newline), width 6
+    try testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
+    try testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
 
-    try testing.expectEqual(@as(u32, 11), line_info.starts[2]);
-    try testing.expectEqual(@as(u32, 5), line_info.widths[2]);
+    // Check line 2: starts at 13 (First 5 + Second 6 + 2 newlines), width 5
+    try testing.expectEqual(@as(u32, 13), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(&tb.rope, 2));
 
-    try testing.expectEqual(@as(u32, 6), line_info.max_width); // "Second" is longest
+    // Check max width (from rope metrics)
+    try testing.expectEqual(@as(u32, 6), iter_mod.getMaxLineWidth(&tb.rope)); // "Second" is longest
 }

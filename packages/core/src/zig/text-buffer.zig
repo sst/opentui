@@ -494,46 +494,6 @@ pub const UnifiedTextBuffer = struct {
         return self.graphemes_data.iterator(bytes);
     }
 
-    /// Compatibility: Get line info for all lines
-    /// Returns line starts, widths, and max width
-    pub fn getLineInfo(self: *const Self) struct {
-        line_count: u32,
-        starts: []const u32,
-        widths: []const u32,
-        max_width: u32,
-    } {
-        var starts = std.ArrayList(u32).init(self.allocator);
-        var widths = std.ArrayList(u32).init(self.allocator);
-        var max_width: u32 = 0;
-
-        const Context = struct {
-            starts: *std.ArrayList(u32),
-            widths: *std.ArrayList(u32),
-            max_width: *u32,
-
-            fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                ctx.starts.append(line_info.char_offset) catch {};
-                ctx.widths.append(line_info.width) catch {};
-                ctx.max_width.* = @max(ctx.max_width.*, line_info.width);
-            }
-        };
-
-        var ctx = Context{
-            .starts = &starts,
-            .widths = &widths,
-            .max_width = &max_width,
-        };
-        iter_mod.walkLines(&self.rope, &ctx, Context.callback);
-
-        return .{
-            .line_count = self.getLineCount(),
-            .starts = starts.items,
-            .widths = widths.items,
-            .max_width = max_width,
-        };
-    }
-
     // Highlight system
     fn ensureLineHighlightStorage(self: *Self, line_idx: usize) TextBufferError!void {
         while (self.line_highlights.items.len <= line_idx) {
