@@ -220,11 +220,11 @@ pub const EditorView = struct {
 
         const vline = &vlines[visual_row_idx];
         const vline_start_col = vline.source_col_offset;
-        
+
         // Calculate visual column within this virtual line
-        const visual_col = if (logical_col >= vline_start_col) 
-            logical_col - vline_start_col 
-        else 
+        const visual_col = if (logical_col >= vline_start_col)
+            logical_col - vline_start_col
+        else
             0;
 
         return VisualCursor{

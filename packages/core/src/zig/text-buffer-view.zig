@@ -571,7 +571,7 @@ pub const UnifiedTextBufferView = struct {
         if (vlines.len == 0) return null;
 
         const wrap_info = self.getWrapInfo();
-        
+
         // Check if logical_row is in bounds
         if (logical_row >= wrap_info.line_first_vline.len) return null;
 
