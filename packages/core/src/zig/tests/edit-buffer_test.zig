@@ -1688,6 +1688,7 @@ test "EditBuffer - multiple backspaces joining multiple lines reproduces TypeScr
     // Backspace: should delete "C" to get "A\nB\nD"
     try eb.backspace();
     written = eb.getText(&out_buffer);
+    cursor = eb.getPrimaryCursor();
 
     try std.testing.expectEqualStrings("A\nB\nD", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 2), cursor.row);

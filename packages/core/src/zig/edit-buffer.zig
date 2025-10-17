@@ -467,21 +467,25 @@ pub const EditBuffer = struct {
         if (start_offset >= end_offset) return;
 
         // Special case: When deleting within a single line starting at col=0,
-        // we need to ensure the linestart marker for that line is preserved.
+        // we need to ensure the linestart marker for that line is preserved
+        // UNLESS we're deleting the entire line content.
         // coordsToOffset returns the global_weight of the linestart marker for col=0,
         // which causes the linestart marker itself to be included in the deletion.
-        // We fix this by checking if we're deleting at col=0 on the same line, and if so,
-        // we need to adjust the deletion to skip the linestart marker.
+        // We fix this by checking if we're deleting at col=0 on the same line (but not the whole line),
+        // and if so, we exclude zero-weight markers from deletion.
         const deleting_within_line = (start.row == end.row);
         const deleting_from_line_start = (start.col == 0 and deleting_within_line and start.row > 0);
+        const current_line_width = if (deleting_from_line_start) self.getLineWidth(start.row) else 0;
+        const deleting_entire_line = (deleting_from_line_start and end.col >= current_line_width);
 
         const deleted_width = end_offset - start_offset;
         const deleted_lines = end.row - start.row;
 
         // Delete the range using rope's deleteRangeByWeight with splitter
         // Pass exclude_zero_weight_boundaries=true to preserve linestart markers when deleting from col=0
+        // BUT NOT when deleting the entire line content
         const splitter = self.makeSegmentSplitter();
-        const exclude_zero_weight = deleting_from_line_start;
+        const exclude_zero_weight = deleting_from_line_start and !deleting_entire_line;
         try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter, exclude_zero_weight);
 
         // Update char count
