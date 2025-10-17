@@ -1615,8 +1615,9 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
         const vcursor = ev.getVisualCursor();
         try std.testing.expect(vcursor != null);
 
-        try std.testing.expect(vcursor.?.visual_row >= vp.y);
-        try std.testing.expect(vcursor.?.visual_row < vp.y + vp.height);
+        // visual_row is now viewport-relative, should be in range [0, vp.height)
+        try std.testing.expect(vcursor.?.visual_row >= 0);
+        try std.testing.expect(vcursor.?.visual_row < vp.height);
     }
 
     try eb.insertText("MIDDLE");
@@ -1625,8 +1626,9 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
     const vp_middle = ev.getViewport().?;
     const vcursor_middle = ev.getVisualCursor();
     try std.testing.expect(vcursor_middle != null);
-    try std.testing.expect(vcursor_middle.?.visual_row >= vp_middle.y);
-    try std.testing.expect(vcursor_middle.?.visual_row < vp_middle.y + vp_middle.height);
+    // visual_row is now viewport-relative, should be in range [0, vp.height)
+    try std.testing.expect(vcursor_middle.?.visual_row >= 0);
+    try std.testing.expect(vcursor_middle.?.visual_row < vp_middle.height);
 
     i = 0;
     while (i < 10) : (i += 1) {
@@ -1637,8 +1639,9 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
         const vcursor = ev.getVisualCursor();
         try std.testing.expect(vcursor != null);
 
-        try std.testing.expect(vcursor.?.visual_row >= vp.y);
-        try std.testing.expect(vcursor.?.visual_row < vp.y + vp.height);
+        // visual_row is now viewport-relative, should be in range [0, vp.height)
+        try std.testing.expect(vcursor.?.visual_row >= 0);
+        try std.testing.expect(vcursor.?.visual_row < vp.height);
     }
 
     const vp_final = ev.getViewport().?;
@@ -1693,8 +1696,9 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
     vp = ev.getViewport().?;
     const vcursor_after_insert = ev.getVisualCursor();
     try std.testing.expect(vcursor_after_insert != null);
-    try std.testing.expect(vcursor_after_insert.?.visual_row >= vp.y);
-    try std.testing.expect(vcursor_after_insert.?.visual_row < vp.y + vp.height);
+    // visual_row is now viewport-relative, should be in range [0, vp.height)
+    try std.testing.expect(vcursor_after_insert.?.visual_row >= 0);
+    try std.testing.expect(vcursor_after_insert.?.visual_row < vp.height);
 
     try eb.backspace();
     try eb.backspace();

@@ -807,11 +807,17 @@ export interface LineInfo {
   maxLineWidth: number
 }
 
+/**
+ * VisualCursor represents a cursor position with both visual and logical coordinates.
+ * Visual coordinates (visualRow, visualCol) are VIEWPORT-RELATIVE.
+ * This means visualRow=0 is the first visible line in the viewport, not the first line in the document.
+ * Logical coordinates (logicalRow, logicalCol) are document-absolute.
+ */
 export interface VisualCursor {
-  visualRow: number
-  visualCol: number
-  logicalRow: number
-  logicalCol: number
+  visualRow: number // Viewport-relative row (0 = top of viewport)
+  visualCol: number // Viewport-relative column (0 = left edge of viewport when not wrapping)
+  logicalRow: number // Document-absolute row
+  logicalCol: number // Document-absolute column
 }
 
 export interface RenderLib {

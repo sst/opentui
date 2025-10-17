@@ -303,21 +303,12 @@ export abstract class EditBufferRenderable extends Renderable {
       return
     }
 
-    const viewport = this.editorView.getViewport()
+    const cursorX = this.x + visualCursor.visualCol + 1 // +1 for 1-based terminal coords
+    const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
 
-    // Calculate cursor position in viewport space using visual coordinates
-    // Visual row is already accounting for wrapping
-    const cursorX = this.x + visualCursor.visualCol - viewport.offsetX + 1 // +1 for 1-based terminal coords
-    const cursorY = this.y + visualCursor.visualRow - viewport.offsetY + 1 // +1 for 1-based terminal coords
-
-    // Only show cursor if it's within viewport bounds
-    if (cursorY > this.y && cursorY <= this.y + this.height && cursorX > this.x && cursorX <= this.x + this.width) {
-      this._ctx.setCursorPosition(cursorX, cursorY, true)
-      this._ctx.setCursorColor(this._cursorColor)
-      this._ctx.setCursorStyle("block", true)
-    } else {
-      this._ctx.setCursorPosition(0, 0, false)
-    }
+    this._ctx.setCursorPosition(cursorX, cursorY, true)
+    this._ctx.setCursorColor(this._cursorColor)
+    this._ctx.setCursorStyle("block", true)
   }
 
   public focus(): void {

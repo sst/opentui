@@ -143,16 +143,19 @@ export class EditorView {
   }
 
   // VisualCursor methods - wrap-aware cursor translation and movement
+  // Returns viewport-relative visual coordinates
   public getVisualCursor(): VisualCursor | null {
     this.guard()
     return this.lib.editorViewGetVisualCursor(this.viewPtr)
   }
 
+  // Returns viewport-relative visual coordinates for the given logical position
   public logicalToVisualCursor(logicalRow: number, logicalCol: number): VisualCursor | null {
     this.guard()
     return this.lib.editorViewLogicalToVisualCursor(this.viewPtr, logicalRow, logicalCol)
   }
 
+  // Accepts viewport-relative visual coordinates, returns VisualCursor with viewport-relative visual coords
   public visualToLogicalCursor(visualRow: number, visualCol: number): VisualCursor | null {
     this.guard()
     return this.lib.editorViewVisualToLogicalCursor(this.viewPtr, visualRow, visualCol)

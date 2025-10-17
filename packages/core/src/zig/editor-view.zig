@@ -19,11 +19,15 @@ pub const EditorViewError = error{
     OutOfMemory,
 };
 
+/// VisualCursor represents a cursor position with both visual and logical coordinates.
+/// Visual coordinates (visual_row, visual_col) are VIEWPORT-RELATIVE.
+/// This means visual_row=0 is the first visible line in the viewport, not the first line in the document.
+/// Logical coordinates (logical_row, logical_col) are document-absolute.
 pub const VisualCursor = struct {
-    visual_row: u32,
-    visual_col: u32,
-    logical_row: u32,
-    logical_col: u32,
+    visual_row: u32, // Viewport-relative row (0 = top of viewport)
+    visual_col: u32, // Viewport-relative column (0 = left edge of viewport when not wrapping)
+    logical_row: u32, // Document-absolute row
+    logical_col: u32, // Document-absolute column
 };
 
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
@@ -249,16 +253,34 @@ pub const EditorView = struct {
     /// Translate EditBuffer cursor (logical row/col) to visual cursor (accounting for wrapping)
     /// Returns null if cursor is out of bounds
     /// Automatically ensures cursor is visible before rendering
+    /// Returns viewport-relative visual coordinates for external API consumers
     pub fn getVisualCursor(self: *EditorView) ?VisualCursor {
         self.updateBeforeRender();
         const cursor = self.edit_buffer.getPrimaryCursor();
-        return self.logicalToVisualCursor(cursor.row, cursor.col);
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return null;
+
+        // Convert absolute visual coordinates to viewport-relative for the API
+        const vp = self.text_buffer_view.getViewport() orelse return vcursor;
+
+        const viewport_relative_row = if (vcursor.visual_row >= vp.y) vcursor.visual_row - vp.y else 0;
+        const viewport_relative_col = if (self.text_buffer_view.wrap_mode == .none)
+            (if (vcursor.visual_col >= vp.x) vcursor.visual_col - vp.x else 0)
+        else
+            vcursor.visual_col;
+
+        return VisualCursor{
+            .visual_row = viewport_relative_row,
+            .visual_col = viewport_relative_col,
+            .logical_row = vcursor.logical_row,
+            .logical_col = vcursor.logical_col,
+        };
     }
 
     /// Convert logical (row, col) to visual cursor position
     /// This accounts for line wrapping by finding which virtual line contains the logical position
+    /// Returns absolute visual coordinates (document-absolute, not viewport-relative)
     pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) ?VisualCursor {
-        // Find the visual line index for this logical position
+        // Find the visual line index for this logical position (document-absolute)
         const visual_row_idx = self.text_buffer_view.findVisualLineIndex(logical_row, logical_col) orelse return null;
 
         const vlines = self.text_buffer_view.virtual_lines.items;
@@ -282,6 +304,8 @@ pub const EditorView = struct {
     }
 
     /// Convert visual (row, col) to logical cursor position
+    /// Input visual coordinates are absolute (document-absolute)
+    /// Returns a VisualCursor with absolute visual coordinates
     pub fn visualToLogicalCursor(self: *EditorView, visual_row: u32, visual_col: u32) ?VisualCursor {
         self.text_buffer_view.updateVirtualLines();
 
@@ -302,7 +326,8 @@ pub const EditorView = struct {
 
     /// Move cursor up by one visual line (handles wrapped lines)
     pub fn moveUpVisual(self: *EditorView) void {
-        const vcursor = self.getVisualCursor() orelse return;
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return;
 
         if (vcursor.visual_row == 0) {
             // Already at top
@@ -338,7 +363,8 @@ pub const EditorView = struct {
 
     /// Move cursor down by one visual line (handles wrapped lines)
     pub fn moveDownVisual(self: *EditorView) void {
-        const vcursor = self.getVisualCursor() orelse return;
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return;
 
         self.text_buffer_view.updateVirtualLines();
         const vlines = self.text_buffer_view.virtual_lines.items;
