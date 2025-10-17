@@ -2312,7 +2312,7 @@ describe("EditorRenderable", () => {
       // This validates that the selection is rendered at the correct position
       const { bg } = buffer.buffers
       const bufferWidth = buffer.width
-      
+
       for (let cellX = editor.x; cellX < editor.x + 5; cellX++) {
         const bufferIdx = editor.y * bufferWidth + cellX
         const bgR = bg[bufferIdx * 4 + 0]
