@@ -862,19 +862,23 @@ pub const OptimizedBuffer = struct {
         const text_buffer = text_buffer_view.text_buffer;
 
         const line_info = text_buffer_view.getCachedLineInfo();
-        var globalCharPos: u32 = if (firstVisibleLine > 0 and firstVisibleLine < line_info.starts.len)
+        var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
             line_info.starts[firstVisibleLine]
         else
             0;
 
-        for (virtual_lines[firstVisibleLine..lastPossibleLine]) |vline| {
+        for (virtual_lines[firstVisibleLine..lastPossibleLine], 0..) |vline, slice_idx| {
             if (currentY >= bufferBottomY) break;
 
             currentX = x;
             var column_in_line: u32 = 0;
 
             // Initialize span tracking for this line
-            const vline_idx = @as(usize, @intCast(currentY - y));
+            // When viewport is set, virtual_lines is a slice starting from viewport.y
+            // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
+            // slice_idx is relative to the slice (0, 1, 2...), we need to add viewport offset + firstVisibleLine
+            const viewport_offset: u32 = if (viewport) |vp| vp.y else 0;
+            const vline_idx = viewport_offset + firstVisibleLine + slice_idx;
             const vline_span_info = text_buffer_view.getVirtualLineSpans(vline_idx);
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;

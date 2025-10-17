@@ -306,3 +306,150 @@ test "Selection - no viewport behaves as before" {
 
     try std.testing.expectEqualStrings("llo W", text);
 }
+
+test "Selection - VALIDATION: verify selection range matches extracted text with viewport" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line0\nLine1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8\nLine9");
+
+    // Set viewport showing lines 5-9 (offsetY=5)
+    view.setViewport(Viewport{ .x = 0, .y = 5, .width = 10, .height = 5 });
+
+    // Select viewport-local (0, 0) to (5, 0) - should be absolute line 5, cols 0-5
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+
+    // Get the selection range
+    const selection = view.getSelection();
+    try std.testing.expect(selection != null);
+
+    // Get the selected text
+    var selected_buffer: [100]u8 = undefined;
+    const selected_len = view.getSelectedTextIntoBuffer(&selected_buffer);
+    const selected_text = selected_buffer[0..selected_len];
+
+    // The selected text should be "Line5" (first 5 chars of line 5)
+    try std.testing.expectEqualStrings("Line5", selected_text);
+
+    // Now verify that the selection range (start, end) corresponds to the correct bytes in the full text
+    // When we extract full_text[start..end], we should get the same as selected_text
+    // BUT: full_text includes newlines, so we need to account for that
+    // Lines 0-4 each have 5 chars + 1 newline = 6 bytes each = 30 bytes
+    // Line 5 starts at byte 30
+    const expected_start: u32 = 30; // Start of line 5
+    const expected_end: u32 = 35; // First 5 chars of line 5
+
+    try std.testing.expectEqual(expected_start, selection.?.start);
+    try std.testing.expectEqual(expected_end, selection.?.end);
+}
+
+test "Selection - VALIDATION: multi-line selection range with viewport" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAA\nBBB\nCCC\nDDD\nEEE\nFFF\nGGG\nHHH");
+
+    // Set viewport at line 3 (showing lines 3-7)
+    view.setViewport(Viewport{ .x = 0, .y = 3, .width = 10, .height = 5 });
+
+    // Select viewport-local (0, 0) to (3, 2)
+    // Should select: absolute line 3 full + line 4 full + line 5 first 3 chars
+    // = "DDD" + "\n" + "EEE" + "\n" + "FFF"
+    _ = view.setLocalSelection(0, 0, 3, 2, null, null);
+
+    var selected_buffer: [100]u8 = undefined;
+    const selected_len = view.getSelectedTextIntoBuffer(&selected_buffer);
+    const selected_text = selected_buffer[0..selected_len];
+
+    // Should select "DDD\nEEE\nFFF"
+    try std.testing.expectEqualStrings("DDD\nEEE\nFFF", selected_text);
+
+    // Verify the selection range matches
+    const selection = view.getSelection();
+    try std.testing.expect(selection != null);
+
+    // Calculate expected byte positions
+    // Lines 0-2: 3 chars + newline each = 4 bytes * 3 = 12 bytes
+    // Line 3 starts at byte 12
+    // We want: DDD (3) + \n (1) + EEE (3) + \n (1) + FFF (3) = 11 bytes
+    const expected_start: u32 = 12; // Start of line 3
+    const expected_end: u32 = 23; // End of "FFF" on line 5
+
+    try std.testing.expectEqual(expected_start, selection.?.start);
+    try std.testing.expectEqual(expected_end, selection.?.end);
+}
+
+test "Selection - RENDER TEST: selection highlights correct cells with viewport scroll" {
+    const buffer_mod = @import("../buffer.zig");
+    const RGBA = buffer_mod.RGBA;
+
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAA\nBBB\nCCC\nDDD\nEEE\nFFF\nGGG\nHHH");
+
+    // Set viewport at line 3 (showing lines 3-7: DDD, EEE, FFF, GGG, HHH)
+    view.setViewport(Viewport{ .x = 0, .y = 3, .width = 10, .height = 5 });
+
+    // Select viewport-local (0, 0) to (3, 0) - should select first visible line "DDD"
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    _ = view.setLocalSelection(0, 0, 3, 0, red_bg, null);
+
+    // Create a buffer to render into
+    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, pool, 20, 10, .unicode, graphemes_ptr, display_width_ptr);
+    defer render_buffer.deinit();
+
+    // Draw the text buffer view at position (0, 0) on the render buffer
+    try render_buffer.drawTextBuffer(view, 0, 0, null);
+
+    // Now check that the first 3 cells on row 0 have red background
+    // These should correspond to "DDD" which is the first line in the viewport (absolute line 3)
+    var x: u32 = 0;
+    while (x < 3) : (x += 1) {
+        const cell = render_buffer.get(x, 0);
+        try std.testing.expect(cell != null);
+
+        // Check if background is red
+        const bg = cell.?.bg;
+        try std.testing.expectApproxEqAbs(@as(f32, 1.0), bg[0], 0.01); // Red
+        try std.testing.expectApproxEqAbs(@as(f32, 0.0), bg[1], 0.01); // Green
+        try std.testing.expectApproxEqAbs(@as(f32, 0.0), bg[2], 0.01); // Blue
+    }
+
+    // Cell at x=3 should NOT have red background (not selected)
+    const cell_3 = render_buffer.get(3, 0);
+    try std.testing.expect(cell_3 != null);
+    const bg_3 = cell_3.?.bg;
+    // Should be black or default, not red
+    try std.testing.expect(bg_3[0] < 0.5); // Not red
+}

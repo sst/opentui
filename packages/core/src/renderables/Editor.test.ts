@@ -2274,6 +2274,59 @@ describe("EditorRenderable", () => {
       expect(sel).not.toBe(null)
       expect(sel!.start).toBeGreaterThanOrEqual(viewport.offsetX)
     })
+
+    it("RENDER TEST: selection highlighting appears at correct screen position with viewport scroll", async () => {
+      const { OptimizedBuffer } = await import("../buffer")
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: Array.from({ length: 15 }, (_, i) => `Line${i}`).join("\n"),
+        width: 20,
+        height: 5,
+        selectable: true,
+        selectionBg: RGBA.fromValues(1, 0, 0, 1), // Red background for selection
+      })
+
+      // Scroll to line 8
+      editor.gotoLine(8)
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(0)
+
+      // Viewport should show lines starting from around line 6-8
+      // Select viewport-local (0, 0) to (5, 0) - should select first line visible
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      await renderOnce()
+
+      // Draw to buffer
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      // Check that cells at the top-left of the editor have selection background
+      // The selected text should be the first 5 chars of the line at viewport.offsetY
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toBe(`Line${viewport.offsetY}`.substring(0, 5))
+
+      // Now verify that the cells at screen position (editor.x, editor.y) have red background
+      // This validates that the selection is rendered at the correct position
+      const { bg } = buffer.buffers
+      const bufferWidth = buffer.width
+      
+      for (let cellX = editor.x; cellX < editor.x + 5; cellX++) {
+        const bufferIdx = editor.y * bufferWidth + cellX
+        const bgR = bg[bufferIdx * 4 + 0]
+        const bgG = bg[bufferIdx * 4 + 1]
+        const bgB = bg[bufferIdx * 4 + 2]
+
+        // Check if background is red (selection color) - allow for small floating point differences
+        expect(Math.abs(bgR - 1.0)).toBeLessThan(0.01) // Red channel
+        expect(Math.abs(bgG - 0.0)).toBeLessThan(0.01) // Green channel
+        expect(Math.abs(bgB - 0.0)).toBeLessThan(0.01) // Blue channel
+      }
+
+      buffer.destroy()
+    })
   })
 
   describe("Shift+Arrow Key Selection", () => {
