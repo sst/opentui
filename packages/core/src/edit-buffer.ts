@@ -5,7 +5,6 @@ import type { TextBuffer } from "./text-buffer"
 
 export interface CursorPosition {
   line: number
-  charPos: number // Absolute character position in the buffer
   visualColumn: number
 }
 

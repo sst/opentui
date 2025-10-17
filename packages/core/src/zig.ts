@@ -520,7 +520,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferGetCursorPosition: {
-      args: ["ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr"],
       returns: "void",
     },
     editBufferGetTextBuffer: {
@@ -1046,7 +1046,7 @@ export interface RenderLib {
   editBufferGotoLine: (buffer: Pointer, line: number) => void
   editBufferSetCursor: (buffer: Pointer, line: number, col: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
-  editBufferGetCursorPosition: (buffer: Pointer) => { line: number; charPos: number; visualColumn: number }
+  editBufferGetCursorPosition: (buffer: Pointer) => { line: number; visualColumn: number }
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer
   editBufferDebugLogRope: (buffer: Pointer) => void
   editBufferUndo: (buffer: Pointer, maxLength: number) => Uint8Array | null
@@ -2071,14 +2071,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferSetCursorToLineCol(buffer, line, col)
   }
 
-  public editBufferGetCursorPosition(buffer: Pointer): { line: number; charPos: number; visualColumn: number } {
+  public editBufferGetCursorPosition(buffer: Pointer): { line: number; visualColumn: number } {
     const line = new Uint32Array(1)
-    const charPos = new Uint32Array(1)
     const visualColumn = new Uint32Array(1)
-    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(charPos), ptr(visualColumn))
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(visualColumn))
     return {
       line: line[0],
-      charPos: charPos[0],
       visualColumn: visualColumn[0],
     }
   }

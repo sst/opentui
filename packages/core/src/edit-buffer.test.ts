@@ -43,7 +43,6 @@ describe("EditBuffer", () => {
 
       expect(cursor.line).toBe(0)
       expect(cursor.visualColumn).toBe(0)
-      expect(cursor.charPos).toBe(0)
     })
 
     it("should track cursor position after movements", () => {

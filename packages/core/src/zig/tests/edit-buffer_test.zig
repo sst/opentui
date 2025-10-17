@@ -1067,8 +1067,6 @@ test "EditBuffer - getCursorPosition returns correct info" {
     const pos = eb.getCursorPosition();
     try std.testing.expectEqual(@as(u32, 2), pos.line);
     try std.testing.expectEqual(@as(u32, 3), pos.visual_col);
-    // char_pos currently equals visual_col (TODO in implementation)
-    try std.testing.expectEqual(@as(u32, 3), pos.char_pos);
 }
 
 test "EditBuffer - getCursorPosition with wide characters" {

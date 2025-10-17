@@ -616,10 +616,9 @@ export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32
     edit_buffer.gotoLine(line) catch {};
 }
 
-export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outCharPos: *u32, outVisualCol: *u32) void {
+export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outVisualCol: *u32) void {
     const pos = edit_buffer.getCursorPosition();
     outLine.* = pos.line;
-    outCharPos.* = pos.char_pos;
     outVisualCol.* = pos.visual_col;
 }
 

@@ -737,14 +737,12 @@ pub const EditBuffer = struct {
         }
     }
 
-    pub fn getCursorPosition(self: *const EditBuffer) struct { line: u32, char_pos: u32, visual_col: u32 } {
+    pub fn getCursorPosition(self: *const EditBuffer) struct { line: u32, visual_col: u32 } {
         const cursor = self.getPrimaryCursor();
 
         return .{
             .line = cursor.row,
             .visual_col = cursor.col,
-            // TODO: Remove char_pos
-            .char_pos = cursor.col,
         };
     }
 
