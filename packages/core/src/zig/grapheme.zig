@@ -133,6 +133,13 @@ pub const GraphemePool = struct {
         return self.classes[class_id].get(slot_index, generation);
     }
 
+    pub fn getRefcount(self: *GraphemePool, id: IdPayload) GraphemePoolError!u32 {
+        const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        const slot_index: u32 = id & SLOT_MASK;
+        const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        return self.classes[class_id].getRefcount(slot_index, generation);
+    }
+
     const ClassPool = struct {
         allocator: std.mem.Allocator,
         slot_capacity: u32,
@@ -267,6 +274,14 @@ pub const GraphemePool = struct {
                 const external_ptr = ptr_storage.*;
                 return external_ptr[0..header_ptr.len];
             }
+        }
+
+        pub fn getRefcount(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!u32 {
+            if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
+            const p = self.slotPtr(slot_index);
+            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
+            return header_ptr.refcount;
         }
     };
 };

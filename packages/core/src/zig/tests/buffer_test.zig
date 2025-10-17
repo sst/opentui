@@ -1804,3 +1804,49 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
     std.debug.print("\nCompleted {d} frames with 3 TextBuffers ({d} total renders)\n", .{ frame, frame * 3 });
     std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
+
+test "OptimizedBuffer - grapheme refcount management" {
+    const one_slot = [_]u32{ 1, 1, 1, 1, 1 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = one_slot,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        5,
+        1,
+        .{ .pool = &local_pool, .id = "test-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    try buf.drawText("•", 0, 0, fg, bg, 0);
+    const cell0 = buf.get(0, 0).?;
+    const id0 = gp.graphemeIdFromChar(cell0.char);
+    const rc0 = local_pool.getRefcount(id0) catch 0;
+    const slot0 = id0 & 0xFFFF;
+
+    try std.testing.expectEqual(@as(u32, 1), rc0);
+
+    var i: u32 = 0;
+    while (i < 100) : (i += 1) {
+        try buf.drawText("•", 0, 0, fg, bg, 0);
+
+        const cell = buf.get(0, 0).?;
+        const id = gp.graphemeIdFromChar(cell.char);
+        const rc = local_pool.getRefcount(id) catch 999;
+        const slot = id & 0xFFFF;
+
+        try std.testing.expectEqual(@as(u32, 1), rc);
+        try std.testing.expectEqual(slot0, slot);
+    }
+}
