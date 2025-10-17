@@ -1613,3 +1613,41 @@ test "EditBuffer - setText, delete all via backspace, then type new text" {
     try std.testing.expectEqual(@as(u32, 0), final_cursor.row);
     try std.testing.expectEqual(@as(u32, 5), final_cursor.col);
 }
+
+test "EditBuffer - backspace at start of line joins lines correctly with setText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Create two lines using setText (like TypeScript test does)
+    try eb.setText("Hello\nWorld");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello\nWorld", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+
+    // Move to start of line 1 (second line)
+    try eb.setCursor(1, 0);
+    const cursor_before = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor_before.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor_before.col);
+
+    // Backspace should join lines
+    try eb.backspace();
+
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("HelloWorld", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
+
+    // Cursor should be at end of first line (where they joined)
+    const cursor_after = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor_after.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor_after.col);
+}

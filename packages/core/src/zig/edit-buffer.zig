@@ -482,23 +482,33 @@ pub const EditBuffer = struct {
 
         // When deleting across line boundaries, deleteRangeByWeight removes text and breaks
         // but not zero-weight linestart markers. Clean up orphaned linestart markers.
-        // An orphaned linestart is one immediately followed by another linestart (no text between).
+        // After deletion, linestart markers at start.row+1 onwards are orphaned if they exist.
         if (deleted_lines > 0) {
+            // Remove deleted_lines number of linestart markers starting from start.row
+            // (Don't remove linestart at start.row itself, only the ones after it)
             var removed_count: u32 = 0;
             while (removed_count < deleted_lines) : (removed_count += 1) {
+                // Try to get linestart at start.row (this is the one that should remain)
+                // Check if there's another linestart right after it (the orphaned one)
                 if (self.tb.rope.getMarker(.linestart, start.row)) |marker| {
                     const idx = marker.leaf_index;
-                    if (idx + 1 < self.tb.rope.count()) {
-                        if (self.tb.rope.get(idx + 1)) |next_seg| {
-                            // Only remove if the NEXT segment is also a linestart (orphaned)
-                            if (next_seg.isLineStart()) {
-                                try self.tb.rope.delete(idx);
-                                continue;
+                    // Look for linestart markers after this one
+                    var search_idx = idx + 1;
+                    while (search_idx < self.tb.rope.count()) : (search_idx += 1) {
+                        if (self.tb.rope.get(search_idx)) |seg| {
+                            if (seg.isLineStart()) {
+                                // Found an orphaned linestart - delete it
+                                try self.tb.rope.delete(search_idx);
+                                break;
+                            } else if (seg.isBreak()) {
+                                // Hit a break before finding linestart - not orphaned
+                                break;
                             }
                         }
                     }
+                } else {
+                    break;
                 }
-                break;
             }
         }
 
