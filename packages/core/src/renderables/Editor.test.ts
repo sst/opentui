@@ -1871,7 +1871,7 @@ describe("EditorRenderable", () => {
       }
 
       viewport = editor.editorView.getViewport()
-      const vlineCount = editor.editorView.getVirtualLineCount()
+      const vlineCount = editor.editorView.getTotalVirtualLineCount()
 
       // Should have created multiple virtual lines
       expect(vlineCount).toBeGreaterThan(5)
