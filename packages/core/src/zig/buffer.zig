@@ -884,7 +884,7 @@ pub const OptimizedBuffer = struct {
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
             var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
+            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
 
             // Find the first span that overlaps this virtual line's column range
@@ -1018,7 +1018,7 @@ pub const OptimizedBuffer = struct {
 
                         // Reset to defaults for new span
                         lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
                         lineAttributes = text_buffer.default_attributes orelse 0;
 
                         // Apply new span's style
