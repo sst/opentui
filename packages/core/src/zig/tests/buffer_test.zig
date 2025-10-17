@@ -9,8 +9,6 @@ const TextBuffer = text_buffer.TextBufferArray;
 const TextBufferView = text_buffer_view.TextBufferViewArray;
 const RGBA = buffer_mod.RGBA;
 
-// ==Test:==
-
 test "OptimizedBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -97,8 +95,6 @@ test "OptimizedBuffer - drawText with ASCII" {
     try std.testing.expectEqual(@as(u32, 'e'), cell_e.char);
 }
 
-// ==Test:==
-
 test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -120,15 +116,12 @@ test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Render the same emoji text 1000 times to the same position
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try buf.clear(bg, null);
         try buf.drawText("🌟🎨🚀", 0, 0, fg, bg, 0);
     }
 
-    // If we get here without OutOfMemory, the test passes
-    // Verify the emoji is still rendered correctly
     const cell = buf.get(0, 0).?;
     try std.testing.expect(gp.isGraphemeChar(cell.char));
 }
@@ -154,14 +147,12 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Render the same CJK text 1000 times to the same position
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try buf.clear(bg, null);
         try buf.drawText("测试文字", 0, 0, fg, bg, 0);
     }
 
-    // Verify the text is still rendered correctly
     const cell = buf.get(0, 0).?;
     try std.testing.expect(gp.isGraphemeChar(cell.char));
 }
@@ -180,7 +171,6 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set text with emojis and unicode
     try tb.setText("Hello 🌟 World\n测试 🎨 Test\n🚀 Rocket");
 
     var buf = try OptimizedBuffer.init(
@@ -195,14 +185,11 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
 
-    // Render the text buffer 1000 times to the same buffer
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try buf.clear(bg, null);
         try buf.drawTextBuffer(view, 0, 0, null);
     }
-
-    // If we get here without OutOfMemory, the test passes
 }
 
 test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
@@ -226,7 +213,6 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Render mixed content 500 times
     var i: u32 = 0;
     while (i < 500) : (i += 1) {
         try buf.clear(bg, null);
@@ -235,7 +221,6 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
         try buf.drawText("Hello World!", 0, 2, fg, bg, 0);
     }
 
-    // Verify content is still correct
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 'A'), cell.char);
 }
@@ -261,7 +246,6 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Draw and overwrite different emojis at same position many times
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try buf.drawText("🌟", 0, 0, fg, bg, 0);
@@ -269,7 +253,6 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
         try buf.drawText("🚀", 0, 0, fg, bg, 0);
     }
 
-    // Verify last emoji is rendered
     const cell = buf.get(0, 0).?;
     try std.testing.expect(gp.isGraphemeChar(cell.char));
 }
@@ -295,7 +278,6 @@ test "OptimizedBuffer - rendering to different positions" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Render to many different positions
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
         try buf.clear(bg, null);
@@ -309,7 +291,6 @@ test "OptimizedBuffer - rendering to different positions" {
         }
     }
 
-    // Verify some cells are rendered
     const cell = buf.get(0, 0).?;
     try std.testing.expect(gp.isGraphemeChar(cell.char));
 }
@@ -328,7 +309,6 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create a longer text with many graphemes
     var text_builder = std.ArrayList(u8).init(std.testing.allocator);
     defer text_builder.deinit();
 
@@ -341,7 +321,6 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
 
     try tb.setText(text_builder.items);
 
-    // Enable wrapping
     view.setWrapMode(.char);
     view.setWrapWidth(40);
 
@@ -357,14 +336,11 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
 
-    // Render the text buffer 200 times
     var i: u32 = 0;
     while (i < 200) : (i += 1) {
         try buf.clear(bg, null);
         try buf.drawTextBuffer(view, 0, 0, null);
     }
-
-    // If we get here without OutOfMemory, the test passes
 }
 
 test "OptimizedBuffer - grapheme tracker counts" {
@@ -388,24 +364,20 @@ test "OptimizedBuffer - grapheme tracker counts" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Draw some emojis
     try buf.drawText("🌟🎨🚀", 0, 0, fg, bg, 0);
 
-    // Check grapheme count is reasonable (should be 3 for 3 emojis)
     const count_after_draw = buf.grapheme_tracker.getGraphemeCount();
     try std.testing.expect(count_after_draw > 0);
-    try std.testing.expect(count_after_draw <= 10); // Should be small
+    try std.testing.expect(count_after_draw <= 10);
 
-    // Clear and redraw many times
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
         try buf.clear(bg, null);
         try buf.drawText("🌟🎨🚀", 0, 0, fg, bg, 0);
     }
 
-    // Check grapheme count hasn't grown unbounded
     const count_after_repeated = buf.grapheme_tracker.getGraphemeCount();
-    try std.testing.expect(count_after_repeated <= 20); // Should stay small
+    try std.testing.expect(count_after_repeated <= 20);
 }
 
 test "OptimizedBuffer - alternating emojis should not leak" {
@@ -429,7 +401,6 @@ test "OptimizedBuffer - alternating emojis should not leak" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Alternate between two different emoji strings
     var i: u32 = 0;
     while (i < 500) : (i += 1) {
         if (i % 2 == 0) {
@@ -439,7 +410,6 @@ test "OptimizedBuffer - alternating emojis should not leak" {
         }
     }
 
-    // Check grapheme count hasn't grown unbounded
     const count = buf.grapheme_tracker.getGraphemeCount();
     try std.testing.expect(count <= 20);
 }
@@ -458,7 +428,6 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set text with emojis
     try tb.setText("🌟🎨🚀");
 
     var buf = try OptimizedBuffer.init(
@@ -474,15 +443,13 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Render WITHOUT clearing between renders (this might trigger the leak)
     var i: u32 = 0;
     while (i < 2000) : (i += 1) {
         try buf.drawTextBuffer(view, 0, 0, null);
     }
 
-    // Check tracker count
     const count = buf.grapheme_tracker.getGraphemeCount();
-    try std.testing.expect(count < 100); // Should not grow unbounded
+    try std.testing.expect(count < 100);
 }
 
 test "OptimizedBuffer - many small graphemes without clear" {
@@ -499,7 +466,6 @@ test "OptimizedBuffer - many small graphemes without clear" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Character that shows up in the error: bytes={ 226, 128, 162 } is U+2022 (bullet point •)
     try tb.setText("• • • •");
 
     var buf = try OptimizedBuffer.init(
@@ -515,7 +481,6 @@ test "OptimizedBuffer - many small graphemes without clear" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Render many times without clearing
     var i: u32 = 0;
     while (i < 5000) : (i += 1) {
         try buf.drawTextBuffer(view, 0, 0, null);
@@ -539,7 +504,6 @@ test "OptimizedBuffer - stress test with many graphemes" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Fill with many different graphemes
     var text_builder = std.ArrayList(u8).init(std.testing.allocator);
     defer text_builder.deinit();
 
@@ -563,7 +527,6 @@ test "OptimizedBuffer - stress test with many graphemes" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Render many times
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try buf.drawTextBuffer(view, 0, 0, null);
@@ -587,7 +550,6 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Use the exact character from the error log
     try tb.setText("• • • • • • • • • •");
 
     var buf = try OptimizedBuffer.init(
@@ -602,7 +564,6 @@ test "OptimizedBuffer - pool slot exhaustion test" {
 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
 
-    // Render 10000 times - this should definitely trigger pool exhaustion if there's a leak
     var i: u32 = 0;
     while (i < 10000) : (i += 1) {
         if (i % 100 == 0) {
@@ -615,8 +576,7 @@ test "OptimizedBuffer - pool slot exhaustion test" {
 }
 
 test "OptimizedBuffer - many unique graphemes with small pool" {
-    // Create a small pool to test growth
-    const tiny_slots = [_]u32{ 4, 4, 4, 4, 4 }; // Only 4 slots per page
+    const tiny_slots = [_]u32{ 4, 4, 4, 4, 4 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
     });
@@ -644,19 +604,14 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
 
-    // Try to actually exhaust the pool by rendering many unique graphemes
-    // With only 4 slots per page and 3-byte chars, we should hit limits quickly
-
     var render_count: u32 = 0;
     var success_count: u32 = 0;
     var failure_count: u32 = 0;
 
     while (render_count < 1000) : (render_count += 1) {
-        // Create text with different unicode characters each iteration
         var text_builder = std.ArrayList(u8).init(std.testing.allocator);
         defer text_builder.deinit();
 
-        // Use a range of unicode characters to create many unique graphemes
         const base_codepoint: u21 = 0x2600 + @as(u21, @intCast(render_count % 500));
         const char_bytes = [_]u8{
             @intCast(0xE0 | (base_codepoint >> 12)),
@@ -675,7 +630,6 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
             continue;
         };
 
-        // Only clear occasionally to stress the pool
         if (render_count % 50 == 0) {
             try buf.clear(bg, null);
         }
@@ -695,7 +649,6 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
     std.debug.print("\nRender attempts: {d}, Success: {d}\n", .{ render_count, success_count });
     std.debug.print("Final grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
-    // Should complete without exhausting pool
     try std.testing.expect(failure_count == 0);
 }
 
@@ -713,7 +666,6 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set text once with bullet points (the character from the error log)
     try tb.setText("• Hello World •\n• Test Line •\n• Another Line •");
 
     var buf = try OptimizedBuffer.init(
@@ -728,8 +680,6 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
 
     var failure_count: u32 = 0;
 
-    // Simulate continuous rendering like a terminal application would do
-    // NO clearing - just keep rendering the same content
     var i: u32 = 0;
     while (i < 50000) : (i += 1) {
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
@@ -762,7 +712,6 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
 
     try tb.setText("🌟 • 测试 • 🎨");
 
-    // Create multiple buffers (like multiple terminal panels)
     var buf1 = try OptimizedBuffer.init(
         std.testing.allocator,
         40,
@@ -795,7 +744,6 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
 
     var failure_count: u32 = 0;
 
-    // Render to all buffers many times
     var i: u32 = 0;
     while (i < 5000) : (i += 1) {
         buf1.drawTextBuffer(view, 0, 0, null) catch |err| {
@@ -824,8 +772,7 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
 }
 
 test "OptimizedBuffer - continuous render without clear with small pool" {
-    // Create a small pool
-    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 }; // Only 2 slots per page
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
     });
@@ -841,7 +788,6 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set text with bullet point (the character from error log)
     try tb.setText("• Test •");
 
     var buf = try OptimizedBuffer.init(
@@ -859,7 +805,6 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
 
     var failure_count: u32 = 0;
 
-    // Render continuously WITHOUT clearing - this should trigger the leak if it exists
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
@@ -878,8 +823,7 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
 }
 
 test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
-    // Create an extremely small pool to trigger exhaustion quickly
-    const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 }; // Only 3 slots per page
+    const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
     });
@@ -895,7 +839,6 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set text with bullet points
     try tb.setText("• • • • •");
 
     var buf = try OptimizedBuffer.init(
@@ -911,17 +854,12 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Set a scissor rect that clips most of the content
     try buf.pushScissorRect(0, 0, 5, 5);
 
     var failure_count: u32 = 0;
 
-    // Render many times - graphemes will be allocated in drawTextBuffer
-    // but setCellWithAlphaBlending will return early due to scissor clipping
-    // This should leak the allocated graphemes!
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        // Render to position outside scissor rect
         buf.drawTextBuffer(view, 20, 20, null) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
@@ -941,7 +879,6 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
 }
 
 test "OptimizedBuffer - drawText with alpha blending and scissor" {
-    // Create an extremely small pool
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -964,17 +901,14 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5 }; // Alpha background
+    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5 };
 
     try buf.clear(bg, null);
 
-    // Set scissor rect
     try buf.pushScissorRect(0, 0, 10, 10);
 
     var failure_count: u32 = 0;
 
-    // Draw text outside scissor rect repeatedly
-    // This might allocate graphemes but then not track them if clipped
     var i: u32 = 0;
     while (i < 200) : (i += 1) {
         buf.drawText("• • • •", 50, 0, fg, bg_alpha, 0) catch |err| {
@@ -994,7 +928,6 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
 }
 
 test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
-    // Create very small pool
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1017,17 +950,14 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
 
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5 }; // Alpha background triggers setCellWithAlphaBlending
+    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5 };
 
     try buf.clear(bg, null);
 
     var failure_count: u32 = 0;
 
-    // Draw many different unicode characters with alpha blending
-    // This forces pool allocation for each unique character
     var i: u32 = 0;
     while (i < 50) : (i += 1) {
-        // Create unique unicode character
         const base_codepoint: u21 = 0x2600 + @as(u21, @intCast(i));
         const char_bytes = [_]u8{
             @intCast(0xE0 | (base_codepoint >> 12)),
@@ -1057,8 +987,7 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
 }
 
 test "OptimizedBuffer - fill buffer with many unique graphemes" {
-    // Create an EXTREMELY small pool that cannot grow enough
-    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 }; // Only 2 slots per page
+    const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
     });
@@ -1086,13 +1015,11 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
     var failure_count: u32 = 0;
     var success_count: u32 = 0;
 
-    // Try to fill the buffer with many unique graphemes
-    // Each one needs a pool slot, and we never overwrite (each goes to different position)
     var char_idx: u32 = 0;
     var y: u32 = 0;
     while (y < 15) : (y += 1) {
         var x: u32 = 0;
-        while (x < 35) : (x += 2) { // Step by 2 for wide chars
+        while (x < 35) : (x += 2) {
             const base_codepoint: u21 = 0x2600 + @as(u21, @intCast(char_idx % 200));
             const char_bytes = [_]u8{
                 @intCast(0xE0 | (base_codepoint >> 12)),
@@ -1127,7 +1054,6 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
 }
 
 test "OptimizedBuffer - verify pool growth works correctly" {
-    // Create pool with 1 slot per page to test growth mechanism
     const one_slot = [_]u32{ 1, 1, 1, 1, 1 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = one_slot,
@@ -1153,7 +1079,6 @@ test "OptimizedBuffer - verify pool growth works correctly" {
 
     try buf.clear(bg, null);
 
-    // Place many unique graphemes to force pool growth
     var success_count: u32 = 0;
     var char_idx: u32 = 0;
     while (char_idx < 150) : (char_idx += 1) {
@@ -1180,7 +1105,6 @@ test "OptimizedBuffer - verify pool growth works correctly" {
 }
 
 test "OptimizedBuffer - repeated overwriting of same grapheme" {
-    // Use TINY pool to trigger the bug quickly
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1204,18 +1128,8 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // Test the suspected bug:
-    // pool.alloc() -> refcount=1
-    // tracker.add() -> refcount=2 (incref if new)
-    // WE NEVER DECREF THE INITIAL ALLOCATION!
-    // When overwriting: tracker.remove() -> refcount=1
-    // Grapheme never gets freed because refcount never reaches 0
-
-    // Draw a bullet point once
     try buf.drawText("•", 0, 0, fg, bg, 0);
 
-    // Overwrite SAME position MANY times with SAME character
-    // If there's a refcount leak, each new alloc() will leak a reference
     var i: u32 = 0;
     var alloc_failed = false;
     while (i < 500) : (i += 1) {
@@ -1235,8 +1149,6 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     }
 
     if (!alloc_failed) {
-
-        // Even if it didn't fail, check if tracker count grew (indicates leak)
         if (buf.grapheme_tracker.getGraphemeCount() > 2) {
             std.debug.print("\nTracker count issue: Tracker count should be 1, but is {d} ***\n", .{buf.grapheme_tracker.getGraphemeCount()});
             return error.RefcountLeak;
@@ -1246,8 +1158,7 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     }
 }
 
-test "OptimizedBuffer - two-buffer pattern with setRaw" {
-    // This reproduces the EXACT bug in renderer.zig
+test "OptimizedBuffer - two-buffer pattern should not leak" {
     const tiny_slots = [_]u32{ 4, 4, 4, 4, 4 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1258,7 +1169,6 @@ test "OptimizedBuffer - two-buffer pattern with setRaw" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    // Simulate renderer's two-buffer setup
     var nextBuffer = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
@@ -1286,9 +1196,6 @@ test "OptimizedBuffer - two-buffer pattern with setRaw" {
     var alloc_failed = false;
 
     while (frame < 100) : (frame += 1) {
-        // Simulate one render frame like renderer.zig does:
-
-        // 1. Draw to nextBuffer (like renderables do)
         nextBuffer.drawText("• Test •", 0, 0, fg, bg, 0) catch |err| {
             std.debug.print("\nTest failed at frame {d}: {} ***\n", .{ frame, err });
             std.debug.print("Next buffer tracker: {d}\n", .{nextBuffer.grapheme_tracker.getGraphemeCount()});
@@ -1300,11 +1207,9 @@ test "OptimizedBuffer - two-buffer pattern with setRaw" {
             break;
         };
 
-        // 2. Copy from next to current using setRaw (line 624 in renderer.zig)
         const cell = nextBuffer.get(0, 0).?;
-        currentBuffer.setRaw(0, 0, cell); // BUG: Does not track grapheme!
+        currentBuffer.setRaw(0, 0, cell);
 
-        // 3. Clear nextBuffer for next frame (line 689 in renderer.zig)
         try nextBuffer.clear(bg, null);
     }
 
@@ -1314,8 +1219,7 @@ test "OptimizedBuffer - two-buffer pattern with setRaw" {
     }
 }
 
-test "OptimizedBuffer - set and clear cycle" {
-    // Use TINY pool
+test "OptimizedBuffer - set and clear cycle should not leak" {
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1339,18 +1243,10 @@ test "OptimizedBuffer - set and clear cycle" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    // The bug happens when:
-    // 1. We allocate a grapheme in pool (refcount=1)
-    // 2. We call set() which tracker.add()s it (refcount=2)
-    // 3. But we never decref our initial ownership!
-    // 4. When clear() is called, tracker.clear() decrefs (refcount=1)
-    // 5. The grapheme has refcount=1 but is not in any tracker -> LEAKED
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
     while (frame < 200) : (frame += 1) {
-        // Draw grapheme
         buf.drawText("•", 0, 0, fg, bg, 0) catch |err| {
             std.debug.print("\nTest failed at frame {d}: {} ***\n", .{ frame, err });
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
@@ -1359,7 +1255,6 @@ test "OptimizedBuffer - set and clear cycle" {
             break;
         };
 
-        // Clear buffer (like renderer does each frame)
         try buf.clear(bg, null);
     }
 
@@ -1369,8 +1264,7 @@ test "OptimizedBuffer - set and clear cycle" {
     }
 }
 
-test "OptimizedBuffer - repeated drawTextBuffer without clear" {
-    //Use EXTREMELY TINY pool
+test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1387,7 +1281,6 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set text ONCE (like editor does)
     try tb.setText("• Hello • World •");
 
     var buf = try OptimizedBuffer.init(
@@ -1406,10 +1299,7 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear" {
     var frame: u32 = 0;
     var alloc_failed = false;
 
-    // Simulate 60fps for several seconds = hundreds of frames
-    // setText is called ONCE, buffer is rendered repeatedly
     while (frame < 500) : (frame += 1) {
-        // Draw text buffer (like editor does every frame)
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
             std.debug.print("\n\n", .{ frame, err });
             std.debug.print("Buffer tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
@@ -1430,8 +1320,7 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear" {
     }
 }
 
-test "OptimizedBuffer - renderer two-buffer swap pattern" {
-    // TINY POOL
+test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     const tiny_slots = [_]u32{ 3, 3, 3, 3, 3 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1450,7 +1339,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
 
     try tb.setText("• • •");
 
-    // Two buffers like renderer has
     var current = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
@@ -1478,7 +1366,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
     var alloc_failed = false;
 
     while (frame < 300) : (frame += 1) {
-        // 1. Renderables draw to next buffer
         next.drawTextBuffer(view, 0, 0, null) catch |err| {
             std.debug.print("\n\n", .{ frame, err });
             std.debug.print("Next tracker: {d}, Current tracker: {d}\n", .{ next.grapheme_tracker.getGraphemeCount(), current.grapheme_tracker.getGraphemeCount() });
@@ -1487,7 +1374,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
             break;
         };
 
-        // 2. Renderer copies changed cells to current using setRaw (line 624)
         var x: u32 = 0;
         while (x < 10) : (x += 1) {
             if (next.get(x, 0)) |cell| {
@@ -1495,7 +1381,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
             }
         }
 
-        // 3. Clear next for next frame (line 689)
         try next.clear(bg, null);
     }
 
@@ -1505,8 +1390,7 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
     }
 }
 
-test "OptimizedBuffer - sustained rendering 3000 frames" {
-    // EXTREMELY TINY POOL - smallest possible
+test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1523,7 +1407,6 @@ test "OptimizedBuffer - sustained rendering 3000 frames" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Mimic editor content with bullet points
     try tb.setText("  • Type any text to insert\n  • Arrow keys to move cursor\n  • Backspace/Delete to remove text");
 
     var buf = try OptimizedBuffer.init(
@@ -1542,7 +1425,6 @@ test "OptimizedBuffer - sustained rendering 3000 frames" {
     var frame: u32 = 0;
     var alloc_failed = false;
 
-    // Simulate 50 seconds at 60fps = 3000 frames
     while (frame < 3000) : (frame += 1) {
         buf.drawTextBuffer(view, 0, 0, null) catch |err| {
             std.debug.print("\n\n", .{ frame, @as(f32, @floatFromInt(frame)) / 60.0 });
@@ -1551,9 +1433,6 @@ test "OptimizedBuffer - sustained rendering 3000 frames" {
             alloc_failed = true;
             break;
         };
-
-        // Don't clear! This is the key - editor doesn't clear between frames
-
     }
 
     if (alloc_failed) {
@@ -1561,8 +1440,7 @@ test "OptimizedBuffer - sustained rendering 3000 frames" {
     }
 }
 
-test "OptimizedBuffer - rendering with changing content" {
-    // TINY POOL
+test "OptimizedBuffer - rendering with changing content should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = tiny_slots,
@@ -1596,8 +1474,6 @@ test "OptimizedBuffer - rendering with changing content" {
     var alloc_failed = false;
 
     while (frame < 100) : (frame += 1) {
-        // Alternate between different unicode characters
-        // This forces NEW grapheme allocations each time
         const char_idx = frame % 10;
         const base_codepoint: u21 = 0x2600 + @as(u21, @intCast(char_idx));
         const char_bytes = [_]u8{
@@ -1631,8 +1507,7 @@ test "OptimizedBuffer - rendering with changing content" {
     }
 }
 
-test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
-    // ABSURDLY TINY - 1 slot per page!
+test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not leak" {
     const one_slot = [_]u32{ 1, 1, 1, 1, 1 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
         .slots_per_page = one_slot,
@@ -1643,7 +1518,6 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
-    // Multiple text buffers sharing same tiny pool
     var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer tb1.deinit();
     var view1 = try TextBufferView.init(std.testing.allocator, tb1);
@@ -1680,7 +1554,6 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
     var alloc_failed = false;
 
     while (frame < 500) : (frame += 1) {
-        // Render all 3 text buffers to different positions (like panels)
         buf.drawTextBuffer(view1, 0, 0, null) catch |err| {
             std.debug.print("\n✓ BUG REPRODUCED in view1 at frame {d}: {} ✓\n", .{ frame, err });
             alloc_failed = true;
