@@ -1553,3 +1553,63 @@ test "EditBuffer - backspace mixed narrow and wide graphemes" {
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
 }
+
+test "EditBuffer - setText, delete all via backspace, then type new text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Set initial multiline text
+    try eb.setText("ABC\nDEF\nGHI");
+
+    // Move cursor to end of last line
+    try eb.setCursor(2, 3);
+
+    var out_buffer: [100]u8 = undefined;
+
+    // Backspace until all text is deleted
+    // Keep moving cursor to end and backspacing until buffer is empty
+    var backspace_count: u32 = 0;
+    while (backspace_count < 100) : (backspace_count += 1) {
+        const text_len = eb.getText(&out_buffer);
+        if (text_len == 0) break;
+
+        // Move cursor to end of buffer
+        const line_count = eb.getTextBuffer().lineCount();
+        if (line_count > 0) {
+            const last_line = line_count - 1;
+            const line_width = iter_mod.lineWidthAt(&eb.getTextBuffer().rope, last_line);
+            try eb.setCursor(last_line, line_width);
+        }
+
+        try eb.backspace();
+    }
+
+    // Verify all text is deleted
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqual(@as(usize, 0), written);
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
+
+    // Cursor should be at (0, 0)
+    const cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Type a few characters
+    try eb.insertText("Hello");
+
+    // Verify text is correct
+    const final_written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello", out_buffer[0..final_written]);
+
+    // Verify cursor is at the end (after "Hello" which is 5 chars)
+    const final_cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), final_cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), final_cursor.col);
+}

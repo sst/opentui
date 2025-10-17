@@ -2612,7 +2612,7 @@ test "Rope - toText with nested structure" {
     defer arena.deinit();
 
     const RopeType = rope_mod.Rope(SimpleItem);
-    
+
     // Create a larger rope that will have branches
     var items: [10]SimpleItem = undefined;
     for (&items, 0..) |*item, i| {
@@ -2673,4 +2673,57 @@ test "Rope - toText shows single leaf" {
     try std.testing.expect(std.mem.indexOf(u8, debug_text, "[root") != null);
     try std.testing.expect(std.mem.indexOf(u8, debug_text, "[leaf") != null);
     try std.testing.expect(std.mem.indexOf(u8, debug_text, "]") != null);
+}
+
+test "Rope - marker cache MUST update after delete operations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+
+    // Create: word(5) newline word(5) newline word(5)
+    // 3 lines total, 2 newlines
+    const tokens = [_]TokenType{
+        .{ .word = 5 },
+        .{ .newline = {} },
+        .{ .word = 5 },
+        .{ .newline = {} },
+        .{ .word = 5 },
+    };
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens);
+
+    std.debug.print("\n=== Initial state ===\n", .{});
+    const initial_text = try rope.toText(arena.allocator());
+    defer arena.allocator().free(initial_text);
+    std.debug.print("Rope: {s}\n", .{initial_text});
+    std.debug.print("Newline marker count: {}\n", .{rope.markerCount(.newline)});
+
+    // Should have 2 newlines
+    try std.testing.expectEqual(@as(u32, 2), rope.markerCount(.newline));
+    std.debug.print("Newline 0: {any}\n", .{rope.getMarker(.newline, 0)});
+    std.debug.print("Newline 1: {any}\n", .{rope.getMarker(.newline, 1)});
+
+    // Delete the last word (index 4)
+    try rope.delete(4);
+
+    std.debug.print("\n=== After deleting last word ===\n", .{});
+    const after_delete_text = try rope.toText(arena.allocator());
+    defer arena.allocator().free(after_delete_text);
+    std.debug.print("Rope: {s}\n", .{after_delete_text});
+    std.debug.print("Newline marker count: {}\n", .{rope.markerCount(.newline)});
+
+    // Should STILL have 2 newlines (we only deleted the word, not the newlines)
+    try std.testing.expectEqual(@as(u32, 2), rope.markerCount(.newline));
+    std.debug.print("Newline 0: {any}\n", .{rope.getMarker(.newline, 0)});
+    std.debug.print("Newline 1: {any}\n", .{rope.getMarker(.newline, 1)});
+
+    // The critical test: marker positions MUST be correct after delete!
+    const nl1_after = rope.getMarker(.newline, 1);
+    try std.testing.expect(nl1_after != null);
+
+    // After deleting the last word at index 4, the second newline should be at index 3
+    // (was at index 3 before, stays at 3 after deleting index 4)
+    std.debug.print("Expected newline 1 to be at leaf_index 3, got {}\n", .{nl1_after.?.leaf_index});
+    try std.testing.expectEqual(@as(u32, 3), nl1_after.?.leaf_index);
 }

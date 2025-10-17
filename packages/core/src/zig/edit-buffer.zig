@@ -482,6 +482,7 @@ pub const EditBuffer = struct {
 
         // When deleting across line boundaries, deleteRangeByWeight removes text and breaks
         // but not zero-weight linestart markers. Clean up orphaned linestart markers.
+        // An orphaned linestart is one immediately followed by another linestart (no text between).
         if (deleted_lines > 0) {
             var removed_count: u32 = 0;
             while (removed_count < deleted_lines) : (removed_count += 1) {
@@ -489,6 +490,7 @@ pub const EditBuffer = struct {
                     const idx = marker.leaf_index;
                     if (idx + 1 < self.tb.rope.count()) {
                         if (self.tb.rope.get(idx + 1)) |next_seg| {
+                            // Only remove if the NEXT segment is also a linestart (orphaned)
                             if (next_seg.isLineStart()) {
                                 try self.tb.rope.delete(idx);
                                 continue;
@@ -500,11 +502,45 @@ pub const EditBuffer = struct {
             }
         }
 
+        // Clean up orphaned break markers at the end of the rope
+        // A break at the end is orphaned if not followed by linestart+text
+        // Don't remove linestart markers - we need at least one for the first line
+        while (true) {
+            const rope_count = self.tb.rope.count();
+            if (rope_count == 0) break;
+
+            const last_seg = self.tb.rope.get(rope_count - 1) orelse break;
+
+            if (last_seg.isBreak()) {
+                // Break at end is orphaned
+                try self.tb.rope.delete(rope_count - 1);
+                continue;
+            }
+            break;
+        }
+
+        // Ensure we always have at least linestart + text (even if empty text)
+        if (self.tb.rope.count() == 1) {
+            if (self.tb.rope.get(0)) |first_seg| {
+                if (first_seg.isLineStart()) {
+                    // Add empty text chunk
+                    const empty_mem_id = try self.tb.registerMemBuffer(&[_]u8{}, false);
+                    const empty_chunk = self.tb.createChunk(empty_mem_id, 0, 0);
+                    try self.tb.rope.append(Segment{ .text = empty_chunk });
+                }
+            }
+        }
+
         self.tb.markViewsDirty();
 
-        // Set cursor to start of deleted range
+        // Set cursor to start of deleted range, but clamp to valid line
         if (self.cursors.items.len > 0) {
-            self.cursors.items[0] = .{ .row = start.row, .col = start.col, .desired_col = start.col };
+            const line_count = self.tb.lineCount();
+            const clamped_row = if (start.row >= line_count) line_count -| 1 else start.row;
+            const line_width = if (line_count > 0) self.getLineWidth(clamped_row) else 0;
+            const clamped_col = @min(start.col, line_width);
+
+            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
         }
 
         self.events.emit(.cursorChanged);
@@ -516,61 +552,26 @@ pub const EditBuffer = struct {
 
         if (cursor.row == 0 and cursor.col == 0) return;
 
-        try self.autoStoreUndo();
-
         if (cursor.col == 0) {
-            // At start of line - use O(1) marker lookup to find the break before this line
-            // The break before line N is break marker at index N-1
+            // At start of line - delete from end of previous line to current position
             if (cursor.row > 0) {
-                const marker_pos = self.tb.rope.getMarker(.brk, cursor.row - 1);
-
-                if (marker_pos) |pos| {
-                    const break_idx = pos.leaf_index;
-
-                    const prev_line_width = self.getLineWidth(cursor.row - 1);
-
-                    // Delete the break segment
-                    try self.tb.rope.delete(break_idx);
-
-                    // Also remove the following linestart if present
-                    // After deleting break_idx, the linestart that was at break_idx+1 is now at break_idx
-                    if (self.tb.rope.get(break_idx)) |seg| {
-                        if (seg.isLineStart()) {
-                            try self.tb.rope.delete(break_idx);
-                        }
-                    }
-
-                    if (self.tb.char_count > 0) {
-                        self.tb.char_count -= 1;
-                    }
-
-                    self.tb.markViewsDirty();
-
-                    // Move cursor to end of previous line (using the width we calculated before the merge)
-                    self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
-                }
+                const prev_line_width = self.getLineWidth(cursor.row - 1);
+                try self.deleteRange(
+                    .{ .row = cursor.row - 1, .col = prev_line_width },
+                    .{ .row = cursor.row, .col = 0 },
+                );
             }
         } else {
+            // Delete previous grapheme
             const prev_grapheme_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
             if (prev_grapheme_width == 0) return; // Nothing to delete
 
             const target_col = cursor.col - prev_grapheme_width;
-            const start_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, target_col) orelse return;
-            const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
-
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
-
-            if (self.tb.char_count > 0) {
-                self.tb.char_count -= 1;
-            }
-
-            self.tb.markViewsDirty();
-
-            self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
+            try self.deleteRange(
+                .{ .row = cursor.row, .col = target_col },
+                .{ .row = cursor.row, .col = cursor.col },
+            );
         }
-
-        self.events.emit(.cursorChanged);
     }
 
     pub fn deleteForward(self: *EditBuffer) !void {

@@ -2081,3 +2081,125 @@ test "TextBuffer setText - CRLF at SIMD boundary" {
 test "TextBuffer setText - line with multiple u16-sized chunks (SKIPPED)" {
     return error.SkipZigTest;
 }
+
+test "TextBuffer setText - validate rope structure is correct" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Set multiline text
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    // Print rope structure
+    const rope_text = try tb.rope.toText(std.testing.allocator);
+    defer std.testing.allocator.free(rope_text);
+    std.debug.print("\nRope structure: {s}\n", .{rope_text});
+
+    // Validate line count
+    const line_count = tb.lineCount();
+    std.debug.print("Line count: {}\n", .{line_count});
+    try std.testing.expectEqual(@as(u32, 3), line_count);
+
+    // Validate break marker count
+    const break_count = tb.rope.markerCount(.brk);
+    std.debug.print("Break marker count: {}\n", .{break_count});
+    try std.testing.expectEqual(@as(u32, 2), break_count); // Should have exactly 2 breaks for 3 lines
+
+    // Validate linestart marker count
+    const linestart_count = tb.rope.markerCount(.linestart);
+    std.debug.print("Linestart marker count: {}\n", .{linestart_count});
+    try std.testing.expectEqual(@as(u32, 3), linestart_count); // Should have exactly 3 linestarts
+
+    // Print each marker's position
+    var i: u32 = 0;
+    while (i < break_count) : (i += 1) {
+        const marker = tb.rope.getMarker(.brk, i);
+        std.debug.print("Break marker {}: {any}\n", .{ i, marker });
+    }
+
+    i = 0;
+    while (i < linestart_count) : (i += 1) {
+        const marker = tb.rope.getMarker(.linestart, i);
+        std.debug.print("Linestart marker {}: {any}\n", .{ i, marker });
+    }
+
+    // Validate line widths
+    std.debug.print("Line 0 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 0)});
+    std.debug.print("Line 1 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 1)});
+    std.debug.print("Line 2 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 2)});
+
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 0));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 2));
+
+    // Validate total weight
+    const total_weight = tb.rope.totalWeight();
+    std.debug.print("Total weight: {}\n", .{total_weight});
+    // "Line 1" (6) + break (1) + "Line 2" (6) + break (1) + "Line 3" (6) = 20
+    try std.testing.expectEqual(@as(u32, 20), total_weight);
+}
+
+test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    const edit_buffer = @import("../edit-buffer.zig");
+    var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Set multiline text
+    try eb.setText("Line 1\nLine 2\nLine 3");
+
+    std.debug.print("\n=== After setText ===\n", .{});
+    {
+        const rope_text_init = try eb.getTextBuffer().rope.toText(std.testing.allocator);
+        defer std.testing.allocator.free(rope_text_init);
+        std.debug.print("Rope: {s}\n", .{rope_text_init});
+        std.debug.print("Line count: {}, Break count: {}, Total weight: {}\n", .{ eb.getTextBuffer().lineCount(), eb.getTextBuffer().rope.markerCount(.brk), eb.getTextBuffer().rope.totalWeight() });
+    }
+
+    // Delete all of "Line 3" using EditBuffer.deleteRange
+    // Line 2 starts at row 2, col 0 and ends at row 2, col 6
+    try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
+
+    std.debug.print("\n=== After deleting 'Line 3' ===\n", .{});
+    {
+        const rope_text_after = try eb.getTextBuffer().rope.toText(std.testing.allocator);
+        defer std.testing.allocator.free(rope_text_after);
+        std.debug.print("Rope: {s}\n", .{rope_text_after});
+        std.debug.print("Line count: {}, Break count: {}, Total weight: {}\n", .{ eb.getTextBuffer().lineCount(), eb.getTextBuffer().rope.markerCount(.brk), eb.getTextBuffer().rope.totalWeight() });
+    }
+
+    // Check what markers remain
+    const break_count = eb.getTextBuffer().rope.markerCount(.brk);
+    var i: u32 = 0;
+    while (i < break_count) : (i += 1) {
+        const marker = eb.getTextBuffer().rope.getMarker(.brk, i);
+        std.debug.print("Break marker {}: {any}\n", .{ i, marker });
+    }
+
+    const linestart_count = eb.getTextBuffer().rope.markerCount(.linestart);
+    i = 0;
+    while (i < linestart_count) : (i += 1) {
+        const marker = eb.getTextBuffer().rope.getMarker(.linestart, i);
+        std.debug.print("Linestart marker {}: {any}\n", .{ i, marker });
+    }
+
+    // After deleting "Line 3" with EditBuffer.deleteRange, we should have:
+    // - 2 lines remaining
+    // - 1 break marker (between line 0 and line 1)
+    // - 2 linestart markers
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
+    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().rope.markerCount(.brk));
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.linestart));
+}
