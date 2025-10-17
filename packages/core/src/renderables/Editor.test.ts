@@ -1692,7 +1692,7 @@ describe("EditorRenderable", () => {
       // Move to the long line
       editor.gotoLine(5)
 
-      const vlineCount = editor.editorView.getVirtualLineCount()
+      const vlineCount = editor.editorView.getTotalVirtualLineCount()
       expect(vlineCount).toBeGreaterThan(10) // Should be more due to wrapping
 
       // Move to end of long line

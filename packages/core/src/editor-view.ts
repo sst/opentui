@@ -72,6 +72,11 @@ export class EditorView {
     return this.lib.editorViewGetVirtualLineCount(this.viewPtr)
   }
 
+  public getTotalVirtualLineCount(): number {
+    this.guard()
+    return this.lib.editorViewGetTotalVirtualLineCount(this.viewPtr)
+  }
+
   public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
     this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)

@@ -445,6 +445,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "u32",
     },
+    editorViewGetTotalVirtualLineCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
     editorViewGetTextBufferView: {
       args: ["ptr"],
       returns: "ptr",
@@ -1063,6 +1067,7 @@ export interface RenderLib {
   editorViewSetScrollMargin: (view: Pointer, margin: number) => void
   editorViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
   editorViewGetVirtualLineCount: (view: Pointer) => number
+  editorViewGetTotalVirtualLineCount: (view: Pointer) => number
   editorViewGetTextBufferView: (view: Pointer) => Pointer
   editorViewSetSelection: (
     view: Pointer,
@@ -1981,6 +1986,10 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetVirtualLineCount(view: Pointer): number {
     return this.opentui.symbols.editorViewGetVirtualLineCount(view)
+  }
+
+  public editorViewGetTotalVirtualLineCount(view: Pointer): number {
+    return this.opentui.symbols.editorViewGetTotalVirtualLineCount(view)
   }
 
   public editorViewGetTextBufferView(view: Pointer): Pointer {
