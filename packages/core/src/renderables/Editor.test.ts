@@ -2625,6 +2625,39 @@ describe("EditorRenderable", () => {
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Hi World")
     })
+
+    it("should delete selected text via native deleteSelectedText API", async () => {
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Select "Hello" using mouse drag
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      // Delete using native API directly
+      editor.editorView.deleteSelectedText()
+      currentRenderer.clearSelection()
+      await renderOnce()
+
+      // Verify text is " World"
+      expect(editor.plainText).toBe(" World")
+
+      // Verify cursor is at start of deleted range
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      // Verify selection is cleared in EditorView
+      expect(editor.editorView.hasSelection()).toBe(false)
+    })
   })
 
   describe("History - Undo/Redo", () => {

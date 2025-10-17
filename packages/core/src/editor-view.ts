@@ -171,6 +171,11 @@ export class EditorView {
     this.lib.editorViewMoveDownVisual(this.viewPtr)
   }
 
+  public deleteSelectedText(): void {
+    this.guard()
+    this.lib.editorViewDeleteSelectedText(this.viewPtr)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

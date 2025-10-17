@@ -2227,3 +2227,218 @@ test "EditorView - horizontal scroll: combined vertical and horizontal scrolling
     try std.testing.expect(cursor.col >= vp.x);
     try std.testing.expect(cursor.col < vp.x + vp.width);
 }
+
+test "EditorView - deleteSelectedText single line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
+    defer ev.deinit();
+
+    try eb_inst.setText("Hello World");
+
+    // Select "Hello" (chars 0-5)
+    ev.text_buffer_view.setSelection(0, 5, null, null);
+
+    // Verify selection is set
+    const sel_before = ev.text_buffer_view.getSelection();
+    try std.testing.expect(sel_before != null);
+    try std.testing.expectEqual(@as(u32, 0), sel_before.?.start);
+    try std.testing.expectEqual(@as(u32, 5), sel_before.?.end);
+
+    // Delete the selection
+    try ev.deleteSelectedText();
+
+    // Verify text is " World"
+    var out_buffer: [100]u8 = undefined;
+    const written = ev.getText(&out_buffer);
+    try std.testing.expectEqualStrings(" World", out_buffer[0..written]);
+
+    // Verify cursor is at start of deleted range
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Verify selection is cleared
+    const sel_after = ev.text_buffer_view.getSelection();
+    try std.testing.expect(sel_after == null);
+}
+
+test "EditorView - deleteSelectedText multi-line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
+    defer ev.deinit();
+
+    try eb_inst.setText("Line 1\nLine 2\nLine 3");
+
+    // Text layout: L(0)i(1)n(2)e(3) (4)1(5)\n(6)L(7)i(8)n(9)e(10) (11)2(12)\n(13)L(14)i(15)n(16)e(17) (18)3(19)
+    // Select from offset 2 to 15: "ne 1\nLine 2\nLi"
+    // After deletion: "Li" + "ne 3" = "Liine 3"
+    ev.text_buffer_view.setSelection(2, 15, null, null);
+
+    try ev.deleteSelectedText();
+
+    // Verify text after deletion
+    var out_buffer: [100]u8 = undefined;
+    const written = ev.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Liine 3", out_buffer[0..written]);
+
+    // Verify cursor is at start position (row 0, col 2)
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+}
+
+test "EditorView - deleteSelectedText with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+
+    // Long line that will wrap: "ABCDEFGHIJKLMNOPQRSTUVWXYZ" (26 chars)
+    try eb_inst.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    // With width 20, this wraps to 2 virtual lines
+    const vline_count = ev.getTotalVirtualLineCount();
+    try std.testing.expect(vline_count >= 2);
+
+    // Select chars [5, 15) = "FGHIJKLMNO"
+    ev.text_buffer_view.setSelection(5, 15, null, null);
+
+    try ev.deleteSelectedText();
+
+    // Verify text is "ABCDEPQRSTUVWXYZ"
+    var out_buffer: [100]u8 = undefined;
+    const written = ev.getText(&out_buffer);
+    try std.testing.expectEqualStrings("ABCDEPQRSTUVWXYZ", out_buffer[0..written]);
+
+    // Verify cursor is at position 5
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}
+
+test "EditorView - deleteSelectedText with viewport scrolled" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 40, 5);
+    defer ev.deinit();
+
+    // Insert 20 lines
+    try eb_inst.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
+
+    // Move to line 10 to trigger scroll
+    try eb_inst.gotoLine(10);
+    _ = ev.getVirtualLines();
+
+    var vp = ev.getViewport().?;
+    try std.testing.expect(vp.y > 0);
+
+    // Select from char 50 to char 70 (roughly across line 7 to line 10)
+    // Each line is "Line N\n" = 7 chars
+    // Line 7 starts at 7*7 = 49
+    ev.text_buffer_view.setSelection(50, 70, null, null);
+
+    try ev.deleteSelectedText();
+
+    // Verify cursor is visible after deletion
+    _ = ev.getVirtualLines();
+    vp = ev.getViewport().?;
+    const cursor = ev.getPrimaryCursor();
+
+    try std.testing.expect(cursor.row >= vp.y);
+    try std.testing.expect(cursor.row < vp.y + vp.height);
+}
+
+test "EditorView - deleteSelectedText with no selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
+    defer ev.deinit();
+
+    try eb_inst.setText("Hello World");
+
+    // No selection - should be a no-op
+    try ev.deleteSelectedText();
+
+    // Verify text is unchanged
+    var out_buffer: [100]u8 = undefined;
+    const written = ev.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
+}
+
+test "EditorView - deleteSelectedText entire line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
+    defer ev.deinit();
+
+    try eb_inst.setText("First\nSecond\nThird\n");
+
+    // Text layout: F(0)i(1)r(2)s(3)t(4)\n(5)S(6)e(7)c(8)o(9)n(10)d(11)\n(12)T(13)h(14)i(15)r(16)d(17)\n(18)
+    // Select "\nSecond\n" (chars 5-13) to delete newline before, content, and newline after
+    // After deletion: "First" + "Third\n" = "FirstThird\n"
+    ev.text_buffer_view.setSelection(5, 13, null, null);
+
+    try ev.deleteSelectedText();
+
+    // Verify text is "FirstThird\n"
+    var out_buffer: [100]u8 = undefined;
+    const written = ev.getText(&out_buffer);
+    try std.testing.expectEqualStrings("FirstThird\n", out_buffer[0..written]);
+
+    // Verify cursor is at row 0, col 5 (end of "First", start of "Third")
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}

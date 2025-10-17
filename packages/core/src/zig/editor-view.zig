@@ -400,4 +400,26 @@ pub const EditorView = struct {
             }
         }
     }
+
+    pub fn deleteSelectedText(self: *EditorView) !void {
+        const selection = self.text_buffer_view.getSelection() orelse return;
+
+        const start_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.start) orelse return;
+        const end_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.end) orelse return;
+
+        const start_cursor = eb.Cursor{
+            .row = start_coords.row,
+            .col = start_coords.col,
+            .desired_col = start_coords.col,
+        };
+        const end_cursor = eb.Cursor{
+            .row = end_coords.row,
+            .col = end_coords.col,
+            .desired_col = end_coords.col,
+        };
+
+        try self.edit_buffer.deleteRange(start_cursor, end_cursor);
+        self.text_buffer_view.resetLocalSelection();
+        self.updateBeforeRender();
+    }
 };

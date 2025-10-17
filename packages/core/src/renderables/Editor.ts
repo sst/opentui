@@ -196,29 +196,9 @@ export class EditorRenderable extends EditBufferRenderable {
   }
 
   private deleteSelectedText(): void {
-    const selection = this.editorView.getSelection()
-    if (!selection) return
+    this.editorView.deleteSelectedText()
 
-    const { start, end } = selection
-
-    // Get the text before and after the selection
-    const fullText = this.editorView.getText()
-    const before = fullText.substring(0, start)
-    const after = fullText.substring(end)
-
-    // Set the new text (this will reset cursor to start)
-    this.editBuffer.setText(before + after)
-
-    // Calculate the line and byte offset for the cursor position
-    // Count newlines in 'before' to get the line number
-    const beforeLines = before.split("\n")
-    const targetLine = beforeLines.length - 1
-    const byteOffsetInLine = beforeLines[beforeLines.length - 1].length
-
-    // Set cursor to the start of where the deletion occurred
-    this.editBuffer.setCursor(targetLine, byteOffsetInLine)
-
-    // Clear the selection
+    // Clear the selection in the context
     this._ctx.clearSelection()
     this.requestRender()
   }

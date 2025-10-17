@@ -827,6 +827,10 @@ export fn editorViewMoveDownVisual(view: *editor_view.EditorView) void {
     view.moveDownVisual();
 }
 
+export fn editorViewDeleteSelectedText(view: *editor_view.EditorView) void {
+    view.deleteSelectedText() catch {};
+}
+
 export fn bufferDrawEditorView(
     bufferPtr: *buffer.OptimizedBuffer,
     viewPtr: *editor_view.EditorView,

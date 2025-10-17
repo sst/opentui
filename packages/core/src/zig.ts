@@ -607,6 +607,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    editorViewDeleteSelectedText: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     getArenaAllocatedBytes: {
       args: [],
@@ -1087,6 +1091,7 @@ export interface RenderLib {
   editorViewVisualToLogicalCursor: (view: Pointer, visualRow: number, visualCol: number) => VisualCursor | null
   editorViewMoveUpVisual: (view: Pointer) => void
   editorViewMoveDownVisual: (view: Pointer) => void
+  editorViewDeleteSelectedText: (view: Pointer) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2260,6 +2265,10 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewMoveDownVisual(view: Pointer): void {
     this.opentui.symbols.editorViewMoveDownVisual(view)
+  }
+
+  public editorViewDeleteSelectedText(view: Pointer): void {
+    this.opentui.symbols.editorViewDeleteSelectedText(view)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {
