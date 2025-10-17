@@ -123,12 +123,20 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     }
   })
 
-  // Add keypress handler for debug logging
+  // Add keypress handler for debug logging and wrap mode toggling
   rendererInstance.keyInput.on("keypress", (key: KeyEvent) => {
     if (key.ctrl && key.name === "l") {
       // Ctrl+L to debug log rope
       if (editor && !editor.isDestroyed) {
         editor.editBuffer.debugLogRope()
+      }
+    }
+    if (key.shift && key.name === "w") {
+      // Shift+W to toggle wrap mode
+      if (editor && !editor.isDestroyed) {
+        const currentMode = editor.wrapMode
+        const nextMode = currentMode === "word" ? "char" : currentMode === "char" ? "none" : "word"
+        editor.wrapMode = nextMode
       }
     }
   })

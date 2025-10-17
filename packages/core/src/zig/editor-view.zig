@@ -105,22 +105,26 @@ pub const EditorView = struct {
         self.scroll_margin = @max(0.0, @min(0.5, margin));
     }
 
-    /// Ensure the cursor is visible within the viewport, adjusting viewport.y if needed
+    /// Ensure the cursor is visible within the viewport, adjusting viewport.y and viewport.x if needed
     /// cursor_line: The virtual line index where the cursor is located
     pub fn ensureCursorVisible(self: *EditorView, cursor_line: u32) void {
         const vp = self.text_buffer_view.getViewport() orelse return;
 
         const viewport_height = vp.height;
-        if (viewport_height == 0) return;
+        const viewport_width = vp.width;
+        if (viewport_height == 0 or viewport_width == 0) return;
 
         const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+        const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
 
-        // Get total virtual line count to determine max offset
+        // Get total virtual line count to determine max vertical offset
         const total_lines = self.text_buffer_view.getVirtualLineCount();
-        const max_offset = if (total_lines > viewport_height) total_lines - viewport_height else 0;
+        const max_offset_y = if (total_lines > viewport_height) total_lines - viewport_height else 0;
 
         var new_offset_y = vp.y;
+        var new_offset_x = vp.x;
 
+        // Vertical scrolling
         // Check if cursor is above viewport (with margin)
         if (cursor_line < vp.y + margin_lines) {
             // Scroll up to show cursor at margin from top
@@ -134,14 +138,34 @@ pub const EditorView = struct {
         else if (cursor_line >= vp.y + viewport_height - margin_lines) {
             // Scroll down to show cursor at margin from bottom
             const desired_offset = cursor_line + margin_lines - viewport_height + 1;
-            new_offset_y = @min(desired_offset, max_offset);
+            new_offset_y = @min(desired_offset, max_offset_y);
         }
 
-        // TODO: Why only when y changed? What about x?
+        // Horizontal scrolling (only when wrapping is disabled)
+        if (self.text_buffer_view.wrap_mode == .none) {
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            const cursor_col = cursor.col;
+
+            // Check if cursor is left of viewport (with margin)
+            if (cursor_col < vp.x + margin_cols) {
+                // Scroll left to show cursor at margin from left edge
+                if (cursor_col >= margin_cols) {
+                    new_offset_x = cursor_col - margin_cols;
+                } else {
+                    new_offset_x = 0;
+                }
+            }
+            // Check if cursor is right of viewport (with margin)
+            else if (cursor_col >= vp.x + viewport_width - margin_cols) {
+                // Scroll right to show cursor at margin from right edge
+                new_offset_x = cursor_col + margin_cols - viewport_width + 1;
+            }
+        }
+
         // Update viewport if offset changed
-        if (new_offset_y != vp.y) {
+        if (new_offset_y != vp.y or new_offset_x != vp.x) {
             self.text_buffer_view.setViewport(tbv.Viewport{
-                .x = vp.x,
+                .x = new_offset_x,
                 .y = new_offset_y,
                 .width = vp.width,
                 .height = vp.height,
