@@ -214,7 +214,7 @@ describe("EditorView", () => {
       const lines = Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n")
       buffer.setText(lines)
 
-      expect(view.getVirtualLineCount()).toBe(100)
+      expect(view.getTotalVirtualLineCount()).toBe(100)
     })
 
     it("should handle very long single line with wrapping", () => {
@@ -237,7 +237,7 @@ describe("EditorView", () => {
       // Create view with viewport showing 5 lines
       const smallView = EditorView.create(buffer, 40, 5)
 
-      expect(smallView.getVirtualLineCount()).toBe(20) // Total line count
+      expect(smallView.getTotalVirtualLineCount()).toBe(20) // Total line count
 
       smallView.destroy()
     })
