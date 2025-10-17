@@ -179,31 +179,6 @@ pub fn walkLinesAndSegments(
     }
 }
 
-/// Walk text segments in a segment range - for compatibility
-/// For best performance, use walkLinesAndSegments instead
-pub fn walkSegments(
-    rope: *const UnifiedRope,
-    seg_start: u32,
-    seg_end: u32,
-    ctx: *anyopaque,
-    callback: *const fn (ctx: *anyopaque, chunk: *const TextChunk, idx: u32) void,
-) void {
-    if (seg_start >= seg_end) return;
-
-    var chunk_idx: u32 = 0;
-    var seg_idx = seg_start;
-
-    // For small ranges, direct get() is acceptable
-    while (seg_idx < seg_end) : (seg_idx += 1) {
-        if (rope.get(seg_idx)) |seg| {
-            if (seg.asText()) |chunk| {
-                callback(ctx, chunk, chunk_idx);
-                chunk_idx += 1;
-            }
-        }
-    }
-}
-
 /// Get the total number of logical lines in a unified rope
 pub fn getLineCount(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
