@@ -13,6 +13,7 @@ import {
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
+import { NativeSyntaxStyle } from "../native-syntax-style"
 
 const initialContent = `Welcome to the EditorRenderable Demo!
 
@@ -27,7 +28,7 @@ Try the following commands:
   • Ctrl+K to delete to line end
   • Ctrl+J to join lines
   • Home/End for line navigation
-  • Ctrl+A/E for buffer start/end
+  • Ctrl+PageUp/PageDown for buffer start/end
 
 The editor supports:
   ✓ Grapheme-aware cursor movement
@@ -147,6 +148,16 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         editor.wrapMode = nextMode
       }
     }
+    if (key.ctrl && (key.name === "pageup" || key.name === "pagedown")) {
+      key.preventDefault()
+      if (editor && !editor.isDestroyed) {
+        if (key.name === "pageup") {
+          editor.editBuffer.setCursor(0, 0)
+        } else {
+          editor.gotoBufferEnd()
+        }
+      }
+    }
   })
 }
 
@@ -154,12 +165,12 @@ function showHelpOverlay(rendererInstance: CliRenderer): void {
   const overlay = new BoxRenderable(rendererInstance, {
     id: "help-overlay",
     zIndex: 100,
-    width: 70,
+    width: 90,
     height: 30,
     position: "absolute",
     left: "50%",
     top: "50%",
-    marginLeft: -35,
+    marginLeft: -45,
     marginTop: -15,
     border: true,
     borderStyle: "double",
@@ -168,29 +179,36 @@ function showHelpOverlay(rendererInstance: CliRenderer): void {
     padding: 2,
     title: "Editor Help",
     titleAlignment: "center",
+    renderAfter(buffer, deltaTime) {
+      const altBg = parseColor("#1A1F26")
+      const lines = [1, 3, 6, 8, 10, 14, 17, 19]
+      for (const lineIdx of lines) {
+        buffer.fillRect(this.x + 1, this.y + 3 + lineIdx, this.width - 2, 1, altBg)
+      }
+    },
   })
   rendererInstance.root.add(overlay)
 
   const helpContent = t`${bold(fg("#4ECDC4")("Navigation:"))}
-  ${green("Arrow Keys")}      Move cursor
-  ${green("Home / End")}      Start/end of line
-  ${green("Ctrl+A / Ctrl+E")} Start/end of buffer
+  ${green("Arrow Keys")}                                     Move cursor
+  ${green("Home / End")}                                     Start/end of line
+  ${green("Ctrl+PageUp / Ctrl+PageDown")}                    Start/end of buffer
 
 ${bold(fg("#4ECDC4")("Editing:"))}
-  ${green("Type")}            Insert text
-  ${green("Enter")}           New line
-  ${green("Backspace / Del")} Delete text
-  ${green("Ctrl+D")}          Delete current line
-  ${green("Ctrl+K")}          Delete to line end
-  ${green("Ctrl+J")}          Join lines
+  ${green("Type")}                                           Insert text
+  ${green("Enter")}                                          New line
+  ${green("Backspace / Del")}                                Delete text
+  ${green("Ctrl+D")}                                         Delete current line
+  ${green("Ctrl+K")}                                         Delete to line end
+  ${green("Ctrl+J")}                                         Join lines
 
 ${bold(fg("#4ECDC4")("View:"))}
-  ${green("Shift+W")}         Toggle wrap mode (word/char/none)
+  ${green("Shift+W")}                                        Toggle wrap mode (word/char/none)
 
 ${bold(fg("#4ECDC4")("Demo:"))}
-  ${green("?")}               Toggle this help
-  ${green("ESC")}             Return to main menu
-  ${green("Ctrl+L")}          Debug log rope structure
+  ${green("?")}                                              Toggle this help
+  ${green("ESC")}                                            Return to main menu
+  ${green("Ctrl+L")}                                         Debug log rope structure
 
 ${fg("#888888")("Press ? to close")}`
 
