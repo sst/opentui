@@ -135,7 +135,7 @@ test "UnifiedTextBuffer - line iteration" {
     var ctx = Context{ .lines = std.ArrayList(iter_mod.LineInfo).init(testing.allocator) };
     defer ctx.lines.deinit();
 
-    iter_mod.walkLines(&tb.rope, &ctx, Context.callback);
+    iter_mod.walkLines(&tb.rope, &ctx, Context.callback, true);
 
     try testing.expectEqual(@as(usize, 3), ctx.lines.items.len);
     try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);

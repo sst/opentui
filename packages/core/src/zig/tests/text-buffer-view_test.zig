@@ -2145,6 +2145,7 @@ test "TextBufferView char range highlights - multi-line highlight" {
 
     try tb.setText("Hello\nWorld\nTest");
 
+    // Highlight from chars 3-9 (not counting newlines: char 3 in "Hello", char 9 at end of "World")
     try tb.addHighlightByCharRange(3, 9, 1, 1, null);
 
     const line0_highlights = tb.getLineHighlights(0);

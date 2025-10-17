@@ -27,72 +27,55 @@ pub const Coords = struct {
 };
 
 /// Walk all logical lines in a unified rope
-/// Uses the rope's walk() API for O(n) traversal without allocations
+/// Optimized O(line_count) implementation using marker lookups instead of segment walking
 /// Callback receives LineInfo for each line
+/// Note: Takes mutable rope for lazy marker cache rebuilding
+/// @param include_newlines_in_offset: If true, char_offset includes newline characters (default true)
 pub fn walkLines(
-    rope: *const UnifiedRope,
+    rope: *UnifiedRope,
     ctx: *anyopaque,
     callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
+    include_newlines_in_offset: bool,
 ) void {
-    // Special case: empty rope - emit nothing (0 lines)
-    // setText("") will handle creating the single empty line
-    if (rope.count() == 0) {
-        return;
-    }
+    const linestart_count = rope.markerCount(.linestart);
+    if (linestart_count == 0) return;
 
-    const WalkContext = struct {
-        user_ctx: *anyopaque,
-        user_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
-        current_line_idx: u32 = 0,
-        current_char_offset: u32 = 0,
-        line_start_seg: u32 = 0,
-        current_seg_idx: u32 = 0,
-        line_width: u32 = 0,
+    const total_weight = rope.totalWeight();
 
-        fn walker(walk_ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
-            const walk_ctx = @as(*@This(), @ptrCast(@alignCast(walk_ctx_ptr)));
+    var i: u32 = 0;
+    while (i < linestart_count) : (i += 1) {
+        const marker = rope.getMarker(.linestart, i) orelse continue;
+        const line_start_weight = marker.global_weight;
 
-            if (seg.isBreak()) {
-                // Emit line via callback
-                walk_ctx.user_callback(walk_ctx.user_ctx, LineInfo{
-                    .line_idx = walk_ctx.current_line_idx,
-                    .char_offset = walk_ctx.current_char_offset,
-                    .width = walk_ctx.line_width,
-                    .seg_start = walk_ctx.line_start_seg,
-                    .seg_end = idx, // Don't include the break
-                });
+        // Compute line width using same logic as lineWidthAt()
+        const width = if (i + 1 < linestart_count) blk: {
+            const next_marker = rope.getMarker(.linestart, i + 1) orelse break :blk 0;
+            break :blk next_marker.global_weight - line_start_weight - 1;
+        } else blk: {
+            break :blk total_weight - line_start_weight;
+        };
 
-                walk_ctx.current_line_idx += 1;
-                walk_ctx.current_char_offset += walk_ctx.line_width;
-                walk_ctx.line_start_seg = idx + 1;
-                walk_ctx.line_width = 0;
-            } else if (seg.asText()) |chunk| {
-                walk_ctx.line_width += chunk.width;
-            }
+        // Compute seg_end by looking at next line's marker (or using a sentinel)
+        const seg_end = if (i + 1 < linestart_count) blk: {
+            const next_marker = rope.getMarker(.linestart, i + 1) orelse break :blk marker.leaf_index + 1;
+            break :blk next_marker.leaf_index;
+        } else blk: {
+            break :blk rope.count();
+        };
 
-            walk_ctx.current_seg_idx = idx + 1;
-            return .{};
-        }
-    };
+        // Calculate char_offset: subtract number of newlines if requested
+        // Line i has i newlines before it (one after each previous line)
+        const char_offset = if (include_newlines_in_offset)
+            line_start_weight
+        else
+            line_start_weight - i;
 
-    var walk_ctx = WalkContext{
-        .user_ctx = ctx,
-        .user_callback = callback,
-    };
-    rope.walk(&walk_ctx, WalkContext.walker) catch {};
-
-    // Emit final line if we have content after last break OR if we had at least one break
-    // (A trailing break creates an empty final line)
-    const had_breaks = walk_ctx.current_line_idx > 0;
-    const has_content_after_break = walk_ctx.line_start_seg < walk_ctx.current_seg_idx;
-
-    if (has_content_after_break or had_breaks) {
         callback(ctx, LineInfo{
-            .line_idx = walk_ctx.current_line_idx,
-            .char_offset = walk_ctx.current_char_offset,
-            .width = walk_ctx.line_width,
-            .seg_start = walk_ctx.line_start_seg,
-            .seg_end = walk_ctx.current_seg_idx,
+            .line_idx = i,
+            .char_offset = char_offset,
+            .width = width,
+            .seg_start = marker.leaf_index,
+            .seg_end = seg_end,
         });
     }
 }
@@ -201,6 +184,7 @@ pub fn getTotalWidth(rope: *const UnifiedRope) u32 {
 /// Returns null if coordinates are out of bounds
 /// Optimized O(1) implementation using linestart marker lookups
 /// Note: Rope weight includes newlines (each .brk adds +1), but col is still display width
+/// Takes mutable rope for lazy marker cache rebuilding
 pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return null;
@@ -231,6 +215,7 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
 /// Returns null if offset is out of bounds
 /// Optimized O(log n) implementation using binary search on linestart markers
 /// Note: Rope weight includes newlines, so valid offsets are 0..totalWeight() inclusive
+/// Takes mutable rope for lazy marker cache rebuilding
 pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
     const linestart_count = rope.markerCount(.linestart);
     if (linestart_count == 0) return null;
@@ -277,6 +262,7 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
 
 /// Get the display width of a specific line using O(1) marker lookups
 /// Note: Returns display width only (excludes newline weight)
+/// Takes mutable rope for lazy marker cache rebuilding
 pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return 0;

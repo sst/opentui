@@ -13,7 +13,7 @@ test "walkLines - empty rope" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const rope = try UnifiedRope.init(allocator);
+    var rope = try UnifiedRope.init(allocator);
 
     const Context = struct {
         count: u32 = 0,
@@ -29,7 +29,7 @@ test "walkLines - empty rope" {
     };
 
     var ctx = Context{};
-    iter_mod.walkLines(&rope, &ctx, Context.callback);
+    iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
     // Empty rope = 0 lines (caller should use setText("") to create 1 empty line)
     try testing.expectEqual(@as(u32, 0), ctx.count);
@@ -41,6 +41,7 @@ test "walkLines - single text segment" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -63,7 +64,7 @@ test "walkLines - single text segment" {
     var ctx = Context{ .lines = std.ArrayList(LineInfo).init(allocator) };
     defer ctx.lines.deinit();
 
-    iter_mod.walkLines(&rope, &ctx, Context.callback);
+    iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
     try testing.expectEqual(@as(usize, 1), ctx.lines.items.len);
     try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width);
@@ -75,6 +76,7 @@ test "walkLines - text + break + text" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -85,6 +87,7 @@ test "walkLines - text + break + text" {
         },
     });
     try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -107,7 +110,7 @@ test "walkLines - text + break + text" {
     var ctx = Context{ .lines = std.ArrayList(LineInfo).init(allocator) };
     defer ctx.lines.deinit();
 
-    iter_mod.walkLines(&rope, &ctx, Context.callback);
+    iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
     try testing.expectEqual(@as(usize, 2), ctx.lines.items.len);
 
@@ -117,7 +120,62 @@ test "walkLines - text + break + text" {
 
     try testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
     try testing.expectEqual(@as(u32, 5), ctx.lines.items[1].width);
-    try testing.expectEqual(@as(u32, 10), ctx.lines.items[1].char_offset);
+    try testing.expectEqual(@as(u32, 11), ctx.lines.items[1].char_offset); // Includes newline weight
+}
+
+test "walkLines - exclude newlines in offset" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var rope = try UnifiedRope.init(allocator);
+    try rope.append(Segment{ .linestart = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 0,
+            .byte_end = 10,
+            .width = 10,
+            .flags = 0,
+        },
+    });
+    try rope.append(Segment{ .brk = {} });
+    try rope.append(Segment{ .linestart = {} });
+    try rope.append(Segment{
+        .text = TextChunk{
+            .mem_id = 0,
+            .byte_start = 10,
+            .byte_end = 15,
+            .width = 5,
+            .flags = 0,
+        },
+    });
+
+    const Context = struct {
+        lines: std.ArrayList(LineInfo),
+
+        fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            ctx.lines.append(line_info) catch {};
+        }
+    };
+
+    var ctx = Context{ .lines = std.ArrayList(LineInfo).init(allocator) };
+    defer ctx.lines.deinit();
+
+    iter_mod.walkLines(&rope, &ctx, Context.callback, false);
+
+    try testing.expectEqual(@as(usize, 2), ctx.lines.items.len);
+
+    // Line 0: char_offset should be 0 (no newlines before it)
+    try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
+    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width);
+    try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].char_offset);
+
+    // Line 1: char_offset should be 10 (not 11, excludes the newline)
+    try testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
+    try testing.expectEqual(@as(u32, 5), ctx.lines.items[1].width);
+    try testing.expectEqual(@as(u32, 10), ctx.lines.items[1].char_offset); // Excludes newline weight
 }
 
 test "coordsToOffset - valid coordinates" {

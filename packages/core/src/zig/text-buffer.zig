@@ -688,7 +688,7 @@ pub const UnifiedTextBuffer = struct {
             .priority = priority,
             .hl_ref = hl_ref,
         };
-        iter_mod.walkLines(&self.rope, &ctx, Context.callback);
+        iter_mod.walkLines(&self.rope, &ctx, Context.callback, false);
     }
 
     /// Remove all highlights with a specific reference ID

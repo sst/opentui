@@ -915,12 +915,13 @@ test "TextBuffer char range highlights - multi-line highlight" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    // "Hello" = 5 chars (0-4, newlines not counted)
-    // "World" = 5 chars (5-9, newlines not counted)
-    // "Test" = 4 chars (10-13)
+    // "Hello" = 5 chars (0-4, newlines not counted in offsets)
+    // "World" = 5 chars (5-9, newlines not counted in offsets)
+    // "Test" = 4 chars (10-13, newlines not counted in offsets)
     try tb.setText("Hello\nWorld\nTest");
 
-    // Highlight from middle of line 0 to middle of line 1 (chars 3-9)
+    // Highlight from middle of line 0 to middle of line 1 (chars 3-9, not counting newlines)
+    // char 3 = 'l' in "Hello", char 9 = 'd' in "World" (last char)
     try tb.addHighlightByCharRange(3, 9, 1, 1, null);
 
     // Should create highlights on line 0 and line 1
