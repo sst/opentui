@@ -1428,3 +1428,130 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
     try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "test") != null);
     try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "hello") != null);
 }
+
+test "EditBuffer - backspace after wide grapheme deletes entire grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert text with wide character (東 is width 2)
+    try eb.insertText("AB東CD");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("AB東CD", out_buffer[0..written]);
+
+    // Cursor should be at end: A(1) + B(1) + 東(2) + C(1) + D(1) = 6
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Move cursor to position right after 東 (col = 4)
+    try eb.setCursor(0, 4);
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Backspace once - should delete the entire 東 grapheme
+    try eb.backspace();
+
+    // Verify 東 is gone
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("ABCD", out_buffer[0..written]);
+
+    // Cursor should now be at col 2 (after AB, where 東 was)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+}
+
+test "EditBuffer - backspace after multiple wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert text with multiple wide characters
+    try eb.insertText("東京");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("東京", out_buffer[0..written]);
+
+    // Cursor should be at: 東(2) + 京(2) = 4
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Backspace once - should delete 京
+    try eb.backspace();
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("東", out_buffer[0..written]);
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Backspace again - should delete 東
+    try eb.backspace();
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("", out_buffer[0..written]);
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - backspace mixed narrow and wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Insert mixed width text: H(1) e(1) l(1) l(1) o(1) 東(2) W(1) o(1) r(1) l(1) d(1) = 12 total
+    try eb.insertText("Hello東World");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello東World", out_buffer[0..written]);
+
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 12), cursor.col);
+
+    // Backspace through "World" (5 single-width chars)
+    try eb.backspace();
+    try eb.backspace();
+    try eb.backspace();
+    try eb.backspace();
+    try eb.backspace();
+
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello東", out_buffer[0..written]);
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 7), cursor.col);
+
+    // Backspace once more - should delete the wide 東 in one go
+    try eb.backspace();
+
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
+
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
+}

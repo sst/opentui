@@ -1242,3 +1242,77 @@ test "EditorView - visual cursor stays in sync after scrolling and moving up" {
         }
     }
 }
+
+test "EditorView - cursor positioning after wide grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert text with wide character
+    try eb.insertText("AB東CD");
+
+    // Cursor should be at end: A(1) + B(1) + 東(2) + C(1) + D(1) = 6
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Move cursor to position right after 東 (col = 4)
+    try eb.setCursor(0, 4);
+    const cursor_after_move = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor_after_move.col);
+
+    // Get visual cursor - should match logical
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 4), vcursor.?.logical_col);
+    try std.testing.expectEqual(@as(u32, 4), vcursor.?.visual_col);
+}
+
+test "EditorView - backspace after wide grapheme updates cursor correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    // Insert text with wide character
+    try eb.insertText("AB東CD");
+
+    // Move cursor to position right after 東 (col = 4)
+    try eb.setCursor(0, 4);
+
+    // Backspace - should delete entire 東 and move cursor to col 2
+    try eb.backspace();
+
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Visual cursor should match
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+    try std.testing.expectEqual(@as(u32, 2), vcursor.?.logical_col);
+    try std.testing.expectEqual(@as(u32, 2), vcursor.?.visual_col);
+
+    // Verify text
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("ABCD", out_buffer[0..written]);
+}

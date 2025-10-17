@@ -571,8 +571,12 @@ pub const EditBuffer = struct {
                 }
             }
         } else {
-            // Delete one character before cursor within the same line
-            const target_col = cursor.col - 1;
+            // Delete one grapheme before cursor within the same line
+            // Get the width of the previous grapheme to delete the entire grapheme
+            const prev_grapheme_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
+            if (prev_grapheme_width == 0) return; // Nothing to delete
+
+            const target_col = cursor.col - prev_grapheme_width;
             const start_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, target_col) orelse return;
             const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
 
