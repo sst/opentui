@@ -2505,3 +2505,42 @@ test "EditorView - deleteSelectedText respects selection with empty lines" {
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 }
+
+test "EditorView - BUG REPRODUCTION: force-wrapped word with space insertion causes visual cursor desync" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 15, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.word);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 });
+
+    try eb.setText("AAAAAAAAAAAAAAAAAAA");
+    try eb.setCursor(0, 7);
+    try eb.insertText(" ");
+
+    const logical_cursor_after_space = eb.getPrimaryCursor();
+    const vcursor_after_space = ev.getVisualCursor();
+
+    try std.testing.expectEqual(@as(u32, 0), logical_cursor_after_space.row);
+    try std.testing.expectEqual(@as(u32, 8), logical_cursor_after_space.col);
+
+    if (vcursor_after_space) |vc| {
+        try std.testing.expectEqual(@as(u32, 0), vc.logical_row);
+        try std.testing.expectEqual(@as(u32, 0), vc.visual_row);
+    }
+
+    try eb.backspace();
+
+    const logical_cursor_after_backspace = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), logical_cursor_after_backspace.row);
+    try std.testing.expectEqual(@as(u32, 7), logical_cursor_after_backspace.col);
+}

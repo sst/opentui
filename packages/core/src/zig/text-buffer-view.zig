@@ -595,9 +595,16 @@ pub const UnifiedTextBufferView = struct {
             const vline_start_col = vline.source_col_offset;
             const vline_end_col = vline_start_col + vline.width;
 
-            // Check if logical_col falls within this virtual line
             const is_last_vline = (i == vline_count - 1);
-            const end_check = if (is_last_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
+            const is_at_boundary = (logical_col == vline_end_col);
+
+            var prefer_current_vline = is_last_vline;
+            if (is_at_boundary and !is_last_vline and self.wrap_width != null) {
+                const wrap_w = self.wrap_width.?;
+                prefer_current_vline = (vline.width < wrap_w);
+            }
+
+            const end_check = if (prefer_current_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
 
             if (logical_col >= vline_start_col and end_check) {
                 return vline_idx;
