@@ -2618,7 +2618,7 @@ describe("EditorRenderable", () => {
       currentMockInput.pressBackspace()
 
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.plainText).toBe("ne 2\nLine 3")
+      expect(editor.plainText).toBe("e 2\nLine 3")
       expect(editor.cursor.visualColumn).toBe(0)
       expect(editor.cursor.line).toBe(0)
     })
