@@ -482,7 +482,6 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
 
     // Check tracker count
     const count = buf.grapheme_tracker.getGraphemeCount();
-    std.debug.print("\nGrapheme tracker count after 2000 renders: {d}\n", .{count});
     try std.testing.expect(count < 100); // Should not grow unbounded
 }
 
@@ -523,7 +522,6 @@ test "OptimizedBuffer - many small graphemes without clear" {
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
-    std.debug.print("\nGrapheme tracker count after 5000 renders of bullet points: {d}\n", .{count});
     try std.testing.expect(count < 200);
 }
 
@@ -745,8 +743,6 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
         };
     }
 
-    std.debug.print("\nCompleted 50000 continuous renders without clearing\n", .{});
-    std.debug.print("Final grapheme tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
     try std.testing.expectEqual(@as(u32, 0), failure_count);
 }
 
@@ -822,12 +818,6 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
         };
     }
 
-    std.debug.print("\nCompleted 5000 renders across 3 buffers (15000 total renders)\n", .{});
-    std.debug.print("Buf1 tracker count: {d}\n", .{buf1.grapheme_tracker.getGraphemeCount()});
-    std.debug.print("Buf2 tracker count: {d}\n", .{buf2.grapheme_tracker.getGraphemeCount()});
-    std.debug.print("Buf3 tracker count: {d}\n", .{buf3.grapheme_tracker.getGraphemeCount()});
-    std.debug.print("Failures: {d}\n", .{failure_count});
-
     if (failure_count > 0) {
         return error.PoolExhausted;
     }
@@ -884,12 +874,7 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
         };
     }
 
-    std.debug.print("\nCompleted {d} renders, Failures: {d}\n", .{ i, failure_count });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-
-    if (failure_count == 0) {
-        std.debug.print("Pool did not exhaust - graphemes are being properly freed\n", .{});
-    }
+    try std.testing.expectEqual(@as(u32, 0), failure_count);
 }
 
 test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
@@ -949,9 +934,6 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
         };
     }
 
-    std.debug.print("\nCompleted {d} renders with scissor clipping, Failures: {d}\n", .{ i, failure_count });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-
     if (failure_count > 0) {
         std.debug.print("\nVerified: Scissor clipping causes grapheme leak! ***\n", .{});
         return error.PoolExhausted;
@@ -1005,9 +987,6 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
             break;
         };
     }
-
-    std.debug.print("\nCompleted {d} drawText calls with clipping, Failures: {d}\n", .{ i, failure_count });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     if (failure_count > 0) {
         return error.PoolExhausted;
@@ -1071,9 +1050,6 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
             break;
         };
     }
-
-    std.debug.print("\nCompleted {d} unique grapheme draws, Failures: {d}\n", .{ i, failure_count });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     if (failure_count > 0) {
         return error.PoolExhausted;
@@ -1145,9 +1121,6 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
         if (failure_count > 0) break;
     }
 
-    std.debug.print("\nPlaced {d} unique graphemes, Failures: {d}\n", .{ success_count, failure_count });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-
     if (failure_count > 0) {
         return error.PoolExhausted;
     }
@@ -1203,10 +1176,6 @@ test "OptimizedBuffer - verify pool growth works correctly" {
         success_count += 1;
     }
 
-    std.debug.print("\nSuccessfully placed {d} unique graphemes with pool growing from 1 slot/page\n", .{success_count});
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-    std.debug.print("Shows pool growth mechanism works correctly\n", .{});
-
     try std.testing.expect(success_count >= 100);
 }
 
@@ -1235,8 +1204,6 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    std.debug.print("\nTesting:\n", .{});
-
     // Test the suspected bug:
     // pool.alloc() -> refcount=1
     // tracker.add() -> refcount=2 (incref if new)
@@ -1246,7 +1213,6 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
 
     // Draw a bullet point once
     try buf.drawText("•", 0, 0, fg, bg, 0);
-    std.debug.print("After 1st draw: tracker count = {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 
     // Overwrite SAME position MANY times with SAME character
     // If there's a refcount leak, each new alloc() will leak a reference
@@ -1266,16 +1232,9 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
             alloc_failed = true;
             break;
         };
-
-        if ((i + 1) % 10 == 0) {
-            std.debug.print("After {} overwrites: tracker count = {d}\n", .{ i + 1, buf.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (!alloc_failed) {
-        std.debug.print("\nTest completed {d} overwrites without failure\n", .{i});
-        std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
-        std.debug.print("Expected: 1 (one bullet point)\n", .{});
 
         // Even if it didn't fail, check if tracker count grew (indicates leak)
         if (buf.grapheme_tracker.getGraphemeCount() > 2) {
@@ -1323,8 +1282,6 @@ test "OptimizedBuffer - two-buffer pattern with setRaw" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    std.debug.print("\nTest:\n", .{});
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
@@ -1349,19 +1306,12 @@ test "OptimizedBuffer - two-buffer pattern with setRaw" {
 
         // 3. Clear nextBuffer for next frame (line 689 in renderer.zig)
         try nextBuffer.clear(bg, null);
-
-        if ((frame + 1) % 10 == 0) {
-            std.debug.print("Frame {d}: next tracker={d}, current tracker={d}\n", .{ frame + 1, nextBuffer.grapheme_tracker.getGraphemeCount(), currentBuffer.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         std.debug.print("\n\n", .{});
         return error.SetRawLeak;
     }
-
-    std.debug.print("\nCompleted {d} frames\n", .{frame});
-    std.debug.print("This should have failed if setRaw() doesn't track graphemes properly\n", .{});
 }
 
 test "OptimizedBuffer - set and clear cycle" {
@@ -1389,8 +1339,6 @@ test "OptimizedBuffer - set and clear cycle" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-    std.debug.print("\nTesting:\n", .{});
-
     // The bug happens when:
     // 1. We allocate a grapheme in pool (refcount=1)
     // 2. We call set() which tracker.add()s it (refcount=2)
@@ -1413,18 +1361,12 @@ test "OptimizedBuffer - set and clear cycle" {
 
         // Clear buffer (like renderer does each frame)
         try buf.clear(bg, null);
-
-        if ((frame + 1) % 20 == 0) {
-            std.debug.print("Frame {d}: tracker count after clear = {d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         std.debug.print("\n\n", .{});
         return error.AllocSetClearLeak;
     }
-
-    std.debug.print("\nCompleted {d} alloc->set->clear cycles without pool exhaustion\n", .{frame});
 }
 
 test "OptimizedBuffer - repeated drawTextBuffer without clear" {
@@ -1461,8 +1403,6 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\nTest:\n", .{});
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
@@ -1482,19 +1422,12 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear" {
             alloc_failed = true;
             break;
         };
-
-        if ((frame + 1) % 50 == 0) {
-            std.debug.print("Frame {d}: tracker count = {d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         std.debug.print("\n\n", .{});
         return error.DrawTextBufferLeak;
     }
-
-    std.debug.print("\nCompleted {d} drawTextBuffer calls\n", .{frame});
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
 test "OptimizedBuffer - renderer two-buffer swap pattern" {
@@ -1541,8 +1474,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try current.clear(bg, null);
 
-    std.debug.print("\nTest:\n", .{});
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
@@ -1566,18 +1497,12 @@ test "OptimizedBuffer - renderer two-buffer swap pattern" {
 
         // 3. Clear next for next frame (line 689)
         try next.clear(bg, null);
-
-        if ((frame + 1) % 30 == 0) {
-            std.debug.print("Frame {d}: next={d}, current={d}\n", .{ frame + 1, next.grapheme_tracker.getGraphemeCount(), current.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         std.debug.print("\n\n", .{});
         return error.RendererPatternLeak;
     }
-
-    std.debug.print("\nCompleted {d} frames with renderer pattern\n", .{frame});
 }
 
 test "OptimizedBuffer - sustained rendering 3000 frames" {
@@ -1614,8 +1539,6 @@ test "OptimizedBuffer - sustained rendering 3000 frames" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\nTest:\n", .{});
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
@@ -1631,17 +1554,11 @@ test "OptimizedBuffer - sustained rendering 3000 frames" {
 
         // Don't clear! This is the key - editor doesn't clear between frames
 
-        if ((frame + 1) % 300 == 0) {
-            std.debug.print("Frame {d} ({d}s): tracker={d}\n", .{ frame + 1, (frame + 1) / 60, buf.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         return error.SustainedRenderingLeak;
     }
-
-    std.debug.print("\nCompleted {d} frames ({d} seconds at 60fps)\n", .{ frame, frame / 60 });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
 test "OptimizedBuffer - rendering with changing content" {
@@ -1675,8 +1592,6 @@ test "OptimizedBuffer - rendering with changing content" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\nTest:\n", .{});
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
@@ -1709,18 +1624,11 @@ test "OptimizedBuffer - rendering with changing content" {
             alloc_failed = true;
             break;
         };
-
-        if ((frame + 1) % 10 == 0) {
-            std.debug.print("Frame {d}: tracker={d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         return error.ChangingContentLeak;
     }
-
-    std.debug.print("\nCompleted {d} frames with changing content\n", .{frame});
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
 test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
@@ -1768,8 +1676,6 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    std.debug.print("\nTest:\n", .{});
-
     var frame: u32 = 0;
     var alloc_failed = false;
 
@@ -1790,19 +1696,12 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously" {
             alloc_failed = true;
             break;
         };
-
-        if ((frame + 1) % 50 == 0) {
-            std.debug.print("Frame {d}: tracker={d}\n", .{ frame + 1, buf.grapheme_tracker.getGraphemeCount() });
-        }
     }
 
     if (alloc_failed) {
         std.debug.print("Tracker: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
         return error.MultipleTextBuffersLeak;
     }
-
-    std.debug.print("\nCompleted {d} frames with 3 TextBuffers ({d} total renders)\n", .{ frame, frame * 3 });
-    std.debug.print("Final tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
 }
 
 test "OptimizedBuffer - grapheme refcount management" {
