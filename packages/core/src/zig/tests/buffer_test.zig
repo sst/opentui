@@ -1578,9 +1578,9 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
 }
 
 test "OptimizedBuffer - grapheme refcount management" {
-    const one_slot = [_]u32{ 1, 1, 1, 1, 1 };
+    const two_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
-        .slots_per_page = one_slot,
+        .slots_per_page = two_slots,
     });
     defer local_pool.deinit();
 
@@ -1605,7 +1605,6 @@ test "OptimizedBuffer - grapheme refcount management" {
     const cell0 = buf.get(0, 0).?;
     const id0 = gp.graphemeIdFromChar(cell0.char);
     const rc0 = local_pool.getRefcount(id0) catch 0;
-    const slot0 = id0 & 0xFFFF;
 
     try std.testing.expectEqual(@as(u32, 1), rc0);
 
@@ -1619,6 +1618,8 @@ test "OptimizedBuffer - grapheme refcount management" {
         const slot = id & 0xFFFF;
 
         try std.testing.expectEqual(@as(u32, 1), rc);
-        try std.testing.expectEqual(slot0, slot);
+        // With 2 slots, we should cycle between slot 0 and slot 1
+        // since we alloc before we free the old one
+        try std.testing.expect(slot == 0 or slot == 1);
     }
 }

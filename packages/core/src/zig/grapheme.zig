@@ -205,7 +205,7 @@ pub const GraphemePool = struct {
 
             header_ptr.* = .{
                 .len = len,
-                .refcount = 1, // Start with refcount of 1 for new allocation
+                .refcount = 0,
                 .generation = new_generation,
                 .is_owned = if (is_owned) 1 else 0,
             };
