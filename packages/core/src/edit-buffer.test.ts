@@ -216,10 +216,7 @@ describe("EditBuffer", () => {
       buffer.gotoLine(1) // Go to Line 2
       buffer.deleteLine()
 
-      // After deleting Line 2, we should have Line 1 and Line 3
-      // The result might have a trailing newline depending on implementation
-      const result = buffer.getText()
-      expect(result === "Line 1\nLine 3" || result === "Line 1\nLine 3\n").toBe(true)
+      expect(buffer.getText()).toBe("Line 1\nLine 3")
     })
 
     // TODO: Re-implement deleteToLineEnd as scripted method

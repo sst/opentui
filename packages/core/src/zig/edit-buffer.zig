@@ -702,6 +702,23 @@ pub const EditBuffer = struct {
                 .{ .row = cursor.row, .col = 0 },
                 .{ .row = cursor.row + 1, .col = 0 },
             );
+
+            // After deleteRange, we need to also remove the orphaned linestart marker
+            // deleteRange removes text and breaks but not zero-weight linestart markers
+            // So we may have consecutive linestarts: [linestart][linestart][nextline]
+            // Find and remove the duplicate linestart at cursor.row
+            if (self.tb.rope.getMarker(.linestart, cursor.row)) |marker| {
+                const idx = marker.leaf_index;
+                // Check if there's another linestart immediately after this one
+                // If so, delete this one (it's the orphaned one from the deleted line)
+                if (idx + 1 < self.tb.rope.count()) {
+                    if (self.tb.rope.get(idx + 1)) |next_seg| {
+                        if (next_seg.isLineStart()) {
+                            try self.tb.rope.delete(idx);
+                        }
+                    }
+                }
+            }
         } else if (cursor.row > 0) {
             const prev_line_width = self.getLineWidth(cursor.row - 1);
             const curr_line_width = self.getLineWidth(cursor.row);
