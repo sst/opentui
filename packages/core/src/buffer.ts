@@ -234,24 +234,14 @@ export class OptimizedBuffer {
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 
-  public drawTextBuffer(
-    textBufferView: import("./text-buffer-view").TextBufferView,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ): void {
+  public drawTextBuffer(textBufferView: import("./text-buffer-view").TextBufferView, x: number, y: number): void {
     this.guard()
-    this.lib.bufferDrawTextBufferView(this.bufferPtr, textBufferView.ptr, x, y, clipRect)
+    this.lib.bufferDrawTextBufferView(this.bufferPtr, textBufferView.ptr, x, y)
   }
 
-  public drawEditorView(
-    editorView: import("./editor-view").EditorView,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ): void {
+  public drawEditorView(editorView: import("./editor-view").EditorView, x: number, y: number): void {
     this.guard()
-    this.lib.bufferDrawEditorView(this.bufferPtr, editorView.ptr, x, y, clipRect)
+    this.lib.bufferDrawEditorView(this.bufferPtr, editorView.ptr, x, y)
   }
 
   public drawSuperSampleBuffer(

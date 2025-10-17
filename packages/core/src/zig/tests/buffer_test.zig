@@ -188,7 +188,7 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try buf.clear(bg, null);
-        try buf.drawTextBuffer(view, 0, 0, null);
+        try buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -339,7 +339,7 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     var i: u32 = 0;
     while (i < 200) : (i += 1) {
         try buf.clear(bg, null);
-        try buf.drawTextBuffer(view, 0, 0, null);
+        try buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -445,7 +445,7 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
 
     var i: u32 = 0;
     while (i < 2000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0, null);
+        try buf.drawTextBuffer(view, 0, 0);
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
@@ -483,7 +483,7 @@ test "OptimizedBuffer - many small graphemes without clear" {
 
     var i: u32 = 0;
     while (i < 5000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0, null);
+        try buf.drawTextBuffer(view, 0, 0);
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
@@ -529,7 +529,7 @@ test "OptimizedBuffer - stress test with many graphemes" {
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0, null);
+        try buf.drawTextBuffer(view, 0, 0);
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
@@ -569,7 +569,7 @@ test "OptimizedBuffer - pool slot exhaustion test" {
         if (i % 100 == 0) {
             try buf.clear(bg, null);
         }
-        try buf.drawTextBuffer(view, 0, 0, null);
+        try buf.drawTextBuffer(view, 0, 0);
     }
 
     std.debug.print("\nCompleted 10000 renders successfully\n", .{});
@@ -634,7 +634,7 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
             try buf.clear(bg, null);
         }
 
-        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view, 0, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\ndrawTextBuffer failure at iteration {d}: {}\n", .{ render_count, err });
@@ -682,7 +682,7 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
 
     var i: u32 = 0;
     while (i < 50000) : (i += 1) {
-        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view, 0, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
@@ -746,19 +746,19 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
 
     var i: u32 = 0;
     while (i < 5000) : (i += 1) {
-        buf1.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf1.drawTextBuffer(view, 0, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\nTest failed in buf1 at iteration {d}: {} ***\n", .{ i, err });
             }
         };
-        buf2.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf2.drawTextBuffer(view, 0, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\nTest failed in buf2 at iteration {d}: {} ***\n", .{ i, err });
             }
         };
-        buf3.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf3.drawTextBuffer(view, 0, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\nTest failed in buf3 at iteration {d}: {} ***\n", .{ i, err });
@@ -807,7 +807,7 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view, 0, 0) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
@@ -860,7 +860,7 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        buf.drawTextBuffer(view, 20, 20, null) catch |err| {
+        buf.drawTextBuffer(view, 20, 20) catch |err| {
             failure_count += 1;
             if (failure_count == 1) {
                 std.debug.print("\nTest failed at iteration {d}: {} ***\n", .{ i, err });
@@ -1300,7 +1300,7 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     var alloc_failed = false;
 
     while (frame < 500) : (frame += 1) {
-        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view, 0, 0) catch |err| {
             std.debug.print("\n\n", .{ frame, err });
             std.debug.print("Buffer tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
             std.debug.print("\nAnalysis:\n", .{});
@@ -1366,7 +1366,7 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     var alloc_failed = false;
 
     while (frame < 300) : (frame += 1) {
-        next.drawTextBuffer(view, 0, 0, null) catch |err| {
+        next.drawTextBuffer(view, 0, 0) catch |err| {
             std.debug.print("\n\n", .{ frame, err });
             std.debug.print("Next tracker: {d}, Current tracker: {d}\n", .{ next.grapheme_tracker.getGraphemeCount(), current.grapheme_tracker.getGraphemeCount() });
             std.debug.print("\nThe bug is in drawTextBuffer + set/setRaw pattern!\n", .{});
@@ -1426,7 +1426,7 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     var alloc_failed = false;
 
     while (frame < 3000) : (frame += 1) {
-        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view, 0, 0) catch |err| {
             std.debug.print("\n\n", .{ frame, @as(f32, @floatFromInt(frame)) / 60.0 });
             std.debug.print("Error: {}\n", .{err});
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
@@ -1491,7 +1491,7 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
 
         tb.setText(&text) catch continue;
 
-        buf.drawTextBuffer(view, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view, 0, 0) catch |err| {
             std.debug.print("\n\n", .{frame});
             std.debug.print("Error: {}\n", .{err});
             std.debug.print("Tracker count: {d}\n", .{buf.grapheme_tracker.getGraphemeCount()});
@@ -1554,17 +1554,17 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     var alloc_failed = false;
 
     while (frame < 500) : (frame += 1) {
-        buf.drawTextBuffer(view1, 0, 0, null) catch |err| {
+        buf.drawTextBuffer(view1, 0, 0) catch |err| {
             std.debug.print("\n✓ BUG REPRODUCED in view1 at frame {d}: {} ✓\n", .{ frame, err });
             alloc_failed = true;
             break;
         };
-        buf.drawTextBuffer(view2, 0, 10, null) catch |err| {
+        buf.drawTextBuffer(view2, 0, 10) catch |err| {
             std.debug.print("\n✓ BUG REPRODUCED in view2 at frame {d}: {} ✓\n", .{ frame, err });
             alloc_failed = true;
             break;
         };
-        buf.drawTextBuffer(view3, 0, 20, null) catch |err| {
+        buf.drawTextBuffer(view3, 0, 20) catch |err| {
             std.debug.print("\n✓ BUG REPRODUCED in view3 at frame {d}: {} ✓\n", .{ frame, err });
             alloc_failed = true;
             break;

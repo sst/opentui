@@ -391,11 +391,19 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u8"],
       returns: "void",
     },
+    textBufferViewSetViewportSize: {
+      args: ["ptr", "u32", "u32"],
+      returns: "void",
+    },
     textBufferViewGetVirtualLineCount: {
       args: ["ptr"],
       returns: "u32",
     },
     textBufferViewGetLineInfoDirect: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "u32",
+    },
+    textBufferViewGetLogicalLineInfoDirect: {
       args: ["ptr", "ptr", "ptr"],
       returns: "u32",
     },
@@ -408,11 +416,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "usize",
     },
     bufferDrawTextBufferView: {
-      args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
+      args: ["ptr", "ptr", "i32", "i32"],
       returns: "void",
     },
     bufferDrawEditorView: {
-      args: ["ptr", "ptr", "i32", "i32", "i32", "i32", "u32", "u32", "bool"],
+      args: ["ptr", "ptr", "i32", "i32"],
       returns: "void",
     },
 
@@ -1011,26 +1019,16 @@ export interface RenderLib {
   textBufferViewResetLocalSelection: (view: Pointer) => void
   textBufferViewSetWrapWidth: (view: Pointer, width: number) => void
   textBufferViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
+  textBufferViewSetViewportSize: (view: Pointer, width: number, height: number) => void
   textBufferViewGetLineInfo: (view: Pointer) => LineInfo
+  textBufferViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   textBufferViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
-  bufferDrawTextBufferView: (
-    buffer: Pointer,
-    view: Pointer,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ) => void
-  bufferDrawEditorView: (
-    buffer: Pointer,
-    view: Pointer,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ) => void
+  bufferDrawTextBufferView: (buffer: Pointer, view: Pointer, x: number, y: number) => void
+  bufferDrawEditorView: (buffer: Pointer, view: Pointer, x: number, y: number) => void
 
   // EditBuffer methods
   createEditBuffer: (widthMethod: WidthMethod) => Pointer
@@ -1803,6 +1801,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewSetWrapMode(view, modeValue)
   }
 
+  public textBufferViewSetViewportSize(view: Pointer, width: number, height: number): void {
+    this.opentui.symbols.textBufferViewSetViewportSize(view, width, height)
+  }
+
   public textBufferViewGetLineInfo(view: Pointer): LineInfo {
     const lineCount = this.textBufferViewGetLineCount(view)
 
@@ -1822,12 +1824,39 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
+  public textBufferViewGetLogicalLineInfo(view: Pointer): LineInfo {
+    const lineCount = this.textBufferViewGetLineCount(view)
+
+    if (lineCount === 0) {
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+    }
+
+    const lineStarts = new Uint32Array(lineCount)
+    const lineWidths = new Uint32Array(lineCount)
+
+    const maxLineWidth = this.textBufferViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+
+    return {
+      maxLineWidth,
+      lineStarts: Array.from(lineStarts),
+      lineWidths: Array.from(lineWidths),
+    }
+  }
+
   private textBufferViewGetLineCount(view: Pointer): number {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
   }
 
   private textBufferViewGetLineInfoDirect(view: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): number {
     return this.opentui.symbols.textBufferViewGetLineInfoDirect(view, lineStartsPtr, lineWidthsPtr)
+  }
+
+  private textBufferViewGetLogicalLineInfoDirect(
+    view: Pointer,
+    lineStartsPtr: Pointer,
+    lineWidthsPtr: Pointer,
+  ): number {
+    return this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, lineStartsPtr, lineWidthsPtr)
   }
 
   private textBufferViewGetSelectedText(view: Pointer, outPtr: Pointer, maxLen: number): number {
@@ -1910,36 +1939,12 @@ class FFIRenderLib implements RenderLib {
     return typeof result === "bigint" ? Number(result) : result
   }
 
-  public bufferDrawTextBufferView(
-    buffer: Pointer,
-    view: Pointer,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ): void {
-    const hasClipRect = clipRect !== undefined && clipRect !== null
-    const clipX = clipRect?.x ?? 0
-    const clipY = clipRect?.y ?? 0
-    const clipWidth = clipRect?.width ?? 0
-    const clipHeight = clipRect?.height ?? 0
-
-    this.opentui.symbols.bufferDrawTextBufferView(buffer, view, x, y, clipX, clipY, clipWidth, clipHeight, hasClipRect)
+  public bufferDrawTextBufferView(buffer: Pointer, view: Pointer, x: number, y: number): void {
+    this.opentui.symbols.bufferDrawTextBufferView(buffer, view, x, y)
   }
 
-  public bufferDrawEditorView(
-    buffer: Pointer,
-    view: Pointer,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ): void {
-    const hasClipRect = clipRect !== undefined && clipRect !== null
-    const clipX = clipRect?.x ?? 0
-    const clipY = clipRect?.y ?? 0
-    const clipWidth = clipRect?.width ?? 0
-    const clipHeight = clipRect?.height ?? 0
-
-    this.opentui.symbols.bufferDrawEditorView(buffer, view, x, y, clipX, clipY, clipWidth, clipHeight, hasClipRect)
+  public bufferDrawEditorView(buffer: Pointer, view: Pointer, x: number, y: number): void {
+    this.opentui.symbols.bufferDrawEditorView(buffer, view, x, y)
   }
 
   // EditorView methods

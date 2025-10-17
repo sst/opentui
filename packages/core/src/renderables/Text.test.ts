@@ -1509,6 +1509,83 @@ describe("TextRenderable Selection", () => {
     })
   })
 
+  describe("Height and Width Measurement", () => {
+    it("should grow height for multiline text without wrapping", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+
+      expect(text.height).toBe(5)
+      expect(text.width).toBeGreaterThanOrEqual(6)
+    })
+
+    it("should grow height for wrapped text when wrapping enabled", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a very long line that will definitely wrap to multiple lines",
+        wrapMode: "word",
+        width: 15,
+      })
+
+      await renderOnce()
+
+      expect(text.height).toBeGreaterThan(1)
+      expect(text.width).toBeLessThanOrEqual(15)
+    })
+
+    it("should measure full width when wrapping is disabled and not constrained by parent", async () => {
+      const longLine = "This is a very long line that would wrap but wrapping is disabled"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: longLine,
+        wrapMode: "none",
+        position: "absolute",
+      })
+
+      await renderOnce()
+
+      expect(text.height).toBe(1)
+      expect(text.width).toBe(longLine.length)
+    })
+
+    it("should update height when content changes from single to multiline", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Single line",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+      expect(text.height).toBe(1)
+
+      text.content = "Line 1\nLine 2\nLine 3"
+      await renderOnce()
+
+      expect(text.height).toBe(3)
+    })
+
+    it("should update height when wrapping mode changes", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a long line that will wrap to multiple lines",
+        wrapMode: "none",
+        width: 15,
+      })
+
+      await renderOnce()
+      const unwrappedHeight = text.height
+      expect(unwrappedHeight).toBe(1)
+      expect(text.width).toBe(15)
+
+      text.wrapMode = "word"
+      await renderOnce()
+
+      const wrappedHeight = text.height
+
+      expect(wrappedHeight).toBeGreaterThan(unwrappedHeight)
+      expect(wrappedHeight).toBeGreaterThanOrEqual(3)
+    })
+  })
+
   describe("Word Wrapping", () => {
     it("should default to word wrap mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {

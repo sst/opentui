@@ -284,14 +284,7 @@ export abstract class EditBufferRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    const clipRect = {
-      x: this.x,
-      y: this.y,
-      width: this.width,
-      height: this.height,
-    }
-
-    buffer.drawEditorView(this.editorView, this.x, this.y, clipRect)
+    buffer.drawEditorView(this.editorView, this.x, this.y)
   }
 
   protected renderCursor(buffer: OptimizedBuffer): void {

@@ -838,7 +838,6 @@ pub const OptimizedBuffer = struct {
         text_buffer_view: anytype,
         x: i32,
         y: i32,
-        clip_rect: ?ClipRect,
     ) !void {
         const virtual_lines = text_buffer_view.getVirtualLines();
         if (virtual_lines.len == 0) return;
@@ -1002,15 +1001,7 @@ pub const OptimizedBuffer = struct {
                         break;
                     }
 
-                    // Check clip rect
-                    const should_skip_clip = if (clip_rect) |clip|
-                        currentX < clip.x or currentY < clip.y or
-                            currentX >= clip.x + @as(i32, @intCast(clip.width)) or
-                            currentY >= clip.y + @as(i32, @intCast(clip.height))
-                    else
-                        false;
-
-                    if (should_skip_clip or !self.isPointInScissor(currentX, currentY)) {
+                    if (!self.isPointInScissor(currentX, currentY)) {
                         globalCharPos += g_width;
                         currentX += @as(i32, @intCast(g_width));
                         column_in_line += g_width;
@@ -1144,13 +1135,12 @@ pub const OptimizedBuffer = struct {
         editor_view: *EditorView,
         x: i32,
         y: i32,
-        clip_rect: ?ClipRect,
     ) !void {
         // TODO: Use event emitter from text buffer view to update the editor view
         _ = editor_view.getVirtualLines();
 
         const text_buffer_view = editor_view.getTextBufferView();
-        try self.drawTextBuffer(text_buffer_view, x, y, clip_rect);
+        try self.drawTextBuffer(text_buffer_view, x, y);
     }
 
     /// Draw a box with borders and optional fill

@@ -41,7 +41,7 @@ test "drawTextBuffer - simple single line text" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -77,7 +77,7 @@ test "drawTextBuffer - empty text buffer" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 }
 
 test "drawTextBuffer - multiple lines without wrapping" {
@@ -107,7 +107,7 @@ test "drawTextBuffer - multiple lines without wrapping" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 3);
@@ -143,7 +143,7 @@ test "drawTextBuffer - text wrapping at word boundaries" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len > 1);
@@ -179,7 +179,7 @@ test "drawTextBuffer - text wrapping at character boundaries" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 4);
@@ -215,7 +215,7 @@ test "drawTextBuffer - no wrapping with none mode" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 1);
@@ -251,7 +251,7 @@ test "drawTextBuffer - wrapped text with multiple lines" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len >= 3);
@@ -287,7 +287,7 @@ test "drawTextBuffer - unicode characters with wrapping" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len > 0);
@@ -323,7 +323,7 @@ test "drawTextBuffer - wrapping preserves wide characters" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len > 1);
@@ -359,7 +359,7 @@ test "drawTextBuffer - wrapped text with offset position" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 5, 5, null);
+    try opt_buffer.drawTextBuffer(view, 5, 5);
 
     const cell = opt_buffer.get(5, 5);
     try std.testing.expect(cell != null);
@@ -393,7 +393,7 @@ test "drawTextBuffer - clipping with scrolled view" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len >= 4);
@@ -429,7 +429,7 @@ test "drawTextBuffer - wrapping with very narrow width" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 2);
@@ -465,7 +465,7 @@ test "drawTextBuffer - word wrap doesn't break mid-word" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 2);
@@ -498,7 +498,7 @@ test "drawTextBuffer - empty lines render correctly" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 3);
@@ -534,7 +534,7 @@ test "drawTextBuffer - wrapping with tabs" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 }
 
 test "drawTextBuffer - very long unwrapped line clipping" {
@@ -570,7 +570,7 @@ test "drawTextBuffer - very long unwrapped line clipping" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len == 1);
@@ -675,7 +675,7 @@ test "drawTextBuffer - wrapping with mixed ASCII and Unicode" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len > 1);
@@ -1415,7 +1415,7 @@ test "loadFile - loads and renders file correctly" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Verify rendering by checking buffer contents
     var render_buffer: [200]u8 = undefined;
@@ -1457,7 +1457,7 @@ test "drawTextBuffer - horizontal viewport offset renders correctly without wrap
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -1497,7 +1497,7 @@ test "drawTextBuffer - horizontal viewport offset with multiple lines" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -1539,7 +1539,7 @@ test "drawTextBuffer - combined horizontal and vertical viewport offsets" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -1580,7 +1580,7 @@ test "drawTextBuffer - horizontal viewport stops rendering at viewport width" {
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -1624,7 +1624,7 @@ test "drawTextBuffer - horizontal viewport with small buffer renders only viewpo
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0);
     try std.testing.expect(cell_0 != null);
@@ -1678,7 +1678,7 @@ test "drawTextBuffer - horizontal viewport width limits rendering (efficiency te
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var non_space_count: u32 = 0;
     var i: u32 = 0;
@@ -1720,7 +1720,7 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     // First draw: render text with a wide character (世 is 2 cells wide)
     try tb.setText("世界");
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Verify first wide char is encoded correctly
     const first_cell = opt_buffer.get(0, 0) orelse unreachable;
@@ -1734,7 +1734,7 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     // Second draw: overwrite with ASCII text
     try tb.setText("ABC");
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Verify cells contain ASCII without ghost continuation chars
     const cell_a = opt_buffer.get(0, 0) orelse unreachable;

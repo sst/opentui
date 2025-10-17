@@ -492,12 +492,25 @@ export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferViewArray,
     view.setWrapMode(wrapMode);
 }
 
+export fn textBufferViewSetViewportSize(view: *text_buffer_view.TextBufferViewArray, width: u32, height: u32) void {
+    view.setViewportSize(width, height);
+}
+
 export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.TextBufferViewArray) u32 {
     return view.getVirtualLineCount();
 }
 
 export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferViewArray, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
     const line_info = view.getCachedLineInfo();
+
+    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
+    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+
+    return line_info.max_width;
+}
+
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.TextBufferViewArray, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getLogicalLineInfo();
 
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
@@ -837,20 +850,8 @@ export fn bufferDrawEditorView(
     viewPtr: *editor_view.EditorView,
     x: i32,
     y: i32,
-    clipX: i32,
-    clipY: i32,
-    clipWidth: u32,
-    clipHeight: u32,
-    hasClipRect: bool,
 ) void {
-    const clip_rect = if (hasClipRect) buffer.ClipRect{
-        .x = clipX,
-        .y = clipY,
-        .width = clipWidth,
-        .height = clipHeight,
-    } else null;
-
-    bufferPtr.drawEditorView(viewPtr, x, y, clip_rect) catch {};
+    bufferPtr.drawEditorView(viewPtr, x, y) catch {};
 }
 
 export fn bufferDrawTextBufferView(
@@ -858,20 +859,8 @@ export fn bufferDrawTextBufferView(
     viewPtr: *text_buffer_view.TextBufferViewArray,
     x: i32,
     y: i32,
-    clipX: i32,
-    clipY: i32,
-    clipWidth: u32,
-    clipHeight: u32,
-    hasClipRect: bool,
 ) void {
-    const clip_rect = if (hasClipRect) buffer.ClipRect{
-        .x = clipX,
-        .y = clipY,
-        .width = clipWidth,
-        .height = clipHeight,
-    } else null;
-
-    bufferPtr.drawTextBuffer(viewPtr, x, y, clip_rect) catch {};
+    bufferPtr.drawTextBuffer(viewPtr, x, y) catch {};
 }
 
 export fn textBufferAddHighlightByCharRange(

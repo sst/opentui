@@ -86,9 +86,19 @@ export class TextBufferView {
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
   }
 
+  public setViewportSize(width: number, height: number): void {
+    this.guard()
+    this.lib.textBufferViewSetViewportSize(this.viewPtr, width, height)
+  }
+
   public get lineInfo(): LineInfo {
     this.guard()
     return this.lib.textBufferViewGetLineInfo(this.viewPtr)
+  }
+
+  public get logicalLineInfo(): LineInfo {
+    this.guard()
+    return this.lib.textBufferViewGetLogicalLineInfo(this.viewPtr)
   }
 
   public getSelectedText(): string {

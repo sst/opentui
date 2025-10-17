@@ -559,6 +559,16 @@ pub const UnifiedTextBufferView = struct {
         };
     }
 
+    pub fn getLogicalLineInfo(self: *Self) LineInfo {
+        self.updateVirtualLines();
+
+        return LineInfo{
+            .starts = self.cached_line_starts.items,
+            .widths = self.cached_line_widths.items,
+            .max_width = iter_mod.getMaxLineWidth(&self.text_buffer.rope),
+        };
+    }
+
     pub fn getWrapInfo(self: *Self) WrapInfo {
         self.updateVirtualLines();
         return WrapInfo{

@@ -74,6 +74,8 @@ export abstract class TextBufferRenderable extends Renderable {
       this.updateWrapWidth(this.width)
     }
 
+    // Don't set viewport in constructor - let yoga measure first, then onResize will set it
+
     this.updateTextInfo()
   }
 
@@ -167,11 +169,16 @@ export abstract class TextBufferRenderable extends Renderable {
       if (value !== "none" && this.width > 0) {
         this.updateWrapWidth(this.width)
       }
+      // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
+      this.yogaNode.markDirty()
       this.requestRender()
     }
   }
 
   protected onResize(width: number, height: number): void {
+    // Update viewport size to match renderable dimensions
+    this.textBufferView.setViewportSize(width, height)
+
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -216,7 +223,7 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   private updateLineInfo(): void {
-    const lineInfo = this.textBufferView.lineInfo
+    const lineInfo = this.textBufferView.logicalLineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
     this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
@@ -299,14 +306,7 @@ export abstract class TextBufferRenderable extends Renderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
-      const clipRect = {
-        x: this.x,
-        y: this.y,
-        width: this.width,
-        height: this.height,
-      }
-
-      buffer.drawTextBuffer(this.textBufferView, this.x, this.y, clipRect)
+      buffer.drawTextBuffer(this.textBufferView, this.x, this.y)
     }
   }
 

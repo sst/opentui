@@ -430,7 +430,7 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
     defer render_buffer.deinit();
 
     // Draw the text buffer view at position (0, 0) on the render buffer
-    try render_buffer.drawTextBuffer(view, 0, 0, null);
+    try render_buffer.drawTextBuffer(view, 0, 0);
 
     // Now check that the first 3 cells on row 0 have red background
     // These should correspond to "DDD" which is the first line in the viewport (absolute line 3)
