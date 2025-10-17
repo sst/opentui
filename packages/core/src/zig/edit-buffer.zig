@@ -28,11 +28,9 @@ pub const EditBufferEvent = enum {
 pub const Cursor = struct {
     row: u32,
     col: u32,
-    desired_col: u32 = 0, // Preserved column for up/down navigation
+    desired_col: u32 = 0,
 };
 
-/// Append-only buffer for inserted text
-/// Grows as needed and registers with TextBuffer
 const AddBuffer = struct {
     mem_id: u8,
     ptr: [*]u8,
@@ -42,8 +40,6 @@ const AddBuffer = struct {
 
     fn init(allocator: Allocator, text_buffer: *UnifiedTextBuffer, initial_cap: usize) !AddBuffer {
         const mem = try allocator.alloc(u8, initial_cap);
-        // Register with owned=true so registry manages the lifetime
-        // Never free this manually - registry owns it
         const mem_id = try text_buffer.registerMemBuffer(mem, true);
 
         return .{
@@ -58,14 +54,10 @@ const AddBuffer = struct {
     fn ensureCapacity(self: *AddBuffer, text_buffer: *UnifiedTextBuffer, need: usize) !void {
         if (self.len + need <= self.cap) return;
 
-        // Allocate new buffer with doubled capacity
+        // TODO: Create a new buffer, register the new buffer and use the new mem_id for subsequent inserts
         const new_cap = @max(self.cap * 2, self.len + need);
         const new_mem = try self.allocator.alloc(u8, new_cap);
-        // Register with owned=true so registry manages it
-        // Never free old buffer - rope may still reference it
         const new_mem_id = try text_buffer.registerMemBuffer(new_mem, true);
-
-        // Switch to new buffer (old buffer remains in registry)
         self.mem_id = new_mem_id;
         self.ptr = new_mem.ptr;
         self.len = 0;
@@ -76,7 +68,6 @@ const AddBuffer = struct {
         std.debug.assert(self.len + bytes.len <= self.cap);
         const start: u32 = @intCast(self.len);
 
-        // Create a slice from the pointer for safe memcpy
         const dest_slice = self.ptr[0..self.cap];
         @memcpy(dest_slice[self.len .. self.len + bytes.len], bytes);
 
@@ -86,7 +77,6 @@ const AddBuffer = struct {
     }
 };
 
-/// EditBuffer provides cursor-based text editing on a UnifiedTextBuffer
 pub const EditBuffer = struct {
     tb: *UnifiedTextBuffer,
     add_buffer: AddBuffer,
@@ -113,7 +103,6 @@ pub const EditBuffer = struct {
         var cursors: std.ArrayListUnmanaged(Cursor) = .{};
         errdefer cursors.deinit(allocator);
 
-        // Initialize with one cursor at (0, 0)
         try cursors.append(allocator, .{ .row = 0, .col = 0 });
 
         self.* = .{
@@ -124,7 +113,6 @@ pub const EditBuffer = struct {
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
         };
 
-        // Create an initial empty line (single empty text segment with linestart marker)
         const empty_mem_id = try text_buffer.registerMemBuffer(&[_]u8{}, false);
         const empty_chunk = text_buffer.createChunk(empty_mem_id, 0, 0);
         try text_buffer.rope.append(Segment{ .linestart = {} });
@@ -156,11 +144,9 @@ pub const EditBuffer = struct {
     }
 
     pub fn setCursor(self: *EditBuffer, row: u32, col: u32) !void {
-        // Clamp row to valid line range
         const line_count = self.tb.lineCount();
         const clamped_row = @min(row, line_count -| 1);
 
-        // Clamp column to line width
         const line_width = self.getLineWidth(clamped_row);
         const clamped_col = @min(col, line_width);
 
@@ -173,7 +159,6 @@ pub const EditBuffer = struct {
         self.events.emit(.cursorChanged);
     }
 
-    /// Ensure add buffer has capacity for n bytes
     fn ensureAddCapacity(self: *EditBuffer, need: usize) !void {
         try self.add_buffer.ensureCapacity(self.tb, need);
     }
@@ -190,11 +175,9 @@ pub const EditBuffer = struct {
         const line_width = self.getLineWidth(row);
         if (col >= line_width) return 0;
 
-        // Find the text segments for this line
         const linestart_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
         const line_start_idx = linestart_marker.leaf_index;
 
-        // Walk segments from linestart to accumulate width until we reach target column
         var accumulated_width: u32 = 0;
         var seg_idx = line_start_idx + 1; // Skip the linestart marker itself
 
@@ -232,11 +215,9 @@ pub const EditBuffer = struct {
         const line_width = self.getLineWidth(row);
         if (col > line_width) return 0;
 
-        // Find the text segments for this line
         const linestart_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
         const line_start_idx = linestart_marker.leaf_index;
 
-        // Walk segments and track grapheme widths
         var accumulated_width: u32 = 0;
         var prev_g_width: u32 = 0;
         var seg_idx = line_start_idx + 1; // Skip the linestart marker itself
@@ -306,7 +287,6 @@ pub const EditBuffer = struct {
 
             const g_width: u32 = @intCast(width_u16);
 
-            // Stop when we've accumulated the target weight
             if (accumulated_width >= weight) break;
 
             accumulated_width += g_width;
@@ -345,8 +325,6 @@ pub const EditBuffer = struct {
         _ = allocator;
         const edit_buf = @as(*EditBuffer, @ptrCast(@alignCast(ctx.?)));
 
-        // Segments can only split if they're text segments
-        // Breaks cannot be split (weight is 0 anyway)
         if (leaf.asText()) |chunk| {
             const result = try edit_buf.splitChunkAtWeight(chunk, weight_in_leaf);
             return .{
@@ -354,8 +332,6 @@ pub const EditBuffer = struct {
                 .right = Segment{ .text = result.right },
             };
         } else {
-            // Break segment - cannot split, return as-is
-            // This shouldn't happen if weight calculation is correct
             return .{
                 .left = Segment{ .brk = {} },
                 .right = Segment{ .brk = {} },
@@ -372,13 +348,11 @@ pub const EditBuffer = struct {
 
         const cursor = self.cursors.items[0];
 
-        // Ensure add buffer capacity
         try self.ensureAddCapacity(bytes.len);
 
         // Convert cursor position to character offset
         const insert_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
 
-        // Append entire bytes to AddBuffer once (single copy)
         const chunk_ref = self.add_buffer.append(bytes);
         const base_mem_id = chunk_ref.mem_id;
         const base_start = chunk_ref.start;
@@ -388,7 +362,6 @@ pub const EditBuffer = struct {
         defer break_result.deinit();
         try utf8.findLineBreaksSIMD16(bytes, &break_result);
 
-        // Build segments from the single appended range
         var segments = std.ArrayList(Segment).init(self.allocator);
         defer segments.deinit();
 
@@ -418,19 +391,16 @@ pub const EditBuffer = struct {
                 .CR, .LF => break_pos,
             };
 
-            // Add text segment for content before the break (if any)
             if (local_end > local_start) {
                 const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + local_end);
                 try segments.append(Segment{ .text = chunk });
                 inserted_width += chunk.width;
             }
 
-            // Add break segment and linestart for next line
             try segments.append(Segment{ .brk = {} });
             try segments.append(Segment{ .linestart = {} });
 
             local_start = break_pos + 1;
-            // Reset width counter - text after this break goes on the new line
             width_after_last_break = 0;
         }
 
@@ -442,18 +412,14 @@ pub const EditBuffer = struct {
             inserted_width += chunk.width;
         }
 
-        // Insert segments into rope
         if (segments.items.len > 0) {
             if (insert_after_marker_index) |marker_idx| {
-                // Insert at column 0: use index-based insertion to go AFTER the linestart marker
-                // Insert segments one by one after the marker
                 var idx: usize = marker_idx + 1;
                 for (segments.items) |seg| {
                     try self.tb.rope.insert(@intCast(idx), seg);
                     idx += 1;
                 }
             } else {
-                // Normal insertion: use weight-based insertion
                 const splitter = self.makeSegmentSplitter();
                 try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
             }
@@ -462,20 +428,14 @@ pub const EditBuffer = struct {
             self.tb.char_count += inserted_width;
         }
 
-        // Mark views dirty
-        self.tb.markViewsDirty();
-
-        // Update cursor position to end of inserted text
         const num_breaks = break_result.breaks.items.len;
         if (num_breaks > 0) {
-            // We inserted newlines - cursor moves to a new line
             self.cursors.items[0] = .{
                 .row = cursor.row + @as(u32, @intCast(num_breaks)),
                 .col = width_after_last_break,
                 .desired_col = width_after_last_break,
             };
         } else {
-            // No line breaks - cursor stays on same line, moves forward
             self.cursors.items[0] = .{
                 .row = cursor.row,
                 .col = cursor.col + inserted_width,
@@ -483,11 +443,11 @@ pub const EditBuffer = struct {
             };
         }
 
+        self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
     }
 
     pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
-        // Normalize cursors (ensure start <= end)
         var start = start_cursor;
         var end = end_cursor;
         if (start.row > end.row or (start.row == end.row and start.col > end.col)) {
@@ -496,7 +456,6 @@ pub const EditBuffer = struct {
             end = temp;
         }
 
-        // Empty range - nothing to delete
         if (start.row == end.row and start.col == end.col) return;
 
         try self.autoStoreUndo();
@@ -507,7 +466,6 @@ pub const EditBuffer = struct {
 
         if (start_offset >= end_offset) return;
 
-        // The weight difference is the character count being deleted
         const deleted_width = end_offset - start_offset;
 
         // Delete the range using rope's deleteRangeByWeight with splitter
@@ -521,7 +479,6 @@ pub const EditBuffer = struct {
             self.tb.char_count = 0;
         }
 
-        // Mark views dirty
         self.tb.markViewsDirty();
 
         // Set cursor to start of deleted range
@@ -536,7 +493,6 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len == 0) return;
         const cursor = self.cursors.items[0];
 
-        // At start of buffer - nothing to delete
         if (cursor.row == 0 and cursor.col == 0) return;
 
         try self.autoStoreUndo();
@@ -550,7 +506,6 @@ pub const EditBuffer = struct {
                 if (marker_pos) |pos| {
                     const break_idx = pos.leaf_index;
 
-                    // Calculate the width of the previous line BEFORE deleting the break
                     const prev_line_width = self.getLineWidth(cursor.row - 1);
 
                     // Delete the break segment
@@ -564,12 +519,10 @@ pub const EditBuffer = struct {
                         }
                     }
 
-                    // Decrement char_count by 1 (newline has weight 1)
                     if (self.tb.char_count > 0) {
                         self.tb.char_count -= 1;
                     }
 
-                    // Mark views dirty
                     self.tb.markViewsDirty();
 
                     // Move cursor to end of previous line (using the width we calculated before the merge)
@@ -577,8 +530,6 @@ pub const EditBuffer = struct {
                 }
             }
         } else {
-            // Delete one grapheme before cursor within the same line
-            // Get the width of the previous grapheme to delete the entire grapheme
             const prev_grapheme_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
             if (prev_grapheme_width == 0) return; // Nothing to delete
 
@@ -589,15 +540,12 @@ pub const EditBuffer = struct {
             const splitter = self.makeSegmentSplitter();
             try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
 
-            // Update char count
             if (self.tb.char_count > 0) {
                 self.tb.char_count -= 1;
             }
 
-            // Mark views dirty
             self.tb.markViewsDirty();
 
-            // Update cursor position
             self.cursors.items[0] = .{ .row = cursor.row, .col = target_col, .desired_col = target_col };
         }
 
@@ -610,7 +558,6 @@ pub const EditBuffer = struct {
 
         try self.autoStoreUndo();
 
-        // Check if we're at end of a line using O(1) marker lookup
         const line_width = self.getLineWidth(cursor.row);
 
         if (cursor.col >= line_width) {
@@ -632,33 +579,24 @@ pub const EditBuffer = struct {
                     }
                 }
 
-                // Decrement char_count by 1 (newline has weight 1)
                 if (self.tb.char_count > 0) {
                     self.tb.char_count -= 1;
                 }
 
-                // Mark views dirty
                 self.tb.markViewsDirty();
-
-                // Cursor stays at same position
             }
         } else {
-            // Delete one character after cursor within the same line
             const start_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
             const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col + 1) orelse return;
 
             const splitter = self.makeSegmentSplitter();
             try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
 
-            // Update char count
             if (self.tb.char_count > 0) {
                 self.tb.char_count -= 1;
             }
 
-            // Mark views dirty
             self.tb.markViewsDirty();
-
-            // Cursor stays at same position (content shifted left)
         }
     }
 
@@ -667,17 +605,13 @@ pub const EditBuffer = struct {
         const cursor = &self.cursors.items[0];
 
         if (cursor.col > 0) {
-            // Get width of previous grapheme and move left by that amount
             const prev_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
             cursor.col -= prev_width;
         } else if (cursor.row > 0) {
-            // Move to end of previous line
             cursor.row -= 1;
-            // Get the width of the previous line using O(1) marker lookup
             const line_width = self.getLineWidth(cursor.row);
             cursor.col = line_width;
         }
-        // Horizontal movement resets desired column
         cursor.desired_col = cursor.col;
 
         self.events.emit(.cursorChanged);
@@ -687,20 +621,16 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len == 0) return;
         const cursor = &self.cursors.items[0];
 
-        // Get current line width using O(1) marker lookup
         const line_width = self.getLineWidth(cursor.row);
         const line_count = self.tb.getLineCount();
 
         if (cursor.col < line_width) {
-            // Get width of current grapheme and move right by that amount
             const grapheme_width = self.getGraphemeWidthAt(cursor.row, cursor.col);
             cursor.col += grapheme_width;
         } else if (cursor.row + 1 < line_count) {
-            // Move to start of next line
             cursor.row += 1;
             cursor.col = 0;
         }
-        // Horizontal movement resets desired column
         cursor.desired_col = cursor.col;
 
         self.events.emit(.cursorChanged);
@@ -711,17 +641,14 @@ pub const EditBuffer = struct {
         const cursor = &self.cursors.items[0];
 
         if (cursor.row > 0) {
-            // If this is the first vertical movement, save current column as desired
             if (cursor.desired_col == 0) {
                 cursor.desired_col = cursor.col;
             }
 
             cursor.row -= 1;
 
-            // Get line width using O(1) marker lookup
             const line_width = self.getLineWidth(cursor.row);
 
-            // Move to desired column if possible, otherwise clamp to line end
             cursor.col = @min(cursor.desired_col, line_width);
         }
 
@@ -732,20 +659,16 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len == 0) return;
         const cursor = &self.cursors.items[0];
 
-        // Get line count
         const line_count = self.tb.getLineCount();
         if (cursor.row + 1 < line_count) {
-            // If this is the first vertical movement, save current column as desired
             if (cursor.desired_col == 0) {
                 cursor.desired_col = cursor.col;
             }
 
             cursor.row += 1;
 
-            // Get line width using O(1) marker lookup
             const line_width = self.getLineWidth(cursor.row);
 
-            // Move to desired column if possible, otherwise clamp to line end
             cursor.col = @min(cursor.desired_col, line_width);
         }
 
@@ -753,12 +676,8 @@ pub const EditBuffer = struct {
     }
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
-        // Note: setText is a full replacement, not an incremental edit,
-        // so we don't auto-store undo here
         try self.tb.setText(text);
 
-        // IMPORTANT: tb.setText() calls reset() which clears the memory registry.
-        // Allocate a fresh AddBuffer since the old one is now orphaned in the registry.
         const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
         const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
         self.add_buffer.mem_id = new_mem_id;
@@ -778,17 +697,12 @@ pub const EditBuffer = struct {
 
         if (cursor.row >= line_count) return;
 
-        // Note: deleteRange auto-stores undo, so we don't need to do it here
-
         if (cursor.row + 1 < line_count) {
-            // Not the last line - delete line content and merge with next
             try self.deleteRange(
                 .{ .row = cursor.row, .col = 0 },
                 .{ .row = cursor.row + 1, .col = 0 },
             );
         } else if (cursor.row > 0) {
-            // Last line but not the only line
-            // Delete from end of previous line (including newline) to end of current line
             const prev_line_width = self.getLineWidth(cursor.row - 1);
             const curr_line_width = self.getLineWidth(cursor.row);
 
@@ -799,10 +713,8 @@ pub const EditBuffer = struct {
 
             self.tb.markViewsDirty();
 
-            // Move cursor to end of previous line
             self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
         } else {
-            // Only line - clear content
             const line_width = self.getLineWidth(cursor.row);
             if (line_width > 0) {
                 try self.deleteRange(
@@ -817,7 +729,6 @@ pub const EditBuffer = struct {
         const line_count = self.tb.lineCount();
         const target_line = @min(line, line_count -| 1);
 
-        // If line is beyond the last line, go to end of last line
         if (line >= line_count) {
             const last_line_width = self.getLineWidth(target_line);
             try self.setCursor(target_line, last_line_width);
@@ -832,7 +743,7 @@ pub const EditBuffer = struct {
         return .{
             .line = cursor.row,
             .visual_col = cursor.col,
-            // TODO: Reimplement absolute character position calculation using rope iterators
+            // TODO: Remove char_pos
             .char_pos = cursor.col,
         };
     }
