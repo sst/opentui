@@ -92,7 +92,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     id: "editor",
     content: initialContent,
     fg: "#F0F6FC",
-    bg: "#0D1117",
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
     wrapMode: "word",
