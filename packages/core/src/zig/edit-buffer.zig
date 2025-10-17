@@ -368,6 +368,8 @@ pub const EditBuffer = struct {
         if (bytes.len == 0) return;
         if (self.cursors.items.len == 0) return;
 
+        try self.autoStoreUndo();
+
         const cursor = self.cursors.items[0];
 
         // Ensure add buffer capacity
@@ -497,6 +499,8 @@ pub const EditBuffer = struct {
         // Empty range - nothing to delete
         if (start.row == end.row and start.col == end.col) return;
 
+        try self.autoStoreUndo();
+
         // Convert to character offsets
         const start_offset = iter_mod.coordsToOffset(&self.tb.rope, start.row, start.col) orelse return EditBufferError.InvalidCursor;
         const end_offset = iter_mod.coordsToOffset(&self.tb.rope, end.row, end.col) orelse return EditBufferError.InvalidCursor;
@@ -534,6 +538,8 @@ pub const EditBuffer = struct {
 
         // At start of buffer - nothing to delete
         if (cursor.row == 0 and cursor.col == 0) return;
+
+        try self.autoStoreUndo();
 
         if (cursor.col == 0) {
             // At start of line - use O(1) marker lookup to find the break before this line
@@ -601,6 +607,8 @@ pub const EditBuffer = struct {
     pub fn deleteForward(self: *EditBuffer) !void {
         if (self.cursors.items.len == 0) return;
         const cursor = self.cursors.items[0];
+
+        try self.autoStoreUndo();
 
         // Check if we're at end of a line using O(1) marker lookup
         const line_width = self.getLineWidth(cursor.row);
@@ -745,6 +753,8 @@ pub const EditBuffer = struct {
     }
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
+        // Note: setText is a full replacement, not an incremental edit,
+        // so we don't auto-store undo here
         try self.tb.setText(text);
 
         // IMPORTANT: tb.setText() calls reset() which clears the memory registry.
@@ -767,6 +777,8 @@ pub const EditBuffer = struct {
         const line_count = self.tb.lineCount();
 
         if (cursor.row >= line_count) return;
+
+        // Note: deleteRange auto-stores undo, so we don't need to do it here
 
         if (cursor.row + 1 < line_count) {
             // Not the last line - delete line content and merge with next
@@ -827,5 +839,49 @@ pub const EditBuffer = struct {
 
     pub fn debugLogRope(self: *const EditBuffer) void {
         self.tb.debugLogRope();
+    }
+
+    fn autoStoreUndo(self: *EditBuffer) !void {
+        try self.tb.rope.store_undo("edit");
+    }
+
+    pub fn undo(self: *EditBuffer) ![]const u8 {
+        const prev_meta = try self.tb.rope.undo("current");
+
+        self.tb.char_count = self.tb.rope.root.metrics().weight();
+
+        const cursor = self.getPrimaryCursor();
+        try self.setCursor(cursor.row, cursor.col);
+
+        self.tb.markViewsDirty();
+        self.events.emit(.cursorChanged);
+
+        return prev_meta;
+    }
+
+    pub fn redo(self: *EditBuffer) ![]const u8 {
+        const next_meta = try self.tb.rope.redo();
+
+        self.tb.char_count = self.tb.rope.root.metrics().weight();
+
+        const cursor = self.getPrimaryCursor();
+        try self.setCursor(cursor.row, cursor.col);
+
+        self.tb.markViewsDirty();
+        self.events.emit(.cursorChanged);
+
+        return next_meta;
+    }
+
+    pub fn canUndo(self: *const EditBuffer) bool {
+        return self.tb.rope.can_undo();
+    }
+
+    pub fn canRedo(self: *const EditBuffer) bool {
+        return self.tb.rope.can_redo();
+    }
+
+    pub fn clearHistory(self: *EditBuffer) void {
+        self.tb.rope.clear_history();
     }
 };

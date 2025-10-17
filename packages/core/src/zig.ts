@@ -531,6 +531,26 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    editBufferUndo: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    editBufferRedo: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    editBufferCanUndo: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    editBufferCanRedo: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    editBufferClearHistory: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -1025,6 +1045,11 @@ export interface RenderLib {
   editBufferGetCursorPosition: (buffer: Pointer) => { line: number; charPos: number; visualColumn: number }
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer
   editBufferDebugLogRope: (buffer: Pointer) => void
+  editBufferUndo: (buffer: Pointer, maxLength: number) => Uint8Array | null
+  editBufferRedo: (buffer: Pointer, maxLength: number) => Uint8Array | null
+  editBufferCanUndo: (buffer: Pointer) => boolean
+  editBufferCanRedo: (buffer: Pointer) => boolean
+  editBufferClearHistory: (buffer: Pointer) => void
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -2063,6 +2088,34 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferDebugLogRope(buffer: Pointer): void {
     this.opentui.symbols.editBufferDebugLogRope(buffer)
+  }
+
+  public editBufferUndo(buffer: Pointer, maxLength: number): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editBufferUndo(buffer, ptr(outBuffer), maxLength)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
+  }
+
+  public editBufferRedo(buffer: Pointer, maxLength: number): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editBufferRedo(buffer, ptr(outBuffer), maxLength)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
+  }
+
+  public editBufferCanUndo(buffer: Pointer): boolean {
+    return this.opentui.symbols.editBufferCanUndo(buffer)
+  }
+
+  public editBufferCanRedo(buffer: Pointer): boolean {
+    return this.opentui.symbols.editBufferCanRedo(buffer)
+  }
+
+  public editBufferClearHistory(buffer: Pointer): void {
+    this.opentui.symbols.editBufferClearHistory(buffer)
   }
 
   // EditorView selection and editing implementations

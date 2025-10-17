@@ -627,6 +627,32 @@ export fn editBufferDebugLogRope(edit_buffer: *edit_buffer_mod.EditBuffer) void 
     edit_buffer.debugLogRope();
 }
 
+export fn editBufferUndo(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const prev_meta = edit_buffer.undo() catch return 0;
+    const copyLen = @min(prev_meta.len, maxLen);
+    @memcpy(outPtr[0..copyLen], prev_meta[0..copyLen]);
+    return copyLen;
+}
+
+export fn editBufferRedo(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const next_meta = edit_buffer.redo() catch return 0;
+    const copyLen = @min(next_meta.len, maxLen);
+    @memcpy(outPtr[0..copyLen], next_meta[0..copyLen]);
+    return copyLen;
+}
+
+export fn editBufferCanUndo(edit_buffer: *edit_buffer_mod.EditBuffer) bool {
+    return edit_buffer.canUndo();
+}
+
+export fn editBufferCanRedo(edit_buffer: *edit_buffer_mod.EditBuffer) bool {
+    return edit_buffer.canRedo();
+}
+
+export fn editBufferClearHistory(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.clearHistory();
+}
+
 // ===== EditorView Exports =====
 
 export fn createEditorView(edit_buffer: *edit_buffer_mod.EditBuffer, viewport_width: u32, viewport_height: u32) ?*editor_view.EditorView {

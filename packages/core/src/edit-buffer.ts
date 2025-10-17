@@ -139,6 +139,38 @@ export class EditBuffer {
     this.lib.editBufferDebugLogRope(this.bufferPtr)
   }
 
+  // History API
+  public undo(): string | null {
+    this.guard()
+    const maxSize = 256
+    const metaBytes = this.lib.editBufferUndo(this.bufferPtr, maxSize)
+    if (!metaBytes) return null
+    return this.lib.decoder.decode(metaBytes)
+  }
+
+  public redo(): string | null {
+    this.guard()
+    const maxSize = 256
+    const metaBytes = this.lib.editBufferRedo(this.bufferPtr, maxSize)
+    if (!metaBytes) return null
+    return this.lib.decoder.decode(metaBytes)
+  }
+
+  public canUndo(): boolean {
+    this.guard()
+    return this.lib.editBufferCanUndo(this.bufferPtr)
+  }
+
+  public canRedo(): boolean {
+    this.guard()
+    return this.lib.editBufferCanRedo(this.bufferPtr)
+  }
+
+  public clearHistory(): void {
+    this.guard()
+    this.lib.editBufferClearHistory(this.bufferPtr)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

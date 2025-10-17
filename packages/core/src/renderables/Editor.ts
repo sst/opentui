@@ -35,8 +35,16 @@ export class EditorRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
 
+    if (keyCtrl && keyName === "z" && !keyShift) {
+      this.undo()
+      return true
+    } else if ((keyCtrl && keyName === "y") || (keyCtrl && keyShift && keyName === "z")) {
+      this.redo()
+      return true
+    }
+
     // Movement
-    if (keyName === "left") {
+    else if (keyName === "left") {
       this.handleShiftSelection(keyShift, true) // BEFORE cursor movement
       this.moveCursorLeft()
       this.handleShiftSelection(keyShift, false) // AFTER cursor movement
@@ -295,6 +303,18 @@ export class EditorRenderable extends EditBufferRenderable {
       }
     }
 
+    this.requestRender()
+  }
+
+  public undo(): void {
+    this._ctx.clearSelection()
+    this.editBuffer.undo()
+    this.requestRender()
+  }
+
+  public redo(): void {
+    this._ctx.clearSelection()
+    this.editBuffer.redo()
     this.requestRender()
   }
 
