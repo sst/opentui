@@ -209,7 +209,7 @@ pub const EditBuffer = struct {
 
     /// Get the display width of the grapheme before the given column on a line
     /// Returns 0 if at start of line
-    fn getPrevGraphemeWidth(self: *const EditBuffer, row: u32, col: u32) u32 {
+    pub fn getPrevGraphemeWidth(self: *const EditBuffer, row: u32, col: u32) u32 {
         if (col == 0) return 0;
 
         const line_width = self.getLineWidth(row);
@@ -466,12 +466,56 @@ pub const EditBuffer = struct {
 
         if (start_offset >= end_offset) return;
 
+        // Special case: When deleting within a single line starting at col=0,
+        // we need to ensure the linestart marker for that line is preserved.
+        // coordsToOffset returns the global_weight of the linestart marker for col=0,
+        // which causes the linestart marker itself to be included in the deletion.
+        // We fix this by checking if we're deleting at col=0 on the same line, and if so,
+        // we need to adjust the deletion to skip the linestart marker.
+        const deleting_within_line = (start.row == end.row);
+        const deleting_from_line_start = (start.col == 0 and deleting_within_line and start.row > 0);
+
         const deleted_width = end_offset - start_offset;
         const deleted_lines = end.row - start.row;
+
+        // Store the linestart marker info before deletion if we're deleting from col=0
+        const linestart_marker_before = if (deleting_from_line_start)
+            self.tb.rope.getMarker(.linestart, start.row)
+        else
+            null;
 
         // Delete the range using rope's deleteRangeByWeight with splitter
         const splitter = self.makeSegmentSplitter();
         try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
+
+        // If we were deleting from col=0 within a line, check if the linestart marker was accidentally deleted
+        if (deleting_from_line_start and linestart_marker_before != null) {
+            // Check if the linestart marker for start.row still exists
+            const marker_after = self.tb.rope.getMarker(.linestart, start.row);
+            if (marker_after == null) {
+                // The linestart marker was deleted! We need to re-insert it.
+                // Find where to insert it: after the break for the previous line
+                const prev_row_marker = if (start.row > 0)
+                    self.tb.rope.getMarker(.linestart, start.row - 1)
+                else
+                    null;
+
+                // Find the break marker for the previous line
+                const prev_break_marker = if (start.row > 0)
+                    self.tb.rope.getMarker(.brk, start.row - 1)
+                else
+                    null;
+
+                const insert_idx = if (prev_break_marker) |brk_marker|
+                    brk_marker.leaf_index + 1
+                else if (prev_row_marker) |pm|
+                    pm.leaf_index + 2 // After linestart + text of previous line
+                else
+                    0;
+
+                try self.tb.rope.insert(@intCast(insert_idx), Segment{ .linestart = {} });
+            }
+        }
 
         // Update char count
         if (self.tb.char_count >= deleted_width) {

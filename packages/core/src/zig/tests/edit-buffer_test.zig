@@ -1651,3 +1651,81 @@ test "EditBuffer - backspace at start of line joins lines correctly with setText
     try std.testing.expectEqual(@as(u32, 0), cursor_after.row);
     try std.testing.expectEqual(@as(u32, 5), cursor_after.col);
 }
+
+test "EditBuffer - multiple backspaces joining multiple lines reproduces TypeScript bug" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Start with "A\nB\nC\nD"
+    try eb.setText("A\nB\nC\nD");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("A\nB\nC\nD", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 4), eb.getTextBuffer().lineCount());
+
+    std.debug.print("\n=== Initial state ===\n", .{});
+    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
+    const rope_text1 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
+    defer std.testing.allocator.free(rope_text1);
+    std.debug.print("Rope structure: {s}\n", .{rope_text1});
+
+    // Go to line 3 (line "D"), cursor at start of line
+    try eb.gotoLine(3);
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 3), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Backspace: joins C and D to get "A\nB\nCD"
+    try eb.backspace();
+    written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("A\nB\nCD", out_buffer[0..written]);
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 1), cursor.col);
+
+    std.debug.print("\n=== After first backspace (joined C and D) ===\n", .{});
+    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
+    const rope_text2 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
+    defer std.testing.allocator.free(rope_text2);
+    std.debug.print("Rope structure: {s}\n", .{rope_text2});
+    std.debug.print("Cursor: row={d}, col={d}\n", .{ cursor.row, cursor.col });
+
+    // Backspace: should delete "C" to get "A\nB\nD"
+    // THIS IS THE BUG - it's deleting the newline before D as well
+    std.debug.print("\n=== About to backspace at row={d}, col={d} ===\n", .{ cursor.row, cursor.col });
+    std.debug.print("Line count before: {d}\n", .{eb.getTextBuffer().lineCount()});
+
+    // Check what we're about to delete
+    const prev_grapheme_width = eb.getPrevGraphemeWidth(cursor.row, cursor.col);
+    std.debug.print("Previous grapheme width: {d}\n", .{prev_grapheme_width});
+    const target_col = cursor.col - prev_grapheme_width;
+    std.debug.print("Will delete from (row={d}, col={d}) to (row={d}, col={d})\n", .{ cursor.row, target_col, cursor.row, cursor.col });
+
+    const start_offset = iter_mod.coordsToOffset(&eb.getTextBuffer().rope, cursor.row, target_col);
+    const end_offset = iter_mod.coordsToOffset(&eb.getTextBuffer().rope, cursor.row, cursor.col);
+    std.debug.print("Start offset: {any}, End offset: {any}\n", .{ start_offset, end_offset });
+
+    try eb.backspace();
+    written = eb.getText(&out_buffer);
+
+    std.debug.print("\n=== After second backspace (should delete C only) ===\n", .{});
+    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
+    std.debug.print("Line count after: {d}\n", .{eb.getTextBuffer().lineCount()});
+    const rope_text3 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
+    defer std.testing.allocator.free(rope_text3);
+    std.debug.print("Rope structure: {s}\n", .{rope_text3});
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Cursor: row={d}, col={d}\n", .{ cursor.row, cursor.col });
+
+    try std.testing.expectEqualStrings("A\nB\nD", out_buffer[0..written]);
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
