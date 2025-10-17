@@ -1128,9 +1128,9 @@ pub const OptimizedBuffer = struct {
         y: i32,
         clip_rect: ?ClipRect,
     ) !void {
-        // EditorView holds a TextBufferView that handles all the rendering logic
-        // The EditorView's getVirtualLines() already returns viewport-sliced lines
-        // So we can just delegate to drawTextBuffer which will render those lines
+        // TODO: Use event emitter from text buffer view to update the editor view
+        _ = editor_view.getVirtualLines();
+
         const text_buffer_view = editor_view.getTextBufferView();
         try self.drawTextBuffer(text_buffer_view, x, y, clip_rect);
     }

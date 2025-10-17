@@ -689,17 +689,26 @@ pub const UnifiedTextBufferView = struct {
     }
 
     /// Calculate character positions from local selection coordinates
+    /// Local coordinates are viewport-relative (if viewport is set)
     fn calculateMultiLineSelection(self: *Self) ?struct { start: u32, end: u32 } {
         const local_sel = self.local_selection orelse return null;
         if (!local_sel.isActive) return null;
 
         self.updateVirtualLines();
 
+        // Apply viewport offsets to convert viewport-relative to absolute coordinates
+        const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
+        const x_offset: i32 = if (self.viewport) |vp|
+            (if (self.wrap_mode == .none) @intCast(vp.x) else 0)
+        else
+            0;
+
         var selectionStart: ?u32 = null;
         var selectionEnd: ?u32 = null;
 
-        const startY = @min(local_sel.anchorY, local_sel.focusY);
-        const endY = @max(local_sel.anchorY, local_sel.focusY);
+        // Convert viewport-relative Y coordinates to absolute virtual line indices
+        const startY = @min(local_sel.anchorY + y_offset, local_sel.focusY + y_offset);
+        const endY = @max(local_sel.anchorY + y_offset, local_sel.focusY + y_offset);
 
         var selStartX: i32 = undefined;
         var selEndX: i32 = undefined;
@@ -707,11 +716,11 @@ pub const UnifiedTextBufferView = struct {
         if (local_sel.anchorY < local_sel.focusY or
             (local_sel.anchorY == local_sel.focusY and local_sel.anchorX <= local_sel.focusX))
         {
-            selStartX = local_sel.anchorX;
-            selEndX = local_sel.focusX;
+            selStartX = local_sel.anchorX + x_offset;
+            selEndX = local_sel.focusX + x_offset;
         } else {
-            selStartX = local_sel.focusX;
-            selEndX = local_sel.anchorX;
+            selStartX = local_sel.focusX + x_offset;
+            selEndX = local_sel.anchorX + x_offset;
         }
 
         for (self.virtual_lines.items, 0..) |vline, i| {

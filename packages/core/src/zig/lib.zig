@@ -665,6 +665,7 @@ export fn editorViewEnsureCursorVisible(view: *editor_view.EditorView, cursor_li
 }
 
 export fn editorViewGetVirtualLineCount(view: *editor_view.EditorView) u32 {
+    // TODO: There is a getter for that directly, no?
     return @intCast(view.getVirtualLines().len);
 }
 

@@ -2012,17 +2012,27 @@ describe("EditorRenderable", () => {
 
       // Scroll down to line 10
       editor.gotoLine(10)
+      await renderOnce() // Trigger viewport update
 
       const viewport = editor.editorView.getViewport()
       expect(viewport.offsetY).toBeGreaterThan(0)
 
-      // Select in the scrolled viewport
+      // Select in the scrolled viewport - coordinates are viewport-relative
+      // Dragging from (editor.x, editor.y) to (editor.x + 4, editor.y + 2)
+      // means selecting from viewport-local (0, 0) to (4, 2)
+      // With viewport.offsetY > 0, this should select absolute lines starting from viewport.offsetY
       await currentMouse.drag(editor.x, editor.y, editor.x + 4, editor.y + 2)
       await renderOnce()
 
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
       expect(selectedText.length).toBeGreaterThan(0)
+
+      // Verify the selection is from the scrolled viewport, not from line 0
+      // The selection should start from the line at viewport.offsetY
+      expect(selectedText).not.toContain("Line 0")
+      expect(selectedText).not.toContain("Line 1")
+      expect(selectedText).toContain("Line")
     })
 
     it("should disable selection when selectable is false", async () => {
@@ -2158,6 +2168,111 @@ describe("EditorRenderable", () => {
       expect(sel!.end).toBe(5)
 
       buffer.destroy()
+    })
+
+    it("should handle viewport-aware selection correctly", async () => {
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+      })
+
+      // Scroll to line 10
+      editor.gotoLine(10)
+      await renderOnce() // Trigger viewport update
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(0)
+
+      // The viewport should show lines starting from viewport.offsetY
+      // When we drag from (editor.x, editor.y) to (editor.x + 6, editor.y)
+      // we're selecting viewport-local (0, 0) to (6, 0)
+      // This should select the first line visible in the viewport at absolute line viewport.offsetY
+      const expectedLineNumber = viewport.offsetY
+
+      await currentMouse.drag(editor.x, editor.y, editor.x + 6, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // The selected text should be from the line visible at the top of the viewport
+      // which is at absolute line viewport.offsetY
+      // It should NOT be "Line 0" - it should be the line at the viewport offset
+      expect(selectedText).not.toContain("Line 0")
+      expect(selectedText).not.toContain("Line 1")
+
+      // Should contain the line number that's at the viewport offset
+      expect(selectedText).toContain(`Line ${expectedLineNumber}`)
+    })
+
+    it("should handle multi-line selection with viewport scrolling", async () => {
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: Array.from({ length: 20 }, (_, i) => `AAAA${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+      })
+
+      // Scroll to line 8
+      editor.gotoLine(8)
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(0)
+
+      // Select from viewport-local (0, 0) to (4, 2) - should span 3 visible lines
+      await currentMouse.drag(editor.x, editor.y, editor.x + 4, editor.y + 2)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should contain parts of the lines at viewport.offsetY, offsetY+1, offsetY+2
+      const line1 = `AAAA${viewport.offsetY}`
+      const line2 = `AAAA${viewport.offsetY + 1}`
+      const line3 = `AAAA${viewport.offsetY + 2}`
+
+      expect(selectedText).toContain(line1)
+      expect(selectedText).toContain(line2)
+      expect(selectedText).toContain(line3.substring(0, 4)) // First 4 chars of line 3
+    })
+
+    it("should handle horizontal scrolled selection without wrapping", async () => {
+      const longLine = "A".repeat(100)
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: longLine,
+        width: 20,
+        height: 5,
+        wrapMode: "none", // No wrapping - enables horizontal scrolling
+        selectable: true,
+      })
+
+      // Move cursor far to the right to trigger horizontal scroll
+      for (let i = 0; i < 50; i++) {
+        editor.moveCursorRight()
+      }
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetX).toBeGreaterThan(0)
+
+      // Select from viewport-local (0, 0) to (10, 0)
+      // Should select 10 characters starting from column viewport.offsetX
+      await currentMouse.drag(editor.x, editor.y, editor.x + 10, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should be 10 'A' characters
+      expect(selectedText).toBe("A".repeat(10))
+
+      // Verify the selection starts from the scrolled column, not from column 0
+      const sel = editor.getSelection()
+      expect(sel).not.toBe(null)
+      expect(sel!.start).toBeGreaterThanOrEqual(viewport.offsetX)
     })
   })
 
