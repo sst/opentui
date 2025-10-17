@@ -2640,15 +2640,11 @@ describe("EditorRenderable", () => {
       const selectedText = editor.getSelectedText()
       expect(selectedText).toBe("Line 2")
 
-      // Delete should remove the selected text (which is "Line 2" but not the surrounding newlines)
       currentMockInput.pressKey("DELETE")
 
       expect(editor.hasSelection()).toBe(false)
-      // After deleting "Line 2", we have "Line 1\n" + "\nLine 3" = "Line 1\n\nLine 3"
-      // Actually, selection bytes 6-12 means we delete from position 6 to 11 inclusive
-      // which is the \n before Line 2 plus "Line 2" itself
-      expect(editor.plainText).toBe("Line 12\nLine 3")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.plainText).toBe("Line 1\nLine 3")
+      expect(editor.cursor.line).toBe(1)
     })
 
     it("should replace selected text when typing", async () => {
