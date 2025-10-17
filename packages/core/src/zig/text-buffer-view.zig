@@ -269,13 +269,9 @@ pub const UnifiedTextBufferView = struct {
 
         if (self.wrap_mode == .none or self.wrap_width == null) {
             // No wrapping - create 1:1 mapping to real lines using single-pass API
-            const total_line_count = self.text_buffer.getLineCount();
-
             const Context = struct {
                 view: *Self,
                 virtual_allocator: Allocator,
-                total_line_count: u32,
-                global_char_offset: u32 = 0,
                 current_vline: ?VirtualLine = null,
 
                 fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
@@ -305,23 +301,14 @@ pub const UnifiedTextBufferView = struct {
                     // Otherwise create empty vline
                     var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
                     vline.width = line_info.width;
-                    // Use global_char_offset which includes newlines from previous lines
-                    vline.char_offset = ctx.global_char_offset;
+                    // line_info.char_offset now includes newlines from walkLinesAndSegments fix
+                    vline.char_offset = line_info.char_offset;
                     vline.source_line = line_info.line_idx;
                     vline.source_col_offset = 0;
 
                     ctx.view.virtual_lines.append(ctx.virtual_allocator, vline) catch {};
                     ctx.view.cached_line_starts.append(ctx.virtual_allocator, vline.char_offset) catch {};
                     ctx.view.cached_line_widths.append(ctx.virtual_allocator, vline.width) catch {};
-
-                    // Increment global_char_offset by line width
-                    ctx.global_char_offset += line_info.width;
-
-                    // Account for newline character between logical lines (weight = 1)
-                    const is_last_line = line_info.line_idx + 1 >= ctx.total_line_count;
-                    if (!is_last_line) {
-                        ctx.global_char_offset += 1;
-                    }
 
                     // Reset for next line
                     ctx.current_vline = VirtualLine.init();
@@ -331,7 +318,6 @@ pub const UnifiedTextBufferView = struct {
             var ctx = Context{
                 .view = self,
                 .virtual_allocator = virtual_allocator,
-                .total_line_count = total_line_count,
                 .current_vline = VirtualLine.init(),
             };
 
@@ -339,13 +325,11 @@ pub const UnifiedTextBufferView = struct {
         } else {
             // Wrapping enabled
             const wrap_w = self.wrap_width.?;
-            const total_line_count = self.text_buffer.getLineCount();
 
             const WrapContext = struct {
                 view: *Self,
                 virtual_allocator: Allocator,
                 wrap_w: u32,
-                total_line_count: u32,
                 global_char_offset: u32 = 0,
                 line_idx: u32 = 0,
                 line_col_offset: u32 = 0,
@@ -497,11 +481,7 @@ pub const UnifiedTextBufferView = struct {
                     wctx.view.cached_line_vline_counts.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
 
                     // Account for newline character between logical lines (weight = 1)
-                    // Don't add newline weight after the last line
-                    const is_last_line = (wctx.line_idx + 1) >= wctx.total_line_count;
-                    if (!is_last_line) {
-                        wctx.global_char_offset += 1;
-                    }
+                    wctx.global_char_offset += 1;
 
                     // Reset for next logical line
                     wctx.line_idx += 1;
@@ -519,7 +499,6 @@ pub const UnifiedTextBufferView = struct {
                 .view = self,
                 .virtual_allocator = virtual_allocator,
                 .wrap_w = wrap_w,
-                .total_line_count = total_line_count,
             };
 
             iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
@@ -882,10 +861,7 @@ pub const UnifiedTextBufferView = struct {
 
                 // Account for newline in char_offset to match rope weight system
                 // Newlines have weight +1 in the rope, so we increment to stay in sync
-                const is_last_line = line_info.line_idx >= ctx.line_count - 1;
-                if (!is_last_line) {
-                    ctx.char_offset.* += 1;
-                }
+                ctx.char_offset.* += 1;
 
                 // Reset flag for next line
                 ctx.line_had_selection = false;

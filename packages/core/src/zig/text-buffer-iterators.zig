@@ -144,7 +144,8 @@ pub fn walkLinesAndSegments(
                 });
 
                 walk_ctx.current_line_idx += 1;
-                walk_ctx.current_char_offset += walk_ctx.line_width;
+                // Account for line content width + 1 for the break segment (newline has weight 1)
+                walk_ctx.current_char_offset += walk_ctx.line_width + 1;
                 walk_ctx.line_start_seg = idx + 1;
                 walk_ctx.line_width = 0;
                 walk_ctx.chunk_idx_in_line = 0;
