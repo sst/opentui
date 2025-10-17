@@ -1316,3 +1316,463 @@ test "EditorView - backspace after wide grapheme updates cursor correctly" {
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("ABCD", out_buffer[0..written]);
 }
+
+test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    var vp = ev.getViewport().?;
+    const initial_vp_y = vp.y;
+    try std.testing.expectEqual(@as(u32, 0), initial_vp_y);
+
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    _ = vp.y;
+
+    const vcursor_after_down = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after_down != null);
+
+    try eb.insertText("X");
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    _ = vp.y;
+
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    const final_vp_y = vp.y;
+
+    const vcursor_final = ev.getVisualCursor();
+    try std.testing.expect(vcursor_final != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), final_vp_y);
+}
+
+test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit + up sequence" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    const total_vlines = ev.getTotalVirtualLineCount();
+    try std.testing.expect(total_vlines > 10);
+
+    var vp = ev.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+
+    var i: u32 = 0;
+    while (i < 12) : (i += 1) {
+        ev.moveDownVisual();
+    }
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    try std.testing.expect(vp.y > 0);
+
+    try eb.insertText("TEST");
+    _ = ev.getVirtualLines();
+
+    i = 0;
+    while (i < 12) : (i += 1) {
+        ev.moveUpVisual();
+    }
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+}
+
+test "EditorView - viewport scrolling with wrapped lines: multiple edits and movements" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 15, 8);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.insertText("A");
+    _ = ev.getVirtualLines();
+
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.insertText("B");
+    _ = ev.getVirtualLines();
+
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    const vp = ev.getViewport().?;
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+}
+
+test "EditorView - viewport scrolling with wrapped lines: verify viewport consistency" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    const vline_count = ev.getTotalVirtualLineCount();
+    try std.testing.expect(vline_count >= 10);
+
+    var movements_down: u32 = 0;
+    var i: u32 = 0;
+    while (i < 5) : (i += 1) {
+        const vcursor_before = ev.getVisualCursor();
+        ev.moveDownVisual();
+        const vcursor_after = ev.getVisualCursor();
+        if (vcursor_after != null and vcursor_before != null) {
+            if (vcursor_after.?.visual_row > vcursor_before.?.visual_row) {
+                movements_down += 1;
+            }
+        }
+    }
+    _ = ev.getVirtualLines();
+
+    _ = ev.getViewport().?;
+    const vcursor_middle = ev.getVisualCursor();
+    try std.testing.expect(vcursor_middle != null);
+
+    try eb.insertText("EDITED");
+    _ = ev.getVirtualLines();
+
+    i = 0;
+    while (i < movements_down) : (i += 1) {
+        ev.moveUpVisual();
+    }
+    _ = ev.getVirtualLines();
+
+    const vp_final = ev.getViewport().?;
+    const vcursor_final = ev.getVisualCursor();
+    try std.testing.expect(vcursor_final != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp_final.y);
+}
+
+test "EditorView - viewport scrolling with wrapped lines: backspace after scroll" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.backspace();
+    _ = ev.getVirtualLines();
+
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    const vp = ev.getViewport().?;
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expect(vcursor != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+}
+
+test "EditorView - viewport scrolling with wrapped lines: viewport follows cursor precisely" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 5);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    var i: u32 = 0;
+    while (i < 10) : (i += 1) {
+        ev.moveDownVisual();
+        _ = ev.getVirtualLines();
+
+        const vp = ev.getViewport().?;
+        const vcursor = ev.getVisualCursor();
+        try std.testing.expect(vcursor != null);
+
+        try std.testing.expect(vcursor.?.visual_row >= vp.y);
+        try std.testing.expect(vcursor.?.visual_row < vp.y + vp.height);
+    }
+
+    try eb.insertText("MIDDLE");
+    _ = ev.getVirtualLines();
+
+    const vp_middle = ev.getViewport().?;
+    const vcursor_middle = ev.getVisualCursor();
+    try std.testing.expect(vcursor_middle != null);
+    try std.testing.expect(vcursor_middle.?.visual_row >= vp_middle.y);
+    try std.testing.expect(vcursor_middle.?.visual_row < vp_middle.y + vp_middle.height);
+
+    i = 0;
+    while (i < 10) : (i += 1) {
+        ev.moveUpVisual();
+        _ = ev.getVirtualLines();
+
+        const vp = ev.getViewport().?;
+        const vcursor = ev.getVisualCursor();
+        try std.testing.expect(vcursor != null);
+
+        try std.testing.expect(vcursor.?.visual_row >= vp.y);
+        try std.testing.expect(vcursor.?.visual_row < vp.y + vp.height);
+    }
+
+    const vp_final = ev.getViewport().?;
+    const vcursor_final = ev.getVisualCursor();
+    try std.testing.expect(vcursor_final != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp_final.y);
+}
+
+test "EditorView - wrapped lines: specific scenario with insert and deletions" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    var vp = ev.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    const vcursor_mid = ev.getVisualCursor();
+    try std.testing.expect(vcursor_mid != null);
+    try std.testing.expectEqual(@as(u32, 5), vcursor_mid.?.visual_row);
+
+    try eb.insertText("XXX");
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    const vcursor_after_insert = ev.getVisualCursor();
+    try std.testing.expect(vcursor_after_insert != null);
+    try std.testing.expect(vcursor_after_insert.?.visual_row >= vp.y);
+    try std.testing.expect(vcursor_after_insert.?.visual_row < vp.y + vp.height);
+
+    try eb.backspace();
+    try eb.backspace();
+    try eb.backspace();
+    _ = ev.getVirtualLines();
+
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    vp = ev.getViewport().?;
+    const vcursor_final2 = ev.getVisualCursor();
+    try std.testing.expect(vcursor_final2 != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final2.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp.y);
+}
+
+test "EditorView - wrapped lines: many small edits with viewport scrolling" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 15, 8);
+    defer ev.deinit();
+
+    const tbv = ev.getTextBufferView();
+    tbv.setWrapMode(.char);
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    ev.moveDownVisual();
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.insertText("1");
+    _ = ev.getVirtualLines();
+
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.insertText("2");
+    _ = ev.getVirtualLines();
+
+    ev.moveDownVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.insertText("3");
+    _ = ev.getVirtualLines();
+
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    try eb.insertText("4");
+    _ = ev.getVirtualLines();
+
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    ev.moveUpVisual();
+    _ = ev.getVirtualLines();
+
+    const vp2 = ev.getViewport().?;
+    const vcursor2 = ev.getVisualCursor();
+    try std.testing.expect(vcursor2 != null);
+
+    try std.testing.expectEqual(@as(u32, 0), vcursor2.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vp2.y);
+}
