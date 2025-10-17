@@ -2082,6 +2082,41 @@ test "EditorView - horizontal scroll: no scrolling with wrapping enabled" {
     try std.testing.expectEqual(@as(u32, 0), vp.x);
 }
 
+test "EditorView - horizontal scroll: cursor position correct after scrolling" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    var i: u32 = 0;
+    while (i < 50) : (i += 1) {
+        eb.moveRight();
+        _ = ev.getVirtualLines();
+
+        const cursor = ev.getPrimaryCursor();
+        const vp = ev.getViewport().?;
+        const vcursor = ev.getVisualCursor();
+
+        try std.testing.expect(vcursor != null);
+        try std.testing.expectEqual(cursor.col, vcursor.?.logical_col);
+        try std.testing.expect(cursor.col >= vp.x);
+        try std.testing.expect(cursor.col < vp.x + vp.width);
+    }
+}
+
 test "EditorView - horizontal scroll: rapid movements maintain visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

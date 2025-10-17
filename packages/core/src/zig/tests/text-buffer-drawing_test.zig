@@ -1426,6 +1426,273 @@ test "loadFile - loads and renders file correctly" {
     try std.testing.expect(std.mem.startsWith(u8, render_result, "ABC"));
 }
 
+test "drawTextBuffer - horizontal viewport offset renders correctly without wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 5, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.mem.startsWith(u8, result, "56789ABCDE"));
+}
+
+test "drawTextBuffer - horizontal viewport offset with multiple lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNO\n0123456789!@#$%\nXYZ[\\]^_`{|}~");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 3, .y = 0, .width = 8, .height = 3 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        3,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "DEFGHIJK") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "3456789!") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "[\\]^_`{|") != null);
+}
+
+test "drawTextBuffer - combined horizontal and vertical viewport offsets" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line0ABCDEFGHIJ\nLine1KLMNOPQRST\nLine2UVWXYZ0123\nLine3456789!@#$");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 5, .y = 1, .width = 10, .height = 2 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        2,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "KLMNOPQRST") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "UVWXYZ0123") != null);
+}
+
+test "drawTextBuffer - horizontal viewport stops rendering at viewport width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 5, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expectEqualStrings("56789ABCDE", result[0..10]);
+
+    const cell_9 = opt_buffer.get(9, 0);
+    try std.testing.expect(cell_9 != null);
+    try std.testing.expectEqual(@as(u32, 'E'), cell_9.?.char);
+}
+
+test "drawTextBuffer - horizontal viewport with small buffer renders only viewport width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 10, .y = 0, .width = 5, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    const cell_0 = opt_buffer.get(0, 0);
+    try std.testing.expect(cell_0 != null);
+    try std.testing.expectEqual(@as(u32, 'K'), cell_0.?.char);
+
+    const cell_4 = opt_buffer.get(4, 0);
+    try std.testing.expect(cell_4 != null);
+    try std.testing.expectEqual(@as(u32, 'O'), cell_4.?.char);
+
+    const cell_5 = opt_buffer.get(5, 0);
+    try std.testing.expect(cell_5 != null);
+    try std.testing.expectEqual(@as(u32, 32), cell_5.?.char);
+
+    const cell_6 = opt_buffer.get(6, 0);
+    try std.testing.expect(cell_6 != null);
+    try std.testing.expectEqual(@as(u32, 32), cell_6.?.char);
+}
+
+test "drawTextBuffer - horizontal viewport width limits rendering (efficiency test)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var long_line = std.ArrayList(u8).init(std.testing.allocator);
+    defer long_line.deinit();
+    try long_line.appendNTimes('A', 1000);
+
+    try tb.setText(long_line.items);
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 100, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        50,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0, null);
+
+    var non_space_count: u32 = 0;
+    var i: u32 = 0;
+    while (i < 50) : (i += 1) {
+        if (opt_buffer.get(i, 0)) |cell| {
+            if (cell.char == 'A') {
+                non_space_count += 1;
+            }
+        }
+    }
+
+    try std.testing.expectEqual(@as(u32, 10), non_space_count);
+}
+
 test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost chars" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

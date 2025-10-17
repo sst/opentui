@@ -307,7 +307,7 @@ export abstract class EditBufferRenderable extends Renderable {
 
     // Calculate cursor position in viewport space using visual coordinates
     // Visual row is already accounting for wrapping
-    const cursorX = this.x + visualCursor.visualCol + 1 // +1 for 1-based terminal coords
+    const cursorX = this.x + visualCursor.visualCol - viewport.offsetX + 1 // +1 for 1-based terminal coords
     const cursorY = this.y + visualCursor.visualRow - viewport.offsetY + 1 // +1 for 1-based terminal coords
 
     // Only show cursor if it's within viewport bounds

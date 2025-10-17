@@ -853,6 +853,10 @@ pub const OptimizedBuffer = struct {
         if (firstVisibleLine >= virtual_lines.len or lastPossibleLine == 0) return;
         if (firstVisibleLine >= lastPossibleLine) return;
 
+        const viewport = text_buffer_view.getViewport();
+        const horizontal_offset: u32 = if (viewport) |vp| vp.x else 0;
+        const viewport_width: u32 = if (viewport) |vp| vp.width else std.math.maxInt(u32);
+
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = text_buffer_view.text_buffer;
@@ -867,6 +871,7 @@ pub const OptimizedBuffer = struct {
             if (currentY >= bufferBottomY) break;
 
             currentX = x;
+            var column_in_line: u32 = 0;
 
             // Initialize span tracking for this line
             const vline_idx = @as(usize, @intCast(currentY - y));
@@ -961,10 +966,26 @@ pub const OptimizedBuffer = struct {
                         byte_offset += 1;
                     }
 
+                    // Skip if before horizontal viewport offset
+                    if (column_in_line < horizontal_offset) {
+                        globalCharPos += g_width;
+                        column_in_line += g_width;
+                        col += g_width;
+                        continue;
+                    }
+
+                    // Stop if we've rendered viewport_width columns (early break for efficiency)
+                    if (column_in_line >= horizontal_offset + viewport_width) {
+                        // Fast-forward globalCharPos for remaining columns
+                        globalCharPos += (col_end - col);
+                        break;
+                    }
+
                     // Skip if completely out of bounds (left of visible area)
                     if (currentX < -@as(i32, @intCast(g_width))) {
                         globalCharPos += g_width;
                         currentX += @as(i32, @intCast(g_width));
+                        column_in_line += g_width;
                         col += g_width;
                         continue;
                     }
@@ -987,6 +1008,7 @@ pub const OptimizedBuffer = struct {
                     if (should_skip_clip or !self.isPointInScissor(currentX, currentY)) {
                         globalCharPos += g_width;
                         currentX += @as(i32, @intCast(g_width));
+                        column_in_line += g_width;
                         col += g_width;
                         continue;
                     }
@@ -1087,6 +1109,7 @@ pub const OptimizedBuffer = struct {
                     // Advance by the grapheme's full width
                     globalCharPos += g_width;
                     currentX += @as(i32, @intCast(g_width));
+                    column_in_line += g_width;
                     col += g_width;
                 }
             }
