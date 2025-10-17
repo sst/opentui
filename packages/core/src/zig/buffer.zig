@@ -860,6 +860,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = text_buffer_view.text_buffer;
+        const total_line_count = text_buffer.getLineCount();
 
         const line_info = text_buffer_view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
@@ -1115,6 +1116,19 @@ pub const OptimizedBuffer = struct {
                     currentX += @as(i32, @intCast(g_width));
                     column_in_line += g_width;
                     col += g_width;
+                }
+            }
+
+            // Account for newline after this virtual line's source logical line
+            // Check if this is the last virtual line of its source logical line
+            const is_last_vline_of_logical_line = (slice_idx + 1 >= virtual_lines[firstVisibleLine..lastPossibleLine].len) or
+                (virtual_lines[firstVisibleLine..lastPossibleLine][slice_idx + 1].source_line != vline.source_line);
+
+            // Add +1 for newline if this logical line is not the last line in the buffer
+            if (is_last_vline_of_logical_line) {
+                const is_last_logical_line = vline.source_line + 1 >= total_line_count;
+                if (!is_last_logical_line) {
+                    globalCharPos += 1;
                 }
             }
 

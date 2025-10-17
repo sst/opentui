@@ -2442,3 +2442,66 @@ test "EditorView - deleteSelectedText entire line" {
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
 }
+
+test "EditorView - deleteSelectedText respects selection with empty lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb_inst.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb_inst, 40, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.word);
+
+    try eb_inst.setText("AAAA\n\nBBBB\n\nCCCC");
+
+    // Text layout:
+    // Line 0: AAAA (offset 0-3)
+    // Newline (offset 4)
+    // Line 1: empty (offset 5)
+    // Newline (offset 5)
+    // Line 2: BBBB (offset 6-9)
+    // Newline (offset 10)
+    // Line 3: empty (offset 11)
+    // Newline (offset 11)
+    // Line 4: CCCC (offset 12-15)
+
+    // Move cursor to line 2 (BBBB)
+    try eb_inst.setCursor(2, 0);
+
+    // Set local selection to select BBBB on line 2
+    // Visual coordinates: line 2 should be at visual row 2 (after line 0, empty line 1)
+    _ = ev.text_buffer_view.setLocalSelection(0, 2, 4, 2, null, null);
+
+    const sel = ev.text_buffer_view.getSelection();
+    try std.testing.expect(sel != null);
+
+    // Verify selection offsets are correct (chars 6-10 for "BBBB")
+    try std.testing.expectEqual(@as(u32, 6), sel.?.start);
+    try std.testing.expectEqual(@as(u32, 10), sel.?.end);
+
+    // Verify selected text is correct
+    var selected_buffer: [100]u8 = undefined;
+    const selected_len = ev.text_buffer_view.getSelectedTextIntoBuffer(&selected_buffer);
+    const selected_text = selected_buffer[0..selected_len];
+    try std.testing.expectEqualStrings("BBBB", selected_text);
+
+    // Delete the selected text
+    try ev.deleteSelectedText();
+
+    // Verify text is "AAAA\n\n\n\nCCCC" (BBBB removed, empty line remains)
+    var out_buffer: [100]u8 = undefined;
+    const written = ev.getText(&out_buffer);
+    try std.testing.expectEqualStrings("AAAA\n\n\n\nCCCC", out_buffer[0..written]);
+
+    // Verify cursor is at row 2, col 0 (start of deleted range)
+    const cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}

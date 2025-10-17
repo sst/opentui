@@ -290,13 +290,15 @@ test "TextBufferView getSelectedTextIntoBuffer - with newlines" {
     defer view.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
+    // Rope offsets: "Line 1" (0-5) + newline (6) + "Line 2" (7-12) + newline (13) + "Line 3" (14-19)
+    // Selection [0, 9) = "Line 1" (0-5) + newline (6) + "Li" (7-8) = 9 chars
     view.setSelection(0, 9, null, null);
 
     var buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&buffer);
     const text = buffer[0..len];
 
-    try std.testing.expectEqualStrings("Line 1\nLin", text);
+    try std.testing.expectEqualStrings("Line 1\nLi", text);
 }
 
 // ===== Cached Line Info Tests =====
@@ -1332,13 +1334,15 @@ test "TextBufferView selection - spanning multiple lines" {
     defer view.deinit();
 
     try tb.setText("Red\nBlue");
-    view.setSelection(2, 5, null, null); // Select "d\nBl" (d=1 char at pos 2, Bl=2 chars at pos 3-4, total to pos 5)
+    // Rope offsets: "Red" (0-2) + newline (3) + "Blue" (4-7)
+    // Selection [2, 5) = "d" (2) + newline (3) + "B" (4) = 3 chars
+    view.setSelection(2, 5, null, null);
 
     var buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&buffer);
     const text = buffer[0..len];
 
-    try std.testing.expectEqualStrings("d\nBl", text);
+    try std.testing.expectEqualStrings("d\nB", text);
 }
 
 // ===== Additional Line Info Tests =====
@@ -1756,7 +1760,8 @@ test "TextBufferView line info - text starting with newline" {
 
     const line_info = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(u32, 0), line_info.starts[0]);
-    try std.testing.expectEqual(@as(u32, 0), line_info.starts[1]);
+    // Line 1 starts after empty line 0 (width=0) + newline (1), so char_offset = 1
+    try std.testing.expectEqual(@as(u32, 1), line_info.starts[1]);
 }
 
 test "TextBufferView line info - lines with different widths" {

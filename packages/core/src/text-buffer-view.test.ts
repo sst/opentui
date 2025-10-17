@@ -43,7 +43,8 @@ describe("TextBufferView", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = view.lineInfo
-      expect(lineInfo.lineStarts).toEqual([0, 5])
+      // With newline-aware offsets: "Hello" (0-4) + newline (5) + "World" starts at 6
+      expect(lineInfo.lineStarts).toEqual([0, 6])
       expect(lineInfo.lineWidths.length).toBe(2)
       expect(lineInfo.lineWidths[0]).toBeGreaterThan(0)
       expect(lineInfo.lineWidths[1]).toBeGreaterThan(0)
@@ -132,7 +133,8 @@ describe("TextBufferView", () => {
       buffer.setStyledText(styledText)
 
       const originalInfo = view.lineInfo
-      expect(originalInfo.lineStarts).toEqual([0, 6, 12])
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 (14-19)
+      expect(originalInfo.lineStarts).toEqual([0, 7, 14])
 
       view.setWrapMode("char") // Enable wrapping
       view.setWrapWidth(5)
@@ -144,7 +146,7 @@ describe("TextBufferView", () => {
       view.setWrapWidth(null)
 
       const unwrappedInfo = view.lineInfo
-      expect(unwrappedInfo.lineStarts).toEqual([0, 6, 12])
+      expect(unwrappedInfo.lineStarts).toEqual([0, 7, 14])
     })
   })
 
@@ -170,9 +172,11 @@ describe("TextBufferView", () => {
       const styledText = stringToStyledText("Line 1\nLine 2\nLine 3")
       buffer.setStyledText(styledText)
 
+      // Rope offsets: "Line 1" (0-5) + newline (6) + "Line 2" (7-12) + newline (13) + "Line 3" (14-19)
+      // Selection [0, 9) = "Line 1" (0-5) + newline (6) + "Li" (7-8) = 9 chars
       view.setSelection(0, 9)
       const selectedText = view.getSelectedText()
-      expect(selectedText).toBe("Line 1\nLin")
+      expect(selectedText).toBe("Line 1\nLi")
     })
 
     it("should handle Unicode characters in selection", () => {

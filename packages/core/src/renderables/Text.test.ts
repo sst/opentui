@@ -121,8 +121,11 @@ describe("TextRenderable Selection", () => {
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
-      expect(selection!.start).toBe(8) // Position of "n" in "Line 2" (Line 1=6 chars, "Li"=2 chars, total 8)
-      expect(selection!.end).toBe(16) // Position after "Line" on line 3 (6+6+4=16, newlines not counted)
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 starts at 7
+      // Position "n" in "Line 2" is at 7 + 2 = 9
+      expect(selection!.start).toBe(9)
+      // Line 2 starts at 14, position after "Line" is 14 + 4 = 18
+      expect(selection!.end).toBe(18)
 
       expect(text.getSelectedText()).toBe("ne 2\nLine")
     })
@@ -139,9 +142,10 @@ describe("TextRenderable Selection", () => {
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
-      // Should select "Line 1\nLine 2" (6 + 6 = 12 chars, newlines not counted)
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 empty (14)
+      // Selecting to (col=2, row=2) on empty line clamps to col=0, so end=14
       expect(selection!.start).toBe(0)
-      expect(selection!.end).toBe(12)
+      expect(selection!.end).toBe(14)
       expect(text.getSelectedText()).toBe("Line 1\nLine 2")
     })
 
@@ -157,9 +161,10 @@ describe("TextRenderable Selection", () => {
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
-      // Should select "Line 1" (6 chars)
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 empty (7)
+      // Selecting to (col=3, row=1) on empty line clamps to col=0, so end=7
       expect(selection!.start).toBe(0)
-      expect(selection!.end).toBe(6)
+      expect(selection!.end).toBe(7)
       expect(text.getSelectedText()).toBe("Line 1")
     })
 

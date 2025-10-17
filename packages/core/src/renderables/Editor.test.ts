@@ -2327,6 +2327,56 @@ describe("EditorRenderable", () => {
 
       buffer.destroy()
     })
+
+    it("RENDER TEST: selection rendering with empty lines between", async () => {
+      const { OptimizedBuffer } = await import("../buffer")
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionBg: RGBA.fromValues(1, 0, 0, 1), // Red background for selection
+      })
+
+      // Select BBBB on line 2
+      editor.focus()
+      editor.gotoLine(2)
+
+      // Select all 4 characters of BBBB
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.getSelectedText()).toBe("BBBB")
+
+      // Draw to buffer
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, 0, 0)
+
+      // Verify that cells at row 2 (where BBBB is) have red background
+      // Line 0: AAAA at row 0
+      // Line 1: empty at row 1
+      // Line 2: BBBB at row 2 <-- this should have red bg
+      const { bg } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      // Check first 4 cells of row 2 (BBBB)
+      for (let cellX = 0; cellX < 4; cellX++) {
+        const bufferIdx = 2 * bufferWidth + cellX
+        const bgR = bg[bufferIdx * 4 + 0]
+        const bgG = bg[bufferIdx * 4 + 1]
+        const bgB = bg[bufferIdx * 4 + 2]
+
+        // Check if background is red (selection color)
+        expect(Math.abs(bgR - 1.0)).toBeLessThan(0.01) // Red channel
+        expect(Math.abs(bgG - 0.0)).toBeLessThan(0.01) // Green channel
+        expect(Math.abs(bgB - 0.0)).toBeLessThan(0.01) // Blue channel
+      }
+
+      buffer.destroy()
+    })
   })
 
   describe("Shift+Arrow Key Selection", () => {
@@ -3075,6 +3125,100 @@ describe("EditorRenderable", () => {
 
       // Should not insert escape character
       expect(editor.plainText).toBe("Test")
+    })
+  })
+
+  describe("Deletion with empty lines", () => {
+    it("should delete selection on line after empty lines correctly", async () => {
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(2) // Line with "BBBB"
+
+      expect(editor.cursor.line).toBe(2)
+      expect(editor.plainText).toBe("AAAA\n\nBBBB\n\nCCCC")
+
+      // Select "BBBB" by pressing shift+right 4 times
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("BBBB")
+
+      // Delete the selection
+      currentMockInput.pressKey("DELETE")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("AAAA\n\n\n\nCCCC")
+      expect(editor.cursor.line).toBe(2)
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should delete selection on first line correctly (baseline test)", async () => {
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(0) // First line with "AAAA"
+
+      expect(editor.cursor.line).toBe(0)
+
+      // Select "AAAA"
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.getSelectedText()).toBe("AAAA")
+
+      // Delete the selection
+      currentMockInput.pressKey("DELETE")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("\n\nBBBB\n\nCCCC")
+    })
+
+    it("should delete selection on last line after empty lines correctly", async () => {
+      const { editor } = await createEditorRenderable(currentRenderer, {
+        content: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(4) // Last line with "CCCC"
+
+      expect(editor.cursor.line).toBe(4)
+
+      // Select "CCCC"
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toBe("CCCC")
+
+      // Delete the selection
+      currentMockInput.pressKey("DELETE")
+
+      expect(editor.hasSelection()).toBe(false)
+      // After deleting CCCC, we should still have AAAA and BBBB
+      expect(editor.plainText).toContain("AAAA")
+      expect(editor.plainText).toContain("BBBB")
+      expect(editor.plainText).not.toContain("CCCC")
     })
   })
 })

@@ -140,7 +140,9 @@ test "Selection - across empty lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 0), start);
-    try std.testing.expectEqual(@as(u32, 12), end);
+    // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 empty (14)
+    // Selection to (row=2, col=2) with empty line 2 clamps to col=0, so end=14
+    try std.testing.expectEqual(@as(u32, 14), end);
 }
 
 test "Selection - ending in empty line" {
@@ -539,13 +541,15 @@ test "Selection - getSelectedText with newlines" {
     defer view.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
+    // With rope weight system: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 (14-19)
+    // Selection [0, 9) includes: "Line 1" (0-5) + newline (6) + "Li" (7-8) = 9 chars total
     view.setSelection(0, 9, null, null);
 
     var out_buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expectEqualStrings("Line 1\nLin", text);
+    try std.testing.expectEqualStrings("Line 1\nLi", text);
 }
 
 test "Selection - spanning multiple lines with getSelectedText" {
@@ -563,13 +567,15 @@ test "Selection - spanning multiple lines with getSelectedText" {
     defer view.deinit();
 
     try tb.setText("Red\nBlue");
+    // Rope offsets: "Red" (0-2) + newline (3) + "Blue" (4-7)
+    // Selection [2, 5) = "d" (2) + newline (3) + "B" (4) = 3 chars
     view.setSelection(2, 5, null, null);
 
     var out_buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expectEqualStrings("d\nBl", text);
+    try std.testing.expectEqualStrings("d\nB", text);
 }
 
 test "Selection - with graphemes" {
