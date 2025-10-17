@@ -478,44 +478,11 @@ pub const EditBuffer = struct {
         const deleted_width = end_offset - start_offset;
         const deleted_lines = end.row - start.row;
 
-        // Store the linestart marker info before deletion if we're deleting from col=0
-        const linestart_marker_before = if (deleting_from_line_start)
-            self.tb.rope.getMarker(.linestart, start.row)
-        else
-            null;
-
         // Delete the range using rope's deleteRangeByWeight with splitter
+        // Pass exclude_zero_weight_boundaries=true to preserve linestart markers when deleting from col=0
         const splitter = self.makeSegmentSplitter();
-        try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
-
-        // If we were deleting from col=0 within a line, check if the linestart marker was accidentally deleted
-        if (deleting_from_line_start and linestart_marker_before != null) {
-            // Check if the linestart marker for start.row still exists
-            const marker_after = self.tb.rope.getMarker(.linestart, start.row);
-            if (marker_after == null) {
-                // The linestart marker was deleted! We need to re-insert it.
-                // Find where to insert it: after the break for the previous line
-                const prev_row_marker = if (start.row > 0)
-                    self.tb.rope.getMarker(.linestart, start.row - 1)
-                else
-                    null;
-
-                // Find the break marker for the previous line
-                const prev_break_marker = if (start.row > 0)
-                    self.tb.rope.getMarker(.brk, start.row - 1)
-                else
-                    null;
-
-                const insert_idx = if (prev_break_marker) |brk_marker|
-                    brk_marker.leaf_index + 1
-                else if (prev_row_marker) |pm|
-                    pm.leaf_index + 2 // After linestart + text of previous line
-                else
-                    0;
-
-                try self.tb.rope.insert(@intCast(insert_idx), Segment{ .linestart = {} });
-            }
-        }
+        const exclude_zero_weight = deleting_from_line_start;
+        try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter, exclude_zero_weight);
 
         // Update char count
         if (self.tb.char_count >= deleted_width) {
@@ -666,7 +633,7 @@ pub const EditBuffer = struct {
             const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col + 1) orelse return;
 
             const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
+            try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter, false);
 
             if (self.tb.char_count > 0) {
                 self.tb.char_count -= 1;
