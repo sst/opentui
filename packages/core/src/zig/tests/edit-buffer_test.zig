@@ -20,7 +20,6 @@ test "EditBuffer - init and deinit" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Should have empty buffer and one cursor at (0, 0)
     try std.testing.expectEqual(@as(u32, 0), eb.getTextBuffer().getLength());
     const cursor = eb.getCursor(0);
     try std.testing.expect(cursor != null);
@@ -41,12 +40,10 @@ test "EditBuffer - insert single line at start" {
 
     try eb.insertText("Hello");
 
-    // Verify text was inserted
     var out_buffer: [100]u8 = undefined;
     const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
 
-    // Cursor should be at end of text
     const cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
@@ -93,10 +90,8 @@ test "EditBuffer - insert multi-line text" {
     const written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", out_buffer[0..written]);
 
-    // Should have 3 lines
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Cursor should be on last line
     const cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
@@ -150,7 +145,6 @@ test "EditBuffer - verify text buffer integration" {
 
     try eb.insertText("Hello\nWorld");
 
-    // Verify underlying TextBuffer state
     const text_buf = eb.getTextBuffer();
     try std.testing.expectEqual(@as(u32, 2), text_buf.lineCount());
 
@@ -792,11 +786,9 @@ test "EditBuffer - insert newline on empty line" {
     try std.testing.expectEqual(@as(u32, 3), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Verify the text is correct (added one more empty line)
     written = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Line 1\n\n\n\n\nLine 5", out_buffer[0..written]);
 
-    // Verify line count increased by 1
     try std.testing.expectEqual(@as(u32, 6), eb.getTextBuffer().lineCount());
 }
 
@@ -811,22 +803,17 @@ test "EditBuffer - setText clears and sets new content" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Insert some initial text
     try eb.insertText("Old content\nTo be replaced");
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 
-    // Set new text
     try eb.setText("New content\nLine 2\nLine 3");
 
-    // Verify old content is gone and new content is present
     var out_buffer: [100]u8 = undefined;
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("New content\nLine 2\nLine 3", out_buffer[0..written]);
 
-    // Verify line count
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Verify cursor is reset to (0, 0)
     const cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
@@ -843,20 +830,16 @@ test "EditBuffer - setText with empty string" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Insert some text first
     try eb.insertText("Some text");
 
-    // Set to empty
     try eb.setText("");
 
     var out_buffer: [100]u8 = undefined;
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqual(@as(usize, 0), written);
 
-    // Should have 1 empty line
     try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
 
-    // Cursor at (0, 0)
     const cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
@@ -970,19 +953,16 @@ test "EditBuffer - setCursor to move to line start" {
 
     try eb.insertText("Hello World\nAnother Line");
 
-    // Position cursor in the middle of line 1
     try eb.setCursor(1, 8);
     var cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 8), cursor.col);
 
-    // Move to line start using setCursor
     try eb.setCursor(cursor.row, 0);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Move to line 0 and do it again
     try eb.setCursor(0, 5);
     cursor = eb.getCursor(0).?;
     try eb.setCursor(cursor.row, 0);
@@ -1004,23 +984,19 @@ test "EditBuffer - gotoLine moves to specified line" {
 
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
 
-    // Start at line 0
     var cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 4), cursor.row); // Cursor is at end after insert
 
-    // Go to line 2
     try eb.gotoLine(2);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Go to line 0
     try eb.gotoLine(0);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Go to last line
     try eb.gotoLine(4);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 4), cursor.row);
@@ -1040,7 +1016,6 @@ test "EditBuffer - gotoLine clamps to valid range" {
 
     try eb.insertText("Line 0\nLine 1\nLine 2");
 
-    // Try to go to line 100 (out of bounds)
     try eb.gotoLine(100);
     const cursor = eb.getCursor(0).?;
     // Should clamp to last line (line 2) and go to end of that line
@@ -1061,7 +1036,6 @@ test "EditBuffer - getCursorPosition returns correct info" {
 
     try eb.insertText("Hello\nWorld\nFrom\nZig");
 
-    // Move to a specific position
     try eb.setCursor(2, 3);
 
     const pos = eb.getCursorPosition();
@@ -1100,27 +1074,17 @@ test "EditBuffer - setText followed by insertText" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // This test verifies that setText properly re-registers the AddBuffer
-    // (without allocating new memory) so that subsequent insertText operations
-    // don't crash (the original bug). The exact text manipulation behavior
-    // is tested by the TypeScript tests.
-
-    // Set initial text
     try eb.setText("Line 1\nLine 2\nLine 3");
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Verify setText worked
     var out_buffer: [100]u8 = undefined;
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", out_buffer[0..written]);
 
-    // Move to start of last line (different from TypeScript test which uses gotoLine)
     try eb.setCursor(0, 0);
 
-    // Insert some text - this should NOT crash after setText
     try eb.insertText("X");
 
-    // Verify insertion worked
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("XLine 1\nLine 2\nLine 3", out_buffer[0..written]);
 }
@@ -1136,7 +1100,6 @@ test "EditBuffer - backspace on third line with empty middle line" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Create 3 lines: [text, empty, text]
     try eb.insertText("First\n\nThird");
 
     var out_buffer: [100]u8 = undefined;
@@ -1144,13 +1107,11 @@ test "EditBuffer - backspace on third line with empty middle line" {
     try std.testing.expectEqualStrings("First\n\nThird", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Position cursor on third line at column 5 (end of "Third")
     try eb.setCursor(2, 5);
     var cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
 
-    // Backspace once - should delete 'd' and cursor should be at col 4
     try eb.backspace();
     cursor = eb.getCursor(0).?;
     written = eb.getText(&out_buffer);
@@ -1158,28 +1119,23 @@ test "EditBuffer - backspace on third line with empty middle line" {
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
     try std.testing.expectEqualStrings("First\n\nThir", out_buffer[0..written]);
 
-    // Continue backspacing through "Thir"
     try eb.backspace();
     try eb.backspace();
     try eb.backspace();
 
-    // After backspacing 'T' (the first and only char on line 2)
     try eb.backspace();
     cursor = eb.getCursor(0).?;
     written = eb.getText(&out_buffer);
 
-    // After deleting 'T', we should still be on row 2, col 0, with the empty line preserved
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
     try std.testing.expectEqualStrings("First\n\n", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Next backspace should merge with empty line (row 1)
     try eb.backspace();
     cursor = eb.getCursor(0).?;
     written = eb.getText(&out_buffer);
 
-    // Now we should be on row 1 (the previous empty line), col 0
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
@@ -1196,7 +1152,6 @@ test "EditBuffer - deleteForward on first line with empty middle line" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Create 3 lines: [text, empty, text]
     try eb.insertText("First\n\nThird");
 
     var out_buffer: [100]u8 = undefined;
@@ -1204,31 +1159,26 @@ test "EditBuffer - deleteForward on first line with empty middle line" {
     try std.testing.expectEqualStrings("First\n\nThird", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Position cursor at start of first line
     try eb.setCursor(0, 0);
     var cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Delete forward through "First"
-    try eb.deleteForward(); // Delete 'F'
+    try eb.deleteForward();
     cursor = eb.getCursor(0).?;
     written = eb.getText(&out_buffer);
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
     try std.testing.expectEqualStrings("irst\n\nThird", out_buffer[0..written]);
 
-    // Continue deleting through "irst"
-    try eb.deleteForward(); // Delete 'i'
-    try eb.deleteForward(); // Delete 'r'
-    try eb.deleteForward(); // Delete 's'
-    try eb.deleteForward(); // Delete 't'
+    try eb.deleteForward();
+    try eb.deleteForward();
+    try eb.deleteForward();
+    try eb.deleteForward();
 
     cursor = eb.getCursor(0).?;
     written = eb.getText(&out_buffer);
 
-    // After deleting all chars on first line, cursor should be at row 0, col 0
-    // with empty line and "Third" preserved
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
     try std.testing.expectEqualStrings("\n\nThird", out_buffer[0..written]);
@@ -1246,7 +1196,6 @@ test "EditBuffer - moveLeft to end of line then insertText one char at a time" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Insert two lines
     try eb.insertText("First\nSecond");
 
     var out_buffer: [100]u8 = undefined;
@@ -1254,24 +1203,20 @@ test "EditBuffer - moveLeft to end of line then insertText one char at a time" {
     try std.testing.expectEqualStrings("First\nSecond", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 
-    // Cursor should be at end of second line (row=1, col=6)
     var cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 
-    // Move cursor to start of second line
     try eb.setCursor(1, 0);
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 1), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Move left once - should wrap to end of first line
     eb.moveLeft();
     cursor = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
-    try std.testing.expectEqual(@as(u32, 5), cursor.col); // At end of "First"
+    try std.testing.expectEqual(@as(u32, 5), cursor.col);
 
-    // Now insert characters one at a time
     try eb.insertText("X");
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("FirstX\nSecond", out_buffer[0..written]);
@@ -1296,7 +1241,6 @@ test "EditBuffer - moveLeft to end of line then insertText one char at a time" {
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 8), cursor.col);
 
-    // Verify we still have 2 lines
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 }
 
@@ -1311,22 +1255,18 @@ test "EditBuffer - newline at col 0 then insertText" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Initial text
     try eb.insertText("Line 1\nLine 2");
 
     var out_buffer: [200]u8 = undefined;
 
-    // Go to start of line 1 (row=1, col=0)
     try eb.setCursor(1, 0);
 
-    // Insert a newline
     try eb.insertText("\n");
 
     var cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Now insert text - should go at start of line 2
     try eb.insertText("X");
 
     cursor = eb.getPrimaryCursor();
@@ -1335,10 +1275,8 @@ test "EditBuffer - newline at col 0 then insertText" {
 
     const written = eb.getText(&out_buffer);
 
-    // Verify text structure: Line 1, empty line, X on line 2, then Line 2
     try std.testing.expectEqualStrings("Line 1\n\nXLine 2", out_buffer[0..written]);
 
-    // Verify all markers have distinct weights
     const rope = &eb.getTextBuffer().rope;
     const line_count = eb.getTextBuffer().lineCount();
     var prev_weight: ?u32 = null;
@@ -1364,10 +1302,8 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Start with some text
     try eb.insertText("Line 1\nLine 2");
 
-    // Insert several newlines at the end (simulating user pressing Enter multiple times)
     try eb.insertText("\n");
     try eb.insertText("\n");
     try eb.insertText("\n");
@@ -1376,7 +1312,6 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
     try std.testing.expectEqual(@as(u32, 4), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Type characters one by one (simulating user typing)
     try eb.insertText("h");
     try eb.insertText("e");
     try eb.insertText("l");
@@ -1387,7 +1322,6 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
     try std.testing.expectEqual(@as(u32, 4), cursor.row);
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
 
-    // Move cursor up 2 lines
     eb.moveUp();
     eb.moveUp();
 
@@ -1395,7 +1329,6 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Type more characters
     try eb.insertText("t");
     try eb.insertText("e");
     try eb.insertText("s");
@@ -1408,7 +1341,6 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
     var out_buffer: [200]u8 = undefined;
     const written = eb.getText(&out_buffer);
 
-    // Verify markers are all distinct (no corruption)
     const rope = &eb.getTextBuffer().rope;
     const line_count = eb.getTextBuffer().lineCount();
     var i: u32 = 0;
@@ -1422,7 +1354,6 @@ test "EditBuffer - multiple newlines then char-by-char typing" {
         }
     }
 
-    // Verify text is correct
     try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "test") != null);
     try std.testing.expect(std.mem.indexOf(u8, out_buffer[0..written], "hello") != null);
 }
@@ -1565,22 +1496,17 @@ test "EditBuffer - setText, delete all via backspace, then type new text" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Set initial multiline text
     try eb.setText("ABC\nDEF\nGHI");
 
-    // Move cursor to end of last line
     try eb.setCursor(2, 3);
 
     var out_buffer: [100]u8 = undefined;
 
-    // Backspace until all text is deleted
-    // Keep moving cursor to end and backspacing until buffer is empty
     var backspace_count: u32 = 0;
     while (backspace_count < 100) : (backspace_count += 1) {
         const text_len = eb.getText(&out_buffer);
         if (text_len == 0) break;
 
-        // Move cursor to end of buffer
         const line_count = eb.getTextBuffer().lineCount();
         if (line_count > 0) {
             const last_line = line_count - 1;
@@ -1591,24 +1517,19 @@ test "EditBuffer - setText, delete all via backspace, then type new text" {
         try eb.backspace();
     }
 
-    // Verify all text is deleted
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqual(@as(usize, 0), written);
     try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
 
-    // Cursor should be at (0, 0)
     const cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Type a few characters
     try eb.insertText("Hello");
 
-    // Verify text is correct
     const final_written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..final_written]);
 
-    // Verify cursor is at the end (after "Hello" which is 5 chars)
     const final_cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), final_cursor.row);
     try std.testing.expectEqual(@as(u32, 5), final_cursor.col);
@@ -1625,7 +1546,6 @@ test "EditBuffer - backspace at start of line joins lines correctly with setText
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Create two lines using setText (like TypeScript test does)
     try eb.setText("Hello\nWorld");
 
     var out_buffer: [100]u8 = undefined;
@@ -1633,26 +1553,23 @@ test "EditBuffer - backspace at start of line joins lines correctly with setText
     try std.testing.expectEqualStrings("Hello\nWorld", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
 
-    // Move to start of line 1 (second line)
     try eb.setCursor(1, 0);
     const cursor_before = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 1), cursor_before.row);
     try std.testing.expectEqual(@as(u32, 0), cursor_before.col);
 
-    // Backspace should join lines
     try eb.backspace();
 
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("HelloWorld", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
 
-    // Cursor should be at end of first line (where they joined)
     const cursor_after = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor_after.row);
     try std.testing.expectEqual(@as(u32, 5), cursor_after.col);
 }
 
-test "EditBuffer - multiple backspaces joining multiple lines reproduces TypeScript bug" {
+test "EditBuffer - multiple backspaces joining multiple lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -1663,7 +1580,6 @@ test "EditBuffer - multiple backspaces joining multiple lines reproduces TypeScr
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Start with "A\nB\nC\nD"
     try eb.setText("A\nB\nC\nD");
 
     var out_buffer: [100]u8 = undefined;
@@ -1671,13 +1587,11 @@ test "EditBuffer - multiple backspaces joining multiple lines reproduces TypeScr
     try std.testing.expectEqualStrings("A\nB\nC\nD", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 4), eb.getTextBuffer().lineCount());
 
-    // Go to line 3 (line "D"), cursor at start of line
     try eb.gotoLine(3);
     var cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 3), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Backspace: joins C and D to get "A\nB\nCD"
     try eb.backspace();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("A\nB\nCD", out_buffer[0..written]);
@@ -1685,7 +1599,6 @@ test "EditBuffer - multiple backspaces joining multiple lines reproduces TypeScr
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 1), cursor.col);
 
-    // Backspace: should delete "C" to get "A\nB\nD"
     try eb.backspace();
     written = eb.getText(&out_buffer);
     cursor = eb.getPrimaryCursor();
@@ -1706,7 +1619,6 @@ test "EditBuffer - delete multi-line selection starting at col 0" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Start with "Line 1\nLine 2\nLine 3"
     try eb.setText("Line 1\nLine 2\nLine 3");
 
     var out_buffer: [100]u8 = undefined;
@@ -1714,27 +1626,11 @@ test "EditBuffer - delete multi-line selection starting at col 0" {
     try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    std.debug.print("\n=== Initial state ===\n", .{});
-    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
-    const rope_text1 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-    defer std.testing.allocator.free(rope_text1);
-    std.debug.print("Rope structure: {s}\n", .{rope_text1});
-
-    // Delete from (row=0, col=0) to (row=1, col=2)
-    // This should delete "Line 1\nLi" leaving "ne 2\nLine 3"
     try eb.deleteRange(.{ .row = 0, .col = 0 }, .{ .row = 1, .col = 2 });
 
     written = eb.getText(&out_buffer);
 
-    std.debug.print("\n=== After deleteRange ===\n", .{});
-    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
-    std.debug.print("Line count: {d}\n", .{eb.getTextBuffer().lineCount()});
-    const rope_text2 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-    defer std.testing.allocator.free(rope_text2);
-    std.debug.print("Rope structure: {s}\n", .{rope_text2});
-
     const cursor = eb.getPrimaryCursor();
-    std.debug.print("Cursor: row={d}, col={d}\n", .{ cursor.row, cursor.col });
 
     try std.testing.expectEqualStrings("ne 2\nLine 3", out_buffer[0..written]);
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
@@ -1753,45 +1649,22 @@ test "EditBuffer - delete selection via offset conversion (mimics TypeScript pat
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Start with "Line 1\nLine 2\nLine 3"
     try eb.setText("Line 1\nLine 2\nLine 3");
 
     var out_buffer: [100]u8 = undefined;
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", out_buffer[0..written]);
 
-    std.debug.print("\n=== Initial state ===\n", .{});
-    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
-    const rope_text1 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-    defer std.testing.allocator.free(rope_text1);
-    std.debug.print("Rope structure: {s}\n", .{rope_text1});
-
-    // Mimic TypeScript selection: offsets 0 to 8 (should be "Line 1\nLi")
-    // Then convert those offsets to coords (like EditorView.deleteSelectedText does)
     const selection_start: u32 = 0;
-    const selection_end: u32 = 8; // This would select "Line 1\nL" (8 characters)
+    const selection_end: u32 = 8;
 
-    std.debug.print("\n=== Selection: offset {d} to {d} ===\n", .{ selection_start, selection_end });
-
-    // Convert offsets to coords
     const start_coords = iter_mod.offsetToCoords(&eb.getTextBuffer().rope, selection_start) orelse unreachable;
     const end_coords = iter_mod.offsetToCoords(&eb.getTextBuffer().rope, selection_end) orelse unreachable;
 
-    std.debug.print("Start coords: row={d}, col={d}\n", .{ start_coords.row, start_coords.col });
-    std.debug.print("End coords: row={d}, col={d}\n", .{ end_coords.row, end_coords.col });
-
-    // Delete using those coordinates
     try eb.deleteRange(.{ .row = start_coords.row, .col = start_coords.col }, .{ .row = end_coords.row, .col = end_coords.col });
 
     written = eb.getText(&out_buffer);
 
-    std.debug.print("\n=== After deleteRange via offset ===\n", .{});
-    std.debug.print("Text: {s}\n", .{out_buffer[0..written]});
-    const rope_text2 = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-    defer std.testing.allocator.free(rope_text2);
-    std.debug.print("Rope structure: {s}\n", .{rope_text2});
-
-    // "Line 1\nL" is 8 chars, so we should have "ine 2\nLine 3" left
     try std.testing.expectEqualStrings("ine 2\nLine 3", out_buffer[0..written]);
 }
 
