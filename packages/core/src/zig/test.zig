@@ -2,7 +2,7 @@ const std = @import("std");
 
 // Import all test modules
 const text_buffer_tests = @import("tests/text-buffer_test.zig");
-const text_buffer_editing_tests = @import("tests/text-buffer-editing_test.zig");
+const text_buffer_highlights_tests = @import("tests/text-buffer-highlights_test.zig");
 const text_buffer_view_tests = @import("tests/text-buffer-view_test.zig");
 const text_buffer_selection_tests = @import("tests/text-buffer-selection_test.zig");
 const text_buffer_drawing_tests = @import("tests/text-buffer-drawing_test.zig");
@@ -24,7 +24,7 @@ const buffer_tests = @import("tests/buffer_test.zig");
 // This allows `zig test index.zig` to run all tests
 comptime {
     _ = text_buffer_tests;
-    _ = text_buffer_editing_tests;
+    _ = text_buffer_highlights_tests;
     _ = text_buffer_view_tests;
     _ = text_buffer_selection_tests;
     _ = text_buffer_drawing_tests;
