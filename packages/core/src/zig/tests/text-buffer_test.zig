@@ -35,7 +35,7 @@ test "TextBuffer line info - empty buffer" {
 
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 2), tb.rope.count());
+    try std.testing.expectEqual(@as(u32, 1), tb.rope.count());
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
     try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(&tb.rope, 0));
 }

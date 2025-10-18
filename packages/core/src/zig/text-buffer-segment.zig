@@ -388,21 +388,25 @@ pub const Segment = union(enum) {
     /// Rewrite boundary between two adjacent segments to enforce invariants
     ///
     /// Document invariants enforced at join boundaries:
-    /// - Every line starts with a linestart marker (except first line has implicit linestart at rope start)
+    /// - Every line starts with a linestart marker
     /// - Line breaks must be followed by linestart markers
-    /// - No duplicate linestart or brk markers
+    /// - No duplicate linestart markers (deduplicated automatically)
     /// - When joining lines, orphaned linestart markers are removed
+    /// - Empty lines are represented as [linestart, brk] with no text, or [linestart] if final
+    /// - Consecutive breaks [brk, brk] get a linestart inserted between (empty line)
     ///
     /// Rules applied locally at O(log n) join points:
     /// - [linestart, linestart] → delete right (dedup)
     /// - [brk, text] → insert linestart between (ensure line starts with marker)
-    /// - [brk, brk] → delete right (dedup breaks)
+    /// - [brk, brk] → insert linestart between (represents empty line)
     /// - [text, linestart] → delete right (remove orphaned linestart when joining lines)
     ///
     /// Valid patterns (no action needed):
     /// - [text, brk] (line content followed by break)
     /// - [linestart, text] (line marker followed by content)
-    /// - [linestart, brk] (empty line)
+    /// - [linestart, brk] (empty line before another line)
+    /// - [linestart] alone (empty final line or empty buffer)
+    /// - [brk, linestart, brk] (empty line between two lines, normalized from [brk, brk])
     ///
     /// These rules preserve linestart markers when deleting at col=0 within a line,
     /// since the deletion splits around the marker, and [text, linestart] only triggers
@@ -415,16 +419,16 @@ pub const Segment = union(enum) {
         const left_seg = left.?;
         const right_seg = right.?;
 
-        // [linestart, linestart] -> insert empty text between (creates empty line)
+        // [linestart, linestart] -> delete right (dedup)
         if (left_seg.isLineStart() and right_seg.isLineStart()) {
-            const empty_text = Segment{ .text = TextChunk.empty() };
-            const insert_slice = &[_]Segment{empty_text};
-            return .{ .insert_between = insert_slice };
+            return .{ .delete_right = true };
         }
 
-        // [brk, brk] -> delete right (dedup)
+        // [brk, brk] -> insert linestart between (represents empty line)
         if (left_seg.isBreak() and right_seg.isBreak()) {
-            return .{ .delete_right = true };
+            const linestart_segment = Segment{ .linestart = {} };
+            const insert_slice = &[_]Segment{linestart_segment};
+            return .{ .insert_between = insert_slice };
         }
 
         // [brk, text] -> insert linestart between
@@ -447,7 +451,6 @@ pub const Segment = union(enum) {
     /// Rules:
     /// - Rope must start with linestart (or be empty)
     /// - Rope must not end with brk (trailing breaks are invalid)
-    /// - If rope has only linestart, add empty text after it
     pub fn rewriteEnds(allocator: Allocator, first: ?*const Segment, last: ?*const Segment) !BoundaryAction {
         _ = allocator;
 
@@ -464,15 +467,6 @@ pub const Segment = union(enum) {
         if (last) |last_seg| {
             if (last_seg.isBreak()) {
                 return .{ .delete_right = true };
-            }
-        }
-
-        // If we have only a linestart (first == last and it's a linestart), add empty text
-        if (first != null and first == last) {
-            if (first.?.isLineStart()) {
-                const empty_text = Segment{ .text = TextChunk.empty() };
-                const insert_slice = &[_]Segment{empty_text};
-                return .{ .insert_between = insert_slice };
             }
         }
 

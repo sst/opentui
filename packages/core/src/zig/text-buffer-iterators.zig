@@ -48,9 +48,13 @@ pub fn walkLines(
         const line_start_weight = marker.global_weight;
 
         // Compute line width using same logic as lineWidthAt()
+        // TODO: Shouldn't it just use lineWidthAt() then?
         const width = if (i + 1 < linestart_count) blk: {
             const next_marker = rope.getMarker(.linestart, i + 1) orelse break :blk 0;
-            break :blk next_marker.global_weight - line_start_weight - 1;
+            const next_weight = next_marker.global_weight;
+            // Guard against underflow (adjacent linestart markers or empty line)
+            if (next_weight <= line_start_weight) break :blk 0;
+            break :blk next_weight - line_start_weight - 1;
         } else blk: {
             break :blk total_weight - line_start_weight;
         };
@@ -199,6 +203,8 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
         // So text_width = next_start - current_start - 1
         const next_marker = rope.getMarker(.linestart, row + 1) orelse return null;
         const next_line_start_weight = next_marker.global_weight;
+        // Guard against underflow (adjacent linestart markers or empty line)
+        if (next_line_start_weight <= line_start_weight) break :blk 0;
         break :blk next_line_start_weight - line_start_weight - 1;
     } else blk: {
         // Final line: width = total_weight - line_start (total weight includes all previous newlines)
@@ -276,6 +282,8 @@ pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
         // Non-final line: width = (next_line_start - current_start - 1_for_newline)
         const next_marker = rope.getMarker(.linestart, row + 1) orelse return 0;
         const next_line_start_weight = next_marker.global_weight;
+        // Guard against underflow (adjacent linestart markers or empty line)
+        if (next_line_start_weight <= line_start_weight) return 0;
         return next_line_start_weight - line_start_weight - 1;
     } else {
         // Final line: width = total_weight - line_start (total weight includes all previous newlines)

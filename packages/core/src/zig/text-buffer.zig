@@ -280,12 +280,9 @@ pub const UnifiedTextBuffer = struct {
     /// Internal setText that doesn't call reset (for use by setStyledText)
     fn setTextInternal(self: *Self, text: []const u8) TextBufferError!void {
         if (text.len == 0) {
-            // Empty buffer - create one empty text segment to represent the single empty line
+            // Empty buffer - single linestart marker represents the single empty line
             // This matches editor semantics where an empty buffer has 1 empty line
-            const mem_id = try self.mem_registry.register(&[_]u8{}, false);
-            const empty_chunk = self.createChunk(mem_id, 0, 0);
             try self.rope.append(Segment{ .linestart = {} });
-            try self.rope.append(Segment{ .text = empty_chunk });
             self.markAllViewsDirty();
             return;
         }

@@ -113,10 +113,9 @@ pub const EditBuffer = struct {
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
         };
 
-        const empty_mem_id = try text_buffer.registerMemBuffer(&[_]u8{}, false);
-        const empty_chunk = text_buffer.createChunk(empty_mem_id, 0, 0);
+        // TODO: Rope init should be done by the text buffer
+        // Or better yet: a Segment static function for the generic Rope
         try text_buffer.rope.append(Segment{ .linestart = {} });
-        try text_buffer.rope.append(Segment{ .text = empty_chunk });
 
         return self;
     }
