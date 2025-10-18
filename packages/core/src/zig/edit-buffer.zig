@@ -251,6 +251,7 @@ pub const EditBuffer = struct {
     /// Split a TextChunk at a specific weight (display width)
     /// Returns left and right chunks
     /// Simple grapheme iteration accumulating display width
+    /// TODO: This is awfully slow, should use utf8.zig methods
     fn splitChunkAtWeight(
         self: *EditBuffer,
         chunk: *const TextChunk,
@@ -365,21 +366,6 @@ pub const EditBuffer = struct {
         var segments = std.ArrayList(Segment).init(self.allocator);
         defer segments.deinit();
 
-        // Special handling for insertion at column 0 (start of line):
-        // Linestart markers have weight 0, so inserting at their weight position
-        // places content BEFORE the marker, which puts it on the previous line.
-        // Solution: When at col==0 on row>0, use the rope's insert-by-index API
-        // to insert AFTER the linestart marker instead of before it.
-        const insert_at_line_start = (cursor.col == 0 and cursor.row > 0);
-        var insert_after_marker_index: ?usize = null;
-
-        if (insert_at_line_start) {
-            // Find the linestart marker for this row and get its leaf index
-            if (self.tb.rope.getMarker(.linestart, cursor.row)) |marker| {
-                insert_after_marker_index = marker.leaf_index;
-            }
-        }
-
         var local_start: u32 = 0;
         var inserted_width: u32 = 0;
         var width_after_last_break: u32 = 0; // Width of text after the last newline
@@ -413,16 +399,8 @@ pub const EditBuffer = struct {
         }
 
         if (segments.items.len > 0) {
-            if (insert_after_marker_index) |marker_idx| {
-                var idx: usize = marker_idx + 1;
-                for (segments.items) |seg| {
-                    try self.tb.rope.insert(@intCast(idx), seg);
-                    idx += 1;
-                }
-            } else {
-                const splitter = self.makeSegmentSplitter();
-                try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
-            }
+            const splitter = self.makeSegmentSplitter();
+            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
 
             // Update char count
             self.tb.char_count += inserted_width;
@@ -466,94 +444,18 @@ pub const EditBuffer = struct {
 
         if (start_offset >= end_offset) return;
 
-        // Special case: When deleting within a single line starting at col=0,
-        // we need to ensure the linestart marker for that line is preserved
-        // UNLESS we're deleting the entire line content.
-        // coordsToOffset returns the global_weight of the linestart marker for col=0,
-        // which causes the linestart marker itself to be included in the deletion.
-        // We fix this by checking if we're deleting at col=0 on the same line (but not the whole line),
-        // and if so, we exclude zero-weight markers from deletion.
-        const deleting_within_line = (start.row == end.row);
-        const deleting_from_line_start = (start.col == 0 and deleting_within_line and start.row > 0);
-        const current_line_width = if (deleting_from_line_start) self.getLineWidth(start.row) else 0;
-        const deleting_entire_line = (deleting_from_line_start and end.col >= current_line_width);
-
         const deleted_width = end_offset - start_offset;
-        const deleted_lines = end.row - start.row;
 
         // Delete the range using rope's deleteRangeByWeight with splitter
-        // Pass exclude_zero_weight_boundaries=true to preserve linestart markers when deleting from col=0
-        // BUT NOT when deleting the entire line content
+        // The rope handles boundary normalization automatically via joinWithBoundary
         const splitter = self.makeSegmentSplitter();
-        const exclude_zero_weight = deleting_from_line_start and !deleting_entire_line;
-        try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter, exclude_zero_weight);
+        try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
 
         // Update char count
         if (self.tb.char_count >= deleted_width) {
             self.tb.char_count -= deleted_width;
         } else {
             self.tb.char_count = 0;
-        }
-
-        // When deleting across line boundaries, deleteRangeByWeight removes text and breaks
-        // but not zero-weight linestart markers. Clean up orphaned linestart markers.
-        // After deletion, linestart markers at start.row+1 onwards are orphaned if they exist.
-        if (deleted_lines > 0) {
-            // Remove deleted_lines number of linestart markers starting from start.row
-            // (Don't remove linestart at start.row itself, only the ones after it)
-            var removed_count: u32 = 0;
-            while (removed_count < deleted_lines) : (removed_count += 1) {
-                // Try to get linestart at start.row (this is the one that should remain)
-                // Check if there's another linestart right after it (the orphaned one)
-                if (self.tb.rope.getMarker(.linestart, start.row)) |marker| {
-                    const idx = marker.leaf_index;
-                    // Look for linestart markers after this one
-                    var search_idx = idx + 1;
-                    while (search_idx < self.tb.rope.count()) : (search_idx += 1) {
-                        if (self.tb.rope.get(search_idx)) |seg| {
-                            if (seg.isLineStart()) {
-                                // Found an orphaned linestart - delete it
-                                try self.tb.rope.delete(search_idx);
-                                break;
-                            } else if (seg.isBreak()) {
-                                // Hit a break before finding linestart - not orphaned
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
-
-        // Clean up orphaned break markers at the end of the rope
-        // A break at the end is orphaned if not followed by linestart+text
-        // Don't remove linestart markers - we need at least one for the first line
-        while (true) {
-            const rope_count = self.tb.rope.count();
-            if (rope_count == 0) break;
-
-            const last_seg = self.tb.rope.get(rope_count - 1) orelse break;
-
-            if (last_seg.isBreak()) {
-                // Break at end is orphaned
-                try self.tb.rope.delete(rope_count - 1);
-                continue;
-            }
-            break;
-        }
-
-        // Ensure we always have at least linestart + text (even if empty text)
-        if (self.tb.rope.count() == 1) {
-            if (self.tb.rope.get(0)) |first_seg| {
-                if (first_seg.isLineStart()) {
-                    // Add empty text chunk
-                    const empty_mem_id = try self.tb.registerMemBuffer(&[_]u8{}, false);
-                    const empty_chunk = self.tb.createChunk(empty_mem_id, 0, 0);
-                    try self.tb.rope.append(Segment{ .text = empty_chunk });
-                }
-            }
         }
 
         self.tb.markViewsDirty();
@@ -606,44 +508,25 @@ pub const EditBuffer = struct {
         try self.autoStoreUndo();
 
         const line_width = self.getLineWidth(cursor.row);
+        const line_count = self.tb.lineCount();
 
         if (cursor.col >= line_width) {
-            // At end of line - use O(1) marker lookup to find the break ending this line
-            // The break that ends line N is break marker at index N
-            const marker_pos = self.tb.rope.getMarker(.brk, cursor.row);
-
-            if (marker_pos) |pos| {
-                const break_idx = pos.leaf_index;
-
-                // Delete the break segment
-                try self.tb.rope.delete(break_idx);
-
-                // Also remove the following linestart if present
-                // After deleting break_idx, the linestart that was at break_idx+1 is now at break_idx
-                if (self.tb.rope.get(break_idx)) |seg| {
-                    if (seg.isLineStart()) {
-                        try self.tb.rope.delete(break_idx);
-                    }
-                }
-
-                if (self.tb.char_count > 0) {
-                    self.tb.char_count -= 1;
-                }
-
-                self.tb.markViewsDirty();
+            // At end of line - delete the newline to join with next line
+            if (cursor.row + 1 < line_count) {
+                try self.deleteRange(
+                    .{ .row = cursor.row, .col = line_width },
+                    .{ .row = cursor.row + 1, .col = 0 },
+                );
             }
         } else {
-            const start_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return;
-            const end_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col + 1) orelse return;
-
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter, false);
-
-            if (self.tb.char_count > 0) {
-                self.tb.char_count -= 1;
+            // Delete one grapheme forward
+            const grapheme_width = self.getGraphemeWidthAt(cursor.row, cursor.col);
+            if (grapheme_width > 0) {
+                try self.deleteRange(
+                    .{ .row = cursor.row, .col = cursor.col },
+                    .{ .row = cursor.row, .col = cursor.col + grapheme_width },
+                );
             }
-
-            self.tb.markViewsDirty();
         }
     }
 

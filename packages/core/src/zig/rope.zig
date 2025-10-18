@@ -26,6 +26,16 @@ pub fn Rope(comptime T: type) type {
         const marker_enabled = @typeInfo(T) == .@"union" and @hasDecl(T, "MarkerTypes");
         const MarkerTagCount = if (marker_enabled) T.MarkerTypes.len else 0;
 
+        /// Boundary normalization configuration
+        const boundary_enabled = @hasDecl(T, "BoundaryAction");
+
+        /// Action to take when normalizing boundaries between segments
+        pub const BoundaryAction = if (boundary_enabled) T.BoundaryAction else struct {
+            delete_left: bool = false,
+            delete_right: bool = false,
+            insert_between: []const T = &[_]T{},
+        };
+
         /// Marker position result
         pub const MarkerPosition = struct {
             leaf_index: u32, // Which leaf in the rope (by count)
@@ -900,71 +910,109 @@ pub fn Rope(comptime T: type) type {
             };
         }
 
+        /// Get the last leaf in the rope (O(log n))
+        fn getLastLeaf(self: *const Self) ?*const T {
+            if (self.count() == 0) return null;
+            return self.get(self.count() - 1);
+        }
+
+        /// Get the first leaf in the rope (O(log n))
+        fn getFirstLeaf(self: *const Self) ?*const T {
+            if (self.count() == 0) return null;
+            return self.get(0);
+        }
+
+        /// Get the first leaf data in a node (O(log n))
+        fn getFirstLeafIn(node: *const Node) ?*const T {
+            return switch (node.*) {
+                .branch => |*b| getFirstLeafIn(b.left),
+                .leaf => |*l| if (node.count() == 0) null else &l.data,
+            };
+        }
+
+        /// Get the last leaf data in a node (O(log n))
+        fn getLastLeafIn(node: *const Node) ?*const T {
+            return switch (node.*) {
+                .branch => |*b| getLastLeafIn(b.right),
+                .leaf => |*l| if (node.count() == 0) null else &l.data,
+            };
+        }
+
+        /// Drop the first leaf from a node (O(log n))
+        fn dropFirst(node: *const Node, allocator: Allocator, empty_leaf: *const Node) error{OutOfMemory}!*const Node {
+            if (node.count() == 0) return node;
+            const split_result = try Node.split_at(node, 1, allocator, empty_leaf);
+            return split_result.right;
+        }
+
+        /// Drop the last leaf from a node (O(log n))
+        fn dropLast(node: *const Node, allocator: Allocator, empty_leaf: *const Node) error{OutOfMemory}!*const Node {
+            const cnt = node.count();
+            if (cnt == 0) return node;
+            const split_result = try Node.split_at(node, cnt - 1, allocator, empty_leaf);
+            return split_result.left;
+        }
+
+        /// Join two nodes with boundary normalization (O(log n))
+        /// Applies T.rewriteBoundary to the join point if boundary_enabled
+        fn joinWithBoundary(self: *Self, left: *const Node, right: *const Node) error{OutOfMemory}!*const Node {
+            if (!boundary_enabled or !@hasDecl(T, "rewriteBoundary")) {
+                return try Node.join_balanced(left, right, self.allocator);
+            }
+
+            const l_last = getLastLeafIn(left);
+            const r_first = getFirstLeafIn(right);
+            const action = try T.rewriteBoundary(self.allocator, l_last, r_first);
+
+            var L = left;
+            var R = right;
+
+            if (action.delete_left) {
+                L = try dropLast(L, self.allocator, self.empty_leaf);
+            }
+            if (action.delete_right) {
+                R = try dropFirst(R, self.allocator, self.empty_leaf);
+            }
+
+            if (action.insert_between.len > 0) {
+                const insert_rope = try Self.from_slice(self.allocator, action.insert_between);
+                const left_with_insert = try Node.join_balanced(L, insert_rope.root, self.allocator);
+                return try Node.join_balanced(left_with_insert, R, self.allocator);
+            }
+
+            return try Node.join_balanced(L, R, self.allocator);
+        }
+
         /// Delete range by weight [start, end)
         /// O(log n) structural operation
         /// Calls split_leaf_fn callback when split points fall inside leaves
-        /// If exclude_zero_weight_boundaries is true, zero-weight markers at the exact start position are excluded from deletion
-        pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: *const Node.LeafSplitFn, exclude_zero_weight_boundaries: bool) !void {
+        pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: *const Node.LeafSplitFn) !void {
             if (start >= end) return;
 
             // Split at start, then split the right part at (end - start)
             const first_split = try Node.split_at_weight(self.root, start, self.allocator, self.empty_leaf, split_leaf_fn);
             const second_split = try Node.split_at_weight(first_split.right, end - start, self.allocator, self.empty_leaf, split_leaf_fn);
 
-            // If exclude_zero_weight_boundaries is true, we need to preserve zero-weight items
-            // that are at the exact start boundary position
-            var left_part = first_split.left;
-            var middle_part = second_split.left;
-
-            if (exclude_zero_weight_boundaries and marker_enabled) {
-                // Check if the first item in the middle part is a zero-weight marker
-                // If so, move it to the left part to preserve it
-                const extracted = try self.extractZeroWeightMarkersAtStart(middle_part, left_part);
-                left_part = extracted.left;
-                middle_part = extracted.middle;
-            }
-
-            // Join left part with the part after the deleted range
-            // join_balanced now auto-filters empties
-            self.root = try Node.join_balanced(left_part, second_split.right, self.allocator);
+            // Join left part with the part after the deleted range with boundary normalization
+            self.root = try self.joinWithBoundary(first_split.left, second_split.right);
 
             self.version += 1; // Invalidate cache
-        }
 
-        /// Helper function to extract zero-weight markers at the start of a node
-        /// Returns struct { left: new_left_with_markers, middle: middle_without_markers }
-        fn extractZeroWeightMarkersAtStart(self: *Self, middle: *const Node, left: *const Node) !struct { left: *const Node, middle: *const Node } {
-            // Check if the first item in middle is a zero-weight marker
-            // We only need to check the first one since splits happen at weight boundaries
-            if (middle.count() == 0) {
-                return .{ .left = left, .middle = middle };
-            }
+            // Apply end rewrites to ensure rope ends are valid
+            if (boundary_enabled and @hasDecl(T, "rewriteEnds")) {
+                const first = self.getFirstLeaf();
+                const last = self.getLastLeaf();
+                const action = try T.rewriteEnds(self.allocator, first, last);
 
-            const first_item = middle.get(0) orelse return .{ .left = left, .middle = middle };
-
-            // Check if it's a marker (zero-weight)
-            const is_marker = blk: {
-                const tag = std.meta.activeTag(first_item.*);
-                inline for (T.MarkerTypes) |mt| {
-                    if (tag == mt) break :blk true;
+                if (action.delete_left and self.count() > 0) {
+                    try self.delete_range(0, 1);
                 }
-                break :blk false;
-            };
-
-            if (!is_marker) {
-                return .{ .left = left, .middle = middle };
-            }
-
-            // It's a marker at the boundary - move it to the left
-            if (middle.count() == 1) {
-                // Middle is just the marker, move it all to left
-                const new_left = try Node.join_balanced(left, middle, self.allocator);
-                return .{ .left = new_left, .middle = self.empty_leaf };
-            } else {
-                // Split off the first item (the marker) and move it to left
-                const marker_split = try Node.split_at(middle, 1, self.allocator, self.empty_leaf);
-                const new_left = try Node.join_balanced(left, marker_split.left, self.allocator);
-                return .{ .left = new_left, .middle = marker_split.right };
+                if (action.delete_right and self.count() > 0) {
+                    try self.delete_range(self.count() - 1, self.count());
+                }
+                if (action.insert_between.len > 0) {
+                    try self.insert_slice(0, action.insert_between);
+                }
             }
         }
 
@@ -980,12 +1028,28 @@ pub fn Rope(comptime T: type) type {
             // Split at weight: (left, right)
             const split_result = try Node.split_at_weight(self.root, weight, self.allocator, self.empty_leaf, split_leaf_fn);
 
-            // Join: left + insert + right
-            // join_balanced now auto-filters empties
-            const left_joined = try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
-            self.root = try Node.join_balanced(left_joined, split_result.right, self.allocator);
+            // Join with boundary normalization: left + insert + right
+            const left_joined = try self.joinWithBoundary(split_result.left, insert_rope.root);
+            self.root = try self.joinWithBoundary(left_joined, split_result.right);
 
             self.version += 1; // Invalidate cache
+
+            // Apply end rewrites to ensure rope ends are valid
+            if (boundary_enabled and @hasDecl(T, "rewriteEnds")) {
+                const first = self.getFirstLeaf();
+                const last = self.getLastLeaf();
+                const action = try T.rewriteEnds(self.allocator, first, last);
+
+                if (action.delete_left and self.count() > 0) {
+                    try self.delete_range(0, 1);
+                }
+                if (action.delete_right and self.count() > 0) {
+                    try self.delete_range(self.count() - 1, self.count());
+                }
+                if (action.insert_between.len > 0) {
+                    try self.insert_slice(0, action.insert_between);
+                }
+            }
         }
 
         /// Result type for weight-based find operations

@@ -1591,7 +1591,7 @@ test "Rope - deleteRangeByWeight" {
 
     // Delete weight range [10, 30) - removes the second item (weight 20)
     const splitter = makeWeightedSplitter();
-    try rope.deleteRangeByWeight(10, 30, &splitter, false);
+    try rope.deleteRangeByWeight(10, 30, &splitter);
 
     // Should have removed weight 20
     try std.testing.expectEqual(@as(u32, 80), rope.totalWeight());

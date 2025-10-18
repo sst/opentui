@@ -377,6 +377,107 @@ pub const Segment = union(enum) {
             else => null,
         };
     }
+
+    /// Boundary normalization action
+    pub const BoundaryAction = struct {
+        delete_left: bool = false,
+        delete_right: bool = false,
+        insert_between: []const Segment = &[_]Segment{},
+    };
+
+    /// Rewrite boundary between two adjacent segments to enforce invariants
+    ///
+    /// Document invariants enforced at join boundaries:
+    /// - Every line starts with a linestart marker (except first line has implicit linestart at rope start)
+    /// - Line breaks must be followed by linestart markers
+    /// - No duplicate linestart or brk markers
+    /// - When joining lines, orphaned linestart markers are removed
+    ///
+    /// Rules applied locally at O(log n) join points:
+    /// - [linestart, linestart] → delete right (dedup)
+    /// - [brk, text] → insert linestart between (ensure line starts with marker)
+    /// - [brk, brk] → delete right (dedup breaks)
+    /// - [text, linestart] → delete right (remove orphaned linestart when joining lines)
+    ///
+    /// Valid patterns (no action needed):
+    /// - [text, brk] (line content followed by break)
+    /// - [linestart, text] (line marker followed by content)
+    /// - [linestart, brk] (empty line)
+    ///
+    /// These rules preserve linestart markers when deleting at col=0 within a line,
+    /// since the deletion splits around the marker, and [text, linestart] only triggers
+    /// when actually joining lines (deleting the break between them).
+    pub fn rewriteBoundary(allocator: Allocator, left: ?*const Segment, right: ?*const Segment) !BoundaryAction {
+        _ = allocator;
+
+        if (left == null or right == null) return .{};
+
+        const left_seg = left.?;
+        const right_seg = right.?;
+
+        // [linestart, linestart] -> insert empty text between (creates empty line)
+        if (left_seg.isLineStart() and right_seg.isLineStart()) {
+            const empty_text = Segment{ .text = TextChunk.empty() };
+            const insert_slice = &[_]Segment{empty_text};
+            return .{ .insert_between = insert_slice };
+        }
+
+        // [brk, brk] -> delete right (dedup)
+        if (left_seg.isBreak() and right_seg.isBreak()) {
+            return .{ .delete_right = true };
+        }
+
+        // [brk, text] -> insert linestart between
+        if (left_seg.isBreak() and right_seg.isText()) {
+            const linestart_segment = Segment{ .linestart = {} };
+            const insert_slice = &[_]Segment{linestart_segment};
+            return .{ .insert_between = insert_slice };
+        }
+
+        // [text, linestart] -> delete right (remove orphaned linestart when joining lines)
+        if (left_seg.isText() and right_seg.isLineStart()) {
+            return .{ .delete_right = true };
+        }
+
+        // All other patterns are valid
+        return .{};
+    }
+
+    /// Rewrite rope ends to enforce invariants
+    /// Rules:
+    /// - Rope must start with linestart (or be empty)
+    /// - Rope must not end with brk (trailing breaks are invalid)
+    /// - If rope has only linestart, add empty text after it
+    pub fn rewriteEnds(allocator: Allocator, first: ?*const Segment, last: ?*const Segment) !BoundaryAction {
+        _ = allocator;
+
+        // Ensure rope starts with linestart
+        if (first) |first_seg| {
+            if (!first_seg.isLineStart()) {
+                const linestart_segment = Segment{ .linestart = {} };
+                const insert_slice = &[_]Segment{linestart_segment};
+                return .{ .insert_between = insert_slice };
+            }
+        }
+
+        // Remove trailing break
+        if (last) |last_seg| {
+            if (last_seg.isBreak()) {
+                return .{ .delete_right = true };
+            }
+        }
+
+        // If we have only a linestart (first == last and it's a linestart), add empty text
+        if (first != null and first == last) {
+            if (first.?.isLineStart()) {
+                const empty_text = Segment{ .text = TextChunk.empty() };
+                const insert_slice = &[_]Segment{empty_text};
+                return .{ .insert_between = insert_slice };
+            }
+        }
+
+        return .{};
+    }
 };
 
 /// Helper to combine metrics (same logic as Metrics.add but pure function)

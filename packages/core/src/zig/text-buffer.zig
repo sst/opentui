@@ -450,7 +450,7 @@ pub const UnifiedTextBuffer = struct {
             fn lineEndCallback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                 // Add newline between lines (not after last line)
-                if (line_info.line_idx < ctx.line_count - 1 and ctx.out_index.* < ctx.out_buffer.len) {
+                if (ctx.line_count > 0 and line_info.line_idx < ctx.line_count - 1 and ctx.out_index.* < ctx.out_buffer.len) {
                     ctx.out_buffer[ctx.out_index.*] = '\n';
                     ctx.out_index.* += 1;
                 }
