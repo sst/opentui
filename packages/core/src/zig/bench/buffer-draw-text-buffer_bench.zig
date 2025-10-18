@@ -112,7 +112,7 @@ fn benchRenderColdCache(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -176,7 +176,7 @@ fn benchRenderWarmCache(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -223,7 +223,7 @@ fn benchRenderWarmCache(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -278,7 +278,7 @@ fn benchRenderSmallResolution(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -325,7 +325,7 @@ fn benchRenderSmallResolution(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -380,7 +380,7 @@ fn benchRenderMediumResolution(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -444,7 +444,7 @@ fn benchRenderMassiveResolution(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -508,7 +508,7 @@ fn benchRenderMassiveLines(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -579,7 +579,7 @@ fn benchRenderOneMassiveLine(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -643,7 +643,7 @@ fn benchRenderManySmallChunks(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -709,7 +709,7 @@ fn benchRenderWithViewport(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -747,7 +747,7 @@ fn benchRenderWithViewport(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -804,7 +804,7 @@ fn benchRenderWithSelection(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -842,7 +842,7 @@ fn benchRenderWithSelection(
             try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0, null);
+            try buf.drawTextBuffer(view, 0, 0);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
