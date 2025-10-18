@@ -5,13 +5,26 @@ const iter_mod = @import("../text-buffer-iterators.zig");
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 
-test "TextBuffer line info - empty buffer" {
+test "TextBuffer init - creates empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
     const gd = gp.initGlobalUnicodeData(std.testing.allocator);
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try std.testing.expectEqual(@as(u32, 0), tb.getLength());
+    try std.testing.expectEqual(@as(u32, 0), tb.getLineCount()); // Empty rope = 0 lines (use setText("") for 1 empty line)
+}
+
+test "TextBuffer line info - empty buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
     defer gp.deinitGlobalUnicodeData(std.testing.allocator);
     const graphemes_ptr, const display_width_ptr = gd;
 
@@ -20,7 +33,9 @@ test "TextBuffer line info - empty buffer" {
 
     try tb.setText("");
 
+    try std.testing.expectEqual(@as(u32, 0), tb.getLength());
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 2), tb.rope.count()); // linestart + one empty text segment
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
     try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(&tb.rope, 0));
 }
@@ -36,11 +51,20 @@ test "TextBuffer line info - simple text without newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    try tb.setText("Hello World");
+    const text = "Hello World";
+    try tb.setText(text);
 
+    try std.testing.expectEqual(@as(u32, 11), tb.getLength());
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 2), tb.rope.count()); // linestart + text segment
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+
+    // Verify we can extract the text back
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqual(@as(usize, 11), written);
+    try std.testing.expectEqualStrings(text, out_buffer[0..written]);
 }
 
 test "TextBuffer line info - single newline" {
@@ -74,9 +98,12 @@ test "TextBuffer line info - multiple lines separated by newlines" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    try tb.setText("Line 1\nLine 2\nLine 3");
+    const text = "Line 1\nLine 2\nLine 3";
+    try tb.setText(text);
 
+    try std.testing.expectEqual(@as(u32, 18), tb.getLength()); // 6 + 6 + 6 chars
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 8), tb.rope.count()); // 3 linestart + 3 text + 2 breaks
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
     try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 1, 0).?); // "Line 1" (6) + 1 newline = 7
     try std.testing.expectEqual(@as(u32, 14), iter_mod.coordsToOffset(&tb.rope, 2, 0).?); // "Line 1" (6) + "Line 2" (6) + 2 newlines = 14
@@ -85,6 +112,12 @@ test "TextBuffer line info - multiple lines separated by newlines" {
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) > 0);
+
+    // Verify extraction
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqual(@as(usize, 20), written); // 18 chars + 2 newlines
+    try std.testing.expectEqualStrings(text, out_buffer[0..written]);
 }
 
 test "TextBuffer line info - text ending with newline" {
@@ -98,13 +131,19 @@ test "TextBuffer line info - text ending with newline" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    try tb.setText("Hello World\n");
+    const text = "Line 1\nLine 2\n";
+    try tb.setText(text);
 
-    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+    // Trailing newline creates an empty 3rd line (matches editor semantics)
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount()); // 3 lines (last is empty)
+    // Rope structure: [linestart] [text "Line 1"] [break] [linestart] [text "Line 2"] [break] [linestart]
+    try std.testing.expectEqual(@as(u32, 7), tb.rope.count());
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 12), iter_mod.coordsToOffset(&tb.rope, 1, 0).?); // "Hello World" (11) + 1 newline = 12
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 1, 0).?); // "Line 1" (6) + 1 newline = 7
+    try std.testing.expectEqual(@as(u32, 14), iter_mod.coordsToOffset(&tb.rope, 2, 0).?); // "Line 1" (6) + "Line 2" (6) + 2 newlines = 14
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0); // line_widths[1] (second line may have width 0 or some default width)
+    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0); // Empty line
 }
 
 test "TextBuffer line info - consecutive newlines" {
@@ -180,11 +219,17 @@ test "TextBuffer line info - wide characters (Unicode)" {
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
     defer tb.deinit();
 
-    try tb.setText("Hello 世界 🌟");
+    const text = "Hello 世界 🌟";
+    try tb.setText(text);
 
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+
+    // Verify extraction preserves unicode
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings(text, out_buffer[0..written]);
 }
 
 test "TextBuffer line info - empty lines between content" {
@@ -541,6 +586,118 @@ test "TextBuffer line info - extremely long single line" {
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
     try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
     try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+}
+
+test "TextBuffer unicode - multi-line with extraction" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Hello 世界\n🚀 Emoji\nΑλφα";
+    try tb.setText(text);
+
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
+
+    // Verify extraction preserves unicode
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings(text, out_buffer[0..written]);
+}
+
+test "TextBuffer reset - clears all content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Some text\nMore text");
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+
+    tb.reset();
+    try std.testing.expectEqual(@as(u32, 0), tb.getLength());
+    try std.testing.expectEqual(@as(u32, 0), tb.getLineCount()); // After reset, truly empty (0 lines)
+}
+
+test "TextBuffer line iteration - walkLines callback" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "First\nSecond\nThird";
+    try tb.setText(text);
+
+    const Context = struct {
+        lines: std.ArrayList(iter_mod.LineInfo),
+
+        fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            ctx.lines.append(line_info) catch {};
+        }
+    };
+
+    var ctx = Context{ .lines = std.ArrayList(iter_mod.LineInfo).init(std.testing.allocator) };
+    defer ctx.lines.deinit();
+
+    iter_mod.walkLines(&tb.rope, &ctx, Context.callback, true);
+
+    try std.testing.expectEqual(@as(usize, 3), ctx.lines.items.len);
+    try std.testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
+    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[0].width);
+
+    try std.testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
+    try std.testing.expectEqual(@as(u32, 6), ctx.lines.items[1].width);
+
+    try std.testing.expectEqual(@as(u32, 2), ctx.lines.items[2].line_idx);
+    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[2].width);
+}
+
+test "TextBuffer line queries - comprehensive rope coordinate checks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("First\nSecond\nThird");
+
+    // Check line count
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
+
+    // Check line 0: starts at 0, width 5
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(&tb.rope, 0));
+
+    // Check line 1: starts at 6 (First 5 + 1 newline), width 6
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
+
+    // Check line 2: starts at 13 (First 5 + Second 6 + 2 newlines), width 5
+    try std.testing.expectEqual(@as(u32, 13), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(&tb.rope, 2));
+
+    // Check max width (from rope metrics)
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.getMaxLineWidth(&tb.rope)); // "Second" is longest
 }
 
 // ===== View Registration Tests =====
