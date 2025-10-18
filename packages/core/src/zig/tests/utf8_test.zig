@@ -1,7 +1,3 @@
-//! UTF-8 Text Scanning Test Suite
-//!
-//! Tests both line break and word wrap break detection using SIMD16 methods.
-
 const std = @import("std");
 const testing = std.testing;
 const utf8 = @import("../utf8.zig");
@@ -11,6 +7,7 @@ const utf8 = @import("../utf8.zig");
 // ============================================================================
 
 test "isAsciiOnly: empty string" {
+    // Empty string is not ASCII-only by convention
     try testing.expect(!utf8.isAsciiOnly(""));
 }
 
@@ -22,24 +19,24 @@ test "isAsciiOnly: simple ASCII" {
 }
 
 test "isAsciiOnly: control chars rejected" {
-    try testing.expect(!utf8.isAsciiOnly("Hello\tWorld")); // Tab
-    try testing.expect(!utf8.isAsciiOnly("Hello\nWorld")); // Newline
-    try testing.expect(!utf8.isAsciiOnly("Hello\rWorld")); // CR
-    try testing.expect(!utf8.isAsciiOnly("\x00")); // Null
-    try testing.expect(!utf8.isAsciiOnly("\x1F")); // Unit separator
+    try testing.expect(!utf8.isAsciiOnly("Hello\tWorld"));
+    try testing.expect(!utf8.isAsciiOnly("Hello\nWorld"));
+    try testing.expect(!utf8.isAsciiOnly("Hello\rWorld"));
+    try testing.expect(!utf8.isAsciiOnly("\x00"));
+    try testing.expect(!utf8.isAsciiOnly("\x1F"));
 }
 
 test "isAsciiOnly: extended ASCII rejected" {
-    try testing.expect(!utf8.isAsciiOnly("Hello\x7FWorld")); // DEL
-    try testing.expect(!utf8.isAsciiOnly("Hello\x80World")); // Extended ASCII
-    try testing.expect(!utf8.isAsciiOnly("Hello\xFFWorld")); // Extended ASCII
+    try testing.expect(!utf8.isAsciiOnly("Hello\x7FWorld"));
+    try testing.expect(!utf8.isAsciiOnly("Hello\x80World"));
+    try testing.expect(!utf8.isAsciiOnly("Hello\xFFWorld"));
 }
 
 test "isAsciiOnly: Unicode rejected" {
-    try testing.expect(!utf8.isAsciiOnly("Hello 👋")); // Emoji
-    try testing.expect(!utf8.isAsciiOnly("Hello 世界")); // CJK
-    try testing.expect(!utf8.isAsciiOnly("café")); // Latin with accent
-    try testing.expect(!utf8.isAsciiOnly("Привет")); // Cyrillic
+    try testing.expect(!utf8.isAsciiOnly("Hello 👋"));
+    try testing.expect(!utf8.isAsciiOnly("Hello 世界"));
+    try testing.expect(!utf8.isAsciiOnly("café"));
+    try testing.expect(!utf8.isAsciiOnly("Привет"));
 }
 
 test "isAsciiOnly: space character accepted" {
@@ -54,37 +51,19 @@ test "isAsciiOnly: all printable ASCII chars" {
 }
 
 test "isAsciiOnly: SIMD boundary tests" {
-    // Exactly 16 bytes
     try testing.expect(utf8.isAsciiOnly("0123456789abcdef"));
-
-    // 15 bytes (just under boundary)
     try testing.expect(utf8.isAsciiOnly("0123456789abcde"));
-
-    // 17 bytes (just over boundary)
     try testing.expect(utf8.isAsciiOnly("0123456789abcdefg"));
-
-    // 32 bytes (two full vectors)
     try testing.expect(utf8.isAsciiOnly("0123456789abcdef0123456789abcdef"));
-
-    // 33 bytes (two vectors + 1)
     try testing.expect(utf8.isAsciiOnly("0123456789abcdef0123456789abcdefX"));
 }
 
 test "isAsciiOnly: non-ASCII at different positions" {
-    // Non-ASCII in first vector
     try testing.expect(!utf8.isAsciiOnly("Hello\x00World"));
     try testing.expect(!utf8.isAsciiOnly("\x00bcdefghijklmnop"));
-
-    // Non-ASCII at boundary (position 15)
     try testing.expect(!utf8.isAsciiOnly("0123456789abcde\x00"));
-
-    // Non-ASCII at boundary (position 16)
     try testing.expect(!utf8.isAsciiOnly("0123456789abcdef\x00"));
-
-    // Non-ASCII in second vector
     try testing.expect(!utf8.isAsciiOnly("0123456789abcdef0123456789\x00bcdef"));
-
-    // Non-ASCII in tail
     try testing.expect(!utf8.isAsciiOnly("0123456789abcdef01234\x00"));
 }
 
@@ -93,14 +72,12 @@ test "isAsciiOnly: large ASCII text" {
     const buf = try testing.allocator.alloc(u8, size);
     defer testing.allocator.free(buf);
 
-    // Fill with ASCII
     for (buf, 0..) |*b, i| {
         b.* = 32 + @as(u8, @intCast(i % 95));
     }
 
     try testing.expect(utf8.isAsciiOnly(buf));
 
-    // Corrupt one byte in the middle
     buf[5000] = 0x80;
     try testing.expect(!utf8.isAsciiOnly(buf));
 }
@@ -199,7 +176,6 @@ fn testLineBreaks(test_case: LineBreakTestCase, allocator: std.mem.Allocator) !v
 
     try utf8.findLineBreaksSIMD16(test_case.input, &result);
 
-    // Verify results
     if (result.breaks.items.len != test_case.expected.len) {
         std.debug.print("\nLine break test FAILED on '{s}':\n", .{test_case.name});
         std.debug.print("  Expected {d} breaks, got {d}\n", .{ test_case.expected.len, result.breaks.items.len });
@@ -213,7 +189,6 @@ fn testLineBreaks(test_case: LineBreakTestCase, allocator: std.mem.Allocator) !v
             std.debug.print("\nLine break test FAILED on '{s}':\n", .{test_case.name});
             std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i].pos });
             std.debug.print("  Expected: {any}\n", .{test_case.expected});
-            // Print positions only for comparison
             std.debug.print("  Got:      ", .{});
             for (result.breaks.items) |brk| {
                 std.debug.print("{d} ", .{brk.pos});
@@ -231,13 +206,12 @@ test "line breaks: golden tests" {
 }
 
 test "line breaks: CRLF at SIMD16 edge (15-16)" {
-    // Place \r at index 15, \n at 16
     var buf: [32]u8 = undefined;
     @memset(&buf, 'x');
     buf[15] = '\r';
     buf[16] = '\n';
 
-    const expected = [_]usize{16}; // CRLF should be at \n index
+    const expected = [_]usize{16}; // CRLF recorded at \n index
 
     try testLineBreaks(.{
         .name = "CRLF@15-16",
@@ -247,7 +221,6 @@ test "line breaks: CRLF at SIMD16 edge (15-16)" {
 }
 
 test "line breaks: multiple breaks around SIMD16 boundary" {
-    // Place breaks near boundary to test edge handling
     var buf: [32]u8 = undefined;
     @memset(&buf, 'x');
     buf[14] = '\n';
@@ -265,8 +238,8 @@ test "line breaks: multiple breaks around SIMD16 boundary" {
 }
 
 test "line breaks: multibyte adjacent to LF" {
-    const input = "é\n"; // é is 2 bytes: 0xC3 0xA9
-    const expected = [_]usize{2}; // LF at index 2
+    const input = "é\n";
+    const expected = [_]usize{2};
 
     try testLineBreaks(.{
         .name = "é\\n",
@@ -276,8 +249,8 @@ test "line breaks: multibyte adjacent to LF" {
 }
 
 test "line breaks: multibyte adjacent to CRLF" {
-    const input = "漢\r\n"; // 漢 is 3 bytes: 0xE6 0xBC 0xA2
-    const expected = [_]usize{4}; // \n at index 4
+    const input = "漢\r\n";
+    const expected = [_]usize{4};
 
     try testLineBreaks(.{
         .name = "漢\\r\\n",
@@ -287,15 +260,13 @@ test "line breaks: multibyte adjacent to CRLF" {
 }
 
 test "line breaks: multibyte at SIMD boundary without breaks" {
-    // Ensure no spurious matches in multibyte sequences
     var buf: [32]u8 = undefined;
     @memset(&buf, 0);
 
-    // Place UTF-8 sequences around boundary
     const text = "Test世界Test";
     @memcpy(buf[0..text.len], text);
 
-    const expected = [_]usize{}; // No breaks
+    const expected = [_]usize{};
 
     try testLineBreaks(.{
         .name = "unicode@boundary",
@@ -334,7 +305,6 @@ test "line breaks: random small buffers" {
         const buf = try testing.allocator.alloc(u8, size);
         defer testing.allocator.free(buf);
 
-        // Fill with ASCII letters and randomly insert breaks
         for (buf) |*b| {
             const r = random.uintLessThan(u8, 100);
             if (r < 5) {
@@ -443,7 +413,6 @@ const wrap_break_golden_tests = [_]WrapBreakTestCase{
         .input = " \t-/\\.,:;!?()[]{}",
         .expected = &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 },
     },
-    // Unicode spaces and hyphens
     .{
         .name = "nbsp",
         .input = "a\u{00A0}b",
@@ -482,7 +451,6 @@ fn testWrapBreaks(test_case: WrapBreakTestCase, allocator: std.mem.Allocator) !v
 
     try utf8.findWrapBreaksSIMD16(test_case.input, &result);
 
-    // Verify results
     if (result.breaks.items.len != test_case.expected.len) {
         std.debug.print("\nWrap break test FAILED on '{s}':\n", .{test_case.name});
         std.debug.print("  Input: \"{s}\"\n", .{test_case.input});
@@ -746,30 +714,21 @@ test "edge case: 17 bytes with break at 16" {
 // ============================================================================
 
 test "wrap breaks: emoji with ZWJ - char offset should count grapheme not codepoints" {
-    // "👩‍🚀" is Woman Astronaut = 3 codepoints but 1 grapheme
-    // U+1F469 (woman) + U+200D (ZWJ) + U+1F680 (rocket)
-    // Should be counted as 1 character, not 3
-    const input = "ab 👩‍🚀 cd"; // space after "ab", space after emoji
+    const input = "ab 👩‍🚀 cd";
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
     try utf8.findWrapBreaksSIMD16(input, &result);
 
-    // Currently FAILS: char_offset at second space would be 5 (counting 3 codepoints)
-    // Should be: char_offset = 3 (a, b, space) + 1 (grapheme) = 4
-    // Byte offsets: space@2, space@(2+1+4+3+4=14)
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
-    // This will fail with current implementation:
     try testing.expectEqual(@as(u16, 14), result.breaks.items[1].byte_offset);
     try testing.expectEqual(@as(u16, 4), result.breaks.items[1].char_offset); // Should be 4, not 6
 }
 
 test "wrap breaks: emoji with skin tone - char offset should count grapheme" {
-    // "👋🏿" is Waving Hand with Dark Skin Tone = 2 codepoints but 1 grapheme
-    // U+1F44B + U+1F3FF
-    const input = "hi 👋🏿 bye"; // space after "hi", space after emoji
+    const input = "hi 👋🏿 bye";
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
@@ -778,14 +737,12 @@ test "wrap breaks: emoji with skin tone - char offset should count grapheme" {
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
-    // Byte offset: 2(hi) + 1(space) + 4(wave) + 4(tone) = 11
     try testing.expectEqual(@as(u16, 11), result.breaks.items[1].byte_offset);
     try testing.expectEqual(@as(u16, 4), result.breaks.items[1].char_offset); // Should be 4, not 5
 }
 
 test "wrap breaks: emoji with VS16 selector - char offset should count grapheme" {
-    // "❤️" = U+2764 + U+FE0F (VS16) = 2 codepoints but 1 grapheme
-    const input = "I ❤️ U"; // spaces around heart
+    const input = "I ❤️ U";
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
@@ -794,59 +751,48 @@ test "wrap breaks: emoji with VS16 selector - char offset should count grapheme"
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 1), result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 1), result.breaks.items[0].char_offset);
-    // Byte offset: 1(I) + 1(space) + 3(heart) + 3(VS16) = 8
     try testing.expectEqual(@as(u16, 8), result.breaks.items[1].byte_offset);
     try testing.expectEqual(@as(u16, 3), result.breaks.items[1].char_offset); // Should be 3, not 4
 }
 
 test "wrap breaks: combining diacritic - char offset should count grapheme" {
-    // "é" as e + combining acute = U+0065 + U+0301 = 2 codepoints but 1 grapheme
-    const input = "cafe\u{0301} time"; // café with combining accent
+    const input = "cafe\u{0301} time";
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
     try utf8.findWrapBreaksSIMD16(input, &result);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
-    // Byte offset: 4(cafe) + 2(combining) = 6
     try testing.expectEqual(@as(u16, 6), result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 4), result.breaks.items[0].char_offset); // Should be 4, not 5
 }
 
 test "wrap breaks: flag emoji - char offset should count grapheme" {
-    // "🇺🇸" = U+1F1FA + U+1F1F8 (Regional Indicators) = 2 codepoints, 1 grapheme per uucode
-    const input = "USA🇺🇸 flag"; // space after flag
+    const input = "USA🇺🇸 flag";
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
     try utf8.findWrapBreaksSIMD16(input, &result);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
-    // Space after flag: Byte offset: 3(USA) + 4(U) + 4(S) = 11
     try testing.expectEqual(@as(u16, 11), result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 4), result.breaks.items[0].char_offset); // 3(USA) + 1(flag) = 4
 }
 
 test "wrap breaks: mixed graphemes and ASCII" {
-    // Test mixed content with multiple grapheme types
-    const input = "Hello 👋🏿 world 🇺🇸 test"; // Multiple spaces and graphemes
+    const input = "Hello 👋🏿 world 🇺🇸 test";
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
     try utf8.findWrapBreaksSIMD16(input, &result);
 
     try testing.expectEqual(@as(usize, 4), result.breaks.items.len);
-    // First space after "Hello"
     try testing.expectEqual(@as(u16, 5), result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 5), result.breaks.items[0].char_offset);
-    // Second space: 5(Hello) + 1(space) + 8(emoji with tone) = 14
     try testing.expectEqual(@as(u16, 14), result.breaks.items[1].byte_offset);
     try testing.expectEqual(@as(u16, 7), result.breaks.items[1].char_offset); // 5 + 1 + 1(grapheme) = 7
-    // Third space: 14 + 1(space) + 5(world) = 20
     try testing.expectEqual(@as(u16, 20), result.breaks.items[2].byte_offset);
     try testing.expectEqual(@as(u16, 13), result.breaks.items[2].char_offset); // 7 + 1 + 5 = 13
-    // Fourth space: 20 + 1(space) + 8(flag emoji) = 29
-    // Note: Flag emojis like 🇺🇸 are counted by uucode as 2 graphemes (one per regional indicator)
     try testing.expectEqual(@as(u16, 29), result.breaks.items[3].byte_offset);
     try testing.expectEqual(@as(u16, 15), result.breaks.items[3].char_offset); // 13 + 1(space) + 1(RI) + 1(RI) = 15 (per uucode)
 }
@@ -989,65 +935,58 @@ test "wrap by width: boundary - Unicode at SIMD boundary" {
 }
 
 test "wrap by width: wide emoji exactly at column boundary" {
-    // "Hello 🌍" = 5 + 1 (space) + 2 (emoji) = 8 columns
-    // Emoji 🌍 occupies columns 6-7
     const input = "Hello 🌍 World";
 
-    // Test wrapping at column 7 - should stop before emoji (can't fit 2-wide char)
     const result7 = utf8.findWrapPosByWidthSIMD16(input, 7, 8, false);
-    try testing.expectEqual(@as(u32, 6), result7.byte_offset); // "Hello "
+    try testing.expectEqual(@as(u32, 6), result7.byte_offset);
     try testing.expectEqual(@as(u32, 6), result7.columns_used);
 
-    // Test wrapping at column 8 - should include emoji (exactly fits)
     const result8 = utf8.findWrapPosByWidthSIMD16(input, 8, 8, false);
-    try testing.expectEqual(@as(u32, 10), result8.byte_offset); // "Hello 🌍" (emoji is 4 bytes)
+    try testing.expectEqual(@as(u32, 10), result8.byte_offset);
     try testing.expectEqual(@as(u32, 8), result8.columns_used);
 
-    // Test wrapping at column 6 - should stop after space, before emoji
     const result6 = utf8.findWrapPosByWidthSIMD16(input, 6, 8, false);
-    try testing.expectEqual(@as(u32, 6), result6.byte_offset); // "Hello "
+    try testing.expectEqual(@as(u32, 6), result6.byte_offset);
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
 }
 
 test "wrap by width: wide emoji at start" {
     const input = "🌍 World";
 
-    // Emoji at columns 0-1
     const result1 = utf8.findWrapPosByWidthSIMD16(input, 1, 8, false);
-    try testing.expectEqual(@as(u32, 0), result1.byte_offset); // Nothing fits
+    try testing.expectEqual(@as(u32, 0), result1.byte_offset);
     try testing.expectEqual(@as(u32, 0), result1.columns_used);
 
     const result2 = utf8.findWrapPosByWidthSIMD16(input, 2, 8, false);
-    try testing.expectEqual(@as(u32, 4), result2.byte_offset); // Just emoji
+    try testing.expectEqual(@as(u32, 4), result2.byte_offset);
     try testing.expectEqual(@as(u32, 2), result2.columns_used);
 
     const result3 = utf8.findWrapPosByWidthSIMD16(input, 3, 8, false);
-    try testing.expectEqual(@as(u32, 5), result3.byte_offset); // Emoji + space
+    try testing.expectEqual(@as(u32, 5), result3.byte_offset);
     try testing.expectEqual(@as(u32, 3), result3.columns_used);
 }
 
 test "wrap by width: multiple wide characters" {
-    const input = "AB🌍CD🌎EF"; // 2 + 2 + 2 + 2 + 2 = 10 columns
-    // A(0) B(1) 🌍(2-3) C(4) D(5) 🌎(6-7) E(8) F(9)
+    const input = "AB🌍CD🌎EF";
 
     const result5 = utf8.findWrapPosByWidthSIMD16(input, 5, 8, false);
-    try testing.expectEqual(@as(u32, 7), result5.byte_offset); // "AB🌍C" (2+4+1 bytes)
+    try testing.expectEqual(@as(u32, 7), result5.byte_offset);
     try testing.expectEqual(@as(u32, 5), result5.columns_used);
 
     const result6 = utf8.findWrapPosByWidthSIMD16(input, 6, 8, false);
-    try testing.expectEqual(@as(u32, 8), result6.byte_offset); // "AB🌍CD"
+    try testing.expectEqual(@as(u32, 8), result6.byte_offset);
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
 }
 
 test "wrap by width: CJK wide characters at boundary" {
-    const input = "hello世界test"; // 5 + 2 + 2 + 4 = 13 columns
+    const input = "hello世界test";
 
     const result6 = utf8.findWrapPosByWidthSIMD16(input, 6, 8, false);
-    try testing.expectEqual(@as(u32, 5), result6.byte_offset); // "hello"
+    try testing.expectEqual(@as(u32, 5), result6.byte_offset);
     try testing.expectEqual(@as(u32, 5), result6.columns_used);
 
     const result7 = utf8.findWrapPosByWidthSIMD16(input, 7, 8, false);
-    try testing.expectEqual(@as(u32, 8), result7.byte_offset); // "hello世" (5+3 bytes)
+    try testing.expectEqual(@as(u32, 8), result7.byte_offset);
     try testing.expectEqual(@as(u32, 7), result7.columns_used);
 }
 
@@ -1056,28 +995,22 @@ test "wrap by width: CJK wide characters at boundary" {
 // ============================================================================
 
 test "find pos by width: wide emoji at boundary - INCLUDES grapheme" {
-    // "Hello 🌍" = 5 + 1 (space) + 2 (emoji) = 8 columns
-    // Emoji 🌍 occupies columns 6-7
     const input = "Hello 🌍 World";
 
-    // Selection ending at column 7 should INCLUDE emoji (starts at col 6)
     const result7 = utf8.findPosByWidth(input, 7, 8, false, true);
-    try testing.expectEqual(@as(u32, 10), result7.byte_offset); // "Hello 🌍" (6 + 4 bytes)
-    try testing.expectEqual(@as(u32, 8), result7.columns_used); // emoji extends to col 8
+    try testing.expectEqual(@as(u32, 10), result7.byte_offset);
+    try testing.expectEqual(@as(u32, 8), result7.columns_used);
 
-    // Selection ending at column 8 should include emoji
     const result8 = utf8.findPosByWidth(input, 8, 8, false, true);
-    try testing.expectEqual(@as(u32, 10), result8.byte_offset); // "Hello 🌍"
+    try testing.expectEqual(@as(u32, 10), result8.byte_offset);
     try testing.expectEqual(@as(u32, 8), result8.columns_used);
 
-    // Selection ending at column 6 should stop before emoji
     const result6 = utf8.findPosByWidth(input, 6, 8, false, true);
-    try testing.expectEqual(@as(u32, 6), result6.byte_offset); // "Hello "
+    try testing.expectEqual(@as(u32, 6), result6.byte_offset);
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
 
-    // Selection STARTING at column 7 should EXCLUDE emoji (starts at col 6)
     const start7 = utf8.findPosByWidth(input, 7, 8, false, false);
-    try testing.expectEqual(@as(u32, 10), start7.byte_offset); // Skip to space at col 8
+    try testing.expectEqual(@as(u32, 10), start7.byte_offset);
     try testing.expectEqual(@as(u32, 8), start7.columns_used);
 }
 
@@ -1105,47 +1038,40 @@ test "find pos by width: ASCII exactly at limit" {
 test "find pos by width: wide emoji at start" {
     const input = "🌍 World";
 
-    // Emoji at columns 0-1, selecting col 1 should INCLUDE emoji
     const result1 = utf8.findPosByWidth(input, 1, 8, false, true);
-    try testing.expectEqual(@as(u32, 4), result1.byte_offset); // Include emoji
+    try testing.expectEqual(@as(u32, 4), result1.byte_offset);
     try testing.expectEqual(@as(u32, 2), result1.columns_used);
 
     const result2 = utf8.findPosByWidth(input, 2, 8, false, true);
-    try testing.expectEqual(@as(u32, 4), result2.byte_offset); // Just emoji
+    try testing.expectEqual(@as(u32, 4), result2.byte_offset);
     try testing.expectEqual(@as(u32, 2), result2.columns_used);
 
     const result3 = utf8.findPosByWidth(input, 3, 8, false, true);
-    try testing.expectEqual(@as(u32, 5), result3.byte_offset); // Emoji + space
+    try testing.expectEqual(@as(u32, 5), result3.byte_offset);
     try testing.expectEqual(@as(u32, 3), result3.columns_used);
 }
 
 test "find pos by width: multiple wide characters" {
-    const input = "AB🌍CD🌎EF"; // 2 + 2 + 2 + 2 + 2 = 10 columns
-    // A(0) B(1) 🌍(2-3) C(4) D(5) 🌎(6-7) E(8) F(9)
+    const input = "AB🌍CD🌎EF";
 
-    // Select 5 cols [0,5) - includes graphemes starting at cols 0,1,2,4 but not 5
     const result5 = utf8.findPosByWidth(input, 5, 8, false, true);
-    try testing.expectEqual(@as(u32, 7), result5.byte_offset); // "AB🌍C" (2+4+1 bytes)
+    try testing.expectEqual(@as(u32, 7), result5.byte_offset);
     try testing.expectEqual(@as(u32, 5), result5.columns_used);
 
-    // Select 7 cols [0,7) - should include 🌎 that starts at col 6
     const result7 = utf8.findPosByWidth(input, 7, 8, false, true);
-    try testing.expectEqual(@as(u32, 12), result7.byte_offset); // "AB🌍CD🌎" (2+4+2+4 bytes)
+    try testing.expectEqual(@as(u32, 12), result7.byte_offset);
     try testing.expectEqual(@as(u32, 8), result7.columns_used);
 }
 
 test "find pos by width: CJK wide characters" {
-    const input = "hello世界test"; // 5 + 2 + 2 + 4 = 13 columns
-    // h(0) e(1) l(2) l(3) o(4) 世(5-6) 界(7-8) t(9) e(10) s(11) t(12)
+    const input = "hello世界test";
 
-    // Select 6 cols - should include 世 that starts at col 5
     const result6 = utf8.findPosByWidth(input, 6, 8, false, true);
-    try testing.expectEqual(@as(u32, 8), result6.byte_offset); // "hello世" (5+3 bytes)
+    try testing.expectEqual(@as(u32, 8), result6.byte_offset);
     try testing.expectEqual(@as(u32, 7), result6.columns_used);
 
-    // Select 8 cols - should include 界 that starts at col 7
     const result8 = utf8.findPosByWidth(input, 8, 8, false, true);
-    try testing.expectEqual(@as(u32, 11), result8.byte_offset); // "hello世界" (5+3+3 bytes)
+    try testing.expectEqual(@as(u32, 11), result8.byte_offset);
     try testing.expectEqual(@as(u32, 9), result8.columns_used);
 }
 

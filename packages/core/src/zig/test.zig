@@ -14,6 +14,7 @@ const editor_view_tests = @import("tests/editor-view_test.zig");
 const grapheme_tests = @import("tests/grapheme_test.zig");
 const syntax_style_tests = @import("tests/syntax-style_test.zig");
 const rope_tests = @import("tests/rope_test.zig");
+const rope_nested_tests = @import("tests/rope-nested_test.zig");
 const rope_fuzz_tests = @import("tests/rope_fuzz_test.zig");
 const utf8_tests = @import("tests/utf8_test.zig");
 const event_emitter_tests = @import("tests/event-emitter_test.zig");
@@ -36,6 +37,7 @@ comptime {
     _ = grapheme_tests;
     _ = syntax_style_tests;
     _ = rope_tests;
+    _ = rope_nested_tests;
     _ = rope_fuzz_tests;
     _ = utf8_tests;
     _ = event_emitter_tests;

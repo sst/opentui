@@ -4,8 +4,6 @@ const gp = @import("../grapheme.zig");
 const GraphemePool = gp.GraphemePool;
 const GraphemeTracker = gp.GraphemeTracker;
 
-// ===== GraphemePool Basic Tests =====
-
 test "GraphemePool - can initialize and cleanup" {
     // Just verify init/deinit don't crash
     var pool = GraphemePool.init(std.testing.allocator);
@@ -82,12 +80,10 @@ test "GraphemePool - multiple allocations" {
     defer pool.decref(id2) catch {};
     defer pool.decref(id3) catch {};
 
-    // All IDs should be different
     try std.testing.expect(id1 != id2);
     try std.testing.expect(id2 != id3);
     try std.testing.expect(id1 != id3);
 
-    // All should be retrievable with correct content
     try std.testing.expectEqualSlices(u8, text1, try pool.get(id1));
     try std.testing.expectEqualSlices(u8, text2, try pool.get(id2));
     try std.testing.expectEqualSlices(u8, text3, try pool.get(id3));
@@ -97,7 +93,6 @@ test "GraphemePool - handles various size graphemes" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    // Test allocation of various sized strings
     const small = "a";
     const medium = "0123456789";
     const large = "012345678901234567890123456789";
@@ -121,7 +116,6 @@ test "GraphemePool - large allocation (128 bytes)" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    // Test with a large 128-byte buffer
     var buffer: [128]u8 = undefined;
     @memset(&buffer, 'X');
 
@@ -135,8 +129,6 @@ test "GraphemePool - large allocation (128 bytes)" {
     try std.testing.expectEqualSlices(u8, &buffer, retrieved);
 }
 
-// ===== GraphemePool Reference Counting Tests =====
-
 test "GraphemePool - incref increases refcount" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -148,7 +140,6 @@ test "GraphemePool - incref increases refcount" {
     try pool.incref(id);
     defer pool.decref(id) catch {};
 
-    // Should still be accessible
     const retrieved = try pool.get(id);
     try std.testing.expectEqualSlices(u8, text, retrieved);
 }
@@ -192,7 +183,6 @@ test "GraphemePool - decref to zero allows slot reuse" {
     const result1 = pool.get(id1);
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result1);
 
-    // New ID should work
     try pool.incref(id2);
     const retrieved = try pool.get(id2);
     try std.testing.expectEqualSlices(u8, text2, retrieved);
@@ -212,7 +202,6 @@ test "GraphemePool - multiple incref and decref" {
     try pool.incref(id);
     try pool.incref(id);
 
-    // Decrement twice
     try pool.decref(id);
     try pool.decref(id);
 
@@ -240,7 +229,6 @@ test "GraphemePool - freed IDs become invalid after reuse" {
     const text1 = "a";
     const text2 = "b";
 
-    // Allocate and incref
     const id1 = try pool.alloc(text1);
     try pool.incref(id1);
 
@@ -254,7 +242,6 @@ test "GraphemePool - freed IDs become invalid after reuse" {
     const result = pool.get(id1);
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
 
-    // New ID should work
     try pool.incref(id2);
     const retrieved = try pool.get(id2);
     try std.testing.expectEqualSlices(u8, text2, retrieved);
@@ -273,7 +260,6 @@ test "GraphemePool - stale ID with wrong generation fails" {
     // Manually create a stale ID by modifying generation
     const stale_id = id ^ (1 << gp.SLOT_BITS); // XOR generation bits
 
-    // Stale ID should fail
     const result = pool.get(stale_id);
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
 }
@@ -290,8 +276,6 @@ test "GraphemePool - decref on zero refcount fails" {
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
 }
 
-// ===== GraphemePool Stress Tests =====
-
 test "GraphemePool - many allocations" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -299,7 +283,6 @@ test "GraphemePool - many allocations" {
     const count = 1000;
     var ids: [count]u32 = undefined;
 
-    // Allocate many graphemes
     for (0..count) |i| {
         var buffer: [8]u8 = undefined;
         const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
@@ -307,7 +290,6 @@ test "GraphemePool - many allocations" {
         try pool.incref(ids[i]);
     }
 
-    // Verify all are accessible
     for (ids, 0..count) |id, i| {
         const retrieved = try pool.get(id);
         var buffer: [8]u8 = undefined;
@@ -315,7 +297,6 @@ test "GraphemePool - many allocations" {
         try std.testing.expectEqualSlices(u8, buffer[0..len], retrieved);
     }
 
-    // Free all
     for (ids) |id| {
         try pool.decref(id);
     }
@@ -328,7 +309,6 @@ test "GraphemePool - allocations with varying sizes" {
     var ids = std.ArrayList(u32).init(std.testing.allocator);
     defer ids.deinit();
 
-    // Allocate various sizes from small to large
     for (0..50) |i| {
         const size = (i % 5) * 16 + 5; // Vary sizes: 5, 21, 37, 53, 69...
         var buffer: [128]u8 = undefined;
@@ -338,7 +318,6 @@ test "GraphemePool - allocations with varying sizes" {
         try ids.append(id);
     }
 
-    // Verify all maintain correct data
     for (ids.items, 0..50) |id, i| {
         const size = (i % 5) * 16 + 5;
         const retrieved = try pool.get(id);
@@ -348,7 +327,6 @@ test "GraphemePool - allocations with varying sizes" {
         }
     }
 
-    // Free all
     for (ids.items) |id| {
         try pool.decref(id);
     }
@@ -358,7 +336,6 @@ test "GraphemePool - reuse many slots" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    // Allocate and free repeatedly
     for (0..100) |i| {
         var buffer: [8]u8 = undefined;
         const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
@@ -372,13 +349,10 @@ test "GraphemePool - reuse many slots" {
     }
 }
 
-// ===== GraphemePool Edge Case Tests =====
-
 test "GraphemePool - invalid ID returns error" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    // Allocate an ID and incref it
     const text = "test";
     const id = try pool.alloc(text);
     try pool.incref(id);
@@ -412,7 +386,6 @@ test "GraphemePool - IDs from different pools don't interfere" {
     defer pool1.decref(id1) catch {};
     defer pool2.decref(id2) catch {};
 
-    // Each pool should only return its own data
     try std.testing.expectEqualSlices(u8, text1, try pool1.get(id1));
     try std.testing.expectEqualSlices(u8, text2, try pool2.get(id2));
 
@@ -440,7 +413,6 @@ test "GraphemePool - use-after-free returns error not garbage" {
     const result = pool.get(id1);
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
 
-    // New ID should work correctly
     try pool.incref(id2);
     try std.testing.expectEqualSlices(u8, text2, try pool.get(id2));
     try pool.decref(id2);
@@ -453,7 +425,6 @@ test "GraphemePool - IDs remain unique across many allocations" {
     const count = 100;
     var ids: [count]u32 = undefined;
 
-    // Allocate many
     for (0..count) |i| {
         var buffer: [8]u8 = undefined;
         const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
@@ -461,14 +432,12 @@ test "GraphemePool - IDs remain unique across many allocations" {
         try pool.incref(ids[i]);
     }
 
-    // All IDs should be unique
     for (ids, 0..count) |id1, i| {
         for (ids[i + 1 ..]) |id2| {
             try std.testing.expect(id1 != id2);
         }
     }
 
-    // Cleanup
     for (ids) |id| {
         try pool.decref(id);
     }
@@ -541,37 +510,29 @@ test "GraphemePool - decref on stale ID fails" {
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
 }
 
-// ===== GraphemePool Bit Manipulation Tests =====
-
 test "GraphemePool - bit manipulation functions" {
-    // Test isGraphemeChar
     const grapheme_char = gp.CHAR_FLAG_GRAPHEME | 0x1234;
     try std.testing.expect(gp.isGraphemeChar(grapheme_char));
     try std.testing.expect(!gp.isGraphemeChar(0x41)); // Plain 'A'
 
-    // Test isContinuationChar
     const cont_char = gp.CHAR_FLAG_CONTINUATION | 0x1234;
     try std.testing.expect(gp.isContinuationChar(cont_char));
     try std.testing.expect(!gp.isContinuationChar(0x41));
 
-    // Test isClusterChar
     try std.testing.expect(gp.isClusterChar(grapheme_char));
     try std.testing.expect(gp.isClusterChar(cont_char));
     try std.testing.expect(!gp.isClusterChar(0x41));
 
-    // Test graphemeIdFromChar
     const id: u32 = 0x12345;
     const packed_char = gp.CHAR_FLAG_GRAPHEME | id;
     try std.testing.expectEqual(id, gp.graphemeIdFromChar(packed_char));
 }
 
 test "GraphemePool - extent encoding and decoding" {
-    // Test charRightExtent
     const right: u32 = 2;
     const char_with_right = (right << gp.CHAR_EXT_RIGHT_SHIFT) | gp.CHAR_FLAG_GRAPHEME;
     try std.testing.expectEqual(right, gp.charRightExtent(char_with_right));
 
-    // Test charLeftExtent
     const left: u32 = 1;
     const char_with_left = (left << gp.CHAR_EXT_LEFT_SHIFT) | gp.CHAR_FLAG_GRAPHEME;
     try std.testing.expectEqual(left, gp.charLeftExtent(char_with_left));
@@ -583,16 +544,12 @@ test "GraphemePool - packGraphemeStart" {
 
     const packed_char = gp.packGraphemeStart(gid, width);
 
-    // Should have grapheme flag
     try std.testing.expect(gp.isGraphemeChar(packed_char));
 
-    // Should have correct ID
     try std.testing.expectEqual(gid, gp.graphemeIdFromChar(packed_char));
 
-    // Should have correct right extent (width - 1)
     try std.testing.expectEqual(width - 1, gp.charRightExtent(packed_char));
 
-    // Should have zero left extent
     try std.testing.expectEqual(@as(u32, 0), gp.charLeftExtent(packed_char));
 }
 
@@ -603,32 +560,24 @@ test "GraphemePool - packContinuation" {
 
     const packed_char = gp.packContinuation(left, right, gid);
 
-    // Should have continuation flag
     try std.testing.expect(gp.isContinuationChar(packed_char));
 
-    // Should have correct ID
     try std.testing.expectEqual(gid, gp.graphemeIdFromChar(packed_char));
 
-    // Should have correct extents
     try std.testing.expectEqual(left, gp.charLeftExtent(packed_char));
     try std.testing.expectEqual(right, gp.charRightExtent(packed_char));
 }
 
 test "GraphemePool - encodedCharWidth" {
-    // Single-width character
     const single = @as(u32, 'A');
     try std.testing.expectEqual(@as(u32, 1), gp.encodedCharWidth(single));
 
-    // Grapheme start with width 2
     const grapheme_2 = gp.packGraphemeStart(0x1234, 2);
     try std.testing.expectEqual(@as(u32, 2), gp.encodedCharWidth(grapheme_2));
 
-    // Continuation with left=1, right=1 -> width=3
     const cont = gp.packContinuation(1, 1, 0x1234);
     try std.testing.expectEqual(@as(u32, 3), gp.encodedCharWidth(cont));
 }
-
-// ===== GraphemeTracker Tests =====
 
 test "GraphemeTracker - init and deinit" {
     var pool = GraphemePool.init(std.testing.allocator);
@@ -839,7 +788,6 @@ test "GraphemeTracker - multiple trackers share same grapheme" {
             tracker1.add(id);
             tracker2.add(id);
 
-            // Both should see it
             try std.testing.expect(tracker1.contains(id));
             try std.testing.expect(tracker2.contains(id));
 
@@ -900,8 +848,6 @@ test "GraphemeTracker - stress test many graphemes" {
     }
 }
 
-// ===== Global Pool Tests =====
-
 test "GraphemePool - global pool init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -920,7 +866,6 @@ test "GraphemePool - global pool reinitialization returns same instance" {
     const pool1 = gp.initGlobalPool(std.testing.allocator);
     const pool2 = gp.initGlobalPool(std.testing.allocator);
 
-    // Should return the same pool
     try std.testing.expectEqual(pool1, pool2);
 
     gp.deinitGlobalPool();
@@ -938,8 +883,6 @@ test "GraphemePool - global unicode data init" {
     _ = display_width_ptr;
 }
 
-// ===== Unowned Memory Tests =====
-
 test "GraphemePool - allocUnowned basic" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -949,7 +892,6 @@ test "GraphemePool - allocUnowned basic" {
     const id = try pool.allocUnowned(external_text);
     try pool.incref(id);
 
-    // Should be able to retrieve the same memory
     const retrieved = try pool.get(id);
     try std.testing.expectEqualSlices(u8, external_text, retrieved);
 
@@ -974,7 +916,6 @@ test "GraphemePool - allocUnowned multiple references" {
     try pool.incref(id2);
     try pool.incref(id3);
 
-    // All should be retrievable
     try std.testing.expectEqualSlices(u8, external_text1, try pool.get(id1));
     try std.testing.expectEqualSlices(u8, external_text2, try pool.get(id2));
     try std.testing.expectEqualSlices(u8, external_text3, try pool.get(id3));
@@ -1042,7 +983,6 @@ test "GraphemePool - mix owned and unowned allocations" {
     try pool.incref(owned_id);
     try pool.incref(unowned_id);
 
-    // Both should be retrievable
     const retrieved_owned = try pool.get(owned_id);
     const retrieved_unowned = try pool.get(unowned_id);
 
@@ -1072,11 +1012,9 @@ test "GraphemePool - allocUnowned slot reuse" {
     const text2 = "second";
     const id2 = try pool.allocUnowned(text2);
 
-    // Old ID should fail
     const result = pool.get(id1);
     try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
 
-    // New ID should work and point to new memory
     try pool.incref(id2);
     const retrieved = try pool.get(id2);
     try std.testing.expectEqualSlices(u8, text2, retrieved);
@@ -1151,7 +1089,6 @@ test "GraphemeTracker - mix owned and unowned" {
     const total_bytes = tracker.getTotalGraphemeBytes();
     try std.testing.expectEqual(@as(u32, owned_text.len + external_text.len), total_bytes);
 
-    // Both should be retrievable
     try std.testing.expectEqualSlices(u8, owned_text, try pool.get(owned_id));
     try std.testing.expectEqualSlices(u8, external_text, try pool.get(unowned_id));
 }
@@ -1190,8 +1127,6 @@ test "GraphemePool - allocUnowned zero-length slice" {
     try pool.decref(id);
 }
 
-// ===== GraphemePool Configuration Tests =====
-
 test "GraphemePool - initWithOptions with small slots_per_page" {
     // Create a pool with very small slots_per_page to test exhaustion
     const small_slots = [_]u32{ 2, 2, 2, 2, 2 }; // Only 2 slots per page for each class
@@ -1200,7 +1135,6 @@ test "GraphemePool - initWithOptions with small slots_per_page" {
     });
     defer pool.deinit();
 
-    // Should be able to allocate at least 2 items of same size class
     const id1 = try pool.alloc("abc");
     const id2 = try pool.alloc("def");
     try pool.incref(id1);
@@ -1229,7 +1163,6 @@ test "GraphemePool - small pool exhaustion and growth" {
     try pool.incref(id1);
     try pool.incref(id2);
 
-    // Both should be accessible
     try std.testing.expectEqualSlices(u8, "a", try pool.get(id1));
     try std.testing.expectEqualSlices(u8, "b", try pool.get(id2));
 
@@ -1253,7 +1186,6 @@ test "GraphemePool - small pool with refcount prevents exhaustion" {
     // Free one
     try pool.decref(id1);
 
-    // Should be able to reuse the freed slot
     const id3 = try pool.alloc("cc");
     try pool.incref(id3);
 

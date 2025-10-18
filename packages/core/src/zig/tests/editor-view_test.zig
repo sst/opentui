@@ -24,7 +24,6 @@ test "EditorView - init and deinit" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    // Verify viewport was set
     const vp = ev.getViewport();
     try std.testing.expect(vp != null);
     try std.testing.expectEqual(@as(u32, 80), vp.?.width);
@@ -46,21 +45,17 @@ test "EditorView - ensureCursorVisible scrolls down when cursor moves below view
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert 20 lines of text
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
-    // Cursor should be on line 19 now (last line)
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 19), cursor.row);
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
-    // Viewport should have scrolled to show cursor
     const vp = ev.getViewport().?;
-    try std.testing.expect(vp.y > 0); // Should have scrolled down
-    try std.testing.expect(cursor.row >= vp.y); // Cursor should be at or below viewport top
-    try std.testing.expect(cursor.row < vp.y + vp.height); // Cursor should be within viewport
+    try std.testing.expect(vp.y > 0);
+    try std.testing.expect(cursor.row >= vp.y);
+    try std.testing.expect(cursor.row < vp.y + vp.height);
 }
 
 test "EditorView - ensureCursorVisible scrolls up when cursor moves above viewport" {
@@ -77,26 +72,20 @@ test "EditorView - ensureCursorVisible scrolls up when cursor moves above viewpo
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert 20 lines of text
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
-    // Viewport should have scrolled down
     var vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0);
 
-    // Now go to line 0 - should scroll back up
     try eb.gotoLine(0);
 
-    // Trigger updateIfDirty again
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
 
-    // Viewport should have scrolled to top
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
@@ -115,28 +104,23 @@ test "EditorView - moveDown scrolls viewport automatically" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert 20 lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
-    // Go to line 0
     try eb.setCursor(0, 0);
-    _ = ev.getVirtualLines(); // Trigger updateIfDirty
+    _ = ev.getVirtualLines();
     var vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
-    // Move down 15 times - should cause viewport to scroll
     var i: u32 = 0;
     while (i < 15) : (i += 1) {
         eb.moveDown();
     }
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 15), cursor.row);
 
-    // Viewport should have scrolled to keep cursor visible
     vp = ev.getViewport().?;
     try std.testing.expect(cursor.row >= vp.y);
     try std.testing.expect(cursor.row < vp.y + vp.height);
@@ -156,30 +140,24 @@ test "EditorView - moveUp scrolls viewport automatically" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert 20 lines and cursor will be at end
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
-    // Viewport should be scrolled down
     var vp = ev.getViewport().?;
     const initial_y = vp.y;
     try std.testing.expect(initial_y > 0);
 
-    // Move up 10 times - should scroll viewport up
     var i: u32 = 0;
     while (i < 10) : (i += 1) {
         eb.moveUp();
     }
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 9), cursor.row);
 
-    // Viewport should have scrolled up to keep cursor visible
     vp = ev.getViewport().?;
     try std.testing.expect(vp.y < initial_y);
     try std.testing.expect(cursor.row >= vp.y);
@@ -200,23 +178,18 @@ test "EditorView - scroll margin keeps cursor away from edges" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Set scroll margin to 0.2 (20% = 2 lines for a 10-line viewport)
     ev.setScrollMargin(0.2);
 
-    // Insert many lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
-    // Go to line 5
     try eb.gotoLine(5);
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 5), cursor.row);
 
-    // Check that cursor is not at the very top or bottom of viewport
     const vp = ev.getViewport().?;
     const cursor_offset_in_viewport = cursor.row - vp.y;
 
-    // With 20% margin on a 10-line viewport, cursor should be at least 2 lines from edges
     try std.testing.expect(cursor_offset_in_viewport >= 2);
     try std.testing.expect(cursor_offset_in_viewport < vp.height - 2);
 }
@@ -235,13 +208,10 @@ test "EditorView - insertText with newlines maintains cursor visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 5);
     defer ev.deinit();
 
-    // Insert text that creates many lines all at once
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
-    // Cursor should be visible
     const cursor = ev.getPrimaryCursor();
     const vp = ev.getViewport().?;
 
@@ -263,13 +233,10 @@ test "EditorView - backspace at line start maintains visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 5);
     defer ev.deinit();
 
-    // Insert many lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    // Backspace should merge lines and keep cursor visible
     try eb.backspace();
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
@@ -293,16 +260,12 @@ test "EditorView - deleteForward at line end maintains visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 5);
     defer ev.deinit();
 
-    // Insert many lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    // Go to line 8 end
     try eb.setCursor(8, 6);
 
-    // Delete forward to merge with next line
     try eb.deleteForward();
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
@@ -326,13 +289,10 @@ test "EditorView - deleteRange maintains cursor visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 5);
     defer ev.deinit();
 
-    // Insert many lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    // Delete range across multiple lines
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 7, .col = 6 });
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
@@ -356,16 +316,12 @@ test "EditorView - deleteLine maintains cursor visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 5);
     defer ev.deinit();
 
-    // Insert many lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    // Go to line 7
     try eb.gotoLine(7);
 
-    // Delete line
     try eb.deleteLine();
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();
@@ -389,22 +345,18 @@ test "EditorView - setText resets viewport to top" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 5);
     defer ev.deinit();
 
-    // Insert many lines to scroll viewport
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
     var vp = ev.getViewport().?;
-    try std.testing.expect(vp.y > 0); // Scrolled down
+    try std.testing.expect(vp.y > 0);
 
-    // setText should reset cursor to top, and EditorView should ensure cursor visible before rendering
     try eb.setText("New Line 0\nNew Line 1\nNew Line 2");
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
 
-    // Trigger updateIfDirty by getting virtual lines (simulates rendering)
     _ = ev.getVirtualLines();
 
     vp = ev.getViewport().?;
@@ -425,13 +377,10 @@ test "EditorView - viewport respects total line count as max offset" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert only 5 lines (less than viewport height)
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
 
-    // Go to last line
     try eb.gotoLine(4);
 
-    // Viewport should still be at 0 since all lines fit
     const vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
@@ -450,20 +399,16 @@ test "EditorView - horizontal movement doesn't affect vertical scroll" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert some lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
 
-    // Go to line 2
     try eb.setCursor(2, 0);
 
     const vp_before = ev.getViewport().?;
 
-    // Move right several times
     eb.moveRight();
     eb.moveRight();
     eb.moveRight();
 
-    // Viewport Y should not change
     const vp_after = ev.getViewport().?;
     try std.testing.expectEqual(vp_before.y, vp_after.y);
 }
@@ -482,27 +427,23 @@ test "EditorView - cursor at boundaries doesn't cause invalid viewport" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Start with empty buffer
     try eb.setCursor(0, 0);
 
     var vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
-    // Insert a line
     try eb.insertText("First line");
 
-    // Move to start
     try eb.setCursor(0, 0);
 
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
-    // All operations should maintain valid viewport
-    eb.moveLeft(); // At boundary
+    eb.moveLeft();
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
-    eb.moveUp(); // At boundary
+    eb.moveUp();
     vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
@@ -521,20 +462,16 @@ test "EditorView - rapid cursor movements maintain visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert 30 lines all at once
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20\nLine 21\nLine 22\nLine 23\nLine 24\nLine 25\nLine 26\nLine 27\nLine 28\nLine 29");
 
-    // Rapid movements
     try eb.gotoLine(0);
     try eb.gotoLine(29);
     try eb.gotoLine(15);
     try eb.gotoLine(5);
     try eb.gotoLine(25);
 
-    // Trigger updateBeforeRender to ensure cursor visibility
     _ = ev.getVirtualLines();
 
-    // After each movement, cursor should be visible
     const cursor = ev.getPrimaryCursor();
     const vp = ev.getViewport().?;
 
@@ -560,13 +497,10 @@ test "EditorView - VisualCursor without wrapping" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert text without wrapping
     try eb.insertText("Hello World\nSecond Line\nThird Line");
 
-    // Go to line 1, col 3
     try eb.setCursor(1, 3);
 
-    // Without wrapping, visual and logical should match
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
     try std.testing.expectEqual(@as(u32, 1), vcursor.?.visual_row);
@@ -589,22 +523,17 @@ test "EditorView - VisualCursor with character wrapping" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    // Enable character wrapping
     ev.setWrapMode(.char);
 
-    // Insert a long line that will wrap
     try eb.setText("This is a very long line that will definitely wrap at 20 characters");
 
-    // Go to logical position (0, 25) - should be on second visual line
     try eb.setCursor(0, 25);
 
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
     try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
     try std.testing.expectEqual(@as(u32, 25), vcursor.?.logical_col);
-    // Visual row should be > 0 since line wraps
     try std.testing.expect(vcursor.?.visual_row > 0);
-    // Visual col should be within wrap width
     try std.testing.expect(vcursor.?.visual_col <= 20);
 }
 
@@ -622,17 +551,13 @@ test "EditorView - VisualCursor with word wrapping" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    // Enable word wrapping
     ev.setWrapMode(.word);
 
-    // Insert text that will wrap at word boundaries
     try eb.setText("Hello world this is a test of word wrapping");
 
-    // Move to end of line
     const line_count = eb.getTextBuffer().getLineCount();
     try std.testing.expectEqual(@as(u32, 1), line_count);
 
-    // Cursor should translate correctly
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
 }
@@ -651,29 +576,23 @@ test "EditorView - moveUpVisual with wrapping" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    // Enable character wrapping
     ev.setWrapMode(.char);
 
-    // Insert a long line that wraps
     try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
-    // Move to end of line
     try eb.setCursor(0, 50);
 
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
     const visual_row_before = vcursor_before.?.visual_row;
 
-    // Move up one visual line
     ev.moveUpVisual();
 
     const vcursor_after = ev.getVisualCursor();
     try std.testing.expect(vcursor_after != null);
 
-    // Should have moved up one visual line
     try std.testing.expectEqual(visual_row_before - 1, vcursor_after.?.visual_row);
 
-    // Should still be on logical line 0
     try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
 }
 
@@ -691,29 +610,23 @@ test "EditorView - moveDownVisual with wrapping" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    // Enable character wrapping
     ev.setWrapMode(.char);
 
-    // Insert a long line that wraps
     try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
-    // Start at beginning
     try eb.setCursor(0, 0);
 
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
     try std.testing.expectEqual(@as(u32, 0), vcursor_before.?.visual_row);
 
-    // Move down one visual line
     ev.moveDownVisual();
 
     const vcursor_after = ev.getVisualCursor();
     try std.testing.expect(vcursor_after != null);
 
-    // Should have moved down one visual line
     try std.testing.expectEqual(@as(u32, 1), vcursor_after.?.visual_row);
 
-    // Should still be on logical line 0
     try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
 }
 
@@ -733,10 +646,8 @@ test "EditorView - visualToLogicalCursor conversion" {
 
     ev.setWrapMode(.char);
 
-    // Insert wrapped text
     try eb.setText("12345678901234567890123456789012345");
 
-    // Virtual line 1, col 5 should map to logical line 0, col 25
     const vcursor = ev.visualToLogicalCursor(1, 5);
     try std.testing.expect(vcursor != null);
     try std.testing.expectEqual(@as(u32, 1), vcursor.?.visual_row);
@@ -761,7 +672,6 @@ test "EditorView - moveUpVisual at top boundary" {
     ev.setWrapMode(.char);
     try eb.setText("Short line");
 
-    // At top - should not move
     try eb.setCursor(0, 0);
 
     const before = ev.getPrimaryCursor();
@@ -789,14 +699,12 @@ test "EditorView - moveDownVisual at bottom boundary" {
     ev.setWrapMode(.char);
     try eb.setText("Short line\nSecond line");
 
-    // Move to last line
     try eb.setCursor(1, 0);
 
     const before = ev.getPrimaryCursor();
     ev.moveDownVisual();
     const after = ev.getPrimaryCursor();
 
-    // Should not move past last line
     try std.testing.expectEqual(before.row, after.row);
 }
 
@@ -816,13 +724,10 @@ test "EditorView - VisualCursor preserves desired column across wrapped lines" {
 
     ev.setWrapMode(.char);
 
-    // Insert long wrapped line
     try eb.setText("12345678901234567890123456789012345678901234567890");
 
-    // Move to column 15 on first visual line
     try eb.setCursor(0, 15);
 
-    // Move down and up - should try to maintain column
     ev.moveDownVisual();
     ev.moveDownVisual();
     ev.moveUpVisual();
@@ -830,7 +735,6 @@ test "EditorView - VisualCursor preserves desired column across wrapped lines" {
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
 
-    // Visual column should be close to 15 (within wrap width)
     try std.testing.expect(vcursor.?.visual_col <= 20);
 }
 
@@ -850,17 +754,14 @@ test "EditorView - VisualCursor with multiple logical lines and wrapping" {
 
     ev.setWrapMode(.char);
 
-    // Insert multiple lines, some that wrap
     try eb.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3");
 
-    // Move to line 1 (the long wrapped line)
     try eb.setCursor(1, 30);
 
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
     try std.testing.expectEqual(@as(u32, 1), vcursor.?.logical_row);
 
-    // Visual row should be greater than 1 (line 0 + wrapped portions of line 1)
     try std.testing.expect(vcursor.?.visual_row > 1);
 }
 
@@ -880,11 +781,9 @@ test "EditorView - logicalToVisualCursor handles cursor past line end" {
 
     try eb.setText("Short");
 
-    // Try to convert logical position past line end
     const vcursor = ev.logicalToVisualCursor(0, 100);
     try std.testing.expect(vcursor != null);
 
-    // Should clamp to line end
     try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
 }
 
@@ -903,7 +802,6 @@ test "EditorView - getTextBufferView returns correct view" {
     defer ev.deinit();
 
     const tbv = ev.getTextBufferView();
-    // Verify it's a valid pointer by checking viewport was set
     const vp = tbv.getViewport();
     try std.testing.expect(vp != null);
 }
@@ -940,21 +838,17 @@ test "EditorView - setViewportSize maintains cursor visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert many lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14");
 
-    // Go to line 10
     try eb.gotoLine(10);
 
-    // Resize viewport to smaller height
     ev.setViewportSize(80, 5);
 
     const vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 80), vp.width);
     try std.testing.expectEqual(@as(u32, 5), vp.height);
 
-    // Note: setViewportSize doesn't automatically adjust scroll position
-    // That would need to be handled separately if desired
+    // setViewportSize doesn't automatically adjust scroll position
 }
 
 test "EditorView - moveDownVisual across empty line preserves desired column" {
@@ -971,31 +865,26 @@ test "EditorView - moveDownVisual across empty line preserves desired column" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert text with an empty line in the middle
     try eb.setText("Line with some text\n\nAnother line with text");
 
-    // Start at column 10 on line 0
     try eb.setCursor(0, 10);
 
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
     try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.visual_col);
 
-    // Move down to empty line
     ev.moveDownVisual();
 
     const vcursor_empty = ev.getVisualCursor();
     try std.testing.expect(vcursor_empty != null);
     try std.testing.expectEqual(@as(u32, 1), vcursor_empty.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col); // Clamped to 0 on empty line
+    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col);
 
-    // Move down again to line with text
     ev.moveDownVisual();
 
     const vcursor_after = ev.getVisualCursor();
     try std.testing.expect(vcursor_after != null);
     try std.testing.expectEqual(@as(u32, 2), vcursor_after.?.logical_row);
-    // Should restore to column 10, not stay at 0
     try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
 }
 
@@ -1013,31 +902,26 @@ test "EditorView - moveUpVisual across empty line preserves desired column" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert text with an empty line in the middle
     try eb.setText("Line with some text\n\nAnother line with text");
 
-    // Start at column 10 on line 2
     try eb.setCursor(2, 10);
 
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
     try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.visual_col);
 
-    // Move up to empty line
     ev.moveUpVisual();
 
     const vcursor_empty = ev.getVisualCursor();
     try std.testing.expect(vcursor_empty != null);
     try std.testing.expectEqual(@as(u32, 1), vcursor_empty.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col); // Clamped to 0 on empty line
+    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col);
 
-    // Move up again to line with text
     ev.moveUpVisual();
 
     const vcursor_after = ev.getVisualCursor();
     try std.testing.expect(vcursor_after != null);
     try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
-    // Should restore to column 10, not stay at 0
     try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
 }
 
@@ -1055,17 +939,14 @@ test "EditorView - horizontal movement resets desired visual column" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert text with an empty line in the middle
     try eb.setText("Line with some text\n\nAnother line with text");
 
-    // Start at column 10 on line 0
     try eb.setCursor(0, 10);
 
     const vcursor_initial = ev.getVisualCursor();
     try std.testing.expect(vcursor_initial != null);
     try std.testing.expectEqual(@as(u32, 10), vcursor_initial.?.visual_col);
 
-    // Move down visually twice to get to line 2 (establishes desired_visual_col = 10)
     ev.moveDownVisual();
     ev.moveDownVisual();
 
@@ -1074,25 +955,22 @@ test "EditorView - horizontal movement resets desired visual column" {
     try std.testing.expectEqual(@as(u32, 2), vcursor_after_down.?.logical_row);
     try std.testing.expectEqual(@as(u32, 10), vcursor_after_down.?.visual_col);
 
-    // Now move right (should reset the visual column tracking)
     eb.moveRight();
 
     const vcursor_after_right = ev.getVisualCursor();
     try std.testing.expect(vcursor_after_right != null);
-    try std.testing.expectEqual(@as(u32, 11), vcursor_after_right.?.visual_col); // Moved right one position
+    try std.testing.expectEqual(@as(u32, 11), vcursor_after_right.?.visual_col);
 
-    // Move up visually twice - should use current column (11), not the old desired column (10)
     ev.moveUpVisual();
     ev.moveUpVisual();
 
     const vcursor_final = ev.getVisualCursor();
     try std.testing.expect(vcursor_final != null);
     try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.logical_row);
-    // Should use current column (11), not the old desired column (10)
     try std.testing.expectEqual(@as(u32, 11), vcursor_final.?.visual_col);
 }
 
-test "EditorView - rope corruption when inserting newlines" {
+test "EditorView - inserting newlines maintains rope integrity" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -1103,34 +981,28 @@ test "EditorView - rope corruption when inserting newlines" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Insert initial text with some lines
     try eb.insertText("Line 0\nLine 1\nLine 2");
 
-    // Check initial state - should be valid
     const rope_init = &eb.getTextBuffer().rope;
     const line_count_init = eb.getTextBuffer().lineCount();
     try std.testing.expectEqual(@as(u32, 3), line_count_init);
 
-    // Insert first newline at the end
     try eb.insertText("\n");
 
     const line_count_1 = eb.getTextBuffer().lineCount();
     try std.testing.expectEqual(@as(u32, 4), line_count_1);
 
-    // Verify no duplicate weights after first newline
     if (rope_init.getMarker(.linestart, 2)) |m2| {
         if (rope_init.getMarker(.linestart, 3)) |m3| {
             try std.testing.expect(m2.global_weight != m3.global_weight);
         }
     }
 
-    // Insert second newline
     try eb.insertText("\n");
 
     const line_count_2 = eb.getTextBuffer().lineCount();
     try std.testing.expectEqual(@as(u32, 5), line_count_2);
 
-    // Verify no duplicate weights after second newline
     if (rope_init.getMarker(.linestart, 3)) |m3| {
         if (rope_init.getMarker(.linestart, 4)) |m4| {
             try std.testing.expect(m3.global_weight != m4.global_weight);
@@ -1152,47 +1024,37 @@ test "EditorView - visual cursor stays in sync after scrolling and moving up" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert initial text - 5 lines
     try eb.insertText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4");
 
-    // Verify cursor is at end of line 4
     var cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 4), cursor.row);
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 
-    // Get visual lines to trigger viewport update
     _ = ev.getVirtualLines();
 
-    // Viewport should be at top since everything fits
     var vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 
-    // Now insert several newlines to move cursor down and scroll viewport
     var i: u32 = 0;
     while (i < 6) : (i += 1) {
         try eb.insertText("\n");
         _ = ev.getVirtualLines();
     }
 
-    // Cursor should now be at line 10
     cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 10), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Viewport should have scrolled down
     vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0);
 
-    // Get visual cursor before moving up
     const vcursor_before = ev.getVisualCursor();
     try std.testing.expect(vcursor_before != null);
     try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.logical_row);
 
-    // Move visual cursor up once
     ev.moveUpVisual();
     _ = ev.getVirtualLines();
 
-    // Get visual and logical cursor positions after moving up
     const vcursor_after_up = ev.getVisualCursor();
     try std.testing.expect(vcursor_after_up != null);
     const logical_cursor_after_up = ev.getPrimaryCursor();
@@ -1200,38 +1062,30 @@ test "EditorView - visual cursor stays in sync after scrolling and moving up" {
     try std.testing.expectEqual(@as(u32, 9), logical_cursor_after_up.row);
     try std.testing.expectEqual(@as(u32, 9), vcursor_after_up.?.logical_row);
 
-    // The visual row should be one less than before
     try std.testing.expect(vcursor_after_up.?.visual_row < vcursor_before.?.visual_row);
 
-    // Now insert text - this should go at the logical cursor position
     try eb.insertText("X");
     _ = ev.getVirtualLines();
 
-    // Get the cursor position after insertion
     const cursor_after_insert = ev.getPrimaryCursor();
     const vcursor_after_insert = ev.getVisualCursor();
     try std.testing.expect(vcursor_after_insert != null);
 
-    // The cursor should still be on row 9 (where we moved to), col 1 (after 'X')
     try std.testing.expectEqual(@as(u32, 9), cursor_after_insert.row);
     try std.testing.expectEqual(@as(u32, 1), cursor_after_insert.col);
 
-    // Visual cursor logical position should match
     try std.testing.expectEqual(@as(u32, 9), vcursor_after_insert.?.logical_row);
     try std.testing.expectEqual(@as(u32, 1), vcursor_after_insert.?.logical_col);
 
-    // Verify the text is actually at line 9
     var out_buffer: [200]u8 = undefined;
     const written = eb.getText(&out_buffer);
     const text = out_buffer[0..written];
 
-    // Count lines to verify X is on line 9
     var line_count: u32 = 0;
     var line_start: usize = 0;
     for (text, 0..) |c, idx| {
         if (c == '\n') {
             if (line_count == 9) {
-                // This is the line after line 9, so line 9 should have X
                 const line_9 = text[line_start..idx];
                 try std.testing.expect(line_9.len >= 1);
                 try std.testing.expectEqual(@as(u8, 'X'), line_9[0]);
@@ -1257,20 +1111,16 @@ test "EditorView - cursor positioning after wide grapheme" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert text with wide character
     try eb.insertText("AB東CD");
 
-    // Cursor should be at end: A(1) + B(1) + 東(2) + C(1) + D(1) = 6
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 
-    // Move cursor to position right after 東 (col = 4)
     try eb.setCursor(0, 4);
     const cursor_after_move = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 4), cursor_after_move.col);
 
-    // Get visual cursor - should match logical
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
     try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
@@ -1292,26 +1142,21 @@ test "EditorView - backspace after wide grapheme updates cursor correctly" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    // Insert text with wide character
     try eb.insertText("AB東CD");
 
-    // Move cursor to position right after 東 (col = 4)
     try eb.setCursor(0, 4);
 
-    // Backspace - should delete entire 東 and move cursor to col 2
     try eb.backspace();
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
-    // Visual cursor should match
     const vcursor = ev.getVisualCursor();
     try std.testing.expect(vcursor != null);
     try std.testing.expectEqual(@as(u32, 2), vcursor.?.logical_col);
     try std.testing.expectEqual(@as(u32, 2), vcursor.?.visual_col);
 
-    // Verify text
     var out_buffer: [100]u8 = undefined;
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("ABCD", out_buffer[0..written]);
@@ -2244,29 +2089,23 @@ test "EditorView - deleteSelectedText single line" {
 
     try eb_inst.setText("Hello World");
 
-    // Select "Hello" (chars 0-5)
     ev.text_buffer_view.setSelection(0, 5, null, null);
 
-    // Verify selection is set
     const sel_before = ev.text_buffer_view.getSelection();
     try std.testing.expect(sel_before != null);
     try std.testing.expectEqual(@as(u32, 0), sel_before.?.start);
     try std.testing.expectEqual(@as(u32, 5), sel_before.?.end);
 
-    // Delete the selection
     try ev.deleteSelectedText();
 
-    // Verify text is " World"
     var out_buffer: [100]u8 = undefined;
     const written = ev.getText(&out_buffer);
     try std.testing.expectEqualStrings(" World", out_buffer[0..written]);
 
-    // Verify cursor is at start of deleted range
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Verify selection is cleared
     const sel_after = ev.text_buffer_view.getSelection();
     try std.testing.expect(sel_after == null);
 }
@@ -2287,19 +2126,14 @@ test "EditorView - deleteSelectedText multi-line" {
 
     try eb_inst.setText("Line 1\nLine 2\nLine 3");
 
-    // Text layout: L(0)i(1)n(2)e(3) (4)1(5)\n(6)L(7)i(8)n(9)e(10) (11)2(12)\n(13)L(14)i(15)n(16)e(17) (18)3(19)
-    // Select from offset 2 to 15: "ne 1\nLine 2\nLi"
-    // After deletion: "Li" + "ne 3" = "Liine 3"
     ev.text_buffer_view.setSelection(2, 15, null, null);
 
     try ev.deleteSelectedText();
 
-    // Verify text after deletion
     var out_buffer: [100]u8 = undefined;
     const written = ev.getText(&out_buffer);
     try std.testing.expectEqualStrings("Liine 3", out_buffer[0..written]);
 
-    // Verify cursor is at start position (row 0, col 2)
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
@@ -2321,24 +2155,19 @@ test "EditorView - deleteSelectedText with wrapping" {
 
     ev.setWrapMode(.char);
 
-    // Long line that will wrap: "ABCDEFGHIJKLMNOPQRSTUVWXYZ" (26 chars)
     try eb_inst.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
-    // With width 20, this wraps to 2 virtual lines
     const vline_count = ev.getTotalVirtualLineCount();
     try std.testing.expect(vline_count >= 2);
 
-    // Select chars [5, 15) = "FGHIJKLMNO"
     ev.text_buffer_view.setSelection(5, 15, null, null);
 
     try ev.deleteSelectedText();
 
-    // Verify text is "ABCDEPQRSTUVWXYZ"
     var out_buffer: [100]u8 = undefined;
     const written = ev.getText(&out_buffer);
     try std.testing.expectEqualStrings("ABCDEPQRSTUVWXYZ", out_buffer[0..written]);
 
-    // Verify cursor is at position 5
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
@@ -2358,24 +2187,18 @@ test "EditorView - deleteSelectedText with viewport scrolled" {
     var ev = try EditorView.init(std.testing.allocator, eb_inst, 40, 5);
     defer ev.deinit();
 
-    // Insert 20 lines
     try eb_inst.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
-    // Move to line 10 to trigger scroll
     try eb_inst.gotoLine(10);
     _ = ev.getVirtualLines();
 
     var vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0);
 
-    // Select from char 50 to char 70 (roughly across line 7 to line 10)
-    // Each line is "Line N\n" = 7 chars
-    // Line 7 starts at 7*7 = 49
     ev.text_buffer_view.setSelection(50, 70, null, null);
 
     try ev.deleteSelectedText();
 
-    // Verify cursor is visible after deletion
     _ = ev.getVirtualLines();
     vp = ev.getViewport().?;
     const cursor = ev.getPrimaryCursor();
@@ -2400,10 +2223,8 @@ test "EditorView - deleteSelectedText with no selection" {
 
     try eb_inst.setText("Hello World");
 
-    // No selection - should be a no-op
     try ev.deleteSelectedText();
 
-    // Verify text is unchanged
     var out_buffer: [100]u8 = undefined;
     const written = ev.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
@@ -2425,19 +2246,14 @@ test "EditorView - deleteSelectedText entire line" {
 
     try eb_inst.setText("First\nSecond\nThird\n");
 
-    // Text layout: F(0)i(1)r(2)s(3)t(4)\n(5)S(6)e(7)c(8)o(9)n(10)d(11)\n(12)T(13)h(14)i(15)r(16)d(17)\n(18)
-    // Select "\nSecond\n" (chars 5-13) to delete newline before, content, and newline after
-    // After deletion: "First" + "Third\n" = "FirstThird\n"
     ev.text_buffer_view.setSelection(5, 13, null, null);
 
     try ev.deleteSelectedText();
 
-    // Verify text is "FirstThird\n"
     var out_buffer: [100]u8 = undefined;
     const written = ev.getText(&out_buffer);
     try std.testing.expectEqualStrings("FirstThird\n", out_buffer[0..written]);
 
-    // Verify cursor is at row 0, col 5 (end of "First", start of "Third")
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
     try std.testing.expectEqual(@as(u32, 5), cursor.col);
@@ -2461,52 +2277,33 @@ test "EditorView - deleteSelectedText respects selection with empty lines" {
 
     try eb_inst.setText("AAAA\n\nBBBB\n\nCCCC");
 
-    // Text layout:
-    // Line 0: AAAA (offset 0-3)
-    // Newline (offset 4)
-    // Line 1: empty (offset 5)
-    // Newline (offset 5)
-    // Line 2: BBBB (offset 6-9)
-    // Newline (offset 10)
-    // Line 3: empty (offset 11)
-    // Newline (offset 11)
-    // Line 4: CCCC (offset 12-15)
-
-    // Move cursor to line 2 (BBBB)
     try eb_inst.setCursor(2, 0);
 
-    // Set local selection to select BBBB on line 2
-    // Visual coordinates: line 2 should be at visual row 2 (after line 0, empty line 1)
     _ = ev.text_buffer_view.setLocalSelection(0, 2, 4, 2, null, null);
 
     const sel = ev.text_buffer_view.getSelection();
     try std.testing.expect(sel != null);
 
-    // Verify selection offsets are correct (chars 6-10 for "BBBB")
     try std.testing.expectEqual(@as(u32, 6), sel.?.start);
     try std.testing.expectEqual(@as(u32, 10), sel.?.end);
 
-    // Verify selected text is correct
     var selected_buffer: [100]u8 = undefined;
     const selected_len = ev.text_buffer_view.getSelectedTextIntoBuffer(&selected_buffer);
     const selected_text = selected_buffer[0..selected_len];
     try std.testing.expectEqualStrings("BBBB", selected_text);
 
-    // Delete the selected text
     try ev.deleteSelectedText();
 
-    // Verify text is "AAAA\n\n\n\nCCCC" (BBBB removed, empty line remains)
     var out_buffer: [100]u8 = undefined;
     const written = ev.getText(&out_buffer);
     try std.testing.expectEqualStrings("AAAA\n\n\n\nCCCC", out_buffer[0..written]);
 
-    // Verify cursor is at row 2, col 0 (start of deleted range)
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 2), cursor.row);
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 }
 
-test "EditorView - BUG REPRODUCTION: force-wrapped word with space insertion causes visual cursor desync" {
+test "EditorView - word wrapping with space insertion maintains cursor sync" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 

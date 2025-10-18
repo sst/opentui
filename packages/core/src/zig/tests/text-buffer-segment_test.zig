@@ -181,7 +181,6 @@ test "UnifiedRope - basic operations" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // Create a simple rope: [text(10)] + [break] + [text(5)]
     var rope = try UnifiedRope.init(allocator);
 
     const text1 = Segment{
@@ -256,7 +255,6 @@ test "UnifiedRope - multiple lines with varying widths" {
 
     var rope = try UnifiedRope.init(allocator);
 
-    // Line 1: width 10
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -268,7 +266,6 @@ test "UnifiedRope - multiple lines with varying widths" {
     });
     try rope.append(Segment{ .brk = {} });
 
-    // Line 2: width 30 (should be max)
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,
@@ -280,7 +277,6 @@ test "UnifiedRope - multiple lines with varying widths" {
     });
     try rope.append(Segment{ .brk = {} });
 
-    // Line 3: width 15
     try rope.append(Segment{
         .text = TextChunk{
             .mem_id = 0,

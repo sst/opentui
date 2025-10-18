@@ -20,7 +20,6 @@ test "TextBuffer coords - addHighlightByCoords" {
 
     try tb.setText("Hello\nWorld");
 
-    // Highlight "ello" on first line
     try tb.addHighlightByCoords(0, 1, 0, 5, 1, 1, null);
 
     const highlights = tb.getLineHighlights(0);
@@ -42,7 +41,6 @@ test "TextBuffer coords - addHighlightByCoords multi-line" {
 
     try tb.setText("Hello\nWorld");
 
-    // Highlight from line 0 col 3 to line 1 col 3
     try tb.addHighlightByCoords(0, 3, 1, 3, 1, 1, null);
 
     const line0_highlights = tb.getLineHighlights(0);
@@ -67,7 +65,6 @@ test "TextBuffer highlights - add single highlight to line" {
 
     try tb.setText("Hello World");
 
-    // Add a highlight
     try tb.addHighlight(0, 0, 5, 1, 0, null);
 
     const highlights = tb.getLineHighlights(0);
@@ -90,7 +87,6 @@ test "TextBuffer highlights - add multiple highlights to same line" {
 
     try tb.setText("Hello World");
 
-    // Add multiple highlights
     try tb.addHighlight(0, 0, 5, 1, 0, null);
     try tb.addHighlight(0, 6, 11, 2, 0, null);
 
@@ -113,7 +109,6 @@ test "TextBuffer highlights - add highlights to multiple lines" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    // Add highlights to different lines
     try tb.addHighlight(0, 0, 6, 1, 0, null);
     try tb.addHighlight(1, 0, 6, 2, 0, null);
     try tb.addHighlight(2, 0, 6, 3, 0, null);
@@ -136,12 +131,10 @@ test "TextBuffer highlights - remove highlights by reference" {
 
     try tb.setText("Line 1\nLine 2");
 
-    // Add highlights with different references
     try tb.addHighlight(0, 0, 3, 1, 0, 100);
     try tb.addHighlight(0, 3, 6, 2, 0, 200);
     try tb.addHighlight(1, 0, 6, 3, 0, 100);
 
-    // Remove all highlights with ref 100
     tb.removeHighlightsByRef(100);
 
     const line0_highlights = tb.getLineHighlights(0);
@@ -229,7 +222,6 @@ test "TextBuffer highlights - overlapping highlights" {
 
     try tb.setText("Hello World");
 
-    // Add overlapping highlights
     try tb.addHighlight(0, 0, 8, 1, 0, null);
     try tb.addHighlight(0, 5, 11, 2, 0, null);
 
@@ -253,7 +245,6 @@ test "TextBuffer highlights - reset clears highlights" {
 
     tb.reset();
 
-    // After reset, highlights should be gone
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 0), highlights.len);
 }
@@ -272,14 +263,11 @@ test "TextBuffer highlights - setSyntaxStyle and getSyntaxStyle" {
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
     defer syntax_style.deinit();
 
-    // Initially no syntax style
     try std.testing.expect(tb.getSyntaxStyle() == null);
 
-    // Set syntax style
     tb.setSyntaxStyle(syntax_style);
     try std.testing.expect(tb.getSyntaxStyle() != null);
 
-    // Clear syntax style
     tb.setSyntaxStyle(null);
     try std.testing.expect(tb.getSyntaxStyle() == null);
 }
@@ -298,7 +286,6 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
     defer syntax_style.deinit();
 
-    // Register some styles
     const keyword_id = try syntax_style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
     const string_id = try syntax_style.registerStyle("string", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
     const comment_id = try syntax_style.registerStyle("comment", RGBA{ 0.5, 0.5, 0.5, 1.0 }, null, 0);
@@ -306,16 +293,13 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     try tb.setText("function hello() // comment");
     tb.setSyntaxStyle(syntax_style);
 
-    // Add highlights
-    try tb.addHighlight(0, 0, 8, keyword_id, 1, null); // "function"
-    try tb.addHighlight(0, 9, 14, string_id, 1, null); // "hello"
-    try tb.addHighlight(0, 17, 27, comment_id, 1, null); // "// comment"
+    try tb.addHighlight(0, 0, 8, keyword_id, 1, null);
+    try tb.addHighlight(0, 9, 14, string_id, 1, null);
+    try tb.addHighlight(0, 17, 27, comment_id, 1, null);
 
-    // Verify highlights are stored
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 3), highlights.len);
 
-    // Verify we can resolve the styles
     const style = tb.getSyntaxStyle().?;
     try std.testing.expect(style.resolveById(keyword_id) != null);
     try std.testing.expect(style.resolveById(string_id) != null);
@@ -335,9 +319,8 @@ test "TextBuffer highlights - style spans computed correctly" {
 
     try tb.setText("0123456789");
 
-    // Add non-overlapping highlights
-    try tb.addHighlight(0, 0, 3, 1, 1, null); // cols 0-2
-    try tb.addHighlight(0, 5, 8, 2, 1, null); // cols 5-7
+    try tb.addHighlight(0, 0, 3, 1, 1, null);
+    try tb.addHighlight(0, 5, 8, 2, 1, null);
 
     const spans = tb.getLineSpans(0);
     try std.testing.expect(spans.len > 0);
@@ -366,9 +349,8 @@ test "TextBuffer highlights - priority handling in spans" {
 
     try tb.setText("0123456789");
 
-    // Add overlapping highlights with different priorities
-    try tb.addHighlight(0, 0, 8, 1, 1, null); // priority 1
-    try tb.addHighlight(0, 3, 6, 2, 5, null); // priority 5 (higher)
+    try tb.addHighlight(0, 0, 8, 1, 1, null);
+    try tb.addHighlight(0, 3, 6, 2, 5, null);
 
     const spans = tb.getLineSpans(0);
     try std.testing.expect(spans.len > 0);
@@ -398,7 +380,6 @@ test "TextBuffer char range highlights - single line highlight" {
 
     try tb.setText("Hello World");
 
-    // Highlight "Hello" (chars 0-5)
     try tb.addHighlightByCharRange(0, 5, 1, 1, null);
 
     const highlights = tb.getLineHighlights(0);
@@ -428,7 +409,6 @@ test "TextBuffer char range highlights - multi-line highlight" {
     // char 3 = 'l' in "Hello", char 9 = 'd' in "World" (last char)
     try tb.addHighlightByCharRange(3, 9, 1, 1, null);
 
-    // Should create highlights on line 0 and line 1
     const line0_highlights = tb.getLineHighlights(0);
     const line1_highlights = tb.getLineHighlights(1);
 
@@ -457,25 +437,20 @@ test "TextBuffer char range highlights - spanning three lines" {
 
     try tb.setText("Line1\nLine2\nLine3");
 
-    // Highlight from char 3 (middle of line 0) to char 13 (middle of line 2)
     try tb.addHighlightByCharRange(3, 13, 1, 1, null);
 
     const line0_highlights = tb.getLineHighlights(0);
     const line1_highlights = tb.getLineHighlights(1);
     const line2_highlights = tb.getLineHighlights(2);
 
-    // All three lines should have highlights
     try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
     try std.testing.expectEqual(@as(usize, 1), line1_highlights.len);
     try std.testing.expectEqual(@as(usize, 1), line2_highlights.len);
 
-    // Line 0: from col 3 to end
     try std.testing.expectEqual(@as(u32, 3), line0_highlights[0].col_start);
 
-    // Line 1: entire line (col 0 to line width)
     try std.testing.expectEqual(@as(u32, 0), line1_highlights[0].col_start);
 
-    // Line 2: from start to col 1 (char 13 is at offset 12, which is line 2 col 1)
     try std.testing.expectEqual(@as(u32, 0), line2_highlights[0].col_start);
 }
 
@@ -579,10 +554,9 @@ test "TextBuffer char range highlights - multiple non-overlapping ranges" {
 
     try tb.setText("function hello() { return 42; }");
 
-    // Highlight multiple tokens
-    try tb.addHighlightByCharRange(0, 8, 1, 1, null); // "function"
-    try tb.addHighlightByCharRange(9, 14, 2, 1, null); // "hello"
-    try tb.addHighlightByCharRange(19, 25, 3, 1, null); // "return"
+    try tb.addHighlightByCharRange(0, 8, 1, 1, null);
+    try tb.addHighlightByCharRange(9, 14, 2, 1, null);
+    try tb.addHighlightByCharRange(19, 25, 3, 1, null);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 3), highlights.len);
@@ -604,18 +578,13 @@ test "TextBuffer char range highlights - with reference ID for removal" {
 
     try tb.setText("Line1\nLine2\nLine3");
 
-    // Add highlights with reference ID 100
     try tb.addHighlightByCharRange(0, 5, 1, 1, 100);
     try tb.addHighlightByCharRange(6, 11, 2, 1, 100);
 
-    // Verify they were added
     try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(0).len);
     try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(1).len);
 
-    // Remove all highlights with ref 100
     tb.removeHighlightsByRef(100);
-
-    // Verify they were removed
     try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(0).len);
     try std.testing.expectEqual(@as(usize, 0), tb.getLineHighlights(1).len);
 }
@@ -633,9 +602,8 @@ test "TextBuffer char range highlights - priority handling" {
 
     try tb.setText("0123456789");
 
-    // Add overlapping highlights with different priorities
-    try tb.addHighlightByCharRange(0, 8, 1, 1, null); // priority 1
-    try tb.addHighlightByCharRange(3, 6, 2, 5, null); // priority 5 (higher)
+    try tb.addHighlightByCharRange(0, 8, 1, 1, null);
+    try tb.addHighlightByCharRange(3, 6, 2, 5, null);
 
     const spans = tb.getLineSpans(0);
     try std.testing.expect(spans.len > 0);
@@ -663,7 +631,6 @@ test "TextBuffer char range highlights - unicode text" {
 
     try tb.setText("Hello 世界 🌟");
 
-    // Highlight the entire text by character count
     const text_len = tb.getLength();
     try tb.addHighlightByCharRange(0, text_len, 1, 1, null);
 

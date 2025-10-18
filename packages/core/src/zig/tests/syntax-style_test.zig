@@ -5,8 +5,6 @@ const SyntaxStyle = syntax_style.SyntaxStyle;
 const StyleDefinition = syntax_style.StyleDefinition;
 const RGBA = syntax_style.RGBA;
 
-// ===== Basic Initialization Tests =====
-
 test "SyntaxStyle - init and deinit" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
@@ -27,8 +25,6 @@ test "SyntaxStyle - multiple independent instances" {
     try std.testing.expectEqual(@as(usize, 1), style1.getStyleCount());
     try std.testing.expectEqual(@as(usize, 0), style2.getStyleCount());
 }
-
-// ===== Registration Tests =====
 
 test "SyntaxStyle - register simple style" {
     const style = try SyntaxStyle.init(std.testing.allocator);
@@ -125,7 +121,6 @@ test "SyntaxStyle - register same name returns same ID" {
     try std.testing.expectEqual(id1, id2);
     try std.testing.expectEqual(@as(usize, 1), style.getStyleCount());
 
-    // Should have updated to new color
     const resolved = style.resolveById(id2).?;
     try std.testing.expectEqual(fg2[0], resolved.fg.?[0]);
     try std.testing.expectEqual(fg2[1], resolved.fg.?[1]);
@@ -161,15 +156,12 @@ test "SyntaxStyle - register many styles" {
 
     try std.testing.expectEqual(@as(usize, count), style.getStyleCount());
 
-    // All IDs should be unique
     for (ids, 0..count) |id1, i| {
         for (ids[i + 1 ..]) |id2| {
             try std.testing.expect(id1 != id2);
         }
     }
 }
-
-// ===== Resolution Tests =====
 
 test "SyntaxStyle - resolveById returns correct style" {
     const style = try SyntaxStyle.init(std.testing.allocator);
@@ -248,8 +240,6 @@ test "SyntaxStyle - resolve multiple styles" {
     try std.testing.expectEqual(id2, style.resolveByName("string").?);
 }
 
-// ===== Merge Tests =====
-
 test "SyntaxStyle - merge single style" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
@@ -280,10 +270,8 @@ test "SyntaxStyle - merge two styles" {
     const ids = [_]u32{ id1, id2 };
     const merged = try style.mergeStyles(&ids);
 
-    // Second style should override fg
     try std.testing.expectEqual(fg2[0], merged.fg.?[0]);
     try std.testing.expectEqual(bg2[0], merged.bg.?[0]);
-    // Attributes should be OR'd
     try std.testing.expectEqual(@as(u8, 0b0011), merged.attributes);
 }
 
@@ -302,9 +290,7 @@ test "SyntaxStyle - merge three styles" {
     const ids = [_]u32{ id1, id2, id3 };
     const merged = try style.mergeStyles(&ids);
 
-    // Last style wins for colors
     try std.testing.expectEqual(fg3[0], merged.fg.?[0]);
-    // All attributes combined
     try std.testing.expectEqual(@as(u8, 0b0111), merged.attributes);
 }
 
@@ -330,7 +316,6 @@ test "SyntaxStyle - merge with invalid ID skips it" {
     const ids = [_]u32{ id1, 9999 }; // 9999 is invalid
     const merged = try style.mergeStyles(&ids);
 
-    // Should only use valid style
     try std.testing.expectEqual(fg[0], merged.fg.?[0]);
     try std.testing.expectEqual(@as(u8, 0b0001), merged.attributes);
 }
@@ -347,9 +332,7 @@ test "SyntaxStyle - merge caches results" {
 
     const ids = [_]u32{ id1, id2 };
 
-    // First merge
     const merged1 = try style.mergeStyles(&ids);
-    // Second merge should use cache
     const merged2 = try style.mergeStyles(&ids);
 
     try std.testing.expectEqual(merged1.fg.?[0], merged2.fg.?[0]);
@@ -372,11 +355,8 @@ test "SyntaxStyle - merge different order produces different results" {
     const merged1 = try style.mergeStyles(&ids1);
     const merged2 = try style.mergeStyles(&ids2);
 
-    // Different order should give different results (last wins)
     try std.testing.expect(merged1.fg.?[0] != merged2.fg.?[0]);
 }
-
-// ===== Cache Tests =====
 
 test "SyntaxStyle - clearCache empties cache" {
     const style = try SyntaxStyle.init(std.testing.allocator);
@@ -436,8 +416,6 @@ test "SyntaxStyle - getCacheSize returns correct count" {
     _ = try style.mergeStyles(&ids_both);
     try std.testing.expectEqual(@as(usize, 3), style.getCacheSize());
 }
-
-// ===== Edge Cases and Stress Tests =====
 
 test "SyntaxStyle - very long style name" {
     const style = try SyntaxStyle.init(std.testing.allocator);
@@ -525,13 +503,11 @@ test "SyntaxStyle - stress test many merges" {
     const id2 = try style.registerStyle("s2", fg, null, 0);
     const id3 = try style.registerStyle("s3", fg, null, 0);
 
-    // Perform many merges
     for (0..100) |_| {
         const ids = [_]u32{ id1, id2, id3 };
         _ = try style.mergeStyles(&ids);
     }
 
-    // Cache should only have one entry (same IDs)
     try std.testing.expectEqual(@as(usize, 1), style.getCacheSize());
 }
 
@@ -551,11 +527,8 @@ test "SyntaxStyle - merge many styles at once" {
 
     const merged = try style.mergeStyles(&ids);
 
-    // Should have OR'd all attributes
     try std.testing.expect(merged.attributes != 0);
 }
-
-// ===== Memory and Lifecycle Tests =====
 
 test "SyntaxStyle - multiple init/deinit cycles" {
     for (0..10) |_| {
@@ -578,7 +551,6 @@ test "SyntaxStyle - register and resolve after clear cache" {
 
     style.clearCache();
 
-    // Should still be able to resolve and merge
     try std.testing.expectEqual(id, style.resolveByName("keyword").?);
     const merged = try style.mergeStyles(&ids);
     try std.testing.expectEqual(fg[0], merged.fg.?[0]);

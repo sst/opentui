@@ -31,7 +31,6 @@ test "walkLines - empty rope" {
     var ctx = Context{};
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
-    // Empty rope = 0 lines (caller should use setText("") to create 1 empty line)
     try testing.expectEqual(@as(u32, 0), ctx.count);
 }
 
@@ -184,7 +183,6 @@ test "coordsToOffset - valid coordinates" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    // Line 0 starts here
     try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
@@ -196,7 +194,6 @@ test "coordsToOffset - valid coordinates" {
         },
     });
     try rope.append(Segment{ .brk = {} });
-    // Line 1 starts here
     try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
@@ -228,7 +225,6 @@ test "offsetToCoords - valid offsets" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    // Line 0 starts here
     try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
@@ -240,7 +236,6 @@ test "offsetToCoords - valid offsets" {
         },
     });
     try rope.append(Segment{ .brk = {} });
-    // Line 1 starts here
     try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
@@ -314,7 +309,6 @@ test "coordsToOffset and offsetToCoords - round trip" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    // Line 0 starts here
     try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{
@@ -326,7 +320,6 @@ test "coordsToOffset and offsetToCoords - round trip" {
         },
     });
     try rope.append(Segment{ .brk = {} });
-    // Line 1 starts here
     try rope.append(Segment{ .linestart = {} });
     try rope.append(Segment{
         .text = TextChunk{

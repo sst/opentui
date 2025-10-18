@@ -15,7 +15,6 @@ test "EditBuffer - basic undo/redo with insertText" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Insert text - auto-stores undo point
     try eb.insertText("Hello");
 
     try eb.insertText(" World");
@@ -23,13 +22,11 @@ test "EditBuffer - basic undo/redo with insertText" {
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
 
-    // Undo - reverts to state before " World" insertion
     const meta = try eb.undo();
     try std.testing.expectEqualStrings("edit", meta);
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
 
-    // Redo
     const meta2 = try eb.redo();
     try std.testing.expectEqualStrings("current", meta2);
     written = eb.getText(&out_buffer);
@@ -47,28 +44,21 @@ test "EditBuffer - canUndo/canRedo" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Initially no undo/redo available
     try std.testing.expect(!eb.canUndo());
     try std.testing.expect(!eb.canRedo());
 
-    // Insert auto-stores undo
     try eb.insertText("Test");
 
-    // Now undo is available
     try std.testing.expect(eb.canUndo());
     try std.testing.expect(!eb.canRedo());
 
-    // Undo
     _ = try eb.undo();
 
-    // Now redo is available
     try std.testing.expect(!eb.canUndo());
     try std.testing.expect(eb.canRedo());
 
-    // Redo
     _ = try eb.redo();
 
-    // Back to having undo available
     try std.testing.expect(eb.canUndo());
     try std.testing.expect(!eb.canRedo());
 }
@@ -91,12 +81,10 @@ test "EditBuffer - undo/redo with deleteRange" {
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
 
-    // Undo deletion
     _ = try eb.undo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
 
-    // Redo deletion
     _ = try eb.redo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
@@ -120,7 +108,6 @@ test "EditBuffer - undo/redo with backspace" {
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hell", out_buffer[0..written]);
 
-    // Undo backspace
     _ = try eb.undo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
@@ -145,7 +132,6 @@ test "EditBuffer - undo/redo with deleteForward" {
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("ello", out_buffer[0..written]);
 
-    // Undo delete forward
     _ = try eb.undo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
@@ -196,11 +182,9 @@ test "EditBuffer - lineCount after undo/redo" {
     try eb.insertText("\nLine 2\nLine 3");
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 
-    // Undo
     _ = try eb.undo();
     try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().lineCount());
 
-    // Redo
     _ = try eb.redo();
     try std.testing.expectEqual(@as(u32, 3), eb.getTextBuffer().lineCount());
 }
@@ -221,7 +205,6 @@ test "EditBuffer - clearHistory" {
 
     try std.testing.expect(eb.canUndo());
 
-    // Clear history
     eb.clearHistory();
 
     try std.testing.expect(!eb.canUndo());
@@ -239,7 +222,6 @@ test "EditBuffer - undo history branching" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Create initial state
     try eb.insertText("State A");
 
     try eb.insertText(" -> B");
@@ -248,7 +230,6 @@ test "EditBuffer - undo history branching" {
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("State A -> B", out_buffer[0..written]);
 
-    // Undo to state A
     _ = try eb.undo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("State A", out_buffer[0..written]);
@@ -259,7 +240,6 @@ test "EditBuffer - undo history branching" {
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("State A -> C", out_buffer[0..written]);
 
-    // Undo to state A
     _ = try eb.undo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("State A", out_buffer[0..written]);
@@ -283,7 +263,6 @@ test "EditBuffer - multiple undo/redo operations" {
 
     var out_buffer: [100]u8 = undefined;
 
-    // Build up a series of edits - each auto-stores undo
     try eb.insertText("A");
 
     try eb.insertText("B");
@@ -293,7 +272,6 @@ test "EditBuffer - multiple undo/redo operations" {
     var written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("ABC", out_buffer[0..written]);
 
-    // Undo twice
     _ = try eb.undo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("AB", out_buffer[0..written]);
@@ -302,7 +280,6 @@ test "EditBuffer - multiple undo/redo operations" {
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("A", out_buffer[0..written]);
 
-    // Redo twice
     _ = try eb.redo();
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("AB", out_buffer[0..written]);

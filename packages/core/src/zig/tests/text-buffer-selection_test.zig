@@ -604,7 +604,7 @@ test "Selection - with graphemes" {
     try std.testing.expect(std.mem.indexOf(u8, text, "🌍") != null);
 }
 
-test "Selection - wide emoji at boundary (reproduces TypeScript test)" {
+test "Selection - wide emoji at boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 

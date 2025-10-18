@@ -1,7 +1,6 @@
 const std = @import("std");
 const rope_mod = @import("../rope.zig");
 
-// Simple test item type
 const TestItem = struct {
     value: u32,
 
@@ -14,11 +13,9 @@ const TestItem = struct {
     }
 };
 
-/// Verify rope structural invariants
 fn verifyInvariants(rope: *const rope_mod.Rope(TestItem)) !void {
     const count = rope.count();
 
-    // Collect all items via walk
     var walked_count: u32 = 0;
     const Context = struct {
         count: *u32,
@@ -36,7 +33,6 @@ fn verifyInvariants(rope: *const rope_mod.Rope(TestItem)) !void {
     var ctx = Context{ .count = &walked_count };
     try rope.walk(&ctx, Context.walker);
 
-    // Count must match walked count
     try std.testing.expectEqual(count, walked_count);
 
     // Verify depth is logarithmic (allow slack for imbalance and sequential inserts)
@@ -58,25 +54,24 @@ test "Rope fuzz - random insert/delete sequence" {
     var prng = std.Random.DefaultPrng.init(42);
     const random = prng.random();
 
-    // Perform 100 random operations
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const op = random.intRangeAtMost(u8, 0, 2);
         const current_count = rope.count();
 
         switch (op) {
-            0 => { // Insert
+            0 => {
                 const pos = if (current_count > 0) random.intRangeAtMost(u32, 0, current_count) else 0;
                 const value = random.int(u32);
                 try rope.insert(pos, .{ .value = value });
             },
-            1 => { // Delete
-                if (current_count > 1) { // Keep at least empty item
+            1 => {
+                if (current_count > 1) {
                     const pos = random.intRangeAtMost(u32, 0, current_count - 1);
                     try rope.delete(pos);
                 }
             },
-            2 => { // Replace
+            2 => {
                 if (current_count > 0) {
                     const pos = random.intRangeAtMost(u32, 0, current_count - 1);
                     const value = random.int(u32);
@@ -86,13 +81,11 @@ test "Rope fuzz - random insert/delete sequence" {
             else => unreachable,
         }
 
-        // Verify invariants every 10 operations
         if (i % 10 == 0) {
             try verifyInvariants(&rope);
         }
     }
 
-    // Final verification
     try verifyInvariants(&rope);
 }
 
@@ -106,14 +99,13 @@ test "Rope fuzz - random bulk operations" {
     var prng = std.Random.DefaultPrng.init(123);
     const random = prng.random();
 
-    // Perform 50 random bulk operations
     var i: usize = 0;
     while (i < 50) : (i += 1) {
         const op = random.intRangeAtMost(u8, 0, 3);
         const current_count = rope.count();
 
         switch (op) {
-            0 => { // Insert slice
+            0 => {
                 const slice_len = random.intRangeAtMost(u8, 1, 10);
                 var items: [10]TestItem = undefined;
                 for (items[0..slice_len]) |*item| {
@@ -122,21 +114,21 @@ test "Rope fuzz - random bulk operations" {
                 const pos = if (current_count > 0) random.intRangeAtMost(u32, 0, current_count) else 0;
                 try rope.insert_slice(pos, items[0..slice_len]);
             },
-            1 => { // Delete range
+            1 => {
                 if (current_count > 2) {
                     const start = random.intRangeAtMost(u32, 0, current_count - 2);
                     const end = random.intRangeAtMost(u32, start + 1, current_count);
                     try rope.delete_range(start, end);
                 }
             },
-            2 => { // Split and concat
+            2 => {
                 if (current_count > 1) {
                     const split_pos = random.intRangeAtMost(u32, 1, current_count - 1);
                     var right_half = try rope.split(split_pos);
                     try rope.concat(&right_half);
                 }
             },
-            3 => { // Concat with new rope
+            3 => {
                 const new_len = random.intRangeAtMost(u8, 1, 5);
                 var items: [5]TestItem = undefined;
                 for (items[0..new_len]) |*item| {
@@ -148,13 +140,11 @@ test "Rope fuzz - random bulk operations" {
             else => unreachable,
         }
 
-        // Verify invariants every 5 operations
         if (i % 5 == 0) {
             try verifyInvariants(&rope);
         }
     }
 
-    // Final verification
     try verifyInvariants(&rope);
 }
 
@@ -165,7 +155,6 @@ test "Rope fuzz - stress test with many items" {
     const RopeType = rope_mod.Rope(TestItem);
     var rope = try RopeType.init(arena.allocator());
 
-    // Build up a large rope
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
         try rope.append(.{ .value = i });
@@ -173,7 +162,6 @@ test "Rope fuzz - stress test with many items" {
 
     try verifyInvariants(&rope);
 
-    // Perform random operations on large rope
     var prng = std.Random.DefaultPrng.init(789);
     const random = prng.random();
 
@@ -183,13 +171,13 @@ test "Rope fuzz - stress test with many items" {
         const current_count = rope.count();
 
         switch (op) {
-            0 => { // Random delete
+            0 => {
                 if (current_count > 100) {
                     const pos = random.intRangeAtMost(u32, 0, current_count - 1);
                     try rope.delete(pos);
                 }
             },
-            1 => { // Random insert
+            1 => {
                 const pos = random.intRangeAtMost(u32, 0, current_count);
                 try rope.insert(pos, .{ .value = random.int(u32) });
             },
@@ -197,10 +185,8 @@ test "Rope fuzz - stress test with many items" {
         }
     }
 
-    // Final verification
     try verifyInvariants(&rope);
 
-    // Verify depth is still reasonable after many operations
     const depth = rope.root.depth();
     const count = rope.count();
     const max_expected_depth: u32 = @as(u32, @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(count)))) * 4.0));
@@ -214,7 +200,6 @@ test "Rope fuzz - positional operations" {
     const RopeType = rope_mod.Rope(TestItem);
     var rope = try RopeType.init(arena.allocator());
 
-    // Build initial rope
     var i: u32 = 0;
     while (i < 50) : (i += 1) {
         try rope.append(.{ .value = i });
@@ -223,7 +208,6 @@ test "Rope fuzz - positional operations" {
     var prng = std.Random.DefaultPrng.init(456);
     const random = prng.random();
 
-    // Track a position and do operations near it
     var position: u32 = 25;
 
     var j: usize = 0;
@@ -231,16 +215,16 @@ test "Rope fuzz - positional operations" {
         const op = random.intRangeAtMost(u8, 0, 2);
 
         switch (op) {
-            0 => { // Insert at position
+            0 => {
                 try rope.insert(position, .{ .value = random.int(u32) });
-                position = position + 1; // Move past inserted item
+                position = position + 1;
             },
-            1 => { // Delete at position
+            1 => {
                 if (position < rope.count()) {
                     try rope.delete(position);
                 }
             },
-            2 => { // Replace at position
+            2 => {
                 if (position < rope.count()) {
                     try rope.replace(position, .{ .value = random.int(u32) });
                 }
@@ -248,7 +232,6 @@ test "Rope fuzz - positional operations" {
             else => unreachable,
         }
 
-        // Occasionally move position
         if (random.boolean() and rope.count() > 0) {
             position = random.intRangeAtMost(u32, 0, rope.count() - 1);
         }
