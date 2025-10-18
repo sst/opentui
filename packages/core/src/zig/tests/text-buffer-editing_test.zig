@@ -2,7 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
 
-const TextBuffer = text_buffer.TextBufferArray;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
 
 test "TextBuffer coords - addHighlightByCoords" {
     const pool = gp.initGlobalPool(std.testing.allocator);

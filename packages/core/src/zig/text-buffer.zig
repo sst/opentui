@@ -31,10 +31,6 @@ const SyntaxStyle = ss.SyntaxStyle;
 // Main TextBuffer type - unified rope architecture
 pub const TextBuffer = UnifiedTextBuffer;
 
-// Legacy type aliases for FFI compatibility
-pub const TextBufferArray = UnifiedTextBuffer;
-pub const TextBufferRope = UnifiedTextBuffer;
-
 /// FFI-compatible styled chunk structure
 /// Used for passing styled text from TypeScript/C and in benchmarks
 pub const StyledChunk = extern struct {

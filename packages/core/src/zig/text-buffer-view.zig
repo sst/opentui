@@ -85,10 +85,6 @@ pub const LocalSelection = struct {
 /// Main TextBufferView type - unified architecture
 pub const TextBufferView = UnifiedTextBufferView;
 
-// Legacy type aliases for FFI/test compatibility
-pub const TextBufferViewArray = UnifiedTextBufferView;
-pub const TextBufferViewRope = UnifiedTextBufferView;
-
 /// TextBufferView for UnifiedTextBuffer
 pub const UnifiedTextBufferView = struct {
     const Self = @This();

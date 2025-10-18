@@ -5,8 +5,8 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
 const OptimizedBuffer = buffer_mod.OptimizedBuffer;
-const TextBuffer = text_buffer.TextBufferArray;
-const TextBufferView = text_buffer_view.TextBufferViewArray;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 
 test "OptimizedBuffer - init and deinit" {

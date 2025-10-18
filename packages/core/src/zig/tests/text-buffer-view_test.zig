@@ -3,8 +3,8 @@ const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
-const TextBuffer = text_buffer.TextBufferArray;
-const TextBufferView = text_buffer_view.TextBufferViewArray;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = text_buffer.RGBA;
 
 // ===== Text Wrapping Tests =====

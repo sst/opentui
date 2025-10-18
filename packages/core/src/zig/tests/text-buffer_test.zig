@@ -4,7 +4,7 @@ const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 
-const TextBuffer = text_buffer.TextBufferArray;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
 const RGBA = text_buffer.RGBA;
 const Highlight = text_buffer.Highlight;
 
