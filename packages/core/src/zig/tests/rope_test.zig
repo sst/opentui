@@ -2727,3 +2727,201 @@ test "Rope - marker cache MUST update after delete operations" {
     std.debug.print("Expected newline 1 to be at leaf_index 3, got {}\n", .{nl1_after.?.leaf_index});
     try std.testing.expectEqual(@as(u32, 3), nl1_after.?.leaf_index);
 }
+
+//===== Configurable Undo Depth Tests =====
+
+test "Rope - weight-based balancing with custom weight function" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    // Create items with different sizes
+    const items = [_]WeightedItem{
+        .{ .value = 1, .weight = 100 }, // Large item
+        .{ .value = 2, .weight = 10 }, // Small item
+        .{ .value = 3, .weight = 200 }, // Very large item
+        .{ .value = 4, .weight = 50 }, // Medium item
+    };
+
+    var rope = try WeightedRope.from_slice(arena.allocator(), &items);
+
+    // Check that metrics are tracked
+    const metrics = rope.root.metrics();
+    try std.testing.expectEqual(@as(u32, 4), metrics.count);
+    try std.testing.expectEqual(@as(u32, 360), metrics.custom.total_weight);
+    try std.testing.expectEqual(@as(u32, 360), metrics.weight()); // Should use weight()
+}
+
+test "Rope - unlimited undo depth by default" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    // Store many undo states
+    for (0..100) |i| {
+        try rope.store_undo("state");
+        try rope.append(.{ .value = @intCast(i) });
+    }
+
+    // Should have all 100 states
+    try std.testing.expectEqual(@as(usize, 100), rope.undo_depth);
+    try std.testing.expect(rope.can_undo());
+}
+
+test "Rope - max_undo_depth limits history" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.initWithConfig(arena.allocator(), .{ .max_undo_depth = 10 });
+
+    // Store 20 undo states
+    for (0..20) |i| {
+        try rope.store_undo("state");
+        try rope.append(.{ .value = @intCast(i) });
+    }
+
+    // Should only keep 10 states
+    try std.testing.expectEqual(@as(usize, 10), rope.undo_depth);
+    try std.testing.expect(rope.can_undo());
+
+    // Can undo at most 10 times (may be less due to how history works)
+    var undo_count: usize = 0;
+    while (rope.can_undo()) : (undo_count += 1) {
+        _ = rope.undo("current") catch break;
+    }
+    // Should have undone at least some operations, but not more than 10
+    try std.testing.expect(undo_count > 0);
+    try std.testing.expect(undo_count <= 10);
+}
+
+test "Rope - trimUndoHistory works correctly" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.initWithConfig(arena.allocator(), .{ .max_undo_depth = 5 });
+
+    // Add states one by one
+    for (0..10) |i| {
+        try rope.store_undo("state");
+        try rope.append(.{ .value = @intCast(i) });
+
+        // Depth should never exceed 5
+        try std.testing.expect(rope.undo_depth <= 5);
+    }
+
+    try std.testing.expectEqual(@as(usize, 5), rope.undo_depth);
+}
+
+test "Rope - weight-based join_balanced respects weight ratio" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    // Create two ropes with very different weights
+    const left_items = [_]WeightedItem{
+        .{ .value = 1, .weight = 1000 },
+        .{ .value = 2, .weight = 1000 },
+        .{ .value = 3, .weight = 1000 },
+    };
+    var rope_left = try WeightedRope.from_slice(arena.allocator(), &left_items);
+
+    const right_items = [_]WeightedItem{
+        .{ .value = 4, .weight = 100 },
+    };
+    const rope_right = try WeightedRope.from_slice(arena.allocator(), &right_items);
+
+    // Concat should use weight-based balancing
+    try rope_left.concat(&rope_right);
+
+    try std.testing.expectEqual(@as(u32, 4), rope_left.count());
+
+    // Verify tree is still balanced despite uneven item counts
+    try std.testing.expect(rope_left.root.is_balanced());
+}
+
+test "Rope - integration weight-based balancing with history limits" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var rope = try WeightedRope.initWithConfig(arena.allocator(), .{ .max_undo_depth = 5 });
+
+    // Build rope with weighted items
+    var expected_count: u32 = 0;
+    for (0..10) |i| {
+        try rope.store_undo("insert");
+        try rope.append(.{
+            .value = @intCast(i),
+            .weight = @intCast((i + 1) * 10),
+        });
+        expected_count += 1;
+    }
+
+    try std.testing.expectEqual(expected_count, rope.count());
+
+    // Insert at position 5
+    try rope.insert(5, .{ .value = 999, .weight = 50 });
+    expected_count += 1;
+
+    try std.testing.expectEqual(expected_count, rope.count());
+
+    // History should be limited to 5
+    try std.testing.expect(rope.undo_depth <= 5);
+
+    // Tree should remain balanced
+    try std.testing.expect(rope.root.is_balanced());
+}
+
+test "Rope - integration all features working together" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.initWithConfig(arena.allocator(), .{ .max_undo_depth = 3 });
+
+    // Initial state
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
+
+    // Add items
+    try rope.store_undo("empty");
+    try rope.append(.{ .value = 1 });
+
+    try rope.store_undo("one");
+    try rope.append(.{ .value = 2 });
+
+    try rope.store_undo("two");
+    try rope.append(.{ .value = 3 });
+
+    try rope.store_undo("three");
+    try rope.append(.{ .value = 4 });
+
+    // Should have 4 items now
+    try std.testing.expectEqual(@as(u32, 4), rope.count());
+
+    // History limited to 3
+    try std.testing.expectEqual(@as(usize, 3), rope.undo_depth);
+
+    // Get value at index 2
+    const val = rope.get(2);
+    try std.testing.expectEqual(@as(u32, 3), val.?.value);
+
+    // Undo works
+    _ = try rope.undo("current");
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+
+    // No sentinels in walk
+    const Context = struct {
+        count: u32 = 0,
+        fn walker(ctx: *anyopaque, data: *const SimpleItem, index: u32) RopeType.Node.WalkerResult {
+            _ = data;
+            _ = index;
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.count += 1;
+            return .{};
+        }
+    };
+    var ctx = Context{};
+    try rope.walk(&ctx, Context.walker);
+    try std.testing.expectEqual(@as(u32, 3), ctx.count);
+}
