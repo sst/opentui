@@ -1794,3 +1794,209 @@ test "EditBuffer - delete selection via offset conversion (mimics TypeScript pat
     // "Line 1\nL" is 8 chars, so we should have "ine 2\nLine 3" left
     try std.testing.expectEqualStrings("ine 2\nLine 3", out_buffer[0..written]);
 }
+
+test "EditBuffer - goto end and insert" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("Hello");
+    try eb.gotoLine(9999); // Move to end
+    try eb.insertText("!");
+
+    var out_buffer: [100]u8 = undefined;
+    const len = eb.getText(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("Hello!", text);
+}
+
+test "EditBuffer - end insert text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("Hello");
+    try eb.gotoLine(9999); // Move to end
+    try eb.insertText(" World");
+
+    var out_buffer: [100]u8 = undefined;
+    const len = eb.getText(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("Hello World", text);
+}
+
+test "EditBuffer - backspace at end" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("Hello");
+    try eb.gotoLine(9999); // Move to end
+    try eb.backspace();
+
+    var out_buffer: [100]u8 = undefined;
+    const len = eb.getText(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("Hell", text);
+}
+
+test "EditBuffer - newline at end" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("Hello");
+    try eb.gotoLine(9999); // Move to end
+    try eb.insertText("\n");
+
+    var out_buffer: [100]u8 = undefined;
+    const len = eb.getText(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("Hello\n", text);
+}
+
+test "EditBuffer - delete line in 3-line doc" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("Line 1\nLine 2\nLine 3");
+    try eb.gotoLine(1); // Go to line 2 (0-indexed)
+    try eb.deleteLine();
+
+    var out_buffer: [100]u8 = undefined;
+    const len = eb.getText(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("Line 1\nLine 3", text);
+}
+
+test "EditBuffer - clamp setCursor to line width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("ABC");
+    try eb.setCursor(0, 9999); // Try to set to col 9999
+
+    const pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 0), pos.line);
+    try std.testing.expectEqual(@as(u32, 3), pos.visual_col); // Should clamp to 3 (line width)
+}
+
+test "EditBuffer - grapheme movement emoji" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // "A🌟B" - emoji has width 2
+    try eb.setText("A🌟B");
+    try eb.setCursor(0, 0); // Start at A
+
+    // Move right from A (col 0) -> should be at col 1
+    eb.moveRight();
+    var pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 1), pos.visual_col);
+
+    // Move right from col 1 (emoji) -> should advance by 2 to col 3
+    eb.moveRight();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 3), pos.visual_col);
+
+    // Move left from col 3 -> should go back by emoji width (2) to col 1
+    eb.moveLeft();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 1), pos.visual_col);
+
+    // Move left from col 1 -> should go back by A width (1) to col 0
+    eb.moveLeft();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 0), pos.visual_col);
+}
+
+test "EditBuffer - grapheme movement ASCII" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.setText("ABC");
+    try eb.setCursor(0, 0);
+
+    // Move right 3 times
+    eb.moveRight();
+    var pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 1), pos.visual_col);
+
+    eb.moveRight();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 2), pos.visual_col);
+
+    eb.moveRight();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 3), pos.visual_col);
+
+    // Move left 3 times
+    eb.moveLeft();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 2), pos.visual_col);
+
+    eb.moveLeft();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 1), pos.visual_col);
+
+    eb.moveLeft();
+    pos = eb.getCursorPosition();
+    try std.testing.expectEqual(@as(u32, 0), pos.visual_col);
+}
