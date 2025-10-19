@@ -426,14 +426,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Note: In a real scenario, the TextRenderable would handle width constraints
-      // For this test, we're just verifying that selection works with multi-line content
-
       await currentMouse.drag(text.x, text.y, text.x + 10, text.y + 2)
       await renderOnce()
 
-      // The exact start/end positions will depend on how text wraps,
-      // but we verify the selection exists and has valid bounds
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
       expect(selection!.start).toBeGreaterThanOrEqual(0)
@@ -1141,9 +1136,6 @@ describe("TextRenderable Selection", () => {
       expect(chunks[1].text).toBe(" Change")
     })
 
-    // NOTE: This was meant to cover incremental updates,
-    // but currently when the TextNode tree changes it just replaces the whole text content.
-    // Should be optimised at some point.
     it("should handle TextNode commands with multiple operations per render", async () => {
       const { text, root } = await createTextRenderable(currentRenderer, {
         content: "",
@@ -1161,16 +1153,12 @@ describe("TextRenderable Selection", () => {
 
       text.add(node1)
       text.add(node2)
-      text.insertBefore(node3, node1) // Insert before node1, so order will be: node3, node1, node2
+      text.insertBefore(node3, node1)
 
-      // Modify node2 after adding - this should generate additional commands
-      // Note: This test may fail if modifications after adding don't get tracked
       node2.add(" Modified")
 
       await renderOnce()
 
-      // The order should be: Third (inserted before node1), First, Second Modified
-      // TODO: This may need to be updated based on actual behavior
       expect(text.plainText).toBe("ThirdFirstSecond Modified")
     })
   })

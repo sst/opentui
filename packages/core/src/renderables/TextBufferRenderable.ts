@@ -74,8 +74,6 @@ export abstract class TextBufferRenderable extends Renderable {
       this.updateWrapWidth(this.width)
     }
 
-    // Don't set viewport in constructor - let yoga measure first, then onResize will set it
-
     this.updateTextInfo()
   }
 
