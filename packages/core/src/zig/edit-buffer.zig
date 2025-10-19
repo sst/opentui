@@ -83,6 +83,7 @@ pub const EditBuffer = struct {
     cursors: std.ArrayListUnmanaged(Cursor),
     allocator: Allocator,
     events: event_emitter.EventEmitter(EditBufferEvent),
+    segment_splitter: UnifiedRope.Node.LeafSplitFn,
 
     pub fn init(
         allocator: Allocator,
@@ -111,6 +112,7 @@ pub const EditBuffer = struct {
             .cursors = cursors,
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
+            .segment_splitter = .{ .ctx = self, .splitFn = splitSegmentCallback },
         };
 
         // TODO: Rope init should be done by the text buffer
@@ -250,6 +252,7 @@ pub const EditBuffer = struct {
     /// Split a TextChunk at a specific weight (display width)
     /// Returns left and right chunks
     /// Uses optimized utf8.zig SIMD methods for fast byte offset lookup
+    /// TODO: This method should live in text-buffer-segment.zig and the Rope should take it as comptime param
     fn splitChunkAtWeight(
         self: *EditBuffer,
         chunk: *const TextChunk,
@@ -288,14 +291,6 @@ pub const EditBuffer = struct {
         );
 
         return .{ .left = left_chunk, .right = right_chunk };
-    }
-
-    /// Create a LeafSplitFn callback for splitting segments
-    pub fn makeSegmentSplitter(self: *EditBuffer) UnifiedRope.Node.LeafSplitFn {
-        return .{
-            .ctx = self,
-            .splitFn = splitSegmentCallback,
-        };
     }
 
     fn splitSegmentCallback(
@@ -380,8 +375,7 @@ pub const EditBuffer = struct {
         }
 
         if (segments.items.len > 0) {
-            const splitter = self.makeSegmentSplitter();
-            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &splitter);
+            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &self.segment_splitter);
 
             // Update char count
             self.tb.char_count += inserted_width;
@@ -429,8 +423,7 @@ pub const EditBuffer = struct {
 
         // Delete the range using rope's deleteRangeByWeight with splitter
         // The rope handles boundary normalization automatically via joinWithBoundary
-        const splitter = self.makeSegmentSplitter();
-        try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &splitter);
+        try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &self.segment_splitter);
 
         // Update char count
         if (self.tb.char_count >= deleted_width) {
