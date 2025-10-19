@@ -49,29 +49,29 @@ describe("TextareaRenderable", () => {
 
     it("should initialize with content", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
 
-      expect(editor.content).toBe("Hello World")
+      expect(editor.value).toBe("Hello World")
       expect(editor.plainText).toBe("Hello World")
     })
 
     it("should initialize with empty content", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
 
-      expect(editor.content).toBe("")
+      expect(editor.value).toBe("")
       expect(editor.plainText).toBe("")
     })
 
     it("should initialize with multi-line content", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -83,7 +83,7 @@ describe("TextareaRenderable", () => {
   describe("Focus Management", () => {
     it("should handle focus and blur", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "test",
+        value: "test",
         width: 40,
         height: 10,
       })
@@ -101,7 +101,7 @@ describe("TextareaRenderable", () => {
   describe("Text Insertion via Methods", () => {
     it("should insert single character", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -114,7 +114,7 @@ describe("TextareaRenderable", () => {
 
     it("should insert text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -127,7 +127,7 @@ describe("TextareaRenderable", () => {
 
     it("should insert text in middle", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "HelloWorld",
+        value: "HelloWorld",
         width: 40,
         height: 10,
       })
@@ -146,7 +146,7 @@ describe("TextareaRenderable", () => {
   describe("Text Deletion via Methods", () => {
     it("should delete character at cursor", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -162,7 +162,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete character backward", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -175,7 +175,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete entire line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -188,7 +188,7 @@ describe("TextareaRenderable", () => {
 
     it.skip("should delete to line end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -206,7 +206,7 @@ describe("TextareaRenderable", () => {
   describe("Cursor Movement via Methods", () => {
     it("should move cursor left and right", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABCDE",
+        value: "ABCDE",
         width: 40,
         height: 10,
       })
@@ -226,7 +226,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor up and down", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -245,7 +245,7 @@ describe("TextareaRenderable", () => {
 
     it("should move to line start and end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -260,7 +260,7 @@ describe("TextareaRenderable", () => {
 
     it("should move to buffer start and end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -277,7 +277,7 @@ describe("TextareaRenderable", () => {
 
     it("should goto specific line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 0\nLine 1\nLine 2",
+        value: "Line 0\nLine 1\nLine 2",
         width: 40,
         height: 10,
       })
@@ -293,7 +293,7 @@ describe("TextareaRenderable", () => {
   describe("Keyboard Input - Character Insertion", () => {
     it("should insert character when key is pressed", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -309,7 +309,7 @@ describe("TextareaRenderable", () => {
 
     it("should insert multiple characters in sequence", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -327,7 +327,7 @@ describe("TextareaRenderable", () => {
 
     it("should insert space character", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -347,7 +347,7 @@ describe("TextareaRenderable", () => {
 
     it("should not insert when not focused", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -363,7 +363,7 @@ describe("TextareaRenderable", () => {
   describe("Keyboard Input - Arrow Keys", () => {
     it("should move cursor left with arrow key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC",
+        value: "ABC",
         width: 40,
         height: 10,
       })
@@ -381,7 +381,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor right with arrow key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC",
+        value: "ABC",
         width: 40,
         height: 10,
       })
@@ -398,7 +398,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor up and down with arrow keys", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -418,7 +418,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor smoothly from end of one line to start of next", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC\nDEF",
+        value: "ABC\nDEF",
         width: 40,
         height: 10,
       })
@@ -443,7 +443,7 @@ describe("TextareaRenderable", () => {
   describe("Keyboard Input - Backspace and Delete", () => {
     it("should handle backspace key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -460,7 +460,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle delete key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -474,7 +474,7 @@ describe("TextareaRenderable", () => {
 
     it("should join lines when backspace at start of line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello\nWorld",
+        value: "Hello\nWorld",
         width: 40,
         height: 10,
       })
@@ -492,7 +492,7 @@ describe("TextareaRenderable", () => {
 
     it("should remove empty line when backspace at start", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello\n\nWorld",
+        value: "Hello\n\nWorld",
         width: 40,
         height: 10,
       })
@@ -508,7 +508,7 @@ describe("TextareaRenderable", () => {
 
     it("should join lines with content when backspace at start", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line1\nLine2\nLine3",
+        value: "Line1\nLine2\nLine3",
         width: 40,
         height: 10,
       })
@@ -526,7 +526,7 @@ describe("TextareaRenderable", () => {
 
     it("should not do anything when backspace at start of first line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello\nWorld",
+        value: "Hello\nWorld",
         width: 40,
         height: 10,
       })
@@ -543,7 +543,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle multiple backspaces joining multiple lines", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "A\nB\nC\nD",
+        value: "A\nB\nC\nD",
         width: 40,
         height: 10,
       })
@@ -586,7 +586,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle backspace after typing on new line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -614,7 +614,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor right after joining lines with backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello\nWorld",
+        value: "Hello\nWorld",
         width: 40,
         height: 10,
       })
@@ -643,7 +643,7 @@ describe("TextareaRenderable", () => {
 
     it("should move right one position after join", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AB\nCD",
+        value: "AB\nCD",
         width: 40,
         height: 10,
       })
@@ -663,7 +663,7 @@ describe("TextareaRenderable", () => {
 
     it("should advance cursor by 1 at every position after join", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABCDE\nFGHIJ",
+        value: "ABCDE\nFGHIJ",
         width: 40,
         height: 10,
       })
@@ -689,7 +689,7 @@ describe("TextareaRenderable", () => {
 
     it("should move right after backspace join - setText content", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC\nDEF",
+        value: "ABC\nDEF",
         width: 40,
         height: 10,
       })
@@ -706,7 +706,7 @@ describe("TextareaRenderable", () => {
 
     it("should move right after backspace join - typed content", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -737,7 +737,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor left after joining lines with backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC\nDEF",
+        value: "ABC\nDEF",
         width: 40,
         height: 10,
       })
@@ -768,7 +768,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor left across chunk boundaries after joining lines", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC\nDEF",
+        value: "ABC\nDEF",
         width: 40,
         height: 10,
       })
@@ -804,7 +804,7 @@ describe("TextareaRenderable", () => {
   describe("Keyboard Input - Enter/Return", () => {
     it("should insert newline with Enter key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "HelloWorld",
+        value: "HelloWorld",
         width: 40,
         height: 10,
       })
@@ -822,7 +822,7 @@ describe("TextareaRenderable", () => {
 
     it("should insert newline at end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -836,7 +836,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle multiple newlines", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line1",
+        value: "Line1",
         width: 40,
         height: 10,
       })
@@ -858,7 +858,7 @@ describe("TextareaRenderable", () => {
   describe("Keyboard Input - Home and End", () => {
     it("should move to line start with Home", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -873,7 +873,7 @@ describe("TextareaRenderable", () => {
 
     it("should move to line end with End", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -889,7 +889,7 @@ describe("TextareaRenderable", () => {
   describe("Keyboard Input - Control Commands", () => {
     it("should move to buffer start with Ctrl+A", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -905,7 +905,7 @@ describe("TextareaRenderable", () => {
 
     it("should move to buffer end with Ctrl+E", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -919,7 +919,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete line with Ctrl+D", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -933,7 +933,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete to line end with Ctrl+K", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -951,7 +951,7 @@ describe("TextareaRenderable", () => {
   describe("Chunk Boundary Navigation", () => {
     it("should move cursor across chunks created by insertions", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -993,7 +993,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor left across multiple chunks", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -1027,7 +1027,7 @@ describe("TextareaRenderable", () => {
 
     it("should move cursor right across all chunks to end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AB",
+        value: "AB",
         width: 40,
         height: 10,
       })
@@ -1055,7 +1055,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle cursor movement after multiple insertions and deletions", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Start",
+        value: "Start",
         width: 40,
         height: 10,
       })
@@ -1092,7 +1092,7 @@ describe("TextareaRenderable", () => {
   describe("Complex Editing Scenarios", () => {
     it("should handle typing, navigation, and deletion", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -1125,7 +1125,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle newlines and multi-line editing", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -1149,7 +1149,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle insert and delete in sequence", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -1171,19 +1171,19 @@ describe("TextareaRenderable", () => {
   describe("Content Property", () => {
     it("should update content programmatically", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Initial",
+        value: "Initial",
         width: 40,
         height: 10,
       })
 
-      editor.content = "Updated"
-      expect(editor.content).toBe("Updated")
+      editor.value = "Updated"
+      expect(editor.value).toBe("Updated")
       expect(editor.plainText).toBe("Updated")
     })
 
     it("should reset cursor when content changes", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -1191,7 +1191,7 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(9999) // Move to end
       expect(editor.cursor.visualColumn).toBe(11)
 
-      editor.content = "New"
+      editor.value = "New"
       // Cursor should reset to start
       expect(editor.cursor.line).toBe(0)
       expect(editor.cursor.visualColumn).toBe(0)
@@ -1202,7 +1202,7 @@ describe("TextareaRenderable", () => {
     it("should handle wrap mode property", async () => {
       const longText = "A".repeat(100)
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: longText,
+        value: longText,
         width: 20,
         height: 10,
         wrapMode: "word",
@@ -1220,7 +1220,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle wrapMode changes", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello wonderful world",
+        value: "Hello wonderful world",
         width: 12,
         height: 10,
         wrapMode: "char",
@@ -1236,7 +1236,7 @@ describe("TextareaRenderable", () => {
   describe("Unicode Support", () => {
     it("should handle emoji insertion", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -1250,7 +1250,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle CJK characters", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -1264,7 +1264,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle emoji cursor movement", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "A🌟B",
+        value: "A🌟B",
         width: 40,
         height: 10,
       })
@@ -1286,7 +1286,7 @@ describe("TextareaRenderable", () => {
   describe("Error Handling", () => {
     it("should throw error when using destroyed editor", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -1302,7 +1302,7 @@ describe("TextareaRenderable", () => {
   describe("Segfault Reproduction", () => {
     it("SEGFAULT TEST: insert text with full render like demo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -1327,7 +1327,7 @@ describe("TextareaRenderable", () => {
 
     it("SEGFAULT TEST: rapid edits with rendering", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -1350,7 +1350,7 @@ describe("TextareaRenderable", () => {
 
     it("SEGFAULT TEST: newline with rendering", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -1372,7 +1372,7 @@ describe("TextareaRenderable", () => {
 
     it("SEGFAULT TEST: backspace with rendering", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -1394,7 +1394,7 @@ describe("TextareaRenderable", () => {
 
     it("SEGFAULT TEST: draw, edit, draw pattern", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -1418,7 +1418,7 @@ describe("TextareaRenderable", () => {
 
     it("SEGFAULT TEST: render after text buffer modification", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line1\nLine2\nLine3",
+        value: "Line1\nLine2\nLine3",
         width: 40,
         height: 10,
       })
@@ -1451,7 +1451,7 @@ describe("TextareaRenderable", () => {
   describe("BUG REPRODUCTION: Type, backspace, type again", () => {
     it("BUG: cursor position after join, insert, backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABC\nDEF",
+        value: "ABC\nDEF",
         width: 40,
         height: 10,
       })
@@ -1488,7 +1488,7 @@ describe("TextareaRenderable", () => {
 
     it("BUG: typing after backspace inserts old characters", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -1518,7 +1518,7 @@ describe("TextareaRenderable", () => {
 
     it("BUG: multiple backspaces then typing", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -1552,7 +1552,7 @@ describe("TextareaRenderable", () => {
 
     it("BUG: type, backspace all, type new text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -1590,7 +1590,7 @@ describe("TextareaRenderable", () => {
     it("should scroll viewport down when cursor moves below visible area", async () => {
       // Create editor with small viewport
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9",
+        value: "Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9",
         width: 40,
         height: 5, // Only 5 lines visible
       })
@@ -1614,7 +1614,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport up when cursor moves above visible area", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9",
+        value: "Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9",
         width: 40,
         height: 5,
       })
@@ -1638,7 +1638,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport when using arrow keys to move beyond visible area", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 5,
       })
@@ -1660,7 +1660,7 @@ describe("TextareaRenderable", () => {
 
     it("should maintain scroll margin when moving cursor", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 10,
         scrollMargin: 0.2, // 20% = 2 lines margin
@@ -1681,7 +1681,7 @@ describe("TextareaRenderable", () => {
     it("should handle viewport scrolling with text wrapping", async () => {
       const longLine = "word ".repeat(50) // Creates line that will wrap
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 10 }, (_, i) => (i === 5 ? longLine : `Line ${i}`)).join("\n"),
+        value: Array.from({ length: 10 }, (_, i) => (i === 5 ? longLine : `Line ${i}`)).join("\n"),
         width: 20,
         height: 5,
         wrapMode: "word",
@@ -1707,7 +1707,7 @@ describe("TextareaRenderable", () => {
 
     it("should verify viewport follows cursor to line 10", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 8,
       })
@@ -1732,7 +1732,7 @@ describe("TextareaRenderable", () => {
 
     it("should track viewport offset as cursor moves through document", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
         width: 30,
         height: 5,
       })
@@ -1763,7 +1763,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport when cursor moves with Page Up/Page Down", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 30 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 30 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 10,
       })
@@ -1787,7 +1787,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport down when pressing Enter repeatedly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Start",
+        value: "Start",
         width: 40,
         height: 5,
       })
@@ -1819,7 +1819,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport up when pressing Backspace to delete characters and move up", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 5,
       })
@@ -1852,7 +1852,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport when typing at end creates wrapped lines beyond viewport", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Start",
+        value: "Start",
         width: 20,
         height: 5,
         wrapMode: "word",
@@ -1883,7 +1883,7 @@ describe("TextareaRenderable", () => {
 
     it("should scroll viewport when using Enter to add lines, then Backspace to remove them", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 0\nLine 1\nLine 2",
+        value: "Line 0\nLine 1\nLine 2",
         width: 40,
         height: 5,
       })
@@ -1918,7 +1918,7 @@ describe("TextareaRenderable", () => {
 
     it("should show last line at bottom of viewport with no gap", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 10 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 10 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 5,
       })
@@ -1945,7 +1945,7 @@ describe("TextareaRenderable", () => {
 
     it("should not scroll past end when document is smaller than viewport", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 0\nLine 1\nLine 2",
+        value: "Line 0\nLine 1\nLine 2",
         width: 40,
         height: 10, // Viewport bigger than content
       })
@@ -1965,7 +1965,7 @@ describe("TextareaRenderable", () => {
   describe("Selection Support", () => {
     it("should support selection via mouse drag", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -1988,7 +1988,7 @@ describe("TextareaRenderable", () => {
 
     it("should return selected text from multi-line content", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AAAA\nBBBB\nCCCC",
+        value: "AAAA\nBBBB\nCCCC",
         width: 40,
         height: 10,
         selectable: true,
@@ -2004,7 +2004,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle selection with viewport scrolling", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 5,
         selectable: true,
@@ -2037,7 +2037,7 @@ describe("TextareaRenderable", () => {
 
     it("should disable selection when selectable is false", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: false,
@@ -2055,7 +2055,7 @@ describe("TextareaRenderable", () => {
 
     it("should update selection when selectionBg/selectionFg changes", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2076,7 +2076,7 @@ describe("TextareaRenderable", () => {
 
     it("should clear selection", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2097,7 +2097,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle selection with wrapping enabled", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABCDEFGHIJKLMNOP",
+        value: "ABCDEFGHIJKLMNOP",
         width: 10,
         height: 10,
         wrapMode: "word",
@@ -2120,7 +2120,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle reverse selection (drag from end to start)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2142,7 +2142,7 @@ describe("TextareaRenderable", () => {
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2172,7 +2172,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle viewport-aware selection correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
+        value: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 5,
         selectable: true,
@@ -2209,7 +2209,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle multi-line selection with viewport scrolling", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 20 }, (_, i) => `AAAA${i}`).join("\n"),
+        value: Array.from({ length: 20 }, (_, i) => `AAAA${i}`).join("\n"),
         width: 40,
         height: 5,
         selectable: true,
@@ -2242,7 +2242,7 @@ describe("TextareaRenderable", () => {
     it("should handle horizontal scrolled selection without wrapping", async () => {
       const longLine = "A".repeat(100)
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: longLine,
+        value: longLine,
         width: 20,
         height: 5,
         wrapMode: "none", // No wrapping - enables horizontal scrolling
@@ -2280,7 +2280,7 @@ describe("TextareaRenderable", () => {
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: Array.from({ length: 15 }, (_, i) => `Line${i}`).join("\n"),
+        value: Array.from({ length: 15 }, (_, i) => `Line${i}`).join("\n"),
         width: 20,
         height: 5,
         selectable: true,
@@ -2333,7 +2333,7 @@ describe("TextareaRenderable", () => {
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AAAA\n\nBBBB\n\nCCCC",
+        value: "AAAA\n\nBBBB\n\nCCCC",
         width: 40,
         height: 10,
         selectable: true,
@@ -2382,7 +2382,7 @@ describe("TextareaRenderable", () => {
   describe("Shift+Arrow Key Selection", () => {
     it("should start selection with shift+right", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2400,7 +2400,7 @@ describe("TextareaRenderable", () => {
 
     it("should extend selection with shift+right", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2419,7 +2419,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle shift+left selection", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2440,7 +2440,7 @@ describe("TextareaRenderable", () => {
 
     it("should select with shift+down", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
         selectable: true,
@@ -2459,7 +2459,7 @@ describe("TextareaRenderable", () => {
 
     it("should select with shift+up", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
         selectable: true,
@@ -2478,7 +2478,7 @@ describe("TextareaRenderable", () => {
 
     it("should select to line start with shift+home", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2501,7 +2501,7 @@ describe("TextareaRenderable", () => {
 
     it("should select to line end with shift+end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2519,7 +2519,7 @@ describe("TextareaRenderable", () => {
 
     it("should clear selection when moving without shift", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2542,7 +2542,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete selected text with backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2568,7 +2568,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete selected text with delete key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2596,7 +2596,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete multi-line selection with backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
         selectable: true,
@@ -2625,7 +2625,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete entire line when selected with delete", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
         selectable: true,
@@ -2649,7 +2649,7 @@ describe("TextareaRenderable", () => {
 
     it("should replace selected text when typing", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2674,7 +2674,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete selected text via native deleteSelectedText API", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -2709,7 +2709,7 @@ describe("TextareaRenderable", () => {
   describe("History - Undo/Redo", () => {
     it("should undo text insertion", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2731,7 +2731,7 @@ describe("TextareaRenderable", () => {
 
     it("should redo after undo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2756,7 +2756,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle multiple undo operations", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2782,7 +2782,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle Ctrl+Z for undo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2800,7 +2800,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle Ctrl+Y for redo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2821,7 +2821,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle redo programmatically", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2841,7 +2841,7 @@ describe("TextareaRenderable", () => {
 
     it("should undo deletion", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
       })
@@ -2860,7 +2860,7 @@ describe("TextareaRenderable", () => {
 
     it("should undo newline insertion", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -2878,7 +2878,7 @@ describe("TextareaRenderable", () => {
 
     it("should restore cursor position after undo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1",
+        value: "Line 1",
         width: 40,
         height: 10,
       })
@@ -2909,7 +2909,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle undo/redo chain", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -2941,7 +2941,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle undo after deleteChar", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "ABCDE",
+        value: "ABCDE",
         width: 40,
         height: 10,
       })
@@ -2959,7 +2959,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle undo after deleteLine", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
       })
@@ -2983,7 +2983,7 @@ describe("TextareaRenderable", () => {
 
     it("should clear selection on undo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -3012,7 +3012,7 @@ describe("TextareaRenderable", () => {
   describe("Key Event Handling", () => {
     it("should only handle KeyEvents, not raw escape sequences", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -3032,7 +3032,7 @@ describe("TextareaRenderable", () => {
 
     it("should not insert control sequences into text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -3062,7 +3062,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle printable characters via handleKeyPress", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -3081,7 +3081,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle multi-byte Unicode characters (emoji, CJK)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "",
+        value: "",
         width: 40,
         height: 10,
       })
@@ -3107,7 +3107,7 @@ describe("TextareaRenderable", () => {
 
     it("should filter escape sequences when they have non-printable characters", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -3127,7 +3127,7 @@ describe("TextareaRenderable", () => {
   describe("Paste Events", () => {
     it("should paste text at cursor position", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -3142,7 +3142,7 @@ describe("TextareaRenderable", () => {
 
     it("should paste text in the middle", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "HelloWorld",
+        value: "HelloWorld",
         width: 40,
         height: 10,
       })
@@ -3159,7 +3159,7 @@ describe("TextareaRenderable", () => {
 
     it("should paste multi-line text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Start",
+        value: "Start",
         width: 40,
         height: 10,
       })
@@ -3174,7 +3174,7 @@ describe("TextareaRenderable", () => {
 
     it("should paste text at beginning of buffer", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "World",
+        value: "World",
         width: 40,
         height: 10,
       })
@@ -3189,7 +3189,7 @@ describe("TextareaRenderable", () => {
 
     it("should replace selected text when pasting", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -3214,7 +3214,7 @@ describe("TextareaRenderable", () => {
 
     it("should replace multi-line selection when pasting", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Line 1\nLine 2\nLine 3",
+        value: "Line 1\nLine 2\nLine 3",
         width: 40,
         height: 10,
         selectable: true,
@@ -3238,7 +3238,7 @@ describe("TextareaRenderable", () => {
 
     it("should replace selected text with multi-line paste", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -3262,7 +3262,7 @@ describe("TextareaRenderable", () => {
 
     it("should paste empty string without error", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -3276,7 +3276,7 @@ describe("TextareaRenderable", () => {
 
     it("should paste Unicode characters (emoji, CJK)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello",
+        value: "Hello",
         width: 40,
         height: 10,
       })
@@ -3291,7 +3291,7 @@ describe("TextareaRenderable", () => {
 
     it("should replace entire selection with pasted text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AAAA\nBBBB\nCCCC",
+        value: "AAAA\nBBBB\nCCCC",
         width: 40,
         height: 10,
         selectable: true,
@@ -3316,7 +3316,7 @@ describe("TextareaRenderable", () => {
 
     it("should handle paste via handlePaste method directly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Test",
+        value: "Test",
         width: 40,
         height: 10,
       })
@@ -3331,7 +3331,7 @@ describe("TextareaRenderable", () => {
 
     it("should replace selection when using handlePaste directly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "Hello World",
+        value: "Hello World",
         width: 40,
         height: 10,
         selectable: true,
@@ -3359,7 +3359,7 @@ describe("TextareaRenderable", () => {
   describe("Deletion with empty lines", () => {
     it("should delete selection on line after empty lines correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AAAA\n\nBBBB\n\nCCCC",
+        value: "AAAA\n\nBBBB\n\nCCCC",
         width: 40,
         height: 10,
         selectable: true,
@@ -3391,7 +3391,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete selection on first line correctly (baseline test)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AAAA\n\nBBBB\n\nCCCC",
+        value: "AAAA\n\nBBBB\n\nCCCC",
         width: 40,
         height: 10,
         selectable: true,
@@ -3419,7 +3419,7 @@ describe("TextareaRenderable", () => {
 
     it("should delete selection on last line after empty lines correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
-        content: "AAAA\n\nBBBB\n\nCCCC",
+        value: "AAAA\n\nBBBB\n\nCCCC",
         width: 40,
         height: 10,
         selectable: true,

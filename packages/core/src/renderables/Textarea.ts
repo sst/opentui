@@ -5,7 +5,7 @@ import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import type { OptimizedBuffer } from "../buffer"
 
 export interface TextareaOptions extends EditBufferOptions {
-  content?: string
+  value?: string
   backgroundColor?: ColorInput
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
@@ -19,7 +19,7 @@ export interface TextareaOptions extends EditBufferOptions {
  * incremental editing, and grapheme-aware operations.
  */
 export class TextareaRenderable extends EditBufferRenderable {
-  private _content: string
+  private _value: string
   private _placeholder: string
   private _unfocusedBackgroundColor: RGBA
   private _unfocusedTextColor: RGBA
@@ -28,7 +28,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _placeholderColor: RGBA
 
   private static readonly defaults = {
-    content: "",
+    value: "",
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
     focusedBackgroundColor: "transparent",
@@ -48,7 +48,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
     super(ctx, baseOptions)
 
-    this._content = options.content ?? defaults.content
+    this._value = options.value ?? defaults.value
     // Store unfocused colors separately (parent's properties get overwritten when focused)
     this._unfocusedBackgroundColor = parseColor(options.backgroundColor || defaults.backgroundColor)
     this._unfocusedTextColor = parseColor(options.textColor || defaults.textColor)
@@ -59,7 +59,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._placeholder = options.placeholder || defaults.placeholder
     this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
 
-    this.updateContent(this._content)
+    this.updateValue(this._value)
     this.updateColors()
   }
 
@@ -176,19 +176,19 @@ export class TextareaRenderable extends EditBufferRenderable {
     return false
   }
 
-  get content(): string {
-    return this._content
+  get value(): string {
+    return this._value
   }
 
-  set content(value: string) {
-    if (this._content !== value) {
-      this._content = value
-      this.updateContent(value)
+  set value(value: string) {
+    if (this._value !== value) {
+      this._value = value
+      this.updateValue(value)
     }
   }
 
-  private updateContent(content: string): void {
-    this.editBuffer.setText(content)
+  private updateValue(value: string): void {
+    this.editBuffer.setText(value)
     this.yogaNode.markDirty()
     this.requestRender()
   }
@@ -296,39 +296,35 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public gotoLineEnd(): void {
     const cursor = this.editorView.getCursor()
-    // Get line width and move cursor to end of current line
+
     this.editBuffer.gotoLine(9999) // Temp hack - move to way past end to trigger end-of-line
     const afterCursor = this.editorView.getCursor()
-    // If we're not on the same line, we went too far, so set to the line we want
+
     if (afterCursor.row !== cursor.row) {
-      this.editBuffer.setCursor(cursor.row, 9999) // Will clamp to line width
+      this.editBuffer.setCursor(cursor.row, 9999)
     }
     this.requestRender()
   }
 
+  // TODO: Implement this properly
   public gotoBufferEnd(): void {
-    this.editBuffer.gotoLine(999999) // Will clamp to last line and go to end
+    this.editBuffer.gotoLine(999999)
     this.requestRender()
   }
 
+  // TODO: Implement this properly
   public deleteToLineEnd(): void {
-    // Get current cursor position
     const cursor = this.editorView.getCursor()
     const startCol = cursor.col
 
-    // Temporarily move to end of line to get the line width
     const tempCursor = this.editorView.getCursor()
     this.editBuffer.setCursor(tempCursor.row, 9999)
     const endCursor = this.editorView.getCursor()
     const endCol = endCursor.col
 
-    // Restore cursor and delete if there's content to delete
     this.editBuffer.setCursor(cursor.row, startCol)
 
     if (endCol > startCol) {
-      // Delete characters from cursor to end of line
-      // We need to implement this via selection and delete
-      // For now, just repeatedly delete forward
       for (let i = 0; i < endCol - startCol; i++) {
         this.deleteChar()
       }
@@ -374,7 +370,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    const isEmpty = this._content.length === 0
+    const isEmpty = this._value.length === 0
     const shouldShowPlaceholder = isEmpty && this._placeholder && !this._focused
 
     if (shouldShowPlaceholder) {
