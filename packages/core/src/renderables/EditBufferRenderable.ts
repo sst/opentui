@@ -331,8 +331,8 @@ export abstract class EditBufferRenderable extends Renderable {
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
     }
+    super.destroy()
     this.editorView.destroy()
     this.editBuffer.destroy()
-    super.destroy()
   }
 }
