@@ -249,8 +249,7 @@ pub const EditBuffer = struct {
 
     /// Split a TextChunk at a specific weight (display width)
     /// Returns left and right chunks
-    /// Simple grapheme iteration accumulating display width
-    /// TODO: This is awfully slow, should use utf8.zig methods
+    /// Uses optimized utf8.zig SIMD methods for fast byte offset lookup
     fn splitChunkAtWeight(
         self: *EditBuffer,
         chunk: *const TextChunk,
@@ -271,27 +270,10 @@ pub const EditBuffer = struct {
         }
 
         const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
-        var iter = self.tb.getGraphemeIterator(chunk_bytes);
+        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
-        var accumulated_width: u32 = 0;
-        var split_byte_offset: u32 = 0;
-
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(chunk_bytes);
-            const width_u16: u16 = gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width);
-
-            if (width_u16 == 0) {
-                split_byte_offset += @intCast(gbytes.len);
-                continue;
-            }
-
-            const g_width: u32 = @intCast(width_u16);
-
-            if (accumulated_width >= weight) break;
-
-            accumulated_width += g_width;
-            split_byte_offset += @intCast(gbytes.len);
-        }
+        const result = utf8.findPosByWidth(chunk_bytes, weight, 8, is_ascii_only, false);
+        const split_byte_offset = result.byte_offset;
 
         const left_chunk = self.tb.createChunk(
             chunk.mem_id,
