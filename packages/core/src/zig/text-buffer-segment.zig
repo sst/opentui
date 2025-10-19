@@ -33,16 +33,16 @@ pub const ChunkFitResult = struct {
 /// Cached grapheme cluster information
 /// Only stored for multibyte (non-ASCII) graphemes
 pub const GraphemeInfo = struct {
-    byte_offset: u32, // Offset within the chunk's bytes
-    byte_len: u8, // Length in UTF-8 bytes
-    width: u8, // Display width (1, 2, etc.)
-    col_offset: u32, // Column position within the chunk
+    byte_offset: u32,
+    byte_len: u8,
+    width: u8,
+    col_offset: u32,
 };
 
 /// Memory buffer reference in the registry
 pub const MemBuffer = struct {
     data: []const u8,
-    owned: bool, // Whether this buffer should be freed on deinit
+    owned: bool,
 };
 
 /// Registry for multiple memory buffers
@@ -66,10 +66,9 @@ pub const MemRegistry = struct {
         self.buffers.deinit(self.allocator);
     }
 
-    /// Register a memory buffer and return its ID
     pub fn register(self: *MemRegistry, data: []const u8, owned: bool) TextBufferError!u8 {
         if (self.buffers.items.len >= 255) {
-            return TextBufferError.OutOfMemory; // Max 255 buffers with u8 ID
+            return TextBufferError.OutOfMemory;
         }
         const id: u8 = @intCast(self.buffers.items.len);
         try self.buffers.append(self.allocator, MemBuffer{
@@ -79,13 +78,11 @@ pub const MemRegistry = struct {
         return id;
     }
 
-    /// Get buffer by ID
     pub fn get(self: *const MemRegistry, id: u8) ?[]const u8 {
         if (id >= self.buffers.items.len) return null;
         return self.buffers.items[id].data;
     }
 
-    /// Clear all registered buffers
     pub fn clear(self: *MemRegistry) void {
         for (self.buffers.items) |mem_buf| {
             if (mem_buf.owned) {
@@ -98,13 +95,13 @@ pub const MemRegistry = struct {
 
 /// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
 pub const TextChunk = struct {
-    mem_id: u8, // ID of the memory buffer this chunk references
-    byte_start: u32, // Offset into the memory buffer
-    byte_end: u32, // End offset into the memory buffer
-    width: u16, // Display width in cells (computed once)
-    flags: u8 = 0, // Bitflags for chunk properties
-    graphemes: ?[]GraphemeInfo = null, // Lazy grapheme buffer (computed on first access, reused by views)
-    wrap_offsets: ?[]utf8.WrapBreak = null, // Lazy wrap offset buffer (computed on first access)
+    mem_id: u8,
+    byte_start: u32,
+    byte_end: u32,
+    width: u16,
+    flags: u8 = 0,
+    graphemes: ?[]GraphemeInfo = null,
+    wrap_offsets: ?[]utf8.WrapBreak = null,
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001;
@@ -144,13 +141,11 @@ pub const TextChunk = struct {
         width_method: gwidth.WidthMethod,
         display_width: *const DisplayWidth,
     ) TextBufferError![]const GraphemeInfo {
-        // Need to cast to mutable to cache the graphemes
         const mut_self = @constCast(self);
         if (self.graphemes) |cached| {
             return cached;
         }
 
-        // Fast path for ASCII-only chunks: cache empty slice and return
         if (self.isAsciiOnly()) {
             const empty_slice = try allocator.alloc(GraphemeInfo, 0);
             mut_self.graphemes = empty_slice;
@@ -176,7 +171,6 @@ pub const TextChunk = struct {
 
             const width: u8 = @intCast(width_u16);
 
-            // Only cache multibyte graphemes
             if (gbytes.len != 1) {
                 try grapheme_list.append(GraphemeInfo{
                     .byte_offset = byte_pos,
@@ -223,19 +217,19 @@ pub const TextChunk = struct {
 
 /// A highlight represents a styled region on a line
 pub const Highlight = struct {
-    col_start: u32, // Column start (in grapheme/display units)
-    col_end: u32, // Column end (in grapheme/display units)
-    style_id: u32, // ID into SyntaxStyle
-    priority: u8, // Higher priority wins for overlaps
-    hl_ref: ?u16, // Optional reference for bulk removal
+    col_start: u32,
+    col_end: u32,
+    style_id: u32,
+    priority: u8,
+    hl_ref: ?u16,
 };
 
 /// Pre-computed style span for efficient rendering
 /// Represents a contiguous region with a single style
 pub const StyleSpan = struct {
-    col: u32, // Starting column
-    style_id: u32, // Style to use (0 = use default)
-    next_col: u32, // Column where next style change happens
+    col: u32,
+    style_id: u32,
+    next_col: u32,
 };
 
 /// A segment in the unified rope - either text content or a line break marker
@@ -250,26 +244,14 @@ pub const Segment = union(enum) {
     /// Metrics for aggregation in the rope tree
     /// These enable O(log n) row/col coordinate mapping and efficient line queries
     pub const Metrics = struct {
-        /// Total display width (sum of all text segments, breaks contribute 0)
         total_width: u32 = 0,
-
-        /// Total byte size (sum of all text segment byte lengths, breaks contribute 0)
         total_bytes: u32 = 0,
-
-        /// Number of linestart markers in the subtree
         linestart_count: u32 = 0,
-
-        /// Number of line breaks (newlines) in the subtree
         newline_count: u32 = 0,
-
-        /// Maximum line width in the entire subtree
         max_line_width: u32 = 0,
-
         /// Whether all text segments in subtree are ASCII-only (for fast wrapping paths)
         ascii_only: bool = true,
 
-        /// Combine metrics from two child nodes
-        /// This is called when building internal rope nodes
         pub fn add(self: *Metrics, other: Metrics) void {
             self.total_width += other.total_width;
             self.total_bytes += other.total_bytes;
@@ -323,21 +305,18 @@ pub const Segment = union(enum) {
         };
     }
 
-    /// Create an empty segment (used by rope for initialization)
     pub fn empty() Segment {
         return .{ .text = TextChunk.empty() };
     }
 
-    /// Check if this segment is empty
     pub fn is_empty(self: *const Segment) bool {
         return switch (self.*) {
             .text => |chunk| chunk.is_empty(),
-            .brk => false, // Breaks are never "empty" - they represent a line boundary
-            .linestart => false, // Linestart markers are never "empty" - they represent a line start
+            .brk => false,
+            .linestart => false,
         };
     }
 
-    /// Get the bytes for this segment (empty for breaks and linestart)
     pub fn getBytes(self: *const Segment, mem_registry: *const MemRegistry) []const u8 {
         return switch (self.*) {
             .text => |chunk| chunk.getBytes(mem_registry),
@@ -346,7 +325,6 @@ pub const Segment = union(enum) {
         };
     }
 
-    /// Check if this is a break segment
     pub fn isBreak(self: *const Segment) bool {
         return switch (self.*) {
             .brk => true,
@@ -354,7 +332,6 @@ pub const Segment = union(enum) {
         };
     }
 
-    /// Check if this is a linestart segment
     pub fn isLineStart(self: *const Segment) bool {
         return switch (self.*) {
             .linestart => true,
@@ -362,7 +339,6 @@ pub const Segment = union(enum) {
         };
     }
 
-    /// Check if this is a text segment
     pub fn isText(self: *const Segment) bool {
         return switch (self.*) {
             .text => true,
@@ -370,7 +346,6 @@ pub const Segment = union(enum) {
         };
     }
 
-    /// Get the text chunk if this is a text segment, null otherwise
     pub fn asText(self: *const Segment) ?*const TextChunk {
         return switch (self.*) {
             .text => |*chunk| chunk,
@@ -443,7 +418,6 @@ pub const Segment = union(enum) {
             return .{ .delete_right = true };
         }
 
-        // All other patterns are valid
         return .{};
     }
 
@@ -474,13 +448,6 @@ pub const Segment = union(enum) {
         return .{};
     }
 };
-
-/// Helper to combine metrics (same logic as Metrics.add but pure function)
-pub fn combineMetrics(left: Segment.Metrics, right: Segment.Metrics) Segment.Metrics {
-    var result = left;
-    result.add(right);
-    return result;
-}
 
 /// Unified rope type for text buffer - stores text segments and break markers in a single tree
 pub const UnifiedRope = rope_mod.Rope(Segment);

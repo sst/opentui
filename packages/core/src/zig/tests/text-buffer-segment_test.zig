@@ -293,6 +293,12 @@ test "UnifiedRope - multiple lines with varying widths" {
     try testing.expectEqual(@as(u32, 30), metrics.custom.max_line_width);
 }
 
+fn combineMetrics(left: Segment.Metrics, right: Segment.Metrics) Segment.Metrics {
+    var result = left;
+    result.add(right);
+    return result;
+}
+
 test "combineMetrics helper function" {
     const left = Segment.Metrics{
         .total_width = 10,
@@ -306,7 +312,7 @@ test "combineMetrics helper function" {
         .ascii_only = true,
     };
 
-    const combined = seg_mod.combineMetrics(left, right);
+    const combined = combineMetrics(left, right);
 
     try testing.expectEqual(@as(u32, 15), combined.total_width);
     try testing.expectEqual(@as(u32, 10), combined.max_line_width);

@@ -16,7 +16,6 @@ const TextChunk = seg_mod.TextChunk;
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 
-// Global ID counter for EditBuffer instances
 var global_edit_buffer_id: u16 = 0;
 
 pub const EditBufferError = error{
@@ -103,7 +102,7 @@ pub const EditBuffer = struct {
         const text_buffer = try UnifiedTextBuffer.init(allocator, pool, width_method, graphemes_data, display_width);
         errdefer text_buffer.deinit();
 
-        const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536); // 64 KiB initial
+        const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);
         errdefer {}
 
         var cursors: std.ArrayListUnmanaged(Cursor) = .{};
@@ -188,9 +187,6 @@ pub const EditBuffer = struct {
         try self.add_buffer.ensureCapacity(self.tb, need);
     }
 
-    /// Split a TextChunk at a specific weight (display width)
-    /// Returns left and right chunks
-    /// Uses optimized utf8.zig SIMD methods for fast byte offset lookup
     /// TODO: This method should live in text-buffer-segment.zig and the Rope should take it as comptime param
     fn splitChunkAtWeight(
         self: *EditBuffer,
@@ -255,7 +251,6 @@ pub const EditBuffer = struct {
         }
     }
 
-    /// Insert text at the primary cursor
     pub fn insertText(self: *EditBuffer, bytes: []const u8) !void {
         if (bytes.len == 0) return;
         if (self.cursors.items.len == 0) return;
@@ -266,14 +261,12 @@ pub const EditBuffer = struct {
 
         try self.ensureAddCapacity(bytes.len);
 
-        // Convert cursor position to character offset
         const insert_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse return EditBufferError.InvalidCursor;
 
         const chunk_ref = self.add_buffer.append(bytes);
         const base_mem_id = chunk_ref.mem_id;
         const base_start = chunk_ref.start;
 
-        // Detect line breaks using SIMD16
         var break_result = utf8.LineBreakResult.init(self.allocator);
         defer break_result.deinit();
         try utf8.findLineBreaksSIMD16(bytes, &break_result);
@@ -305,7 +298,6 @@ pub const EditBuffer = struct {
             width_after_last_break = 0;
         }
 
-        // Add remaining text after last break (or entire text if no breaks)
         if (local_start < bytes.len) {
             const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + @as(u32, @intCast(bytes.len)));
             try segments.append(Segment{ .text = chunk });
@@ -316,7 +308,6 @@ pub const EditBuffer = struct {
         if (segments.items.len > 0) {
             try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &self.segment_splitter);
 
-            // Update char count
             self.tb.char_count += inserted_width;
         }
 
@@ -353,7 +344,6 @@ pub const EditBuffer = struct {
 
         try self.autoStoreUndo();
 
-        // Convert to character offsets
         const start_offset = iter_mod.coordsToOffset(&self.tb.rope, start.row, start.col) orelse return EditBufferError.InvalidCursor;
         const end_offset = iter_mod.coordsToOffset(&self.tb.rope, end.row, end.col) orelse return EditBufferError.InvalidCursor;
 
@@ -361,11 +351,8 @@ pub const EditBuffer = struct {
 
         const deleted_width = end_offset - start_offset;
 
-        // Delete the range using rope's deleteRangeByWeight with splitter
-        // The rope handles boundary normalization automatically via joinWithBoundary
         try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &self.segment_splitter);
 
-        // Update char count
         if (self.tb.char_count >= deleted_width) {
             self.tb.char_count -= deleted_width;
         } else {
@@ -374,7 +361,6 @@ pub const EditBuffer = struct {
 
         self.tb.markViewsDirty();
 
-        // Set cursor to start of deleted range, but clamp to valid line
         if (self.cursors.items.len > 0) {
             const line_count = self.tb.lineCount();
             const clamped_row = if (start.row >= line_count) line_count -| 1 else start.row;
@@ -395,7 +381,6 @@ pub const EditBuffer = struct {
         if (cursor.row == 0 and cursor.col == 0) return;
 
         if (cursor.col == 0) {
-            // At start of line - delete from end of previous line to current position
             if (cursor.row > 0) {
                 const prev_line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row - 1);
                 try self.deleteRange(
@@ -404,7 +389,6 @@ pub const EditBuffer = struct {
                 );
             }
         } else {
-            // Delete previous grapheme
             const prev_grapheme_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col);
             if (prev_grapheme_width == 0) return; // Nothing to delete
 
@@ -426,7 +410,6 @@ pub const EditBuffer = struct {
         const line_count = self.tb.lineCount();
 
         if (cursor.col >= line_width) {
-            // At end of line - delete the newline to join with next line
             if (cursor.row + 1 < line_count) {
                 try self.deleteRange(
                     .{ .row = cursor.row, .col = line_width },
@@ -434,7 +417,6 @@ pub const EditBuffer = struct {
                 );
             }
         } else {
-            // Delete one grapheme forward
             const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col);
             if (grapheme_width > 0) {
                 try self.deleteRange(

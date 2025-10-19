@@ -52,7 +52,6 @@ pub const EditorView = struct {
         const self = global_allocator.create(EditorView) catch return EditorViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 
-        // Get TextBuffer from EditBuffer and create TextBufferView
         const text_buffer = edit_buffer.getTextBuffer();
         const text_buffer_view = UnifiedTextBufferView.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
         errdefer text_buffer_view.deinit();
@@ -87,9 +86,8 @@ pub const EditorView = struct {
     }
 
     pub fn deinit(self: *EditorView) void {
-        // Unregister listener from EditBuffer
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
-        self.text_buffer_view.deinit(); // We own this
+        self.text_buffer_view.deinit();
         self.global_allocator.destroy(self);
     }
 
@@ -177,66 +175,50 @@ pub const EditorView = struct {
         }
     }
 
-    /// Ensure cursor is visible before rendering
-    /// This should be called before rendering to react to buffer/cursor changes
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
     pub fn updateBeforeRender(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
-        // Find the visual line for the cursor position
         const visual_row = self.text_buffer_view.findVisualLineIndex(cursor.row, cursor.col) orelse cursor.row;
         self.ensureCursorVisible(visual_row);
     }
 
-    /// Get virtual lines for the current viewport
-    /// Returns a slice of virtual lines that are visible in the viewport
-    /// The TextBufferView handles viewport slicing internally
     /// Automatically ensures cursor is visible before rendering
     pub fn getVirtualLines(self: *EditorView) []const VirtualLine {
         self.updateBeforeRender();
         return self.text_buffer_view.getVirtualLines();
     }
 
-    /// Get cached line info for the viewport
-    /// Returns character offsets, widths, and max width for viewport lines only
-    /// The TextBufferView handles viewport slicing internally
     /// Automatically ensures cursor is visible before rendering
     pub fn getCachedLineInfo(self: *EditorView) tbv.LineInfo {
         self.updateBeforeRender();
         return self.text_buffer_view.getCachedLineInfo();
     }
 
-    /// Get the underlying TextBufferView
     pub fn getTextBufferView(self: *EditorView) *UnifiedTextBufferView {
         return self.text_buffer_view;
     }
 
-    /// Get the total number of virtual lines (not constrained by viewport)
     pub fn getTotalVirtualLineCount(self: *EditorView) u32 {
         return self.text_buffer_view.getVirtualLineCount();
     }
 
-    /// Set viewport size (width and height only)
     /// This is a convenience method that preserves existing offset
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
         self.text_buffer_view.setViewportSize(width, height);
     }
 
-    /// Set wrap mode (none, char, or word)
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
         self.text_buffer_view.setWrapMode(mode);
     }
 
-    /// Get primary cursor position
     pub fn getPrimaryCursor(self: *const EditorView) eb.Cursor {
         return self.edit_buffer.getPrimaryCursor();
     }
 
-    /// Get cursor by index
     pub fn getCursor(self: *const EditorView, idx: usize) ?eb.Cursor {
         return self.edit_buffer.getCursor(idx);
     }
 
-    /// Get text content
     pub fn getText(self: *EditorView, out_buffer: []u8) usize {
         return self.edit_buffer.getText(out_buffer);
     }
@@ -250,9 +232,6 @@ pub const EditorView = struct {
     // VisualCursor - Wrapping-aware cursor translation
     // ============================================================================
 
-    /// Translate EditBuffer cursor (logical row/col) to visual cursor (accounting for wrapping)
-    /// Returns null if cursor is out of bounds
-    /// Automatically ensures cursor is visible before rendering
     /// Returns viewport-relative visual coordinates for external API consumers
     pub fn getVisualCursor(self: *EditorView) ?VisualCursor {
         self.updateBeforeRender();
@@ -276,11 +255,9 @@ pub const EditorView = struct {
         };
     }
 
-    /// Convert logical (row, col) to visual cursor position
     /// This accounts for line wrapping by finding which virtual line contains the logical position
     /// Returns absolute visual coordinates (document-absolute, not viewport-relative)
     pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) ?VisualCursor {
-        // Find the visual line index for this logical position (document-absolute)
         const visual_row_idx = self.text_buffer_view.findVisualLineIndex(logical_row, logical_col) orelse return null;
 
         const vlines = self.text_buffer_view.virtual_lines.items;
@@ -303,7 +280,6 @@ pub const EditorView = struct {
         };
     }
 
-    /// Convert visual (row, col) to logical cursor position
     /// Input visual coordinates are absolute (document-absolute)
     /// Returns a VisualCursor with absolute visual coordinates
     pub fn visualToLogicalCursor(self: *EditorView, visual_row: u32, visual_col: u32) ?VisualCursor {
@@ -324,29 +300,23 @@ pub const EditorView = struct {
         };
     }
 
-    /// Move cursor up by one visual line (handles wrapped lines)
     pub fn moveUpVisual(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return;
 
         if (vcursor.visual_row == 0) {
-            // Already at top
             return;
         }
 
-        // Move to previous visual line
         const target_visual_row = vcursor.visual_row - 1;
 
-        // Initialize or use desired visual column
         // This persists across empty/narrow lines to restore column when possible
         if (self.desired_visual_col == null) {
             self.desired_visual_col = vcursor.visual_col;
         }
         const desired_visual_col = self.desired_visual_col.?;
 
-        // Convert to new position
         if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
-            // Update EditBuffer cursor
             if (self.edit_buffer.cursors.items.len > 0) {
                 self.edit_buffer.cursors.items[0] = .{
                     .row = new_vcursor.logical_row,
@@ -361,7 +331,6 @@ pub const EditorView = struct {
         }
     }
 
-    /// Move cursor down by one visual line (handles wrapped lines)
     pub fn moveDownVisual(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return;
@@ -370,23 +339,18 @@ pub const EditorView = struct {
         const vlines = self.text_buffer_view.virtual_lines.items;
 
         if (vcursor.visual_row + 1 >= vlines.len) {
-            // Already at bottom
             return;
         }
 
-        // Move to next visual line
         const target_visual_row = vcursor.visual_row + 1;
 
-        // Initialize or use desired visual column
         // This persists across empty/narrow lines to restore column when possible
         if (self.desired_visual_col == null) {
             self.desired_visual_col = vcursor.visual_col;
         }
         const desired_visual_col = self.desired_visual_col.?;
 
-        // Convert to new position
         if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
-            // Update EditBuffer cursor
             if (self.edit_buffer.cursors.items.len > 0) {
                 self.edit_buffer.cursors.items[0] = .{
                     .row = new_vcursor.logical_row,

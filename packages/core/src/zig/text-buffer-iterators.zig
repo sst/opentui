@@ -21,7 +21,6 @@ pub const Coords = struct {
     col: u32,
 };
 
-/// Walk all logical lines in a unified rope
 /// Note: Takes mutable rope for lazy marker cache rebuilding
 pub fn walkLines(
     rope: *UnifiedRope,
@@ -37,8 +36,6 @@ pub fn walkLines(
         const marker = rope.getMarker(.linestart, i) orelse continue;
         const line_start_weight = marker.global_weight;
         const width = lineWidthAt(rope, i);
-
-        // Compute seg_end by looking at next line's marker (or using a sentinel)
         const seg_end = if (i + 1 < linestart_count) blk: {
             const next_marker = rope.getMarker(.linestart, i + 1) orelse break :blk marker.leaf_index + 1;
             break :blk next_marker.leaf_index;
@@ -46,7 +43,6 @@ pub fn walkLines(
             break :blk rope.count();
         };
 
-        // Calculate char_offset: subtract number of newlines if requested
         // Line i has i newlines before it (one after each previous line)
         const char_offset = if (include_newlines_in_offset)
             line_start_weight
@@ -63,18 +59,13 @@ pub fn walkLines(
     }
 }
 
-/// Walk lines and their segments in a single O(n) pass
 /// This is the most efficient way to iterate lines and their content
-/// Callbacks:
-///   - segment_callback: Called for each text segment within a line (line_idx, chunk, chunk_idx_in_line)
-///   - line_end_callback: Called when a line ends (line_info)
 pub fn walkLinesAndSegments(
     rope: *const UnifiedRope,
     ctx: *anyopaque,
     segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
     line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
-    // Special case: empty rope - emit nothing (0 lines)
     // setText("") will handle creating the single empty line
     if (rope.count() == 0) {
         return;
@@ -95,12 +86,10 @@ pub fn walkLinesAndSegments(
             const walk_ctx = @as(*@This(), @ptrCast(@alignCast(walk_ctx_ptr)));
 
             if (seg.asText()) |chunk| {
-                // Emit segment immediately
                 walk_ctx.seg_callback(walk_ctx.user_ctx, walk_ctx.current_line_idx, chunk, walk_ctx.chunk_idx_in_line);
                 walk_ctx.chunk_idx_in_line += 1;
                 walk_ctx.line_width += chunk.width;
             } else if (seg.isBreak()) {
-                // Emit line
                 walk_ctx.line_callback(walk_ctx.user_ctx, LineInfo{
                     .line_idx = walk_ctx.current_line_idx,
                     .char_offset = walk_ctx.current_char_offset,
@@ -110,7 +99,6 @@ pub fn walkLinesAndSegments(
                 });
 
                 walk_ctx.current_line_idx += 1;
-                // Account for line content width + 1 for the break segment (newline has weight 1)
                 walk_ctx.current_char_offset += walk_ctx.line_width + 1;
                 walk_ctx.line_start_seg = idx + 1;
                 walk_ctx.line_width = 0;
@@ -145,26 +133,21 @@ pub fn walkLinesAndSegments(
     }
 }
 
-/// Get the total number of logical lines in a unified rope
 pub fn getLineCount(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
     return metrics.custom.linestart_count;
 }
 
-/// Get the maximum line width in the entire rope
 pub fn getMaxLineWidth(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
     return metrics.custom.max_line_width;
 }
 
-/// Get the total display width (character count) of the rope
 pub fn getTotalWidth(rope: *const UnifiedRope) u32 {
     const metrics = rope.root.metrics();
     return metrics.custom.total_width;
 }
 
-/// Convert (row, col) coordinates to absolute character offset
-/// Returns null if coordinates are out of bounds
 /// Optimized O(1) implementation using linestart marker lookups
 /// Note: Rope weight includes newlines (each .brk adds +1), but col is still display width
 /// Takes mutable rope for lazy marker cache rebuilding
@@ -172,7 +155,6 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return null;
 
-    // Lookup linestart marker for this row
     const marker = rope.getMarker(.linestart, row) orelse return null;
     const line_start_weight = marker.global_weight;
     const line_width = lineWidthAt(rope, row);
@@ -182,8 +164,6 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
     return line_start_weight + col;
 }
 
-/// Convert absolute character offset to (row, col) coordinates
-/// Returns null if offset is out of bounds
 /// Optimized O(log n) implementation using binary search on linestart markers
 /// Note: Rope weight includes newlines, so valid offsets are 0..totalWeight() inclusive
 /// Takes mutable rope for lazy marker cache rebuilding
@@ -194,7 +174,6 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
     const total_weight = rope.totalWeight();
     if (offset > total_weight) return null;
 
-    // Binary search to find the line containing this offset
     var left: u32 = 0;
     var right: u32 = linestart_count;
 
@@ -206,7 +185,6 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
         if (offset < line_start_weight) {
             right = mid;
         } else {
-            // Check if offset is in this line (including its newline if present)
             const next_line_start_weight = if (mid + 1 < linestart_count) blk: {
                 const next_marker = rope.getMarker(.linestart, mid + 1) orelse return null;
                 break :blk next_marker.global_weight;
@@ -218,7 +196,6 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
             // Offset belongs to this line if it's before the next line starts
             // (newline offset at end of non-final line maps to col==line_width)
             if (offset < next_line_start_weight or (offset == total_weight and mid + 1 == linestart_count)) {
-                // Found the line - compute display column
                 return Coords{
                     .row = mid,
                     .col = offset - line_start_weight,
@@ -231,18 +208,14 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
     return null;
 }
 
-/// Get the display width of a specific line using O(1) marker lookups
 /// Note: Returns display width only (excludes newline weight)
 /// Takes mutable rope for lazy marker cache rebuilding
 pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
     const linestart_count = rope.markerCount(.linestart);
     if (row >= linestart_count) return 0;
 
-    // Get the weight offset at the start of this line
     const line_marker = rope.getMarker(.linestart, row) orelse return 0;
     const line_start_weight = line_marker.global_weight;
-
-    // Calculate display width (excluding newline)
     if (row + 1 < linestart_count) {
         // Non-final line: width = (next_line_start - current_start - 1_for_newline)
         const next_marker = rope.getMarker(.linestart, row + 1) orelse return 0;
@@ -257,8 +230,6 @@ pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
     }
 }
 
-/// Get the display width of the grapheme at or after the given column on a line
-/// Returns 0 if at end of line
 /// Takes mutable rope for lazy marker cache rebuilding
 pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32) u32 {
     const line_width = lineWidthAt(rope, row);
@@ -287,8 +258,6 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
     return 0;
 }
 
-/// Get the display width of the grapheme before the given column on a line
-/// Returns 0 if at start of line
 /// Takes mutable rope for lazy marker cache rebuilding
 pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32) u32 {
     if (col == 0) return 0;
@@ -308,7 +277,6 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
             const next_cols = cols_before + chunk.width;
 
             if (clamped_col <= next_cols) {
-                // Target column is in this chunk or at its start
                 if (clamped_col == cols_before and prev_chunk != null) {
                     // Exactly at chunk boundary - get last grapheme from previous chunk
                     const pc = prev_chunk.?;
@@ -318,7 +286,6 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                     return 0;
                 }
 
-                // Within this chunk
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;

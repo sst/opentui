@@ -23,26 +23,23 @@ pub const TextBufferViewError = error{
 
 /// Viewport defines a rectangular window into the virtual line space
 pub const Viewport = struct {
-    x: u32, // Column offset (for horizontal scroll)
-    y: u32, // Virtual line offset (first visible line)
-    width: u32, // Viewport width in columns
-    height: u32, // Viewport height in rows (virtual lines)
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
 };
 
-/// Line info struct for cached line information
 pub const LineInfo = struct {
     starts: []const u32,
     widths: []const u32,
     max_width: u32,
 };
 
-/// Wrap info struct for logical-to-virtual line mapping
 pub const WrapInfo = struct {
     line_first_vline: []const u32,
     line_vline_counts: []const u32,
 };
 
-/// A virtual chunk references a portion of a real TextChunk for text wrapping
 pub const VirtualChunk = struct {
     grapheme_start: u32,
     grapheme_count: u32,
@@ -51,7 +48,6 @@ pub const VirtualChunk = struct {
     chunk: *const TextChunk,
 };
 
-/// A virtual line represents a display line after text wrapping
 pub const VirtualLine = struct {
     chunks: std.ArrayListUnmanaged(VirtualChunk),
     width: u32,
@@ -82,38 +78,24 @@ pub const LocalSelection = struct {
     isActive: bool,
 };
 
-/// Main TextBufferView type - unified architecture
 pub const TextBufferView = UnifiedTextBufferView;
 
-/// TextBufferView for UnifiedTextBuffer
 pub const UnifiedTextBufferView = struct {
     const Self = @This();
 
     text_buffer: *UnifiedTextBuffer,
     view_id: u32,
-
-    // View-specific state
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
-
-    // Viewport state
     viewport: ?Viewport,
-
-    // Wrapping state
     wrap_width: ?u32,
     wrap_mode: WrapMode,
     virtual_lines: std.ArrayListUnmanaged(VirtualLine),
     virtual_lines_dirty: bool,
-
-    // Cached line info
     cached_line_starts: std.ArrayListUnmanaged(u32),
     cached_line_widths: std.ArrayListUnmanaged(u32),
-
-    // Cached wrap info (logical line -> virtual line mapping)
     cached_line_first_vline: std.ArrayListUnmanaged(u32),
     cached_line_vline_counts: std.ArrayListUnmanaged(u32),
-
-    // Memory management
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
 
@@ -155,7 +137,6 @@ pub const UnifiedTextBufferView = struct {
         self.global_allocator.destroy(self);
     }
 
-    /// Set the viewport. Automatically sets wrap width to viewport width.
     pub fn setViewport(self: *Self, vp: ?Viewport) void {
         self.viewport = vp;
 
@@ -172,8 +153,7 @@ pub const UnifiedTextBufferView = struct {
         return self.viewport;
     }
 
-    /// Set viewport size (width and height only)
-    /// This is a convenience method that preserves existing offset
+    // This is a convenience method that preserves existing offset
     pub fn setViewportSize(self: *Self, width: u32, height: u32) void {
         if (self.viewport) |vp| {
             self.setViewport(Viewport{
@@ -206,7 +186,6 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    /// Calculate how much of a chunk fits in remaining width for word wrapping
     fn calculateChunkFitWord(self: *const Self, chunk: *const TextChunk, char_offset_in_chunk: u32, max_width: u32) tb.ChunkFitResult {
         if (max_width == 0) return .{ .char_count = 0, .width = 0 };
 
@@ -250,7 +229,6 @@ pub const UnifiedTextBufferView = struct {
         return .{ .char_count = 0, .width = 0 };
     }
 
-    /// Update virtual lines with wrapping support
     pub fn updateVirtualLines(self: *Self) void {
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
@@ -274,7 +252,6 @@ pub const UnifiedTextBufferView = struct {
                     _ = line_idx;
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
-                    // Append chunk to current virtual line
                     if (ctx.current_vline) |*vline| {
                         vline.chunks.append(ctx.virtual_allocator, VirtualChunk{
                             .grapheme_start = 0,
@@ -294,7 +271,6 @@ pub const UnifiedTextBufferView = struct {
                     ctx.view.cached_line_vline_counts.append(ctx.virtual_allocator, 1) catch {};
 
                     // If we have a pending vline from segments, finalize it
-                    // Otherwise create empty vline
                     var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
                     vline.width = line_info.width;
                     // line_info.char_offset now includes newlines from walkLinesAndSegments fix
@@ -306,7 +282,6 @@ pub const UnifiedTextBufferView = struct {
                     ctx.view.cached_line_starts.append(ctx.virtual_allocator, vline.char_offset) catch {};
                     ctx.view.cached_line_widths.append(ctx.virtual_allocator, vline.width) catch {};
 
-                    // Reset for next line
                     ctx.current_vline = VirtualLine.init();
                 }
             };
@@ -319,7 +294,6 @@ pub const UnifiedTextBufferView = struct {
 
             iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
         } else {
-            // Wrapping enabled
             const wrap_w = self.wrap_width.?;
 
             const WrapContext = struct {
@@ -368,7 +342,6 @@ pub const UnifiedTextBufferView = struct {
                     wctx.chunk_idx_in_line = chunk_idx_in_line;
 
                     if (wctx.view.wrap_mode == .word) {
-                        // Word wrapping
                         var char_offset: u32 = 0;
                         while (char_offset < chunk.width) {
                             const remaining_width = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
@@ -396,7 +369,6 @@ pub const UnifiedTextBufferView = struct {
                             }
                         }
                     } else {
-                        // Character wrapping
                         const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
                         const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                         var byte_offset: usize = 0;
@@ -472,14 +444,12 @@ pub const UnifiedTextBufferView = struct {
                         wctx.current_line_vline_count += 1;
                     }
 
-                    // Record wrap info for this logical line
                     wctx.view.cached_line_first_vline.append(wctx.virtual_allocator, wctx.current_line_first_vline_idx) catch {};
                     wctx.view.cached_line_vline_counts.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
 
                     // Account for newline character between logical lines (weight = 1)
                     wctx.global_char_offset += 1;
 
-                    // Reset for next logical line
                     wctx.line_idx += 1;
                     wctx.line_col_offset = 0;
                     wctx.line_position = 0;
@@ -535,7 +505,6 @@ pub const UnifiedTextBufferView = struct {
             const viewport_starts = self.cached_line_starts.items[start_idx..end_idx];
             const viewport_widths = self.cached_line_widths.items[start_idx..end_idx];
 
-            // Calculate max width for viewport lines
             var max_width: u32 = 0;
             for (viewport_widths) |w| {
                 max_width = @max(max_width, w);
@@ -573,7 +542,6 @@ pub const UnifiedTextBufferView = struct {
         };
     }
 
-    /// Find the visual line index for a given logical (row, col) position
     pub fn findVisualLineIndex(self: *Self, logical_row: u32, logical_col: u32) ?u32 {
         self.updateVirtualLines();
 
@@ -582,16 +550,13 @@ pub const UnifiedTextBufferView = struct {
 
         const wrap_info = self.getWrapInfo();
 
-        // Check if logical_row is in bounds
         if (logical_row >= wrap_info.line_first_vline.len) return null;
 
         const first_vline_idx = wrap_info.line_first_vline[logical_row];
         const vline_count = wrap_info.line_vline_counts[logical_row];
 
-        // If no virtual lines for this logical line, return null
         if (vline_count == 0) return null;
 
-        // Search through virtual lines for this logical line
         var i: u32 = 0;
         while (i < vline_count) : (i += 1) {
             const vline_idx = first_vline_idx + i;
@@ -651,7 +616,6 @@ pub const UnifiedTextBufferView = struct {
         return self.selection;
     }
 
-    /// Set local selection coordinates and calculate character positions
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         const new_local_sel = LocalSelection{
             .anchorX = anchorX,
@@ -705,8 +669,7 @@ pub const UnifiedTextBufferView = struct {
         self.selection = null;
     }
 
-    /// Calculate character positions from local selection coordinates
-    /// Local coordinates are viewport-relative (if viewport is set)
+    // Local coordinates are viewport-relative (if viewport is set)
     fn calculateMultiLineSelection(self: *Self) ?struct { start: u32, end: u32 } {
         const local_sel = self.local_selection orelse return null;
         if (!local_sel.isActive) return null;
@@ -827,11 +790,9 @@ pub const UnifiedTextBufferView = struct {
                 const chunk_bytes = chunk.getBytes(&ctx.view.text_buffer.mem_registry);
                 const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
-                // Calculate the column range within this chunk to include
                 const local_start_col: u32 = if (ctx.start > chunk_start_offset) ctx.start - chunk_start_offset else 0;
                 const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width);
 
-                // Find byte offsets corresponding to column positions
                 var byte_start: u32 = 0;
                 var byte_end: u32 = @intCast(chunk_bytes.len);
 
@@ -846,8 +807,6 @@ pub const UnifiedTextBufferView = struct {
                     const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, 8, is_ascii_only, true);
                     byte_end = end_result.byte_offset;
                 }
-
-                // Copy the selected byte range
                 if (byte_start < byte_end and byte_start < chunk_bytes.len) {
                     const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
                     const selected_bytes = chunk_bytes[byte_start..actual_end];
@@ -876,7 +835,6 @@ pub const UnifiedTextBufferView = struct {
                 // Newlines have weight +1 in the rope, so we increment to stay in sync
                 ctx.char_offset.* += 1;
 
-                // Reset flag for next line
                 ctx.line_had_selection = false;
             }
         };
@@ -896,7 +854,6 @@ pub const UnifiedTextBufferView = struct {
         return out_index;
     }
 
-    /// Get virtual line spans for highlighting
     pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) struct {
         spans: []const StyleSpan,
         source_line: usize,

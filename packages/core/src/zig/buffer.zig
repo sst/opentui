@@ -873,7 +873,6 @@ pub const OptimizedBuffer = struct {
             currentX = x;
             var column_in_line: u32 = 0;
 
-            // Initialize span tracking for this line
             // When viewport is set, virtual_lines is a slice starting from viewport.y
             // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
             // slice_idx is relative to the slice (0, 1, 2...), we need to add viewport offset + firstVisibleLine
@@ -887,7 +886,6 @@ pub const OptimizedBuffer = struct {
             var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
 
-            // Find the first span that overlaps this virtual line's column range
             while (span_idx < spans.len and spans[span_idx].next_col <= col_offset) {
                 span_idx += 1;
             }
@@ -900,7 +898,6 @@ pub const OptimizedBuffer = struct {
             else
                 std.math.maxInt(u32);
 
-            // Apply initial span style if it covers the start of this virtual line
             if (span_idx < spans.len and spans[span_idx].col <= col_offset and spans[span_idx].style_id != 0) {
                 if (text_buffer.getSyntaxStyle()) |style| {
                     if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
@@ -912,7 +909,6 @@ pub const OptimizedBuffer = struct {
             }
 
             for (vline.chunks.items) |vchunk| {
-                // Get chunk and its data
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
                 const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width) catch continue;
@@ -922,17 +918,12 @@ pub const OptimizedBuffer = struct {
                     currentX += @intCast(vchunk.grapheme_count);
                     continue;
                 }
-
-                // Iterate through columns in this virtual chunk
                 const col_end = vchunk.grapheme_start + vchunk.grapheme_count;
                 var col = vchunk.grapheme_start;
                 var special_idx: usize = 0;
                 var byte_offset: u32 = 0;
 
-                // Initialize byte_offset and special_idx for the starting column
-                // Both col and col_offset are relative to chunk start
                 if (vchunk.grapheme_start > 0) {
-                    // Fast-forward to the correct position
                     var init_col: u32 = 0;
                     while (init_col < vchunk.grapheme_start) {
                         const at_init_special = special_idx < specials.len and specials[special_idx].col_offset == init_col;
@@ -949,28 +940,24 @@ pub const OptimizedBuffer = struct {
                 }
 
                 while (col < col_end) {
-                    // Check if we have a special at this column (both col and col_offset are relative to chunk start)
                     const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
                     var grapheme_bytes: []const u8 = undefined;
                     var g_width: u8 = undefined;
 
                     if (at_special) {
-                        // Multibyte grapheme - use the special's byte_offset directly
                         const g = specials[special_idx];
                         grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
                         g_width = g.width;
                         byte_offset = g.byte_offset + g.byte_len;
                         special_idx += 1;
                     } else {
-                        // ASCII character - use current byte_offset
                         if (byte_offset >= chunk_bytes.len) break;
                         grapheme_bytes = chunk_bytes[byte_offset .. byte_offset + 1];
                         g_width = 1;
                         byte_offset += 1;
                     }
 
-                    // Skip if before horizontal viewport offset
                     if (column_in_line < horizontal_offset) {
                         globalCharPos += g_width;
                         column_in_line += g_width;
@@ -978,14 +965,11 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
-                    // Stop if we've rendered viewport_width columns (early break for efficiency)
                     if (column_in_line >= horizontal_offset + viewport_width) {
-                        // Fast-forward globalCharPos for remaining columns
                         globalCharPos += (col_end - col);
                         break;
                     }
 
-                    // Skip if completely out of bounds (left of visible area)
                     if (currentX < -@as(i32, @intCast(g_width))) {
                         globalCharPos += g_width;
                         currentX += @as(i32, @intCast(g_width));
@@ -994,9 +978,7 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
-                    // Stop if we're past the buffer width
                     if (currentX >= @as(i32, @intCast(self.width))) {
-                        // Fast-forward globalCharPos for remaining columns
                         globalCharPos += (col_end - col);
                         break;
                     }
@@ -1009,19 +991,16 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
-                    // Check if we need to advance to next span
                     const virt_col_pos = @as(u32, @intCast(currentX - x));
 
                     if (virt_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 
-                        // Reset to defaults for new span
                         lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
                         lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
                         lineAttributes = text_buffer.default_attributes orelse 0;
 
-                        // Apply new span's style
                         if (text_buffer.getSyntaxStyle()) |style| {
                             if (new_span.style_id != 0) {
                                 if (style.resolveById(new_span.style_id)) |resolved_style| {
@@ -1032,7 +1011,6 @@ pub const OptimizedBuffer = struct {
                             }
                         }
 
-                        // Calculate next change column relative to virtual line
                         next_change_col = if (new_span.next_col > col_offset)
                             new_span.next_col - col_offset
                         else
@@ -1043,7 +1021,6 @@ pub const OptimizedBuffer = struct {
                     var finalBg = lineBg;
                     const finalAttributes = lineAttributes;
 
-                    // Handle selection highlighting (for each cell of this grapheme)
                     var cell_idx: u32 = 0;
                     while (cell_idx < g_width) : (cell_idx += 1) {
                         if (text_buffer_view.selection) |sel| {
@@ -1055,12 +1032,11 @@ pub const OptimizedBuffer = struct {
                                         finalFg = selFg;
                                     }
                                 } else {
-                                    // Swap fg and bg for default selection style
                                     const temp = lineFg;
                                     finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
                                     finalBg = temp;
                                 }
-                                break; // Apply to whole grapheme
+                                break;
                             }
                         }
                     }
@@ -1069,13 +1045,12 @@ pub const OptimizedBuffer = struct {
                     var drawBg = finalBg;
                     const drawAttributes = finalAttributes;
 
-                    if (drawAttributes & (1 << 5) != 0) { // reverse bit
+                    if (drawAttributes & (1 << 5) != 0) {
                         const temp = drawFg;
                         drawFg = drawBg;
                         drawBg = temp;
                     }
 
-                    // Encode the grapheme on the fly
                     var encoded_char: u32 = 0;
                     if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
                         encoded_char = @as(u32, grapheme_bytes[0]);
@@ -1090,9 +1065,6 @@ pub const OptimizedBuffer = struct {
                         encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
                     }
 
-                    // Render the grapheme (this handles placing start + continuation chars)
-                    // Always use grapheme-aware writes to properly manage multi-cell graphemes
-                    // and clear old spans when overwriting
                     try self.setCellWithAlphaBlending(
                         @intCast(currentX),
                         @intCast(currentY),
@@ -1102,7 +1074,6 @@ pub const OptimizedBuffer = struct {
                         drawAttributes,
                     );
 
-                    // Advance by the grapheme's full width
                     globalCharPos += g_width;
                     currentX += @as(i32, @intCast(g_width));
                     column_in_line += g_width;
@@ -1110,12 +1081,9 @@ pub const OptimizedBuffer = struct {
                 }
             }
 
-            // Account for newline after this virtual line's source logical line
-            // Check if this is the last virtual line of its source logical line
             const is_last_vline_of_logical_line = (slice_idx + 1 >= virtual_lines[firstVisibleLine..lastPossibleLine].len) or
                 (virtual_lines[firstVisibleLine..lastPossibleLine][slice_idx + 1].source_line != vline.source_line);
 
-            // Add +1 for newline if this logical line is not the last line in the buffer
             if (is_last_vline_of_logical_line) {
                 const is_last_logical_line = vline.source_line + 1 >= total_line_count;
                 if (!is_last_logical_line) {
