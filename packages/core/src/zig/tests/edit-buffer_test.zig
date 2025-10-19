@@ -1277,10 +1277,20 @@ test "EditBuffer - newline at col 0 then insertText" {
 
     try std.testing.expectEqualStrings("Line 1\n\nXLine 2", out_buffer[0..written]);
 
+    // Verify we never have adjacent linestarts
     const rope = &eb.getTextBuffer().rope;
+    var i: u32 = 0;
+    while (i + 1 < rope.count()) : (i += 1) {
+        const seg1 = rope.get(i);
+        const seg2 = rope.get(i + 1);
+        if (seg1 != null and seg2 != null) {
+            try std.testing.expect(!(seg1.?.isLineStart() and seg2.?.isLineStart()));
+        }
+    }
+
     const line_count = eb.getTextBuffer().lineCount();
     var prev_weight: ?u32 = null;
-    var i: u32 = 0;
+    i = 0;
     while (i < line_count) : (i += 1) {
         if (rope.getMarker(.linestart, i)) |m| {
             if (prev_weight) |pw| {
