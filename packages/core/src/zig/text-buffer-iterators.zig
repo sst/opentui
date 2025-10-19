@@ -40,24 +40,11 @@ pub fn walkLines(
     const linestart_count = rope.markerCount(.linestart);
     if (linestart_count == 0) return;
 
-    const total_weight = rope.totalWeight();
-
     var i: u32 = 0;
     while (i < linestart_count) : (i += 1) {
         const marker = rope.getMarker(.linestart, i) orelse continue;
         const line_start_weight = marker.global_weight;
-
-        // Compute line width using same logic as lineWidthAt()
-        // TODO: Shouldn't it just use lineWidthAt() then?
-        const width = if (i + 1 < linestart_count) blk: {
-            const next_marker = rope.getMarker(.linestart, i + 1) orelse break :blk 0;
-            const next_weight = next_marker.global_weight;
-            // Guard against underflow (adjacent linestart markers or empty line)
-            if (next_weight <= line_start_weight) break :blk 0;
-            break :blk next_weight - line_start_weight - 1;
-        } else blk: {
-            break :blk total_weight - line_start_weight;
-        };
+        const width = lineWidthAt(rope, i);
 
         // Compute seg_end by looking at next line's marker (or using a sentinel)
         const seg_end = if (i + 1 < linestart_count) blk: {
@@ -196,21 +183,7 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
     // Lookup linestart marker for this row
     const marker = rope.getMarker(.linestart, row) orelse return null;
     const line_start_weight = marker.global_weight;
-
-    // Calculate line's display width (excluding newline)
-    const line_width = if (row + 1 < linestart_count) blk: {
-        // Non-final line: next line starts at (current_start + text_width + 1_for_newline)
-        // So text_width = next_start - current_start - 1
-        const next_marker = rope.getMarker(.linestart, row + 1) orelse return null;
-        const next_line_start_weight = next_marker.global_weight;
-        // Guard against underflow (adjacent linestart markers or empty line)
-        if (next_line_start_weight <= line_start_weight) break :blk 0;
-        break :blk next_line_start_weight - line_start_weight - 1;
-    } else blk: {
-        // Final line: width = total_weight - line_start (total weight includes all previous newlines)
-        const total_weight = rope.totalWeight();
-        break :blk total_weight - line_start_weight;
-    };
+    const line_width = lineWidthAt(rope, row);
 
     if (col > line_width) return null;
 
