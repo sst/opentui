@@ -8,8 +8,8 @@ import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 
 export interface EditBufferOptions extends RenderableOptions<EditBufferRenderable> {
-  fg?: string | RGBA
-  bg?: string | RGBA
+  textColor?: string | RGBA
+  backgroundColor?: string | RGBA
   selectionBg?: string | RGBA
   selectionFg?: string | RGBA
   selectable?: boolean
@@ -24,8 +24,8 @@ export abstract class EditBufferRenderable extends Renderable {
   protected _focusable: boolean = true
   public selectable: boolean = true
 
-  protected _defaultFg: RGBA
-  protected _defaultBg: RGBA
+  protected _textColor: RGBA
+  protected _backgroundColor: RGBA
   protected _defaultAttributes: number
   protected _selectionBg: RGBA | undefined
   protected _selectionFg: RGBA | undefined
@@ -39,8 +39,8 @@ export abstract class EditBufferRenderable extends Renderable {
   public editorView: EditorView
 
   protected _defaultOptions = {
-    fg: RGBA.fromValues(1, 1, 1, 1),
-    bg: RGBA.fromValues(0, 0, 0, 0),
+    textColor: RGBA.fromValues(1, 1, 1, 1),
+    backgroundColor: RGBA.fromValues(0, 0, 0, 0),
     selectionBg: undefined,
     selectionFg: undefined,
     selectable: true,
@@ -54,8 +54,8 @@ export abstract class EditBufferRenderable extends Renderable {
   constructor(ctx: RenderContext, options: EditBufferOptions) {
     super(ctx, options)
 
-    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
-    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+    this._textColor = parseColor(options.textColor ?? this._defaultOptions.textColor)
+    this._backgroundColor = parseColor(options.backgroundColor ?? this._defaultOptions.backgroundColor)
     this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
@@ -82,15 +82,14 @@ export abstract class EditBufferRenderable extends Renderable {
     return this.editBuffer.getCursorPosition()
   }
 
-  get fg(): RGBA {
-    return this._defaultFg
+  get textColor(): RGBA {
+    return this._textColor
   }
 
-  set fg(value: RGBA | string | undefined) {
-    const newColor = parseColor(value ?? this._defaultOptions.fg)
-    if (this._defaultFg !== newColor) {
-      this._defaultFg = newColor
-      this.onFgChanged(newColor)
+  set textColor(value: RGBA | string | undefined) {
+    const newColor = parseColor(value ?? this._defaultOptions.textColor)
+    if (this._textColor !== newColor) {
+      this._textColor = newColor
       this.requestRender()
     }
   }
@@ -125,15 +124,14 @@ export abstract class EditBufferRenderable extends Renderable {
     }
   }
 
-  get bg(): RGBA {
-    return this._defaultBg
+  get backgroundColor(): RGBA {
+    return this._backgroundColor
   }
 
-  set bg(value: RGBA | string | undefined) {
-    const newColor = parseColor(value ?? this._defaultOptions.bg)
-    if (this._defaultBg !== newColor) {
-      this._defaultBg = newColor
-      this.onBgChanged(newColor)
+  set backgroundColor(value: RGBA | string | undefined) {
+    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
+    if (this._backgroundColor !== newColor) {
+      this._backgroundColor = newColor
       this.requestRender()
     }
   }
@@ -145,7 +143,6 @@ export abstract class EditBufferRenderable extends Renderable {
   set attributes(value: number) {
     if (this._defaultAttributes !== value) {
       this._defaultAttributes = value
-      this.onAttributesChanged(value)
       this.requestRender()
     }
   }
@@ -330,17 +327,5 @@ export abstract class EditBufferRenderable extends Renderable {
     this.editorView.destroy()
     this.editBuffer.destroy()
     super.destroy()
-  }
-
-  protected onFgChanged(newColor: RGBA): void {
-    // Override in subclasses if needed
-  }
-
-  protected onBgChanged(newColor: RGBA): void {
-    // Override in subclasses if needed
-  }
-
-  protected onAttributesChanged(newAttributes: number): void {
-    // Override in subclasses if needed
   }
 }

@@ -1,9 +1,17 @@
 import { type RenderContext } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
 import type { KeyEvent } from "../lib/KeyHandler"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import type { OptimizedBuffer } from "../buffer"
 
 export interface TextareaOptions extends EditBufferOptions {
   content?: string
+  backgroundColor?: ColorInput
+  textColor?: ColorInput
+  focusedBackgroundColor?: ColorInput
+  focusedTextColor?: ColorInput
+  placeholder?: string
+  placeholderColor?: ColorInput
 }
 
 /**
@@ -12,16 +20,56 @@ export interface TextareaOptions extends EditBufferOptions {
  */
 export class TextareaRenderable extends EditBufferRenderable {
   private _content: string
+  private _placeholder: string
+  private _unfocusedBackgroundColor: RGBA
+  private _unfocusedTextColor: RGBA
+  private _focusedBackgroundColor: RGBA
+  private _focusedTextColor: RGBA
+  private _placeholderColor: RGBA
 
   protected _contentDefaultOptions = {
     content: "",
+    backgroundColor: "transparent",
+    textColor: "#FFFFFF",
+    focusedBackgroundColor: "#1a1a1a",
+    focusedTextColor: "#FFFFFF",
+    placeholder: "",
+    placeholderColor: "#666666",
   } satisfies Partial<TextareaOptions>
 
   constructor(ctx: RenderContext, options: TextareaOptions) {
-    super(ctx, options)
+    // Extract defaults (can't use 'this' before super)
+    const defaults = {
+      content: "",
+      backgroundColor: "transparent",
+      textColor: "#FFFFFF",
+      focusedBackgroundColor: "#1a1a1a",
+      focusedTextColor: "#FFFFFF",
+      placeholder: "",
+      placeholderColor: "#666666",
+    }
 
-    this._content = options.content ?? this._contentDefaultOptions.content
+    // Pass base colors to parent constructor (these become the unfocused colors)
+    const baseOptions = {
+      ...options,
+      backgroundColor: options.backgroundColor || defaults.backgroundColor,
+      textColor: options.textColor || defaults.textColor,
+    }
+    super(ctx, baseOptions)
+
+    this._content = options.content ?? defaults.content
+    // Store unfocused colors separately (parent's properties get overwritten when focused)
+    this._unfocusedBackgroundColor = parseColor(options.backgroundColor || defaults.backgroundColor)
+    this._unfocusedTextColor = parseColor(options.textColor || defaults.textColor)
+    this._focusedBackgroundColor = parseColor(
+      options.focusedBackgroundColor || options.backgroundColor || defaults.focusedBackgroundColor,
+    )
+    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
+    this._placeholder = options.placeholder || defaults.placeholder
+    this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
+
     this.updateContent(this._content)
+    this.updateColors()
   }
 
   public handlePaste(text: string): void {
@@ -152,6 +200,11 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.editBuffer.setText(content)
     this.yogaNode.markDirty()
     this.requestRender()
+  }
+
+  private updateColors(): void {
+    super.backgroundColor = this._focused ? this._focusedBackgroundColor : this._unfocusedBackgroundColor
+    super.textColor = this._focused ? this._focusedTextColor : this._unfocusedTextColor
   }
 
   // Editor operations - call EditBuffer directly
@@ -302,38 +355,114 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  /**
-   * Handle keyboard-based selection with shift modifier.
-   * Called before and after cursor movement to track selection boundaries.
-   * Uses the same selection system as mouse-based selection.
-   */
   private handleShiftSelection(shiftPressed: boolean, isBeforeMovement: boolean): void {
     if (!this.selectable) return
 
     if (!shiftPressed) {
-      // Clear selection when shift is not pressed
       this._ctx.clearSelection()
       return
     }
 
-    // Get current visual cursor position (accounts for wrapping)
     const visualCursor = this.editorView.getVisualCursor()
     if (!visualCursor) return
 
     const viewport = this.editorView.getViewport()
-
-    // Calculate screen position accounting for viewport scrolling using visual coordinates
     const cursorX = this.x + visualCursor.visualCol
     const cursorY = this.y + (visualCursor.visualRow - viewport.offsetY)
 
     if (isBeforeMovement) {
-      // Before movement: start selection if not already active
       if (!this._ctx.hasSelection) {
         this._ctx.startSelection(this, cursorX, cursorY)
       }
     } else {
-      // After movement: update selection focus to new cursor position
       this._ctx.updateSelection(this, cursorX, cursorY)
+    }
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    const isEmpty = this._content.length === 0
+    const shouldShowPlaceholder = isEmpty && this._placeholder && !this._focused
+
+    if (shouldShowPlaceholder) {
+      const originalTextColor = this._textColor
+      this._textColor = this._placeholderColor
+
+      this.editBuffer.setText(this._placeholder)
+      buffer.drawEditorView(this.editorView, this.x, this.y)
+      this.editBuffer.setText("")
+
+      this._textColor = originalTextColor
+    } else {
+      buffer.drawEditorView(this.editorView, this.x, this.y)
+    }
+  }
+
+  public focus(): void {
+    super.focus()
+    this.updateColors()
+  }
+
+  public blur(): void {
+    super.blur()
+    this.updateColors()
+  }
+
+  get placeholder(): string {
+    return this._placeholder
+  }
+
+  set placeholder(value: string) {
+    if (this._placeholder !== value) {
+      this._placeholder = value
+      this.requestRender()
+    }
+  }
+
+  override get backgroundColor(): RGBA {
+    return this._unfocusedBackgroundColor
+  }
+
+  override set backgroundColor(value: RGBA | string | undefined) {
+    const newColor = parseColor(value ?? this._contentDefaultOptions.backgroundColor)
+    if (this._unfocusedBackgroundColor !== newColor) {
+      this._unfocusedBackgroundColor = newColor
+      this.updateColors()
+    }
+  }
+
+  override get textColor(): RGBA {
+    return this._unfocusedTextColor
+  }
+
+  override set textColor(value: RGBA | string | undefined) {
+    const newColor = parseColor(value ?? this._contentDefaultOptions.textColor)
+    if (this._unfocusedTextColor !== newColor) {
+      this._unfocusedTextColor = newColor
+      this.updateColors()
+    }
+  }
+
+  set focusedBackgroundColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._contentDefaultOptions.focusedBackgroundColor)
+    if (this._focusedBackgroundColor !== newColor) {
+      this._focusedBackgroundColor = newColor
+      this.updateColors()
+    }
+  }
+
+  set focusedTextColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._contentDefaultOptions.focusedTextColor)
+    if (this._focusedTextColor !== newColor) {
+      this._focusedTextColor = newColor
+      this.updateColors()
+    }
+  }
+
+  set placeholderColor(value: ColorInput) {
+    const newColor = parseColor(value ?? this._contentDefaultOptions.placeholderColor)
+    if (this._placeholderColor !== newColor) {
+      this._placeholderColor = newColor
+      this.requestRender()
     }
   }
 }
