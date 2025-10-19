@@ -12,10 +12,6 @@ export interface Viewport {
 
 export type { VisualCursor }
 
-/**
- * EditorView provides a viewport-managed view over a TextBuffer,
- * with support for text wrapping and viewport scrolling.
- */
 export class EditorView {
   private lib: RenderLib
   private viewPtr: Pointer
@@ -28,10 +24,6 @@ export class EditorView {
     this.editBuffer = editBuffer
   }
 
-  /**
-   * Create an EditorView for an EditBuffer.
-   * The EditorView wraps the EditBuffer and its TextBuffer.
-   */
   static create(editBuffer: EditBuffer, viewportWidth: number, viewportHeight: number): EditorView {
     const lib = resolveRenderLib()
     const viewPtr = lib.createEditorView(editBuffer.ptr, viewportWidth, viewportHeight)
@@ -124,8 +116,7 @@ export class EditorView {
 
   public getSelectedText(): string {
     this.guard()
-    // Use a reasonable buffer size based on typical selection sizes
-    // We could optimize this by getting the actual selection size first
+    // TODO: native can stack alloc all the text and decode will alloc as js string then
     const maxLength = 1024 * 1024 // 1MB should be enough for most selections
     const selectedBytes = this.lib.editorViewGetSelectedTextBytes(this.viewPtr, maxLength)
 
@@ -147,20 +138,18 @@ export class EditorView {
     return this.lib.decoder.decode(textBytes)
   }
 
-  // VisualCursor methods - wrap-aware cursor translation and movement
-  // Returns viewport-relative visual coordinates
   public getVisualCursor(): VisualCursor | null {
     this.guard()
     return this.lib.editorViewGetVisualCursor(this.viewPtr)
   }
 
-  // Returns viewport-relative visual coordinates for the given logical position
+  // TODO: remove exposure - should only be used internally
   public logicalToVisualCursor(logicalRow: number, logicalCol: number): VisualCursor | null {
     this.guard()
     return this.lib.editorViewLogicalToVisualCursor(this.viewPtr, logicalRow, logicalCol)
   }
 
-  // Accepts viewport-relative visual coordinates, returns VisualCursor with viewport-relative visual coords
+  // TODO: remove exposure - should only be used internally
   public visualToLogicalCursor(visualRow: number, visualCol: number): VisualCursor | null {
     this.guard()
     return this.lib.editorViewVisualToLogicalCursor(this.viewPtr, visualRow, visualCol)
