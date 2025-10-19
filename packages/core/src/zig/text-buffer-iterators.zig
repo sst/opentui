@@ -1,10 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
+const utf8 = @import("utf8.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
+const MemRegistry = seg_mod.MemRegistry;
 
 pub const LineInfo = struct {
     line_idx: u32,
@@ -253,4 +255,82 @@ pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
         const total_weight = rope.totalWeight();
         return total_weight - line_start_weight;
     }
+}
+
+/// Get the display width of the grapheme at or after the given column on a line
+/// Returns 0 if at end of line
+/// Takes mutable rope for lazy marker cache rebuilding
+pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32) u32 {
+    const line_width = lineWidthAt(rope, row);
+    if (col >= line_width) return 0;
+
+    const linestart = rope.getMarker(.linestart, row) orelse return 0;
+    var seg_idx = linestart.leaf_index + 1;
+    var cols_before: u32 = 0;
+
+    while (seg_idx < rope.count()) : (seg_idx += 1) {
+        const seg = rope.get(seg_idx) orelse break;
+        if (seg.isBreak() or seg.isLineStart()) break;
+        if (seg.asText()) |chunk| {
+            const next_cols = cols_before + chunk.width;
+            if (col < next_cols) {
+                const local_col: u32 = col - cols_before;
+                const bytes = chunk.getBytes(mem_registry);
+                const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const pos = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
+                if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
+                return utf8.getWidthAt(bytes, pos.byte_offset, 8, cols_before);
+            }
+            cols_before = next_cols;
+        }
+    }
+    return 0;
+}
+
+/// Get the display width of the grapheme before the given column on a line
+/// Returns 0 if at start of line
+/// Takes mutable rope for lazy marker cache rebuilding
+pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32) u32 {
+    if (col == 0) return 0;
+
+    const line_width = lineWidthAt(rope, row);
+    const clamped_col: u32 = @min(col, line_width);
+
+    const linestart = rope.getMarker(.linestart, row) orelse return 0;
+    var seg_idx = linestart.leaf_index + 1;
+    var cols_before: u32 = 0;
+    var prev_chunk: ?struct { chunk: TextChunk, cols_before: u32 } = null;
+
+    while (seg_idx < rope.count()) : (seg_idx += 1) {
+        const seg = rope.get(seg_idx) orelse break;
+        if (seg.isBreak() or seg.isLineStart()) break;
+        if (seg.asText()) |chunk| {
+            const next_cols = cols_before + chunk.width;
+
+            if (clamped_col <= next_cols) {
+                // Target column is in this chunk or at its start
+                if (clamped_col == cols_before and prev_chunk != null) {
+                    // Exactly at chunk boundary - get last grapheme from previous chunk
+                    const pc = prev_chunk.?;
+                    const bytes = pc.chunk.getBytes(mem_registry);
+                    const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, 8, pc.cols_before);
+                    if (prev) |res| return res.width;
+                    return 0;
+                }
+
+                // Within this chunk
+                const bytes = chunk.getBytes(mem_registry);
+                const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                const local_col: u32 = clamped_col - cols_before;
+                const here = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
+                const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), 8, cols_before);
+                if (prev) |res| return res.width;
+                return 0;
+            }
+
+            prev_chunk = .{ .chunk = chunk.*, .cols_before = cols_before };
+            cols_before = next_cols;
+        }
+    }
+    return 0;
 }

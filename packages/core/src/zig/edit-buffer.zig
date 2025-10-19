@@ -171,7 +171,7 @@ pub const EditBuffer = struct {
         const line_count = self.tb.lineCount();
         const clamped_row = @min(row, line_count -| 1);
 
-        const line_width = self.getLineWidth(clamped_row);
+        const line_width = iter_mod.lineWidthAt(&self.tb.rope, clamped_row);
         const clamped_col = @min(col, line_width);
 
         if (self.cursors.items.len == 0) {
@@ -186,88 +186,6 @@ pub const EditBuffer = struct {
 
     fn ensureAddCapacity(self: *EditBuffer, need: usize) !void {
         try self.add_buffer.ensureCapacity(self.tb, need);
-    }
-
-    /// Get line width using O(1) marker lookups
-    /// Uses linestart markers to determine line boundaries
-    fn getLineWidth(self: *const EditBuffer, row: u32) u32 {
-        return iter_mod.lineWidthAt(&self.tb.rope, row);
-    }
-
-    /// Get the display width of the grapheme at or after the given column on a line
-    /// Returns 0 if at end of line
-    fn getGraphemeWidthAt(self: *const EditBuffer, row: u32, col: u32) u32 {
-        const line_width = self.getLineWidth(row);
-        if (col >= line_width) return 0;
-
-        const linestart = self.tb.rope.getMarker(.linestart, row) orelse return 0;
-        var seg_idx = linestart.leaf_index + 1;
-        var cols_before: u32 = 0;
-
-        while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
-            const seg = self.tb.rope.get(seg_idx) orelse break;
-            if (seg.isBreak() or seg.isLineStart()) break;
-            if (seg.asText()) |chunk| {
-                const next_cols = cols_before + chunk.width;
-                if (col < next_cols) {
-                    const local_col: u32 = col - cols_before;
-                    const bytes = chunk.getBytes(&self.tb.mem_registry);
-                    const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
-                    if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
-                    return utf8.getWidthAt(bytes, pos.byte_offset, 8, cols_before);
-                }
-                cols_before = next_cols;
-            }
-        }
-        return 0;
-    }
-
-    /// Get the display width of the grapheme before the given column on a line
-    /// Returns 0 if at start of line
-    pub fn getPrevGraphemeWidth(self: *const EditBuffer, row: u32, col: u32) u32 {
-        if (col == 0) return 0;
-
-        const line_width = self.getLineWidth(row);
-        const clamped_col: u32 = @min(col, line_width);
-
-        const linestart = self.tb.rope.getMarker(.linestart, row) orelse return 0;
-        var seg_idx = linestart.leaf_index + 1;
-        var cols_before: u32 = 0;
-        var prev_chunk: ?struct { chunk: TextChunk, cols_before: u32 } = null;
-
-        while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
-            const seg = self.tb.rope.get(seg_idx) orelse break;
-            if (seg.isBreak() or seg.isLineStart()) break;
-            if (seg.asText()) |chunk| {
-                const next_cols = cols_before + chunk.width;
-
-                if (clamped_col <= next_cols) {
-                    // Target column is in this chunk or at its start
-                    if (clamped_col == cols_before and prev_chunk != null) {
-                        // Exactly at chunk boundary - get last grapheme from previous chunk
-                        const pc = prev_chunk.?;
-                        const bytes = pc.chunk.getBytes(&self.tb.mem_registry);
-                        const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, 8, pc.cols_before);
-                        if (prev) |res| return res.width;
-                        return 0;
-                    }
-
-                    // Within this chunk
-                    const bytes = chunk.getBytes(&self.tb.mem_registry);
-                    const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                    const local_col: u32 = clamped_col - cols_before;
-                    const here = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
-                    const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), 8, cols_before);
-                    if (prev) |res| return res.width;
-                    return 0;
-                }
-
-                prev_chunk = .{ .chunk = chunk.*, .cols_before = cols_before };
-                cols_before = next_cols;
-            }
-        }
-        return 0;
     }
 
     /// Split a TextChunk at a specific weight (display width)
@@ -460,7 +378,7 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len > 0) {
             const line_count = self.tb.lineCount();
             const clamped_row = if (start.row >= line_count) line_count -| 1 else start.row;
-            const line_width = if (line_count > 0) self.getLineWidth(clamped_row) else 0;
+            const line_width = if (line_count > 0) iter_mod.lineWidthAt(&self.tb.rope, clamped_row) else 0;
             const clamped_col = @min(start.col, line_width);
 
             self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
@@ -479,7 +397,7 @@ pub const EditBuffer = struct {
         if (cursor.col == 0) {
             // At start of line - delete from end of previous line to current position
             if (cursor.row > 0) {
-                const prev_line_width = self.getLineWidth(cursor.row - 1);
+                const prev_line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row - 1);
                 try self.deleteRange(
                     .{ .row = cursor.row - 1, .col = prev_line_width },
                     .{ .row = cursor.row, .col = 0 },
@@ -487,7 +405,7 @@ pub const EditBuffer = struct {
             }
         } else {
             // Delete previous grapheme
-            const prev_grapheme_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
+            const prev_grapheme_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col);
             if (prev_grapheme_width == 0) return; // Nothing to delete
 
             const target_col = cursor.col - prev_grapheme_width;
@@ -504,7 +422,7 @@ pub const EditBuffer = struct {
 
         try self.autoStoreUndo();
 
-        const line_width = self.getLineWidth(cursor.row);
+        const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
         const line_count = self.tb.lineCount();
 
         if (cursor.col >= line_width) {
@@ -517,7 +435,7 @@ pub const EditBuffer = struct {
             }
         } else {
             // Delete one grapheme forward
-            const grapheme_width = self.getGraphemeWidthAt(cursor.row, cursor.col);
+            const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col);
             if (grapheme_width > 0) {
                 try self.deleteRange(
                     .{ .row = cursor.row, .col = cursor.col },
@@ -532,11 +450,11 @@ pub const EditBuffer = struct {
         const cursor = &self.cursors.items[0];
 
         if (cursor.col > 0) {
-            const prev_width = self.getPrevGraphemeWidth(cursor.row, cursor.col);
+            const prev_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col);
             cursor.col -= prev_width;
         } else if (cursor.row > 0) {
             cursor.row -= 1;
-            const line_width = self.getLineWidth(cursor.row);
+            const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
             cursor.col = line_width;
         }
         cursor.desired_col = cursor.col;
@@ -549,11 +467,11 @@ pub const EditBuffer = struct {
         if (self.cursors.items.len == 0) return;
         const cursor = &self.cursors.items[0];
 
-        const line_width = self.getLineWidth(cursor.row);
+        const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
         const line_count = self.tb.getLineCount();
 
         if (cursor.col < line_width) {
-            const grapheme_width = self.getGraphemeWidthAt(cursor.row, cursor.col);
+            const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col);
             cursor.col += grapheme_width;
         } else if (cursor.row + 1 < line_count) {
             cursor.row += 1;
@@ -576,7 +494,7 @@ pub const EditBuffer = struct {
 
             cursor.row -= 1;
 
-            const line_width = self.getLineWidth(cursor.row);
+            const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
 
             cursor.col = @min(cursor.desired_col, line_width);
         }
@@ -597,7 +515,7 @@ pub const EditBuffer = struct {
 
             cursor.row += 1;
 
-            const line_width = self.getLineWidth(cursor.row);
+            const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
 
             cursor.col = @min(cursor.desired_col, line_width);
         }
@@ -634,8 +552,8 @@ pub const EditBuffer = struct {
                 .{ .row = cursor.row + 1, .col = 0 },
             );
         } else if (cursor.row > 0) {
-            const prev_line_width = self.getLineWidth(cursor.row - 1);
-            const curr_line_width = self.getLineWidth(cursor.row);
+            const prev_line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row - 1);
+            const curr_line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
 
             try self.deleteRange(
                 .{ .row = cursor.row - 1, .col = prev_line_width },
@@ -646,7 +564,7 @@ pub const EditBuffer = struct {
 
             self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
         } else {
-            const line_width = self.getLineWidth(cursor.row);
+            const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
             if (line_width > 0) {
                 try self.deleteRange(
                     .{ .row = cursor.row, .col = 0 },
@@ -661,7 +579,7 @@ pub const EditBuffer = struct {
         const target_line = @min(line, line_count -| 1);
 
         if (line >= line_count) {
-            const last_line_width = self.getLineWidth(target_line);
+            const last_line_width = iter_mod.lineWidthAt(&self.tb.rope, target_line);
             try self.setCursor(target_line, last_line_width);
         } else {
             try self.setCursor(target_line, 0);

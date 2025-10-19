@@ -464,6 +464,7 @@ pub const Segment = union(enum) {
         }
 
         // Remove trailing break
+        // TODO: Really?
         if (last) |last_seg| {
             if (last_seg.isBreak()) {
                 return .{ .delete_right = true };
