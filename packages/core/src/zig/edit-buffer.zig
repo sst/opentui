@@ -7,6 +7,7 @@ const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
+const event_bus = @import("event-bus.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
@@ -14,6 +15,9 @@ const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextChunk = seg_mod.TextChunk;
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
+
+// Global ID counter for EditBuffer instances
+var global_edit_buffer_id: u16 = 0;
 
 pub const EditBufferError = error{
     OutOfMemory,
@@ -78,6 +82,7 @@ const AddBuffer = struct {
 };
 
 pub const EditBuffer = struct {
+    id: u16,
     tb: *UnifiedTextBuffer,
     add_buffer: AddBuffer,
     cursors: std.ArrayListUnmanaged(Cursor),
@@ -106,7 +111,11 @@ pub const EditBuffer = struct {
 
         try cursors.append(allocator, .{ .row = 0, .col = 0 });
 
+        const buffer_id = global_edit_buffer_id;
+        global_edit_buffer_id += 1;
+
         self.* = .{
+            .id = buffer_id,
             .tb = text_buffer,
             .add_buffer = add_buffer,
             .cursors = cursors,
@@ -128,6 +137,20 @@ pub const EditBuffer = struct {
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    pub fn getId(self: *const EditBuffer) u16 {
+        return self.id;
+    }
+
+    fn emitNativeEvent(self: *const EditBuffer, event_name: []const u8) void {
+        var id_bytes: [2]u8 = undefined;
+        std.mem.writeInt(u16, &id_bytes, self.id, .little);
+
+        const full_name = std.fmt.allocPrint(self.allocator, "eb_{s}", .{event_name}) catch return;
+        defer self.allocator.free(full_name);
+
+        event_bus.emit(full_name, &id_bytes);
     }
 
     pub fn getTextBuffer(self: *EditBuffer) *UnifiedTextBuffer {
@@ -158,6 +181,7 @@ pub const EditBuffer = struct {
         }
 
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     fn ensureAddCapacity(self: *EditBuffer, need: usize) !void {
@@ -398,6 +422,7 @@ pub const EditBuffer = struct {
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
@@ -445,6 +470,7 @@ pub const EditBuffer = struct {
         }
 
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     pub fn backspace(self: *EditBuffer) !void {
@@ -519,6 +545,7 @@ pub const EditBuffer = struct {
         cursor.desired_col = cursor.col;
 
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     pub fn moveRight(self: *EditBuffer) void {
@@ -538,6 +565,7 @@ pub const EditBuffer = struct {
         cursor.desired_col = cursor.col;
 
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     pub fn moveUp(self: *EditBuffer) void {
@@ -557,6 +585,7 @@ pub const EditBuffer = struct {
         }
 
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     pub fn moveDown(self: *EditBuffer) void {
@@ -577,6 +606,7 @@ pub const EditBuffer = struct {
         }
 
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursor-changed");
     }
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
@@ -668,6 +698,7 @@ pub const EditBuffer = struct {
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursorChanged");
 
         return prev_meta;
     }
@@ -682,6 +713,7 @@ pub const EditBuffer = struct {
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
+        self.emitNativeEvent("cursorChanged");
 
         return next_meta;
     }

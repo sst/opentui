@@ -541,6 +541,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "ptr"],
       returns: "void",
     },
+    editBufferGetId: {
+      args: ["ptr"],
+      returns: "u16",
+    },
     editBufferGetTextBuffer: {
       args: ["ptr"],
       returns: "ptr",
@@ -1055,6 +1059,7 @@ export interface RenderLib {
   editBufferSetCursor: (buffer: Pointer, line: number, col: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
   editBufferGetCursorPosition: (buffer: Pointer) => { line: number; visualColumn: number }
+  editBufferGetId: (buffer: Pointer) => number
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer
   editBufferDebugLogRope: (buffer: Pointer) => void
   editBufferUndo: (buffer: Pointer, maxLength: number) => Uint8Array | null
@@ -1138,9 +1143,10 @@ export interface RenderLib {
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
 
-  onNativeEvent: (name: string, handler: (data: Uint8Array) => void) => void
-  onceNativeEvent: (name: string, handler: (data: Uint8Array) => void) => void
-  offNativeEvent: (name: string, handler: (data: Uint8Array) => void) => void
+  onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
+  onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
+  offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
+  onAnyNativeEvent: (handler: (name: string, data: ArrayBuffer) => void) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -1150,6 +1156,7 @@ class FFIRenderLib implements RenderLib {
   private logCallbackWrapper: any // Store the FFI callback wrapper
   private eventCallbackWrapper: any // Store the FFI event callback wrapper
   private _nativeEvents: EventEmitter = new EventEmitter()
+  private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
@@ -1233,15 +1240,20 @@ class FFIRenderLib implements RenderLib {
           const nameBytes = new Uint8Array(nameBuffer)
           const eventName = this.decoder.decode(nameBytes)
 
-          let eventData: Uint8Array
+          let eventData: ArrayBuffer
           if (dataLen > 0 && dataPtr) {
-            const dataBuffer = toArrayBuffer(dataPtr, 0, dataLen)
-            eventData = new Uint8Array(dataBuffer)
+            eventData = toArrayBuffer(dataPtr, 0, dataLen).slice()
           } else {
-            eventData = new Uint8Array(0)
+            eventData = new ArrayBuffer(0)
           }
 
-          queueMicrotask(() => this._nativeEvents.emit(eventName, eventData))
+          queueMicrotask(() => {
+            this._nativeEvents.emit(eventName, eventData)
+
+            for (const handler of this._anyEventHandlers) {
+              handler(eventName, eventData)
+            }
+          })
         } catch (error) {
           console.error("Error in native event callback:", error)
         }
@@ -2159,6 +2171,10 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
+  public editBufferGetId(buffer: Pointer): number {
+    return this.opentui.symbols.editBufferGetId(buffer)
+  }
+
   public editBufferGetTextBuffer(buffer: Pointer): Pointer {
     const result = this.opentui.symbols.editBufferGetTextBuffer(buffer)
     if (!result) {
@@ -2424,16 +2440,20 @@ class FFIRenderLib implements RenderLib {
     return typeof result === "bigint" ? Number(result) : result
   }
 
-  public onNativeEvent(name: string, handler: (data: Uint8Array) => void): void {
+  public onNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {
     this._nativeEvents.on(name, handler)
   }
 
-  public onceNativeEvent(name: string, handler: (data: Uint8Array) => void): void {
+  public onceNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {
     this._nativeEvents.once(name, handler)
   }
 
-  public offNativeEvent(name: string, handler: (data: Uint8Array) => void): void {
+  public offNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {
     this._nativeEvents.off(name, handler)
+  }
+
+  public onAnyNativeEvent(handler: (name: string, data: ArrayBuffer) => void): void {
+    this._anyEventHandlers.push(handler)
   }
 }
 

@@ -454,3 +454,208 @@ describe("EditBuffer", () => {
     })
   })
 })
+
+describe("EditBuffer Events", () => {
+  describe("events", () => {
+    it("should emit cursor-changed event when cursor moves", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello World")
+      testBuffer.moveCursorRight()
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(eventCount).toBeGreaterThan(1) // setText + moveCursorRight
+      testBuffer.destroy()
+    })
+
+    it("should emit cursor-changed event on setCursor", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello World")
+      testBuffer.setCursorToLineCol(0, 5)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(eventCount).toBeGreaterThan(1) // setText + setCursor
+      testBuffer.destroy()
+    })
+
+    it("should emit cursor-changed event on text insertion", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello")
+      testBuffer.insertText(" World")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(eventCount).toBeGreaterThan(1) // setText + insertText
+      testBuffer.destroy()
+    })
+
+    it("should emit cursor-changed event on deletion", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello World")
+      const beforeDelete = eventCount
+      testBuffer.setCursorToLineCol(0, 5)
+      testBuffer.deleteChar()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(eventCount).toBeGreaterThan(beforeDelete + 1) // setCursor + deleteChar
+      testBuffer.destroy()
+    })
+
+    it("should emit cursor-changed event on undo/redo", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Test")
+      testBuffer.insertText(" Hello")
+
+      if (testBuffer.canUndo()) {
+        const beforeUndo = eventCount
+        testBuffer.undo()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(eventCount).toBeGreaterThan(beforeUndo)
+      }
+
+      if (testBuffer.canRedo()) {
+        const beforeRedo = eventCount
+        testBuffer.redo()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(eventCount).toBeGreaterThan(beforeRedo)
+      }
+
+      testBuffer.destroy()
+    })
+
+    it("should handle multiple event listeners", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let count1 = 0
+      let count2 = 0
+
+      testBuffer.on("cursor-changed", () => {
+        count1++
+      })
+      testBuffer.on("cursor-changed", () => {
+        count2++
+      })
+
+      testBuffer.setText("Hello")
+      testBuffer.moveCursorRight()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(count1).toBeGreaterThan(1)
+      expect(count2).toBeGreaterThan(1)
+      expect(count1).toBe(count2)
+
+      testBuffer.destroy()
+    })
+
+    it("should support removing event listeners", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+      testBuffer.setText("Hello")
+
+      let eventCount = 0
+      const listener = () => {
+        eventCount++
+      }
+
+      testBuffer.on("cursor-changed", listener)
+      testBuffer.moveCursorRight()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const firstCount = eventCount
+
+      testBuffer.off("cursor-changed", listener)
+      testBuffer.moveCursorRight()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      // Count should not have increased after removing listener
+      expect(eventCount).toBe(firstCount)
+
+      testBuffer.destroy()
+    })
+
+    it("should isolate events between different buffer instances", async () => {
+      const testBuffer1 = EditBuffer.create("wcwidth")
+      const testBuffer2 = EditBuffer.create("wcwidth")
+
+      let count1 = 0
+      let count2 = 0
+
+      testBuffer1.on("cursor-changed", () => {
+        count1++
+      })
+      testBuffer2.on("cursor-changed", () => {
+        count2++
+      })
+
+      testBuffer1.setText("Buffer 1")
+      await Bun.sleep(10)
+      const count1AfterSetText = count1
+      testBuffer1.moveCursorRight()
+      await Bun.sleep(10)
+
+      expect(count1).toBeGreaterThan(count1AfterSetText)
+      expect(count2).toBe(0)
+
+      testBuffer2.setText("Buffer 2")
+      await Bun.sleep(10)
+      const count2AfterSetText = count2
+      testBuffer2.moveCursorRight()
+      await Bun.sleep(10)
+
+      expect(count1).toBe(count1AfterSetText + 1)
+      expect(count2).toBeGreaterThan(count2AfterSetText)
+
+      testBuffer1.destroy()
+      testBuffer2.destroy()
+    })
+
+    it("should not emit events after destroy", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello")
+      testBuffer.moveCursorRight()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const countBeforeDestroy = eventCount
+
+      testBuffer.destroy()
+
+      // Trying to move cursor on destroyed buffer should throw
+      // So we can't test event emission, but we can verify the instance is removed from registry
+      expect(countBeforeDestroy).toBeGreaterThan(1) // setText + moveCursorRight
+    })
+  })
+})

@@ -640,6 +640,10 @@ export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, 
     outVisualCol.* = pos.visual_col;
 }
 
+export fn editBufferGetId(edit_buffer: *edit_buffer_mod.EditBuffer) u16 {
+    return edit_buffer.getId();
+}
+
 export fn editBufferDebugLogRope(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     edit_buffer.debugLogRope();
 }

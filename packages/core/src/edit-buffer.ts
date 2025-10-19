@@ -2,6 +2,7 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
+import { EventEmitter } from "events"
 
 export interface CursorPosition {
   line: number
@@ -12,23 +13,53 @@ export interface CursorPosition {
  * EditBuffer provides a text editing buffer with cursor management,
  * incremental editing, and grapheme-aware operations.
  */
-export class EditBuffer {
+export class EditBuffer extends EventEmitter {
+  private static registry = new Map<number, EditBuffer>()
+  private static nativeEventsSubscribed = false
+
   private lib: RenderLib
   private bufferPtr: Pointer
   private textBufferPtr: Pointer
+  public readonly id: number
   private _destroyed: boolean = false
   private _textBytes?: Uint8Array
 
   constructor(lib: RenderLib, ptr: Pointer) {
+    super()
     this.lib = lib
     this.bufferPtr = ptr
     this.textBufferPtr = lib.editBufferGetTextBuffer(ptr)
+    this.id = lib.editBufferGetId(ptr)
+
+    EditBuffer.registry.set(this.id, this)
+    EditBuffer.subscribeToNativeEvents(lib)
   }
 
   static create(widthMethod: WidthMethod): EditBuffer {
     const lib = resolveRenderLib()
     const ptr = lib.createEditBuffer(widthMethod)
     return new EditBuffer(lib, ptr)
+  }
+
+  private static subscribeToNativeEvents(lib: RenderLib): void {
+    if (EditBuffer.nativeEventsSubscribed) return
+    EditBuffer.nativeEventsSubscribed = true
+
+    lib.onAnyNativeEvent((name: string, data: ArrayBuffer) => {
+      const buffer = new Uint16Array(data)
+
+      if (name.startsWith("eb_") && buffer.length >= 1) {
+        const id = buffer[0]
+        const instance = EditBuffer.registry.get(id)
+
+        if (instance) {
+          // Strip the "eb_" prefix and forward the event
+          const eventName = name.slice(3)
+          const eventData = data.slice(2)
+          instance.emit(eventName, eventData)
+        }
+      }
+    })
   }
 
   private guard(): void {
@@ -186,7 +217,9 @@ export class EditBuffer {
 
   public destroy(): void {
     if (this._destroyed) return
+
     this._destroyed = true
+    EditBuffer.registry.delete(this.id)
     this.lib.destroyEditBuffer(this.bufferPtr)
   }
 }
