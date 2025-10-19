@@ -40,7 +40,7 @@ export abstract class EditBufferRenderable extends Renderable {
 
   protected _defaultOptions = {
     textColor: RGBA.fromValues(1, 1, 1, 1),
-    backgroundColor: RGBA.fromValues(0, 0, 0, 0),
+    backgroundColor: "transparent",
     selectionBg: undefined,
     selectionFg: undefined,
     selectable: true,
@@ -71,6 +71,10 @@ export abstract class EditBufferRenderable extends Renderable {
     this.editorView.setWrapMode(this._wrapMode)
     this.editorView.setScrollMargin(this._scrollMargin)
 
+    this.editBuffer.setDefaultFg(this._textColor)
+    this.editBuffer.setDefaultBg(this._backgroundColor)
+    this.editBuffer.setDefaultAttributes(this._defaultAttributes)
+
     this.setupMeasureFunc()
   }
 
@@ -90,6 +94,7 @@ export abstract class EditBufferRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.textColor)
     if (this._textColor !== newColor) {
       this._textColor = newColor
+      this.editBuffer.setDefaultFg(newColor)
       this.requestRender()
     }
   }
@@ -132,6 +137,7 @@ export abstract class EditBufferRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
     if (this._backgroundColor !== newColor) {
       this._backgroundColor = newColor
+      this.editBuffer.setDefaultBg(newColor)
       this.requestRender()
     }
   }
@@ -143,6 +149,7 @@ export abstract class EditBufferRenderable extends Renderable {
   set attributes(value: number) {
     if (this._defaultAttributes !== value) {
       this._defaultAttributes = value
+      this.editBuffer.setDefaultAttributes(value)
       this.requestRender()
     }
   }

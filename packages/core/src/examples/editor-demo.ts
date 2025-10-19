@@ -91,7 +91,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   editor = new TextareaRenderable(renderer, {
     id: "editor",
     content: initialContent,
-    fg: "#F0F6FC",
+    textColor: "#F0F6FC",
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
     wrapMode: "word",

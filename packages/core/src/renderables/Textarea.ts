@@ -31,7 +31,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     content: "",
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
-    focusedBackgroundColor: "#1a1a1a",
+    focusedBackgroundColor: "transparent",
     focusedTextColor: "#FFFFFF",
     placeholder: "",
     placeholderColor: "#666666",
@@ -194,8 +194,11 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   private updateColors(): void {
-    super.backgroundColor = this._focused ? this._focusedBackgroundColor : this._unfocusedBackgroundColor
-    super.textColor = this._focused ? this._focusedTextColor : this._unfocusedTextColor
+    const effectiveBg = this._focused ? this._focusedBackgroundColor : this._unfocusedBackgroundColor
+    const effectiveFg = this._focused ? this._focusedTextColor : this._unfocusedTextColor
+
+    super.backgroundColor = effectiveBg
+    super.textColor = effectiveFg
   }
 
   // Editor operations - call EditBuffer directly

@@ -312,15 +312,6 @@ describe("EditBuffer", () => {
     })
   })
 
-  describe("getTextBufferPtr", () => {
-    it("should return valid TextBuffer pointer", () => {
-      buffer.setText("Test")
-      const ptr = buffer.getTextBufferPtr()
-      expect(ptr).toBeDefined()
-      expect(typeof ptr).toBe("number")
-    })
-  })
-
   describe("error handling", () => {
     it("should throw error when using destroyed buffer", () => {
       buffer.setText("Test")

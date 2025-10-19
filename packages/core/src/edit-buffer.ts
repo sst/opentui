@@ -1,6 +1,7 @@
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
+import { RGBA } from "./lib/RGBA"
 
 export interface CursorPosition {
   line: number
@@ -14,12 +15,14 @@ export interface CursorPosition {
 export class EditBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
+  private textBufferPtr: Pointer
   private _destroyed: boolean = false
   private _textBytes?: Uint8Array
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
     this.bufferPtr = ptr
+    this.textBufferPtr = lib.editBufferGetTextBuffer(ptr)
   }
 
   static create(widthMethod: WidthMethod): EditBuffer {
@@ -125,12 +128,6 @@ export class EditBuffer {
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
   }
 
-  // TODO: Instead of just a ptr getter, this should have a textBuffer getter that returns a TextBuffer instance
-  public getTextBufferPtr(): Pointer {
-    this.guard()
-    return this.lib.editBufferGetTextBuffer(this.bufferPtr)
-  }
-
   public debugLogRope(): void {
     this.guard()
     this.lib.editBufferDebugLogRope(this.bufferPtr)
@@ -165,6 +162,26 @@ export class EditBuffer {
   public clearHistory(): void {
     this.guard()
     this.lib.editBufferClearHistory(this.bufferPtr)
+  }
+
+  public setDefaultFg(fg: RGBA | null): void {
+    this.guard()
+    this.lib.textBufferSetDefaultFg(this.textBufferPtr, fg)
+  }
+
+  public setDefaultBg(bg: RGBA | null): void {
+    this.guard()
+    this.lib.textBufferSetDefaultBg(this.textBufferPtr, bg)
+  }
+
+  public setDefaultAttributes(attributes: number | null): void {
+    this.guard()
+    this.lib.textBufferSetDefaultAttributes(this.textBufferPtr, attributes)
+  }
+
+  public resetDefaults(): void {
+    this.guard()
+    this.lib.textBufferResetDefaults(this.textBufferPtr)
   }
 
   public destroy(): void {
