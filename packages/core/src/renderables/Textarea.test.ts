@@ -3124,6 +3124,238 @@ describe("TextareaRenderable", () => {
     })
   })
 
+  describe("Paste Events", () => {
+    it("should paste text at cursor position", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Hello",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999) // Move to end
+
+      await currentMockInput.pasteBracketedText(" World")
+
+      expect(editor.plainText).toBe("Hello World")
+    })
+
+    it("should paste text in the middle", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "HelloWorld",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 5; i++) {
+        editor.moveCursorRight()
+      }
+
+      await currentMockInput.pasteBracketedText(" ")
+
+      expect(editor.plainText).toBe("Hello World")
+    })
+
+    it("should paste multi-line text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Start",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText("\nLine 2\nLine 3")
+
+      expect(editor.plainText).toBe("Start\nLine 2\nLine 3")
+    })
+
+    it("should paste text at beginning of buffer", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      // Cursor starts at beginning
+
+      await currentMockInput.pasteBracketedText("Hello ")
+
+      expect(editor.plainText).toBe("Hello World")
+    })
+
+    it("should replace selected text when pasting", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Select "Hello" using shift+right
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      // Paste to replace selection
+      await currentMockInput.pasteBracketedText("Goodbye")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("Goodbye World")
+    })
+
+    it("should replace multi-line selection when pasting", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Select from start through "Line 1\nLi"
+      for (let i = 0; i < 10; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.hasSelection()).toBe(true)
+
+      // Paste replacement text
+      await currentMockInput.pasteBracketedText("New")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("Newe 2\nLine 3")
+    })
+
+    it("should replace selected text with multi-line paste", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Select "Hello"
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      // Paste multi-line text to replace selection
+      await currentMockInput.pasteBracketedText("Line 1\nLine 2")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("Line 1\nLine 2 World")
+    })
+
+    it("should paste empty string without error", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      await currentMockInput.pasteBracketedText("")
+
+      expect(editor.plainText).toBe("Test")
+    })
+
+    it("should paste Unicode characters (emoji, CJK)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Hello",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" 🌟世界👍")
+
+      expect(editor.plainText).toBe("Hello 🌟世界👍")
+    })
+
+    it("should replace entire selection with pasted text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "AAAA\nBBBB\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLine(1) // Go to BBBB line
+
+      // Select all of BBBB
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.getSelectedText()).toBe("BBBB")
+
+      // Paste replacement
+      await currentMockInput.pasteBracketedText("XXXX")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("AAAA\nXXXX\nCCCC")
+    })
+
+    it("should handle paste via handlePaste method directly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      editor.handlePaste(" Content")
+
+      expect(editor.plainText).toBe("Test Content")
+    })
+
+    it("should replace selection when using handlePaste directly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        content: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Select "World"
+      const cursor = editor.cursor
+      editor.editBuffer.setCursorToLineCol(cursor.line, 9999)
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("left", { shift: true })
+      }
+
+      expect(editor.getSelectedText()).toBe("World")
+
+      // Use handlePaste directly
+      editor.handlePaste("Universe")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("Hello Universe")
+    })
+  })
+
   describe("Deletion with empty lines", () => {
     it("should delete selection on line after empty lines correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {

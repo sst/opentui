@@ -24,6 +24,10 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.updateContent(this._content)
   }
 
+  public handlePaste(text: string): void {
+    this.insertText(text)
+  }
+
   /**
    * Handle keyboard input for interactive editing.
    * This is called automatically when the editor is focused and a key is pressed.
