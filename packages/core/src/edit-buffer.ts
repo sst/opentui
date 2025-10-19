@@ -1,7 +1,6 @@
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
-import type { TextBuffer } from "./text-buffer"
 
 export interface CursorPosition {
   line: number
@@ -46,7 +45,8 @@ export class EditBuffer {
 
   public getText(): string {
     this.guard()
-    // Estimate max size (could be larger than original due to edits)
+    // TODO: Use byte size of text buffer to get the actual size of the text
+    // actually native can stack alloc all the text and decode will alloc as js string then
     const maxSize = 1024 * 1024 // 1MB max
     const textBytes = this.lib.editBufferGetText(this.bufferPtr, maxSize)
 
@@ -125,9 +125,7 @@ export class EditBuffer {
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
   }
 
-  /**
-   * Get the underlying TextBuffer pointer for creating TextBufferView or EditorView.
-   */
+  // TODO: Instead of just a ptr getter, this should have a textBuffer getter that returns a TextBuffer instance
   public getTextBufferPtr(): Pointer {
     this.guard()
     return this.lib.editBufferGetTextBuffer(this.bufferPtr)
@@ -138,7 +136,6 @@ export class EditBuffer {
     this.lib.editBufferDebugLogRope(this.bufferPtr)
   }
 
-  // History API
   public undo(): string | null {
     this.guard()
     const maxSize = 256
