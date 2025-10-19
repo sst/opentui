@@ -1,7 +1,7 @@
 import { CliRenderer, createCliRenderer, CodeRenderable, BoxRenderable, TextRenderable, type ParsedKey } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
-import { SyntaxStyle } from "../lib/tree-sitter"
+import { NativeSyntaxStyle } from "../native-syntax-style"
 
 // Example TypeScript code to highlight
 const exampleCode = `interface User {
@@ -51,7 +51,7 @@ let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 let codeDisplay: CodeRenderable | null = null
 let timingText: TextRenderable | null = null
-let syntaxStyle: SyntaxStyle | null = null
+let syntaxStyle: NativeSyntaxStyle | null = null
 let currentFiletype: "typescript" | "javascript" = "typescript"
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
@@ -98,7 +98,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   parentContainer.add(codeBox)
 
   // Create syntax style similar to GitHub Dark theme
-  syntaxStyle = new SyntaxStyle({
+  syntaxStyle = NativeSyntaxStyle.fromStyles({
     keyword: { fg: parseColor("#FF7B72"), bold: true }, // red keywords
     string: { fg: parseColor("#A5D6FF") }, // blue strings
     comment: { fg: parseColor("#8B949E"), italic: true }, // gray comments

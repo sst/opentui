@@ -666,4 +666,176 @@ describe("NativeSyntaxStyle", () => {
       expect(style.getStyleCount()).toBe(combinations.length)
     })
   })
+
+  describe("getStyle", () => {
+    it("should retrieve registered style definition", () => {
+      const styleDef = { fg: RGBA.fromValues(1, 0, 0, 1), bold: true }
+      style.registerStyle("keyword", styleDef)
+
+      const retrieved = style.getStyle("keyword")
+      expect(retrieved).toBeDefined()
+      expect(retrieved?.fg).toEqual(styleDef.fg)
+      expect(retrieved?.bold).toBe(true)
+    })
+
+    it("should return undefined for unregistered style", () => {
+      expect(style.getStyle("nonexistent")).toBeUndefined()
+    })
+
+    it("should fall back to base scope for dotted names", () => {
+      const baseDef = { fg: RGBA.fromValues(1, 0, 0, 1), bold: true }
+      style.registerStyle("keyword", baseDef)
+
+      const retrieved = style.getStyle("keyword.control")
+      expect(retrieved).toBeDefined()
+      expect(retrieved?.fg).toEqual(baseDef.fg)
+      expect(retrieved?.bold).toBe(true)
+    })
+
+    it("should prefer exact match over base scope", () => {
+      const baseDef = { fg: RGBA.fromValues(1, 0, 0, 1) }
+      const specificDef = { fg: RGBA.fromValues(0, 1, 0, 1), bold: true }
+
+      style.registerStyle("keyword", baseDef)
+      style.registerStyle("keyword.control", specificDef)
+
+      const exactMatch = style.getStyle("keyword.control")
+      expect(exactMatch?.fg).toEqual(specificDef.fg)
+      expect(exactMatch?.bold).toBe(true)
+
+      const baseMatch = style.getStyle("keyword.operator")
+      expect(baseMatch?.fg).toEqual(baseDef.fg)
+    })
+
+    it("should not return Object prototype properties", () => {
+      expect(style.getStyle("constructor")).toBeUndefined()
+      expect(style.getStyle("toString")).toBeUndefined()
+      expect(style.getStyle("hasOwnProperty")).toBeUndefined()
+    })
+
+    it("should handle style named constructor correctly", () => {
+      const constructorDef = { fg: RGBA.fromValues(1, 0.5, 0, 1), bold: true }
+      style.registerStyle("constructor", constructorDef)
+
+      const retrieved = style.getStyle("constructor")
+      expect(retrieved).toBeDefined()
+      expect(retrieved?.fg).toEqual(constructorDef.fg)
+      expect(retrieved?.bold).toBe(true)
+    })
+
+    it("should handle multiple dot levels", () => {
+      const baseDef = { fg: RGBA.fromValues(1, 0, 0, 1) }
+      style.registerStyle("meta", baseDef)
+
+      const retrieved = style.getStyle("meta.tag.xml")
+      expect(retrieved).toBeDefined()
+      expect(retrieved?.fg).toEqual(baseDef.fg)
+    })
+  })
+
+  describe("mergeStyles", () => {
+    it("should merge single style correctly", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1), bold: true })
+
+      const merged = style.mergeStyles("keyword")
+      expect(merged.fg).toEqual(RGBA.fromValues(1, 0, 0, 1))
+      expect(merged.attributes).toBeGreaterThan(0)
+    })
+
+    it("should merge multiple styles with later taking precedence", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1), bold: true })
+      style.registerStyle("emphasis", { italic: true })
+      style.registerStyle("override", { fg: RGBA.fromValues(0, 1, 0, 1) })
+
+      const merged = style.mergeStyles("keyword", "emphasis", "override")
+      expect(merged.fg).toEqual(RGBA.fromValues(0, 1, 0, 1))
+      expect(merged.attributes).toBeGreaterThan(0)
+    })
+
+    it("should handle dotted style names with fallback", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1), bold: true })
+
+      const merged = style.mergeStyles("keyword.operator")
+      expect(merged.fg).toEqual(RGBA.fromValues(1, 0, 0, 1))
+      expect(merged.attributes).toBeGreaterThan(0)
+    })
+
+    it("should return empty merge for non-existent styles", () => {
+      const merged = style.mergeStyles("nonexistent")
+      expect(merged.fg).toBeUndefined()
+      expect(merged.bg).toBeUndefined()
+      expect(merged.attributes).toBe(0)
+    })
+
+    it("should cache merged results", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1) })
+
+      expect(style.getCacheSize()).toBe(0)
+
+      const result1 = style.mergeStyles("keyword.operator")
+      expect(style.getCacheSize()).toBe(1)
+
+      const result2 = style.mergeStyles("keyword.operator")
+      expect(style.getCacheSize()).toBe(1)
+
+      expect(result1).toBe(result2)
+    })
+
+    it("should handle all style attributes correctly", () => {
+      style.registerStyle("complex", {
+        fg: RGBA.fromValues(1, 0, 0, 1),
+        bg: RGBA.fromValues(0.2, 0.2, 0.2, 1),
+        bold: true,
+        italic: true,
+        underline: true,
+        dim: true,
+      })
+
+      const merged = style.mergeStyles("complex")
+      expect(merged.fg).toEqual(RGBA.fromValues(1, 0, 0, 1))
+      expect(merged.bg).toEqual(RGBA.fromValues(0.2, 0.2, 0.2, 1))
+      expect(merged.attributes).toBeGreaterThan(0)
+    })
+
+    it("should handle empty style names", () => {
+      const merged = style.mergeStyles()
+      expect(merged.fg).toBeUndefined()
+      expect(merged.bg).toBeUndefined()
+      expect(merged.attributes).toBe(0)
+    })
+  })
+
+  describe("clearCache and getCacheSize", () => {
+    it("should clear merged style cache", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1) })
+      style.mergeStyles("keyword")
+      style.mergeStyles("keyword.operator")
+
+      expect(style.getCacheSize()).toBe(2)
+
+      style.clearCache()
+      expect(style.getCacheSize()).toBe(0)
+    })
+
+    it("should not affect registered styles when clearing cache", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1) })
+      style.mergeStyles("keyword")
+
+      style.clearCache()
+
+      expect(style.getStyleCount()).toBe(1)
+      expect(style.resolveStyleId("keyword")).not.toBeNull()
+    })
+
+    it("should allow re-merging after cache clear", () => {
+      style.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1) })
+
+      const result1 = style.mergeStyles("keyword")
+      style.clearCache()
+      const result2 = style.mergeStyles("keyword")
+
+      expect(result1.fg).toEqual(result2.fg)
+      expect(result1.attributes).toBe(result2.attributes)
+    })
+  })
 })

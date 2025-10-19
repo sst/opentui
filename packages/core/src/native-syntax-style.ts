@@ -1,4 +1,4 @@
-import type { StyleDefinition, ThemeTokenStyle } from "./lib/syntax-style"
+import type { StyleDefinition, ThemeTokenStyle, MergedStyle } from "./lib/syntax-style"
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
@@ -10,6 +10,8 @@ export class NativeSyntaxStyle {
   private stylePtr: Pointer
   private _destroyed: boolean = false
   private nameCache: Map<string, number> = new Map()
+  private styleDefs: Map<string, StyleDefinition> = new Map()
+  private mergedCache: Map<string, MergedStyle> = new Map()
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -60,6 +62,7 @@ export class NativeSyntaxStyle {
     const id = this.lib.syntaxStyleRegister(this.stylePtr, name, style.fg || null, style.bg || null, attributes)
 
     this.nameCache.set(name, id)
+    this.styleDefs.set(name, style)
 
     return id
   }
@@ -109,10 +112,83 @@ export class NativeSyntaxStyle {
     this.nameCache.clear()
   }
 
+  public getStyle(name: string): StyleDefinition | undefined {
+    this.guard()
+
+    if (Object.prototype.hasOwnProperty.call(this.styleDefs, name)) {
+      return undefined
+    }
+
+    const style = this.styleDefs.get(name)
+    if (style) return style
+
+    if (name.includes(".")) {
+      const baseName = name.split(".")[0]
+      if (Object.prototype.hasOwnProperty.call(this.styleDefs, baseName)) {
+        return undefined
+      }
+      return this.styleDefs.get(baseName)
+    }
+
+    return undefined
+  }
+
+  public mergeStyles(...styleNames: string[]): MergedStyle {
+    this.guard()
+
+    const cacheKey = styleNames.join(":")
+    const cached = this.mergedCache.get(cacheKey)
+    if (cached) return cached
+
+    const styleDefinition: StyleDefinition = {}
+
+    for (const name of styleNames) {
+      const style = this.getStyle(name)
+
+      if (!style) continue
+
+      if (style.fg) styleDefinition.fg = style.fg
+      if (style.bg) styleDefinition.bg = style.bg
+      if (style.bold !== undefined) styleDefinition.bold = style.bold
+      if (style.italic !== undefined) styleDefinition.italic = style.italic
+      if (style.underline !== undefined) styleDefinition.underline = style.underline
+      if (style.dim !== undefined) styleDefinition.dim = style.dim
+    }
+
+    const attributes = createTextAttributes({
+      bold: styleDefinition.bold,
+      italic: styleDefinition.italic,
+      underline: styleDefinition.underline,
+      dim: styleDefinition.dim,
+    })
+
+    const merged: MergedStyle = {
+      fg: styleDefinition.fg,
+      bg: styleDefinition.bg,
+      attributes,
+    }
+
+    this.mergedCache.set(cacheKey, merged)
+
+    return merged
+  }
+
+  public clearCache(): void {
+    this.guard()
+    this.mergedCache.clear()
+  }
+
+  public getCacheSize(): number {
+    this.guard()
+    return this.mergedCache.size
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
     this.nameCache.clear()
+    this.styleDefs.clear()
+    this.mergedCache.clear()
     this.lib.destroySyntaxStyle(this.stylePtr)
   }
 }

@@ -1,6 +1,6 @@
 import type { TextChunk } from "../text-buffer"
 import { StyledText } from "./styled-text"
-import { SyntaxStyle } from "./syntax-style"
+import { NativeSyntaxStyle } from "../native-syntax-style"
 import { TreeSitterClient } from "./tree-sitter/client"
 import type { SimpleHighlight } from "./tree-sitter/types"
 import { createTextAttributes } from "../utils"
@@ -8,7 +8,7 @@ import { createTextAttributes } from "../utils"
 export function treeSitterToTextChunks(
   content: string,
   highlights: SimpleHighlight[],
-  syntaxStyle: SyntaxStyle,
+  syntaxStyle: NativeSyntaxStyle,
 ): TextChunk[] {
   const chunks: TextChunk[] = []
   const defaultStyle = syntaxStyle.getStyle("default")
@@ -92,7 +92,7 @@ export function treeSitterToTextChunks(
 export async function treeSitterToStyledText(
   content: string,
   filetype: string,
-  syntaxStyle: SyntaxStyle,
+  syntaxStyle: NativeSyntaxStyle,
   client: TreeSitterClient,
 ): Promise<StyledText> {
   const result = await client.highlightOnce(content, filetype)

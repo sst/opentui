@@ -1,6 +1,6 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { CodeRenderable } from "./Code"
-import { SyntaxStyle } from "../lib/syntax-style"
+import { NativeSyntaxStyle } from "../native-syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
 import { TreeSitterClient } from "../lib/tree-sitter"
@@ -64,7 +64,7 @@ afterEach(async () => {
 })
 
 test("CodeRenderable - basic construction", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
     string: { fg: RGBA.fromValues(0, 1, 0, 1) },
@@ -83,7 +83,7 @@ test("CodeRenderable - basic construction", async () => {
 })
 
 test("CodeRenderable - content updates", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -101,7 +101,7 @@ test("CodeRenderable - content updates", async () => {
 })
 
 test("CodeRenderable - filetype updates", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -119,7 +119,7 @@ test("CodeRenderable - filetype updates", async () => {
 })
 
 test("CodeRenderable - re-highlighting when content changes during active highlighting", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
   })
@@ -158,7 +158,7 @@ test("CodeRenderable - re-highlighting when content changes during active highli
 })
 
 test("CodeRenderable - multiple content changes during highlighting", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -194,7 +194,7 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
 })
 
 test("CodeRenderable - fallback when no filetype provided", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -213,7 +213,7 @@ test("CodeRenderable - fallback when no filetype provided", async () => {
 })
 
 test("CodeRenderable - fallback when highlighting throws error", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -239,7 +239,7 @@ test("CodeRenderable - fallback when highlighting throws error", async () => {
 })
 
 test("CodeRenderable - early return when content is empty", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -258,7 +258,7 @@ test("CodeRenderable - early return when content is empty", async () => {
 })
 
 test("CodeRenderable - empty content does not trigger highlighting", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
@@ -288,7 +288,7 @@ test("CodeRenderable - empty content does not trigger highlighting", async () =>
 })
 
 test("CodeRenderable - text renders immediately before highlighting completes", async () => {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = NativeSyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
   })

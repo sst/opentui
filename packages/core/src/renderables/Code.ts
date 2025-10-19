@@ -1,20 +1,20 @@
 import { type RenderContext } from "../types"
 import { StyledText } from "../lib/styled-text"
-import { SyntaxStyle } from "../lib/syntax-style"
+import { NativeSyntaxStyle } from "../native-syntax-style"
 import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
 
 export interface CodeOptions extends TextBufferOptions {
   content?: string
   filetype?: string
-  syntaxStyle: SyntaxStyle
+  syntaxStyle: NativeSyntaxStyle
   treeSitterClient?: TreeSitterClient
 }
 
 export class CodeRenderable extends TextBufferRenderable {
   private _content: string
   private _filetype?: string
-  private _syntaxStyle: SyntaxStyle
+  private _syntaxStyle: NativeSyntaxStyle
   private _isHighlighting: boolean = false
   private _treeSitterClient: TreeSitterClient
   private _pendingRehighlight: boolean = false
@@ -56,11 +56,11 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
-  get syntaxStyle(): SyntaxStyle {
+  get syntaxStyle(): NativeSyntaxStyle {
     return this._syntaxStyle
   }
 
-  set syntaxStyle(value: SyntaxStyle) {
+  set syntaxStyle(value: NativeSyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       this.updateContent(this._content)

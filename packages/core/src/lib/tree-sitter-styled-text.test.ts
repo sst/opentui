@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient } from "./tree-sitter/client"
 import { treeSitterToStyledText, treeSitterToTextChunks } from "./tree-sitter-styled-text"
-import { SyntaxStyle } from "./syntax-style"
+import { NativeSyntaxStyle } from "../native-syntax-style"
 import { RGBA } from "./RGBA"
 import { createTextAttributes } from "../utils"
 import { tmpdir } from "os"
@@ -10,7 +10,7 @@ import { mkdir } from "fs/promises"
 
 describe("TreeSitter Styled Text", () => {
   let client: TreeSitterClient
-  let syntaxStyle: SyntaxStyle
+  let syntaxStyle: NativeSyntaxStyle
   const dataPath = join(tmpdir(), "tree-sitter-styled-text-test")
 
   beforeAll(async () => {
@@ -19,7 +19,7 @@ describe("TreeSitter Styled Text", () => {
     await client.initialize()
 
     // Create a syntax style similar to common themes
-    syntaxStyle = new SyntaxStyle({
+    syntaxStyle = NativeSyntaxStyle.fromStyles({
       default: { fg: RGBA.fromInts(255, 255, 255, 255) }, // white
       keyword: { fg: RGBA.fromInts(255, 100, 100, 255), bold: true }, // red bold
       string: { fg: RGBA.fromInts(100, 255, 100, 255) }, // green
@@ -33,6 +33,7 @@ describe("TreeSitter Styled Text", () => {
 
   afterAll(async () => {
     await client.destroy()
+    syntaxStyle.destroy()
   })
 
   test("should convert JavaScript code to styled text", async () => {
