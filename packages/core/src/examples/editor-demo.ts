@@ -13,7 +13,7 @@ import {
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
-import { NativeSyntaxStyle } from "../native-syntax-style"
+import { SyntaxStyle } from "../syntax-style"
 
 const initialContent = `Welcome to the EditorRenderable Demo!
 

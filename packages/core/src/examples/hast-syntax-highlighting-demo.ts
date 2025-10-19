@@ -2,7 +2,7 @@ import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type Key
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
 import { hastToStyledText, type HASTElement } from "../lib/hast-styled-text"
-import { NativeSyntaxStyle } from "../native-syntax-style"
+import { SyntaxStyle } from "../syntax-style"
 
 const exampleHAST: HASTElement = (await import("./assets/hast-example.json", { with: { type: "json" } })) as HASTElement
 
@@ -53,7 +53,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(codeBox)
 
-  const syntaxStyle = NativeSyntaxStyle.fromStyles({
+  const syntaxStyle = SyntaxStyle.fromStyles({
     keyword: { fg: parseColor("#FF6B9D"), bold: true },
     string: { fg: parseColor("#A8E6CF") },
     comment: { fg: parseColor("#888888"), italic: true },

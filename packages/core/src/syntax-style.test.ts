@@ -1,13 +1,13 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { NativeSyntaxStyle } from "./native-syntax-style"
+import { SyntaxStyle } from "./syntax-style"
 import { RGBA } from "./lib/RGBA"
-import type { StyleDefinition, ThemeTokenStyle } from "./native-syntax-style"
+import type { StyleDefinition, ThemeTokenStyle } from "./syntax-style"
 
 describe("NativeSyntaxStyle", () => {
-  let style: NativeSyntaxStyle
+  let style: SyntaxStyle
 
   beforeEach(() => {
-    style = NativeSyntaxStyle.create()
+    style = SyntaxStyle.create()
   })
 
   afterEach(() => {
@@ -16,15 +16,15 @@ describe("NativeSyntaxStyle", () => {
 
   describe("create", () => {
     it("should create a new NativeSyntaxStyle instance", () => {
-      const newStyle = NativeSyntaxStyle.create()
+      const newStyle = SyntaxStyle.create()
       expect(newStyle).toBeDefined()
       expect(newStyle.getStyleCount()).toBe(0)
       newStyle.destroy()
     })
 
     it("should create multiple independent instances", () => {
-      const style1 = NativeSyntaxStyle.create()
-      const style2 = NativeSyntaxStyle.create()
+      const style1 = SyntaxStyle.create()
+      const style2 = SyntaxStyle.create()
 
       style1.registerStyle("test", { fg: RGBA.fromValues(1, 0, 0, 1) })
 
@@ -321,7 +321,7 @@ describe("NativeSyntaxStyle", () => {
     })
 
     it("should return different pointers for different instances", () => {
-      const style2 = NativeSyntaxStyle.create()
+      const style2 = SyntaxStyle.create()
       const ptr1 = style.ptr
       const ptr2 = style2.ptr
 
@@ -333,7 +333,7 @@ describe("NativeSyntaxStyle", () => {
 
   describe("destroy", () => {
     it("should destroy the style instance", () => {
-      const testStyle = NativeSyntaxStyle.create()
+      const testStyle = SyntaxStyle.create()
       testStyle.registerStyle("keyword", { fg: RGBA.fromValues(1, 0, 0, 1) })
 
       testStyle.destroy()
@@ -342,14 +342,14 @@ describe("NativeSyntaxStyle", () => {
     })
 
     it("should be safe to call destroy multiple times", () => {
-      const testStyle = NativeSyntaxStyle.create()
+      const testStyle = SyntaxStyle.create()
 
       testStyle.destroy()
       expect(() => testStyle.destroy()).not.toThrow()
     })
 
     it("should throw error when using destroyed instance", () => {
-      const testStyle = NativeSyntaxStyle.create()
+      const testStyle = SyntaxStyle.create()
       testStyle.destroy()
 
       expect(() => testStyle.registerStyle("test", {})).toThrow("NativeSyntaxStyle is destroyed")
@@ -368,7 +368,7 @@ describe("NativeSyntaxStyle", () => {
         comment: { fg: RGBA.fromValues(0.5, 0.5, 0.5, 1), italic: true },
       }
 
-      const newStyle = NativeSyntaxStyle.fromStyles(styles)
+      const newStyle = SyntaxStyle.fromStyles(styles)
 
       expect(newStyle.getStyleCount()).toBe(3)
       expect(newStyle.resolveStyleId("keyword")).not.toBeNull()
@@ -379,7 +379,7 @@ describe("NativeSyntaxStyle", () => {
     })
 
     it("should handle empty styles object", () => {
-      const newStyle = NativeSyntaxStyle.fromStyles({})
+      const newStyle = SyntaxStyle.fromStyles({})
 
       expect(newStyle.getStyleCount()).toBe(0)
 
@@ -395,7 +395,7 @@ describe("NativeSyntaxStyle", () => {
         },
       }
 
-      const newStyle = NativeSyntaxStyle.fromStyles(styles)
+      const newStyle = SyntaxStyle.fromStyles(styles)
       const id = newStyle.resolveStyleId("keyword")
 
       expect(id).not.toBeNull()
@@ -422,7 +422,7 @@ describe("NativeSyntaxStyle", () => {
         },
       ]
 
-      const newStyle = NativeSyntaxStyle.fromTheme(theme)
+      const newStyle = SyntaxStyle.fromTheme(theme)
 
       expect(newStyle.getStyleCount()).toBe(3) // keyword, keyword.control, string
       expect(newStyle.resolveStyleId("keyword")).not.toBeNull()
@@ -433,7 +433,7 @@ describe("NativeSyntaxStyle", () => {
     })
 
     it("should handle empty theme", () => {
-      const newStyle = NativeSyntaxStyle.fromTheme([])
+      const newStyle = SyntaxStyle.fromTheme([])
 
       expect(newStyle.getStyleCount()).toBe(0)
 
@@ -451,7 +451,7 @@ describe("NativeSyntaxStyle", () => {
         },
       ]
 
-      const newStyle = NativeSyntaxStyle.fromTheme(theme)
+      const newStyle = SyntaxStyle.fromTheme(theme)
 
       expect(newStyle.getStyleCount()).toBe(3)
       expect(newStyle.resolveStyleId("comment")).not.toBeNull()
@@ -476,7 +476,7 @@ describe("NativeSyntaxStyle", () => {
         },
       ]
 
-      const newStyle = NativeSyntaxStyle.fromTheme(theme)
+      const newStyle = SyntaxStyle.fromTheme(theme)
 
       expect(newStyle.getStyleCount()).toBe(1)
       expect(newStyle.resolveStyleId("styled")).not.toBeNull()
@@ -494,7 +494,7 @@ describe("NativeSyntaxStyle", () => {
         },
       ]
 
-      const newStyle = NativeSyntaxStyle.fromTheme(theme)
+      const newStyle = SyntaxStyle.fromTheme(theme)
 
       expect(newStyle.resolveStyleId("keyword")).not.toBeNull()
 
@@ -513,7 +513,7 @@ describe("NativeSyntaxStyle", () => {
         { scope: ["operator"], style: { foreground: "#d4d4d4" } },
       ]
 
-      const syntaxStyle = NativeSyntaxStyle.fromTheme(theme)
+      const syntaxStyle = SyntaxStyle.fromTheme(theme)
 
       expect(syntaxStyle.getStyleCount()).toBe(6)
 

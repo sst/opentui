@@ -7,7 +7,7 @@ import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { LineInfo } from "../zig"
-import { NativeSyntaxStyle } from "../native-syntax-style"
+import { SyntaxStyle } from "../syntax-style"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -60,7 +60,7 @@ export abstract class TextBufferRenderable extends Renderable {
 
     // TEMP
     // TODO: Only set when given in options, otherwise no style
-    const style = NativeSyntaxStyle.create()
+    const style = SyntaxStyle.create()
     this.textBuffer.setSyntaxStyle(style)
 
     this.textBufferView.setWrapMode(this._wrapMode)

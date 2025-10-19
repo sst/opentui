@@ -65,7 +65,7 @@ export function convertThemeToStyles(theme: ThemeTokenStyle[]): Record<string, S
   return flatStyles
 }
 
-export class NativeSyntaxStyle {
+export class SyntaxStyle {
   private lib: RenderLib
   private stylePtr: Pointer
   private _destroyed: boolean = false
@@ -78,14 +78,14 @@ export class NativeSyntaxStyle {
     this.stylePtr = ptr
   }
 
-  static create(): NativeSyntaxStyle {
+  static create(): SyntaxStyle {
     const lib = resolveRenderLib()
     const ptr = lib.createSyntaxStyle()
-    return new NativeSyntaxStyle(lib, ptr)
+    return new SyntaxStyle(lib, ptr)
   }
 
-  static fromTheme(theme: ThemeTokenStyle[]): NativeSyntaxStyle {
-    const style = NativeSyntaxStyle.create()
+  static fromTheme(theme: ThemeTokenStyle[]): SyntaxStyle {
+    const style = SyntaxStyle.create()
     const flatStyles = convertThemeToStyles(theme)
 
     for (const [name, styleDef] of Object.entries(flatStyles)) {
@@ -95,8 +95,8 @@ export class NativeSyntaxStyle {
     return style
   }
 
-  static fromStyles(styles: Record<string, StyleDefinition>): NativeSyntaxStyle {
-    const style = NativeSyntaxStyle.create()
+  static fromStyles(styles: Record<string, StyleDefinition>): SyntaxStyle {
+    const style = SyntaxStyle.create()
 
     for (const [name, styleDef] of Object.entries(styles)) {
       style.registerStyle(name, styleDef)

@@ -3,7 +3,7 @@ import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
-import type { NativeSyntaxStyle } from "./native-syntax-style"
+import type { SyntaxStyle } from "./syntax-style"
 
 export interface TextChunk {
   __isChunk: true
@@ -20,7 +20,7 @@ export class TextBuffer {
   private _byteSize: number = 0
   private _lineInfo?: LineInfo
   private _destroyed: boolean = false
-  private _syntaxStyle?: NativeSyntaxStyle
+  private _syntaxStyle?: SyntaxStyle
   private _textBytes?: Uint8Array // Keep UTF-8 bytes alive for Zig reference
 
   constructor(lib: RenderLib, ptr: Pointer) {
@@ -199,7 +199,7 @@ export class TextBuffer {
    * Set the syntax style for highlight resolution.
    * @param style - Pointer to SyntaxStyle or null to unset
    */
-  public setSyntaxStyle(style: NativeSyntaxStyle | null): void {
+  public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
     this._syntaxStyle = style ?? undefined
     this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)
