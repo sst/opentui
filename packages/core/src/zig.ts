@@ -1,5 +1,6 @@
 import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
+import { EventEmitter } from "events"
 import { type CursorStyle, type DebugOverlayCorner, type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -37,6 +38,11 @@ function getOpenTUILib(libPath?: string) {
   const rawSymbols = dlopen(resolvedLibPath, {
     // Logging
     setLogCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    // Event bus
+    setEventCallback: {
       args: ["ptr"],
       returns: "void",
     },
@@ -1131,6 +1137,10 @@ export interface RenderLib {
 
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
+
+  onNativeEvent: (name: string, handler: (data: Uint8Array) => void) => void
+  onceNativeEvent: (name: string, handler: (data: Uint8Array) => void) => void
+  offNativeEvent: (name: string, handler: (data: Uint8Array) => void) => void
 }
 
 class FFIRenderLib implements RenderLib {
@@ -1138,10 +1148,13 @@ class FFIRenderLib implements RenderLib {
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: any // Store the FFI callback wrapper
+  private eventCallbackWrapper: any // Store the FFI event callback wrapper
+  private _nativeEvents: EventEmitter = new EventEmitter()
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
     this.setupLogging()
+    this.setupEventBus()
   }
 
   private setupLogging() {
@@ -1199,6 +1212,57 @@ class FFIRenderLib implements RenderLib {
 
   private setLogCallback(callbackPtr: Pointer) {
     this.opentui.symbols.setLogCallback(callbackPtr)
+  }
+
+  private setupEventBus() {
+    if (this.eventCallbackWrapper) {
+      return
+    }
+
+    const eventCallback = new JSCallback(
+      (namePtr: Pointer, nameLenBigInt: bigint | number, dataPtr: Pointer, dataLenBigInt: bigint | number) => {
+        try {
+          const nameLen = typeof nameLenBigInt === "bigint" ? Number(nameLenBigInt) : nameLenBigInt
+          const dataLen = typeof dataLenBigInt === "bigint" ? Number(dataLenBigInt) : dataLenBigInt
+
+          if (nameLen === 0 || !namePtr) {
+            return
+          }
+
+          const nameBuffer = toArrayBuffer(namePtr, 0, nameLen)
+          const nameBytes = new Uint8Array(nameBuffer)
+          const eventName = this.decoder.decode(nameBytes)
+
+          let eventData: Uint8Array
+          if (dataLen > 0 && dataPtr) {
+            const dataBuffer = toArrayBuffer(dataPtr, 0, dataLen)
+            eventData = new Uint8Array(dataBuffer)
+          } else {
+            eventData = new Uint8Array(0)
+          }
+
+          queueMicrotask(() => this._nativeEvents.emit(eventName, eventData))
+        } catch (error) {
+          console.error("Error in native event callback:", error)
+        }
+      },
+      {
+        args: ["ptr", "usize", "ptr", "usize"],
+        returns: "void",
+      },
+    )
+
+    this.eventCallbackWrapper = eventCallback
+
+    if (!eventCallback.ptr) {
+      throw new Error("Failed to create event callback")
+    }
+
+    this.setEventCallback(eventCallback.ptr)
+  }
+
+  private setEventCallback(callbackPtr: Pointer) {
+    this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number, options: { testing: boolean } = { testing: false }) {
@@ -2358,6 +2422,18 @@ class FFIRenderLib implements RenderLib {
   public syntaxStyleGetStyleCount(style: Pointer): number {
     const result = this.opentui.symbols.syntaxStyleGetStyleCount(style)
     return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public onNativeEvent(name: string, handler: (data: Uint8Array) => void): void {
+    this._nativeEvents.on(name, handler)
+  }
+
+  public onceNativeEvent(name: string, handler: (data: Uint8Array) => void): void {
+    this._nativeEvents.once(name, handler)
+  }
+
+  public offNativeEvent(name: string, handler: (data: Uint8Array) => void): void {
+    this._nativeEvents.off(name, handler)
   }
 }
 

@@ -13,6 +13,7 @@ const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
@@ -22,6 +23,10 @@ pub const RGBA = buffer.RGBA;
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
     logger.setLogCallback(callback);
+}
+
+export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.C) void) void {
+    event_bus.setEventCallback(callback);
 }
 
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
