@@ -27,7 +27,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _focusedTextColor: RGBA
   private _placeholderColor: RGBA
 
-  protected _contentDefaultOptions = {
+  private static readonly defaults = {
     content: "",
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
@@ -38,16 +38,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   } satisfies Partial<TextareaOptions>
 
   constructor(ctx: RenderContext, options: TextareaOptions) {
-    // Extract defaults (can't use 'this' before super)
-    const defaults = {
-      content: "",
-      backgroundColor: "transparent",
-      textColor: "#FFFFFF",
-      focusedBackgroundColor: "#1a1a1a",
-      focusedTextColor: "#FFFFFF",
-      placeholder: "",
-      placeholderColor: "#666666",
-    }
+    const defaults = TextareaRenderable.defaults
 
     // Pass base colors to parent constructor (these become the unfocused colors)
     const baseOptions = {
@@ -423,7 +414,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   override set backgroundColor(value: RGBA | string | undefined) {
-    const newColor = parseColor(value ?? this._contentDefaultOptions.backgroundColor)
+    const newColor = parseColor(value ?? TextareaRenderable.defaults.backgroundColor)
     if (this._unfocusedBackgroundColor !== newColor) {
       this._unfocusedBackgroundColor = newColor
       this.updateColors()
@@ -435,7 +426,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   override set textColor(value: RGBA | string | undefined) {
-    const newColor = parseColor(value ?? this._contentDefaultOptions.textColor)
+    const newColor = parseColor(value ?? TextareaRenderable.defaults.textColor)
     if (this._unfocusedTextColor !== newColor) {
       this._unfocusedTextColor = newColor
       this.updateColors()
@@ -443,7 +434,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   set focusedBackgroundColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._contentDefaultOptions.focusedBackgroundColor)
+    const newColor = parseColor(value ?? TextareaRenderable.defaults.focusedBackgroundColor)
     if (this._focusedBackgroundColor !== newColor) {
       this._focusedBackgroundColor = newColor
       this.updateColors()
@@ -451,7 +442,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   set focusedTextColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._contentDefaultOptions.focusedTextColor)
+    const newColor = parseColor(value ?? TextareaRenderable.defaults.focusedTextColor)
     if (this._focusedTextColor !== newColor) {
       this._focusedTextColor = newColor
       this.updateColors()
@@ -459,7 +450,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   set placeholderColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._contentDefaultOptions.placeholderColor)
+    const newColor = parseColor(value ?? TextareaRenderable.defaults.placeholderColor)
     if (this._placeholderColor !== newColor) {
       this._placeholderColor = newColor
       this.requestRender()
