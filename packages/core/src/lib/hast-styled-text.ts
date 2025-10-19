@@ -18,7 +18,7 @@ export interface HASTElement {
 
 export type HASTNode = HASTText | HASTElement
 
-export type { StyleDefinition } from "./syntax-style"
+export type { StyleDefinition } from "../native-syntax-style"
 
 function hastToTextChunks(node: HASTNode, syntaxStyle: NativeSyntaxStyle, parentStyles: string[] = []): TextChunk[] {
   const chunks: TextChunk[] = []
