@@ -423,6 +423,29 @@ inline fn eastAsianWidth(cp: u21) u32 {
     };
 }
 
+/// Calculate the display width of a byte in columns
+/// Used for ASCII-only fast paths
+inline fn asciiCharWidth(byte: u8, tab_width: u8, current_column: u32) u32 {
+    if (byte == '\t') {
+        return tab_width - (current_column % tab_width);
+    } else if (byte >= 32 and byte <= 126) {
+        return 1;
+    }
+    return 0;
+}
+
+/// Calculate the display width of a character (byte or codepoint) in columns
+inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8, current_column: u32) u32 {
+    if (byte == '\t') {
+        return tab_width - (current_column % tab_width);
+    } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
+        return 1;
+    } else if (byte >= 0x80) {
+        return eastAsianWidth(codepoint);
+    }
+    return 0;
+}
+
 pub fn findWrapPosByWidthSIMD16(
     text: []const u8,
     max_columns: u32,
@@ -443,14 +466,11 @@ pub fn findWrapPosByWidthSIMD16(
             var i: usize = 0;
             while (i < vector_len) : (i += 1) {
                 const b = text[pos + i];
-                if (b == '\t') {
-                    columns_used += tab_width - (columns_used % tab_width);
-                } else if (b >= 32 and b <= 126) {
-                    columns_used += 1;
-                }
+                const width = asciiCharWidth(b, tab_width, columns_used);
+                columns_used += width;
 
                 if (columns_used > max_columns) {
-                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = columns_used - 1 };
+                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = columns_used - width };
                 }
             }
             pos += vector_len;
@@ -459,14 +479,11 @@ pub fn findWrapPosByWidthSIMD16(
         // Tail
         while (pos < text.len) {
             const b = text[pos];
-            if (b == '\t') {
-                columns_used += tab_width - (columns_used % tab_width);
-            } else if (b >= 32 and b <= 126) {
-                columns_used += 1;
-            }
+            const width = asciiCharWidth(b, tab_width, columns_used);
+            columns_used += width;
 
             if (columns_used > max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used - 1 };
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used - width };
             }
             pos += 1;
         }
@@ -508,11 +525,7 @@ pub fn findWrapPosByWidthSIMD16(
                     cluster_start = pos + i;
                 }
 
-                if (b == '\t') {
-                    cluster_width += tab_width - (columns_used % tab_width);
-                } else if (b >= 32 and b <= 126) {
-                    cluster_width += 1;
-                }
+                cluster_width += asciiCharWidth(b, tab_width, columns_used + cluster_width);
 
                 prev_cp = curr_cp;
             }
@@ -548,13 +561,7 @@ pub fn findWrapPosByWidthSIMD16(
                 cluster_start = pos + i;
             }
 
-            if (b0 == '\t') {
-                cluster_width += tab_width - (columns_used % tab_width);
-            } else if (b0 < 0x80 and b0 >= 32 and b0 <= 126) {
-                cluster_width += 1;
-            } else if (b0 >= 0x80) {
-                cluster_width += eastAsianWidth(curr_cp);
-            }
+            cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
 
             prev_cp = curr_cp;
             i += cp_len;
@@ -587,13 +594,7 @@ pub fn findWrapPosByWidthSIMD16(
             cluster_start = pos;
         }
 
-        if (b0 == '\t') {
-            cluster_width += tab_width - (columns_used % tab_width);
-        } else if (b0 < 0x80 and b0 >= 32 and b0 <= 126) {
-            cluster_width += 1;
-        } else if (b0 >= 0x80) {
-            cluster_width += eastAsianWidth(curr_cp);
-        }
+        cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
 
         prev_cp = curr_cp;
         pos += cp_len;
@@ -637,11 +638,7 @@ pub fn findPosByWidth(
                 const b = text[pos + i];
                 const prev_columns = columns_used;
 
-                if (b == '\t') {
-                    columns_used += tab_width - (columns_used % tab_width);
-                } else if (b >= 32 and b <= 126) {
-                    columns_used += 1;
-                }
+                columns_used += asciiCharWidth(b, tab_width, columns_used);
 
                 // Check if this character starts at or after max_columns
                 if (prev_columns >= max_columns) {
@@ -656,11 +653,7 @@ pub fn findPosByWidth(
             const b = text[pos];
             const prev_columns = columns_used;
 
-            if (b == '\t') {
-                columns_used += tab_width - (columns_used % tab_width);
-            } else if (b >= 32 and b <= 126) {
-                columns_used += 1;
-            }
+            columns_used += asciiCharWidth(b, tab_width, columns_used);
 
             if (prev_columns >= max_columns) {
                 return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
@@ -710,11 +703,7 @@ pub fn findPosByWidth(
                     cluster_start = pos + i;
                 }
 
-                if (b == '\t') {
-                    cluster_width += tab_width - (columns_used % tab_width);
-                } else if (b >= 32 and b <= 126) {
-                    cluster_width += 1;
-                }
+                cluster_width += asciiCharWidth(b, tab_width, columns_used + cluster_width);
 
                 prev_cp = curr_cp;
             }
@@ -755,13 +744,7 @@ pub fn findPosByWidth(
                 cluster_start = pos + i;
             }
 
-            if (b0 == '\t') {
-                cluster_width += tab_width - (columns_used % tab_width);
-            } else if (b0 < 0x80 and b0 >= 32 and b0 <= 126) {
-                cluster_width += 1;
-            } else if (b0 >= 0x80) {
-                cluster_width += eastAsianWidth(curr_cp);
-            }
+            cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
 
             prev_cp = curr_cp;
             i += cp_len;
@@ -799,13 +782,7 @@ pub fn findPosByWidth(
             cluster_start = pos;
         }
 
-        if (b0 == '\t') {
-            cluster_width += tab_width - (columns_used % tab_width);
-        } else if (b0 < 0x80 and b0 >= 32 and b0 <= 126) {
-            cluster_width += 1;
-        } else if (b0 >= 0x80) {
-            cluster_width += eastAsianWidth(curr_cp);
-        }
+        cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
 
         prev_cp = curr_cp;
         pos += cp_len;
