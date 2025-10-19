@@ -821,3 +821,60 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, current_c
 
     return cluster_width;
 }
+
+pub const PrevGraphemeResult = struct {
+    start_offset: usize,
+    width: u32,
+};
+
+pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8, current_column: u32) ?PrevGraphemeResult {
+    if (byte_offset == 0 or text.len == 0) return null;
+    if (byte_offset > text.len) return null;
+
+    var break_state: uucode.grapheme.BreakState = .default;
+    var pos: usize = 0;
+    var prev_cp: ?u21 = null;
+    var prev_grapheme_start: usize = 0;
+    var second_to_last_grapheme_start: usize = 0;
+
+    while (pos < byte_offset) {
+        const b = text[pos];
+        const curr_cp: u21 = if (b < 0x80) b else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+
+        const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (isValidCodepoint(curr_cp)) {
+            const is_break = if (prev_cp) |p| blk: {
+                if (!isValidCodepoint(p)) break :blk true;
+                break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
+            } else true;
+
+            if (is_break) {
+                second_to_last_grapheme_start = prev_grapheme_start;
+                prev_grapheme_start = pos;
+            }
+
+            prev_cp = curr_cp;
+        }
+
+        pos += cp_len;
+    }
+
+    if (prev_grapheme_start == 0 and byte_offset == 0) {
+        return null;
+    }
+
+    const start_offset = if (prev_grapheme_start < byte_offset) prev_grapheme_start else second_to_last_grapheme_start;
+    const byte_diff: u32 = @intCast(byte_offset - start_offset);
+    const grapheme_col = if (current_column >= byte_diff) current_column - byte_diff else 0;
+    const width = getWidthAt(text, start_offset, tab_width, grapheme_col);
+
+    return .{
+        .start_offset = start_offset,
+        .width = width,
+    };
+}

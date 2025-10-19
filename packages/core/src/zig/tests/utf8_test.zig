@@ -1382,3 +1382,190 @@ test "getWidthAt: random positions in realistic text" {
     try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 16, 8, 0)); // fox emoji
     try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 41, 8, 0)); // '犬' (dog)
 }
+
+// ============================================================================
+// GET PREV GRAPHEME START TESTS
+// ============================================================================
+
+test "getPrevGraphemeStart: at start" {
+    const text = "hello";
+    const result = utf8.getPrevGraphemeStart(text, 0, 8, 0);
+    try testing.expect(result == null);
+}
+
+test "getPrevGraphemeStart: empty string" {
+    const result = utf8.getPrevGraphemeStart("", 0, 8, 0);
+    try testing.expect(result == null);
+}
+
+test "getPrevGraphemeStart: out of bounds" {
+    const text = "hello";
+    const result = utf8.getPrevGraphemeStart(text, 100, 8, 0);
+    try testing.expect(result == null);
+}
+
+test "getPrevGraphemeStart: simple ASCII" {
+    const text = "hello";
+
+    const r1 = utf8.getPrevGraphemeStart(text, 1, 8, 1);
+    try testing.expect(r1 != null);
+    try testing.expectEqual(@as(usize, 0), r1.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r1.?.width);
+
+    const r2 = utf8.getPrevGraphemeStart(text, 2, 8, 2);
+    try testing.expect(r2 != null);
+    try testing.expectEqual(@as(usize, 1), r2.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r2.?.width);
+
+    const r5 = utf8.getPrevGraphemeStart(text, 5, 8, 5);
+    try testing.expect(r5 != null);
+    try testing.expectEqual(@as(usize, 4), r5.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r5.?.width);
+}
+
+test "getPrevGraphemeStart: CJK wide character" {
+    const text = "a世界";
+
+    const r1 = utf8.getPrevGraphemeStart(text, 1, 8, 1);
+    try testing.expect(r1 != null);
+    try testing.expectEqual(@as(usize, 0), r1.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r1.?.width);
+
+    const r4 = utf8.getPrevGraphemeStart(text, 4, 8, 3);
+    try testing.expect(r4 != null);
+    try testing.expectEqual(@as(usize, 1), r4.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r4.?.width);
+
+    const r7 = utf8.getPrevGraphemeStart(text, 7, 8, 5);
+    try testing.expect(r7 != null);
+    try testing.expectEqual(@as(usize, 4), r7.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r7.?.width);
+}
+
+test "getPrevGraphemeStart: combining mark" {
+    const text = "cafe\u{0301}"; // café with combining acute
+
+    const r6 = utf8.getPrevGraphemeStart(text, 6, 8, 4);
+    try testing.expect(r6 != null);
+    try testing.expectEqual(@as(usize, 3), r6.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r6.?.width);
+}
+
+test "getPrevGraphemeStart: emoji with skin tone" {
+    const text = "Hi👋🏿";
+
+    const r2 = utf8.getPrevGraphemeStart(text, 2, 8, 2);
+    try testing.expect(r2 != null);
+    try testing.expectEqual(@as(usize, 1), r2.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r2.?.width);
+
+    const r_end = utf8.getPrevGraphemeStart(text, text.len, 8, 4);
+    try testing.expect(r_end != null);
+    try testing.expectEqual(@as(usize, 2), r_end.?.start_offset);
+}
+
+test "getPrevGraphemeStart: emoji with ZWJ" {
+    const text = "a👩‍🚀"; // a + woman astronaut
+
+    const r1 = utf8.getPrevGraphemeStart(text, 1, 8, 1);
+    try testing.expect(r1 != null);
+    try testing.expectEqual(@as(usize, 0), r1.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r1.?.width);
+
+    const r_end = utf8.getPrevGraphemeStart(text, text.len, 8, 3);
+    try testing.expect(r_end != null);
+    try testing.expectEqual(@as(usize, 1), r_end.?.start_offset);
+}
+
+test "getPrevGraphemeStart: flag emoji" {
+    const text = "US🇺🇸";
+
+    const r_end = utf8.getPrevGraphemeStart(text, text.len, 8, 4);
+    try testing.expect(r_end != null);
+    try testing.expectEqual(@as(usize, 2), r_end.?.start_offset);
+}
+
+test "getPrevGraphemeStart: tab handling" {
+    const text = "a\tb";
+
+    const r2 = utf8.getPrevGraphemeStart(text, 2, 4, 0);
+    try testing.expect(r2 != null);
+    try testing.expectEqual(@as(usize, 1), r2.?.start_offset);
+
+    const r1 = utf8.getPrevGraphemeStart(text, 1, 4, 0);
+    try testing.expect(r1 != null);
+    try testing.expectEqual(@as(usize, 0), r1.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r1.?.width);
+}
+
+test "getPrevGraphemeStart: mixed content" {
+    const text = "Hi世界!";
+
+    const r2 = utf8.getPrevGraphemeStart(text, 2, 8, 2);
+    try testing.expect(r2 != null);
+    try testing.expectEqual(@as(usize, 1), r2.?.start_offset);
+
+    const r5 = utf8.getPrevGraphemeStart(text, 5, 8, 4);
+    try testing.expect(r5 != null);
+    try testing.expectEqual(@as(usize, 2), r5.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r5.?.width);
+
+    const r8 = utf8.getPrevGraphemeStart(text, 8, 8, 6);
+    try testing.expect(r8 != null);
+    try testing.expectEqual(@as(usize, 5), r8.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r8.?.width);
+}
+
+test "getPrevGraphemeStart: multiple combining marks" {
+    const text = "e\u{0301}\u{0302}x"; // e + acute + circumflex + x
+
+    const r_x = utf8.getPrevGraphemeStart(text, text.len, 8, 2);
+    try testing.expect(r_x != null);
+    try testing.expectEqual(@as(usize, text.len - 1), r_x.?.start_offset);
+
+    const r_e = utf8.getPrevGraphemeStart(text, text.len - 1, 8, 1);
+    try testing.expect(r_e != null);
+    try testing.expectEqual(@as(usize, 0), r_e.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r_e.?.width);
+}
+
+test "getPrevGraphemeStart: hiragana" {
+    const text = "こんにちは";
+
+    const r_last = utf8.getPrevGraphemeStart(text, text.len, 8, 8);
+    try testing.expect(r_last != null);
+    try testing.expectEqual(@as(usize, 12), r_last.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r_last.?.width);
+}
+
+test "getPrevGraphemeStart: realistic scenario" {
+    const text = "Hello 世界! 👋";
+
+    const r_end = utf8.getPrevGraphemeStart(text, text.len, 8, 15);
+    try testing.expect(r_end != null);
+    try testing.expectEqual(@as(usize, 14), r_end.?.start_offset);
+
+    const r_space = utf8.getPrevGraphemeStart(text, 14, 8, 13);
+    try testing.expect(r_space != null);
+    try testing.expectEqual(@as(usize, 13), r_space.?.start_offset);
+    try testing.expectEqual(@as(u32, 1), r_space.?.width);
+}
+
+test "getPrevGraphemeStart: consecutive wide chars" {
+    const text = "世界中";
+
+    const r9 = utf8.getPrevGraphemeStart(text, 9, 8, 4);
+    try testing.expect(r9 != null);
+    try testing.expectEqual(@as(usize, 6), r9.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r9.?.width);
+
+    const r6 = utf8.getPrevGraphemeStart(text, 6, 8, 2);
+    try testing.expect(r6 != null);
+    try testing.expectEqual(@as(usize, 3), r6.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r6.?.width);
+
+    const r3 = utf8.getPrevGraphemeStart(text, 3, 8, 0);
+    try testing.expect(r3 != null);
+    try testing.expectEqual(@as(usize, 0), r3.?.start_offset);
+    try testing.expectEqual(@as(u32, 2), r3.?.width);
+}
