@@ -446,6 +446,88 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8, current_column: u32
     return 0;
 }
 
+/// Check if a codepoint is valid for grapheme break detection
+inline fn isValidCodepoint(cp: u21) bool {
+    return cp != 0xFFFD and cp <= 0x10FFFF;
+}
+
+/// Check if there's a grapheme break between two codepoints
+inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState) bool {
+    if (!isValidCodepoint(curr_cp)) return true;
+    if (prev_cp) |p| {
+        if (!isValidCodepoint(p)) return true;
+        return uucode.grapheme.isBreak(p, curr_cp, break_state);
+    }
+    return true;
+}
+
+const ClusterState = struct {
+    columns_used: u32,
+    grapheme_count: u32,
+    cluster_width: u32,
+    cluster_start: usize,
+    prev_cp: ?u21,
+    break_state: uucode.grapheme.BreakState,
+
+    fn init() ClusterState {
+        return .{
+            .columns_used = 0,
+            .grapheme_count = 0,
+            .cluster_width = 0,
+            .cluster_start = 0,
+            .prev_cp = null,
+            .break_state = .default,
+        };
+    }
+};
+
+/// Handle grapheme cluster boundary when wrapping by width (stops BEFORE exceeding limit)
+/// Returns true if we should stop (limit exceeded)
+inline fn handleClusterForWrap(
+    state: *ClusterState,
+    is_break: bool,
+    new_cluster_start: usize,
+    max_columns: u32,
+) bool {
+    if (is_break) {
+        if (state.prev_cp != null) {
+            if (state.columns_used + state.cluster_width > max_columns) {
+                return true; // Signal to stop
+            }
+            state.columns_used += state.cluster_width;
+            state.grapheme_count += 1;
+        }
+        state.cluster_width = 0;
+        state.cluster_start = new_cluster_start;
+    }
+    return false;
+}
+
+/// Handle grapheme cluster boundary when finding position (stops AT/AFTER limit)
+/// Returns true if we should stop (at or after limit)
+inline fn handleClusterForPos(
+    state: *ClusterState,
+    is_break: bool,
+    new_cluster_start: usize,
+    max_columns: u32,
+    include_start_before: bool,
+) bool {
+    if (is_break) {
+        if (state.prev_cp != null) {
+            if (state.columns_used >= max_columns) {
+                return true; // Signal to stop
+            }
+            state.columns_used += state.cluster_width;
+            if (include_start_before) {
+                state.grapheme_count += 1;
+            }
+        }
+        state.cluster_width = 0;
+        state.cluster_start = new_cluster_start;
+    }
+    return false;
+}
+
 pub fn findWrapPosByWidthSIMD16(
     text: []const u8,
     max_columns: u32,
@@ -493,12 +575,7 @@ pub fn findWrapPosByWidthSIMD16(
 
     const vector_len = 16;
     var pos: usize = 0;
-    var grapheme_count: u32 = 0;
-    var columns_used: u32 = 0;
-    var prev_cp: ?u21 = null;
-    var break_state: uucode.grapheme.BreakState = .default;
-    var cluster_width: u32 = 0;
-    var cluster_start: usize = 0;
+    var state = ClusterState.init();
 
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
@@ -511,23 +588,14 @@ pub fn findWrapPosByWidthSIMD16(
             while (i < vector_len) : (i += 1) {
                 const b = text[pos + i];
                 const curr_cp: u21 = b;
-                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+                const is_break = isGraphemeBreak(state.prev_cp, curr_cp, &state.break_state);
 
-                if (is_break) {
-                    if (prev_cp != null) {
-                        if (columns_used + cluster_width > max_columns) {
-                            return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
-                        }
-                        columns_used += cluster_width;
-                        grapheme_count += 1;
-                    }
-                    cluster_width = 0;
-                    cluster_start = pos + i;
+                if (handleClusterForWrap(&state, is_break, pos + i, max_columns)) {
+                    return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
                 }
 
-                cluster_width += asciiCharWidth(b, tab_width, columns_used + cluster_width);
-
-                prev_cp = curr_cp;
+                state.cluster_width += asciiCharWidth(b, tab_width, state.columns_used + state.cluster_width);
+                state.prev_cp = curr_cp;
             }
             pos += vector_len;
             continue;
@@ -542,28 +610,14 @@ pub fn findWrapPosByWidthSIMD16(
 
             if (pos + i + cp_len > text.len) break;
 
-            const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF)
-                true
-            else if (prev_cp) |p|
-                if (p == 0xFFFD or p > 0x10FFFF) true else uucode.grapheme.isBreak(p, curr_cp, &break_state)
-            else
-                true;
+            const is_break = isGraphemeBreak(state.prev_cp, curr_cp, &state.break_state);
 
-            if (is_break) {
-                if (prev_cp != null) {
-                    if (columns_used + cluster_width > max_columns) {
-                        return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
-                    }
-                    columns_used += cluster_width;
-                    grapheme_count += 1;
-                }
-                cluster_width = 0;
-                cluster_start = pos + i;
+            if (handleClusterForWrap(&state, is_break, pos + i, max_columns)) {
+                return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
             }
 
-            cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
-
-            prev_cp = curr_cp;
+            state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+            state.prev_cp = curr_cp;
             i += cp_len;
         }
         pos += i; // Advance by how much we actually processed
@@ -575,41 +629,27 @@ pub fn findWrapPosByWidthSIMD16(
         const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos).cp;
         const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
 
-        const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF)
-            true
-        else if (prev_cp) |p|
-            if (p == 0xFFFD or p > 0x10FFFF) true else uucode.grapheme.isBreak(p, curr_cp, &break_state)
-        else
-            true;
+        const is_break = isGraphemeBreak(state.prev_cp, curr_cp, &state.break_state);
 
-        if (is_break) {
-            if (prev_cp != null) {
-                if (columns_used + cluster_width > max_columns) {
-                    return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
-                }
-                columns_used += cluster_width;
-                grapheme_count += 1;
-            }
-            cluster_width = 0;
-            cluster_start = pos;
+        if (handleClusterForWrap(&state, is_break, pos, max_columns)) {
+            return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
 
-        cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
-
-        prev_cp = curr_cp;
+        state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+        state.prev_cp = curr_cp;
         pos += cp_len;
     }
 
     // Final cluster
-    if (prev_cp != null and cluster_width > 0) {
-        if (columns_used + cluster_width > max_columns) {
-            return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
+    if (state.prev_cp != null and state.cluster_width > 0) {
+        if (state.columns_used + state.cluster_width > max_columns) {
+            return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
-        columns_used += cluster_width;
-        grapheme_count += 1;
+        state.columns_used += state.cluster_width;
+        state.grapheme_count += 1;
     }
 
-    return .{ .byte_offset = @intCast(text.len), .grapheme_count = grapheme_count, .columns_used = columns_used };
+    return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
 
 /// Find position by column width, with control over boundary behavior
@@ -666,12 +706,7 @@ pub fn findPosByWidth(
 
     const vector_len = 16;
     var pos: usize = 0;
-    var grapheme_count: u32 = 0;
-    var columns_used: u32 = 0;
-    var prev_cp: ?u21 = null;
-    var break_state: uucode.grapheme.BreakState = .default;
-    var cluster_width: u32 = 0;
-    var cluster_start: usize = 0;
+    var state = ClusterState.init();
 
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
@@ -684,28 +719,14 @@ pub fn findPosByWidth(
             while (i < vector_len) : (i += 1) {
                 const b = text[pos + i];
                 const curr_cp: u21 = b;
-                const is_break = if (prev_cp) |p| uucode.grapheme.isBreak(p, curr_cp, &break_state) else true;
+                const is_break = isGraphemeBreak(state.prev_cp, curr_cp, &state.break_state);
 
-                if (is_break) {
-                    if (prev_cp != null) {
-                        // Check if this grapheme starts at or after max_columns
-                        if (columns_used >= max_columns) {
-                            // This grapheme starts at or after limit
-                            return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
-                        }
-                        // This grapheme starts before limit
-                        columns_used += cluster_width;
-                        if (include_start_before) {
-                            grapheme_count += 1;
-                        }
-                    }
-                    cluster_width = 0;
-                    cluster_start = pos + i;
+                if (handleClusterForPos(&state, is_break, pos + i, max_columns, include_start_before)) {
+                    return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
                 }
 
-                cluster_width += asciiCharWidth(b, tab_width, columns_used + cluster_width);
-
-                prev_cp = curr_cp;
+                state.cluster_width += asciiCharWidth(b, tab_width, state.columns_used + state.cluster_width);
+                state.prev_cp = curr_cp;
             }
             pos += vector_len;
             continue;
@@ -720,33 +741,14 @@ pub fn findPosByWidth(
 
             if (pos + i + cp_len > text.len) break;
 
-            const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF)
-                true
-            else if (prev_cp) |p|
-                if (p == 0xFFFD or p > 0x10FFFF) true else uucode.grapheme.isBreak(p, curr_cp, &break_state)
-            else
-                true;
+            const is_break = isGraphemeBreak(state.prev_cp, curr_cp, &state.break_state);
 
-            if (is_break) {
-                if (prev_cp != null) {
-                    // Check if this grapheme starts at or after max_columns
-                    if (columns_used >= max_columns) {
-                        // This grapheme starts at or after limit
-                        return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
-                    }
-                    // This grapheme starts before limit
-                    columns_used += cluster_width;
-                    if (include_start_before) {
-                        grapheme_count += 1;
-                    }
-                }
-                cluster_width = 0;
-                cluster_start = pos + i;
+            if (handleClusterForPos(&state, is_break, pos + i, max_columns, include_start_before)) {
+                return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
             }
 
-            cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
-
-            prev_cp = curr_cp;
+            state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+            state.prev_cp = curr_cp;
             i += cp_len;
         }
         pos += i; // Advance by how much we actually processed
@@ -758,46 +760,27 @@ pub fn findPosByWidth(
         const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos).cp;
         const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
 
-        const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF)
-            true
-        else if (prev_cp) |p|
-            if (p == 0xFFFD or p > 0x10FFFF) true else uucode.grapheme.isBreak(p, curr_cp, &break_state)
-        else
-            true;
+        const is_break = isGraphemeBreak(state.prev_cp, curr_cp, &state.break_state);
 
-        if (is_break) {
-            if (prev_cp != null) {
-                // Check if this grapheme starts at or after max_columns
-                if (columns_used >= max_columns) {
-                    // This grapheme starts at or after limit
-                    return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
-                }
-                // This grapheme starts before limit
-                columns_used += cluster_width;
-                if (include_start_before) {
-                    grapheme_count += 1;
-                }
-            }
-            cluster_width = 0;
-            cluster_start = pos;
+        if (handleClusterForPos(&state, is_break, pos, max_columns, include_start_before)) {
+            return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
 
-        cluster_width += charWidth(b0, curr_cp, tab_width, columns_used + cluster_width);
-
-        prev_cp = curr_cp;
+        state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+        state.prev_cp = curr_cp;
         pos += cp_len;
     }
 
     // Final cluster
-    if (prev_cp != null and cluster_width > 0) {
-        if (columns_used >= max_columns) {
-            return .{ .byte_offset = @intCast(cluster_start), .grapheme_count = grapheme_count, .columns_used = columns_used };
+    if (state.prev_cp != null and state.cluster_width > 0) {
+        if (state.columns_used >= max_columns) {
+            return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
-        columns_used += cluster_width;
+        state.columns_used += state.cluster_width;
         if (include_start_before) {
-            grapheme_count += 1;
+            state.grapheme_count += 1;
         }
     }
 
-    return .{ .byte_offset = @intCast(text.len), .grapheme_count = grapheme_count, .columns_used = columns_used };
+    return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
