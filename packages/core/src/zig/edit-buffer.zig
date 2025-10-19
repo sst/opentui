@@ -200,35 +200,26 @@ pub const EditBuffer = struct {
         const line_width = self.getLineWidth(row);
         if (col >= line_width) return 0;
 
-        const linestart_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
-        const line_start_idx = linestart_marker.leaf_index;
-
-        var accumulated_width: u32 = 0;
-        var seg_idx = line_start_idx + 1; // Skip the linestart marker itself
+        const linestart = self.tb.rope.getMarker(.linestart, row) orelse return 0;
+        var seg_idx = linestart.leaf_index + 1;
+        var cols_before: u32 = 0;
 
         while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
             const seg = self.tb.rope.get(seg_idx) orelse break;
-
             if (seg.isBreak() or seg.isLineStart()) break;
-
             if (seg.asText()) |chunk| {
-                const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
-                var iter = self.tb.getGraphemeIterator(chunk_bytes);
-
-                while (iter.next()) |gc| {
-                    const gbytes = gc.bytes(chunk_bytes);
-                    const g_width: u32 = @intCast(gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width));
-
-                    if (accumulated_width == col) {
-                        return g_width;
-                    }
-
-                    accumulated_width += g_width;
-                    if (accumulated_width > col) break;
+                const next_cols = cols_before + chunk.width;
+                if (col < next_cols) {
+                    const local_col: u32 = col - cols_before;
+                    const bytes = chunk.getBytes(&self.tb.mem_registry);
+                    const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                    const pos = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
+                    if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
+                    return utf8.getWidthAt(bytes, pos.byte_offset, 8, cols_before);
                 }
+                cols_before = next_cols;
             }
         }
-
         return 0;
     }
 
@@ -238,39 +229,45 @@ pub const EditBuffer = struct {
         if (col == 0) return 0;
 
         const line_width = self.getLineWidth(row);
-        if (col > line_width) return 0;
+        const clamped_col: u32 = @min(col, line_width);
 
-        const linestart_marker = self.tb.rope.getMarker(.linestart, row) orelse return 0;
-        const line_start_idx = linestart_marker.leaf_index;
-
-        var accumulated_width: u32 = 0;
-        var prev_g_width: u32 = 0;
-        var seg_idx = line_start_idx + 1; // Skip the linestart marker itself
+        const linestart = self.tb.rope.getMarker(.linestart, row) orelse return 0;
+        var seg_idx = linestart.leaf_index + 1;
+        var cols_before: u32 = 0;
+        var prev_chunk: ?struct { chunk: TextChunk, cols_before: u32 } = null;
 
         while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
             const seg = self.tb.rope.get(seg_idx) orelse break;
-
             if (seg.isBreak() or seg.isLineStart()) break;
-
             if (seg.asText()) |chunk| {
-                const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
-                var iter = self.tb.getGraphemeIterator(chunk_bytes);
+                const next_cols = cols_before + chunk.width;
 
-                while (iter.next()) |gc| {
-                    const gbytes = gc.bytes(chunk_bytes);
-                    const g_width: u32 = @intCast(gwidth.gwidth(gbytes, self.tb.width_method, &self.tb.display_width));
-
-                    if (accumulated_width == col) {
-                        return prev_g_width;
+                if (clamped_col <= next_cols) {
+                    // Target column is in this chunk or at its start
+                    if (clamped_col == cols_before and prev_chunk != null) {
+                        // Exactly at chunk boundary - get last grapheme from previous chunk
+                        const pc = prev_chunk.?;
+                        const bytes = pc.chunk.getBytes(&self.tb.mem_registry);
+                        const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, 8, pc.cols_before);
+                        if (prev) |res| return res.width;
+                        return 0;
                     }
 
-                    prev_g_width = g_width;
-                    accumulated_width += g_width;
+                    // Within this chunk
+                    const bytes = chunk.getBytes(&self.tb.mem_registry);
+                    const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                    const local_col: u32 = clamped_col - cols_before;
+                    const here = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
+                    const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), 8, cols_before);
+                    if (prev) |res| return res.width;
+                    return 0;
                 }
+
+                prev_chunk = .{ .chunk = chunk.*, .cols_before = cols_before };
+                cols_before = next_cols;
             }
         }
-
-        return prev_g_width;
+        return 0;
     }
 
     /// Split a TextChunk at a specific weight (display width)

@@ -6,31 +6,21 @@ const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
 
-/// Information about a logical line in the unified rope
 pub const LineInfo = struct {
-    /// Line index (0-based)
     line_idx: u32,
-    /// Character offset at start of this line
     char_offset: u32,
-    /// Display width of this line (in cells)
     width: u32,
-    /// Segment index where this line starts (inclusive)
     seg_start: u32,
-    /// Segment index where this line ends (exclusive, points to break or end)
     seg_end: u32,
 };
 
-/// Row/col coordinates
 pub const Coords = struct {
     row: u32,
     col: u32,
 };
 
 /// Walk all logical lines in a unified rope
-/// Optimized O(line_count) implementation using marker lookups instead of segment walking
-/// Callback receives LineInfo for each line
 /// Note: Takes mutable rope for lazy marker cache rebuilding
-/// @param include_newlines_in_offset: If true, char_offset includes newline characters (default true)
 pub fn walkLines(
     rope: *UnifiedRope,
     ctx: *anyopaque,
