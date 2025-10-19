@@ -1216,3 +1216,169 @@ test "split at weight: complex mixed content" {
     const r5 = utf8.findPosByWidth(input, 5, 8, false, false);
     try testing.expectEqual(@as(u32, 9), r5.byte_offset); // After "A🌍B世" (世 starts at col 4)
 }
+
+// ============================================================================
+// GET WIDTH AT TESTS
+// ============================================================================
+
+test "getWidthAt: empty string" {
+    const result = utf8.getWidthAt("", 0, 8, 0);
+    try testing.expectEqual(@as(u32, 0), result);
+}
+
+test "getWidthAt: out of bounds" {
+    const result = utf8.getWidthAt("hello", 10, 8, 0);
+    try testing.expectEqual(@as(u32, 0), result);
+}
+
+test "getWidthAt: simple ASCII" {
+    const text = "hello";
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'h'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 1, 8, 0)); // 'e'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 4, 8, 0)); // 'o'
+}
+
+test "getWidthAt: tab character" {
+    const text = "a\tb";
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 4, 0)); // 'a'
+    try testing.expectEqual(@as(u32, 3), utf8.getWidthAt(text, 1, 4, 1)); // tab from column 1 to 4
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 2, 4, 4)); // 'b'
+}
+
+test "getWidthAt: tab at different columns" {
+    const text = "\t";
+    try testing.expectEqual(@as(u32, 4), utf8.getWidthAt(text, 0, 4, 0)); // Tab from col 0
+    try testing.expectEqual(@as(u32, 3), utf8.getWidthAt(text, 0, 4, 1)); // Tab from col 1
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 0, 4, 2)); // Tab from col 2
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 4, 3)); // Tab from col 3
+    try testing.expectEqual(@as(u32, 4), utf8.getWidthAt(text, 0, 4, 4)); // Tab from col 4
+}
+
+test "getWidthAt: CJK wide character" {
+    const text = "世界";
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 0, 8, 0)); // '世' (3 bytes)
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 3, 8, 0)); // '界' (3 bytes)
+}
+
+test "getWidthAt: emoji single width" {
+    const text = "🌍";
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 0, 8, 0)); // emoji
+}
+
+test "getWidthAt: combining mark grapheme" {
+    const text = "cafe\u{0301}"; // é with combining acute accent
+    const width = utf8.getWidthAt(text, 3, 8, 0); // At 'e' (which has combining mark after)
+    try testing.expectEqual(@as(u32, 1), width); // 'e' width 1 + combining mark width 0 = 1
+}
+
+test "getWidthAt: emoji with skin tone" {
+    const text = "👋🏿"; // Wave + dark skin tone modifier
+    const width = utf8.getWidthAt(text, 0, 8, 0);
+    try testing.expectEqual(@as(u32, 4), width); // Both emoji codepoints counted (2+2)
+}
+
+test "getWidthAt: emoji with ZWJ" {
+    const text = "👩‍🚀"; // Woman astronaut (woman + ZWJ + rocket)
+    const width = utf8.getWidthAt(text, 0, 8, 0);
+    try testing.expectEqual(@as(u32, 5), width); // woman(2) + ZWJ(1) + rocket(2)
+}
+
+test "getWidthAt: flag emoji" {
+    const text = "🇺🇸"; // US flag (two regional indicators)
+    const width = utf8.getWidthAt(text, 0, 8, 0);
+    try testing.expectEqual(@as(u32, 2), width); // Entire grapheme cluster
+}
+
+test "getWidthAt: mixed ASCII and CJK" {
+    const text = "Hello世界";
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'H'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 1, 8, 0)); // 'e'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 5, 8, 0)); // '世'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 8, 8, 0)); // '界'
+}
+
+test "getWidthAt: emoji with VS16 selector" {
+    const text = "❤️"; // Heart + VS16 selector
+    const width = utf8.getWidthAt(text, 0, 8, 0);
+    try testing.expectEqual(@as(u32, 2), width); // Entire grapheme cluster
+}
+
+test "getWidthAt: hiragana" {
+    const text = "こんにちは";
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 0, 8, 0)); // 'こ'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 3, 8, 0)); // 'ん'
+}
+
+test "getWidthAt: katakana" {
+    const text = "カタカナ";
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 0, 8, 0)); // 'カ'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 3, 8, 0)); // 'タ'
+}
+
+test "getWidthAt: fullwidth forms" {
+    const text = "ＡＢＣ"; // Fullwidth A, B, C
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 0, 8, 0)); // Fullwidth 'A'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 3, 8, 0)); // Fullwidth 'B'
+}
+
+test "getWidthAt: zero width at start of string" {
+    const text = "a\u{0301}bc"; // a + combining accent + bc
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'a' + combining = 1
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 3, 8, 0)); // 'b'
+}
+
+test "getWidthAt: control characters" {
+    const text = "a\x00b";
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'a'
+    try testing.expectEqual(@as(u32, 0), utf8.getWidthAt(text, 1, 8, 0)); // null
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 2, 8, 0)); // 'b'
+}
+
+test "getWidthAt: multiple combining marks" {
+    const text = "e\u{0301}\u{0302}"; // e + acute + circumflex
+    const width = utf8.getWidthAt(text, 0, 8, 0);
+    try testing.expectEqual(@as(u32, 1), width); // All combining marks part of one grapheme
+}
+
+test "getWidthAt: at exact end boundary" {
+    const text = "hello";
+    const width = utf8.getWidthAt(text, 5, 8, 0); // At index 5 (past end)
+    try testing.expectEqual(@as(u32, 0), width);
+}
+
+test "getWidthAt: realistic mixed content" {
+    const text = "Hello 世界! 👋";
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'H'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 5, 8, 0)); // ' '
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 6, 8, 0)); // '世'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 9, 8, 0)); // '界'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 12, 8, 0)); // '!'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 13, 8, 0)); // ' '
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 14, 8, 0)); // emoji
+}
+
+test "getWidthAt: grapheme at SIMD boundary" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    const cjk = "世";
+    @memcpy(buf[14..17], cjk); // Place CJK char near boundary
+
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(&buf, 13, 8, 0)); // 'x'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(&buf, 14, 8, 0)); // '世'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(&buf, 17, 8, 0)); // 'x'
+}
+
+test "getWidthAt: incomplete UTF-8 at end" {
+    const text = "abc\xC3"; // Incomplete 2-byte sequence
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'a'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 3, 8, 0)); // Incomplete, returns 1 for error
+}
+
+test "getWidthAt: random positions in realistic text" {
+    const text = "The quick brown 🦊 jumps over the lazy 犬";
+
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 0, 8, 0)); // 'T'
+    try testing.expectEqual(@as(u32, 1), utf8.getWidthAt(text, 10, 8, 0)); // 'b'
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 16, 8, 0)); // fox emoji
+    try testing.expectEqual(@as(u32, 2), utf8.getWidthAt(text, 41, 8, 0)); // '犬' (dog)
+}

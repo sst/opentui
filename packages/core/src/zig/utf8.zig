@@ -784,3 +784,40 @@ pub fn findPosByWidth(
 
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
+
+pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, current_column: u32) u32 {
+    if (byte_offset >= text.len) return 0;
+
+    const b0 = text[byte_offset];
+
+    const first_cp: u21 = if (b0 < 0x80) b0 else blk: {
+        const dec = decodeUtf8Unchecked(text, byte_offset);
+        if (byte_offset + dec.len > text.len) return 1;
+        break :blk dec.cp;
+    };
+
+    const first_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, byte_offset).len;
+
+    var break_state: uucode.grapheme.BreakState = .default;
+    var prev_cp: ?u21 = first_cp;
+    var cluster_width: u32 = charWidth(b0, first_cp, tab_width, current_column);
+
+    var pos = byte_offset + first_len;
+
+    while (pos < text.len) {
+        const b = text[pos];
+        const curr_cp: u21 = if (b < 0x80) b else decodeUtf8Unchecked(text, pos).cp;
+        const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (pos + cp_len > text.len) break;
+
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
+        if (is_break) break;
+
+        cluster_width += charWidth(b, curr_cp, tab_width, current_column + cluster_width);
+        prev_cp = curr_cp;
+        pos += cp_len;
+    }
+
+    return cluster_width;
+}
