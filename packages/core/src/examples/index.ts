@@ -262,7 +262,7 @@ const examples: Example[] = [
   },
   {
     name: "Editor Demo",
-    description: "Interactive text editor with EditorRenderable - supports full editing capabilities",
+    description: "Interactive text editor with TextareaRenderable - supports full editing capabilities",
     run: editorDemo.run,
     destroy: editorDemo.destroy,
   },

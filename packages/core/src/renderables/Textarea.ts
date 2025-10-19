@@ -2,22 +2,22 @@ import { type RenderContext } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
 import type { KeyEvent } from "../lib/KeyHandler"
 
-export interface EditorOptions extends EditBufferOptions {
+export interface TextareaOptions extends EditBufferOptions {
   content?: string
 }
 
 /**
- * EditorRenderable provides an interactive text editor with cursor management,
+ * TextareaRenderable provides an interactive text editor with cursor management,
  * incremental editing, and grapheme-aware operations.
  */
-export class EditorRenderable extends EditBufferRenderable {
+export class TextareaRenderable extends EditBufferRenderable {
   private _content: string
 
   protected _contentDefaultOptions = {
     content: "",
-  } satisfies Partial<EditorOptions>
+  } satisfies Partial<TextareaOptions>
 
-  constructor(ctx: RenderContext, options: EditorOptions) {
+  constructor(ctx: RenderContext, options: TextareaOptions) {
     super(ctx, options)
 
     this._content = options.content ?? this._contentDefaultOptions.content

@@ -1,7 +1,7 @@
 import {
   CliRenderer,
   createCliRenderer,
-  EditorRenderable,
+  TextareaRenderable,
   BoxRenderable,
   TextRenderable,
   type ParsedKey,
@@ -15,7 +15,7 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 
-const initialContent = `Welcome to the EditorRenderable Demo!
+const initialContent = `Welcome to the TextareaRenderable Demo!
 
 This is an interactive text editor powered by EditBuffer and EditorView.
 
@@ -39,7 +39,7 @@ The editor supports:
 
 let renderer: CliRenderer | null = null
 let parentContainer: BoxRenderable | null = null
-let editor: EditorRenderable | null = null
+let editor: TextareaRenderable | null = null
 let statusText: TextRenderable | null = null
 let helpOverlay: BoxRenderable | null = null
 
@@ -61,7 +61,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "double",
     borderColor: "#4ECDC4",
     backgroundColor: "#0D1117",
-    title: "EditorRenderable Interactive Demo",
+    title: "TextareaRenderable Interactive Demo",
     titleAlignment: "center",
     border: true,
   })
@@ -79,7 +79,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "single",
     borderColor: "#6BCF7F",
     backgroundColor: "#0D1117",
-    title: "Interactive Editor (EditorRenderable)",
+    title: "Interactive Editor (TextareaRenderable)",
     titleAlignment: "left",
     paddingLeft: 1,
     paddingRight: 1,
@@ -88,7 +88,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   parentContainer.add(editorBox)
 
   // Create interactive editor
-  editor = new EditorRenderable(renderer, {
+  editor = new TextareaRenderable(renderer, {
     id: "editor",
     content: initialContent,
     fg: "#F0F6FC",
