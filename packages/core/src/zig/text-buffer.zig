@@ -239,6 +239,8 @@ pub const UnifiedTextBuffer = struct {
         self.mem_registry.clear();
         self.char_count = 0;
 
+        // TODO: Do not create a new rope, clear the existing rope
+        // so when history is active, it can be undone
         self.rope = UnifiedRope.init(self.allocator) catch return;
 
         self.markAllViewsDirty();

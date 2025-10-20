@@ -8,6 +8,10 @@ const Allocator = std.mem.Allocator;
 ///   defer arena.deinit();
 ///   var rope = try Rope(T).init(arena.allocator());
 ///
+/// TODO: Needs a startTransaction and endTransaction to track changes
+/// -> used to trigger a change event _after_ a batch of changes is complete (group as operation)
+/// -> used to group history operations (undo/redo), so not everything is a single history entry
+///
 pub fn Rope(comptime T: type) type {
     return struct {
         const Self = @This();
