@@ -404,9 +404,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   set cursorOffset(offset: number) {
-    console.log("set cursorOffset 1", offset)
-    // const err = new Error("set cursorOffset")
-    // console.log("set cursorOffset", offset, err.stack)
     this.editorView.setCursorByOffset(offset)
     this.requestRender()
   }
