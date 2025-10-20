@@ -298,51 +298,28 @@ pub const EditBuffer = struct {
         const base_mem_id = chunk_ref.mem_id;
         const base_start = chunk_ref.start;
 
-        var break_result = utf8.LineBreakResult.init(self.allocator);
-        defer break_result.deinit();
-        try utf8.findLineBreaksSIMD16(bytes, &break_result);
+        var result = try self.tb.textToSegments(self.allocator, bytes, base_mem_id, base_start, false);
+        defer result.segments.deinit();
 
-        var segments = std.ArrayList(Segment).init(self.allocator);
-        defer segments.deinit();
+        const inserted_width = result.total_width;
 
-        var local_start: u32 = 0;
-        var inserted_width: u32 = 0;
-        var width_after_last_break: u32 = 0; // Width of text after the last newline
-
-        for (break_result.breaks.items) |line_break| {
-            const break_pos: u32 = @intCast(line_break.pos);
-            const local_end: u32 = switch (line_break.kind) {
-                .CRLF => break_pos - 1,
-                .CR, .LF => break_pos,
-            };
-
-            if (local_end > local_start) {
-                const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + local_end);
-                try segments.append(Segment{ .text = chunk });
-                inserted_width += chunk.width;
+        // Calculate width after last break
+        var width_after_last_break: u32 = 0;
+        var num_breaks: usize = 0;
+        for (result.segments.items) |seg| {
+            if (seg.isBreak()) {
+                num_breaks += 1;
+                width_after_last_break = 0;
+            } else if (seg.asText()) |chunk| {
+                width_after_last_break += chunk.width;
             }
-
-            try segments.append(Segment{ .brk = {} });
-            try segments.append(Segment{ .linestart = {} });
-
-            local_start = break_pos + 1;
-            width_after_last_break = 0;
         }
 
-        if (local_start < bytes.len) {
-            const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + @as(u32, @intCast(bytes.len)));
-            try segments.append(Segment{ .text = chunk });
-            width_after_last_break = chunk.width;
-            inserted_width += chunk.width;
-        }
-
-        if (segments.items.len > 0) {
-            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &self.segment_splitter);
+        if (result.segments.items.len > 0) {
+            try self.tb.rope.insertSliceByWeight(insert_offset, result.segments.items, &self.segment_splitter);
 
             self.tb.char_count += inserted_width;
         }
-
-        const num_breaks = break_result.breaks.items.len;
         if (num_breaks > 0) {
             self.cursors.items[0] = .{
                 .row = cursor.row + @as(u32, @intCast(num_breaks)),
@@ -762,43 +739,13 @@ pub const EditBuffer = struct {
         const base_mem_id = chunk_ref.mem_id;
         const base_start = chunk_ref.start;
 
-        var break_result = utf8.LineBreakResult.init(self.allocator);
-        defer break_result.deinit();
-        try utf8.findLineBreaksSIMD16(placeholder_text, &break_result);
+        var result = try self.tb.textToSegments(self.allocator, placeholder_text, base_mem_id, base_start, false);
+        defer result.segments.deinit();
 
-        var segments = std.ArrayList(Segment).init(self.allocator);
-        defer segments.deinit();
+        const inserted_width = result.total_width;
 
-        var local_start: u32 = 0;
-        var inserted_width: u32 = 0;
-
-        for (break_result.breaks.items) |line_break| {
-            const break_pos: u32 = @intCast(line_break.pos);
-            const local_end: u32 = switch (line_break.kind) {
-                .CRLF => break_pos - 1,
-                .CR, .LF => break_pos,
-            };
-
-            if (local_end > local_start) {
-                const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + local_end);
-                try segments.append(Segment{ .text = chunk });
-                inserted_width += chunk.width;
-            }
-
-            try segments.append(Segment{ .brk = {} });
-            try segments.append(Segment{ .linestart = {} });
-
-            local_start = break_pos + 1;
-        }
-
-        if (local_start < placeholder_text.len) {
-            const chunk = self.tb.createChunk(base_mem_id, base_start + local_start, base_start + @as(u32, @intCast(placeholder_text.len)));
-            try segments.append(Segment{ .text = chunk });
-            inserted_width += chunk.width;
-        }
-
-        if (segments.items.len > 0) {
-            try self.tb.rope.insertSliceByWeight(insert_offset, segments.items, &self.segment_splitter);
+        if (result.segments.items.len > 0) {
+            try self.tb.rope.insertSliceByWeight(insert_offset, result.segments.items, &self.segment_splitter);
             self.tb.char_count += inserted_width;
         }
 

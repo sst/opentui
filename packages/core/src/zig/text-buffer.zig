@@ -291,56 +291,13 @@ pub const UnifiedTextBuffer = struct {
 
         const mem_id = try self.mem_registry.register(text, false);
 
-        var break_result = utf8.LineBreakResult.init(self.allocator);
-        defer break_result.deinit();
+        var result = try self.textToSegments(self.allocator, text, mem_id, 0, true);
+        defer result.segments.deinit();
 
-        try utf8.findLineBreaksSIMD16(text, &break_result);
-
-        // Build segments: [linestart] [text] [break] [linestart] [text] [break] ... [linestart] [text]
-        var segments = std.ArrayList(Segment).init(self.allocator);
-        defer segments.deinit();
-
-        var line_start: u32 = 0;
-        var line_num: u32 = 0;
-
-        // First line starts at position 0
-        try segments.append(Segment{ .linestart = {} });
-
-        for (break_result.breaks.items) |line_break| {
-            const break_pos_u32: u32 = @intCast(line_break.pos);
-            const line_end: u32 = switch (line_break.kind) {
-                .CRLF => break_pos_u32 - 1,
-                .CR, .LF => break_pos_u32,
-            };
-
-            // Add text segment for line content
-            if (line_end > line_start) {
-                const chunk = self.createChunk(mem_id, line_start, line_end);
-                try segments.append(Segment{ .text = chunk });
-                self.char_count += chunk.width;
-            }
-
-            // Add break segment
-            try segments.append(Segment{ .brk = {} });
-
-            line_start = break_pos_u32 + 1;
-            line_num += 1;
-
-            // Add linestart marker for next line (if there's more content)
-            if (line_start < text.len or line_start == text.len) {
-                try segments.append(Segment{ .linestart = {} });
-            }
-        }
-
-        // Handle final line (after last break, or entire text if no breaks)
-        if (line_start < text.len) {
-            const chunk = self.createChunk(mem_id, line_start, @intCast(text.len));
-            try segments.append(Segment{ .text = chunk });
-            self.char_count += chunk.width;
-        }
+        self.char_count += result.total_width;
 
         // Build rope from segments
-        self.rope = try UnifiedRope.from_slice(self.allocator, segments.items);
+        self.rope = try UnifiedRope.from_slice(self.allocator, result.segments.items);
 
         self.markAllViewsDirty();
     }
@@ -368,6 +325,58 @@ pub const UnifiedTextBuffer = struct {
             .width = chunk_width,
             .flags = flags,
         };
+    }
+
+    /// Convert text to segments with line breaks
+    /// Returns segments array and total width
+    pub fn textToSegments(
+        self: *const Self,
+        allocator: Allocator,
+        text: []const u8,
+        mem_id: u8,
+        byte_offset: u32,
+        prepend_linestart: bool,
+    ) TextBufferError!struct { segments: std.ArrayList(Segment), total_width: u32 } {
+        var break_result = utf8.LineBreakResult.init(allocator);
+        defer break_result.deinit();
+        try utf8.findLineBreaksSIMD16(text, &break_result);
+
+        var segments = std.ArrayList(Segment).init(allocator);
+        errdefer segments.deinit();
+
+        if (prepend_linestart) {
+            try segments.append(Segment{ .linestart = {} });
+        }
+
+        var local_start: u32 = 0;
+        var total_width: u32 = 0;
+
+        for (break_result.breaks.items) |line_break| {
+            const break_pos: u32 = @intCast(line_break.pos);
+            const local_end: u32 = switch (line_break.kind) {
+                .CRLF => break_pos - 1,
+                .CR, .LF => break_pos,
+            };
+
+            if (local_end > local_start) {
+                const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + local_end);
+                try segments.append(Segment{ .text = chunk });
+                total_width += chunk.width;
+            }
+
+            try segments.append(Segment{ .brk = {} });
+            try segments.append(Segment{ .linestart = {} });
+
+            local_start = break_pos + 1;
+        }
+
+        if (local_start < text.len) {
+            const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + @as(u32, @intCast(text.len)));
+            try segments.append(Segment{ .text = chunk });
+            total_width += chunk.width;
+        }
+
+        return .{ .segments = segments, .total_width = total_width };
     }
 
     pub fn getLineCount(self: *const Self) u32 {
