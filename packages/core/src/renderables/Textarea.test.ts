@@ -1309,6 +1309,50 @@ describe("TextareaRenderable", () => {
 
       expect(editor.height).toBe(3)
     })
+
+    it("should grow height when pressing Enter to add newlines", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Single line",
+        width: 40,
+        wrapMode: "none",
+      })
+
+      // Add a second textarea below to verify layout reflow
+      const { textarea: belowEditor } = await createTextareaRenderable(currentRenderer, {
+        value: "Below",
+        width: 40,
+      })
+
+      await renderOnce()
+      expect(editor.height).toBe(1)
+      const initialHeight = editor.height
+      const initialBelowY = belowEditor.y
+
+      editor.focus()
+      editor.gotoLine(9999) // Move to end
+
+      // Press Enter 3 times to add 3 newlines
+      currentMockInput.pressEnter()
+      expect(editor.plainText).toBe("Single line\n")
+      await renderOnce() // Wait for layout recalculation
+
+      currentMockInput.pressEnter()
+      expect(editor.plainText).toBe("Single line\n\n")
+      await renderOnce() // Wait for layout recalculation
+
+      currentMockInput.pressEnter()
+      expect(editor.plainText).toBe("Single line\n\n\n")
+      await renderOnce() // Wait for layout recalculation
+
+      // The editor should have grown
+      expect(editor.height).toBeGreaterThan(initialHeight)
+      expect(editor.height).toBe(4) // 1 original line + 3 new lines
+      expect(editor.plainText).toBe("Single line\n\n\n")
+
+      // The element below should have moved down
+      expect(belowEditor.y).toBeGreaterThan(initialBelowY)
+      expect(belowEditor.y).toBe(4) // After the 4-line editor
+    })
   })
 
   describe("Unicode Support", () => {

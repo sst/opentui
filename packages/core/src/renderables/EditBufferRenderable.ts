@@ -108,6 +108,8 @@ export abstract class EditBufferRenderable extends Renderable {
     })
 
     this.editBuffer.on("content-changed", () => {
+      this.yogaNode.markDirty()
+      this.requestRender()
       if (this._contentChangeListener) {
         this._contentChangeListener({})
       }
