@@ -299,6 +299,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    textBufferClear: {
+      args: ["ptr"],
+      returns: "void",
+    },
     textBufferSetDefaultFg: {
       args: ["ptr", "ptr"],
       returns: "void",
@@ -1000,6 +1004,7 @@ export interface RenderLib {
   textBufferGetByteSize: (buffer: Pointer) => number
 
   textBufferReset: (buffer: Pointer) => void
+  textBufferClear: (buffer: Pointer) => void
   textBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
   textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
@@ -1698,6 +1703,10 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferReset(buffer: Pointer): void {
     this.opentui.symbols.textBufferReset(buffer)
+  }
+
+  public textBufferClear(buffer: Pointer): void {
+    this.opentui.symbols.textBufferClear(buffer)
   }
 
   public textBufferSetDefaultFg(buffer: Pointer, fg: RGBA | null): void {

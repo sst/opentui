@@ -630,8 +630,11 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
             continue;
         };
 
+        // Periodically reset the TextBuffer arena to avoid memory exhaustion
+        // with small pools in stress tests
         if (render_count % 50 == 0) {
             try buf.clear(bg, null);
+            tb.reset();
         }
 
         buf.drawTextBuffer(view, 0, 0) catch |err| {

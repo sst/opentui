@@ -205,6 +205,33 @@ export class TextBuffer {
     this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)
   }
 
+  /**
+   * Clear the text content without resetting arena or memory registry.
+   * Preserves highlights, memory buffers, and arena allocations.
+   * Use this for frequent text updates where undo/redo history should be preserved.
+   */
+  public clear(): void {
+    this.guard()
+    this.lib.textBufferClear(this.bufferPtr)
+    this._length = 0
+    this._byteSize = 0
+    this._lineInfo = undefined
+    this._textBytes = undefined
+  }
+
+  /**
+   * Heavy reset: clears arena, memory registry, highlights, and all content.
+   * This invalidates any rope history and undo/redo state.
+   */
+  public reset(): void {
+    this.guard()
+    this.lib.textBufferReset(this.bufferPtr)
+    this._length = 0
+    this._byteSize = 0
+    this._lineInfo = undefined
+    this._textBytes = undefined
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

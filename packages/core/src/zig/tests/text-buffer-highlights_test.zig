@@ -652,9 +652,14 @@ test "TextBuffer char range highlights - preserved after setText" {
     try tb.setText("Hello World");
     try tb.addHighlightByCharRange(0, 5, 1, 1, null);
 
-    // Set new text - highlights should be cleared
+    // Set new text - with clear() highlights are now preserved
     try tb.setText("New Text");
 
     const highlights = tb.getLineHighlights(0);
-    try std.testing.expectEqual(@as(usize, 0), highlights.len);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+
+    // To clear highlights, caller must explicitly call clearAllHighlights
+    tb.clearAllHighlights();
+    const cleared_highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), cleared_highlights.len);
 }

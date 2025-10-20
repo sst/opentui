@@ -398,6 +398,10 @@ export fn textBufferReset(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.reset();
 }
 
+export fn textBufferClear(tb: *text_buffer.UnifiedTextBuffer) void {
+    tb.clear();
+}
+
 export fn textBufferSetDefaultFg(tb: *text_buffer.UnifiedTextBuffer, fg: ?[*]const f32) void {
     const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     tb.setDefaultFg(fgColor);

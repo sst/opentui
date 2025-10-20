@@ -59,10 +59,6 @@ pub const UnifiedTextBuffer = struct {
     rope: UnifiedRope, // Single unified rope containing text segments and breaks
     syntax_style: ?*const SyntaxStyle,
 
-    // Cached line info (built once per setText, invalidated on edits)
-    line_info_cache: std.ArrayListUnmanaged(iter_mod.LineInfo),
-    line_info_dirty: bool,
-
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
@@ -128,8 +124,6 @@ pub const UnifiedTextBuffer = struct {
             .free_view_ids = free_view_ids,
             .line_highlights = .{},
             .line_spans = .{},
-            .line_info_cache = .{},
-            .line_info_dirty = false,
         };
 
         return self;
@@ -221,6 +215,15 @@ pub const UnifiedTextBuffer = struct {
         return gwidth.gwidth(text, self.width_method, &self.display_width);
     }
 
+    /// Clear the text content without resetting arena or memory registry.
+    /// Preserves highlights, memory buffers, and arena allocations.
+    /// Use this for frequent text updates where undo/redo history should be preserved.
+    pub fn clear(self: *Self) void {
+        self.char_count = 0;
+        self.rope.clear();
+        self.markAllViewsDirty();
+    }
+
     pub fn reset(self: *Self) void {
         // Free highlight/span arrays (they use global_allocator, not arena)
         for (self.line_highlights.items) |*hl_list| {
@@ -275,7 +278,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
-        self.reset(); // reset() already clears highlights
+        self.clear();
         try self.setTextInternal(text);
     }
 
@@ -743,7 +746,7 @@ pub const UnifiedTextBuffer = struct {
         chunks: []const StyledChunk,
     ) TextBufferError!void {
         if (chunks.len == 0) {
-            self.reset();
+            self.clear();
             return;
         }
 
@@ -754,14 +757,14 @@ pub const UnifiedTextBuffer = struct {
         }
 
         if (total_len == 0) {
-            self.reset();
+            self.clear();
             return;
         }
 
-        // Reset first to clear arena and prepare for new content
-        self.reset();
+        // Clear first to prepare for new content
+        self.clear();
 
-        // Now allocate with arena allocator (which was just reset)
+        // Now allocate with arena allocator
         const full_text = self.allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
 
         var offset: usize = 0;
@@ -817,16 +820,16 @@ pub const UnifiedTextBuffer = struct {
         // Get file size
         const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
 
-        // Reset first to clear arena, then allocate (so our allocation survives)
-        self.reset();
+        // Clear first to prepare for new content
+        self.clear();
 
-        // Allocate in arena AFTER reset
+        // Allocate in arena
         const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;
 
         // Read file content
         const bytes_read = file.readAll(content) catch return TextBufferError.OutOfMemory;
 
-        // Use internal setText that doesn't call reset again
+        // Use internal setText that doesn't call clear again
         try self.setTextInternal(content[0..bytes_read]);
     }
 

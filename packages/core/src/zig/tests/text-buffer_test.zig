@@ -993,6 +993,163 @@ test "TextBuffer memory registry - reset clears memory buffers" {
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
 }
 
+test "TextBuffer clear - preserves memory buffers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Hello World";
+    const mem_id = try tb.registerMemBuffer(text, false);
+    try tb.addLine(mem_id, 0, 5); // "Hello"
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 5), tb.getLength());
+
+    // Clear should empty the buffer but preserve memory registry
+    tb.clear();
+
+    try std.testing.expectEqual(@as(u32, 0), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 0), tb.getLength());
+
+    // mem_id should still be valid
+    const retrieved = tb.getMemBuffer(mem_id);
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings(text, retrieved.?);
+
+    // We can re-use the same mem_id after clear
+    try tb.addLine(mem_id, 6, 11); // "World"
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 5), tb.getLength());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("World", out_buffer[0..written]);
+}
+
+test "TextBuffer setText - preserves previously registered memory buffers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Register a memory buffer
+    const old_text = "Previous content";
+    const old_mem_id = try tb.registerMemBuffer(old_text, false);
+
+    // Set some text using setText (which now calls clear() not reset())
+    try tb.setText("New text content");
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    // The old mem_id should still be valid after setText
+    const retrieved = tb.getMemBuffer(old_mem_id);
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings(old_text, retrieved.?);
+
+    // We can still use the old mem_id
+    tb.clear();
+    try tb.addLine(old_mem_id, 0, 8); // "Previous"
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Previous", out_buffer[0..written]);
+}
+
+test "TextBuffer setStyledText - preserves previously registered memory buffers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Register a memory buffer before setStyledText
+    const preserved_text = "Preserved data";
+    const preserved_mem_id = try tb.registerMemBuffer(preserved_text, false);
+
+    // Use setStyledText (which now calls clear() not reset())
+    const chunk1_text = "Styled ";
+    const chunk2_text = "Text";
+    const chunks = [_]text_buffer.StyledChunk{
+        .{
+            .text_ptr = chunk1_text.ptr,
+            .text_len = chunk1_text.len,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+        .{
+            .text_ptr = chunk2_text.ptr,
+            .text_len = chunk2_text.len,
+            .fg_ptr = null,
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+    };
+    try tb.setStyledText(&chunks);
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    // The preserved mem_id should still be valid
+    const retrieved = tb.getMemBuffer(preserved_mem_id);
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings(preserved_text, retrieved.?);
+
+    // We can use the preserved buffer
+    tb.clear();
+    try tb.addLine(preserved_mem_id, 0, 9); // "Preserved"
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Preserved", out_buffer[0..written]);
+}
+
+test "TextBuffer clear vs reset - memory registry behavior" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Test buffer";
+    const mem_id = try tb.registerMemBuffer(text, false);
+    try tb.addLine(mem_id, 0, 4); // "Test"
+
+    // clear() preserves memory buffers
+    tb.clear();
+    try std.testing.expect(tb.getMemBuffer(mem_id) != null);
+    try std.testing.expectEqual(@as(u32, 0), tb.getLength());
+
+    // Restore content
+    try tb.addLine(mem_id, 5, 11); // "buffer"
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    // reset() clears memory buffers
+    tb.reset();
+    try std.testing.expect(tb.getMemBuffer(mem_id) == null);
+    try std.testing.expectEqual(@as(u32, 0), tb.getLength());
+}
+
 test "TextBuffer memory registry - partial buffer slices" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

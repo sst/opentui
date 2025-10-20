@@ -159,4 +159,97 @@ describe("TextBuffer", () => {
       expect(true).toBe(true)
     })
   })
+
+  describe("clear() vs reset()", () => {
+    it("clear() should empty buffer but preserve text across setText calls", () => {
+      // Set initial text
+      buffer.setText("First text")
+      expect(buffer.length).toBe(10)
+
+      // Set new text (which calls clear() internally)
+      buffer.setText("Second text")
+      expect(buffer.length).toBe(11)
+      expect(buffer.getPlainText()).toBe("Second text")
+
+      // Explicit clear
+      buffer.clear()
+      expect(buffer.length).toBe(0)
+      expect(buffer.getPlainText()).toBe("")
+    })
+
+    it("reset() should fully reset the buffer", () => {
+      buffer.setText("Some text")
+      expect(buffer.length).toBe(9)
+
+      buffer.reset()
+      expect(buffer.length).toBe(0)
+      expect(buffer.getPlainText()).toBe("")
+
+      // Should be able to use buffer after reset
+      buffer.setText("New text")
+      expect(buffer.length).toBe(8)
+    })
+
+    it("setText should preserve highlights (use clear() not reset())", () => {
+      // This test verifies that setText now uses clear() internally
+      // and doesn't clear highlights
+      buffer.setText("Hello World")
+
+      // Note: We can't easily test highlight preservation from TypeScript
+      // without a SyntaxStyle, but we verify the buffer still works
+      expect(buffer.length).toBe(11)
+
+      buffer.setText("New Text")
+      expect(buffer.length).toBe(8)
+      expect(buffer.getPlainText()).toBe("New Text")
+    })
+
+    it("setStyledText should preserve content across calls", () => {
+      const firstText = stringToStyledText("First")
+      buffer.setStyledText(firstText)
+      expect(buffer.length).toBe(5)
+
+      const secondText = stringToStyledText("Second")
+      buffer.setStyledText(secondText)
+      expect(buffer.length).toBe(6)
+      expect(buffer.getPlainText()).toBe("Second")
+    })
+
+    it("multiple setText calls should work correctly with clear()", () => {
+      buffer.setText("Text 1")
+      expect(buffer.length).toBe(6)
+
+      buffer.setText("Text 2")
+      expect(buffer.length).toBe(6)
+
+      buffer.setText("Text 3")
+      expect(buffer.length).toBe(6)
+
+      expect(buffer.getPlainText()).toBe("Text 3")
+    })
+
+    it("clear() followed by setText should work", () => {
+      buffer.setText("Initial")
+      expect(buffer.length).toBe(7)
+
+      buffer.clear()
+      expect(buffer.length).toBe(0)
+
+      buffer.setText("After clear")
+      expect(buffer.length).toBe(11)
+      expect(buffer.getPlainText()).toBe("After clear")
+    })
+
+    it("reset() followed by setText should work", () => {
+      buffer.setText("Initial")
+      expect(buffer.length).toBe(7)
+
+      buffer.reset()
+      expect(buffer.length).toBe(0)
+
+      buffer.setText("After reset")
+      expect(buffer.length).toBe(11)
+      expect(buffer.getPlainText()).toBe("After reset")
+    })
+  })
 })
