@@ -1,0 +1,113 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`TextareaRenderable Textarea Content Snapshots should render basic text content correctly 1`] = `
+"                                                                                
+                                                                                
+                                                                                
+     Hello World                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextareaRenderable Textarea Content Snapshots should render multiline text content correctly 1`] = `
+"                                                                                
+ Line 1: Hello                                                                  
+ Line 2: World                                                                  
+ Line 3: Testing                                                                
+ Line 4: Multiline                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextareaRenderable Textarea Content Snapshots should render text with character wrapping correctly 1`] = `
+"This is a very                                                                  
+long text that                                                                  
+should wrap to                                                                  
+multiple lines                                                                  
+when wrap is en                                                                 
+abled                                                                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextareaRenderable Textarea Content Snapshots should render text with word wrapping and punctuation 1`] = `
+"Hello,World.                                                                    
+Test-                                                                           
+Example/                                                                        
+Path with                                                                       
+various                                                                         
+punctuation                                                                     
+marks!                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;

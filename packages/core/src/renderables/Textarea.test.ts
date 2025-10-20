@@ -7,6 +7,7 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
+let captureFrame: () => string
 
 async function createTextareaRenderable(
   renderer: TestRenderer,
@@ -26,6 +27,7 @@ describe("TextareaRenderable", () => {
       renderOnce,
       mockMouse: currentMouse,
       mockInput: currentMockInput,
+      captureCharFrame: captureFrame,
     } = await createTestRenderer({
       width: 80,
       height: 24,
@@ -1230,6 +1232,82 @@ describe("TextareaRenderable", () => {
 
       editor.wrapMode = "word"
       expect(editor.wrapMode).toBe("word")
+    })
+  })
+
+  describe("Height and Width Measurement", () => {
+    it("should grow height for multiline text without wrapping", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+        wrapMode: "none",
+        width: 40,
+      })
+
+      await renderOnce()
+
+      expect(editor.height).toBe(5)
+      expect(editor.width).toBeGreaterThanOrEqual(6)
+    })
+
+    it("should grow height for wrapped text when wrapping enabled", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "This is a very long line that will definitely wrap to multiple lines",
+        wrapMode: "word",
+        width: 15,
+      })
+
+      await renderOnce()
+
+      expect(editor.height).toBeGreaterThan(1)
+      expect(editor.width).toBeLessThanOrEqual(15)
+    })
+
+    it("should measure full width when wrapping is disabled and not constrained by parent", async () => {
+      const longLine = "This is a very long line that would wrap but wrapping is disabled"
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: longLine,
+        wrapMode: "none",
+        position: "absolute",
+      })
+
+      await renderOnce()
+
+      expect(editor.height).toBe(1)
+      expect(editor.width).toBe(longLine.length)
+    })
+
+    it("should shrink height when deleting lines via value setter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+        width: 40,
+        wrapMode: "none",
+      })
+
+      editor.focus()
+      await renderOnce()
+      expect(editor.height).toBe(5)
+
+      // Remove lines by setting new value
+      editor.value = "Line 1\nLine 2"
+      await renderOnce()
+
+      expect(editor.height).toBe(2)
+      expect(editor.plainText).toBe("Line 1\nLine 2")
+    })
+
+    it("should update height when content changes from single to multiline", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Single line",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+      expect(editor.height).toBe(1)
+
+      editor.value = "Line 1\nLine 2\nLine 3"
+      await renderOnce()
+
+      expect(editor.height).toBe(3)
     })
   })
 
@@ -4182,6 +4260,102 @@ describe("TextareaRenderable", () => {
         expect(cursorEvents.length).toBeGreaterThan(0)
         expect(contentEvents.length).toBeGreaterThan(0)
       })
+    })
+  })
+
+  describe("Textarea Content Snapshots", () => {
+    it("should render basic text content correctly", async () => {
+      await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        left: 5,
+        top: 3,
+        width: 20,
+        height: 5,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render multiline text content correctly", async () => {
+      await createTextareaRenderable(currentRenderer, {
+        value: "Line 1: Hello\nLine 2: World\nLine 3: Testing\nLine 4: Multiline",
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 10,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with character wrapping correctly", async () => {
+      await createTextareaRenderable(currentRenderer, {
+        value: "This is a very long text that should wrap to multiple lines when wrap is enabled",
+        wrapMode: "char",
+        width: 15,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with word wrapping and punctuation", async () => {
+      await createTextareaRenderable(currentRenderer, {
+        value: "Hello,World.Test-Example/Path with various punctuation marks!",
+        wrapMode: "word",
+        width: 12,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+  })
+
+  describe("Layout Reflow on Size Change", () => {
+    it("should reflow subsequent elements when textarea grows and shrinks", async () => {
+      const { textarea: firstEditor } = await createTextareaRenderable(currentRenderer, {
+        value: "Short",
+        width: 20,
+        wrapMode: "word",
+      })
+
+      const { textarea: secondEditor } = await createTextareaRenderable(currentRenderer, {
+        value: "I am below the first textarea",
+        width: 30,
+      })
+
+      await renderOnce()
+
+      // Initially, first editor is 1 line high
+      expect(firstEditor.height).toBe(1)
+      const initialSecondY = secondEditor.y
+      expect(initialSecondY).toBe(1) // Right after first editor
+
+      // Expand first editor with wrapped content
+      firstEditor.value = "This is a very long line that will wrap to multiple lines and push the second textarea down"
+      await renderOnce()
+
+      // First editor should now be taller
+      expect(firstEditor.height).toBeGreaterThan(1)
+      // Second editor should have moved down
+      expect(secondEditor.y).toBeGreaterThan(initialSecondY)
+      const expandedSecondY = secondEditor.y
+
+      // Shrink first editor back
+      firstEditor.value = "Short again"
+      await renderOnce()
+
+      // First editor should be 1 line again
+      expect(firstEditor.height).toBe(1)
+      // Second editor should have moved back up
+      expect(secondEditor.y).toBeLessThan(expandedSecondY)
+      expect(secondEditor.y).toBe(initialSecondY)
     })
   })
 

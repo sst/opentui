@@ -1,5 +1,5 @@
 import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type RenderLib, type VisualCursor } from "./zig"
+import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig"
 import { type Pointer } from "bun:ffi"
 import type { EditBuffer } from "./edit-buffer"
 
@@ -173,6 +173,18 @@ export class EditorView {
   public setCursorByOffset(offset: number): void {
     this.guard()
     this.lib.editorViewSetCursorByOffset(this.viewPtr, offset)
+  }
+
+  public getLineInfo(): LineInfo {
+    this.guard()
+    const textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
+    return this.lib.textBufferViewGetLineInfo(textBufferViewPtr)
+  }
+
+  public getLogicalLineInfo(): LineInfo {
+    this.guard()
+    const textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
+    return this.lib.textBufferViewGetLogicalLineInfo(textBufferViewPtr)
   }
 
   public destroy(): void {

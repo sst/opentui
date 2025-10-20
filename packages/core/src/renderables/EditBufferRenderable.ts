@@ -206,6 +206,7 @@ export abstract class EditBufferRenderable extends Renderable {
     if (this._wrapMode !== value) {
       this._wrapMode = value
       this.editorView.setWrapMode(value)
+      this.yogaNode.markDirty()
       this.requestRender()
     }
   }
@@ -307,13 +308,20 @@ export abstract class EditBufferRenderable extends Renderable {
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
       // Update viewport size to match measured dimensions
-      this.editorView.setViewportSize(width, height)
+      // When wrapping and width changes, this will trigger wrap recalculation
+      if (this._wrapMode !== "none" && this.width !== width) {
+        this.editorView.setViewportSize(width, height)
+      } else {
+        this.editorView.setViewportSize(width, height)
+      }
 
-      const vlineCount = this.editorView.getVirtualLineCount()
+      const lineInfo = this.editorView.getLogicalLineInfo()
+      const measuredWidth = lineInfo.maxLineWidth
+      const measuredHeight = lineInfo.lineStarts.length
 
       return {
-        width: Math.max(1, width),
-        height: Math.max(1, vlineCount),
+        width: Math.max(1, measuredWidth),
+        height: Math.max(1, measuredHeight),
       }
     }
 

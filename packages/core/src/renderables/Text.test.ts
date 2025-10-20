@@ -1572,6 +1572,39 @@ describe("TextRenderable Selection", () => {
       expect(wrappedHeight).toBeGreaterThan(unwrappedHeight)
       expect(wrappedHeight).toBeGreaterThanOrEqual(3)
     })
+
+    it("should shrink height when content changes from multi-line to single line", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+      expect(text.height).toBe(5)
+
+      text.content = "Single line"
+      await renderOnce()
+
+      expect(text.height).toBe(1)
+    })
+
+    it("should shrink width when replacing long line with shorter (wrapMode: none, position: absolute)", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a very long line with many characters",
+        wrapMode: "none",
+        position: "absolute",
+      })
+
+      await renderOnce()
+      const initialWidth = text.width
+      expect(initialWidth).toBe(45) // length of the long line
+
+      text.content = "Short"
+      await renderOnce()
+
+      expect(text.width).toBe(5)
+      expect(text.width).toBeLessThan(initialWidth)
+    })
   })
 
   describe("Word Wrapping", () => {
