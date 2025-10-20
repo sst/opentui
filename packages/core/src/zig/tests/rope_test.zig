@@ -2145,6 +2145,75 @@ test "Rope - integration weight-based balancing with history limits" {
     try std.testing.expect(rope.root.is_balanced());
 }
 
+test "Rope - clear removes all items" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    const items = [_]SimpleItem{
+        .{ .value = 1 },
+        .{ .value = 2 },
+        .{ .value = 3 },
+    };
+    var rope = try RopeType.from_slice(arena.allocator(), &items);
+
+    try std.testing.expectEqual(@as(u32, 3), rope.count());
+
+    rope.clear();
+
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
+}
+
+test "Rope - clear on empty rope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.init(arena.allocator());
+
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
+
+    rope.clear();
+
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
+}
+
+test "Rope - clear then insert works" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(SimpleItem);
+    var rope = try RopeType.from_item(arena.allocator(), .{ .value = 1 });
+
+    rope.clear();
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
+
+    try rope.append(.{ .value = 42 });
+    try std.testing.expectEqual(@as(u32, 1), rope.count());
+    try std.testing.expectEqual(@as(u32, 42), rope.get(0).?.value);
+}
+
+test "Rope - clear with markers resets marker cache" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+    const tokens = [_]TokenType{
+        .{ .word = 5 },
+        .{ .newline = {} },
+        .{ .word = 5 },
+        .{ .newline = {} },
+    };
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens);
+    try std.testing.expectEqual(@as(u32, 2), rope.markerCount(.newline));
+
+    rope.clear();
+
+    try std.testing.expectEqual(@as(u32, 0), rope.count());
+    try std.testing.expectEqual(@as(u32, 0), rope.markerCount(.newline));
+}
+
 test "Rope - integration all features working together" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

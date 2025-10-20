@@ -26,7 +26,7 @@ pub const WrapMode = seg_mod.WrapMode;
 pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
 
-const SyntaxStyle = ss.SyntaxStyle;
+pub const SyntaxStyle = ss.SyntaxStyle;
 
 // Main TextBuffer type - unified rope architecture
 pub const TextBuffer = UnifiedTextBuffer;

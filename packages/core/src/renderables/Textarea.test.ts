@@ -1293,7 +1293,7 @@ describe("TextareaRenderable", () => {
 
       editor.destroy()
 
-      expect(() => editor.plainText).toThrow("EditorView is destroyed")
+      expect(() => editor.plainText).toThrow("EditBuffer is destroyed")
       expect(() => editor.insertText("x")).toThrow("EditorView is destroyed")
       expect(() => editor.moveCursorLeft()).toThrow("EditBuffer is destroyed")
     })
@@ -3353,6 +3353,185 @@ describe("TextareaRenderable", () => {
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Hello Universe")
+    })
+  })
+
+  describe("Placeholder Support", () => {
+    it("should display placeholder when empty", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Enter text here...",
+        placeholderColor: "#666666",
+      })
+
+      // plainText should return empty (placeholder is display-only)
+      expect(editor.plainText).toBe("")
+      expect(editor.placeholder).toBe("Enter text here...")
+    })
+
+    it("should hide placeholder when text is inserted", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Type something...",
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("H")
+      currentMockInput.pressKey("i")
+
+      expect(editor.plainText).toBe("Hi")
+    })
+
+    it("should reactivate placeholder when all text is deleted", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        placeholder: "Empty buffer...",
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("Test")
+
+      // Move to end, then delete all text
+      editor.gotoLine(9999)
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressBackspace()
+      }
+
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should update placeholder text dynamically", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "First placeholder",
+      })
+
+      expect(editor.placeholder).toBe("First placeholder")
+      expect(editor.plainText).toBe("")
+
+      editor.placeholder = "Second placeholder"
+      expect(editor.placeholder).toBe("Second placeholder")
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should update placeholder color dynamically", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Colored placeholder",
+        placeholderColor: "#999999",
+      })
+
+      expect(editor.plainText).toBe("")
+
+      // Update color
+      editor.placeholderColor = "#FF0000"
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should work with value property setter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Empty state",
+      })
+
+      expect(editor.plainText).toBe("")
+
+      editor.value = "New content"
+      expect(editor.plainText).toBe("New content")
+
+      editor.value = ""
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should handle placeholder with focus changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Click to edit",
+      })
+
+      // Placeholder should show regardless of focus
+      expect(editor.plainText).toBe("")
+
+      editor.focus()
+      expect(editor.plainText).toBe("")
+
+      editor.blur()
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should handle typing after placeholder is shown", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Start typing...",
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("H")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("o")
+
+      expect(editor.plainText).toBe("Hello")
+    })
+
+    it("should show placeholder after deleting all typed text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Type here",
+      })
+
+      editor.focus()
+
+      // Type "Test"
+      currentMockInput.pressKey("T")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("s")
+      currentMockInput.pressKey("t")
+      expect(editor.plainText).toBe("Test")
+
+      // Backspace all
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressBackspace()
+      }
+
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should handle placeholder with newlines", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Line 1\nLine 2",
+      })
+
+      expect(editor.plainText).toBe("")
+
+      editor.insertText("Content")
+      expect(editor.plainText).toBe("Content")
     })
   })
 

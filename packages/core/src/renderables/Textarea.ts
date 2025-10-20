@@ -61,6 +61,9 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     this.updateValue(this._value)
     this.updateColors()
+
+    this.editBuffer.setPlaceholder(this._placeholder)
+    this.editBuffer.setPlaceholderColor(this._placeholderColor)
   }
 
   public handlePaste(text: string): void {
@@ -369,24 +372,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
   }
 
-  protected renderSelf(buffer: OptimizedBuffer): void {
-    const isEmpty = this._value.length === 0
-    const shouldShowPlaceholder = isEmpty && this._placeholder && !this._focused
-
-    if (shouldShowPlaceholder) {
-      const originalTextColor = this._textColor
-      this._textColor = this._placeholderColor
-
-      this.editBuffer.setText(this._placeholder)
-      buffer.drawEditorView(this.editorView, this.x, this.y)
-      this.editBuffer.setText("")
-
-      this._textColor = originalTextColor
-    } else {
-      buffer.drawEditorView(this.editorView, this.x, this.y)
-    }
-  }
-
   public focus(): void {
     super.focus()
     this.updateColors()
@@ -404,6 +389,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   set placeholder(value: string) {
     if (this._placeholder !== value) {
       this._placeholder = value
+      this.editBuffer.setPlaceholder(value)
       this.requestRender()
     }
   }
@@ -452,6 +438,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const newColor = parseColor(value ?? TextareaRenderable.defaults.placeholderColor)
     if (this._placeholderColor !== newColor) {
       this._placeholderColor = newColor
+      this.editBuffer.setPlaceholderColor(newColor)
       this.requestRender()
     }
   }

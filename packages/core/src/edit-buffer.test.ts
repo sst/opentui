@@ -455,6 +455,114 @@ describe("EditBuffer", () => {
   })
 })
 
+describe("EditBuffer Placeholder", () => {
+  let buffer: EditBuffer
+
+  beforeEach(() => {
+    buffer = EditBuffer.create("wcwidth")
+  })
+
+  afterEach(() => {
+    buffer.destroy()
+  })
+
+  describe("placeholder text", () => {
+    it("should set placeholder and return empty from getText", () => {
+      buffer.setPlaceholder("Enter text here...")
+
+      // getText should return empty (placeholder is display-only)
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should remove placeholder when inserting text", () => {
+      buffer.setPlaceholder("Placeholder text")
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Hello")
+      expect(buffer.getText()).toBe("Hello")
+    })
+
+    it("should reactivate placeholder when all text is deleted", () => {
+      buffer.setPlaceholder("Type something...")
+
+      // Insert text
+      buffer.insertText("Hi")
+      expect(buffer.getText()).toBe("Hi")
+
+      // Delete all text
+      buffer.setCursor(0, 0)
+      buffer.deleteChar()
+      buffer.deleteChar()
+
+      // Placeholder should be active again
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should reactivate placeholder when backspacing to empty", () => {
+      buffer.setPlaceholder("Empty...")
+
+      buffer.insertText("A")
+      expect(buffer.getText()).toBe("A")
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should update placeholder text dynamically", () => {
+      buffer.setPlaceholder("First placeholder")
+      expect(buffer.getText()).toBe("")
+
+      buffer.setPlaceholder("Second placeholder")
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear placeholder when set to empty string", () => {
+      buffer.setPlaceholder("Placeholder")
+      expect(buffer.getText()).toBe("")
+
+      buffer.setPlaceholder("")
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle placeholder with multi-line text", () => {
+      buffer.setPlaceholder("Line 1\nLine 2\nLine 3")
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Actual content")
+      expect(buffer.getText()).toBe("Actual content")
+    })
+
+    it("should handle placeholder with Unicode characters", () => {
+      buffer.setPlaceholder("Enter 世界 🌟 here")
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Test")
+      expect(buffer.getText()).toBe("Test")
+    })
+  })
+
+  describe("placeholder color", () => {
+    it("should set placeholder color without crashing", () => {
+      const { RGBA } = require("./lib/RGBA")
+
+      buffer.setPlaceholder("Placeholder")
+      buffer.setPlaceholderColor(RGBA.fromValues(1, 0, 0, 1))
+
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should update placeholder color while placeholder is active", () => {
+      const { RGBA } = require("./lib/RGBA")
+
+      buffer.setPlaceholder("Test placeholder")
+      buffer.setPlaceholderColor(RGBA.fromValues(0.5, 0.5, 0.5, 1))
+      buffer.setPlaceholderColor(RGBA.fromValues(1, 0, 0, 1))
+
+      expect(buffer.getText()).toBe("")
+    })
+  })
+})
+
 describe("EditBuffer Events", () => {
   describe("events", () => {
     it("should emit cursor-changed event when cursor moves", async () => {

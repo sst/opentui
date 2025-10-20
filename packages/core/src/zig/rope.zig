@@ -1072,6 +1072,11 @@ pub fn Rope(comptime T: type) type {
             self.undo_depth = 0;
         }
 
+        pub fn clear(self: *Self) void {
+            self.root = self.empty_leaf;
+            self.version += 1;
+        }
+
         fn rebuildMarkerCache(self: *Self) !void {
             if (!marker_enabled) return;
 

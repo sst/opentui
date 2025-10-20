@@ -674,6 +674,15 @@ export fn editBufferClearHistory(edit_buffer: *edit_buffer_mod.EditBuffer) void 
     edit_buffer.clearHistory();
 }
 
+export fn editBufferSetPlaceholder(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    edit_buffer.setPlaceholder(text) catch {};
+}
+
+export fn editBufferSetPlaceholderColor(edit_buffer: *edit_buffer_mod.EditBuffer, color: [*]const f32) void {
+    edit_buffer.setPlaceholderColor(utils.f32PtrToRGBA(color)) catch {};
+}
+
 // ===== EditorView Exports =====
 
 export fn createEditorView(edit_buffer: *edit_buffer_mod.EditBuffer, viewport_width: u32, viewport_height: u32) ?*editor_view.EditorView {

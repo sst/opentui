@@ -573,6 +573,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    editBufferSetPlaceholder: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferSetPlaceholderColor: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -1067,6 +1075,8 @@ export interface RenderLib {
   editBufferCanUndo: (buffer: Pointer) => boolean
   editBufferCanRedo: (buffer: Pointer) => boolean
   editBufferClearHistory: (buffer: Pointer) => void
+  editBufferSetPlaceholder: (buffer: Pointer, text: string) => void
+  editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -2213,6 +2223,15 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferClearHistory(buffer: Pointer): void {
     this.opentui.symbols.editBufferClearHistory(buffer)
+  }
+
+  public editBufferSetPlaceholder(buffer: Pointer, text: string): void {
+    const textBytes = this.encoder.encode(text)
+    this.opentui.symbols.editBufferSetPlaceholder(buffer, textBytes, textBytes.length)
+  }
+
+  public editBufferSetPlaceholderColor(buffer: Pointer, color: RGBA): void {
+    this.opentui.symbols.editBufferSetPlaceholderColor(buffer, color.buffer)
   }
 
   // EditorView selection and editing implementations

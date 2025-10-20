@@ -79,7 +79,7 @@ export abstract class EditBufferRenderable extends Renderable {
   }
 
   get plainText(): string {
-    return this.editorView.getText()
+    return this.editBuffer.getText()
   }
 
   get cursor(): CursorPosition {
