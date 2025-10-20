@@ -14,7 +14,6 @@ export interface TextareaOptions extends EditBufferOptions {
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
-  private _value: string
   private _placeholder: string | null
   private _unfocusedBackgroundColor: RGBA
   private _unfocusedTextColor: RGBA
@@ -43,7 +42,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
     super(ctx, baseOptions)
 
-    this._value = options.value ?? defaults.value
     // Store unfocused colors separately (parent's properties get overwritten when focused)
     this._unfocusedBackgroundColor = parseColor(options.backgroundColor || defaults.backgroundColor)
     this._unfocusedTextColor = parseColor(options.textColor || defaults.textColor)
@@ -54,7 +52,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._placeholder = options.placeholder ?? defaults.placeholder
     this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
 
-    this.updateValue(this._value)
+    this.updateValue(options.value ?? defaults.value)
     this.updateColors()
 
     this.editBuffer.setPlaceholder(this._placeholder)
@@ -153,14 +151,11 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   get value(): string {
-    return this._value
+    return this.editBuffer.getText()
   }
 
   set value(value: string) {
-    if (this._value !== value) {
-      this._value = value
-      this.updateValue(value)
-    }
+    this.updateValue(value)
   }
 
   private updateValue(value: string): void {

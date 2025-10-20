@@ -4212,6 +4212,28 @@ describe("TextareaRenderable", () => {
         currentMockInput.pressKey("X")
         expect(editor.plainText).toBe("X")
       })
+
+      it("should fire exactly once when setting via setter and pressing a key", async () => {
+        let contentChangeCount = 0
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          value: "",
+          width: 40,
+          height: 10,
+        })
+
+        editor.focus()
+
+        editor.onContentChange = () => {
+          contentChangeCount++
+        }
+
+        currentMockInput.pressKey("X")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect(contentChangeCount).toBe(1)
+        expect(editor.value).toBe("X")
+      })
     })
 
     describe("Combined cursor and content events", () => {
