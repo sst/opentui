@@ -69,6 +69,7 @@ class TerminalConsoleCache extends EventEmitter {
   private readonly MAX_CACHE_SIZE = 1000
   private _collectCallerInfo: boolean = false
   private _cachingEnabled: boolean = true
+  private _originalConsole: typeof console | null = null
 
   get cachedLogs(): [Date, LogLevel, any[], CallerInfo | null][] {
     return this._cachedLogs
@@ -82,6 +83,9 @@ class TerminalConsoleCache extends EventEmitter {
   }
 
   public activate(): void {
+    if (!this._originalConsole) {
+      this._originalConsole = global.console
+    }
     this.setupConsoleCapture()
     this.overrideConsoleMethods()
   }
@@ -143,8 +147,9 @@ class TerminalConsoleCache extends EventEmitter {
   }
 
   private restoreOriginalConsole(): void {
-    const originalNodeConsole = require("node:console")
-    global.console = originalNodeConsole
+    if (this._originalConsole) {
+      global.console = this._originalConsole
+    }
 
     this.setupConsoleCapture()
   }
