@@ -306,6 +306,184 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
     return try results.toOwnedSlice();
 }
 
+fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
+    var results = std.ArrayList(BenchResult).init(allocator);
+
+    // Setup global resources
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const global_alloc = arena.allocator();
+
+    const pool = gp.initGlobalPool(global_alloc);
+    const unicode_data = gp.initGlobalUnicodeData(global_alloc);
+    const graphemes_ptr, const display_width_ptr = unicode_data;
+
+    // Baseline: 1000 sequential addHighlightByCharRange calls (unbatched)
+    {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            defer tb.deinit();
+
+            const style = try SyntaxStyle.init(allocator);
+            defer style.deinit();
+            tb.setSyntaxStyle(style);
+
+            // Create a multi-line buffer
+            const text = "Line 1 with some text\nLine 2 with more text\nLine 3 here\nLine 4 content\nLine 5 final";
+            try tb.setText(text);
+
+            var timer = try std.time.Timer.start();
+
+            // Add 1000 highlights sequentially
+            var i: u32 = 0;
+            while (i < 1000) : (i += 1) {
+                const start_char = (i * 2) % 50;
+                const end_char = start_char + 3;
+                const style_id = (i % 5) + 1;
+                tb.addHighlightByCharRange(start_char, end_char, style_id, 1, null) catch {};
+            }
+
+            const elapsed = timer.read();
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "addHighlightByCharRange - 1000 calls (unbatched)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // Batched: 1000 sequential addHighlightByCharRange calls in a transaction
+    {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            defer tb.deinit();
+
+            const style = try SyntaxStyle.init(allocator);
+            defer style.deinit();
+            tb.setSyntaxStyle(style);
+
+            // Create a multi-line buffer
+            const text = "Line 1 with some text\nLine 2 with more text\nLine 3 here\nLine 4 content\nLine 5 final";
+            try tb.setText(text);
+
+            var timer = try std.time.Timer.start();
+
+            // Batch all highlights in a transaction
+            tb.startHighlightsTransaction();
+            defer tb.endHighlightsTransaction();
+
+            // Add 1000 highlights sequentially
+            var i: u32 = 0;
+            while (i < 1000) : (i += 1) {
+                const start_char = (i * 2) % 50;
+                const end_char = start_char + 3;
+                const style_id = (i % 5) + 1;
+                tb.addHighlightByCharRange(start_char, end_char, style_id, 1, null) catch {};
+            }
+
+            const elapsed = timer.read();
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "addHighlightByCharRange - 1000 calls (batched)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // setStyledText with 100 chunks (realistic syntax highlighting scenario)
+    {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        // Build a realistic multi-line code snippet with 100 chunks
+        var chunk_list = std.ArrayList(StyledChunk).init(allocator);
+        defer chunk_list.deinit();
+
+        const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
+        const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
+        const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+        const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
+        const string_color = [4]f32{ 0.9, 0.8, 0.5, 1.0 };
+
+        // Repeat a pattern to create 100 chunks
+        var chunk_idx: usize = 0;
+        while (chunk_idx < 10) : (chunk_idx += 1) {
+            try chunk_list.append(.{ .text_ptr = "const".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&keyword_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = "myVar".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&identifier_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = "=".ptr, .text_len = 1, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = "42".ptr, .text_len = 2, .fg_ptr = rgbaToPtr(&number_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = ";".ptr, .text_len = 1, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = "\n".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(.{ .text_ptr = "\"str\"".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&string_color), .bg_ptr = null, .attributes = 0 });
+        }
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            defer tb.deinit();
+
+            const style = try SyntaxStyle.init(allocator);
+            defer style.deinit();
+            tb.setSyntaxStyle(style);
+
+            var timer = try std.time.Timer.start();
+            try tb.setStyledText(chunk_list.items);
+            const elapsed = timer.read();
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "setStyledText - 100 chunks (realistic code)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    return try results.toOwnedSlice();
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
@@ -319,6 +497,10 @@ pub fn run(
     const styled_text_results = try benchSetStyledTextOperations(allocator, iterations);
     defer allocator.free(styled_text_results);
     try all_results.appendSlice(styled_text_results);
+
+    const highlight_results = try benchHighlightOperations(allocator, iterations);
+    defer allocator.free(highlight_results);
+    try all_results.appendSlice(highlight_results);
 
     return try all_results.toOwnedSlice();
 }

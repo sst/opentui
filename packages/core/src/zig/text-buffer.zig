@@ -28,11 +28,8 @@ pub const GraphemeInfo = seg_mod.GraphemeInfo;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
 
-// Main TextBuffer type - unified rope architecture
 pub const TextBuffer = UnifiedTextBuffer;
 
-/// FFI-compatible styled chunk structure
-/// Used for passing styled text from TypeScript/C and in benchmarks
 pub const StyledChunk = extern struct {
     text_ptr: [*]const u8,
     text_len: usize,
@@ -41,8 +38,6 @@ pub const StyledChunk = extern struct {
     attributes: u8,
 };
 
-/// UnifiedTextBuffer - TextBuffer implementation using a single unified rope
-/// instead of nested rope structures (lines → chunks)
 pub const UnifiedTextBuffer = struct {
     const Self = @This();
 
@@ -56,7 +51,7 @@ pub const UnifiedTextBuffer = struct {
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
 
-    rope: UnifiedRope, // Single unified rope containing text segments and breaks
+    rope: UnifiedRope,
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
@@ -64,7 +59,6 @@ pub const UnifiedTextBuffer = struct {
     display_width: DisplayWidth,
     width_method: gwidth.WidthMethod,
 
-    // View registration system
     view_dirty_flags: std.ArrayListUnmanaged(bool),
     next_view_id: u32,
     free_view_ids: std.ArrayListUnmanaged(u32),
@@ -73,8 +67,9 @@ pub const UnifiedTextBuffer = struct {
     // Maps line_idx to highlights for that line
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
     line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
+    highlight_batch_depth: u32,
+    dirty_span_lines: std.AutoHashMap(usize, void),
 
-    // Persistent buffer for setStyledText (global-allocated, not arena)
     styled_text_mem_id: ?u8,
     styled_buffer: ?[]u8,
     styled_capacity: usize,
@@ -109,6 +104,9 @@ pub const UnifiedTextBuffer = struct {
         var mem_registry = MemRegistry.init(global_allocator);
         errdefer mem_registry.deinit();
 
+        var dirty_span_lines = std.AutoHashMap(usize, void).init(global_allocator);
+        errdefer dirty_span_lines.deinit();
+
         self.* = .{
             .mem_registry = mem_registry,
             .char_count = 0,
@@ -129,6 +127,8 @@ pub const UnifiedTextBuffer = struct {
             .free_view_ids = free_view_ids,
             .line_highlights = .{},
             .line_spans = .{},
+            .highlight_batch_depth = 0,
+            .dirty_span_lines = dirty_span_lines,
             .styled_text_mem_id = null,
             .styled_buffer = null,
             .styled_capacity = 0,
@@ -151,6 +151,9 @@ pub const UnifiedTextBuffer = struct {
             span_list.deinit(self.global_allocator);
         }
         self.line_spans.deinit(self.global_allocator);
+
+        // Free dirty span lines hashmap
+        self.dirty_span_lines.deinit();
 
         // Free persistent styled text buffer
         if (self.styled_buffer) |buf| {
@@ -502,6 +505,28 @@ pub const UnifiedTextBuffer = struct {
         return self.graphemes_data.iterator(bytes);
     }
 
+    pub fn startHighlightsTransaction(self: *Self) void {
+        self.highlight_batch_depth += 1;
+    }
+
+    pub fn endHighlightsTransaction(self: *Self) void {
+        if (self.highlight_batch_depth == 0) return;
+
+        self.highlight_batch_depth -= 1;
+
+        if (self.highlight_batch_depth == 0) {
+            var it = self.dirty_span_lines.keyIterator();
+            while (it.next()) |line_idx| {
+                self.rebuildLineSpans(line_idx.*) catch {};
+            }
+            self.dirty_span_lines.clearRetainingCapacity();
+        }
+    }
+
+    fn markLineSpansDirty(self: *Self, line_idx: usize) void {
+        self.dirty_span_lines.put(line_idx, {}) catch {};
+    }
+
     // Highlight system
     fn ensureLineHighlightStorage(self: *Self, line_idx: usize) TextBufferError!void {
         while (self.line_highlights.items.len <= line_idx) {
@@ -541,7 +566,12 @@ pub const UnifiedTextBuffer = struct {
         };
 
         try self.line_highlights.items[line_idx].append(self.global_allocator, hl);
-        try self.rebuildLineSpans(line_idx);
+
+        if (self.highlight_batch_depth == 0) {
+            try self.rebuildLineSpans(line_idx);
+        } else {
+            self.markLineSpansDirty(line_idx);
+        }
     }
 
     pub fn getLineHighlights(self: *const Self, line_idx: usize) []const Highlight {
@@ -734,7 +764,11 @@ pub const UnifiedTextBuffer = struct {
                 i += 1;
             }
             if (changed) {
-                self.rebuildLineSpans(line_idx) catch {};
+                if (self.highlight_batch_depth == 0) {
+                    self.rebuildLineSpans(line_idx) catch {};
+                } else {
+                    self.markLineSpansDirty(line_idx);
+                }
             }
         }
     }
@@ -820,6 +854,9 @@ pub const UnifiedTextBuffer = struct {
         try self.setTextInternal(self.styled_text_mem_id.?, full_text);
 
         if (self.syntax_style) |style| {
+            self.startHighlightsTransaction();
+            defer self.endHighlightsTransaction();
+
             var char_pos: u32 = 0;
             for (chunks, 0..) |chunk, i| {
                 const chunk_text = chunk.text_ptr[0..chunk.text_len];
