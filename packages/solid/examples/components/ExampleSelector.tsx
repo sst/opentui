@@ -13,6 +13,7 @@ import { CustomScrollAccelDemo } from "./custom-scroll-accel-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
+import { TextareaDemo } from "./textarea-demo.tsx"
 
 const EXAMPLES = [
   {
@@ -34,6 +35,11 @@ const EXAMPLES = [
     name: "Autocomplete Demo",
     description: "@ mention autocomplete with keyboard navigation",
     scene: "autocomplete-demo",
+  },
+  {
+    name: "Textarea Demo",
+    description: "Interactive textarea editor with navigation, editing, and text wrapping",
+    scene: "textarea-demo",
   },
   {
     name: "Mouse demo",
@@ -143,6 +149,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "autocomplete-demo"}>
         <AutocompleteDemo />
+      </Match>
+      <Match when={selectedScene() === "textarea-demo"}>
+        <TextareaDemo />
       </Match>
       <Match when={selectedScene() === "mouse-demo"}>
         <MouseScene />
