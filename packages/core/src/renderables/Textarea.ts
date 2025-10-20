@@ -407,4 +407,48 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.editorView.setCursorByOffset(offset)
     this.requestRender()
   }
+
+  public addHighlight(
+    lineIdx: number,
+    colStart: number,
+    colEnd: number,
+    styleId: number,
+    priority: number = 0,
+    hlRef?: number,
+  ): void {
+    this.editBuffer.addHighlight(lineIdx, colStart, colEnd, styleId, priority, hlRef)
+    this.requestRender()
+  }
+
+  public addHighlightByCharRange(
+    charStart: number,
+    charEnd: number,
+    styleId: number,
+    priority: number = 0,
+    hlRef?: number,
+  ): void {
+    this.editBuffer.addHighlightByCharRange(charStart, charEnd, styleId, priority, hlRef)
+    this.requestRender()
+  }
+
+  public removeHighlightsByRef(hlRef: number): void {
+    this.editBuffer.removeHighlightsByRef(hlRef)
+    this.requestRender()
+  }
+
+  public clearLineHighlights(lineIdx: number): void {
+    this.editBuffer.clearLineHighlights(lineIdx)
+    this.requestRender()
+  }
+
+  public clearAllHighlights(): void {
+    this.editBuffer.clearAllHighlights()
+    this.requestRender()
+  }
+
+  public getLineHighlights(
+    lineIdx: number,
+  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+    return this.editBuffer.getLineHighlights(lineIdx)
+  }
 }

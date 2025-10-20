@@ -6,6 +6,7 @@ import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
+import type { SyntaxStyle } from "../syntax-style"
 
 export interface CursorChangeEvent {
   line: number
@@ -27,6 +28,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   scrollMargin?: number
   showCursor?: boolean
   cursorColor?: string | RGBA
+  syntaxStyle?: SyntaxStyle
   onCursorChange?: (event: CursorChangeEvent) => void
   onContentChange?: (event: ContentChangeEvent) => void
 }
@@ -88,6 +90,10 @@ export abstract class EditBufferRenderable extends Renderable {
     this.editBuffer.setDefaultFg(this._textColor)
     this.editBuffer.setDefaultBg(this._backgroundColor)
     this.editBuffer.setDefaultAttributes(this._defaultAttributes)
+
+    if (options.syntaxStyle) {
+      this.editBuffer.setSyntaxStyle(options.syntaxStyle)
+    }
 
     this.setupMeasureFunc()
     this.setupEventListeners(options)
@@ -400,5 +406,14 @@ export abstract class EditBufferRenderable extends Renderable {
 
   public get onContentChange(): ((event: ContentChangeEvent) => void) | undefined {
     return this._contentChangeListener
+  }
+
+  get syntaxStyle(): SyntaxStyle | null {
+    return this.editBuffer.getSyntaxStyle()
+  }
+
+  set syntaxStyle(style: SyntaxStyle | null) {
+    this.editBuffer.setSyntaxStyle(style)
+    this.requestRender()
   }
 }

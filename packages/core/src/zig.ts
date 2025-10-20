@@ -375,6 +375,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    textBufferGetLineHighlights: {
+      args: ["ptr", "u32", "ptr", "usize"],
+      returns: "usize",
+    },
+    textBufferGetLineHighlightsPtr: {
+      args: ["ptr", "u32", "ptr"],
+      returns: "ptr",
+    },
+    textBufferFreeLineHighlights: {
+      args: ["ptr", "usize"],
+      returns: "void",
+    },
 
     // TextBufferView functions
     createTextBufferView: {
@@ -1177,6 +1189,10 @@ export interface RenderLib {
   textBufferClearLineHighlights: (buffer: Pointer, lineIdx: number) => void
   textBufferClearAllHighlights: (buffer: Pointer) => void
   textBufferSetSyntaxStyle: (buffer: Pointer, style: Pointer | null) => void
+  textBufferGetLineHighlights: (
+    buffer: Pointer,
+    lineIdx: number,
+  ) => Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }>
 
   getArenaAllocatedBytes: () => number
 
@@ -2078,6 +2094,38 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetSyntaxStyle(buffer: Pointer, style: Pointer | null): void {
     this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style)
+  }
+
+  public textBufferGetLineHighlights(
+    buffer: Pointer,
+    lineIdx: number,
+  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+    const outCountBuf = new BigUint64Array(1)
+
+    const nativePtr = this.opentui.symbols.textBufferGetLineHighlightsPtr(buffer, lineIdx, ptr(outCountBuf))
+    if (!nativePtr) return []
+
+    const count = Number(outCountBuf[0])
+    const byteLen = count * 16
+
+    const raw = toArrayBuffer(nativePtr, 0, byteLen)
+    const safeCopy = raw.slice(0)
+
+    this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)
+
+    const u32 = new Uint32Array(safeCopy)
+    const results = new Array(count)
+    for (let i = 0; i < count; i++) {
+      const base = i * 4
+      const colStart = u32[base]
+      const colEnd = u32[base + 1]
+      const styleId = u32[base + 2]
+      const aux = u32[base + 3]
+      const priority = aux & 0xff
+      const hlRefRaw = (aux >>> 16) & 0xffff
+      results[i] = { colStart, colEnd, styleId, priority, hlRef: hlRefRaw === 0xffff ? null : hlRefRaw }
+    }
+    return results
   }
 
   public getArenaAllocatedBytes(): number {

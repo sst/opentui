@@ -179,6 +179,13 @@ export class TextBuffer {
     this.lib.textBufferClearAllHighlights(this.bufferPtr)
   }
 
+  public getLineHighlights(
+    lineIdx: number,
+  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+    this.guard()
+    return this.lib.textBufferGetLineHighlights(this.bufferPtr, lineIdx)
+  }
+
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
     this._syntaxStyle = style ?? undefined

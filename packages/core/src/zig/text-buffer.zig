@@ -140,6 +140,10 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        if (self.syntax_style) |style| {
+            (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
+        }
+
         self.view_dirty_flags.deinit(self.global_allocator);
         self.free_view_ids.deinit(self.global_allocator);
 
@@ -292,8 +296,19 @@ pub const UnifiedTextBuffer = struct {
         self.default_attributes = null;
     }
 
+    fn onSyntaxStyleDestroyed(ctx_ptr: *anyopaque) void {
+        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
+        self.syntax_style = null;
+    }
+
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+        if (self.syntax_style) |prev| {
+            (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
+        }
         self.syntax_style = syntax_style;
+        if (syntax_style) |style| {
+            _ = (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch {};
+        }
     }
 
     pub fn getSyntaxStyle(self: *const Self) ?*const SyntaxStyle {
@@ -793,6 +808,15 @@ pub const UnifiedTextBuffer = struct {
         for (self.line_spans.items) |*span_list| {
             span_list.clearRetainingCapacity();
         }
+    }
+
+    /// Get highlights for a specific line
+    /// Returns a slice that's valid until the next highlight modification
+    pub fn getLineHighlightsSlice(self: *const Self, line_idx: usize) []const Highlight {
+        if (line_idx < self.line_highlights.items.len) {
+            return self.line_highlights.items[line_idx].items;
+        }
+        return &[_]Highlight{};
     }
 
     /// Set styled text from chunks with individual styling

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const buffer = @import("buffer.zig");
+const events = @import("event-emitter.zig");
 
 pub const RGBA = buffer.RGBA;
 
@@ -16,6 +17,8 @@ pub const SyntaxStyleError = error{
     StyleNotFound,
 };
 
+pub const Event = enum { Destroy };
+
 pub const SyntaxStyle = struct {
     allocator: Allocator,
     global_allocator: Allocator,
@@ -26,6 +29,8 @@ pub const SyntaxStyle = struct {
     next_id: u32,
 
     merged_cache: std.StringHashMapUnmanaged(StyleDefinition),
+
+    emitter: events.EventEmitter(Event),
 
     pub fn init(global_allocator: Allocator) SyntaxStyleError!*SyntaxStyle {
         const self = global_allocator.create(SyntaxStyle) catch return SyntaxStyleError.OutOfMemory;
@@ -45,12 +50,15 @@ pub const SyntaxStyle = struct {
             .id_to_style = .{},
             .next_id = 1, // Start from 1, 0 can be used as "invalid"
             .merged_cache = .{},
+            .emitter = events.EventEmitter(Event).init(internal_allocator),
         };
 
         return self;
     }
 
     pub fn deinit(self: *SyntaxStyle) void {
+        self.emitter.emit(.Destroy);
+        self.emitter.deinit();
         self.arena.deinit();
         self.global_allocator.destroy(self.arena);
         self.global_allocator.destroy(self);
@@ -141,5 +149,13 @@ pub const SyntaxStyle = struct {
 
     pub fn getStyleCount(self: *const SyntaxStyle) usize {
         return self.id_to_style.count();
+    }
+
+    pub fn onDestroy(self: *SyntaxStyle, ctx: *anyopaque, handle: *const fn (*anyopaque) void) SyntaxStyleError!void {
+        self.emitter.on(.Destroy, .{ .ctx = ctx, .handle = handle }) catch return SyntaxStyleError.OutOfMemory;
+    }
+
+    pub fn offDestroy(self: *SyntaxStyle, ctx: *anyopaque, handle: *const fn (*anyopaque) void) void {
+        self.emitter.off(.Destroy, .{ .ctx = ctx, .handle = handle });
     }
 };

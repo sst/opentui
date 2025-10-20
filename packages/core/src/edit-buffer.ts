@@ -3,6 +3,7 @@ import { type Pointer } from "bun:ffi"
 import { type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { EventEmitter } from "events"
+import type { SyntaxStyle } from "./syntax-style"
 
 // TODO: make this row/col as anything else
 export interface CursorPosition {
@@ -27,6 +28,7 @@ export class EditBuffer extends EventEmitter {
   private _textBytes: Uint8Array[] = []
   private _singleTextBytes: Uint8Array | null = null
   private _singleTextMemId: number | null = null
+  private _syntaxStyle?: SyntaxStyle
 
   constructor(lib: RenderLib, ptr: Pointer) {
     super()
@@ -253,6 +255,62 @@ export class EditBuffer extends EventEmitter {
   public setPlaceholderColor(color: RGBA): void {
     this.guard()
     this.lib.editBufferSetPlaceholderColor(this.bufferPtr, color)
+  }
+
+  public setSyntaxStyle(style: SyntaxStyle | null): void {
+    this.guard()
+    this._syntaxStyle = style ?? undefined
+    this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)
+  }
+
+  public getSyntaxStyle(): SyntaxStyle | null {
+    this.guard()
+    return this._syntaxStyle ?? null
+  }
+
+  public addHighlight(
+    lineIdx: number,
+    colStart: number,
+    colEnd: number,
+    styleId: number,
+    priority: number = 0,
+    hlRef?: number,
+  ): void {
+    this.guard()
+    this.lib.textBufferAddHighlight(this.textBufferPtr, lineIdx, colStart, colEnd, styleId, priority, hlRef)
+  }
+
+  public addHighlightByCharRange(
+    charStart: number,
+    charEnd: number,
+    styleId: number,
+    priority: number = 0,
+    hlRef?: number,
+  ): void {
+    this.guard()
+    this.lib.textBufferAddHighlightByCharRange(this.textBufferPtr, charStart, charEnd, styleId, priority, hlRef)
+  }
+
+  public removeHighlightsByRef(hlRef: number): void {
+    this.guard()
+    this.lib.textBufferRemoveHighlightsByRef(this.textBufferPtr, hlRef)
+  }
+
+  public clearLineHighlights(lineIdx: number): void {
+    this.guard()
+    this.lib.textBufferClearLineHighlights(this.textBufferPtr, lineIdx)
+  }
+
+  public clearAllHighlights(): void {
+    this.guard()
+    this.lib.textBufferClearAllHighlights(this.textBufferPtr)
+  }
+
+  public getLineHighlights(
+    lineIdx: number,
+  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+    this.guard()
+    return this.lib.textBufferGetLineHighlights(this.textBufferPtr, lineIdx)
   }
 
   public destroy(): void {

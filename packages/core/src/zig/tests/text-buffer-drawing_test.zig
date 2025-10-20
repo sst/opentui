@@ -1685,3 +1685,54 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     const result = out_buffer[0..written];
     try std.testing.expect(std.mem.startsWith(u8, result, "ABC"));
 }
+
+test "drawTextBuffer - syntax style destroy does not crash" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var style = try ss.SyntaxStyle.init(std.testing.allocator);
+    tb.setSyntaxStyle(style);
+
+    const style_id = try style.registerStyle("test", .{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    try tb.setText("Hello World");
+    try tb.addHighlightByCharRange(0, 5, style_id, 1, null);
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+    try std.testing.expect(std.mem.startsWith(u8, result, "Hello World"));
+
+    style.deinit();
+
+    try std.testing.expect(tb.getSyntaxStyle() == null);
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const written2 = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result2 = out_buffer[0..written2];
+    try std.testing.expect(std.mem.startsWith(u8, result2, "Hello World"));
+}
