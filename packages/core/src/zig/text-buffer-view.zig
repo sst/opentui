@@ -542,20 +542,26 @@ pub const UnifiedTextBufferView = struct {
         };
     }
 
-    pub fn findVisualLineIndex(self: *Self, logical_row: u32, logical_col: u32) ?u32 {
+    pub fn findVisualLineIndex(self: *Self, logical_row: u32, logical_col: u32) u32 {
         self.updateVirtualLines();
 
         const vlines = self.virtual_lines.items;
-        if (vlines.len == 0) return null;
+        if (vlines.len == 0) return 0;
 
         const wrap_info = self.getWrapInfo();
 
-        if (logical_row >= wrap_info.line_first_vline.len) return null;
+        // Clamp logical_row to valid range
+        const clamped_row = if (logical_row >= wrap_info.line_first_vline.len)
+            if (wrap_info.line_first_vline.len > 0) wrap_info.line_first_vline.len - 1 else 0
+        else
+            logical_row;
 
-        const first_vline_idx = wrap_info.line_first_vline[logical_row];
-        const vline_count = wrap_info.line_vline_counts[logical_row];
+        if (clamped_row >= wrap_info.line_first_vline.len) return 0;
 
-        if (vline_count == 0) return null;
+        const first_vline_idx = wrap_info.line_first_vline[clamped_row];
+        const vline_count = wrap_info.line_vline_counts[clamped_row];
+
+        if (vline_count == 0) return first_vline_idx;
 
         var i: u32 = 0;
         while (i < vline_count) : (i += 1) {
@@ -588,7 +594,7 @@ pub const UnifiedTextBufferView = struct {
             return last_vline_idx;
         }
 
-        return null;
+        return first_vline_idx;
     }
 
     pub fn getPlainTextIntoBuffer(self: *const Self, out_buffer: []u8) usize {

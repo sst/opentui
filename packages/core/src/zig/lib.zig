@@ -840,15 +840,13 @@ export fn editorViewGetVisualCursor(
     outLogicalCol: *u32,
     outOffset: *u32,
 ) bool {
-    if (view.getVisualCursor()) |vcursor| {
-        outVisualRow.* = vcursor.visual_row;
-        outVisualCol.* = vcursor.visual_col;
-        outLogicalRow.* = vcursor.logical_row;
-        outLogicalCol.* = vcursor.logical_col;
-        outOffset.* = vcursor.offset;
-        return true;
-    }
-    return false;
+    const vcursor = view.getVisualCursor();
+    outVisualRow.* = vcursor.visual_row;
+    outVisualCol.* = vcursor.visual_col;
+    outLogicalRow.* = vcursor.logical_row;
+    outLogicalCol.* = vcursor.logical_col;
+    outOffset.* = vcursor.offset;
+    return true;
 }
 
 export fn editorViewLogicalToVisualCursor(
@@ -859,13 +857,11 @@ export fn editorViewLogicalToVisualCursor(
     outVisualCol: *u32,
     outOffset: *u32,
 ) bool {
-    if (view.logicalToVisualCursor(logical_row, logical_col)) |vcursor| {
-        outVisualRow.* = vcursor.visual_row;
-        outVisualCol.* = vcursor.visual_col;
-        outOffset.* = vcursor.offset;
-        return true;
-    }
-    return false;
+    const vcursor = view.logicalToVisualCursor(logical_row, logical_col);
+    outVisualRow.* = vcursor.visual_row;
+    outVisualCol.* = vcursor.visual_col;
+    outOffset.* = vcursor.offset;
+    return true;
 }
 
 export fn editorViewVisualToLogicalCursor(

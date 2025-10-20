@@ -138,13 +138,13 @@ export class EditorView {
     return this.lib.decoder.decode(textBytes)
   }
 
-  public getVisualCursor(): VisualCursor | null {
+  public getVisualCursor(): VisualCursor {
     this.guard()
     return this.lib.editorViewGetVisualCursor(this.viewPtr)
   }
 
   // TODO: remove exposure - should only be used internally
-  public logicalToVisualCursor(logicalRow: number, logicalCol: number): VisualCursor | null {
+  public logicalToVisualCursor(logicalRow: number, logicalCol: number): VisualCursor {
     this.guard()
     return this.lib.editorViewLogicalToVisualCursor(this.viewPtr, logicalRow, logicalCol)
   }

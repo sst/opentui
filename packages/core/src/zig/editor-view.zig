@@ -179,8 +179,8 @@ pub const EditorView = struct {
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
     pub fn updateBeforeRender(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
-        const visual_row = self.text_buffer_view.findVisualLineIndex(cursor.row, cursor.col) orelse cursor.row;
-        self.ensureCursorVisible(visual_row);
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        self.ensureCursorVisible(vcursor.visual_row);
     }
 
     /// Automatically ensures cursor is visible before rendering
@@ -234,10 +234,10 @@ pub const EditorView = struct {
     // ============================================================================
 
     /// Returns viewport-relative visual coordinates for external API consumers
-    pub fn getVisualCursor(self: *EditorView) ?VisualCursor {
+    pub fn getVisualCursor(self: *EditorView) VisualCursor {
         self.updateBeforeRender();
         const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return null;
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
 
         // Convert absolute visual coordinates to viewport-relative for the API
         const vp = self.text_buffer_view.getViewport() orelse return vcursor;
@@ -259,28 +259,45 @@ pub const EditorView = struct {
 
     /// This accounts for line wrapping by finding which virtual line contains the logical position
     /// Returns absolute visual coordinates (document-absolute, not viewport-relative)
-    pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) ?VisualCursor {
-        const visual_row_idx = self.text_buffer_view.findVisualLineIndex(logical_row, logical_col) orelse return null;
+    pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) VisualCursor {
+        // Clamp logical coordinates to valid buffer ranges
+        const line_count = iter_mod.getLineCount(&self.edit_buffer.tb.rope);
+        const clamped_row = if (line_count > 0) @min(logical_row, line_count - 1) else 0;
+
+        const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, clamped_row);
+        const clamped_col = @min(logical_col, line_width);
+
+        const visual_row_idx = self.text_buffer_view.findVisualLineIndex(clamped_row, clamped_col);
 
         const vlines = self.text_buffer_view.virtual_lines.items;
-        if (visual_row_idx >= vlines.len) return null;
+        if (vlines.len == 0 or visual_row_idx >= vlines.len) {
+            // Fallback for edge cases
+            const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, clamped_row, clamped_col) orelse 0;
+            return VisualCursor{
+                .visual_row = 0,
+                .visual_col = 0,
+                .logical_row = clamped_row,
+                .logical_col = clamped_col,
+                .offset = offset,
+            };
+        }
 
         const vline = &vlines[visual_row_idx];
         const vline_start_col = vline.source_col_offset;
 
         // Calculate visual column within this virtual line
-        const visual_col = if (logical_col >= vline_start_col)
-            logical_col - vline_start_col
+        const visual_col = if (clamped_col >= vline_start_col)
+            clamped_col - vline_start_col
         else
             0;
 
-        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
+        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, clamped_row, clamped_col) orelse 0;
 
         return VisualCursor{
             .visual_row = visual_row_idx,
             .visual_col = visual_col,
-            .logical_row = logical_row,
-            .logical_col = logical_col,
+            .logical_row = clamped_row,
+            .logical_col = clamped_col,
             .offset = offset,
         };
     }
@@ -311,7 +328,7 @@ pub const EditorView = struct {
 
     pub fn moveUpVisual(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return;
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
 
         if (vcursor.visual_row == 0) {
             return;
@@ -342,7 +359,7 @@ pub const EditorView = struct {
 
     pub fn moveDownVisual(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col) orelse return;
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
 
         self.text_buffer_view.updateVirtualLines();
         const vlines = self.text_buffer_view.virtual_lines.items;

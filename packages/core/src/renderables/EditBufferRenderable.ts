@@ -122,8 +122,12 @@ export abstract class EditBufferRenderable extends Renderable {
     return this.editBuffer.getCursorPosition()
   }
 
-  get visualCursor(): VisualCursor | null {
+  get visualCursor(): VisualCursor {
     return this.editorView.getVisualCursor()
+  }
+
+  set cursorOffset(offset: number) {
+    this.editorView.setCursorByOffset(offset)
   }
 
   get textColor(): RGBA {
@@ -335,10 +339,6 @@ export abstract class EditBufferRenderable extends Renderable {
     if (!this._showCursor || !this._focused) return
 
     const visualCursor = this.editorView.getVisualCursor()
-    if (!visualCursor) {
-      this._ctx.setCursorPosition(0, 0, false)
-      return
-    }
 
     const cursorX = this.x + visualCursor.visualCol + 1 // +1 for 1-based terminal coords
     const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords

@@ -319,7 +319,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
 
     const visualCursor = this.editorView.getVisualCursor()
-    if (!visualCursor) return
 
     const viewport = this.editorView.getViewport()
     const cursorX = this.x + visualCursor.visualCol

@@ -502,11 +502,10 @@ test "EditorView - VisualCursor without wrapping" {
     try eb.setCursor(1, 3);
 
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
-    try std.testing.expectEqual(@as(u32, 1), vcursor.?.visual_row);
-    try std.testing.expectEqual(@as(u32, 3), vcursor.?.visual_col);
-    try std.testing.expectEqual(@as(u32, 1), vcursor.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 3), vcursor.?.logical_col);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 3), vcursor.visual_col);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 3), vcursor.logical_col);
 }
 
 test "EditorView - VisualCursor with character wrapping" {
@@ -530,11 +529,10 @@ test "EditorView - VisualCursor with character wrapping" {
     try eb.setCursor(0, 25);
 
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 25), vcursor.?.logical_col);
-    try std.testing.expect(vcursor.?.visual_row > 0);
-    try std.testing.expect(vcursor.?.visual_col <= 20);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 25), vcursor.logical_col);
+    try std.testing.expect(vcursor.visual_row > 0);
+    try std.testing.expect(vcursor.visual_col <= 20);
 }
 
 test "EditorView - VisualCursor with word wrapping" {
@@ -558,8 +556,7 @@ test "EditorView - VisualCursor with word wrapping" {
     const line_count = eb.getTextBuffer().getLineCount();
     try std.testing.expectEqual(@as(u32, 1), line_count);
 
-    const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
+    _ = ev.getVisualCursor();
 }
 
 test "EditorView - moveUpVisual with wrapping" {
@@ -583,17 +580,15 @@ test "EditorView - moveUpVisual with wrapping" {
     try eb.setCursor(0, 50);
 
     const vcursor_before = ev.getVisualCursor();
-    try std.testing.expect(vcursor_before != null);
-    const visual_row_before = vcursor_before.?.visual_row;
+    const visual_row_before = vcursor_before.visual_row;
 
     ev.moveUpVisual();
 
     const vcursor_after = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after != null);
 
-    try std.testing.expectEqual(visual_row_before - 1, vcursor_after.?.visual_row);
+    try std.testing.expectEqual(visual_row_before - 1, vcursor_after.visual_row);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after.logical_row);
 }
 
 test "EditorView - moveDownVisual with wrapping" {
@@ -617,17 +612,15 @@ test "EditorView - moveDownVisual with wrapping" {
     try eb.setCursor(0, 0);
 
     const vcursor_before = ev.getVisualCursor();
-    try std.testing.expect(vcursor_before != null);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_before.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_before.visual_row);
 
     ev.moveDownVisual();
 
     const vcursor_after = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after != null);
 
-    try std.testing.expectEqual(@as(u32, 1), vcursor_after.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_after.visual_row);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after.logical_row);
 }
 
 test "EditorView - visualToLogicalCursor conversion" {
@@ -648,11 +641,11 @@ test "EditorView - visualToLogicalCursor conversion" {
 
     try eb.setText("12345678901234567890123456789012345");
 
-    const vcursor = ev.visualToLogicalCursor(1, 5);
-    try std.testing.expect(vcursor != null);
-    try std.testing.expectEqual(@as(u32, 1), vcursor.?.visual_row);
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 25), vcursor.?.logical_col);
+    if (ev.visualToLogicalCursor(1, 5)) |vcursor| {
+        try std.testing.expectEqual(@as(u32, 1), vcursor.visual_row);
+        try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
+        try std.testing.expectEqual(@as(u32, 25), vcursor.logical_col);
+    }
 }
 
 test "EditorView - moveUpVisual at top boundary" {
@@ -733,9 +726,8 @@ test "EditorView - VisualCursor preserves desired column across wrapped lines" {
     ev.moveUpVisual();
 
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
 
-    try std.testing.expect(vcursor.?.visual_col <= 20);
+    try std.testing.expect(vcursor.visual_col <= 20);
 }
 
 test "EditorView - VisualCursor with multiple logical lines and wrapping" {
@@ -759,10 +751,9 @@ test "EditorView - VisualCursor with multiple logical lines and wrapping" {
     try eb.setCursor(1, 30);
 
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
-    try std.testing.expectEqual(@as(u32, 1), vcursor.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 1), vcursor.logical_row);
 
-    try std.testing.expect(vcursor.?.visual_row > 1);
+    try std.testing.expect(vcursor.visual_row > 1);
 }
 
 test "EditorView - logicalToVisualCursor handles cursor past line end" {
@@ -782,9 +773,8 @@ test "EditorView - logicalToVisualCursor handles cursor past line end" {
     try eb.setText("Short");
 
     const vcursor = ev.logicalToVisualCursor(0, 100);
-    try std.testing.expect(vcursor != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
 }
 
 test "EditorView - getTextBufferView returns correct view" {
@@ -870,22 +860,19 @@ test "EditorView - moveDownVisual across empty line preserves desired column" {
     try eb.setCursor(0, 10);
 
     const vcursor_before = ev.getVisualCursor();
-    try std.testing.expect(vcursor_before != null);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_before.visual_col);
 
     ev.moveDownVisual();
 
     const vcursor_empty = ev.getVisualCursor();
-    try std.testing.expect(vcursor_empty != null);
-    try std.testing.expectEqual(@as(u32, 1), vcursor_empty.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_empty.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.visual_col);
 
     ev.moveDownVisual();
 
     const vcursor_after = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after != null);
-    try std.testing.expectEqual(@as(u32, 2), vcursor_after.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 2), vcursor_after.logical_row);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_after.visual_col);
 }
 
 test "EditorView - moveUpVisual across empty line preserves desired column" {
@@ -907,22 +894,19 @@ test "EditorView - moveUpVisual across empty line preserves desired column" {
     try eb.setCursor(2, 10);
 
     const vcursor_before = ev.getVisualCursor();
-    try std.testing.expect(vcursor_before != null);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_before.visual_col);
 
     ev.moveUpVisual();
 
     const vcursor_empty = ev.getVisualCursor();
-    try std.testing.expect(vcursor_empty != null);
-    try std.testing.expectEqual(@as(u32, 1), vcursor_empty.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_empty.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_empty.visual_col);
 
     ev.moveUpVisual();
 
     const vcursor_after = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after != null);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_after.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_after.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after.logical_row);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_after.visual_col);
 }
 
 test "EditorView - horizontal movement resets desired visual column" {
@@ -944,30 +928,26 @@ test "EditorView - horizontal movement resets desired visual column" {
     try eb.setCursor(0, 10);
 
     const vcursor_initial = ev.getVisualCursor();
-    try std.testing.expect(vcursor_initial != null);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_initial.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_initial.visual_col);
 
     ev.moveDownVisual();
     ev.moveDownVisual();
 
-    const vcursor_after_down = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after_down != null);
-    try std.testing.expectEqual(@as(u32, 2), vcursor_after_down.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_after_down.?.visual_col);
+    const vcursor_after = ev.getVisualCursor();
+    try std.testing.expectEqual(@as(u32, 2), vcursor_after.logical_row);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_after.visual_col);
 
     eb.moveRight();
 
     const vcursor_after_right = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after_right != null);
-    try std.testing.expectEqual(@as(u32, 11), vcursor_after_right.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 11), vcursor_after_right.visual_col);
 
     ev.moveUpVisual();
     ev.moveUpVisual();
 
     const vcursor_final = ev.getVisualCursor();
-    try std.testing.expect(vcursor_final != null);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 11), vcursor_final.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.logical_row);
+    try std.testing.expectEqual(@as(u32, 11), vcursor_final.visual_col);
 }
 
 test "EditorView - inserting newlines maintains rope integrity" {
@@ -1049,33 +1029,30 @@ test "EditorView - visual cursor stays in sync after scrolling and moving up" {
     try std.testing.expect(vp.y > 0);
 
     const vcursor_before = ev.getVisualCursor();
-    try std.testing.expect(vcursor_before != null);
-    try std.testing.expectEqual(@as(u32, 10), vcursor_before.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 10), vcursor_before.logical_row);
 
     ev.moveUpVisual();
     _ = ev.getVirtualLines();
 
     const vcursor_after_up = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after_up != null);
     const logical_cursor_after_up = ev.getPrimaryCursor();
 
     try std.testing.expectEqual(@as(u32, 9), logical_cursor_after_up.row);
-    try std.testing.expectEqual(@as(u32, 9), vcursor_after_up.?.logical_row);
+    try std.testing.expectEqual(@as(u32, 9), vcursor_after_up.logical_row);
 
-    try std.testing.expect(vcursor_after_up.?.visual_row < vcursor_before.?.visual_row);
+    try std.testing.expect(vcursor_after_up.visual_row < vcursor_before.visual_row);
 
     try eb.insertText("X");
     _ = ev.getVirtualLines();
 
     const cursor_after_insert = ev.getPrimaryCursor();
     const vcursor_after_insert = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after_insert != null);
 
     try std.testing.expectEqual(@as(u32, 9), cursor_after_insert.row);
     try std.testing.expectEqual(@as(u32, 1), cursor_after_insert.col);
 
-    try std.testing.expectEqual(@as(u32, 9), vcursor_after_insert.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 1), vcursor_after_insert.?.logical_col);
+    try std.testing.expectEqual(@as(u32, 9), vcursor_after_insert.logical_row);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_after_insert.logical_col);
 
     var out_buffer: [200]u8 = undefined;
     const written = eb.getText(&out_buffer);
@@ -1122,10 +1099,9 @@ test "EditorView - cursor positioning after wide grapheme" {
     try std.testing.expectEqual(@as(u32, 4), cursor_after_move.col);
 
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.logical_row);
-    try std.testing.expectEqual(@as(u32, 4), vcursor.?.logical_col);
-    try std.testing.expectEqual(@as(u32, 4), vcursor.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 4), vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 4), vcursor.visual_col);
 }
 
 test "EditorView - backspace after wide grapheme updates cursor correctly" {
@@ -1153,9 +1129,8 @@ test "EditorView - backspace after wide grapheme updates cursor correctly" {
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
-    try std.testing.expectEqual(@as(u32, 2), vcursor.?.logical_col);
-    try std.testing.expectEqual(@as(u32, 2), vcursor.?.visual_col);
+    try std.testing.expectEqual(@as(u32, 2), vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 2), vcursor.visual_col);
 
     var out_buffer: [100]u8 = undefined;
     const written = eb.getText(&out_buffer);
@@ -1197,8 +1172,7 @@ test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
     vp = ev.getViewport().?;
     _ = vp.y;
 
-    const vcursor_after_down = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after_down != null);
+    _ = ev.getVisualCursor();
 
     try eb.insertText("X");
     _ = ev.getVirtualLines();
@@ -1215,9 +1189,8 @@ test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
     const final_vp_y = vp.y;
 
     const vcursor_final = ev.getVisualCursor();
-    try std.testing.expect(vcursor_final != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.visual_row);
     try std.testing.expectEqual(@as(u32, 0), final_vp_y);
 }
 
@@ -1270,9 +1243,8 @@ test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit
 
     vp = ev.getViewport().?;
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
 
@@ -1319,9 +1291,8 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
 
     const vp = ev.getViewport().?;
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
 
@@ -1357,8 +1328,8 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
         const vcursor_before = ev.getVisualCursor();
         ev.moveDownVisual();
         const vcursor_after = ev.getVisualCursor();
-        if (vcursor_after != null and vcursor_before != null) {
-            if (vcursor_after.?.visual_row > vcursor_before.?.visual_row) {
+        if (true) {
+            if (vcursor_after.visual_row > vcursor_before.visual_row) {
                 movements_down += 1;
             }
         }
@@ -1366,8 +1337,7 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
     _ = ev.getVirtualLines();
 
     _ = ev.getViewport().?;
-    const vcursor_middle = ev.getVisualCursor();
-    try std.testing.expect(vcursor_middle != null);
+    _ = ev.getVisualCursor();
 
     try eb.insertText("EDITED");
     _ = ev.getVirtualLines();
@@ -1380,9 +1350,8 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
 
     const vp_final = ev.getViewport().?;
     const vcursor_final = ev.getVisualCursor();
-    try std.testing.expect(vcursor_final != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp_final.y);
 }
 
@@ -1422,9 +1391,8 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
 
     const vp = ev.getViewport().?;
     const vcursor = ev.getVisualCursor();
-    try std.testing.expect(vcursor != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
 
@@ -1458,11 +1426,10 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
         const vp = ev.getViewport().?;
         const vcursor = ev.getVisualCursor();
-        try std.testing.expect(vcursor != null);
 
         // visual_row is now viewport-relative, should be in range [0, vp.height)
-        try std.testing.expect(vcursor.?.visual_row >= 0);
-        try std.testing.expect(vcursor.?.visual_row < vp.height);
+        try std.testing.expect(vcursor.visual_row >= 0);
+        try std.testing.expect(vcursor.visual_row < vp.height);
     }
 
     try eb.insertText("MIDDLE");
@@ -1470,10 +1437,9 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
     const vp_middle = ev.getViewport().?;
     const vcursor_middle = ev.getVisualCursor();
-    try std.testing.expect(vcursor_middle != null);
     // visual_row is now viewport-relative, should be in range [0, vp.height)
-    try std.testing.expect(vcursor_middle.?.visual_row >= 0);
-    try std.testing.expect(vcursor_middle.?.visual_row < vp_middle.height);
+    try std.testing.expect(vcursor_middle.visual_row >= 0);
+    try std.testing.expect(vcursor_middle.visual_row < vp_middle.height);
 
     i = 0;
     while (i < 10) : (i += 1) {
@@ -1482,18 +1448,16 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
         const vp = ev.getViewport().?;
         const vcursor = ev.getVisualCursor();
-        try std.testing.expect(vcursor != null);
 
         // visual_row is now viewport-relative, should be in range [0, vp.height)
-        try std.testing.expect(vcursor.?.visual_row >= 0);
-        try std.testing.expect(vcursor.?.visual_row < vp.height);
+        try std.testing.expect(vcursor.visual_row >= 0);
+        try std.testing.expect(vcursor.visual_row < vp.height);
     }
 
     const vp_final = ev.getViewport().?;
     const vcursor_final = ev.getVisualCursor();
-    try std.testing.expect(vcursor_final != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor_final.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp_final.y);
 }
 
@@ -1532,18 +1496,16 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
 
     vp = ev.getViewport().?;
     const vcursor_mid = ev.getVisualCursor();
-    try std.testing.expect(vcursor_mid != null);
-    try std.testing.expectEqual(@as(u32, 5), vcursor_mid.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 5), vcursor_mid.visual_row);
 
     try eb.insertText("XXX");
     _ = ev.getVirtualLines();
 
     vp = ev.getViewport().?;
     const vcursor_after_insert = ev.getVisualCursor();
-    try std.testing.expect(vcursor_after_insert != null);
     // visual_row is now viewport-relative, should be in range [0, vp.height)
-    try std.testing.expect(vcursor_after_insert.?.visual_row >= 0);
-    try std.testing.expect(vcursor_after_insert.?.visual_row < vp.height);
+    try std.testing.expect(vcursor_after_insert.visual_row >= 0);
+    try std.testing.expect(vcursor_after_insert.visual_row < vp.height);
 
     try eb.backspace();
     try eb.backspace();
@@ -1559,9 +1521,8 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
 
     vp = ev.getViewport().?;
     const vcursor_final2 = ev.getVisualCursor();
-    try std.testing.expect(vcursor_final2 != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor_final2.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_final2.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp.y);
 }
 
@@ -1620,9 +1581,8 @@ test "EditorView - wrapped lines: many small edits with viewport scrolling" {
 
     const vp2 = ev.getViewport().?;
     const vcursor2 = ev.getVisualCursor();
-    try std.testing.expect(vcursor2 != null);
 
-    try std.testing.expectEqual(@as(u32, 0), vcursor2.?.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor2.visual_row);
     try std.testing.expectEqual(@as(u32, 0), vp2.y);
 }
 
@@ -1959,8 +1919,7 @@ test "EditorView - horizontal scroll: cursor position correct after scrolling" {
         const vp = ev.getViewport().?;
         const vcursor = ev.getVisualCursor();
 
-        try std.testing.expect(vcursor != null);
-        try std.testing.expectEqual(cursor.col, vcursor.?.logical_col);
+        try std.testing.expectEqual(cursor.col, vcursor.logical_col);
         try std.testing.expect(cursor.col >= vp.x);
         try std.testing.expect(cursor.col < vp.x + vp.width);
     }
@@ -2330,14 +2289,76 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     try std.testing.expectEqual(@as(u32, 0), logical_cursor_after_space.row);
     try std.testing.expectEqual(@as(u32, 8), logical_cursor_after_space.col);
 
-    if (vcursor_after_space) |vc| {
-        try std.testing.expectEqual(@as(u32, 0), vc.logical_row);
-        try std.testing.expectEqual(@as(u32, 0), vc.visual_row);
-    }
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after_space.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor_after_space.visual_row);
 
     try eb.backspace();
 
     const logical_cursor_after_backspace = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), logical_cursor_after_backspace.row);
     try std.testing.expectEqual(@as(u32, 7), logical_cursor_after_backspace.col);
+}
+
+test "EditorView - getVisualCursor always returns on empty buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    const vcursor = ev.getVisualCursor();
+    try std.testing.expectEqual(@as(u32, 0), vcursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.visual_col);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_col);
+}
+
+test "EditorView - logicalToVisualCursor clamps row beyond last line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("Line 1\nLine 2\nLine 3");
+
+    const vcursor = ev.logicalToVisualCursor(100, 0);
+    try std.testing.expectEqual(@as(u32, 2), vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_col);
+}
+
+test "EditorView - logicalToVisualCursor clamps col beyond line width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("Hello");
+
+    const vcursor = ev.logicalToVisualCursor(0, 100);
+    try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 5), vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 5), vcursor.visual_col);
 }

@@ -66,7 +66,6 @@ pub fn walkLinesAndSegments(
     segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
     line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
-    // setText("") will handle creating the single empty line
     if (rope.count() == 0) {
         return;
     }

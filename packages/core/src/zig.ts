@@ -1145,8 +1145,8 @@ export interface RenderLib {
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
   editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
-  editorViewGetVisualCursor: (view: Pointer) => VisualCursor | null
-  editorViewLogicalToVisualCursor: (view: Pointer, logicalRow: number, logicalCol: number) => VisualCursor | null
+  editorViewGetVisualCursor: (view: Pointer) => VisualCursor
+  editorViewLogicalToVisualCursor: (view: Pointer, logicalRow: number, logicalCol: number) => VisualCursor
   editorViewVisualToLogicalCursor: (view: Pointer, visualRow: number, visualCol: number) => VisualCursor | null
   editorViewMoveUpVisual: (view: Pointer) => void
   editorViewMoveDownVisual: (view: Pointer) => void
@@ -2376,7 +2376,7 @@ class FFIRenderLib implements RenderLib {
     return outBuffer.slice(0, len)
   }
 
-  public editorViewGetVisualCursor(view: Pointer): VisualCursor | null {
+  public editorViewGetVisualCursor(view: Pointer): VisualCursor {
     const visualRow = new Uint32Array(1)
     const visualCol = new Uint32Array(1)
     const logicalRow = new Uint32Array(1)
@@ -2392,7 +2392,10 @@ class FFIRenderLib implements RenderLib {
       ptr(offset),
     )
 
-    if (!success) return null
+    // Defensive fallback - should always succeed now
+    if (!success) {
+      return { visualRow: 0, visualCol: 0, logicalRow: 0, logicalCol: 0, offset: 0 }
+    }
 
     return {
       visualRow: visualRow[0],
@@ -2403,7 +2406,7 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  public editorViewLogicalToVisualCursor(view: Pointer, logicalRow: number, logicalCol: number): VisualCursor | null {
+  public editorViewLogicalToVisualCursor(view: Pointer, logicalRow: number, logicalCol: number): VisualCursor {
     const visualRow = new Uint32Array(1)
     const visualCol = new Uint32Array(1)
     const offset = new Uint32Array(1)
@@ -2417,7 +2420,10 @@ class FFIRenderLib implements RenderLib {
       ptr(offset),
     )
 
-    if (!success) return null
+    // Defensive fallback - should always succeed now
+    if (!success) {
+      return { visualRow: 0, visualCol: 0, logicalRow, logicalCol, offset: 0 }
+    }
 
     return {
       visualRow: visualRow[0],
