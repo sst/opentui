@@ -28,6 +28,7 @@ pub const VisualCursor = struct {
     visual_col: u32, // Viewport-relative column (0 = left edge of viewport when not wrapping)
     logical_row: u32, // Document-absolute row
     logical_col: u32, // Document-absolute column
+    offset: u32, // Global display-width offset from buffer start
 };
 
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
@@ -252,6 +253,7 @@ pub const EditorView = struct {
             .visual_col = viewport_relative_col,
             .logical_row = vcursor.logical_row,
             .logical_col = vcursor.logical_col,
+            .offset = vcursor.offset,
         };
     }
 
@@ -272,11 +274,14 @@ pub const EditorView = struct {
         else
             0;
 
+        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
+
         return VisualCursor{
             .visual_row = visual_row_idx,
             .visual_col = visual_col,
             .logical_row = logical_row,
             .logical_col = logical_col,
+            .offset = offset,
         };
     }
 
@@ -291,12 +296,16 @@ pub const EditorView = struct {
         const vline = &vlines[visual_row];
         const clamped_visual_col = @min(visual_col, vline.width);
         const logical_col = vline.source_col_offset + clamped_visual_col;
+        const logical_row = @as(u32, @intCast(vline.source_line));
+
+        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
 
         return VisualCursor{
             .visual_row = visual_row,
             .visual_col = clamped_visual_col,
-            .logical_row = @intCast(vline.source_line),
+            .logical_row = logical_row,
             .logical_col = logical_col,
+            .offset = offset,
         };
     }
 
@@ -384,6 +393,11 @@ pub const EditorView = struct {
 
         try self.edit_buffer.deleteRange(start_cursor, end_cursor);
         self.text_buffer_view.resetLocalSelection();
+        self.updateBeforeRender();
+    }
+
+    pub fn setCursorByOffset(self: *EditorView, offset: u32) !void {
+        try self.edit_buffer.setCursorByOffset(offset);
         self.updateBeforeRender();
     }
 };

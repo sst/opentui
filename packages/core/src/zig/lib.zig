@@ -626,6 +626,10 @@ export fn editBufferSetCursorToLineCol(edit_buffer: *edit_buffer_mod.EditBuffer,
     edit_buffer.setCursor(row, col) catch {};
 }
 
+export fn editBufferSetCursorByOffset(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32) void {
+    edit_buffer.setCursorByOffset(offset) catch {};
+}
+
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text) catch {};
@@ -657,10 +661,11 @@ export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32
     edit_buffer.gotoLine(line) catch {};
 }
 
-export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outVisualCol: *u32) void {
+export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outVisualCol: *u32, outOffset: *u32) void {
     const pos = edit_buffer.getCursorPosition();
     outLine.* = pos.line;
     outVisualCol.* = pos.visual_col;
+    outOffset.* = pos.offset;
 }
 
 export fn editBufferGetId(edit_buffer: *edit_buffer_mod.EditBuffer) u16 {
@@ -833,12 +838,14 @@ export fn editorViewGetVisualCursor(
     outVisualCol: *u32,
     outLogicalRow: *u32,
     outLogicalCol: *u32,
+    outOffset: *u32,
 ) bool {
     if (view.getVisualCursor()) |vcursor| {
         outVisualRow.* = vcursor.visual_row;
         outVisualCol.* = vcursor.visual_col;
         outLogicalRow.* = vcursor.logical_row;
         outLogicalCol.* = vcursor.logical_col;
+        outOffset.* = vcursor.offset;
         return true;
     }
     return false;
@@ -850,10 +857,12 @@ export fn editorViewLogicalToVisualCursor(
     logical_col: u32,
     outVisualRow: *u32,
     outVisualCol: *u32,
+    outOffset: *u32,
 ) bool {
     if (view.logicalToVisualCursor(logical_row, logical_col)) |vcursor| {
         outVisualRow.* = vcursor.visual_row;
         outVisualCol.* = vcursor.visual_col;
+        outOffset.* = vcursor.offset;
         return true;
     }
     return false;
@@ -865,10 +874,12 @@ export fn editorViewVisualToLogicalCursor(
     visual_col: u32,
     outLogicalRow: *u32,
     outLogicalCol: *u32,
+    outOffset: *u32,
 ) bool {
     if (view.visualToLogicalCursor(visual_row, visual_col)) |vcursor| {
         outLogicalRow.* = vcursor.logical_row;
         outLogicalCol.* = vcursor.logical_col;
+        outOffset.* = vcursor.offset;
         return true;
     }
     return false;
@@ -884,6 +895,10 @@ export fn editorViewMoveDownVisual(view: *editor_view.EditorView) void {
 
 export fn editorViewDeleteSelectedText(view: *editor_view.EditorView) void {
     view.deleteSelectedText() catch {};
+}
+
+export fn editorViewSetCursorByOffset(view: *editor_view.EditorView, offset: u32) void {
+    view.setCursorByOffset(offset) catch {};
 }
 
 export fn bufferDrawEditorView(

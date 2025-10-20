@@ -170,6 +170,11 @@ export class EditorView {
     this.lib.editorViewDeleteSelectedText(this.viewPtr)
   }
 
+  public setCursorByOffset(offset: number): void {
+    this.guard()
+    this.lib.editorViewSetCursorByOffset(this.viewPtr, offset)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

@@ -557,8 +557,12 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "void",
     },
+    editBufferSetCursorByOffset: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
     editBufferGetCursorPosition: {
-      args: ["ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr"],
       returns: "void",
     },
     editBufferGetId: {
@@ -638,15 +642,15 @@ function getOpenTUILib(libPath?: string) {
 
     // EditorView VisualCursor methods
     editorViewGetVisualCursor: {
-      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "bool",
     },
     editorViewLogicalToVisualCursor: {
-      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      args: ["ptr", "u32", "u32", "ptr", "ptr", "ptr"],
       returns: "bool",
     },
     editorViewVisualToLogicalCursor: {
-      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      args: ["ptr", "u32", "u32", "ptr", "ptr", "ptr"],
       returns: "bool",
     },
     editorViewMoveUpVisual: {
@@ -659,6 +663,10 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewDeleteSelectedText: {
       args: ["ptr"],
+      returns: "void",
+    },
+    editorViewSetCursorByOffset: {
+      args: ["ptr", "u32"],
       returns: "void",
     },
 
@@ -892,6 +900,7 @@ export interface VisualCursor {
   visualCol: number // Viewport-relative column (0 = left edge of viewport when not wrapping)
   logicalRow: number // Document-absolute row
   logicalCol: number // Document-absolute column
+  offset: number // Global display-width offset from buffer start
 }
 
 export interface RenderLib {
@@ -1091,7 +1100,8 @@ export interface RenderLib {
   editBufferGotoLine: (buffer: Pointer, line: number) => void
   editBufferSetCursor: (buffer: Pointer, line: number, col: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
-  editBufferGetCursorPosition: (buffer: Pointer) => { line: number; visualColumn: number }
+  editBufferSetCursorByOffset: (buffer: Pointer, offset: number) => void
+  editBufferGetCursorPosition: (buffer: Pointer) => { line: number; visualColumn: number; offset: number }
   editBufferGetId: (buffer: Pointer) => number
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer
   editBufferDebugLogRope: (buffer: Pointer) => void
@@ -1141,6 +1151,7 @@ export interface RenderLib {
   editorViewMoveUpVisual: (view: Pointer) => void
   editorViewMoveDownVisual: (view: Pointer) => void
   editorViewDeleteSelectedText: (view: Pointer) => void
+  editorViewSetCursorByOffset: (view: Pointer, offset: number) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2224,13 +2235,19 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferSetCursorToLineCol(buffer, line, col)
   }
 
-  public editBufferGetCursorPosition(buffer: Pointer): { line: number; visualColumn: number } {
+  public editBufferSetCursorByOffset(buffer: Pointer, offset: number): void {
+    this.opentui.symbols.editBufferSetCursorByOffset(buffer, offset)
+  }
+
+  public editBufferGetCursorPosition(buffer: Pointer): { line: number; visualColumn: number; offset: number } {
     const line = new Uint32Array(1)
     const visualColumn = new Uint32Array(1)
-    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(visualColumn))
+    const offset = new Uint32Array(1)
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(visualColumn), ptr(offset))
     return {
       line: line[0],
       visualColumn: visualColumn[0],
+      offset: offset[0],
     }
   }
 
@@ -2364,6 +2381,7 @@ class FFIRenderLib implements RenderLib {
     const visualCol = new Uint32Array(1)
     const logicalRow = new Uint32Array(1)
     const logicalCol = new Uint32Array(1)
+    const offset = new Uint32Array(1)
 
     const success = this.opentui.symbols.editorViewGetVisualCursor(
       view,
@@ -2371,6 +2389,7 @@ class FFIRenderLib implements RenderLib {
       ptr(visualCol),
       ptr(logicalRow),
       ptr(logicalCol),
+      ptr(offset),
     )
 
     if (!success) return null
@@ -2380,12 +2399,14 @@ class FFIRenderLib implements RenderLib {
       visualCol: visualCol[0],
       logicalRow: logicalRow[0],
       logicalCol: logicalCol[0],
+      offset: offset[0],
     }
   }
 
   public editorViewLogicalToVisualCursor(view: Pointer, logicalRow: number, logicalCol: number): VisualCursor | null {
     const visualRow = new Uint32Array(1)
     const visualCol = new Uint32Array(1)
+    const offset = new Uint32Array(1)
 
     const success = this.opentui.symbols.editorViewLogicalToVisualCursor(
       view,
@@ -2393,6 +2414,7 @@ class FFIRenderLib implements RenderLib {
       logicalCol,
       ptr(visualRow),
       ptr(visualCol),
+      ptr(offset),
     )
 
     if (!success) return null
@@ -2402,12 +2424,14 @@ class FFIRenderLib implements RenderLib {
       visualCol: visualCol[0],
       logicalRow,
       logicalCol,
+      offset: offset[0],
     }
   }
 
   public editorViewVisualToLogicalCursor(view: Pointer, visualRow: number, visualCol: number): VisualCursor | null {
     const logicalRow = new Uint32Array(1)
     const logicalCol = new Uint32Array(1)
+    const offset = new Uint32Array(1)
 
     const success = this.opentui.symbols.editorViewVisualToLogicalCursor(
       view,
@@ -2415,6 +2439,7 @@ class FFIRenderLib implements RenderLib {
       visualCol,
       ptr(logicalRow),
       ptr(logicalCol),
+      ptr(offset),
     )
 
     if (!success) return null
@@ -2424,6 +2449,7 @@ class FFIRenderLib implements RenderLib {
       visualCol,
       logicalRow: logicalRow[0],
       logicalCol: logicalCol[0],
+      offset: offset[0],
     }
   }
 
@@ -2437,6 +2463,10 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewDeleteSelectedText(view: Pointer): void {
     this.opentui.symbols.editorViewDeleteSelectedText(view)
+  }
+
+  public editorViewSetCursorByOffset(view: Pointer, offset: number): void {
+    this.opentui.symbols.editorViewSetCursorByOffset(view, offset)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

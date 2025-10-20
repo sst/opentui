@@ -32,6 +32,7 @@ pub const Cursor = struct {
     row: u32,
     col: u32,
     desired_col: u32 = 0,
+    offset: u32 = 0, // Global display-width offset from buffer start
 };
 
 const AddBuffer = struct {
@@ -193,14 +194,21 @@ pub const EditBuffer = struct {
         const line_width = iter_mod.lineWidthAt(&self.tb.rope, clamped_row);
         const clamped_col = @min(col, line_width);
 
+        const offset = iter_mod.coordsToOffset(&self.tb.rope, clamped_row, clamped_col) orelse 0;
+
         if (self.cursors.items.len == 0) {
-            try self.cursors.append(self.allocator, .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col });
+            try self.cursors.append(self.allocator, .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col, .offset = offset });
         } else {
-            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
+            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col, .offset = offset };
         }
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
+    }
+
+    pub fn setCursorByOffset(self: *EditBuffer, offset: u32) !void {
+        const coords = iter_mod.offsetToCoords(&self.tb.rope, offset) orelse iter_mod.Coords{ .row = 0, .col = 0 };
+        try self.setCursor(coords.row, coords.col);
     }
 
     fn ensureAddCapacity(self: *EditBuffer, need: usize) !void {
@@ -317,16 +325,23 @@ pub const EditBuffer = struct {
             self.tb.char_count += inserted_width;
         }
         if (num_breaks > 0) {
+            const new_row = cursor.row + @as(u32, @intCast(num_breaks));
+            const new_col = width_after_last_break;
+            const new_offset = iter_mod.coordsToOffset(&self.tb.rope, new_row, new_col) orelse 0;
             self.cursors.items[0] = .{
-                .row = cursor.row + @as(u32, @intCast(num_breaks)),
-                .col = width_after_last_break,
-                .desired_col = width_after_last_break,
+                .row = new_row,
+                .col = new_col,
+                .desired_col = new_col,
+                .offset = new_offset,
             };
         } else {
+            const new_col = cursor.col + inserted_width;
+            const new_offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, new_col) orelse 0;
             self.cursors.items[0] = .{
                 .row = cursor.row,
-                .col = cursor.col + inserted_width,
-                .desired_col = cursor.col + inserted_width,
+                .col = new_col,
+                .desired_col = new_col,
+                .offset = new_offset,
             };
         }
 
@@ -371,8 +386,9 @@ pub const EditBuffer = struct {
             const clamped_row = if (start.row >= line_count) line_count -| 1 else start.row;
             const line_width = if (line_count > 0) iter_mod.lineWidthAt(&self.tb.rope, clamped_row) else 0;
             const clamped_col = @min(start.col, line_width);
+            const offset = iter_mod.coordsToOffset(&self.tb.rope, clamped_row, clamped_col) orelse 0;
 
-            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col };
+            self.cursors.items[0] = .{ .row = clamped_row, .col = clamped_col, .desired_col = clamped_col, .offset = offset };
         }
 
         self.events.emit(.cursorChanged);
@@ -453,6 +469,7 @@ pub const EditBuffer = struct {
             cursor.col = line_width;
         }
         cursor.desired_col = cursor.col;
+        cursor.offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse 0;
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
@@ -473,6 +490,7 @@ pub const EditBuffer = struct {
             cursor.col = 0;
         }
         cursor.desired_col = cursor.col;
+        cursor.offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse 0;
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
@@ -492,6 +510,7 @@ pub const EditBuffer = struct {
             const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
 
             cursor.col = @min(cursor.desired_col, line_width);
+            cursor.offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse 0;
         }
 
         self.events.emit(.cursorChanged);
@@ -513,6 +532,7 @@ pub const EditBuffer = struct {
             const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
 
             cursor.col = @min(cursor.desired_col, line_width);
+            cursor.offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, cursor.col) orelse 0;
         }
 
         self.events.emit(.cursorChanged);
@@ -580,7 +600,10 @@ pub const EditBuffer = struct {
 
             self.tb.markViewsDirty();
 
-            self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
+            const new_row = cursor.row - 1;
+            const new_col = prev_line_width;
+            const new_offset = iter_mod.coordsToOffset(&self.tb.rope, new_row, new_col) orelse 0;
+            self.cursors.items[0] = .{ .row = new_row, .col = new_col, .desired_col = new_col, .offset = new_offset };
             self.events.emit(.cursorChanged);
             self.emitNativeEvent("cursor-changed");
         } else {
@@ -592,8 +615,6 @@ pub const EditBuffer = struct {
                 );
             }
         }
-
-        // deleteRange already checks for placeholder insertion
     }
 
     pub fn gotoLine(self: *EditBuffer, line: u32) !void {
@@ -608,12 +629,13 @@ pub const EditBuffer = struct {
         }
     }
 
-    pub fn getCursorPosition(self: *const EditBuffer) struct { line: u32, visual_col: u32 } {
+    pub fn getCursorPosition(self: *const EditBuffer) struct { line: u32, visual_col: u32, offset: u32 } {
         const cursor = self.getPrimaryCursor();
 
         return .{
             .line = cursor.row,
             .visual_col = cursor.col,
+            .offset = cursor.offset,
         };
     }
 
@@ -667,8 +689,6 @@ pub const EditBuffer = struct {
         self.tb.rope.clear_history();
     }
 
-    // Placeholder support methods
-
     pub fn setPlaceholder(self: *EditBuffer, text: []const u8) !void {
         // Store the placeholder text (allocate in EditBuffer's allocator)
         if (self.placeholder_bytes) |old| {
@@ -702,13 +722,10 @@ pub const EditBuffer = struct {
     pub fn setPlaceholderColor(self: *EditBuffer, color: tb.RGBA) !void {
         self.placeholder_color = color;
 
-        // If placeholder is active, update the style
         if (self.placeholder_active and self.placeholder_style_ptr != null) {
-            // Re-register the style with new color
             const style = self.placeholder_style_ptr.?;
             self.placeholder_style_id = try style.registerStyle("__placeholder__", color, null, 0);
 
-            // Re-apply highlight
             self.tb.removeHighlightsByRef(self.placeholder_hl_ref);
             const placeholder_len = if (self.placeholder_bytes) |pb| self.tb.measureText(pb) else 0;
             if (placeholder_len > 0) {
@@ -721,20 +738,16 @@ pub const EditBuffer = struct {
         const placeholder_text = self.placeholder_bytes orelse return;
         if (placeholder_text.len == 0) return;
 
-        // Save the current syntax style
         self.saved_style_ptr = self.tb.getSyntaxStyle();
 
-        // Create a dedicated SyntaxStyle for the placeholder if not already created
         if (self.placeholder_style_ptr == null) {
             const style = try tb.SyntaxStyle.init(self.allocator);
             self.placeholder_style_ptr = style;
             self.placeholder_style_id = try style.registerStyle("__placeholder__", self.placeholder_color, null, 0);
         }
 
-        // Set the placeholder style on the text buffer
         self.tb.setSyntaxStyle(self.placeholder_style_ptr.?);
 
-        // Insert the placeholder text into the rope
         try self.ensureAddCapacity(placeholder_text.len);
         const insert_offset: u32 = 0;
 
@@ -752,36 +765,27 @@ pub const EditBuffer = struct {
             self.tb.char_count += inserted_width;
         }
 
-        // Add highlight for the placeholder
         try self.tb.addHighlightByCharRange(0, inserted_width, self.placeholder_style_id, 255, self.placeholder_hl_ref);
 
         self.placeholder_active = true;
         self.tb.markViewsDirty();
 
-        // Reset cursor to start
         try self.setCursor(0, 0);
     }
 
     fn removePlaceholder(self: *EditBuffer) !void {
         if (!self.placeholder_active) return;
 
-        // Remove highlight first
         self.tb.removeHighlightsByRef(self.placeholder_hl_ref);
-
         self.tb.rope.clear();
-
         self.tb.char_count = 0;
-
-        // Restore the saved syntax style
         self.tb.setSyntaxStyle(self.saved_style_ptr);
         self.saved_style_ptr = null;
-
         self.placeholder_active = false;
         self.tb.markViewsDirty();
     }
 
     fn shouldInsertPlaceholder(self: *const EditBuffer) bool {
-        // Check if buffer is empty (only has linestart markers)
         return self.tb.getLength() == 0 and self.placeholder_bytes != null and !self.placeholder_active;
     }
 };

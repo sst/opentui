@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
 import { EditBuffer, type CursorPosition } from "../edit-buffer"
-import { EditorView } from "../editor-view"
+import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
@@ -120,6 +120,10 @@ export abstract class EditBufferRenderable extends Renderable {
 
   get cursor(): CursorPosition {
     return this.editBuffer.getCursorPosition()
+  }
+
+  get visualCursor(): VisualCursor | null {
+    return this.editorView.getVisualCursor()
   }
 
   get textColor(): RGBA {

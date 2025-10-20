@@ -4,9 +4,11 @@ import { type WidthMethod } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { EventEmitter } from "events"
 
+// TODO: make this row/col as anything else
 export interface CursorPosition {
   line: number
   visualColumn: number
+  offset: number
 }
 
 /**
@@ -156,6 +158,11 @@ export class EditBuffer extends EventEmitter {
   public setCursorToLineCol(line: number, col: number): void {
     this.guard()
     this.lib.editBufferSetCursorToLineCol(this.bufferPtr, line, col)
+  }
+
+  public setCursorByOffset(offset: number): void {
+    this.guard()
+    this.lib.editBufferSetCursorByOffset(this.bufferPtr, offset)
   }
 
   public getCursorPosition(): CursorPosition {

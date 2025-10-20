@@ -4184,4 +4184,147 @@ describe("TextareaRenderable", () => {
       })
     })
   })
+
+  describe("Visual Cursor with Offset", () => {
+    it("should have visualCursor with offset property", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const visualCursor = editor.visualCursor
+      expect(visualCursor).not.toBe(null)
+      expect(visualCursor!.offset).toBeDefined()
+      expect(visualCursor!.offset).toBe(0)
+    })
+
+    it("should update offset after inserting text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      editor.insertText("Hello")
+
+      const visualCursor = editor.visualCursor
+      expect(visualCursor).not.toBe(null)
+      expect(visualCursor!.offset).toBe(5)
+    })
+
+    it("should update offset correctly for multi-line content", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "ABC\nDEF",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Cursor at start
+      let visualCursor = editor.visualCursor
+      expect(visualCursor!.offset).toBe(0)
+
+      // Move to end of first line
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight()
+      }
+      visualCursor = editor.visualCursor
+      expect(visualCursor!.offset).toBe(3)
+
+      // Move to second line (across newline)
+      editor.moveCursorRight()
+      visualCursor = editor.visualCursor
+      expect(visualCursor!.offset).toBe(4)
+      expect(visualCursor!.logicalRow).toBe(1)
+      expect(visualCursor!.logicalCol).toBe(0)
+
+      // Move to end of second line
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight()
+      }
+      visualCursor = editor.visualCursor
+      expect(visualCursor!.offset).toBe(7)
+    })
+
+    it("should set cursor by offset", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Set cursor to offset 6 (after "Hello ")
+      editor.editBuffer.setCursorByOffset(6)
+
+      const visualCursor = editor.visualCursor
+      expect(visualCursor).not.toBe(null)
+      expect(visualCursor!.offset).toBe(6)
+      expect(visualCursor!.logicalRow).toBe(0)
+      expect(visualCursor!.logicalCol).toBe(6)
+
+      // Set cursor to offset 2
+      editor.editBuffer.setCursorByOffset(2)
+
+      const newVisualCursor = editor.visualCursor
+      expect(newVisualCursor).not.toBe(null)
+      expect(newVisualCursor!.offset).toBe(2)
+      expect(newVisualCursor!.logicalRow).toBe(0)
+      expect(newVisualCursor!.logicalCol).toBe(2)
+    })
+
+    it("should set cursor by offset in multi-line content", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line1\nLine2\nLine3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Set cursor to offset 6 (start of "Line2")
+      editor.editBuffer.setCursorByOffset(6)
+
+      const visualCursor = editor.visualCursor
+      expect(visualCursor).not.toBe(null)
+      expect(visualCursor!.offset).toBe(6)
+      expect(visualCursor!.logicalRow).toBe(1)
+      expect(visualCursor!.logicalCol).toBe(0)
+
+      // Set cursor to offset 8 (L[i]ne2, at 'n')
+      editor.editBuffer.setCursorByOffset(8)
+
+      const newVisualCursor = editor.visualCursor
+      expect(newVisualCursor).not.toBe(null)
+      expect(newVisualCursor!.offset).toBe(8)
+      expect(newVisualCursor!.logicalRow).toBe(1)
+      expect(newVisualCursor!.logicalCol).toBe(2)
+    })
+
+    it("should maintain offset consistency when using editorView.setCursorByOffset", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "ABCDEF",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Use editorView instead of editBuffer
+      editor.editorView.setCursorByOffset(3)
+
+      const visualCursor = editor.visualCursor
+      expect(visualCursor).not.toBe(null)
+      expect(visualCursor!.offset).toBe(3)
+      expect(visualCursor!.logicalRow).toBe(0)
+      expect(visualCursor!.logicalCol).toBe(3)
+    })
+  })
 })
