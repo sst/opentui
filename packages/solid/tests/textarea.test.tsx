@@ -698,6 +698,67 @@ describe("Textarea Layout Tests", () => {
     })
   })
 
+  describe("FlexShrink Regression Tests", () => {
+    it("should not shrink box when width is set via setter", async () => {
+      const [indicatorWidth, setIndicatorWidth] = createSignal<number | undefined>(undefined)
+
+      testSetup = await testRender(
+        () => (
+          <box border>
+            <box flexDirection="row">
+              <box width={indicatorWidth()} backgroundColor="#f00">
+                <text>{">"}</text>
+              </box>
+              <box backgroundColor="#0f0" flexGrow={1}>
+                <text>Content that takes up space</text>
+              </box>
+            </box>
+          </box>
+        ),
+        { width: 30, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+
+      setIndicatorWidth(5)
+      await testSetup.renderOnce()
+
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should not shrink box when height is set via setter in column layout", async () => {
+      const [headerHeight, setHeaderHeight] = createSignal<number | undefined>(undefined)
+
+      testSetup = await testRender(
+        () => (
+          <box border width={25} height={10}>
+            <box flexDirection="column" height="100%">
+              <box height={headerHeight()} backgroundColor="#f00">
+                <text>Header</text>
+              </box>
+              <box backgroundColor="#0f0" flexGrow={1}>
+                <textarea value={"Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8"} />
+              </box>
+              <box height={2} backgroundColor="#00f">
+                <text>Footer</text>
+              </box>
+            </box>
+          </box>
+        ),
+        { width: 30, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+
+      setHeaderHeight(3)
+      await testSetup.renderOnce()
+
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
+  })
+
   describe("Edge Cases and Styling", () => {
     it("should render textarea with focused colors", async () => {
       testSetup = await testRender(
