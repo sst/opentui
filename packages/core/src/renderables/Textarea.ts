@@ -65,10 +65,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.insertText(text)
   }
 
-  /**
-   * Handle keyboard input for interactive editing.
-   * This is called automatically when the editor is focused and a key is pressed.
-   */
   public handleKeyPress(key: KeyEvent | string): boolean {
     const keyName = typeof key === "string" ? key : key.name
     const keySequence = typeof key === "string" ? key : key.sequence
@@ -82,13 +78,10 @@ export class TextareaRenderable extends EditBufferRenderable {
     } else if ((keyCtrl && keyName === "y") || (keyCtrl && keyShift && keyName === "z")) {
       this.redo()
       return true
-    }
-
-    // Movement
-    else if (keyName === "left") {
-      this.handleShiftSelection(keyShift, true) // BEFORE cursor movement
+    } else if (keyName === "left") {
+      this.handleShiftSelection(keyShift, true)
       this.moveCursorLeft()
-      this.handleShiftSelection(keyShift, false) // AFTER cursor movement
+      this.handleShiftSelection(keyShift, false)
       return true
     } else if (keyName === "right") {
       this.handleShiftSelection(keyShift, true)
@@ -105,9 +98,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.moveCursorDown()
       this.handleShiftSelection(keyShift, false)
       return true
-    }
-    // Line navigation
-    else if (keyName === "home") {
+    } else if (keyName === "home") {
       this.handleShiftSelection(keyShift, true)
       const cursor = this.editorView.getCursor()
       this.editBuffer.setCursor(cursor.row, 0)
@@ -118,43 +109,30 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.gotoLineEnd()
       this.handleShiftSelection(keyShift, false)
       return true
-    }
-    // Control commands
-    else if (keyCtrl && keyName === "a") {
-      // Ctrl+A: Move to start of buffer
+    } else if (keyCtrl && keyName === "a") {
       this.editBuffer.setCursor(0, 0)
       return true
     } else if (keyCtrl && keyName === "e") {
-      // Ctrl+E: Move to end of buffer
       this.gotoBufferEnd()
       return true
     } else if (keyCtrl && keyName === "d") {
-      // Ctrl+D: Delete line
       this.deleteLine()
       return true
     } else if (keyCtrl && keyName === "k") {
-      // Ctrl+K: Delete to line end
       this.deleteToLineEnd()
       return true
-    }
-    // Deletion
-    else if (keyName === "backspace") {
+    } else if (keyName === "backspace") {
       this.deleteCharBackward()
       return true
     } else if (keyName === "delete") {
       this.deleteChar()
       return true
-    }
-    // Line operations
-    else if (keyName === "return" || keyName === "enter") {
+    } else if (keyName === "return" || keyName === "enter") {
       this.newLine()
       return true
     }
-    // Character input - handle printable characters only
     // Filter to printable ASCII/Unicode (excludes control sequences)
     else if (keySequence && !keyCtrl && !keyMeta) {
-      // Check if this is a printable character sequence
-      // Allow single printable chars or multi-char Unicode sequences
       const firstCharCode = keySequence.charCodeAt(0)
 
       // Reject control characters (0-31) and escape sequences starting with ESC (27)
@@ -199,9 +177,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     super.textColor = effectiveFg
   }
 
-  // Editor operations - call EditBuffer directly
   public insertChar(char: string): void {
-    // If there's a selection, delete it first (replace behavior)
     if (this.hasSelection()) {
       this.deleteSelectedText()
     }
@@ -211,7 +187,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public insertText(text: string): void {
-    // If there's a selection, delete it first (replace behavior)
     if (this.hasSelection()) {
       this.deleteSelectedText()
     }
@@ -221,7 +196,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public deleteChar(): void {
-    // If there's a selection, delete the selected range instead
     if (this.hasSelection()) {
       this.deleteSelectedText()
       return
@@ -233,7 +207,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public deleteCharBackward(): void {
-    // If there's a selection, delete the selected range instead
     if (this.hasSelection()) {
       this.deleteSelectedText()
       return
@@ -247,7 +220,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   private deleteSelectedText(): void {
     this.editorView.deleteSelectedText()
 
-    // Clear the selection in the context
     this._ctx.clearSelection()
     this.requestRender()
   }
@@ -264,7 +236,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  // Cursor movement - call EditBuffer directly
   public moveCursorLeft(): void {
     this.editBuffer.moveCursorLeft()
     this.requestRender()
@@ -276,13 +247,11 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public moveCursorUp(): void {
-    // Use visual movement to handle wrapped lines correctly
     this.editorView.moveUpVisual()
     this.requestRender()
   }
 
   public moveCursorDown(): void {
-    // Use visual movement to handle wrapped lines correctly
     this.editorView.moveDownVisual()
     this.requestRender()
   }
@@ -304,13 +273,11 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  // TODO: Implement this properly
   public gotoBufferEnd(): void {
     this.editBuffer.gotoLine(999999)
     this.requestRender()
   }
 
-  // TODO: Implement this properly
   public deleteToLineEnd(): void {
     const cursor = this.editorView.getCursor()
     const startCol = cursor.col
