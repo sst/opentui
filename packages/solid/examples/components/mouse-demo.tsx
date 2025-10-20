@@ -128,7 +128,7 @@ ${fg("#A8A8B2")("Click and drag any transparent box to move it around • Watch 
 
   return (
     <box zIndex={10} marginTop={1}>
-      <text>{headerText}</text>
+      <text content={headerText} />
       {alphaBox50}
     </box>
   )
