@@ -3533,6 +3533,37 @@ describe("TextareaRenderable", () => {
       editor.insertText("Content")
       expect(editor.plainText).toBe("Content")
     })
+
+    it("should handle null placeholder (no placeholder)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: null,
+      })
+
+      expect(editor.placeholder).toBe(null)
+      expect(editor.plainText).toBe("")
+
+      editor.insertText("Content")
+      expect(editor.plainText).toBe("Content")
+    })
+
+    it("should clear placeholder when set to null", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        placeholder: "Initial placeholder",
+      })
+
+      expect(editor.placeholder).toBe("Initial placeholder")
+      expect(editor.plainText).toBe("")
+
+      editor.placeholder = null
+      expect(editor.placeholder).toBe(null)
+      expect(editor.plainText).toBe("")
+    })
   })
 
   describe("Deletion with empty lines", () => {

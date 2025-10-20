@@ -215,7 +215,7 @@ export class EditBuffer extends EventEmitter {
     this.lib.textBufferResetDefaults(this.textBufferPtr)
   }
 
-  public setPlaceholder(text: string): void {
+  public setPlaceholder(text: string | null): void {
     this.guard()
     this.lib.editBufferSetPlaceholder(this.bufferPtr, text)
   }

@@ -10,7 +10,7 @@ export interface TextareaOptions extends EditBufferOptions {
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
   focusedTextColor?: ColorInput
-  placeholder?: string
+  placeholder?: string | null
   placeholderColor?: ColorInput
 }
 
@@ -20,7 +20,7 @@ export interface TextareaOptions extends EditBufferOptions {
  */
 export class TextareaRenderable extends EditBufferRenderable {
   private _value: string
-  private _placeholder: string
+  private _placeholder: string | null
   private _unfocusedBackgroundColor: RGBA
   private _unfocusedTextColor: RGBA
   private _focusedBackgroundColor: RGBA
@@ -33,7 +33,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     textColor: "#FFFFFF",
     focusedBackgroundColor: "transparent",
     focusedTextColor: "#FFFFFF",
-    placeholder: "",
+    placeholder: null,
     placeholderColor: "#666666",
   } satisfies Partial<TextareaOptions>
 
@@ -56,7 +56,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       options.focusedBackgroundColor || options.backgroundColor || defaults.focusedBackgroundColor,
     )
     this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
-    this._placeholder = options.placeholder || defaults.placeholder
+    this._placeholder = options.placeholder ?? defaults.placeholder
     this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
 
     this.updateValue(this._value)
@@ -382,11 +382,11 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.updateColors()
   }
 
-  get placeholder(): string {
+  get placeholder(): string | null {
     return this._placeholder
   }
 
-  set placeholder(value: string) {
+  set placeholder(value: string | null) {
     if (this._placeholder !== value) {
       this._placeholder = value
       this.editBuffer.setPlaceholder(value)

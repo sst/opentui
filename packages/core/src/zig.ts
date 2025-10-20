@@ -1075,7 +1075,7 @@ export interface RenderLib {
   editBufferCanUndo: (buffer: Pointer) => boolean
   editBufferCanRedo: (buffer: Pointer) => boolean
   editBufferClearHistory: (buffer: Pointer) => void
-  editBufferSetPlaceholder: (buffer: Pointer, text: string) => void
+  editBufferSetPlaceholder: (buffer: Pointer, text: string | null) => void
   editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
 
   // EditorView methods
@@ -2225,9 +2225,13 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferClearHistory(buffer)
   }
 
-  public editBufferSetPlaceholder(buffer: Pointer, text: string): void {
-    const textBytes = this.encoder.encode(text)
-    this.opentui.symbols.editBufferSetPlaceholder(buffer, textBytes, textBytes.length)
+  public editBufferSetPlaceholder(buffer: Pointer, text: string | null): void {
+    if (text === null) {
+      this.opentui.symbols.editBufferSetPlaceholder(buffer, null, 0)
+    } else {
+      const textBytes = this.encoder.encode(text)
+      this.opentui.symbols.editBufferSetPlaceholder(buffer, textBytes, textBytes.length)
+    }
   }
 
   public editBufferSetPlaceholderColor(buffer: Pointer, color: RGBA): void {

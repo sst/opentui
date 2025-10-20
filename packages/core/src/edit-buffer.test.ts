@@ -524,6 +524,18 @@ describe("EditBuffer Placeholder", () => {
       expect(buffer.getText()).toBe("")
     })
 
+    it("should clear placeholder when set to null", () => {
+      buffer.setPlaceholder("Placeholder")
+      expect(buffer.getText()).toBe("")
+
+      buffer.setPlaceholder(null)
+      expect(buffer.getText()).toBe("")
+
+      // After clearing, inserting text should work normally
+      buffer.insertText("Hello")
+      expect(buffer.getText()).toBe("Hello")
+    })
+
     it("should handle placeholder with multi-line text", () => {
       buffer.setPlaceholder("Line 1\nLine 2\nLine 3")
       expect(buffer.getText()).toBe("")

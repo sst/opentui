@@ -1,12 +1,4 @@
-import {
-  CliRenderer,
-  createCliRenderer,
-  TextareaRenderable,
-  BoxRenderable,
-  TextRenderable,
-  type ParsedKey,
-  KeyEvent,
-} from "../index"
+import { CliRenderer, createCliRenderer, TextareaRenderable, BoxRenderable, TextRenderable, KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
@@ -24,7 +16,6 @@ EDITING:
   • Enter to create new lines
   • Ctrl+D to delete current line
   • Ctrl+K to delete to line end
-  • Ctrl+J to join lines
 
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
