@@ -1607,6 +1607,204 @@ describe("TextRenderable Selection", () => {
     })
   })
 
+  describe("Width/Height Setter Layout Tests", () => {
+    it("should not shrink box when width is set via setter", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00" })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      const initialIndicatorWidth = indicator.width
+
+      indicator.width = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBe(5)
+      expect(content.width).toBeGreaterThan(0)
+      expect(content.width).toBeLessThan(30) // Should be compressed but not zero
+    })
+
+    it("should not shrink box when height is set via setter in column layout with text", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(30, 15)
+
+      const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
+      currentRenderer.root.add(outerBox)
+
+      const column = new BoxRenderable(currentRenderer, { flexDirection: "column", height: "100%" })
+      outerBox.add(column)
+
+      const header = new BoxRenderable(currentRenderer, { backgroundColor: "#f00" })
+      column.add(header)
+
+      const headerText = new TextRenderable(currentRenderer, { content: "Header" })
+      header.add(headerText)
+
+      const mainContent = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      column.add(mainContent)
+
+      const mainText = new TextRenderable(currentRenderer, {
+        content: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8",
+      })
+      mainContent.add(mainText)
+
+      const footer = new BoxRenderable(currentRenderer, { height: 2, backgroundColor: "#00f" })
+      column.add(footer)
+
+      const footerText = new TextRenderable(currentRenderer, { content: "Footer" })
+      footer.add(footerText)
+
+      await renderOnce()
+
+      header.height = 3
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(header.height).toBe(3)
+      expect(mainContent.height).toBeGreaterThan(0)
+      expect(footer.height).toBe(2)
+    })
+
+    it("should not shrink box when minWidth is set via setter", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      indicator.minWidth = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBeGreaterThanOrEqual(5)
+      expect(content.width).toBeGreaterThan(0)
+    })
+
+    it("should not shrink box when minHeight is set via setter in column layout with text", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(30, 15)
+
+      const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
+      currentRenderer.root.add(outerBox)
+
+      const column = new BoxRenderable(currentRenderer, { flexDirection: "column", height: "100%" })
+      outerBox.add(column)
+
+      const header = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      column.add(header)
+
+      const headerText = new TextRenderable(currentRenderer, { content: "Header" })
+      header.add(headerText)
+
+      const mainContent = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      column.add(mainContent)
+
+      const mainText = new TextRenderable(currentRenderer, {
+        content: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8",
+      })
+      mainContent.add(mainText)
+
+      const footer = new BoxRenderable(currentRenderer, { height: 2, backgroundColor: "#00f" })
+      column.add(footer)
+
+      const footerText = new TextRenderable(currentRenderer, { content: "Footer" })
+      footer.add(footerText)
+
+      await renderOnce()
+
+      header.minHeight = 3
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(header.height).toBeGreaterThanOrEqual(3)
+      expect(mainContent.height).toBeGreaterThan(0)
+      expect(footer.height).toBe(2)
+    })
+
+    it("should not shrink box when width is set from undefined via setter", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      indicator.width = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBe(5)
+      expect(content.width).toBeGreaterThan(0)
+    })
+  })
+
   describe("Word Wrapping", () => {
     it("should default to word wrap mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
