@@ -130,12 +130,6 @@ export class TextBuffer {
 
   /**
    * Add a highlight using character offsets into the full text.
-   * Efficiently handles single-line and multi-line highlights.
-   * @param charStart - Start character offset in the text
-   * @param charEnd - End character offset in the text
-   * @param styleId - Style ID from SyntaxStyle
-   * @param priority - Priority for overlapping highlights (higher wins)
-   * @param hlRef - Optional reference ID for bulk removal
    */
   public addHighlightByCharRange(
     charStart: number,
@@ -150,12 +144,6 @@ export class TextBuffer {
 
   /**
    * Add a highlight to a specific line by column positions.
-   * @param lineIdx - Line index
-   * @param colStart - Start column (grapheme-based)
-   * @param colEnd - End column (grapheme-based)
-   * @param styleId - Style ID from SyntaxStyle
-   * @param priority - Priority for overlapping highlights (higher wins)
-   * @param hlRef - Optional reference ID for bulk removal
    */
   public addHighlight(
     lineIdx: number,
@@ -169,47 +157,32 @@ export class TextBuffer {
     this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, colStart, colEnd, styleId, priority, hlRef)
   }
 
-  /**
-   * Remove all highlights with a specific reference ID.
-   * @param hlRef - Reference ID to remove
-   */
   public removeHighlightsByRef(hlRef: number): void {
     this.guard()
     this.lib.textBufferRemoveHighlightsByRef(this.bufferPtr, hlRef)
   }
 
-  /**
-   * Clear all highlights from a specific line.
-   * @param lineIdx - Line index
-   */
   public clearLineHighlights(lineIdx: number): void {
     this.guard()
     this.lib.textBufferClearLineHighlights(this.bufferPtr, lineIdx)
   }
 
-  /**
-   * Clear all highlights from all lines.
-   */
   public clearAllHighlights(): void {
     this.guard()
     this.lib.textBufferClearAllHighlights(this.bufferPtr)
   }
 
-  /**
-   * Set the syntax style for highlight resolution.
-   * @param style - Pointer to SyntaxStyle or null to unset
-   */
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
     this._syntaxStyle = style ?? undefined
     this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)
   }
 
-  /**
-   * Clear the text content without resetting arena or memory registry.
-   * Preserves highlights, memory buffers, and arena allocations.
-   * Use this for frequent text updates where undo/redo history should be preserved.
-   */
+  public getSyntaxStyle(): SyntaxStyle | null {
+    this.guard()
+    return this._syntaxStyle ?? null
+  }
+
   public clear(): void {
     this.guard()
     this.lib.textBufferClear(this.bufferPtr)
@@ -219,10 +192,6 @@ export class TextBuffer {
     this._textBytes = undefined
   }
 
-  /**
-   * Heavy reset: clears arena, memory registry, highlights, and all content.
-   * This invalidates any rope history and undo/redo state.
-   */
   public reset(): void {
     this.guard()
     this.lib.textBufferReset(this.bufferPtr)
