@@ -68,7 +68,7 @@ test "walkLines - empty rope" {
     var ctx = Context{};
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
-    try testing.expectEqual(@as(u32, 0), ctx.count);
+    try testing.expectEqual(@as(u32, 1), ctx.count);
 }
 
 test "walkLines - single text segment" {

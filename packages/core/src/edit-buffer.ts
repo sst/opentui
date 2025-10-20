@@ -22,7 +22,7 @@ export class EditBuffer extends EventEmitter {
   private textBufferPtr: Pointer
   public readonly id: number
   private _destroyed: boolean = false
-  private _textBytes?: Uint8Array
+  private _textBytes: Uint8Array[] = []
 
   constructor(lib: RenderLib, ptr: Pointer) {
     super()
@@ -73,8 +73,12 @@ export class EditBuffer extends EventEmitter {
 
   public setText(text: string): void {
     this.guard()
-    this._textBytes = this.lib.encoder.encode(text)
-    this.lib.editBufferSetText(this.bufferPtr, this._textBytes)
+    const textBytes = this.lib.encoder.encode(text)
+    this._textBytes.push(textBytes)
+
+    const memId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
+
+    this.lib.editBufferSetTextFromMem(this.bufferPtr, memId)
   }
 
   public getText(): string {

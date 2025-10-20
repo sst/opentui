@@ -21,7 +21,8 @@ export class TextBuffer {
   private _lineInfo?: LineInfo
   private _destroyed: boolean = false
   private _syntaxStyle?: SyntaxStyle
-  private _textBytes?: Uint8Array // Keep UTF-8 bytes alive for Zig reference
+  private _textBytes?: Uint8Array
+  private _memId?: number
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -42,9 +43,15 @@ export class TextBuffer {
 
   public setText(text: string): void {
     this.guard()
-    // Keep UTF-8 bytes alive - Zig stores a reference to this memory
     this._textBytes = this.lib.encoder.encode(text)
-    this.lib.textBufferSetText(this.bufferPtr, this._textBytes)
+
+    if (this._memId === undefined) {
+      this._memId = this.lib.textBufferRegisterMemBuffer(this.bufferPtr, this._textBytes, false)
+    } else {
+      this.lib.textBufferReplaceMemBuffer(this.bufferPtr, this._memId, this._textBytes, false)
+    }
+
+    this.lib.textBufferSetTextFromMem(this.bufferPtr, this._memId)
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
@@ -190,6 +197,7 @@ export class TextBuffer {
     this._byteSize = 0
     this._lineInfo = undefined
     this._textBytes = undefined
+    // Note: _memId is NOT cleared - it can be reused for next setText
   }
 
   public reset(): void {
@@ -199,6 +207,7 @@ export class TextBuffer {
     this._byteSize = 0
     this._lineInfo = undefined
     this._textBytes = undefined
+    this._memId = undefined // Reset clears the registry, so clear our ID
   }
 
   public destroy(): void {

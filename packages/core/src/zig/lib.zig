@@ -421,9 +421,24 @@ export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.resetDefaults();
 }
 
-export fn textBufferSetText(tb: *text_buffer.UnifiedTextBuffer, textPtr: [*]const u8, textLen: usize) void {
-    const text = textPtr[0..textLen];
-    tb.setText(text) catch {};
+export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
+    const data = dataPtr[0..dataLen];
+    const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;
+    return @intCast(mem_id);
+}
+
+export fn textBufferReplaceMemBuffer(tb: *text_buffer.UnifiedTextBuffer, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
+    const data = dataPtr[0..dataLen];
+    tb.mem_registry.replace(id, data, owned) catch return false;
+    return true;
+}
+
+export fn textBufferClearMemRegistry(tb: *text_buffer.UnifiedTextBuffer) void {
+    tb.mem_registry.clear();
+}
+
+export fn textBufferSetTextFromMem(tb: *text_buffer.UnifiedTextBuffer, id: u8) void {
+    tb.setTextFromMemId(id) catch {};
 }
 
 export fn textBufferLoadFile(tb: *text_buffer.UnifiedTextBuffer, pathPtr: [*]const u8, pathLen: usize) bool {
@@ -614,6 +629,10 @@ export fn editBufferSetCursorToLineCol(edit_buffer: *edit_buffer_mod.EditBuffer,
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text) catch {};
+}
+
+export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8) void {
+    edit_buffer.setTextFromMemId(mem_id) catch {};
 }
 
 export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {

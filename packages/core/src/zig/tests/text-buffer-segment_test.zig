@@ -209,7 +209,7 @@ test "UnifiedRope - basic operations" {
     try rope.append(text2);
 
     const metrics = rope.root.metrics();
-    try testing.expectEqual(@as(u32, 3), rope.count());
+    try testing.expectEqual(@as(u32, 5), rope.count());
     try testing.expectEqual(@as(u32, 15), metrics.custom.total_width);
     try testing.expectEqual(@as(u32, 10), metrics.custom.max_line_width);
 }
@@ -222,7 +222,7 @@ test "UnifiedRope - empty rope metrics" {
     const rope = try UnifiedRope.init(allocator);
     const metrics = rope.root.metrics();
 
-    try testing.expectEqual(@as(u32, 0), rope.count());
+    try testing.expectEqual(@as(u32, 1), rope.count());
     try testing.expectEqual(@as(u32, 0), metrics.custom.total_width);
 }
 
@@ -243,7 +243,7 @@ test "UnifiedRope - single text segment" {
     });
 
     const metrics = rope.root.metrics();
-    try testing.expectEqual(@as(u32, 1), rope.count());
+    try testing.expectEqual(@as(u32, 2), rope.count());
     try testing.expectEqual(@as(u32, 20), metrics.custom.total_width);
     try testing.expectEqual(@as(u32, 20), metrics.custom.max_line_width);
 }
@@ -288,7 +288,7 @@ test "UnifiedRope - multiple lines with varying widths" {
     });
 
     const metrics = rope.root.metrics();
-    try testing.expectEqual(@as(u32, 5), rope.count());
+    try testing.expectEqual(@as(u32, 8), rope.count());
     try testing.expectEqual(@as(u32, 55), metrics.custom.total_width);
     try testing.expectEqual(@as(u32, 30), metrics.custom.max_line_width);
 }

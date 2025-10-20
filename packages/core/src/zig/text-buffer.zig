@@ -74,6 +74,11 @@ pub const UnifiedTextBuffer = struct {
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
     line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
 
+    // Persistent buffer for setStyledText (global-allocated, not arena)
+    styled_text_mem_id: ?u8,
+    styled_buffer: ?[]u8,
+    styled_capacity: usize,
+
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
@@ -124,6 +129,9 @@ pub const UnifiedTextBuffer = struct {
             .free_view_ids = free_view_ids,
             .line_highlights = .{},
             .line_spans = .{},
+            .styled_text_mem_id = null,
+            .styled_buffer = null,
+            .styled_capacity = 0,
         };
 
         return self;
@@ -143,6 +151,11 @@ pub const UnifiedTextBuffer = struct {
             span_list.deinit(self.global_allocator);
         }
         self.line_spans.deinit(self.global_allocator);
+
+        // Free persistent styled text buffer
+        if (self.styled_buffer) |buf| {
+            self.global_allocator.free(buf);
+        }
 
         self.mem_registry.deinit();
         self.arena.deinit();
@@ -236,14 +249,20 @@ pub const UnifiedTextBuffer = struct {
         }
         self.line_spans.clearRetainingCapacity();
 
+        // Free persistent styled text buffer
+        if (self.styled_buffer) |buf| {
+            self.global_allocator.free(buf);
+        }
+        self.styled_buffer = null;
+        self.styled_text_mem_id = null;
+        self.styled_capacity = 0;
+
         // Now reset the arena (frees all the internal memory)
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.mem_registry.clear();
         self.char_count = 0;
 
-        // TODO: Do not create a new rope, clear the existing rope
-        // so when history is active, it can be undone
         self.rope = UnifiedRope.init(self.allocator) catch return;
 
         self.markAllViewsDirty();
@@ -279,28 +298,30 @@ pub const UnifiedTextBuffer = struct {
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
         self.clear();
-        try self.setTextInternal(text);
+        const mem_id = try self.mem_registry.register(text, false);
+        try self.setTextInternal(mem_id, text);
     }
 
-    /// Internal setText that doesn't call reset (for use by setStyledText)
-    fn setTextInternal(self: *Self, text: []const u8) TextBufferError!void {
+    /// Set text from a pre-registered memory ID
+    pub fn setTextFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
+        const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
+        self.clear();
+        try self.setTextInternal(mem_id, text);
+    }
+
+    /// Internal setText that doesn't call clear (for use by setStyledText)
+    fn setTextInternal(self: *Self, mem_id: u8, text: []const u8) TextBufferError!void {
         if (text.len == 0) {
-            // Empty buffer - single linestart marker represents the single empty line
-            // This matches editor semantics where an empty buffer has 1 empty line
-            try self.rope.append(Segment{ .linestart = {} });
             self.markAllViewsDirty();
             return;
         }
 
-        const mem_id = try self.mem_registry.register(text, false);
-
-        var result = try self.textToSegments(self.allocator, text, mem_id, 0, true);
+        var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, true);
         defer result.segments.deinit();
 
         self.char_count += result.total_width;
 
-        // Build rope from segments
-        self.rope = try UnifiedRope.from_slice(self.allocator, result.segments.items);
+        try self.rope.setSegments(result.segments.items);
 
         self.markAllViewsDirty();
     }
@@ -413,17 +434,14 @@ pub const UnifiedTextBuffer = struct {
         _ = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
 
         const chunk = self.createChunk(mem_id, byte_start, byte_end);
-        const had_content = self.rope.count() > 0;
 
-        // If we already have content, add a break to separate from previous line
+        const had_content = self.rope.count() > 1;
+
         if (had_content) {
             try self.rope.append(Segment{ .brk = {} });
+            try self.rope.append(Segment{ .linestart = {} });
         }
 
-        // Add linestart marker for this line
-        try self.rope.append(Segment{ .linestart = {} });
-
-        // Add text segment (even if empty)
         try self.rope.append(Segment{ .text = chunk });
         self.char_count += chunk.width;
 
@@ -572,7 +590,9 @@ pub const UnifiedTextBuffer = struct {
         const sortFn = struct {
             fn lessThan(_: void, a: Event, b: Event) bool {
                 if (a.col != b.col) return a.col < b.col;
-                return !a.is_start;
+                if (a.is_start != b.is_start) return !a.is_start; // ends before starts
+                // If both are same type at same column, use hl_idx for stable sort
+                return a.hl_idx < b.hl_idx;
             }
         }.lessThan;
         std.mem.sort(Event, events.items, {}, sortFn);
@@ -747,6 +767,7 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!void {
         if (chunks.len == 0) {
             self.clear();
+            self.clearAllHighlights();
             return;
         }
 
@@ -758,14 +779,27 @@ pub const UnifiedTextBuffer = struct {
 
         if (total_len == 0) {
             self.clear();
+            self.clearAllHighlights();
             return;
         }
 
-        // Clear first to prepare for new content
         self.clear();
+        self.clearAllHighlights();
 
-        // Now allocate with arena allocator
-        const full_text = self.allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
+        _ = self.arena.reset(.retain_capacity);
+
+        self.rope = UnifiedRope.init(self.allocator) catch return TextBufferError.OutOfMemory;
+
+        if (total_len > self.styled_capacity) {
+            if (self.styled_buffer) |old_buf| {
+                self.global_allocator.free(old_buf);
+            }
+            const new_buf = self.global_allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
+            self.styled_buffer = new_buf;
+            self.styled_capacity = total_len;
+        }
+
+        const full_text = self.styled_buffer.?[0..total_len];
 
         var offset: usize = 0;
         for (chunks) |chunk| {
@@ -776,10 +810,15 @@ pub const UnifiedTextBuffer = struct {
             }
         }
 
-        // Use internal method that doesn't call reset again
-        try self.setTextInternal(full_text);
+        if (self.styled_text_mem_id) |mem_id| {
+            try self.mem_registry.replace(mem_id, full_text, false);
+        } else {
+            const mem_id = try self.mem_registry.register(full_text, false);
+            self.styled_text_mem_id = mem_id;
+        }
 
-        // Apply styling if we have a syntax style
+        try self.setTextInternal(self.styled_text_mem_id.?, full_text);
+
         if (self.syntax_style) |style| {
             var char_pos: u32 = 0;
             for (chunks, 0..) |chunk, i| {
@@ -787,15 +826,13 @@ pub const UnifiedTextBuffer = struct {
                 const chunk_len = self.measureText(chunk_text);
 
                 if (chunk_len > 0) {
-                    // Convert color pointers to RGBA
                     const fg = if (chunk.fg_ptr) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
                     const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
 
-                    // Register style for this chunk
-                    const style_name = std.fmt.allocPrint(self.allocator, "chunk{d}", .{i}) catch continue;
+                    var style_name_buf: [64]u8 = undefined;
+                    const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
                     const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
 
-                    // Add highlight for this chunk's range
                     self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, null) catch {};
                 }
 
@@ -829,8 +866,12 @@ pub const UnifiedTextBuffer = struct {
         // Read file content
         const bytes_read = file.readAll(content) catch return TextBufferError.OutOfMemory;
 
+        // Register the content in memory registry
+        const text = content[0..bytes_read];
+        const mem_id = try self.mem_registry.register(text, false);
+
         // Use internal setText that doesn't call clear again
-        try self.setTextInternal(content[0..bytes_read]);
+        try self.setTextInternal(mem_id, text);
     }
 
     /// Debug log the rope structure using rope.toText

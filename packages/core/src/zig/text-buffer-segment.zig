@@ -83,6 +83,15 @@ pub const MemRegistry = struct {
         return self.buffers.items[id].data;
     }
 
+    pub fn replace(self: *MemRegistry, id: u8, data: []const u8, owned: bool) TextBufferError!void {
+        if (id >= self.buffers.items.len) return TextBufferError.InvalidMemId;
+        const prev = self.buffers.items[id];
+        if (prev.owned) {
+            self.allocator.free(prev.data);
+        }
+        self.buffers.items[id] = .{ .data = data, .owned = owned };
+    }
+
     pub fn clear(self: *MemRegistry) void {
         for (self.buffers.items) |mem_buf| {
             if (mem_buf.owned) {
@@ -423,31 +432,27 @@ pub const Segment = union(enum) {
 
     /// Rewrite rope ends to enforce invariants
     /// Rules:
-    /// - Rope must start with linestart (or be empty)
-    /// - Rope must not end with brk (trailing breaks are invalid)
+    /// - Rope must start with linestart (even when empty - ensures at least one line)
     pub fn rewriteEnds(allocator: Allocator, first: ?*const Segment, last: ?*const Segment) !BoundaryAction {
         _ = allocator;
+        _ = last;
 
-        // Ensure rope starts with linestart
+        // Ensure rope starts with linestart (insert even if empty)
         if (first) |first_seg| {
             if (!first_seg.isLineStart()) {
                 const linestart_segment = Segment{ .linestart = {} };
                 const insert_slice = &[_]Segment{linestart_segment};
                 return .{ .insert_between = insert_slice };
             }
-        }
-
-        // Remove trailing break
-        // TODO: Really?
-        if (last) |last_seg| {
-            if (last_seg.isBreak()) {
-                return .{ .delete_right = true };
-            }
+        } else {
+            // Empty rope - insert linestart to ensure at least one line
+            const linestart_segment = Segment{ .linestart = {} };
+            const insert_slice = &[_]Segment{linestart_segment};
+            return .{ .insert_between = insert_slice };
         }
 
         return .{};
     }
 };
 
-/// Unified rope type for text buffer - stores text segments and break markers in a single tree
 pub const UnifiedRope = rope_mod.Rope(Segment);

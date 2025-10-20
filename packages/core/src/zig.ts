@@ -319,8 +319,20 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    textBufferSetText: {
-      args: ["ptr", "ptr", "usize"],
+    textBufferRegisterMemBuffer: {
+      args: ["ptr", "ptr", "usize", "bool"],
+      returns: "u16",
+    },
+    textBufferReplaceMemBuffer: {
+      args: ["ptr", "u8", "ptr", "usize", "bool"],
+      returns: "bool",
+    },
+    textBufferClearMemRegistry: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    textBufferSetTextFromMem: {
+      args: ["ptr", "u8"],
       returns: "void",
     },
     textBufferLoadFile: {
@@ -483,6 +495,10 @@ function getOpenTUILib(libPath?: string) {
     },
     editBufferSetText: {
       args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferSetTextFromMem: {
+      args: ["ptr", "u8"],
       returns: "void",
     },
     editBufferGetText: {
@@ -1005,7 +1021,10 @@ export interface RenderLib {
 
   textBufferReset: (buffer: Pointer) => void
   textBufferClear: (buffer: Pointer) => void
-  textBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
+  textBufferRegisterMemBuffer: (buffer: Pointer, bytes: Uint8Array, owned?: boolean) => number
+  textBufferReplaceMemBuffer: (buffer: Pointer, memId: number, bytes: Uint8Array, owned?: boolean) => boolean
+  textBufferClearMemRegistry: (buffer: Pointer) => void
+  textBufferSetTextFromMem: (buffer: Pointer, memId: number) => void
   textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
     buffer: Pointer,
@@ -1057,6 +1076,7 @@ export interface RenderLib {
   createEditBuffer: (widthMethod: WidthMethod) => Pointer
   destroyEditBuffer: (buffer: Pointer) => void
   editBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
+  editBufferSetTextFromMem: (buffer: Pointer, memId: number) => void
   editBufferGetText: (buffer: Pointer, maxLength: number) => Uint8Array | null
   editBufferInsertChar: (buffer: Pointer, char: string) => void
   editBufferInsertText: (buffer: Pointer, text: string) => void
@@ -1728,8 +1748,29 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferResetDefaults(buffer)
   }
 
-  public textBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
-    this.opentui.symbols.textBufferSetText(buffer, textBytes, textBytes.length)
+  public textBufferRegisterMemBuffer(buffer: Pointer, bytes: Uint8Array, owned: boolean = false): number {
+    const result = this.opentui.symbols.textBufferRegisterMemBuffer(buffer, bytes, bytes.length, owned)
+    if (result === 0xffff) {
+      throw new Error("Failed to register memory buffer")
+    }
+    return result
+  }
+
+  public textBufferReplaceMemBuffer(
+    buffer: Pointer,
+    memId: number,
+    bytes: Uint8Array,
+    owned: boolean = false,
+  ): boolean {
+    return this.opentui.symbols.textBufferReplaceMemBuffer(buffer, memId, bytes, bytes.length, owned)
+  }
+
+  public textBufferClearMemRegistry(buffer: Pointer): void {
+    this.opentui.symbols.textBufferClearMemRegistry(buffer)
+  }
+
+  public textBufferSetTextFromMem(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.textBufferSetTextFromMem(buffer, memId)
   }
 
   public textBufferLoadFile(buffer: Pointer, path: string): boolean {
@@ -1744,8 +1785,7 @@ class FFIRenderLib implements RenderLib {
     // Filter out chunks with empty text - they don't contribute to the buffer
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
     if (nonEmptyChunks.length === 0) {
-      // If all chunks are empty, just set empty text
-      this.textBufferSetText(buffer, new Uint8Array(0))
+      this.textBufferClear(buffer)
       return
     }
 
@@ -2116,6 +2156,10 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
     this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length)
+  }
+
+  public editBufferSetTextFromMem(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.editBufferSetTextFromMem(buffer, memId)
   }
 
   public editBufferGetText(buffer: Pointer, maxLength: number): Uint8Array | null {

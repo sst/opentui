@@ -466,11 +466,11 @@ pub fn Rope(comptime T: type) type {
         version: u64 = 0,
         marker_cache: MarkerCache,
 
-        pub fn init(allocator: Allocator) !Self {
+        pub fn init(allocator: Allocator) error{OutOfMemory}!Self {
             return initWithConfig(allocator, .{});
         }
 
-        pub fn initWithConfig(allocator: Allocator, config: Config) !Self {
+        pub fn initWithConfig(allocator: Allocator, config: Config) error{OutOfMemory}!Self {
             const empty_data = if (@hasDecl(T, "empty"))
                 T.empty()
             else
@@ -479,13 +479,17 @@ pub fn Rope(comptime T: type) type {
             const node = try allocator.create(Node);
             node.* = .{ .leaf = .{ .data = empty_data, .is_sentinel = true } };
 
-            return .{
+            var self = Self{
                 .root = node,
                 .allocator = allocator,
                 .empty_leaf = node,
                 .config = config,
                 .marker_cache = MarkerCache.init(allocator),
             };
+
+            try self.applyEndsInvariant();
+
+            return self;
         }
 
         pub fn from_item(allocator: Allocator, data: T) !Self {
@@ -642,7 +646,7 @@ pub fn Rope(comptime T: type) type {
         }
 
         pub fn concat(self: *Self, other: *const Self) !void {
-            self.root = try Node.join_balanced(self.root, other.root, self.allocator);
+            self.root = try self.joinWithBoundary(self.root, other.root);
             self.version += 1;
         }
 
@@ -701,9 +705,10 @@ pub fn Rope(comptime T: type) type {
             const first_split = try Node.split_at(self.root, start, self.allocator, self.empty_leaf);
             const second_split = try Node.split_at(first_split.right, end - start, self.allocator, self.empty_leaf);
 
-            self.root = try Node.join_balanced(first_split.left, second_split.right, self.allocator);
+            self.root = try self.joinWithBoundary(first_split.left, second_split.right);
 
             self.version += 1;
+            try self.applyEndsInvariant();
         }
 
         pub fn insert_slice(self: *Self, index: u32, items: []const T) !void {
@@ -713,10 +718,11 @@ pub fn Rope(comptime T: type) type {
 
             const split_result = try Node.split_at(self.root, index, self.allocator, self.empty_leaf);
 
-            const left_joined = try Node.join_balanced(split_result.left, insert_rope.root, self.allocator);
-            self.root = try Node.join_balanced(left_joined, split_result.right, self.allocator);
+            const left_joined = try self.joinWithBoundary(split_result.left, insert_rope.root);
+            self.root = try self.joinWithBoundary(left_joined, split_result.right);
 
             self.version += 1;
+            try self.applyEndsInvariant();
         }
 
         pub fn to_array(self: *const Self, allocator: Allocator) ![]T {
@@ -883,6 +889,39 @@ pub fn Rope(comptime T: type) type {
             return try Node.join_balanced(L, R, self.allocator);
         }
 
+        fn applyEndsInvariant(self: *Self) !void {
+            if (!boundary_enabled or !@hasDecl(T, "rewriteEnds")) return;
+
+            const first = self.getFirstLeaf();
+            const last = self.getLastLeaf();
+            const action = try T.rewriteEnds(self.allocator, first, last);
+
+            // Handle deletion operations first
+            if (action.delete_left and self.count() > 0) {
+                const split_result = try Node.split_at(self.root, 1, self.allocator, self.empty_leaf);
+                self.root = split_result.right;
+            }
+            if (action.delete_right and self.count() > 0) {
+                const cnt = self.count();
+                const split_result = try Node.split_at(self.root, cnt - 1, self.allocator, self.empty_leaf);
+                self.root = split_result.left;
+            }
+
+            // Handle insertion
+            if (action.insert_between.len > 0) {
+                var leaves = try std.ArrayList(*const Node).initCapacity(self.allocator, action.insert_between.len);
+                defer leaves.deinit();
+
+                for (action.insert_between) |item| {
+                    const leaf = try Node.new_leaf(self.allocator, item);
+                    try leaves.append(leaf);
+                }
+
+                const insert_root = try Node.merge_leaves(leaves.items, self.allocator);
+                self.root = try Node.join_balanced(insert_root, self.root, self.allocator);
+            }
+        }
+
         pub fn deleteRangeByWeight(self: *Self, start: u32, end: u32, split_leaf_fn: *const Node.LeafSplitFn) !void {
             if (start >= end) return;
 
@@ -892,22 +931,7 @@ pub fn Rope(comptime T: type) type {
             self.root = try self.joinWithBoundary(first_split.left, second_split.right);
 
             self.version += 1;
-
-            if (boundary_enabled and @hasDecl(T, "rewriteEnds")) {
-                const first = self.getFirstLeaf();
-                const last = self.getLastLeaf();
-                const action = try T.rewriteEnds(self.allocator, first, last);
-
-                if (action.delete_left and self.count() > 0) {
-                    try self.delete_range(0, 1);
-                }
-                if (action.delete_right and self.count() > 0) {
-                    try self.delete_range(self.count() - 1, self.count());
-                }
-                if (action.insert_between.len > 0) {
-                    try self.insert_slice(0, action.insert_between);
-                }
-            }
+            try self.applyEndsInvariant();
         }
 
         pub fn insertSliceByWeight(self: *Self, weight: u32, items: []const T, split_leaf_fn: *const Node.LeafSplitFn) !void {
@@ -921,22 +945,7 @@ pub fn Rope(comptime T: type) type {
             self.root = try self.joinWithBoundary(left_joined, split_result.right);
 
             self.version += 1;
-
-            if (boundary_enabled and @hasDecl(T, "rewriteEnds")) {
-                const first = self.getFirstLeaf();
-                const last = self.getLastLeaf();
-                const action = try T.rewriteEnds(self.allocator, first, last);
-
-                if (action.delete_left and self.count() > 0) {
-                    try self.delete_range(0, 1);
-                }
-                if (action.delete_right and self.count() > 0) {
-                    try self.delete_range(self.count() - 1, self.count());
-                }
-                if (action.insert_between.len > 0) {
-                    try self.insert_slice(0, action.insert_between);
-                }
-            }
+            try self.applyEndsInvariant();
         }
 
         pub const WeightFindResult = struct { leaf: *const T, start_weight: u32 };
@@ -1074,6 +1083,29 @@ pub fn Rope(comptime T: type) type {
 
         pub fn clear(self: *Self) void {
             self.root = self.empty_leaf;
+            self.version += 1;
+            self.applyEndsInvariant() catch {};
+        }
+
+        /// Replace the rope content with new items, using same structure as from_slice
+        /// This is useful for repeated setText operations without creating a new rope instance
+        pub fn setSegments(self: *Self, items: []const T) !void {
+            if (items.len == 0) {
+                self.root = self.empty_leaf;
+                self.version += 1;
+                try self.applyEndsInvariant();
+                return;
+            }
+
+            var leaves = try std.ArrayList(*const Node).initCapacity(self.allocator, items.len);
+            defer leaves.deinit();
+
+            for (items) |item| {
+                const leaf = try Node.new_leaf(self.allocator, item);
+                try leaves.append(leaf);
+            }
+
+            self.root = try Node.merge_leaves(leaves.items, self.allocator);
             self.version += 1;
         }
 

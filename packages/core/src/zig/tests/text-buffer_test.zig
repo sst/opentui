@@ -17,7 +17,7 @@ test "TextBuffer init - creates empty buffer" {
     defer tb.deinit();
 
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
-    try std.testing.expectEqual(@as(u32, 0), tb.getLineCount()); // Empty rope = 0 lines (use setText("") for 1 empty line)
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount()); // Empty buffer has 1 empty line (invariant)
 }
 
 test "TextBuffer line info - empty buffer" {
@@ -612,7 +612,7 @@ test "TextBuffer reset - clears all content" {
 
     tb.reset();
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
-    try std.testing.expectEqual(@as(u32, 0), tb.getLineCount()); // After reset, truly empty (0 lines)
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
 }
 
 test "TextBuffer line iteration - walkLines callback" {
@@ -1014,7 +1014,7 @@ test "TextBuffer clear - preserves memory buffers" {
     // Clear should empty the buffer but preserve memory registry
     tb.clear();
 
-    try std.testing.expectEqual(@as(u32, 0), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount()); // Empty buffer has 1 empty line
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
 
     // mem_id should still be valid
@@ -1802,9 +1802,76 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
 
     // After deleting "Line 3" with EditBuffer.deleteRange, we should have:
     // - 2 lines remaining
-    // - 1 break marker (between line 0 and line 1)
+    // - 2 break markers (after Line 1 and after Line 2 - document ends with newline)
     // - 2 linestart markers
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
-    try std.testing.expectEqual(@as(u32, 1), eb.getTextBuffer().rope.markerCount(.brk));
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.brk));
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.linestart));
+}
+
+test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduction)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Create a SyntaxStyle (similar to what Text.ts does)
+    const ss = @import("../syntax-style.zig");
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+
+    tb.setSyntaxStyle(style);
+
+    const iterations = 10000;
+    const initial_arena = tb.getArenaAllocatedBytes();
+
+    // Simulate what styled-text-demo does - call setStyledText repeatedly
+    var iteration: u32 = 0;
+    while (iteration < iterations) : (iteration += 1) {
+        // Create styled chunks similar to the demo
+        const text1 = "System Stats: ";
+        const text2 = "Frame: ";
+        var frame_buf: [32]u8 = undefined;
+        const frame_text = try std.fmt.bufPrint(&frame_buf, "{}", .{iteration});
+
+        const chunks = [_]text_buffer.StyledChunk{
+            .{
+                .text_ptr = text1.ptr,
+                .text_len = text1.len,
+                .fg_ptr = null,
+                .bg_ptr = null,
+                .attributes = 1, // bold
+            },
+            .{
+                .text_ptr = text2.ptr,
+                .text_len = text2.len,
+                .fg_ptr = null,
+                .bg_ptr = null,
+                .attributes = 0,
+            },
+            .{
+                .text_ptr = frame_text.ptr,
+                .text_len = frame_text.len,
+                .fg_ptr = null,
+                .bg_ptr = null,
+                .attributes = 0,
+            },
+        };
+
+        try tb.setStyledText(&chunks);
+        try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    }
+
+    const final_arena = tb.getArenaAllocatedBytes();
+    const arena_growth = final_arena - initial_arena;
+
+    // Arena should not grow significantly - setStyledText should reuse memory
+    // Max 50KB growth is reasonable for rope structure
+    const max_expected_growth = 50000;
+    try std.testing.expect(arena_growth < max_expected_growth);
 }

@@ -3124,9 +3124,8 @@ test "TextBufferView automatic updates - reset clears content and marks views di
     try tb.setText("Hello World");
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
-    // Reset buffer - view should automatically see cleared buffer (0 lines)
     tb.reset();
-    try std.testing.expectEqual(@as(u32, 0), view.getVirtualLineCount());
+    try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
     // After setText with empty string, should have 1 empty line
     try tb.setText("");

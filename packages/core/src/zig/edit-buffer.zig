@@ -139,10 +139,6 @@ pub const EditBuffer = struct {
             .placeholder_color = .{ 0.4, 0.4, 0.4, 1.0 },
         };
 
-        // TODO: Rope init should be done by the text buffer
-        // Or better yet: a Segment static function for the generic Rope
-        try text_buffer.rope.append(Segment{ .linestart = {} });
-
         return self;
     }
 
@@ -524,13 +520,19 @@ pub const EditBuffer = struct {
     }
 
     pub fn setText(self: *EditBuffer, text: []const u8) !void {
-        // Deactivate placeholder if active (setText replaces everything)
+        // Register text as owned memory, then delegate to setTextFromMemId
+        const owned_text = try self.allocator.dupe(u8, text);
+        const mem_id = try self.tb.registerMemBuffer(owned_text, true);
+        try self.setTextFromMemId(mem_id);
+    }
+
+    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
         if (self.placeholder_active) {
             self.placeholder_active = false;
             self.saved_style_ptr = null;
         }
 
-        try self.tb.setText(text);
+        try self.tb.setTextFromMemId(mem_id);
 
         const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
         const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
@@ -541,8 +543,9 @@ pub const EditBuffer = struct {
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
 
-        // Insert placeholder if the new text is empty
-        if (text.len == 0 and self.placeholder_bytes != null) {
+        // Get text length to check if empty
+        const text_len = self.tb.getLength();
+        if (text_len == 0 and self.placeholder_bytes != null) {
             try self.insertPlaceholder();
         }
     }
@@ -765,9 +768,7 @@ pub const EditBuffer = struct {
         // Remove highlight first
         self.tb.removeHighlightsByRef(self.placeholder_hl_ref);
 
-        // Clear the rope and add back a single linestart marker
         self.tb.rope.clear();
-        try self.tb.rope.append(Segment{ .linestart = {} });
 
         self.tb.char_count = 0;
 
