@@ -42,6 +42,8 @@ pub const UnifiedTextBuffer = struct {
     const Self = @This();
 
     mem_registry: MemRegistry,
+    // TODO: char_count is probably totally off, as it does not consider edit operations,
+    // should get total width from rope metrics instead
     char_count: u32,
     default_fg: ?RGBA,
     default_bg: ?RGBA,

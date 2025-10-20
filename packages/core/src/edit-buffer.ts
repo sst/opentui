@@ -25,6 +25,8 @@ export class EditBuffer extends EventEmitter {
   public readonly id: number
   private _destroyed: boolean = false
   private _textBytes: Uint8Array[] = []
+  private _singleTextBytes: Uint8Array | null = null
+  private _singleTextMemId: number | null = null
 
   constructor(lib: RenderLib, ptr: Pointer) {
     super()
@@ -73,14 +75,31 @@ export class EditBuffer extends EventEmitter {
     return this.bufferPtr
   }
 
-  public setText(text: string): void {
+  public setText(text: string, opts?: { history?: boolean }): void {
     this.guard()
+    const history = opts?.history ?? true
     const textBytes = this.lib.encoder.encode(text)
-    this._textBytes.push(textBytes)
 
-    const memId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
+    if (history) {
+      this._textBytes.push(textBytes)
+      const memId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
+      this.lib.editBufferSetTextFromMem(this.bufferPtr, memId, true)
+    } else {
+      if (this._singleTextMemId !== null) {
+        this.lib.textBufferReplaceMemBuffer(this.textBufferPtr, this._singleTextMemId, textBytes, false)
+      } else {
+        this._singleTextMemId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
+      }
+      this._singleTextBytes = textBytes
+      this.lib.editBufferSetTextFromMem(this.bufferPtr, this._singleTextMemId, false)
+    }
+  }
 
-    this.lib.editBufferSetTextFromMem(this.bufferPtr, memId)
+  public setTextOwned(text: string, opts?: { history?: boolean }): void {
+    this.guard()
+    const history = opts?.history ?? true
+    const textBytes = this.lib.encoder.encode(text)
+    this.lib.editBufferSetText(this.bufferPtr, textBytes, history)
   }
 
   public getText(): string {

@@ -1001,3 +1001,251 @@ describe("EditBuffer Events", () => {
     })
   })
 })
+
+describe("EditBuffer History Management", () => {
+  let buffer: EditBuffer
+
+  beforeEach(() => {
+    buffer = EditBuffer.create("wcwidth")
+  })
+
+  afterEach(() => {
+    buffer.destroy()
+  })
+
+  describe("setText with history", () => {
+    it("should create undo history when using setText", () => {
+      buffer.setText("Initial text")
+      expect(buffer.canUndo()).toBe(true)
+    })
+
+    it("should allow undo after setText", () => {
+      buffer.setText("First text")
+      expect(buffer.getText()).toBe("First text")
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should allow redo after undo of setText", () => {
+      buffer.setText("First text")
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+
+      buffer.redo()
+      expect(buffer.getText()).toBe("First text")
+    })
+
+    it("should maintain history across multiple setText calls", () => {
+      buffer.setText("Text 1")
+      buffer.setText("Text 2")
+      buffer.setText("Text 3")
+
+      expect(buffer.getText()).toBe("Text 3")
+      expect(buffer.canUndo()).toBe(true)
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("Text 2")
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("Text 1")
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+  })
+
+  describe("setTextOwned with history", () => {
+    it("should create undo history by default when using setTextOwned", () => {
+      buffer.setTextOwned("Initial text")
+      expect(buffer.canUndo()).toBe(true)
+    })
+
+    it("should allow undo after setTextOwned", () => {
+      buffer.setTextOwned("First text")
+      expect(buffer.getText()).toBe("First text")
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should create history when explicitly enabled", () => {
+      buffer.setTextOwned("Text with history", { history: true })
+      expect(buffer.canUndo()).toBe(true)
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should not create history when explicitly disabled", () => {
+      buffer.setTextOwned("Text without history", { history: false })
+      expect(buffer.canUndo()).toBe(false)
+    })
+
+    it("should allow redo after undo of setTextOwned", () => {
+      buffer.setTextOwned("First text")
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+
+      buffer.redo()
+      expect(buffer.getText()).toBe("First text")
+    })
+
+    it("should work correctly with Unicode text", () => {
+      buffer.setTextOwned("Hello 世界 🌟")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
+      expect(buffer.canUndo()).toBe(true)
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+  })
+
+  describe("setText with history: false", () => {
+    it("should not create undo history when using setText with history: false", () => {
+      buffer.setText("Initial text", { history: false })
+      expect(buffer.canUndo()).toBe(false)
+    })
+
+    it("should set text content correctly", () => {
+      buffer.setText("Test content", { history: false })
+      expect(buffer.getText()).toBe("Test content")
+    })
+
+    it("should not affect existing history", () => {
+      buffer.setText("First text")
+      expect(buffer.canUndo()).toBe(true)
+
+      buffer.setText("Second text", { history: false })
+      expect(buffer.getText()).toBe("Second text")
+      // setText with history=false doesn't create undo, but first setText did
+      expect(buffer.canUndo()).toBe(true)
+
+      buffer.undo()
+      // After undo, we go back to the state before first setText
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should work with multi-line text", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3", { history: false })
+      expect(buffer.getText()).toBe("Line 1\nLine 2\nLine 3")
+      expect(buffer.canUndo()).toBe(false)
+    })
+
+    it("should work with Unicode text", () => {
+      buffer.setText("Unicode 世界 🌟", { history: false })
+      expect(buffer.getText()).toBe("Unicode 世界 🌟")
+      expect(buffer.canUndo()).toBe(false)
+    })
+
+    it("should work with empty text", () => {
+      buffer.setText("Some text")
+      buffer.setText("", { history: false })
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should reuse single memory slot on repeated calls", () => {
+      // This tests the memory efficiency - each call should replace the previous
+      buffer.setText("Text 1", { history: false })
+      expect(buffer.getText()).toBe("Text 1")
+
+      buffer.setText("Text 2", { history: false })
+      expect(buffer.getText()).toBe("Text 2")
+
+      buffer.setText("Text 3", { history: false })
+      expect(buffer.getText()).toBe("Text 3")
+
+      // Should not have created any history
+      expect(buffer.canUndo()).toBe(false)
+    })
+  })
+
+  describe("mixed operations", () => {
+    it("should handle setText followed by insertText", () => {
+      buffer.setText("Hello")
+      // setText places cursor at (0,0), so insertText inserts at beginning
+      buffer.setCursorToLineCol(0, 5) // Move to end
+      buffer.insertText(" World")
+      expect(buffer.getText()).toBe("Hello World")
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("Hello")
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle setText with history:false followed by insertText", () => {
+      buffer.setText("Hello", { history: false })
+      // setText places cursor at (0,0)
+      buffer.setCursorToLineCol(0, 5) // Move to end
+      buffer.insertText(" World")
+      expect(buffer.getText()).toBe("Hello World")
+
+      // Can undo the insertText
+      buffer.undo()
+      expect(buffer.getText()).toBe("Hello")
+
+      // Cannot undo setText since it didn't create history
+      expect(buffer.canUndo()).toBe(false)
+    })
+
+    it("should handle setTextOwned with and without history", () => {
+      buffer.setTextOwned("Text 1", { history: true })
+      buffer.setTextOwned("Text 2", { history: false })
+      expect(buffer.getText()).toBe("Text 2")
+
+      // Can only undo to state before Text 1 (Text 2 didn't create history)
+      buffer.undo()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should allow clearing history after setText", () => {
+      buffer.setText("Text 1")
+      buffer.setText("Text 2")
+      expect(buffer.canUndo()).toBe(true)
+
+      buffer.clearHistory()
+      expect(buffer.canUndo()).toBe(false)
+      expect(buffer.getText()).toBe("Text 2")
+    })
+  })
+
+  describe("events with different methods", () => {
+    it("should emit content-changed for setText", async () => {
+      let eventCount = 0
+      buffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      buffer.setText("Hello")
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(0)
+    })
+
+    it("should emit content-changed for setText with history:false", async () => {
+      let eventCount = 0
+      buffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      buffer.setText("Hello", { history: false })
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(0)
+    })
+
+    it("should emit content-changed for setTextOwned", async () => {
+      let eventCount = 0
+      buffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      buffer.setTextOwned("Hello")
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(0)
+    })
+  })
+})

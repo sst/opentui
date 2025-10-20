@@ -164,7 +164,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   private updateValue(value: string): void {
-    this.editBuffer.setText(value)
+    this.editBuffer.setText(value, { history: false })
     this.yogaNode.markDirty()
     this.requestRender()
   }

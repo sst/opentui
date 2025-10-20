@@ -539,17 +539,21 @@ pub const EditBuffer = struct {
         self.emitNativeEvent("cursor-changed");
     }
 
-    pub fn setText(self: *EditBuffer, text: []const u8) !void {
+    pub fn setText(self: *EditBuffer, text: []const u8, retain_history: bool) !void {
         // Register text as owned memory, then delegate to setTextFromMemId
         const owned_text = try self.allocator.dupe(u8, text);
         const mem_id = try self.tb.registerMemBuffer(owned_text, true);
-        try self.setTextFromMemId(mem_id);
+        try self.setTextFromMemId(mem_id, retain_history);
     }
 
-    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8, retain_history: bool) !void {
         if (self.placeholder_active) {
             self.placeholder_active = false;
             self.saved_style_ptr = null;
+        }
+
+        if (retain_history) {
+            try self.autoStoreUndo();
         }
 
         try self.tb.setTextFromMemId(mem_id);

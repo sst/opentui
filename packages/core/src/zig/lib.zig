@@ -630,13 +630,13 @@ export fn editBufferSetCursorByOffset(edit_buffer: *edit_buffer_mod.EditBuffer, 
     edit_buffer.setCursorByOffset(offset) catch {};
 }
 
-export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
     const text = textPtr[0..textLen];
-    edit_buffer.setText(text) catch {};
+    edit_buffer.setText(text, retain_history) catch {};
 }
 
-export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8) void {
-    edit_buffer.setTextFromMemId(mem_id) catch {};
+export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8, retain_history: bool) void {
+    edit_buffer.setTextFromMemId(mem_id, retain_history) catch {};
 }
 
 export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
