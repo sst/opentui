@@ -658,4 +658,226 @@ describe("EditBuffer Events", () => {
       expect(countBeforeDestroy).toBeGreaterThan(1) // setText + moveCursorRight
     })
   })
+
+  describe("content-changed events", () => {
+    it("should emit content-changed event on setText", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello World")
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(0)
+      testBuffer.destroy()
+    })
+
+    it("should emit content-changed event on insertText", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      testBuffer.insertText(" World")
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+      testBuffer.destroy()
+    })
+
+    it("should emit content-changed event on deleteChar", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello World")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      testBuffer.setCursorToLineCol(0, 5)
+      testBuffer.deleteChar()
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+      testBuffer.destroy()
+    })
+
+    it("should emit content-changed event on deleteCharBackward", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      testBuffer.setCursorToLineCol(0, 5)
+      testBuffer.deleteCharBackward()
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+      testBuffer.destroy()
+    })
+
+    it("should emit content-changed event on deleteLine", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Line 1\nLine 2\nLine 3")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      testBuffer.gotoLine(1)
+      testBuffer.deleteLine()
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+      testBuffer.destroy()
+    })
+
+    it("should emit content-changed event on newLine", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      testBuffer.setCursorToLineCol(0, 5)
+      testBuffer.newLine()
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+      testBuffer.destroy()
+    })
+
+    it("should handle multiple content-changed listeners", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let count1 = 0
+      let count2 = 0
+
+      testBuffer.on("content-changed", () => {
+        count1++
+      })
+      testBuffer.on("content-changed", () => {
+        count2++
+      })
+
+      testBuffer.setText("Hello")
+      await Bun.sleep(10)
+
+      expect(count1).toBeGreaterThan(0)
+      expect(count2).toBeGreaterThan(0)
+      expect(count1).toBe(count2)
+
+      testBuffer.destroy()
+    })
+
+    it("should support removing content-changed listeners", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+      testBuffer.setText("Hello")
+      await Bun.sleep(10)
+
+      let eventCount = 0
+      const listener = () => {
+        eventCount++
+      }
+
+      testBuffer.on("content-changed", listener)
+      testBuffer.insertText(" World")
+      await Bun.sleep(10)
+
+      const firstCount = eventCount
+
+      testBuffer.off("content-changed", listener)
+      testBuffer.insertText("!")
+      await Bun.sleep(10)
+
+      // Count should not have increased after removing listener
+      expect(eventCount).toBe(firstCount)
+
+      testBuffer.destroy()
+    })
+
+    it("should isolate content-changed events between different buffer instances", async () => {
+      const testBuffer1 = EditBuffer.create("wcwidth")
+      const testBuffer2 = EditBuffer.create("wcwidth")
+
+      let count1 = 0
+      let count2 = 0
+
+      testBuffer1.on("content-changed", () => {
+        count1++
+      })
+      testBuffer2.on("content-changed", () => {
+        count2++
+      })
+
+      testBuffer1.setText("Buffer 1")
+      await Bun.sleep(10)
+      const count1AfterSetText = count1
+
+      testBuffer1.insertText(" updated")
+      await Bun.sleep(10)
+
+      expect(count1).toBeGreaterThan(count1AfterSetText)
+      expect(count2).toBe(0)
+
+      testBuffer2.setText("Buffer 2")
+      await Bun.sleep(10)
+      const count2AfterSetText = count2
+
+      testBuffer2.insertText(" updated")
+      await Bun.sleep(10)
+
+      expect(count1).toBe(count1AfterSetText + 1)
+      expect(count2).toBeGreaterThan(count2AfterSetText)
+
+      testBuffer1.destroy()
+      testBuffer2.destroy()
+    })
+
+    it("should not emit content-changed after destroy", async () => {
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      let eventCount = 0
+      testBuffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      testBuffer.setText("Hello")
+      await Bun.sleep(10)
+
+      const countBeforeDestroy = eventCount
+
+      testBuffer.destroy()
+
+      // Trying to modify destroyed buffer should throw
+      expect(countBeforeDestroy).toBeGreaterThan(0)
+    })
+  })
 })

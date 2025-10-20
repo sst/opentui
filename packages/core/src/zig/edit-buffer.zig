@@ -329,6 +329,7 @@ pub const EditBuffer = struct {
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
+        self.emitNativeEvent("content-changed");
     }
 
     pub fn deleteRange(self: *EditBuffer, start_cursor: Cursor, end_cursor: Cursor) !void {
@@ -372,6 +373,7 @@ pub const EditBuffer = struct {
 
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
+        self.emitNativeEvent("content-changed");
     }
 
     pub fn backspace(self: *EditBuffer) !void {
@@ -516,6 +518,7 @@ pub const EditBuffer = struct {
         self.add_buffer.len = 0;
 
         try self.setCursor(0, 0);
+        self.emitNativeEvent("content-changed");
     }
 
     pub fn getText(self: *EditBuffer, out_buffer: []u8) usize {
@@ -545,6 +548,8 @@ pub const EditBuffer = struct {
             self.tb.markViewsDirty();
 
             self.cursors.items[0] = .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width };
+            self.events.emit(.cursorChanged);
+            self.emitNativeEvent("cursor-changed");
         } else {
             const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
             if (line_width > 0) {
