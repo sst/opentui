@@ -2,7 +2,6 @@ import { type RenderContext } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
 import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
-import type { OptimizedBuffer } from "../buffer"
 
 export interface TextareaOptions extends EditBufferOptions {
   value?: string
@@ -14,10 +13,6 @@ export interface TextareaOptions extends EditBufferOptions {
   placeholderColor?: ColorInput
 }
 
-/**
- * TextareaRenderable provides an interactive text editor with cursor management,
- * incremental editing, and grapheme-aware operations.
- */
 export class TextareaRenderable extends EditBufferRenderable {
   private _value: string
   private _placeholder: string | null

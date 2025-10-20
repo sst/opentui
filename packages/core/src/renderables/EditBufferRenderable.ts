@@ -7,6 +7,15 @@ import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 
+export interface CursorChangeEvent {
+  line: number
+  visualColumn: number
+}
+
+export interface ContentChangeEvent {
+  // No payload - use getText() to retrieve content if needed
+}
+
 export interface EditBufferOptions extends RenderableOptions<EditBufferRenderable> {
   textColor?: string | RGBA
   backgroundColor?: string | RGBA
@@ -18,6 +27,8 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   scrollMargin?: number
   showCursor?: boolean
   cursorColor?: string | RGBA
+  onCursorChange?: (event: CursorChangeEvent) => void
+  onContentChange?: (event: ContentChangeEvent) => void
 }
 
 export abstract class EditBufferRenderable extends Renderable {
@@ -34,6 +45,9 @@ export abstract class EditBufferRenderable extends Renderable {
   protected _showCursor: boolean = true
   protected _cursorColor: RGBA
   protected lastLocalSelection: LocalSelectionBounds | null = null
+
+  private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
+  private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
 
   public editBuffer: EditBuffer
   public editorView: EditorView
@@ -76,6 +90,28 @@ export abstract class EditBufferRenderable extends Renderable {
     this.editBuffer.setDefaultAttributes(this._defaultAttributes)
 
     this.setupMeasureFunc()
+    this.setupEventListeners(options)
+  }
+
+  private setupEventListeners(options: EditBufferOptions): void {
+    this._cursorChangeListener = options.onCursorChange
+    this._contentChangeListener = options.onContentChange
+
+    this.editBuffer.on("cursor-changed", () => {
+      if (this._cursorChangeListener) {
+        const cursor = this.editBuffer.getCursorPosition()
+        this._cursorChangeListener({
+          line: cursor.line,
+          visualColumn: cursor.visualColumn,
+        })
+      }
+    })
+
+    this.editBuffer.on("content-changed", () => {
+      if (this._contentChangeListener) {
+        this._contentChangeListener({})
+      }
+    })
   }
 
   get plainText(): string {
@@ -334,5 +370,21 @@ export abstract class EditBufferRenderable extends Renderable {
     super.destroy()
     this.editorView.destroy()
     this.editBuffer.destroy()
+  }
+
+  public set onCursorChange(handler: ((event: CursorChangeEvent) => void) | undefined) {
+    this._cursorChangeListener = handler
+  }
+
+  public get onCursorChange(): ((event: CursorChangeEvent) => void) | undefined {
+    return this._cursorChangeListener
+  }
+
+  public set onContentChange(handler: ((event: ContentChangeEvent) => void) | undefined) {
+    this._contentChangeListener = handler
+  }
+
+  public get onContentChange(): ((event: ContentChangeEvent) => void) | undefined {
+    return this._contentChangeListener
   }
 }
