@@ -4811,5 +4811,30 @@ describe("TextareaRenderable", () => {
       expect(visualCursor!.logicalRow).toBe(0)
       expect(visualCursor!.logicalCol).toBe(3)
     })
+
+    it("should set cursor to end of content using cursorOffset setter and Bun.stringWidth", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const content = "Hello World"
+      editor.value = content
+      editor.cursorOffset = Bun.stringWidth(content)
+
+      const visualCursor = editor.visualCursor
+      expect(visualCursor).not.toBe(null)
+      expect(visualCursor!.offset).toBe(Bun.stringWidth(content))
+      expect(visualCursor!.logicalRow).toBe(0)
+      expect(visualCursor!.logicalCol).toBe(content.length)
+      expect(visualCursor!.visualCol).toBe(content.length)
+
+      // Verify cursor is at the end
+      expect(editor.cursorOffset).toBe(11)
+      expect(editor.plainText).toBe("Hello World")
+    })
   })
 })

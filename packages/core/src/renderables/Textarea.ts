@@ -398,4 +398,16 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.requestRender()
     }
   }
+
+  get cursorOffset(): number {
+    return this.editorView.getVisualCursor().offset
+  }
+
+  set cursorOffset(offset: number) {
+    console.log("set cursorOffset 1", offset)
+    // const err = new Error("set cursorOffset")
+    // console.log("set cursorOffset", offset, err.stack)
+    this.editorView.setCursorByOffset(offset)
+    this.requestRender()
+  }
 }
