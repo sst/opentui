@@ -755,5 +755,76 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(anotherVisible).toBeDefined()
       expect(anotherVisible?.id).toBe("another-visible")
     })
+
+    it("REPRODUCE BUG: For component has incorrect ordering after array reordering", async () => {
+      interface Option {
+        id: string
+        display: string
+        description?: string
+      }
+
+      const [options, setOptions] = createSignal<Option[]>([])
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <For each={options()}>
+              {(option, index) => (
+                <box id={`option-${option.id}`}>
+                  <text>
+                    {option.display}
+                    <Show when={option.description}>
+                      <span> - {option.description}</span>
+                    </Show>
+                  </text>
+                </box>
+              )}
+            </For>
+          </box>
+        ),
+        { width: 50, height: 25 },
+      )
+
+      await testSetup.renderOnce()
+
+      // === BUG: Array reversal causes incorrect ordering ===
+      const orderedItems = [
+        { id: "order-1", display: "First" },
+        { id: "order-2", display: "Second" },
+        { id: "order-3", display: "Third" },
+        { id: "order-4", display: "Fourth" },
+        { id: "order-5", display: "Fifth" },
+      ]
+
+      setOptions(orderedItems)
+      await testSetup.renderOnce()
+
+      const container = testSetup.renderer.root.findDescendantById("container")!
+      let children = container.getChildren()
+
+      // Verify initial order
+      expect(children.length).toBe(5)
+      expect(children[0]?.id).toBe("option-order-1")
+      expect(children[1]?.id).toBe("option-order-2")
+      expect(children[2]?.id).toBe("option-order-3")
+      expect(children[3]?.id).toBe("option-order-4")
+      expect(children[4]?.id).toBe("option-order-5")
+
+      // Reverse the array - THIS EXPOSES THE BUG
+      setOptions([...orderedItems].reverse())
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+
+      // BUG: The order is INCORRECT after reversing!
+      // Expected: [order-5, order-4, order-3, order-2, order-1]
+      // Actual might have swapped elements
+      expect(children.length).toBe(5)
+      expect(children[0]?.id).toBe("option-order-5")
+      expect(children[1]?.id).toBe("option-order-4")
+      expect(children[2]?.id).toBe("option-order-3")
+      expect(children[3]?.id).toBe("option-order-2") // ← BUG: This might be order-1
+      expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
+    })
   })
 })
