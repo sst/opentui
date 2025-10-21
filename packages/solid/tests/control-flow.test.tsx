@@ -765,15 +765,6 @@ describe("SolidJS Renderer - Control Flow Components", () => {
 
       const [options, setOptions] = createSignal<Option[]>([])
 
-      // Capture console.warn to ensure we see the warnings
-      const originalWarn = console.warn
-      const warnings: string[] = []
-      console.warn = (...args: any[]) => {
-        const msg = args.join(" ")
-        warnings.push(msg)
-        originalWarn(...args)
-      }
-
       testSetup = await testRender(
         () => (
           <box id="container">
@@ -820,14 +811,10 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[4]?.id).toBe("option-order-5")
 
       // Reverse the array - THIS EXPOSES THE BUG
-      warnings.length = 0 // Clear any previous warnings
       setOptions([...orderedItems].reverse())
       await testSetup.renderOnce()
 
       children = container.getChildren()
-
-      // Restore console.warn
-      console.warn = originalWarn
 
       // BUG: The order is INCORRECT after reversing!
       // Expected: [order-5, order-4, order-3, order-2, order-1]
@@ -838,10 +825,6 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[2]?.id).toBe("option-order-3")
       expect(children[3]?.id).toBe("option-order-2") // ← BUG: This might be order-1
       expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
-
-      // Assert that we DID get warnings (proving the reconciliation is broken)
-      expect(warnings.length).toBeGreaterThan(0)
-      console.log(`\n✓ Confirmed: ${warnings.length} duplicate ID warnings detected during reordering!`)
     })
   })
 })
