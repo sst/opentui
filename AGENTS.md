@@ -49,7 +49,7 @@ To filter native tests, use:
 `bun run test:native -Dtest-filter="test name"`
 FROM THE `packages/core` DIRECTORY.
 
-## Code Style
+## Typescript Code Style
 
 - **Runtime**: Bun with TypeScript
 - **Formatting**: Prettier (semi: false, printWidth: 120)
@@ -61,3 +61,8 @@ FROM THE `packages/core` DIRECTORY.
 - **Comments**: Minimal comments, NO JSDoc
 - **File Structure**: Index files for clean exports, group related functionality
 - **Testing**: Bun test framework, descriptive test names, use beforeEach/afterEach for setup
+
+## Debugging
+
+Reproduce the issue in a test case. Do NOT start fixing without a reproducible test case.
+Use debug logs to see what is actually happening. DO NOT GUESS.
