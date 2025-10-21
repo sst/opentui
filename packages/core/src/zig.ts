@@ -375,10 +375,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
-    textBufferGetLineHighlights: {
-      args: ["ptr", "u32", "ptr", "usize"],
-      returns: "usize",
-    },
     textBufferGetLineHighlightsPtr: {
       args: ["ptr", "u32", "ptr"],
       returns: "ptr",
@@ -2109,12 +2105,10 @@ class FFIRenderLib implements RenderLib {
     const byteLen = count * 16
 
     const raw = toArrayBuffer(nativePtr, 0, byteLen)
-    const safeCopy = raw.slice(0)
 
-    this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)
-
-    const u32 = new Uint32Array(safeCopy)
+    const u32 = new Uint32Array(raw)
     const results = new Array(count)
+
     for (let i = 0; i < count; i++) {
       const base = i * 4
       const colStart = u32[base]
@@ -2125,6 +2119,9 @@ class FFIRenderLib implements RenderLib {
       const hlRefRaw = (aux >>> 16) & 0xffff
       results[i] = { colStart, colEnd, styleId, priority, hlRef: hlRefRaw === 0xffff ? null : hlRefRaw }
     }
+
+    this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)
+
     return results
   }
 

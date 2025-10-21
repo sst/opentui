@@ -811,7 +811,6 @@ pub const UnifiedTextBuffer = struct {
     }
 
     /// Get highlights for a specific line
-    /// Returns a slice that's valid until the next highlight modification
     pub fn getLineHighlightsSlice(self: *const Self, line_idx: usize) []const Highlight {
         if (line_idx < self.line_highlights.items.len) {
             return self.line_highlights.items[line_idx].items;
@@ -821,6 +820,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Set styled text from chunks with individual styling
     /// Accepts StyledChunk array for FFI compatibility
+    /// TODO: This is for backward compatibility, there should be a better way to do this.
     pub fn setStyledText(
         self: *Self,
         chunks: []const StyledChunk,

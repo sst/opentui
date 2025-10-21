@@ -956,57 +956,6 @@ export fn textBufferSetSyntaxStyle(tb: *text_buffer.UnifiedTextBuffer, style: ?*
     tb.setSyntaxStyle(style);
 }
 
-export fn textBufferGetLineHighlights(tb: *text_buffer.UnifiedTextBuffer, line_idx: u32, outPtr: [*]u8, maxBytes: usize) usize {
-    const highlights = tb.getLineHighlightsSlice(line_idx);
-
-    if (highlights.len == 0) {
-        return 0;
-    }
-
-    // Each Highlight is: col_start(4) + col_end(4) + style_id(4) + priority(1) + padding(1) + hl_ref(2) = 16 bytes
-    const highlight_size = 16;
-    const needed_bytes = highlights.len * highlight_size;
-
-    if (needed_bytes > maxBytes) {
-        return 0;
-    }
-
-    // Create a slice from the pointer for safe access
-    const out_buffer = outPtr[0..maxBytes];
-
-    var offset: usize = 0;
-    for (highlights) |hl| {
-        if (offset + highlight_size > maxBytes) break;
-
-        // Write col_start (u32)
-        std.mem.writeInt(u32, out_buffer[offset..][0..4], hl.col_start, .little);
-        offset += 4;
-
-        // Write col_end (u32)
-        std.mem.writeInt(u32, out_buffer[offset..][0..4], hl.col_end, .little);
-        offset += 4;
-
-        // Write style_id (u32)
-        std.mem.writeInt(u32, out_buffer[offset..][0..4], hl.style_id, .little);
-        offset += 4;
-
-        // Write priority (u8)
-        out_buffer[offset] = hl.priority;
-        offset += 1;
-
-        // Write padding (u8)
-        out_buffer[offset] = 0;
-        offset += 1;
-
-        // Write hl_ref (u16, with null as 0xFFFF)
-        const ref_value = if (hl.hl_ref) |r| r else 0xFFFF;
-        std.mem.writeInt(u16, out_buffer[offset..][0..2], ref_value, .little);
-        offset += 2;
-    }
-
-    return highlights.len;
-}
-
 pub const PackedHighlight = extern struct {
     col_start: u32,
     col_end: u32,
