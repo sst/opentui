@@ -1766,7 +1766,7 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
     var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    try eb.setText("Line 1\nLine 2\nLine 3");
+    try eb.setText("Line 1\nLine 2\nLine 3", false);
 
     std.debug.print("\n=== After setText ===\n", .{});
     {
