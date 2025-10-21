@@ -755,5 +755,111 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(anotherVisible).toBeDefined()
       expect(anotherVisible?.id).toBe("another-visible")
     })
+
+    it("REPRODUCE BUG: For component has incorrect ordering after array reordering", async () => {
+      interface Option {
+        id: string
+        display: string
+        description?: string
+      }
+
+      const [options, setOptions] = createSignal<Option[]>([])
+
+      // Capture console.warn to ensure we see the warnings
+      const originalWarn = console.warn
+      const warnings: string[] = []
+      console.warn = (...args: any[]) => {
+        const msg = args.join(" ")
+        warnings.push(msg)
+        originalWarn(...args)
+      }
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <For each={options()}>
+              {(option, index) => (
+                <box id={`option-${option.id}`}>
+                  <text>
+                    {option.display}
+                    <Show when={option.description}>
+                      <span> - {option.description}</span>
+                    </Show>
+                  </text>
+                </box>
+              )}
+            </For>
+          </box>
+        ),
+        { width: 50, height: 25 },
+      )
+
+      await testSetup.renderOnce()
+
+      // === BUG: Array reversal causes incorrect ordering ===
+      const orderedItems = [
+        { id: "order-1", display: "First" },
+        { id: "order-2", display: "Second" },
+        { id: "order-3", display: "Third" },
+        { id: "order-4", display: "Fourth" },
+        { id: "order-5", display: "Fifth" },
+      ]
+
+      setOptions(orderedItems)
+      await testSetup.renderOnce()
+
+      const container = testSetup.renderer.root.findDescendantById("container")!
+      let children = container.getChildren()
+
+      console.log("\n=== Initial order ===")
+      for (let i = 0; i < children.length; i++) {
+        console.log(`  ${i}: ${children[i]?.id}`)
+      }
+
+      // Verify initial order
+      expect(children.length).toBe(5)
+      expect(children[0]?.id).toBe("option-order-1")
+      expect(children[1]?.id).toBe("option-order-2")
+      expect(children[2]?.id).toBe("option-order-3")
+      expect(children[3]?.id).toBe("option-order-4")
+      expect(children[4]?.id).toBe("option-order-5")
+
+      // Reverse the array - THIS EXPOSES THE BUG
+      console.log("\n=== Reversing array ===")
+      warnings.length = 0 // Clear any previous warnings
+      setOptions([...orderedItems].reverse())
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      console.log("\n=== After reverse ===")
+      for (let i = 0; i < children.length; i++) {
+        console.log(`  ${i}: ${children[i]?.id}`)
+      }
+
+      // Display captured warnings
+      console.log("\n=== WARNINGS CAPTURED ===")
+      console.log(`Total warnings: ${warnings.length}`)
+      for (let i = 0; i < warnings.length; i++) {
+        console.log(`  [WARNING ${i + 1}] ${warnings[i]}`)
+      }
+      console.log("=========================\n")
+
+      // Restore console.warn
+      console.warn = originalWarn
+
+      // BUG: The order is INCORRECT after reversing!
+      // Expected: [order-5, order-4, order-3, order-2, order-1]
+      // Actual might have swapped elements
+      expect(children.length).toBe(5)
+      expect(children[0]?.id).toBe("option-order-5")
+      expect(children[1]?.id).toBe("option-order-4")
+      expect(children[2]?.id).toBe("option-order-3")
+      expect(children[3]?.id).toBe("option-order-2") // ← BUG: This might be order-1
+      expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
+
+      // Assert that we DID get warnings (proving the reconciliation is broken)
+      expect(warnings.length).toBeGreaterThan(0)
+      console.log(`\n✓ Confirmed: ${warnings.length} duplicate ID warnings detected during reordering!`)
+    })
   })
 })
