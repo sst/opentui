@@ -811,11 +811,6 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       const container = testSetup.renderer.root.findDescendantById("container")!
       let children = container.getChildren()
 
-      console.log("\n=== Initial order ===")
-      for (let i = 0; i < children.length; i++) {
-        console.log(`  ${i}: ${children[i]?.id}`)
-      }
-
       // Verify initial order
       expect(children.length).toBe(5)
       expect(children[0]?.id).toBe("option-order-1")
@@ -825,24 +820,11 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[4]?.id).toBe("option-order-5")
 
       // Reverse the array - THIS EXPOSES THE BUG
-      console.log("\n=== Reversing array ===")
       warnings.length = 0 // Clear any previous warnings
       setOptions([...orderedItems].reverse())
       await testSetup.renderOnce()
 
       children = container.getChildren()
-      console.log("\n=== After reverse ===")
-      for (let i = 0; i < children.length; i++) {
-        console.log(`  ${i}: ${children[i]?.id}`)
-      }
-
-      // Display captured warnings
-      console.log("\n=== WARNINGS CAPTURED ===")
-      console.log(`Total warnings: ${warnings.length}`)
-      for (let i = 0; i < warnings.length; i++) {
-        console.log(`  [WARNING ${i + 1}] ${warnings[i]}`)
-      }
-      console.log("=========================\n")
 
       // Restore console.warn
       console.warn = originalWarn

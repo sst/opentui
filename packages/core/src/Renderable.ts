@@ -1041,7 +1041,7 @@ export abstract class Renderable extends BaseRenderable {
       }
       return -1
     }
-
+    console.log("Adding renderable", renderable.id, "to", this.id, "at index", index)
     if (this.renderableMapById.has(renderable.id)) {
       console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
       this.remove(renderable.id)
@@ -1095,7 +1095,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!renderable) {
       return -1
     }
-
+    console.log("Inserting renderable", renderable.id, "before", (anchor as Renderable)?.id)
     if (renderable.isDestroyed) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping insertBefore`)
