@@ -6,6 +6,7 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
+import { StyledChunkStruct } from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -1805,63 +1806,15 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ): void {
-    // Filter out chunks with empty text - they don't contribute to the buffer
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
     if (nonEmptyChunks.length === 0) {
       this.textBufferClear(buffer)
       return
     }
 
-    // Struct layout for StyledChunk:
-    // text_ptr: 8 bytes
-    // text_len: 8 bytes
-    // fg_ptr: 8 bytes (nullable)
-    // bg_ptr: 8 bytes (nullable)
-    // attributes: 1 byte
-    // padding: 7 bytes (for alignment)
-    const chunkStructSize = 40 // 8 + 8 + 8 + 8 + 8 (rounded for alignment)
-    const chunksBuffer = new ArrayBuffer(chunkStructSize * nonEmptyChunks.length)
-    const view = new DataView(chunksBuffer)
+    const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
 
-    // Keep references to prevent GC
-    const textBytes: Uint8Array[] = []
-    const fgArrays: Float32Array[] = []
-    const bgArrays: Float32Array[] = []
-
-    for (let i = 0; i < nonEmptyChunks.length; i++) {
-      const chunk = nonEmptyChunks[i]
-      const offset = i * chunkStructSize
-
-      // Encode text
-      const textBuf = this.encoder.encode(chunk.text)
-      textBytes.push(textBuf)
-
-      // Set text_ptr and text_len
-      view.setBigUint64(offset, BigInt(ptr(textBuf)), true)
-      view.setBigUint64(offset + 8, BigInt(textBuf.length), true)
-
-      // Set fg_ptr
-      if (chunk.fg) {
-        fgArrays.push(chunk.fg.buffer)
-        view.setBigUint64(offset + 16, BigInt(ptr(chunk.fg.buffer)), true)
-      } else {
-        view.setBigUint64(offset + 16, 0n, true)
-      }
-
-      // Set bg_ptr
-      if (chunk.bg) {
-        bgArrays.push(chunk.bg.buffer)
-        view.setBigUint64(offset + 24, BigInt(ptr(chunk.bg.buffer)), true)
-      } else {
-        view.setBigUint64(offset + 24, 0n, true)
-      }
-
-      // Set attributes
-      view.setUint8(offset + 32, chunk.attributes ?? 0)
-    }
-
-    // Call the native function
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(new Uint8Array(chunksBuffer)), nonEmptyChunks.length)
+    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), nonEmptyChunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
