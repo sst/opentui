@@ -1093,7 +1093,7 @@ export abstract class Renderable extends BaseRenderable {
     if (!renderable) {
       return -1
     }
-    console.log("Inserting renderable", renderable.id, "before", (anchor as Renderable)?.id)
+
     if (renderable.isDestroyed) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Renderable with id ${renderable.id} was already destroyed, skipping insertBefore`)
@@ -1524,7 +1524,7 @@ export class RootRenderable extends Renderable {
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
-    // console.log("RootRenderable render", this.width, this.height)
+
     // 0. Run lifecycle pass
     for (const renderable of this._ctx.getLifecyclePasses()) {
       renderable.onLifecyclePass?.call(renderable)
