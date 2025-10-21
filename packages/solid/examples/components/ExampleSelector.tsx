@@ -3,6 +3,7 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
+import AutocompleteDemo from "./autocomplete-demo.tsx"
 import { CodeDemo } from "./code-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
@@ -28,6 +29,11 @@ const EXAMPLES = [
     name: "Input Demo",
     description: "Interactive InputElement demo with validation and multiple fields",
     scene: "input-demo",
+  },
+  {
+    name: "Autocomplete Demo",
+    description: "@ mention autocomplete with keyboard navigation",
+    scene: "autocomplete-demo",
   },
   {
     name: "Mouse demo",
@@ -134,6 +140,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "input-demo"}>
         <InputScene />
+      </Match>
+      <Match when={selectedScene() === "autocomplete-demo"}>
+        <AutocompleteDemo />
       </Match>
       <Match when={selectedScene() === "mouse-demo"}>
         <MouseScene />

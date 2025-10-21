@@ -1042,40 +1042,38 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    if (this.renderableMapById.has(renderable.id)) {
-      console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
-      this.remove(renderable.id)
+    const anchorRenderable = index !== undefined ? this._childrenInLayoutOrder[index] : undefined
+
+    if (anchorRenderable) {
+      return this.insertBefore(renderable, anchorRenderable)
     }
 
-    this.replaceParent(renderable)
-
-    const childLayoutNode = renderable.getLayoutNode()
-    let insertedIndex: number
-    if (index !== undefined) {
-      insertedIndex = Math.max(0, Math.min(index, this._childrenInLayoutOrder.length))
-      this._childrenInLayoutOrder.splice(index, 0, renderable)
-      this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(index)
-      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
+    if (renderable.parent === this) {
+      this.yogaNode.removeChild(renderable.getLayoutNode())
+      this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
     } else {
-      insertedIndex = this._childrenInLayoutOrder.length
-      this._childrenInLayoutOrder.push(renderable)
-      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
-    }
+      this.replaceParent(renderable)
+      this.needsZIndexSort = true
+      this.renderableMapById.set(renderable.id, renderable)
+      this._childrenInZIndexOrder.push(renderable)
 
-    this.needsZIndexSort = true
-    this.childrenPrimarySortDirty = true
-    this.renderableMapById.set(renderable.id, renderable)
-    this._childrenInZIndexOrder.push(renderable)
+      if (typeof renderable.onLifecyclePass === "function") {
+        this._ctx.registerLifecyclePass(renderable)
+      }
 
-    if (typeof renderable.onLifecyclePass === "function") {
-      this._ctx.registerLifecyclePass(renderable)
+      if (renderable._liveCount > 0) {
+        this.propagateLiveCount(renderable._liveCount)
+      }
     }
 
     this._newChildren.push(renderable)
 
-    if (renderable._liveCount > 0) {
-      this.propagateLiveCount(renderable._liveCount)
-    }
+    const childLayoutNode = renderable.getLayoutNode()
+    const insertedIndex = this._childrenInLayoutOrder.length
+    this._childrenInLayoutOrder.push(renderable)
+    this.yogaNode.insertChild(childLayoutNode, insertedIndex)
+
+    this.childrenPrimarySortDirty = true
 
     this.requestRender()
 
@@ -1146,6 +1144,8 @@ export abstract class Renderable extends BaseRenderable {
     this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(insertedIndex)
     this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
+
+    this.requestRender()
 
     return insertedIndex
   }
@@ -1524,7 +1524,7 @@ export class RootRenderable extends Renderable {
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
-    // console.log("RootRenderable render", this.width, this.height)
+
     // 0. Run lifecycle pass
     for (const renderable of this._ctx.getLifecyclePasses()) {
       renderable.onLifecyclePass?.call(renderable)
