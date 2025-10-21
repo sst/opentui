@@ -143,18 +143,6 @@ export class EditorView {
     return this.lib.editorViewGetVisualCursor(this.viewPtr)
   }
 
-  // TODO: remove exposure - should only be used internally
-  public logicalToVisualCursor(logicalRow: number, logicalCol: number): VisualCursor {
-    this.guard()
-    return this.lib.editorViewLogicalToVisualCursor(this.viewPtr, logicalRow, logicalCol)
-  }
-
-  // TODO: remove exposure - should only be used internally
-  public visualToLogicalCursor(visualRow: number, visualCol: number): VisualCursor | null {
-    this.guard()
-    return this.lib.editorViewVisualToLogicalCursor(this.viewPtr, visualRow, visualCol)
-  }
-
   public moveUpVisual(): void {
     this.guard()
     this.lib.editorViewMoveUpVisual(this.viewPtr)

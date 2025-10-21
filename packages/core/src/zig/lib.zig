@@ -849,38 +849,6 @@ export fn editorViewGetVisualCursor(
     return true;
 }
 
-export fn editorViewLogicalToVisualCursor(
-    view: *editor_view.EditorView,
-    logical_row: u32,
-    logical_col: u32,
-    outVisualRow: *u32,
-    outVisualCol: *u32,
-    outOffset: *u32,
-) bool {
-    const vcursor = view.logicalToVisualCursor(logical_row, logical_col);
-    outVisualRow.* = vcursor.visual_row;
-    outVisualCol.* = vcursor.visual_col;
-    outOffset.* = vcursor.offset;
-    return true;
-}
-
-export fn editorViewVisualToLogicalCursor(
-    view: *editor_view.EditorView,
-    visual_row: u32,
-    visual_col: u32,
-    outLogicalRow: *u32,
-    outLogicalCol: *u32,
-    outOffset: *u32,
-) bool {
-    if (view.visualToLogicalCursor(visual_row, visual_col)) |vcursor| {
-        outLogicalRow.* = vcursor.logical_row;
-        outLogicalCol.* = vcursor.logical_col;
-        outOffset.* = vcursor.offset;
-        return true;
-    }
-    return false;
-}
-
 export fn editorViewMoveUpVisual(view: *editor_view.EditorView) void {
     view.moveUpVisual();
 }

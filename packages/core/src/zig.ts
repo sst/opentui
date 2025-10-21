@@ -654,14 +654,7 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "bool",
     },
-    editorViewLogicalToVisualCursor: {
-      args: ["ptr", "u32", "u32", "ptr", "ptr", "ptr"],
-      returns: "bool",
-    },
-    editorViewVisualToLogicalCursor: {
-      args: ["ptr", "u32", "u32", "ptr", "ptr", "ptr"],
-      returns: "bool",
-    },
+
     editorViewMoveUpVisual: {
       args: ["ptr"],
       returns: "void",
@@ -1155,8 +1148,6 @@ export interface RenderLib {
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
   editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetVisualCursor: (view: Pointer) => VisualCursor
-  editorViewLogicalToVisualCursor: (view: Pointer, logicalRow: number, logicalCol: number) => VisualCursor
-  editorViewVisualToLogicalCursor: (view: Pointer, visualRow: number, visualCol: number) => VisualCursor | null
   editorViewMoveUpVisual: (view: Pointer) => void
   editorViewMoveDownVisual: (view: Pointer) => void
   editorViewDeleteSelectedText: (view: Pointer) => void
@@ -2398,59 +2389,6 @@ class FFIRenderLib implements RenderLib {
     return {
       visualRow: visualRow[0],
       visualCol: visualCol[0],
-      logicalRow: logicalRow[0],
-      logicalCol: logicalCol[0],
-      offset: offset[0],
-    }
-  }
-
-  public editorViewLogicalToVisualCursor(view: Pointer, logicalRow: number, logicalCol: number): VisualCursor {
-    const visualRow = new Uint32Array(1)
-    const visualCol = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-
-    const success = this.opentui.symbols.editorViewLogicalToVisualCursor(
-      view,
-      logicalRow,
-      logicalCol,
-      ptr(visualRow),
-      ptr(visualCol),
-      ptr(offset),
-    )
-
-    // Defensive fallback - should always succeed now
-    if (!success) {
-      return { visualRow: 0, visualCol: 0, logicalRow, logicalCol, offset: 0 }
-    }
-
-    return {
-      visualRow: visualRow[0],
-      visualCol: visualCol[0],
-      logicalRow,
-      logicalCol,
-      offset: offset[0],
-    }
-  }
-
-  public editorViewVisualToLogicalCursor(view: Pointer, visualRow: number, visualCol: number): VisualCursor | null {
-    const logicalRow = new Uint32Array(1)
-    const logicalCol = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-
-    const success = this.opentui.symbols.editorViewVisualToLogicalCursor(
-      view,
-      visualRow,
-      visualCol,
-      ptr(logicalRow),
-      ptr(logicalCol),
-      ptr(offset),
-    )
-
-    if (!success) return null
-
-    return {
-      visualRow,
-      visualCol,
       logicalRow: logicalRow[0],
       logicalCol: logicalCol[0],
       offset: offset[0],
