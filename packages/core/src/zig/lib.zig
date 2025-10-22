@@ -928,19 +928,11 @@ export fn textBufferSetSyntaxStyle(tb: *text_buffer.UnifiedTextBuffer, style: ?*
     tb.setSyntaxStyle(style);
 }
 
-pub const PackedHighlight = extern struct {
-    col_start: u32,
-    col_end: u32,
-    style_id: u32,
-    // aux: bits 0..7 = priority, bits 16..31 = hl_ref (0xFFFF => null), bits 8..15 reserved
-    aux: u32,
-};
-
 export fn textBufferGetLineHighlightsPtr(
     tb: *text_buffer.UnifiedTextBuffer,
     line_idx: u32,
     out_count: *usize,
-) ?[*]const PackedHighlight {
+) ?[*]const ExternalHighlight {
     const highs = tb.getLineHighlightsSlice(line_idx);
 
     if (highs.len == 0) {
@@ -949,15 +941,15 @@ export fn textBufferGetLineHighlightsPtr(
     }
 
     const alloc = std.heap.page_allocator;
-    var slice = alloc.alloc(PackedHighlight, highs.len) catch return null;
+    var slice = alloc.alloc(ExternalHighlight, highs.len) catch return null;
 
     for (highs, 0..) |hl, i| {
-        const aux: u32 = @as(u32, hl.priority) | (@as(u32, hl.hl_ref) << 16);
         slice[i] = .{
             .col_start = hl.col_start,
             .col_end = hl.col_end,
             .style_id = hl.style_id,
-            .aux = aux,
+            .priority = hl.priority,
+            .hl_ref = hl.hl_ref,
         };
     }
 
@@ -965,7 +957,7 @@ export fn textBufferGetLineHighlightsPtr(
     return slice.ptr;
 }
 
-export fn textBufferFreeLineHighlights(ptr: [*]const PackedHighlight, count: usize) void {
+export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: usize) void {
     const alloc = std.heap.page_allocator;
     alloc.free(@constCast(ptr)[0..count]);
 }

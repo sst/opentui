@@ -2016,11 +2016,11 @@ class FFIRenderLib implements RenderLib {
     hlRef: number = 0,
   ): void {
     const highlight = HighlightStruct.pack({
-      col_start: colStart,
-      col_end: colEnd,
-      style_id: styleId,
-      priority: priority,
-      hl_ref: hlRef,
+      colStart,
+      colEnd,
+      styleId,
+      priority,
+      hlRef,
     })
     this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, ptr(highlight))
   }
@@ -2051,27 +2051,21 @@ class FFIRenderLib implements RenderLib {
     if (!nativePtr) return []
 
     const count = Number(outCountBuf[0])
-    const byteLen = count * 16
+    const byteLen = count * HighlightStruct.size
 
     const raw = toArrayBuffer(nativePtr, 0, byteLen)
 
-    const u32 = new Uint32Array(raw)
-    const results = new Array(count)
-
-    for (let i = 0; i < count; i++) {
-      const base = i * 4
-      const colStart = u32[base]
-      const colEnd = u32[base + 1]
-      const styleId = u32[base + 2]
-      const aux = u32[base + 3]
-      const priority = aux & 0xff
-      const hlRef = (aux >>> 16) & 0xffff
-      results[i] = { colStart, colEnd, styleId, priority, hlRef }
-    }
+    const results = HighlightStruct.unpackList(raw, count)
 
     this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)
 
-    return results
+    return results.map((h) => ({
+      colStart: h.colStart,
+      colEnd: h.colEnd,
+      styleId: h.styleId,
+      priority: h.priority,
+      hlRef: h.hlRef ?? 0,
+    }))
   }
 
   public getArenaAllocatedBytes(): number {

@@ -30,9 +30,9 @@ export const StyledChunkStruct = defineStruct([
 ])
 
 export const HighlightStruct = defineStruct([
-  ["col_start", "u32"],
-  ["col_end", "u32"],
-  ["style_id", "u32"],
+  ["colStart", "u32"],
+  ["colEnd", "u32"],
+  ["styleId", "u32"],
   ["priority", "u8"],
-  ["hl_ref", "u16", { default: 0 }],
+  ["hlRef", "u16", { default: 0 }],
 ])
