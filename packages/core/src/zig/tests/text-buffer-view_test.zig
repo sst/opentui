@@ -333,7 +333,7 @@ test "TextBufferView virtual line spans - with highlights" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    try tb.addHighlight(0, 5, 15, 1, 1, null);
+    try tb.addHighlight(0, 5, 15, 1, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
@@ -1810,7 +1810,7 @@ test "TextBufferView highlights - add single highlight to line" {
 
     try tb.setText("Hello World");
 
-    try tb.addHighlight(0, 0, 5, 1, 0, null);
+    try tb.addHighlight(0, 0, 5, 1, 0, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);
@@ -1835,8 +1835,8 @@ test "TextBufferView highlights - add multiple highlights to same line" {
 
     try tb.setText("Hello World");
 
-    try tb.addHighlight(0, 0, 5, 1, 0, null);
-    try tb.addHighlight(0, 6, 11, 2, 0, null);
+    try tb.addHighlight(0, 0, 5, 1, 0, 0);
+    try tb.addHighlight(0, 6, 11, 2, 0, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 2), highlights.len);
@@ -1860,9 +1860,9 @@ test "TextBufferView highlights - add highlights to multiple lines" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    try tb.addHighlight(0, 0, 6, 1, 0, null);
-    try tb.addHighlight(1, 0, 6, 2, 0, null);
-    try tb.addHighlight(2, 0, 6, 3, 0, null);
+    try tb.addHighlight(0, 0, 6, 1, 0, 0);
+    try tb.addHighlight(1, 0, 6, 2, 0, 0);
+    try tb.addHighlight(2, 0, 6, 3, 0, 0);
 
     try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(0).len);
     try std.testing.expectEqual(@as(usize, 1), tb.getLineHighlights(1).len);
@@ -1915,8 +1915,8 @@ test "TextBufferView highlights - clear line highlights" {
 
     try tb.setText("Line 1\nLine 2");
 
-    try tb.addHighlight(0, 0, 6, 1, 0, null);
-    try tb.addHighlight(0, 6, 10, 2, 0, null);
+    try tb.addHighlight(0, 0, 6, 1, 0, 0);
+    try tb.addHighlight(0, 6, 10, 2, 0, 0);
 
     tb.clearLineHighlights(0);
 
@@ -1940,9 +1940,9 @@ test "TextBufferView highlights - clear all highlights" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    try tb.addHighlight(0, 0, 6, 1, 0, null);
-    try tb.addHighlight(1, 0, 6, 2, 0, null);
-    try tb.addHighlight(2, 0, 6, 3, 0, null);
+    try tb.addHighlight(0, 0, 6, 1, 0, 0);
+    try tb.addHighlight(1, 0, 6, 2, 0, 0);
+    try tb.addHighlight(2, 0, 6, 3, 0, 0);
 
     tb.clearAllHighlights();
 
@@ -1967,8 +1967,8 @@ test "TextBufferView highlights - overlapping highlights" {
 
     try tb.setText("Hello World");
 
-    try tb.addHighlight(0, 0, 8, 1, 0, null);
-    try tb.addHighlight(0, 5, 11, 2, 0, null);
+    try tb.addHighlight(0, 0, 8, 1, 0, 0);
+    try tb.addHighlight(0, 5, 11, 2, 0, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 2), highlights.len);
@@ -1990,8 +1990,8 @@ test "TextBufferView highlights - style spans computed correctly" {
 
     try tb.setText("0123456789");
 
-    try tb.addHighlight(0, 0, 3, 1, 1, null);
-    try tb.addHighlight(0, 5, 8, 2, 1, null);
+    try tb.addHighlight(0, 0, 3, 1, 1, 0);
+    try tb.addHighlight(0, 5, 8, 2, 1, 0);
 
     const spans = tb.getLineSpans(0);
     try std.testing.expect(spans.len > 0);
@@ -2022,8 +2022,8 @@ test "TextBufferView highlights - priority handling in spans" {
 
     try tb.setText("0123456789");
 
-    try tb.addHighlight(0, 0, 8, 1, 1, null);
-    try tb.addHighlight(0, 3, 6, 2, 5, null);
+    try tb.addHighlight(0, 0, 8, 1, 1, 0);
+    try tb.addHighlight(0, 3, 6, 2, 5, 0);
 
     const spans = tb.getLineSpans(0);
     try std.testing.expect(spans.len > 0);
@@ -2053,7 +2053,7 @@ test "TextBufferView char range highlights - single line highlight" {
 
     try tb.setText("Hello World");
 
-    try tb.addHighlightByCharRange(0, 5, 1, 1, null);
+    try tb.addHighlightByCharRange(0, 5, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);
@@ -2079,7 +2079,7 @@ test "TextBufferView char range highlights - multi-line highlight" {
     try tb.setText("Hello\nWorld\nTest");
 
     // Highlight from chars 3-9 (not counting newlines: char 3 in "Hello", char 9 at end of "World")
-    try tb.addHighlightByCharRange(3, 9, 1, 1, null);
+    try tb.addHighlightByCharRange(3, 9, 1, 1, 0);
 
     const line0_highlights = tb.getLineHighlights(0);
     const line1_highlights = tb.getLineHighlights(1);
@@ -2110,7 +2110,7 @@ test "TextBufferView char range highlights - spanning three lines" {
 
     try tb.setText("Line1\nLine2\nLine3");
 
-    try tb.addHighlightByCharRange(3, 13, 1, 1, null);
+    try tb.addHighlightByCharRange(3, 13, 1, 1, 0);
 
     const line0_highlights = tb.getLineHighlights(0);
     const line1_highlights = tb.getLineHighlights(1);
@@ -2141,7 +2141,7 @@ test "TextBufferView char range highlights - empty range" {
 
     try tb.setText("Hello World");
 
-    try tb.addHighlightByCharRange(5, 5, 1, 1, null);
+    try tb.addHighlightByCharRange(5, 5, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 0), highlights.len);
@@ -2163,9 +2163,9 @@ test "TextBufferView char range highlights - multiple non-overlapping ranges" {
 
     try tb.setText("function hello() { return 42; }");
 
-    try tb.addHighlightByCharRange(0, 8, 1, 1, null);
-    try tb.addHighlightByCharRange(9, 14, 2, 1, null);
-    try tb.addHighlightByCharRange(19, 25, 3, 1, null);
+    try tb.addHighlightByCharRange(0, 8, 1, 1, 0);
+    try tb.addHighlightByCharRange(9, 14, 2, 1, 0);
+    try tb.addHighlightByCharRange(19, 25, 3, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 3), highlights.len);
@@ -2218,7 +2218,7 @@ test "TextBufferView highlights - work correctly with wrapped lines" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    try tb.addHighlight(0, 5, 15, 1, 1, null);
+    try tb.addHighlight(0, 5, 15, 1, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
@@ -2254,9 +2254,9 @@ test "TextBufferView highlights - multiple highlights on wrapped line" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
-    try tb.addHighlight(0, 2, 8, 1, 1, null);
-    try tb.addHighlight(0, 12, 18, 2, 1, null);
-    try tb.addHighlight(0, 22, 26, 3, 1, null);
+    try tb.addHighlight(0, 2, 8, 1, 1, 0);
+    try tb.addHighlight(0, 12, 18, 2, 1, 0);
+    try tb.addHighlight(0, 22, 26, 3, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
@@ -2287,7 +2287,7 @@ test "TextBufferView highlights - with emojis and wrapping" {
 
     try tb.setText("AB🌟CD🎨EF🚀GH");
 
-    try tb.addHighlight(0, 2, 8, 1, 1, null);
+    try tb.addHighlight(0, 2, 8, 1, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(6);
@@ -2323,7 +2323,7 @@ test "TextBufferView highlights - with CJK characters and wrapping" {
 
     try tb.setText("AB测试CD文字EF");
 
-    try tb.addHighlight(0, 2, 6, 1, 1, null);
+    try tb.addHighlight(0, 2, 6, 1, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(6);
@@ -2359,7 +2359,7 @@ test "TextBufferView highlights - mixed ASCII and wide chars with wrapping" {
 
     try tb.setText("Hello🌟世界");
 
-    try tb.addHighlight(0, 5, 11, 1, 1, null);
+    try tb.addHighlight(0, 5, 11, 1, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(7);
@@ -2396,7 +2396,7 @@ test "TextBufferView highlights - emoji at wrap boundary" {
 
     try tb.setText("ABCD🌟EFGH");
 
-    try tb.addHighlight(0, 3, 7, 1, 1, null);
+    try tb.addHighlight(0, 3, 7, 1, 1, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(5);
@@ -2427,7 +2427,7 @@ test "TextBufferView highlights - emojis without wrapping" {
 
     try tb.setText("AB🌟CD🎨EF");
 
-    try tb.addHighlight(0, 2, 8, 1, 1, null);
+    try tb.addHighlight(0, 2, 8, 1, 1, 0);
 
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1), vline_count);
@@ -2457,7 +2457,7 @@ test "TextBufferView highlights - CJK without wrapping" {
 
     try tb.setText("AB测试CD");
 
-    try tb.addHighlight(0, 2, 6, 1, 1, null);
+    try tb.addHighlight(0, 2, 6, 1, 1, 0);
 
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1), vline_count);
@@ -2487,8 +2487,8 @@ test "TextBufferView highlights - mixed width graphemes without wrapping" {
 
     try tb.setText("A🌟B测C试D");
 
-    try tb.addHighlight(0, 1, 4, 1, 1, null);
-    try tb.addHighlight(0, 4, 7, 2, 1, null);
+    try tb.addHighlight(0, 1, 4, 1, 1, 0);
+    try tb.addHighlight(0, 4, 7, 2, 1, 0);
 
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1), vline_count);
@@ -2520,7 +2520,7 @@ test "TextBufferView highlights - emoji at start without wrapping" {
 
     try tb.setText("🌟ABCD");
 
-    try tb.addHighlight(0, 0, 3, 1, 1, null);
+    try tb.addHighlight(0, 0, 3, 1, 1, 0);
 
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1), vline_count);
@@ -2547,7 +2547,7 @@ test "TextBufferView highlights - emoji at end without wrapping" {
 
     try tb.setText("ABCD🌟");
 
-    try tb.addHighlight(0, 3, 6, 1, 1, null);
+    try tb.addHighlight(0, 3, 6, 1, 1, 0);
 
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1), vline_count);
@@ -2574,7 +2574,7 @@ test "TextBufferView highlights - consecutive emojis without wrapping" {
 
     try tb.setText("A🌟🎨🚀B");
 
-    try tb.addHighlight(0, 1, 7, 1, 1, null);
+    try tb.addHighlight(0, 1, 7, 1, 1, 0);
 
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 1), vline_count);
@@ -2839,7 +2839,7 @@ test "TextBufferView - highlights preserved after wrap width change" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    try tb.addHighlight(0, 0, 10, 1, 0, null);
+    try tb.addHighlight(0, 0, 10, 1, 0, 0);
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
@@ -2887,7 +2887,7 @@ test "TextBufferView - char range highlights out of bounds" {
     try tb.setText("Hello");
 
     // Range extends beyond text length - should handle gracefully
-    try tb.addHighlightByCharRange(3, 100, 1, 1, null);
+    try tb.addHighlightByCharRange(3, 100, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);
@@ -2911,7 +2911,7 @@ test "TextBufferView - char range highlights invalid range" {
     try tb.setText("Hello World");
 
     // Invalid range (start > end) should add no highlights
-    try tb.addHighlightByCharRange(10, 5, 1, 1, null);
+    try tb.addHighlightByCharRange(10, 5, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 0), highlights.len);
@@ -2934,7 +2934,7 @@ test "TextBufferView - char range highlights exact line boundaries" {
     try tb.setText("AAAA\nBBBB\nCCCC");
 
     // Highlight entire first line (chars 0-4, excluding newline)
-    try tb.addHighlightByCharRange(0, 4, 1, 1, null);
+    try tb.addHighlightByCharRange(0, 4, 1, 1, 0);
 
     const line0_highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), line0_highlights.len);
@@ -2964,7 +2964,7 @@ test "TextBufferView - char range highlights unicode text" {
 
     // Highlight the entire text by character count
     const text_len = tb.getLength();
-    try tb.addHighlightByCharRange(0, text_len, 1, 1, null);
+    try tb.addHighlightByCharRange(0, text_len, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);

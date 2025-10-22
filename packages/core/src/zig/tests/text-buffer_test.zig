@@ -1362,7 +1362,7 @@ test "TextBuffer memory registry - character range highlights across buffers" {
     try tb.addLine(id2, 0, 8);
 
     // Add highlight spanning both lines (from different buffers)
-    try tb.addHighlightByCharRange(3, 11, 1, 1, null);
+    try tb.addHighlightByCharRange(3, 11, 1, 1, 0);
 
     const line0_highlights = tb.getLineHighlights(0);
     const line1_highlights = tb.getLineHighlights(1);

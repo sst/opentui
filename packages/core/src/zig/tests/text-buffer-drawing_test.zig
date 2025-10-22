@@ -1705,7 +1705,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
 
     const style_id = try style.registerStyle("test", .{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
     try tb.setText("Hello World");
-    try tb.addHighlightByCharRange(0, 5, style_id, 1, null);
+    try tb.addHighlightByCharRange(0, 5, style_id, 1, 0);
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,

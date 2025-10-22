@@ -6,7 +6,7 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
-import { StyledChunkStruct } from "./zig-structs"
+import { StyledChunkStruct, HighlightStruct } from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -357,7 +357,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferAddHighlight: {
-      args: ["ptr", "u32", "u32", "u32", "u32", "u8", "u32"],
+      args: ["ptr", "u32", "ptr"],
       returns: "void",
     },
     textBufferRemoveHighlightsByRef: {
@@ -1180,7 +1180,7 @@ export interface RenderLib {
   textBufferGetLineHighlights: (
     buffer: Pointer,
     lineIdx: number,
-  ) => Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }>
+  ) => Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number }>
 
   getArenaAllocatedBytes: () => number
 
@@ -2001,10 +2001,9 @@ class FFIRenderLib implements RenderLib {
     charEnd: number,
     styleId: number,
     priority: number,
-    hlRef?: number,
+    hlRef: number = 0,
   ): void {
-    const ref = hlRef === undefined ? 0xffffffff : hlRef
-    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, charStart, charEnd, styleId, priority, ref)
+    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, charStart, charEnd, styleId, priority, hlRef)
   }
 
   public textBufferAddHighlight(
@@ -2014,10 +2013,16 @@ class FFIRenderLib implements RenderLib {
     colEnd: number,
     styleId: number,
     priority: number,
-    hlRef?: number,
+    hlRef: number = 0,
   ): void {
-    const ref = hlRef === undefined ? 0xffffffff : hlRef
-    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, colStart, colEnd, styleId, priority, ref)
+    const highlight = HighlightStruct.pack({
+      col_start: colStart,
+      col_end: colEnd,
+      style_id: styleId,
+      priority: priority,
+      hl_ref: hlRef,
+    })
+    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, ptr(highlight))
   }
 
   public textBufferRemoveHighlightsByRef(buffer: Pointer, hlRef: number): void {
@@ -2039,7 +2044,7 @@ class FFIRenderLib implements RenderLib {
   public textBufferGetLineHighlights(
     buffer: Pointer,
     lineIdx: number,
-  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number }> {
     const outCountBuf = new BigUint64Array(1)
 
     const nativePtr = this.opentui.symbols.textBufferGetLineHighlightsPtr(buffer, lineIdx, ptr(outCountBuf))
@@ -2060,8 +2065,8 @@ class FFIRenderLib implements RenderLib {
       const styleId = u32[base + 2]
       const aux = u32[base + 3]
       const priority = aux & 0xff
-      const hlRefRaw = (aux >>> 16) & 0xffff
-      results[i] = { colStart, colEnd, styleId, priority, hlRef: hlRefRaw === 0xffff ? null : hlRefRaw }
+      const hlRef = (aux >>> 16) & 0xffff
+      results[i] = { colStart, colEnd, styleId, priority, hlRef }
     }
 
     this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)

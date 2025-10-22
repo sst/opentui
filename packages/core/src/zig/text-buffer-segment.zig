@@ -230,7 +230,7 @@ pub const Highlight = struct {
     col_end: u32,
     style_id: u32,
     priority: u8,
-    hl_ref: ?u16,
+    hl_ref: u16 = 0,
 };
 
 /// Pre-computed style span for efficient rendering

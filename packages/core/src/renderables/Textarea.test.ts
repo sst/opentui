@@ -4913,7 +4913,7 @@ describe("TextareaRenderable", () => {
         expect(highlights[0].colEnd).toBe(5)
         expect(highlights[0].styleId).toBe(styleId)
         expect(highlights[0].priority).toBe(0)
-        expect(highlights[0].hlRef).toBe(null)
+        expect(highlights[0].hlRef).toBe(0)
       })
 
       it("should add multiple highlights to same line", async () => {
@@ -5239,11 +5239,11 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 4, styleId, 0) // No hlRef
+        editor.addHighlight(0, 0, 4, styleId, 0)
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(1)
-        expect(highlights[0].hlRef).toBe(null)
+        expect(highlights[0].hlRef).toBe(0)
       })
 
       it("should work without syntax style set", async () => {

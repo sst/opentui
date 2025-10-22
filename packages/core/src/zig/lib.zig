@@ -891,21 +891,25 @@ export fn textBufferAddHighlightByCharRange(
     priority: u8,
     hl_ref: u32,
 ) void {
-    const ref: ?u16 = if (hl_ref == 0xFFFFFFFF) null else @intCast(hl_ref);
+    const ref: u16 = if (hl_ref == 0xFFFFFFFF) 0 else @intCast(hl_ref);
     tb.addHighlightByCharRange(char_start, char_end, style_id, priority, ref) catch {};
 }
 
-export fn textBufferAddHighlight(
-    tb: *text_buffer.UnifiedTextBuffer,
-    line_idx: u32,
+pub const ExternalHighlight = extern struct {
     col_start: u32,
     col_end: u32,
     style_id: u32,
     priority: u8,
-    hl_ref: u32,
+    hl_ref: u16,
+};
+
+export fn textBufferAddHighlight(
+    tb: *text_buffer.UnifiedTextBuffer,
+    line_idx: u32,
+    hl_ptr: [*]const ExternalHighlight,
 ) void {
-    const ref: ?u16 = if (hl_ref == 0xFFFFFFFF) null else @intCast(hl_ref);
-    tb.addHighlight(line_idx, col_start, col_end, style_id, priority, ref) catch {};
+    const hl = hl_ptr[0];
+    tb.addHighlight(line_idx, hl.col_start, hl.col_end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
 export fn textBufferRemoveHighlightsByRef(tb: *text_buffer.UnifiedTextBuffer, hl_ref: u16) void {
@@ -948,8 +952,7 @@ export fn textBufferGetLineHighlightsPtr(
     var slice = alloc.alloc(PackedHighlight, highs.len) catch return null;
 
     for (highs, 0..) |hl, i| {
-        const ref_val: u16 = if (hl.hl_ref) |r| r else 0xFFFF;
-        const aux: u32 = @as(u32, hl.priority) | (@as(u32, ref_val) << 16);
+        const aux: u32 = @as(u32, hl.priority) | (@as(u32, hl.hl_ref) << 16);
         slice[i] = .{
             .col_start = hl.col_start,
             .col_end = hl.col_end,

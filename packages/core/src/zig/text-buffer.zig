@@ -561,7 +561,7 @@ pub const UnifiedTextBuffer = struct {
         col_end: u32,
         style_id: u32,
         priority: u8,
-        hl_ref: ?u16,
+        hl_ref: u16,
     ) TextBufferError!void {
         const line_count = self.getLineCount();
         if (line_idx >= line_count) {
@@ -691,7 +691,7 @@ pub const UnifiedTextBuffer = struct {
         end_col: u32,
         style_id: u32,
         priority: u8,
-        hl_ref: ?u16,
+        hl_ref: u16,
     ) TextBufferError!void {
         const char_start = iter_mod.coordsToOffset(&self.rope, start_row, start_col) orelse return TextBufferError.InvalidIndex;
         const char_end = iter_mod.coordsToOffset(&self.rope, end_row, end_col) orelse return TextBufferError.InvalidIndex;
@@ -705,7 +705,7 @@ pub const UnifiedTextBuffer = struct {
         char_end: u32,
         style_id: u32,
         priority: u8,
-        hl_ref: ?u16,
+        hl_ref: u16,
     ) TextBufferError!void {
         const line_count = self.getLineCount();
         if (char_start >= char_end or line_count == 0) {
@@ -719,7 +719,7 @@ pub const UnifiedTextBuffer = struct {
             char_end: u32,
             style_id: u32,
             priority: u8,
-            hl_ref: ?u16,
+            hl_ref: u16,
             start_line_idx: ?usize = null,
 
             fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
@@ -771,12 +771,10 @@ pub const UnifiedTextBuffer = struct {
             var i: usize = 0;
             var changed = false;
             while (i < hl_list.items.len) {
-                if (hl_list.items[i].hl_ref) |ref| {
-                    if (ref == hl_ref) {
-                        _ = hl_list.orderedRemove(i);
-                        changed = true;
-                        continue;
-                    }
+                if (hl_list.items[i].hl_ref == hl_ref) {
+                    _ = hl_list.orderedRemove(i);
+                    changed = true;
+                    continue;
                 }
                 i += 1;
             }
@@ -896,7 +894,7 @@ pub const UnifiedTextBuffer = struct {
                     const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
                     const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
 
-                    self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, null) catch {};
+                    self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
                 }
 
                 char_pos += chunk_len;
