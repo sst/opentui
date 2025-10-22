@@ -1,6 +1,6 @@
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
-import { type WidthMethod } from "./types"
+import { type WidthMethod, type Highlight } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { EventEmitter } from "events"
 import type { SyntaxStyle } from "./syntax-style"
@@ -268,27 +268,18 @@ export class EditBuffer extends EventEmitter {
     return this._syntaxStyle ?? null
   }
 
-  public addHighlight(
-    lineIdx: number,
-    colStart: number,
-    colEnd: number,
-    styleId: number,
-    priority: number = 0,
-    hlRef?: number,
-  ): void {
+  public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
-    this.lib.textBufferAddHighlight(this.textBufferPtr, lineIdx, colStart, colEnd, styleId, priority, hlRef)
+    this.lib.textBufferAddHighlight(this.textBufferPtr, lineIdx, highlight)
   }
 
   public addHighlightByCharRange(
     charStart: number,
     charEnd: number,
-    styleId: number,
-    priority: number = 0,
-    hlRef?: number,
+    highlight: Omit<Highlight, "colStart" | "colEnd">,
   ): void {
     this.guard()
-    this.lib.textBufferAddHighlightByCharRange(this.textBufferPtr, charStart, charEnd, styleId, priority, hlRef)
+    this.lib.textBufferAddHighlightByCharRange(this.textBufferPtr, charStart, charEnd, highlight)
   }
 
   public removeHighlightsByRef(hlRef: number): void {

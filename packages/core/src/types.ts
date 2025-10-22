@@ -70,3 +70,11 @@ export interface ViewportBounds {
   width: number
   height: number
 }
+
+export interface Highlight {
+  colStart: number
+  colEnd: number
+  styleId: number
+  priority?: number
+  hlRef?: number
+}

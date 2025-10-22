@@ -4905,7 +4905,7 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 5, styleId, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 5, styleId: styleId, priority: 0 })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(1)
@@ -4928,8 +4928,8 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 5, keywordId, 0) // "const"
-        editor.addHighlight(0, 13, 20, stringId, 0) // "'value'"
+        editor.addHighlight(0, { colStart: 0, colEnd: 5, styleId: keywordId, priority: 0 }) // "const"
+        editor.addHighlight(0, { colStart: 13, colEnd: 20, styleId: stringId, priority: 0 }) // "'value'"
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(2)
@@ -4957,7 +4957,7 @@ describe("TextareaRenderable", () => {
         // Highlight from "ine 2" to "ine 3" (char offset 7-13, newlines not counted)
         // Char positions (excluding newlines): "Line 1" = 0-5, "Line 2" = 6-11, "Line 3" = 12-17
         // Char 7 = "i" in "Line 2" (col 1), Char 13 = "i" in "Line 3" (col 1)
-        editor.addHighlightByCharRange(7, 13, styleId, 0)
+        editor.addHighlightByCharRange(7, 13, { styleId: styleId, priority: 0 })
 
         const highlights = editor.getLineHighlights(1)
         expect(highlights.length).toBe(1)
@@ -4978,8 +4978,8 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 10, lowPriorityId, 1)
-        editor.addHighlight(0, 3, 8, highPriorityId, 10)
+        editor.addHighlight(0, { colStart: 0, colEnd: 10, styleId: lowPriorityId, priority: 1 })
+        editor.addHighlight(0, { colStart: 3, colEnd: 8, styleId: highPriorityId, priority: 10 })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(2)
@@ -5001,7 +5001,7 @@ describe("TextareaRenderable", () => {
         })
 
         const refId = 42
-        editor.addHighlight(0, 0, 4, styleId, 0, refId)
+        editor.addHighlight(0, { colStart: 0, colEnd: 4, styleId: styleId, priority: 0, hlRef: refId })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(1)
@@ -5020,9 +5020,9 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 4, styleId1, 0, 1)
-        editor.addHighlight(0, 5, 12, styleId2, 0, 2)
-        editor.addHighlight(0, 13, 17, styleId1, 0, 1)
+        editor.addHighlight(0, { colStart: 0, colEnd: 4, styleId: styleId1, priority: 0, hlRef: 1 })
+        editor.addHighlight(0, { colStart: 5, colEnd: 12, styleId: styleId2, priority: 0, hlRef: 2 })
+        editor.addHighlight(0, { colStart: 13, colEnd: 17, styleId: styleId1, priority: 0, hlRef: 1 })
 
         let highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(3)
@@ -5046,9 +5046,9 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 6, styleId, 0)
-        editor.addHighlight(1, 0, 6, styleId, 0)
-        editor.addHighlight(2, 0, 6, styleId, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
+        editor.addHighlight(1, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
+        editor.addHighlight(2, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
 
         expect(editor.getLineHighlights(0).length).toBe(1)
         expect(editor.getLineHighlights(1).length).toBe(1)
@@ -5072,9 +5072,9 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 6, styleId, 0)
-        editor.addHighlight(1, 0, 6, styleId, 0)
-        editor.addHighlight(2, 0, 6, styleId, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
+        editor.addHighlight(1, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
+        editor.addHighlight(2, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
 
         expect(editor.getLineHighlights(0).length).toBe(1)
         expect(editor.getLineHighlights(1).length).toBe(1)
@@ -5125,7 +5125,7 @@ describe("TextareaRenderable", () => {
         // Highlight from middle of line 0 to all of line 2 (chars 2-12, newlines not counted)
         // Char positions (excluding newlines): "AAAA" = 0-3, "BBBB" = 4-7, "CCCC" = 8-11
         // Char 2 = third "A", Char 12 = one past end
-        editor.addHighlightByCharRange(2, 12, styleId, 0)
+        editor.addHighlightByCharRange(2, 12, { styleId: styleId, priority: 0 })
 
         const hl0 = editor.getLineHighlights(0)
         const hl1 = editor.getLineHighlights(1)
@@ -5157,7 +5157,7 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 5, styleId, 0, 100)
+        editor.addHighlight(0, { colStart: 0, colEnd: 5, styleId: styleId, priority: 0, hlRef: 100 })
 
         let highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(1)
@@ -5187,9 +5187,9 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 15, baseId, 0)
-        editor.addHighlight(0, 3, 12, mediumId, 5)
-        editor.addHighlight(0, 6, 9, highId, 10)
+        editor.addHighlight(0, { colStart: 0, colEnd: 15, styleId: baseId, priority: 0 })
+        editor.addHighlight(0, { colStart: 3, colEnd: 12, styleId: mediumId, priority: 5 })
+        editor.addHighlight(0, { colStart: 6, colEnd: 9, styleId: highId, priority: 10 })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(3)
@@ -5212,9 +5212,9 @@ describe("TextareaRenderable", () => {
         })
 
         const refId = 555
-        editor.addHighlight(0, 0, 6, styleId, 0, refId)
-        editor.addHighlight(1, 0, 6, styleId, 0, refId)
-        editor.addHighlight(2, 0, 6, styleId, 0, 999) // Different ref
+        editor.addHighlight(0, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0, hlRef: refId })
+        editor.addHighlight(1, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0, hlRef: refId })
+        editor.addHighlight(2, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0, hlRef: 999 }) // Different ref
 
         expect(editor.getLineHighlights(0).length).toBe(1)
         expect(editor.getLineHighlights(1).length).toBe(1)
@@ -5239,7 +5239,7 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 4, styleId, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 4, styleId: styleId, priority: 0 })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(1)
@@ -5254,7 +5254,7 @@ describe("TextareaRenderable", () => {
         })
 
         // Can still add highlights even without syntax style (just need style IDs)
-        editor.addHighlight(0, 0, 4, 999, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 4, styleId: 999, priority: 0 })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(1)
@@ -5273,7 +5273,7 @@ describe("TextareaRenderable", () => {
         })
 
         // Highlight entire content (0 to end)
-        editor.addHighlightByCharRange(0, 11, styleId, 0)
+        editor.addHighlightByCharRange(0, 11, { styleId: styleId, priority: 0 })
 
         expect(editor.getLineHighlights(0).length).toBeGreaterThan(0)
         expect(editor.getLineHighlights(1).length).toBeGreaterThan(0)
@@ -5291,14 +5291,14 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 6, styleId, 0)
-        editor.addHighlight(1, 0, 6, styleId, 0)
-        editor.addHighlight(2, 0, 6, styleId, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
+        editor.addHighlight(1, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
+        editor.addHighlight(2, { colStart: 0, colEnd: 6, styleId: styleId, priority: 0 })
 
         editor.clearLineHighlights(1)
 
         // Re-add highlight on line 1
-        editor.addHighlight(1, 2, 5, styleId, 0)
+        editor.addHighlight(1, { colStart: 2, colEnd: 5, styleId: styleId, priority: 0 })
 
         const highlights = editor.getLineHighlights(1)
         expect(highlights.length).toBe(1)
@@ -5318,7 +5318,7 @@ describe("TextareaRenderable", () => {
         })
 
         // Add zero-width highlight (col_start == col_end)
-        editor.addHighlight(0, 2, 2, styleId, 0)
+        editor.addHighlight(0, { colStart: 2, colEnd: 2, styleId: styleId, priority: 0 })
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(0) // Should be ignored
@@ -5335,9 +5335,9 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 4, styleId, 0, 10)
-        editor.addHighlight(0, 5, 12, styleId, 0, 20)
-        editor.addHighlight(0, 13, 16, styleId, 0, 30)
+        editor.addHighlight(0, { colStart: 0, colEnd: 4, styleId: styleId, priority: 0, hlRef: 10 })
+        editor.addHighlight(0, { colStart: 5, colEnd: 12, styleId: styleId, priority: 0, hlRef: 20 })
+        editor.addHighlight(0, { colStart: 13, colEnd: 16, styleId: styleId, priority: 0, hlRef: 30 })
 
         let highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(3)
@@ -5369,7 +5369,7 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 5, styleId, 0)
+        editor.addHighlight(0, { colStart: 0, colEnd: 5, styleId: styleId, priority: 0 })
 
         // Should render without crashing
         buffer.drawEditorView(editor.editorView, 0, 0)
@@ -5389,8 +5389,8 @@ describe("TextareaRenderable", () => {
           syntaxStyle: style,
         })
 
-        editor.addHighlight(0, 0, 8, style1, 0)
-        editor.addHighlight(0, 4, 11, style2, 5) // Higher priority
+        editor.addHighlight(0, { colStart: 0, colEnd: 8, styleId: style1, priority: 0 })
+        editor.addHighlight(0, { colStart: 4, colEnd: 11, styleId: style2, priority: 5 }) // Higher priority
 
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(2)

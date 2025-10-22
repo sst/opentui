@@ -1,7 +1,7 @@
 import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import { EventEmitter } from "events"
-import { type CursorStyle, type DebugOverlayCorner, type WidthMethod } from "./types"
+import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highlight } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
@@ -353,7 +353,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "usize",
     },
     textBufferAddHighlightByCharRange: {
-      args: ["ptr", "u32", "u32", "u32", "u8", "u32"],
+      args: ["ptr", "u32", "u32", "ptr"],
       returns: "void",
     },
     textBufferAddHighlight: {
@@ -1160,19 +1160,9 @@ export interface RenderLib {
     buffer: Pointer,
     charStart: number,
     charEnd: number,
-    styleId: number,
-    priority: number,
-    hlRef?: number,
+    highlight: Omit<Highlight, "colStart" | "colEnd">,
   ) => void
-  textBufferAddHighlight: (
-    buffer: Pointer,
-    lineIdx: number,
-    colStart: number,
-    colEnd: number,
-    styleId: number,
-    priority: number,
-    hlRef?: number,
-  ) => void
+  textBufferAddHighlight: (buffer: Pointer, lineIdx: number, highlight: Highlight) => void
   textBufferRemoveHighlightsByRef: (buffer: Pointer, hlRef: number) => void
   textBufferClearLineHighlights: (buffer: Pointer, lineIdx: number) => void
   textBufferClearAllHighlights: (buffer: Pointer) => void
@@ -1999,30 +1989,27 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     charStart: number,
     charEnd: number,
-    styleId: number,
-    priority: number,
-    hlRef: number = 0,
+    highlight: Omit<Highlight, "colStart" | "colEnd">,
   ): void {
-    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, charStart, charEnd, styleId, priority, hlRef)
+    const packedHighlight = HighlightStruct.pack({
+      colStart: 0,
+      colEnd: 0,
+      styleId: highlight.styleId,
+      priority: highlight.priority ?? 0,
+      hlRef: highlight.hlRef ?? 0,
+    })
+    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, charStart, charEnd, ptr(packedHighlight))
   }
 
-  public textBufferAddHighlight(
-    buffer: Pointer,
-    lineIdx: number,
-    colStart: number,
-    colEnd: number,
-    styleId: number,
-    priority: number,
-    hlRef: number = 0,
-  ): void {
-    const highlight = HighlightStruct.pack({
-      colStart,
-      colEnd,
-      styleId,
-      priority,
-      hlRef,
+  public textBufferAddHighlight(buffer: Pointer, lineIdx: number, highlight: Highlight): void {
+    const packedHighlight = HighlightStruct.pack({
+      colStart: highlight.colStart,
+      colEnd: highlight.colEnd,
+      styleId: highlight.styleId,
+      priority: highlight.priority ?? 0,
+      hlRef: highlight.hlRef ?? 0,
     })
-    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, ptr(highlight))
+    this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, ptr(packedHighlight))
   }
 
   public textBufferRemoveHighlightsByRef(buffer: Pointer, hlRef: number): void {
@@ -2052,9 +2039,7 @@ class FFIRenderLib implements RenderLib {
 
     const count = Number(outCountBuf[0])
     const byteLen = count * HighlightStruct.size
-
     const raw = toArrayBuffer(nativePtr, 0, byteLen)
-
     const results = HighlightStruct.unpackList(raw, count)
 
     this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)

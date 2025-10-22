@@ -2,7 +2,7 @@ import type { StyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
-import { type WidthMethod } from "./types"
+import { type WidthMethod, type Highlight } from "./types"
 import type { SyntaxStyle } from "./syntax-style"
 
 export interface TextChunk {
@@ -141,27 +141,18 @@ export class TextBuffer {
   public addHighlightByCharRange(
     charStart: number,
     charEnd: number,
-    styleId: number,
-    priority: number = 0,
-    hlRef?: number,
+    highlight: Omit<Highlight, "colStart" | "colEnd">,
   ): void {
     this.guard()
-    this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, charStart, charEnd, styleId, priority, hlRef)
+    this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, charStart, charEnd, highlight)
   }
 
   /**
    * Add a highlight to a specific line by column positions.
    */
-  public addHighlight(
-    lineIdx: number,
-    colStart: number,
-    colEnd: number,
-    styleId: number,
-    priority: number = 0,
-    hlRef?: number,
-  ): void {
+  public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
-    this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, colStart, colEnd, styleId, priority, hlRef)
+    this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, highlight)
   }
 
   public removeHighlightsByRef(hlRef: number): void {

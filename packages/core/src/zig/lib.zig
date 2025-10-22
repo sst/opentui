@@ -887,12 +887,10 @@ export fn textBufferAddHighlightByCharRange(
     tb: *text_buffer.UnifiedTextBuffer,
     char_start: u32,
     char_end: u32,
-    style_id: u32,
-    priority: u8,
-    hl_ref: u32,
+    hl_ptr: [*]const ExternalHighlight,
 ) void {
-    const ref: u16 = if (hl_ref == 0xFFFFFFFF) 0 else @intCast(hl_ref);
-    tb.addHighlightByCharRange(char_start, char_end, style_id, priority, ref) catch {};
+    const hl = hl_ptr[0];
+    tb.addHighlightByCharRange(char_start, char_end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
 pub const ExternalHighlight = extern struct {

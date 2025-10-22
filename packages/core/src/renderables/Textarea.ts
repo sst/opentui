@@ -1,4 +1,4 @@
-import { type RenderContext } from "../types"
+import { type RenderContext, type Highlight } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
 import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
@@ -408,26 +408,17 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public addHighlight(
-    lineIdx: number,
-    colStart: number,
-    colEnd: number,
-    styleId: number,
-    priority: number = 0,
-    hlRef?: number,
-  ): void {
-    this.editBuffer.addHighlight(lineIdx, colStart, colEnd, styleId, priority, hlRef)
+  public addHighlight(lineIdx: number, highlight: Highlight): void {
+    this.editBuffer.addHighlight(lineIdx, highlight)
     this.requestRender()
   }
 
   public addHighlightByCharRange(
     charStart: number,
     charEnd: number,
-    styleId: number,
-    priority: number = 0,
-    hlRef?: number,
+    highlight: Omit<Highlight, "colStart" | "colEnd">,
   ): void {
-    this.editBuffer.addHighlightByCharRange(charStart, charEnd, styleId, priority, hlRef)
+    this.editBuffer.addHighlightByCharRange(charStart, charEnd, highlight)
     this.requestRender()
   }
 
