@@ -72,9 +72,9 @@ export interface ViewportBounds {
 }
 
 export interface Highlight {
-  colStart: number
-  colEnd: number
+  start: number
+  end: number
   styleId: number
-  priority?: number
-  hlRef?: number
+  priority?: number | null
+  hlRef?: number | null
 }

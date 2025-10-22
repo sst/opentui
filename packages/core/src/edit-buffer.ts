@@ -273,13 +273,9 @@ export class EditBuffer extends EventEmitter {
     this.lib.textBufferAddHighlight(this.textBufferPtr, lineIdx, highlight)
   }
 
-  public addHighlightByCharRange(
-    charStart: number,
-    charEnd: number,
-    highlight: Omit<Highlight, "colStart" | "colEnd">,
-  ): void {
+  public addHighlightByCharRange(highlight: Highlight): void {
     this.guard()
-    this.lib.textBufferAddHighlightByCharRange(this.textBufferPtr, charStart, charEnd, highlight)
+    this.lib.textBufferAddHighlightByCharRange(this.textBufferPtr, highlight)
   }
 
   public removeHighlightsByRef(hlRef: number): void {
@@ -297,9 +293,7 @@ export class EditBuffer extends EventEmitter {
     this.lib.textBufferClearAllHighlights(this.textBufferPtr)
   }
 
-  public getLineHighlights(
-    lineIdx: number,
-  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+  public getLineHighlights(lineIdx: number): Array<Highlight> {
     this.guard()
     return this.lib.textBufferGetLineHighlights(this.textBufferPtr, lineIdx)
   }

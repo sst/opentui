@@ -883,23 +883,22 @@ export fn bufferDrawTextBufferView(
     bufferPtr.drawTextBuffer(viewPtr, x, y) catch {};
 }
 
-export fn textBufferAddHighlightByCharRange(
-    tb: *text_buffer.UnifiedTextBuffer,
-    char_start: u32,
-    char_end: u32,
-    hl_ptr: [*]const ExternalHighlight,
-) void {
-    const hl = hl_ptr[0];
-    tb.addHighlightByCharRange(char_start, char_end, hl.style_id, hl.priority, hl.hl_ref) catch {};
-}
-
 pub const ExternalHighlight = extern struct {
-    col_start: u32,
-    col_end: u32,
+    start: u32,
+    end: u32,
     style_id: u32,
     priority: u8,
     hl_ref: u16,
 };
+
+export fn textBufferAddHighlightByCharRange(
+    tb: *text_buffer.UnifiedTextBuffer,
+    hl_ptr: [*]const ExternalHighlight,
+) void {
+    const hl = hl_ptr[0];
+    // For char-range highlights, start/end in the struct are unused (passed as char_start/char_end)
+    tb.addHighlightByCharRange(hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
+}
 
 export fn textBufferAddHighlight(
     tb: *text_buffer.UnifiedTextBuffer,
@@ -907,7 +906,8 @@ export fn textBufferAddHighlight(
     hl_ptr: [*]const ExternalHighlight,
 ) void {
     const hl = hl_ptr[0];
-    tb.addHighlight(line_idx, hl.col_start, hl.col_end, hl.style_id, hl.priority, hl.hl_ref) catch {};
+    // For line-based highlights, start/end are column offsets
+    tb.addHighlight(line_idx, hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
 export fn textBufferRemoveHighlightsByRef(tb: *text_buffer.UnifiedTextBuffer, hl_ref: u16) void {
@@ -943,8 +943,8 @@ export fn textBufferGetLineHighlightsPtr(
 
     for (highs, 0..) |hl, i| {
         slice[i] = .{
-            .col_start = hl.col_start,
-            .col_end = hl.col_end,
+            .start = hl.col_start,
+            .end = hl.col_end,
             .style_id = hl.style_id,
             .priority = hl.priority,
             .hl_ref = hl.hl_ref,

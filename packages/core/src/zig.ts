@@ -353,7 +353,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "usize",
     },
     textBufferAddHighlightByCharRange: {
-      args: ["ptr", "u32", "u32", "ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     textBufferAddHighlight: {
@@ -1156,21 +1156,13 @@ export interface RenderLib {
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
-  textBufferAddHighlightByCharRange: (
-    buffer: Pointer,
-    charStart: number,
-    charEnd: number,
-    highlight: Omit<Highlight, "colStart" | "colEnd">,
-  ) => void
+  textBufferAddHighlightByCharRange: (buffer: Pointer, highlight: Highlight) => void
   textBufferAddHighlight: (buffer: Pointer, lineIdx: number, highlight: Highlight) => void
   textBufferRemoveHighlightsByRef: (buffer: Pointer, hlRef: number) => void
   textBufferClearLineHighlights: (buffer: Pointer, lineIdx: number) => void
   textBufferClearAllHighlights: (buffer: Pointer) => void
   textBufferSetSyntaxStyle: (buffer: Pointer, style: Pointer | null) => void
-  textBufferGetLineHighlights: (
-    buffer: Pointer,
-    lineIdx: number,
-  ) => Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number }>
+  textBufferGetLineHighlights: (buffer: Pointer, lineIdx: number) => Array<Highlight>
 
   getArenaAllocatedBytes: () => number
 
@@ -1985,30 +1977,13 @@ class FFIRenderLib implements RenderLib {
     return outBuffer.slice(0, actualLen)
   }
 
-  public textBufferAddHighlightByCharRange(
-    buffer: Pointer,
-    charStart: number,
-    charEnd: number,
-    highlight: Omit<Highlight, "colStart" | "colEnd">,
-  ): void {
-    const packedHighlight = HighlightStruct.pack({
-      colStart: 0,
-      colEnd: 0,
-      styleId: highlight.styleId,
-      priority: highlight.priority ?? 0,
-      hlRef: highlight.hlRef ?? 0,
-    })
-    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, charStart, charEnd, ptr(packedHighlight))
+  public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {
+    const packedHighlight = HighlightStruct.pack(highlight)
+    this.opentui.symbols.textBufferAddHighlightByCharRange(buffer, ptr(packedHighlight))
   }
 
   public textBufferAddHighlight(buffer: Pointer, lineIdx: number, highlight: Highlight): void {
-    const packedHighlight = HighlightStruct.pack({
-      colStart: highlight.colStart,
-      colEnd: highlight.colEnd,
-      styleId: highlight.styleId,
-      priority: highlight.priority ?? 0,
-      hlRef: highlight.hlRef ?? 0,
-    })
+    const packedHighlight = HighlightStruct.pack(highlight)
     this.opentui.symbols.textBufferAddHighlight(buffer, lineIdx, ptr(packedHighlight))
   }
 
@@ -2028,10 +2003,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style)
   }
 
-  public textBufferGetLineHighlights(
-    buffer: Pointer,
-    lineIdx: number,
-  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number }> {
+  public textBufferGetLineHighlights(buffer: Pointer, lineIdx: number): Array<Highlight> {
     const outCountBuf = new BigUint64Array(1)
 
     const nativePtr = this.opentui.symbols.textBufferGetLineHighlightsPtr(buffer, lineIdx, ptr(outCountBuf))
@@ -2044,13 +2016,7 @@ class FFIRenderLib implements RenderLib {
 
     this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)
 
-    return results.map((h) => ({
-      colStart: h.colStart,
-      colEnd: h.colEnd,
-      styleId: h.styleId,
-      priority: h.priority,
-      hlRef: h.hlRef ?? 0,
-    }))
+    return results
   }
 
   public getArenaAllocatedBytes(): number {

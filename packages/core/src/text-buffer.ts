@@ -137,18 +137,16 @@ export class TextBuffer {
 
   /**
    * Add a highlight using character offsets into the full text.
+   * start/end in highlight represent absolute character positions.
    */
-  public addHighlightByCharRange(
-    charStart: number,
-    charEnd: number,
-    highlight: Omit<Highlight, "colStart" | "colEnd">,
-  ): void {
+  public addHighlightByCharRange(highlight: Highlight): void {
     this.guard()
-    this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, charStart, charEnd, highlight)
+    this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, highlight)
   }
 
   /**
    * Add a highlight to a specific line by column positions.
+   * start/end in highlight represent column offsets.
    */
   public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
@@ -170,9 +168,7 @@ export class TextBuffer {
     this.lib.textBufferClearAllHighlights(this.bufferPtr)
   }
 
-  public getLineHighlights(
-    lineIdx: number,
-  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+  public getLineHighlights(lineIdx: number): Array<Highlight> {
     this.guard()
     return this.lib.textBufferGetLineHighlights(this.bufferPtr, lineIdx)
   }

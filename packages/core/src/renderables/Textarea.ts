@@ -413,12 +413,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public addHighlightByCharRange(
-    charStart: number,
-    charEnd: number,
-    highlight: Omit<Highlight, "colStart" | "colEnd">,
-  ): void {
-    this.editBuffer.addHighlightByCharRange(charStart, charEnd, highlight)
+  public addHighlightByCharRange(highlight: Highlight): void {
+    this.editBuffer.addHighlightByCharRange(highlight)
     this.requestRender()
   }
 
@@ -437,9 +433,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public getLineHighlights(
-    lineIdx: number,
-  ): Array<{ colStart: number; colEnd: number; styleId: number; priority: number; hlRef: number | null }> {
+  public getLineHighlights(lineIdx: number): Array<Highlight> {
     return this.editBuffer.getLineHighlights(lineIdx)
   }
 }
