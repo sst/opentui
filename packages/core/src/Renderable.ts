@@ -1,7 +1,7 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
 import { OptimizedBuffer } from "./buffer"
-import type { ParsedKey } from "./lib/parse.keypress"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
 import {
@@ -115,7 +115,9 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   onMouseOut?: (this: T, event: MouseEvent) => void
   onMouseScroll?: (this: T, event: MouseEvent) => void
 
-  onKeyDown?: (key: ParsedKey) => void
+  onPaste?: (this: T, text: string) => void
+
+  onKeyDown?: (key: KeyEvent) => void
 
   onSizeChange?: (this: T) => void
 }
@@ -147,6 +149,7 @@ export abstract class BaseRenderable extends EventEmitter {
   public abstract getChildrenCount(): number
   public abstract getRenderable(id: string): BaseRenderable | undefined
   public abstract requestRender(): void
+  public abstract findDescendantById(id: string): BaseRenderable | undefined
 
   public get id(): string {
     return this._id
@@ -187,6 +190,10 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
+const yogaConfig: Config = Yoga.Config.create()
+yogaConfig.setUseWebDefaults(false)
+yogaConfig.setPointScaleFactor(1)
+
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
@@ -207,19 +214,23 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
-  protected keypressHandler: ((key: ParsedKey) => void) | null = null
+  protected keypressHandler: ((key: KeyEvent) => void) | null = null
+  protected pasteHandler: ((event: PasteEvent) => void) | null = null
+
   private _live: boolean = false
   protected _liveCount: number = 0
 
   private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
-  private _keyListeners: Partial<Record<"down", (key: ParsedKey) => void>> = {}
+  private _pasteListener: ((text: string) => void) | undefined = undefined
+  private _keyListeners: Partial<Record<"down", (key: KeyEvent) => void>> = {}
 
   protected yogaNode: YogaNode
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
+  private _flexShrink: number = 1
 
   private renderableMapById: Map<string, Renderable> = new Map()
   protected _childrenInLayoutOrder: Renderable[] = []
@@ -264,7 +275,7 @@ export abstract class Renderable extends BaseRenderable {
     this._liveCount = this._live && this._visible ? 1 : 0
 
     // TODO: use a global yoga config
-    this.yogaNode = Yoga.Node.create()
+    this.yogaNode = Yoga.Node.create(yogaConfig)
     this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
@@ -350,14 +361,22 @@ export abstract class Renderable extends BaseRenderable {
     this._focused = true
     this.requestRender()
 
-    this.keypressHandler = (key: ParsedKey) => {
+    this.keypressHandler = (key: KeyEvent) => {
       this._keyListeners["down"]?.(key)
-      if (this.handleKeyPress) {
+      if (!key.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(key)
       }
     }
 
-    this.ctx.keyInput.on("keypress", this.keypressHandler)
+    this.pasteHandler = (event: PasteEvent) => {
+      this._pasteListener?.call(this, event.text)
+      if (!event.defaultPrevented && this.handlePaste) {
+        this.handlePaste(event.text)
+      }
+    }
+
+    this.ctx._internalKeyInput.onInternal("keypress", this.keypressHandler)
+    this.ctx._internalKeyInput.onInternal("paste", this.pasteHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -368,8 +387,13 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
 
     if (this.keypressHandler) {
-      this.ctx.keyInput.off("keypress", this.keypressHandler)
+      this.ctx._internalKeyInput.offInternal("keypress", this.keypressHandler)
       this.keypressHandler = null
+    }
+
+    if (this.pasteHandler) {
+      this.ctx._internalKeyInput.offInternal("paste", this.pasteHandler)
+      this.pasteHandler = null
     }
 
     this.emit(RenderableEvents.BLURRED)
@@ -403,13 +427,16 @@ export abstract class Renderable extends BaseRenderable {
     this.parent?.propagateLiveCount(delta)
   }
 
-  public handleKeyPress?(key: ParsedKey | string): boolean
+  public handleKeyPress?(key: KeyEvent | string): boolean
+  public handlePaste?(text: string): void
 
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this._childrenInLayoutOrder) {
       if (child.id === id) return child
-      const found = child.findDescendantById(id)
-      if (found) return found
+      if (isRenderable(child)) {
+        const found = child.findDescendantById(id)
+        if (found) return found
+      }
     }
     return undefined
   }
@@ -511,6 +538,12 @@ export abstract class Renderable extends BaseRenderable {
     if (isDimensionType(value)) {
       this._width = value
       this.yogaNode.setWidth(value)
+
+      if (typeof value === "number" && this._flexShrink === 1) {
+        this._flexShrink = 0
+        this.yogaNode.setFlexShrink(0)
+      }
+
       this.requestRender()
     }
   }
@@ -523,6 +556,12 @@ export abstract class Renderable extends BaseRenderable {
     if (isDimensionType(value)) {
       this._height = value
       this.yogaNode.setHeight(value)
+
+      if (typeof value === "number" && this._flexShrink === 1) {
+        this._flexShrink = 0
+        this.yogaNode.setFlexShrink(0)
+      }
+
       this.requestRender()
     }
   }
@@ -593,10 +632,15 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     if (options.flexShrink !== undefined) {
+      this._flexShrink = options.flexShrink
       node.setFlexShrink(options.flexShrink)
     } else {
-      const shrinkValue = options.flexGrow && options.flexGrow > 0 ? 1 : 0
-      node.setFlexShrink(shrinkValue)
+      // If explicit numeric width is set, don't shrink by default
+      // Otherwise follow web default of 1
+      const hasExplicitWidth = typeof options.width === "number"
+      const hasExplicitHeight = typeof options.height === "number"
+      this._flexShrink = hasExplicitWidth || hasExplicitHeight ? 0 : 1
+      node.setFlexShrink(this._flexShrink)
     }
 
     if (options.flexDirection !== undefined) {
@@ -770,6 +814,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set flexShrink(shrink: number) {
+    this._flexShrink = shrink
     this.yogaNode.setFlexShrink(shrink)
     this.requestRender()
   }
@@ -980,6 +1025,11 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  /**
+   * This will be called during a render pass.
+   * Requesting a render during a render pass will drop the requested render.
+   * If you need to request a render during a render pass, use process.nextTick.
+   */
   protected onResize(width: number, height: number): void {
     this.onSizeChange?.()
     this.emit("resize")
@@ -1011,40 +1061,38 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    if (this.renderableMapById.has(renderable.id)) {
-      console.warn(`A renderable with id ${renderable.id} already exists in ${this.id}, removing it`)
-      this.remove(renderable.id)
+    const anchorRenderable = index !== undefined ? this._childrenInLayoutOrder[index] : undefined
+
+    if (anchorRenderable) {
+      return this.insertBefore(renderable, anchorRenderable)
     }
 
-    this.replaceParent(renderable)
-
-    const childLayoutNode = renderable.getLayoutNode()
-    let insertedIndex: number
-    if (index !== undefined) {
-      insertedIndex = Math.max(0, Math.min(index, this._childrenInLayoutOrder.length))
-      this._childrenInLayoutOrder.splice(index, 0, renderable)
-      this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(index)
-      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
+    if (renderable.parent === this) {
+      this.yogaNode.removeChild(renderable.getLayoutNode())
+      this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
     } else {
-      insertedIndex = this._childrenInLayoutOrder.length
-      this._childrenInLayoutOrder.push(renderable)
-      this.yogaNode.insertChild(childLayoutNode, insertedIndex)
-    }
+      this.replaceParent(renderable)
+      this.needsZIndexSort = true
+      this.renderableMapById.set(renderable.id, renderable)
+      this._childrenInZIndexOrder.push(renderable)
 
-    this.needsZIndexSort = true
-    this.childrenPrimarySortDirty = true
-    this.renderableMapById.set(renderable.id, renderable)
-    this._childrenInZIndexOrder.push(renderable)
+      if (typeof renderable.onLifecyclePass === "function") {
+        this._ctx.registerLifecyclePass(renderable)
+      }
 
-    if (typeof renderable.onLifecyclePass === "function") {
-      this._ctx.registerLifecyclePass(renderable)
+      if (renderable._liveCount > 0) {
+        this.propagateLiveCount(renderable._liveCount)
+      }
     }
 
     this._newChildren.push(renderable)
 
-    if (renderable._liveCount > 0) {
-      this.propagateLiveCount(renderable._liveCount)
-    }
+    const childLayoutNode = renderable.getLayoutNode()
+    const insertedIndex = this._childrenInLayoutOrder.length
+    this._childrenInLayoutOrder.push(renderable)
+    this.yogaNode.insertChild(childLayoutNode, insertedIndex)
+
+    this.childrenPrimarySortDirty = true
 
     this.requestRender()
 
@@ -1091,10 +1139,11 @@ export abstract class Renderable extends BaseRenderable {
     if (renderable.parent === this) {
       this.yogaNode.removeChild(renderable.getLayoutNode())
       this._childrenInLayoutOrder.splice(this._childrenInLayoutOrder.indexOf(renderable), 1)
-    } else if (renderable.parent) {
+    } else {
       this.replaceParent(renderable)
       this.needsZIndexSort = true
       this.renderableMapById.set(renderable.id, renderable)
+      this._childrenInZIndexOrder.push(renderable)
 
       if (typeof renderable.onLifecyclePass === "function") {
         this._ctx.registerLifecyclePass(renderable)
@@ -1114,6 +1163,8 @@ export abstract class Renderable extends BaseRenderable {
     this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(insertedIndex)
     this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
+
+    this.requestRender()
 
     return insertedIndex
   }
@@ -1152,6 +1203,18 @@ export abstract class Renderable extends BaseRenderable {
         const zIndexIndex = this._childrenInZIndexOrder.findIndex((obj) => obj.id === id)
         if (zIndexIndex !== -1) {
           this._childrenInZIndexOrder.splice(zIndexIndex, 1)
+        }
+
+        if (this._forceLayoutUpdateFor) {
+          const forceIndex = this._forceLayoutUpdateFor.findIndex((obj) => obj.id === id)
+          if (forceIndex !== -1) {
+            this._forceLayoutUpdateFor?.splice(forceIndex, 1)
+          }
+        }
+
+        const newChildIndex = this._newChildren.findIndex((obj) => obj.id === id)
+        if (newChildIndex !== -1) {
+          this._newChildren?.splice(newChildIndex, 1)
         }
 
         this.childrenPrimarySortDirty = true
@@ -1320,7 +1383,9 @@ export abstract class Renderable extends BaseRenderable {
 
   public destroyRecursively(): void {
     // Destroy children first to ensure removal as destroy clears child array
-    for (const child of this._childrenInLayoutOrder) {
+    // Make a copy of the children array to avoid iteration issues when children are destroyed
+    const children = [...this._childrenInLayoutOrder]
+    for (const child of children) {
       child.destroyRecursively()
     }
     this.destroy()
@@ -1396,11 +1461,18 @@ export abstract class Renderable extends BaseRenderable {
     else delete this._mouseListeners["scroll"]
   }
 
-  public set onKeyDown(handler: ((key: ParsedKey) => void) | undefined) {
+  public set onPaste(handler: ((text: string) => void) | undefined) {
+    this._pasteListener = handler
+  }
+  public get onPaste(): ((text: string) => void) | undefined {
+    return this._pasteListener
+  }
+
+  public set onKeyDown(handler: ((key: KeyEvent) => void) | undefined) {
     if (handler) this._keyListeners["down"] = handler
     else delete this._keyListeners["down"]
   }
-  public get onKeyDown(): ((key: ParsedKey) => void) | undefined {
+  public get onKeyDown(): ((key: KeyEvent) => void) | undefined {
     return this._keyListeners["down"]
   }
 
@@ -1422,6 +1494,7 @@ export abstract class Renderable extends BaseRenderable {
     this.onMouseOver = options.onMouseOver
     this.onMouseOut = options.onMouseOut
     this.onMouseScroll = options.onMouseScroll
+    this.onPaste = options.onPaste
     this.onKeyDown = options.onKeyDown
     this.onSizeChange = options.onSizeChange
   }
@@ -1451,21 +1524,16 @@ interface RenderCommandRender extends RenderCommandBase {
 export type RenderCommand = RenderCommandPushScissorRect | RenderCommandPopScissorRect | RenderCommandRender
 
 export class RootRenderable extends Renderable {
-  private yogaConfig: Config
   private renderList: RenderCommand[] = []
 
   constructor(ctx: RenderContext) {
     super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
 
-    this.yogaConfig = Yoga.Config.create()
-    this.yogaConfig.setUseWebDefaults(false)
-    this.yogaConfig.setPointScaleFactor(1)
-
     if (this.yogaNode) {
       this.yogaNode.free()
     }
 
-    this.yogaNode = Yoga.Node.create(this.yogaConfig)
+    this.yogaNode = Yoga.Node.create(yogaConfig)
     this.yogaNode.setWidth(ctx.width)
     this.yogaNode.setHeight(ctx.height)
     this.yogaNode.setFlexDirection(FlexDirection.Column)
@@ -1535,13 +1603,5 @@ export class RootRenderable extends Renderable {
     this.height = height
 
     this.emit(LayoutEvents.RESIZED, { width, height })
-  }
-
-  protected destroySelf(): void {
-    try {
-      this.yogaConfig.free()
-    } catch (error) {
-      // Config might already be freed
-    }
   }
 }

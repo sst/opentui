@@ -2,7 +2,8 @@ import type { StyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
-import { type WidthMethod } from "./types"
+import { type WidthMethod, type Highlight } from "./types"
+import type { SyntaxStyle } from "./syntax-style"
 
 export interface TextChunk {
   __isChunk: true
@@ -16,8 +17,12 @@ export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _length: number = 0
+  private _byteSize: number = 0
   private _lineInfo?: LineInfo
   private _destroyed: boolean = false
+  private _syntaxStyle?: SyntaxStyle
+  private _textBytes?: Uint8Array
+  private _memId?: number
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -36,26 +41,50 @@ export class TextBuffer {
     if (this._destroyed) throw new Error("TextBuffer is destroyed")
   }
 
-  public setStyledText(text: StyledText): void {
+  public setText(text: string): void {
     this.guard()
-    this.lib.textBufferReset(this.bufferPtr)
-    this._length = 0
-    this._lineInfo = undefined
+    this._textBytes = this.lib.encoder.encode(text)
 
-    for (const chunk of text.chunks) {
-      const textBytes = this.lib.encoder.encode(chunk.text)
-      this.lib.textBufferWriteChunk(
-        this.bufferPtr,
-        textBytes,
-        chunk.fg || null,
-        chunk.bg || null,
-        chunk.attributes ?? null,
-      )
+    if (this._memId === undefined) {
+      this._memId = this.lib.textBufferRegisterMemBuffer(this.bufferPtr, this._textBytes, false)
+    } else {
+      this.lib.textBufferReplaceMemBuffer(this.bufferPtr, this._memId, this._textBytes, false)
     }
 
-    // TODO: textBufferFinalizeLineInfo can return the length of the text buffer, not another call to textBufferGetLength
-    this.lib.textBufferFinalizeLineInfo(this.bufferPtr)
+    this.lib.textBufferSetTextFromMem(this.bufferPtr, this._memId)
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+  }
+
+  public loadFile(path: string): void {
+    this.guard()
+    const success = this.lib.textBufferLoadFile(this.bufferPtr, path)
+    if (!success) {
+      throw new Error(`Failed to load file: ${path}`)
+    }
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    this._textBytes = undefined
+  }
+
+  public setStyledText(text: StyledText): void {
+    this.guard()
+
+    // TODO: This should not be necessary anymore, the struct packing should take care of this
+    const chunks = text.chunks.map((chunk) => ({
+      text: chunk.text,
+      fg: chunk.fg || null,
+      bg: chunk.bg || null,
+      attributes: chunk.attributes ?? 0,
+    }))
+
+    this.lib.textBufferSetStyledText(this.bufferPtr, chunks)
+
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
   }
 
   public setDefaultFg(fg: RGBA | null): void {
@@ -83,157 +112,94 @@ export class TextBuffer {
     return this._length
   }
 
+  public get byteSize(): number {
+    this.guard()
+    return this._byteSize
+  }
+
   public get ptr(): Pointer {
     this.guard()
     return this.bufferPtr
   }
 
-  public getSelectedText(): string {
-    this.guard()
-    if (this._length === 0) return ""
-    // TODO: The _length should be the text length, need to know the number of bytes for the text though
-    const selectedBytes = this.lib.getSelectedTextBytes(this.bufferPtr, this.length * 4)
-
-    if (!selectedBytes) return ""
-
-    return this.lib.decoder.decode(selectedBytes)
-  }
-
   public getPlainText(): string {
     this.guard()
-    if (this._length === 0) return ""
-    // TODO: The _length should be the text length, need to know the number of bytes for the text though
-    const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, this.length * 4)
+    if (this._byteSize === 0) return ""
+    // Use byteSize for accurate buffer allocation (includes newlines in byte count)
+    const plainBytes = this.lib.getPlainTextBytes(this.bufferPtr, this._byteSize)
 
     if (!plainBytes) return ""
 
     return this.lib.decoder.decode(plainBytes)
   }
 
-  public get lineInfo(): LineInfo {
+  /**
+   * Add a highlight using character offsets into the full text.
+   * start/end in highlight represent absolute character positions.
+   */
+  public addHighlightByCharRange(highlight: Highlight): void {
     this.guard()
-    if (!this._lineInfo) {
-      this._lineInfo = this.lib.textBufferGetLineInfo(this.bufferPtr)
-    }
-    return this._lineInfo
+    this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, highlight)
   }
 
-  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+  /**
+   * Add a highlight to a specific line by column positions.
+   * start/end in highlight represent column offsets.
+   */
+  public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
-    this.lib.textBufferSetSelection(this.bufferPtr, start, end, bgColor || null, fgColor || null)
+    this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, highlight)
   }
 
-  public resetSelection(): void {
+  public removeHighlightsByRef(hlRef: number): void {
     this.guard()
-    this.lib.textBufferResetSelection(this.bufferPtr)
+    this.lib.textBufferRemoveHighlightsByRef(this.bufferPtr, hlRef)
   }
 
-  public setLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: RGBA,
-    fgColor?: RGBA,
-  ): boolean {
+  public clearLineHighlights(lineIdx: number): void {
     this.guard()
-    return this.lib.textBufferSetLocalSelection(
-      this.bufferPtr,
-      anchorX,
-      anchorY,
-      focusX,
-      focusY,
-      bgColor || null,
-      fgColor || null,
-    )
+    this.lib.textBufferClearLineHighlights(this.bufferPtr, lineIdx)
   }
 
-  public resetLocalSelection(): void {
+  public clearAllHighlights(): void {
     this.guard()
-    this.lib.textBufferResetLocalSelection(this.bufferPtr)
+    this.lib.textBufferClearAllHighlights(this.bufferPtr)
   }
 
-  public getSelection(): { start: number; end: number } | null {
+  public getLineHighlights(lineIdx: number): Array<Highlight> {
     this.guard()
-    return this.lib.textBufferGetSelection(this.bufferPtr)
+    return this.lib.textBufferGetLineHighlights(this.bufferPtr, lineIdx)
   }
 
-  public hasSelection(): boolean {
+  public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
-    return this.getSelection() !== null
+    this._syntaxStyle = style ?? undefined
+    this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)
   }
 
-  public insertChunkGroup(index: number, text: string, fg?: RGBA, bg?: RGBA, attributes?: number): void {
+  public getSyntaxStyle(): SyntaxStyle | null {
     this.guard()
-    const textBytes = this.lib.encoder.encode(text)
-    this.insertEncodedChunkGroup(index, textBytes, fg, bg, attributes)
+    return this._syntaxStyle ?? null
   }
 
-  public insertEncodedChunkGroup(
-    index: number,
-    textBytes: Uint8Array,
-    fg?: RGBA,
-    bg?: RGBA,
-    attributes?: number,
-  ): void {
+  public clear(): void {
     this.guard()
-    this._length = this.lib.textBufferInsertChunkGroup(
-      this.bufferPtr,
-      index,
-      textBytes,
-      fg || null,
-      bg || null,
-      attributes ?? null,
-    )
+    this.lib.textBufferClear(this.bufferPtr)
+    this._length = 0
+    this._byteSize = 0
     this._lineInfo = undefined
+    this._textBytes = undefined
+    // Note: _memId is NOT cleared - it can be reused for next setText
   }
 
-  public removeChunkGroup(index: number): void {
+  public reset(): void {
     this.guard()
-    this._length = this.lib.textBufferRemoveChunkGroup(this.bufferPtr, index)
+    this.lib.textBufferReset(this.bufferPtr)
+    this._length = 0
+    this._byteSize = 0
     this._lineInfo = undefined
-  }
-
-  public replaceChunkGroup(index: number, text: string, fg?: RGBA, bg?: RGBA, attributes?: number): void {
-    this.guard()
-    const textBytes = this.lib.encoder.encode(text)
-    this.replaceEncodedChunkGroup(index, textBytes, fg, bg, attributes)
-  }
-
-  public replaceEncodedChunkGroup(
-    index: number,
-    textBytes: Uint8Array,
-    fg?: RGBA,
-    bg?: RGBA,
-    attributes?: number,
-  ): void {
-    this.guard()
-    this._length = this.lib.textBufferReplaceChunkGroup(
-      this.bufferPtr,
-      index,
-      textBytes,
-      fg || null,
-      bg || null,
-      attributes ?? null,
-    )
-    this._lineInfo = undefined
-  }
-
-  public get chunkGroupCount(): number {
-    this.guard()
-    return this.lib.textBufferGetChunkGroupCount(this.bufferPtr)
-  }
-
-  public setWrapWidth(width: number | null): void {
-    this.guard()
-    this.lib.textBufferSetWrapWidth(this.bufferPtr, width ?? 0)
-    this._lineInfo = undefined
-  }
-
-  public setWrapMode(mode: "char" | "word"): void {
-    this.guard()
-    this.lib.textBufferSetWrapMode(this.bufferPtr, mode)
-    this._lineInfo = undefined
+    this._textBytes = undefined
+    this._memId = undefined // Reset clears the registry, so clear our ID
   }
 
   public destroy(): void {

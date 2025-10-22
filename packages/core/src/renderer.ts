@@ -15,9 +15,39 @@ import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
-import { singleton } from "./singleton"
+import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
-import { KeyHandler } from "./lib/KeyHandler"
+import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
+import { env, registerEnvVar } from "./lib/env"
+import { getTreeSitterClient } from "./lib/tree-sitter"
+
+registerEnvVar({
+  name: "OTUI_DUMP_CAPTURES",
+  description: "Dump captured output when the renderer exits.",
+  type: "boolean",
+  default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_NO_NATIVE_RENDER",
+  description: "Disable native rendering. This will not actually output ansi and is useful for debugging.",
+  type: "boolean",
+  default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_USE_ALTERNATE_SCREEN",
+  description: "Whether to use the console. Will not capture console output if set to false.",
+  type: "boolean",
+  default: true,
+})
+
+registerEnvVar({
+  name: "OTUI_OVERRIDE_STDOUT",
+  description: "Override the stdout stream. This is useful for debugging.",
+  type: "boolean",
+  default: true,
+})
 
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
@@ -106,6 +136,26 @@ singleton("ProcessExitSignals", () => {
   })
 })
 
+const rendererTracker = singleton("RendererTracker", () => {
+  const renderers = new Set<CliRenderer>()
+  return {
+    addRenderer: (renderer: CliRenderer) => {
+      renderers.add(renderer)
+    },
+    removeRenderer: (renderer: CliRenderer) => {
+      renderers.delete(renderer)
+      if (renderers.size === 0) {
+        process.stdin.pause()
+
+        if (hasSingleton("tree-sitter-client")) {
+          getTreeSitterClient().destroy()
+          destroySingleton("tree-sitter-client")
+        }
+      }
+    },
+  }
+})
+
 export async function createCliRenderer(config: CliRendererConfig = {}): Promise<CliRenderer> {
   if (process.argv.includes("--delay-start")) {
     await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -143,11 +193,12 @@ export enum CliRenderEvents {
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
 }
 
-enum RendererControlState {
+export enum RendererControlState {
   IDLE = "idle",
   AUTO_STARTED = "auto_started",
   EXPLICIT_STARTED = "explicit_started",
   EXPLICIT_PAUSED = "explicit_paused",
+  EXPLICIT_SUSPENDED = "explicit_suspended",
   EXPLICIT_STOPPED = "explicit_stopped",
 }
 
@@ -158,7 +209,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
-  private isDestroyed: boolean = false
+  private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -194,7 +245,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private updateScheduled: boolean = false
 
   private liveRequestCounter: number = 0
-  private controlState: RendererControlState = RendererControlState.IDLE
+  private _controlState: RendererControlState = RendererControlState.IDLE
 
   private frameCallbacks: ((deltaTime: number) => Promise<void>)[] = []
   private renderStats: {
@@ -215,7 +266,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
-  private _keyHandler: KeyHandler
+  private _keyHandler: InternalKeyHandler
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -224,7 +275,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
-  private _useAlternateScreen: boolean = true
+  private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
+  private _suspendedMouseEnabled: boolean = false
+  private _previousControlState: RendererControlState = RendererControlState.IDLE
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
@@ -268,17 +321,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         resolve(true)
       }, 100)
     }).then(() => {
-      // TODO: Fix friggin shut down sequence to not splurt into scrollback
       this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
 
       this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
-      this.realStdoutWrite.call(this.stdout, "Console cache:\n")
-      this.realStdoutWrite.call(this.stdout, this.console.getCachedLogs())
-      this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
-      const capturedOutput = capture.claimOutput()
-      if (capturedOutput) {
-        this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
-      }
+      this.dumpOutputCache()
       this.realStdoutWrite.call(this.stdout, "\nError details:\n")
       this.realStdoutWrite.call(this.stdout, error.message || "unknown error")
       this.realStdoutWrite.call(this.stdout, "\n")
@@ -289,13 +335,41 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
   }).bind(this)
 
+  private dumpOutputCache(optionalMessage: string = ""): void {
+    const cachedLogs = this.console.getCachedLogs()
+    const capturedOutput = capture.claimOutput()
+
+    if (capturedOutput.length > 0 || cachedLogs.length > 0) {
+      this.realStdoutWrite.call(this.stdout, optionalMessage)
+    }
+
+    if (cachedLogs.length > 0) {
+      this.realStdoutWrite.call(this.stdout, "Console cache:\n")
+      this.realStdoutWrite.call(this.stdout, cachedLogs)
+    }
+
+    if (capturedOutput.length > 0) {
+      this.realStdoutWrite.call(this.stdout, "\nCaptured output:\n")
+      this.realStdoutWrite.call(this.stdout, capturedOutput + "\n")
+    }
+
+    this.realStdoutWrite.call(this.stdout, ANSI.reset)
+  }
+
   private exitHandler: () => void = (() => {
     this.destroy()
+    if (env.OTUI_DUMP_CAPTURES) {
+      this.dumpOutputCache("=== CAPTURED OUTPUT ===\n")
+    }
   }).bind(this)
 
   private warningHandler: (warning: any) => void = ((warning: any) => {
     console.warn(JSON.stringify(warning.message, null, 2))
   }).bind(this)
+
+  public get controlState(): RendererControlState {
+    return this._controlState
+  }
 
   constructor(
     lib: RenderLib,
@@ -307,6 +381,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     config: CliRendererConfig = {},
   ) {
     super()
+
+    rendererTracker.addRenderer(this)
 
     this.stdin = stdin
     this.stdout = stdout
@@ -335,7 +411,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement || true
     this._useMouse = config.useMouse ?? true
-    this._useAlternateScreen = config.useAlternateScreen ?? true
+    this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
@@ -346,7 +422,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.startMemorySnapshotTimer()
     }
 
-    this.stdout.write = this.interceptStdoutWrite.bind(this)
+    if (env.OTUI_OVERRIDE_STDOUT) {
+      this.stdout.write = this.interceptStdoutWrite.bind(this)
+    }
 
     // Handle terminal resize
     process.on("SIGWINCH", this.sigwinchHandler)
@@ -360,7 +438,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
 
-    this._keyHandler = new KeyHandler(this.stdin, config.useKittyKeyboard ?? false)
+    this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? false)
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
@@ -379,7 +457,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     global.window.requestAnimationFrame = requestAnimationFrame
 
     // Prevents output from being written to the terminal, useful for debugging
-    if (process.env.OTUI_NO_NATIVE_RENDER === "true") {
+    if (env.OTUI_NO_NATIVE_RENDER) {
       this.renderNative = () => {
         if (this._splitHeight > 0) {
           this.flushStdoutCache(this._splitHeight)
@@ -388,6 +466,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.setupInput()
+  }
+
+  public get isDestroyed(): boolean {
+    return this._isDestroyed
   }
 
   public registerLifecyclePass(renderable: Renderable) {
@@ -424,7 +506,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get widthMethod(): WidthMethod {
     const caps = this.capabilities
-    return caps?.unicode === "unicode" ? "unicode" : "wcwidth"
+    return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
@@ -432,7 +514,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
-    if (!this.rendering && !this.updateScheduled && !this._isRunning) {
+    if (
+      !this.rendering &&
+      !this.updateScheduled &&
+      !this._isRunning &&
+      this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
+    ) {
       this.updateScheduled = true
       process.nextTick(() => {
         this.loop()
@@ -467,6 +554,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get keyInput(): KeyHandler {
+    return this._keyHandler
+  }
+
+  public get _internalKeyInput(): InternalKeyHandler {
     return this._keyHandler
   }
 
@@ -507,7 +598,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get currentControlState(): string {
-    return this.controlState
+    return this._controlState
   }
 
   public get capabilities(): any | null {
@@ -610,10 +701,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private enableMouse(): void {
+    this._useMouse = true
     this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement)
   }
 
   private disableMouse(): void {
+    this._useMouse = false
     this.capturedRenderable = undefined
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
@@ -637,12 +730,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public async setupTerminal(): Promise<void> {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
-
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(true)
-    }
-    this.stdin.resume()
-    this.stdin.setEncoding("utf8")
 
     await new Promise((resolve) => {
       const timeout = setTimeout(() => {
@@ -687,7 +774,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.exitOnCtrlC && str === "\u0003") {
       process.nextTick(() => {
-        process.exit()
+        this.destroy()
       })
       return
     }
@@ -700,6 +787,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
 
   private setupInput(): void {
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(true)
+    }
+    this.stdin.resume()
+    this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
   }
 
@@ -848,7 +940,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private takeMemorySnapshot(): void {
-    if (this.isDestroyed) return
+    if (this._isDestroyed) return
 
     const memoryUsage = process.memoryUsage()
     this.lastMemorySnapshot = {
@@ -894,7 +986,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleResize(width: number, height: number): void {
-    if (this.isDestroyed) return
+    if (this._isDestroyed) return
     if (this._splitHeight > 0) {
       this.processResize(width, height)
       return
@@ -913,8 +1005,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private queryPixelResolution() {
     this.waitingForPixelResolution = true
-    // TODO: should move to native, injecting the request in the next frame if running
-    this.writeOut(ANSI.queryPixelSize)
+    this.lib.queryPixelResolution(this.rendererPtr)
   }
 
   private processResize(width: number, height: number): void {
@@ -987,10 +1078,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.debugOverlay.corner = options.corner ?? this.debugOverlay.corner
     this.lib.setDebugOverlay(this.rendererPtr, this.debugOverlay.enabled, this.debugOverlay.corner)
     this.requestRender()
-  }
-
-  public clearTerminal(): void {
-    this.lib.clearTerminal(this.rendererPtr)
   }
 
   public setTerminalTitle(title: string): void {
@@ -1074,8 +1161,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public requestLive(): void {
     this.liveRequestCounter++
 
-    if (this.controlState === RendererControlState.IDLE && this.liveRequestCounter > 0) {
-      this.controlState = RendererControlState.AUTO_STARTED
+    if (this._controlState === RendererControlState.IDLE && this.liveRequestCounter > 0) {
+      this._controlState = RendererControlState.AUTO_STARTED
       this.internalStart()
     }
   }
@@ -1083,23 +1170,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public dropLive(): void {
     this.liveRequestCounter = Math.max(0, this.liveRequestCounter - 1)
 
-    if (this.controlState === RendererControlState.AUTO_STARTED && this.liveRequestCounter === 0) {
-      this.controlState = RendererControlState.IDLE
+    if (this._controlState === RendererControlState.AUTO_STARTED && this.liveRequestCounter === 0) {
+      this._controlState = RendererControlState.IDLE
       this.internalPause()
     }
   }
 
   public start(): void {
-    this.controlState = RendererControlState.EXPLICIT_STARTED
+    this._controlState = RendererControlState.EXPLICIT_STARTED
     this.internalStart()
   }
 
   public auto(): void {
-    this.controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
+    this._controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
   }
 
   private internalStart(): void {
-    if (!this._isRunning && !this.isDestroyed) {
+    if (!this._isRunning && !this._isDestroyed) {
       this._isRunning = true
 
       if (this.memorySnapshotInterval > 0) {
@@ -1111,8 +1198,45 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public pause(): void {
-    this.controlState = RendererControlState.EXPLICIT_PAUSED
+    this._controlState = RendererControlState.EXPLICIT_PAUSED
     this.internalPause()
+  }
+
+  public suspend(): void {
+    this._previousControlState = this._controlState
+
+    this._controlState = RendererControlState.EXPLICIT_SUSPENDED
+    this.internalPause()
+
+    this._suspendedMouseEnabled = this._useMouse
+
+    this.disableMouse()
+    this._keyHandler.suspend()
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+    this.stdin.pause()
+  }
+
+  public resume(): void {
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(true)
+    }
+    this.stdin.resume()
+    this._keyHandler.resume()
+
+    if (this._suspendedMouseEnabled) {
+      this.enableMouse()
+    }
+
+    this._controlState = this._previousControlState
+
+    if (
+      this._previousControlState === RendererControlState.AUTO_STARTED ||
+      this._previousControlState === RendererControlState.EXPLICIT_STARTED
+    ) {
+      this.internalStart()
+    }
   }
 
   private internalPause(): void {
@@ -1120,12 +1244,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public stop(): void {
-    this.controlState = RendererControlState.EXPLICIT_STOPPED
+    this._controlState = RendererControlState.EXPLICIT_STOPPED
     this.internalStop()
   }
 
   private internalStop(): void {
-    if (this.isRunning && !this.isDestroyed) {
+    if (this.isRunning && !this._isDestroyed) {
       this._isRunning = false
 
       if (this.memorySnapshotTimer) {
@@ -1141,11 +1265,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
-    this.stdin.removeListener("data", this.stdinListener)
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
-    process.removeListener("exit", this.exitHandler)
     process.removeListener("warning", this.warningHandler)
     capture.removeListener("write", this.captureCallback)
 
@@ -1153,26 +1275,39 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearInterval(this.memorySnapshotTimer)
     }
 
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
+    if (this._isDestroyed) return
+    this._isDestroyed = true
 
-    if (this.isDestroyed) return
-    this.isDestroyed = true
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+    this._isRunning = false
 
     this.waitingForPixelResolution = false
     this.capturedRenderable = undefined
 
-    this.root.destroyRecursively()
+    try {
+      this.root.destroyRecursively()
+    } catch (e) {
+      console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
+    }
 
     this._keyHandler.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
+
     if (this._splitHeight > 0) {
       this.flushStdoutCache(this._splitHeight, true)
     }
 
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+    this.stdin.removeListener("data", this.stdinListener)
+
     this.lib.destroyRenderer(this.rendererPtr)
+    rendererTracker.removeRenderer(this)
   }
 
   private startRenderLoop(): void {
@@ -1188,7 +1323,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private async loop(): Promise<void> {
-    if (this.rendering || this.isDestroyed) return
+    if (this.rendering || this._isDestroyed) return
     this.rendering = true
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1242,19 +1377,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console.renderToBuffer(this.nextRenderBuffer)
 
-    this.renderNative()
+    if (!this._isDestroyed) {
+      this.renderNative()
 
-    const overallFrameTime = performance.now() - overallStart
-    // TODO: Add animationRequestTime to stats
-    this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
+      const overallFrameTime = performance.now() - overallStart
+      // TODO: Add animationRequestTime to stats
+      this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
 
-    if (this.gatherStats) {
-      this.collectStatSample(overallFrameTime)
-    }
+      if (this.gatherStats) {
+        this.collectStatSample(overallFrameTime)
+      }
 
-    if (this._isRunning) {
-      const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
-      this.renderTimeout = setTimeout(() => this.loop(), delay)
+      if (this._isRunning) {
+        const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
+        this.renderTimeout = setTimeout(() => this.loop(), delay)
+      }
     }
     this.rendering = false
     if (this.immediateRerenderRequested) {
@@ -1354,15 +1491,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers = []
   }
 
-  private startSelection(startRenderable: Renderable, x: number, y: number): void {
-    this.clearSelection()
-    this.selectionContainers.push(startRenderable.parent || this.root)
+  /**
+   * Start a new selection at the given coordinates.
+   * Used by both mouse and keyboard selection.
+   */
+  public startSelection(renderable: Renderable, x: number, y: number): void {
+    if (!renderable.selectable) return
 
-    this.currentSelection = new Selection(startRenderable, { x, y }, { x, y })
+    this.clearSelection()
+    this.selectionContainers.push(renderable.parent || this.root)
+    this.currentSelection = new Selection(renderable, { x, y }, { x, y })
     this.notifySelectablesOfSelectionChange()
   }
 
-  private updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
+  public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
     if (this.currentSelection) {
       this.currentSelection.focus = { x, y }
 

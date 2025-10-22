@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { bold, fg, italic, t, TextAttributes, getKeyHandler, type ParsedKey } from "@opentui/core"
+import { bold, fg, italic, t, TextAttributes, type KeyEvent } from "@opentui/core"
 import { ref, onMounted, onUnmounted, computed } from "vue"
+import { useCliRenderer } from ".."
 
 const username = ref("")
 const password = ref("")
 const focused = ref<"username" | "password">("username")
 const status = ref<"idle" | "invalid" | "success">("idle")
 
-const handleKeyPress = (key: ParsedKey) => {
+const handleKeyPress = (key: KeyEvent) => {
   if (key.name === "tab") {
     focused.value = focused.value === "username" ? "password" : "username"
   }
@@ -29,12 +30,13 @@ const handleSubmit = () => {
   }
 }
 
+const renderer = useCliRenderer()
 onMounted(() => {
-  getKeyHandler().on("keypress", handleKeyPress)
+  renderer.keyInput.on("keypress", handleKeyPress)
 })
 
 onUnmounted(() => {
-  getKeyHandler().off("keypress", handleKeyPress)
+  renderer.keyInput.off("keypress", handleKeyPress)
 })
 
 const titleTextStyles = {

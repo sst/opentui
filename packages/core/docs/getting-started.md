@@ -97,14 +97,14 @@ The `parseColor()` utility function accepts both RGBA objects and color strings 
 
 ## Keyboard
 
-OpenTUI provides a global keyboard handler that parses terminal input and provides structured key events. The `getKeyHandler()` function returns a singleton EventEmitter that emits `keypress` events with detailed key information.
+OpenTUI provides a keyboard handler that parses terminal input and provides structured key events. Get the handler via `renderer.keyInput`, an EventEmitter that emits `keypress` and `paste` events with detailed key information.
 
 ```typescript
-import { getKeyHandler, type ParsedKey } from "@opentui/core"
+import { type KeyEvent } from "@opentui/core"
 
-const keyHandler = getKeyHandler()
+const keyHandler = renderer.keyInput
 
-keyHandler.on("keypress", (key: ParsedKey) => {
+keyHandler.on("keypress", (key: KeyEvent) => {
   console.log("Key name:", key.name)
   console.log("Sequence:", key.sequence)
   console.log("Ctrl pressed:", key.ctrl)

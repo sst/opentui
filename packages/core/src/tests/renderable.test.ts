@@ -1,15 +1,16 @@
-import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import {
   Renderable,
   BaseRenderable,
   RootRenderable,
-  LayoutEvents,
   RenderableEvents,
   type BaseRenderableOptions,
   type RenderableOptions,
 } from "../Renderable"
 import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
 import type { RenderContext } from "../types"
+import { TextNodeRenderable } from "../renderables/TextNode"
+import { TextRenderable } from "../renderables/Text"
 
 export class TestBaseRenderable extends BaseRenderable {
   constructor(options: BaseRenderableOptions) {
@@ -35,6 +36,9 @@ export class TestBaseRenderable extends BaseRenderable {
     throw new Error("Method not implemented.")
   }
   requestRender(): void {
+    throw new Error("Method not implemented.")
+  }
+  findDescendantById(id: string): BaseRenderable | undefined {
     throw new Error("Method not implemented.")
   }
 }
@@ -193,6 +197,19 @@ describe("Renderable - Child Management", () => {
     expect(children[2].id).toBe("child2")
   })
 
+  test("insertBefore makes new child accessible", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const newChild = new TestRenderable(testRenderer, { id: "newChild" })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.insertBefore(newChild, child2)
+
+    expect(parent.getRenderable("newChild")).toBe(newChild)
+  })
+
   test("handles adding destroyed renderable", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child = new TestRenderable(testRenderer, { id: "child" })
@@ -217,6 +234,139 @@ describe("Renderable - Child Management", () => {
     // Verify parent mapping is updated
     expect(parent.getRenderable("child")).toBeUndefined()
     expect(parent.getRenderable("new-child-id")).toBe(child)
+  })
+
+  test("findDescendantById finds direct children", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+
+    parent.add(child1)
+    parent.add(child2)
+
+    expect(parent.findDescendantById("child1")).toBe(child1)
+    expect(parent.findDescendantById("child2")).toBe(child2)
+    expect(parent.findDescendantById("nonexistent")).toBeUndefined()
+  })
+
+  test("findDescendantById finds nested descendants", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const grandchild = new TestRenderable(testRenderer, { id: "grandchild" })
+
+    parent.add(child1)
+    parent.add(child2)
+    child1.add(grandchild)
+
+    expect(parent.findDescendantById("grandchild")).toBe(grandchild)
+    expect(parent.findDescendantById("child1")).toBe(child1)
+    expect(parent.findDescendantById("child2")).toBe(child2)
+  })
+
+  test("findDescendantById handles TextNodeRenderable children without crashing", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const child3 = new TextRenderable(testRenderer, { id: "child3" })
+    const textNode = new TextNodeRenderable({ id: "text-node" })
+
+    parent.add(child1)
+    child1.add(child2)
+    child2.add(child3)
+    child3.add(textNode)
+
+    expect(parent.findDescendantById("child1")).toBe(child1)
+    expect(parent.findDescendantById("child2")).toBe(child2)
+    expect(parent.findDescendantById("text-node")).toBeUndefined()
+  })
+
+  test("destroyRecursively destroys nested children recursively", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const grandchild = new TestRenderable(testRenderer, { id: "grandchild" })
+    const greatGrandchild = new TestRenderable(testRenderer, { id: "greatGrandchild" })
+
+    parent.add(child)
+    child.add(grandchild)
+    grandchild.add(greatGrandchild)
+
+    expect(parent.isDestroyed).toBe(false)
+    expect(child.isDestroyed).toBe(false)
+    expect(grandchild.isDestroyed).toBe(false)
+    expect(greatGrandchild.isDestroyed).toBe(false)
+
+    parent.destroyRecursively()
+
+    expect(parent.isDestroyed).toBe(true)
+    expect(child.isDestroyed).toBe(true)
+    expect(grandchild.isDestroyed).toBe(true)
+    expect(greatGrandchild.isDestroyed).toBe(true)
+  })
+
+  test("destroyRecursively handles empty renderable without errors", () => {
+    const parent = new TestRenderable(testRenderer, { id: "empty-parent" })
+
+    expect(parent.isDestroyed).toBe(false)
+    expect(() => parent.destroyRecursively()).not.toThrow()
+    expect(parent.isDestroyed).toBe(true)
+  })
+
+  test("destroyRecursively destroys all children correctly with multiple children", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const child3 = new TestRenderable(testRenderer, { id: "child3" })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+
+    parent.destroyRecursively()
+
+    expect(parent.isDestroyed).toBe(true)
+    expect(child1.isDestroyed).toBe(true)
+    expect(child2.isDestroyed).toBe(true)
+    expect(child3.isDestroyed).toBe(true)
+  })
+
+  test("handles immediate add and destroy before render tick", async () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const children = []
+    for (let i = 0; i < 10; i++) {
+      children.push(new TestRenderable(testRenderer, { id: `child-${i}` }))
+    }
+
+    for (const child of children) {
+      parent.add(child)
+    }
+
+    testRenderer.root.add(parent)
+
+    parent.destroyRecursively()
+
+    await renderOnce()
+    expect(parent.getChildrenCount()).toBe(0)
+  })
+
+  test("remove() must clean up _newChildren to prevent accessing destroyed nodes", async () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+
+    parent.add(child)
+    testRenderer.root.add(parent)
+    await renderOnce()
+
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    parent.add(child2)
+
+    const spy = spyOn(child2, "updateFromLayout")
+
+    child2.destroy()
+
+    await renderOnce()
+
+    expect(spy).not.toHaveBeenCalled()
   })
 })
 

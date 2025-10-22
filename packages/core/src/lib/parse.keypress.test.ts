@@ -738,3 +738,54 @@ test("KeyEventType type validation", () => {
     expect(mockKey.eventType).toBe(eventType)
   }
 })
+
+test("parseKeypress - ctrl+option+letter combinations", () => {
+  // This is ESC (\x1b) followed by \x15 (which is Ctrl+U)
+  const ctrlOptionU = parseKeypress("\u001b\u0015")
+
+  // The sequence should be parsed as meta+ctrl+u
+  expect(ctrlOptionU.name).toBe("u")
+  expect(ctrlOptionU.ctrl).toBe(true)
+  expect(ctrlOptionU.meta).toBe(true) // ESC prefix indicates meta/alt/option
+  expect(ctrlOptionU.shift).toBe(false)
+  expect(ctrlOptionU.option).toBe(false) // Note: option flag is separate from meta
+  expect(ctrlOptionU.sequence).toBe("\u001b\u0015")
+  expect(ctrlOptionU.raw).toBe("\u001b\u0015")
+  expect(ctrlOptionU.eventType).toBe("press")
+
+  // Test other meta+ctrl combinations
+  const metaCtrlA = parseKeypress("\x1b\x01") // ESC + Ctrl+A
+  expect(metaCtrlA.name).toBe("a")
+  expect(metaCtrlA.ctrl).toBe(true)
+  expect(metaCtrlA.meta).toBe(true)
+  expect(metaCtrlA.shift).toBe(false)
+  expect(metaCtrlA.option).toBe(false)
+
+  const metaCtrlZ = parseKeypress("\x1b\x1a") // ESC + Ctrl+Z
+  expect(metaCtrlZ.name).toBe("z")
+  expect(metaCtrlZ.ctrl).toBe(true)
+  expect(metaCtrlZ.meta).toBe(true)
+  expect(metaCtrlZ.shift).toBe(false)
+  expect(metaCtrlZ.option).toBe(false)
+
+  // Test option+shift+u for comparison (this reportedly works)
+  // Option+Shift+U generates ESC + U (uppercase)
+  const optionShiftU = parseKeypress("\x1bU")
+  expect(optionShiftU.name).toBe("U")
+  expect(optionShiftU.meta).toBe(true)
+  expect(optionShiftU.shift).toBe(true)
+  expect(optionShiftU.ctrl).toBe(false)
+  expect(optionShiftU.option).toBe(false)
+
+  // Edge case: ensure we don't match beyond \x1a (26, which is Ctrl+Z)
+  const invalidCtrlSeq = parseKeypress("\x1b\x1b") // ESC + ESC (not a ctrl char)
+  expect(invalidCtrlSeq.name).toBe("escape")
+  expect(invalidCtrlSeq.meta).toBe(true)
+  expect(invalidCtrlSeq.ctrl).toBe(false)
+
+  // Edge case: test boundary at \x1a
+  const metaCtrlAtBoundary = parseKeypress("\x1b\x1a") // ESC + Ctrl+Z
+  expect(metaCtrlAtBoundary.name).toBe("z")
+  expect(metaCtrlAtBoundary.ctrl).toBe(true)
+  expect(metaCtrlAtBoundary.meta).toBe(true)
+})

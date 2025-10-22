@@ -2,7 +2,7 @@ import type { RGBA } from "./lib/RGBA"
 import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection"
 import type { Renderable } from "./Renderable"
-import type { KeyHandler } from "./lib"
+import type { InternalKeyHandler, KeyHandler } from "./lib/KeyHandler"
 
 export const TextAttributes = {
   NONE: 0,
@@ -56,6 +56,10 @@ export interface RenderContext extends EventEmitter {
   unregisterLifecyclePass: (renderable: Renderable) => void
   getLifecyclePasses: () => Set<Renderable>
   keyInput: KeyHandler
+  _internalKeyInput: InternalKeyHandler
+  clearSelection: () => void
+  startSelection: (renderable: Renderable, x: number, y: number) => void
+  updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined
@@ -65,4 +69,12 @@ export interface ViewportBounds {
   y: number
   width: number
   height: number
+}
+
+export interface Highlight {
+  start: number
+  end: number
+  styleId: number
+  priority?: number | null
+  hlRef?: number | null
 }

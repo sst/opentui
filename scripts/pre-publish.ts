@@ -30,7 +30,7 @@ const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
 
 // Package configurations
-const PACKAGES: PackageConfig[] = [
+const ALL_PACKAGES: PackageConfig[] = [
   {
     name: "@opentui/core",
     rootDir: join(rootDir, "packages", "core"),
@@ -55,6 +55,13 @@ const PACKAGES: PackageConfig[] = [
     requiresCore: true,
   },
 ]
+
+// Parse command line arguments
+const args = process.argv.slice(2)
+const includeVue = args.includes("--include-vue")
+
+// Filter packages based on flags
+const PACKAGES = includeVue ? ALL_PACKAGES : ALL_PACKAGES.filter((pkg) => pkg.name !== "@opentui/vue")
 
 function setupNpmAuth(): void {
   if (!process.env.NPM_AUTH_TOKEN) {
@@ -258,6 +265,10 @@ Continue with publishing? (y/n)
 function main(): void {
   console.log("OpenTUI Pre-Publish Validation")
   console.log("=".repeat(50))
+
+  if (!includeVue) {
+    console.log("INFO: Skipping @opentui/vue (use --include-vue to include)")
+  }
 
   // Setup NPM authentication once
   console.log("\nINFO: Setting up NPM authentication...")

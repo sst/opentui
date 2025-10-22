@@ -3,15 +3,24 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
+import AutocompleteDemo from "./autocomplete-demo.tsx"
+import { CodeDemo } from "./code-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
 import { ScrollDemo, ScrollDemoIndex } from "./scroll-demo.tsx"
+import { CustomScrollAccelDemo } from "./custom-scroll-accel-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
+import { TextareaDemo } from "./textarea-demo.tsx"
 
 const EXAMPLES = [
+  {
+    name: "Code Syntax Highlighting Demo",
+    description: "JavaScript syntax highlighting using TreeSitter with <code> component",
+    scene: "code-demo",
+  },
   {
     name: "Text Selection Demo",
     description: "Text selection across multiple renderables with mouse drag",
@@ -21,6 +30,16 @@ const EXAMPLES = [
     name: "Input Demo",
     description: "Interactive InputElement demo with validation and multiple fields",
     scene: "input-demo",
+  },
+  {
+    name: "Autocomplete Demo",
+    description: "@ mention autocomplete with keyboard navigation",
+    scene: "autocomplete-demo",
+  },
+  {
+    name: "Textarea Demo",
+    description: "Interactive textarea editor with navigation, editing, and text wrapping",
+    scene: "textarea-demo",
   },
   {
     name: "Mouse demo",
@@ -56,6 +75,11 @@ const EXAMPLES = [
     name: "Scroll Demo Index",
     description: "Scroll demo Index",
     scene: "scroll-demo-index",
+  },
+  {
+    name: "Custom Scroll Acceleration Demo",
+    description: "Interactive demo showcasing different scroll acceleration modes",
+    scene: "custom-scroll-accel-demo",
   },
   {
     name: "Session Scrollbox",
@@ -114,11 +138,20 @@ const ExampleSelector = () => {
 
   return (
     <Switch>
+      <Match when={selectedScene() === "code-demo"}>
+        <CodeDemo />
+      </Match>
       <Match when={selectedScene() === "split-mode"}>
         <SplitModeDemo />
       </Match>
       <Match when={selectedScene() === "input-demo"}>
         <InputScene />
+      </Match>
+      <Match when={selectedScene() === "autocomplete-demo"}>
+        <AutocompleteDemo />
+      </Match>
+      <Match when={selectedScene() === "textarea-demo"}>
+        <TextareaDemo />
       </Match>
       <Match when={selectedScene() === "mouse-demo"}>
         <MouseScene />
@@ -141,6 +174,9 @@ const ExampleSelector = () => {
       <Match when={selectedScene() === "scroll-demo-index"}>
         <ScrollDemoIndex />
       </Match>
+      <Match when={selectedScene() === "custom-scroll-accel-demo"}>
+        <CustomScrollAccelDemo />
+      </Match>
       <Match when={selectedScene() === "session-scrollbox"}>
         <Session />
       </Match>
@@ -149,8 +185,6 @@ const ExampleSelector = () => {
           <box alignItems="center">
             <ascii_font
               style={{
-                width: titleWidth,
-                height: titleHeight,
                 font: titleFont,
               }}
               text={titleText}

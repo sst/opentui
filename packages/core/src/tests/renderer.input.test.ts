@@ -1,5 +1,6 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { type ParsedKey, nonAlphanumericKeys, type KeyEventType } from "../lib/parse.keypress"
+import { nonAlphanumericKeys, type KeyEventType, type ParsedKey } from "../lib/parse.keypress"
+import { type KeyEvent } from "../lib/KeyHandler"
 import { Buffer } from "node:buffer"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
 
@@ -16,9 +17,9 @@ afterEach(() => {
   kittyRenderer.destroy()
 })
 
-async function triggerInput(sequence: string): Promise<ParsedKey> {
+async function triggerInput(sequence: string): Promise<KeyEvent> {
   return new Promise((resolve) => {
-    const onKeypress = (parsedKey: ParsedKey) => {
+    const onKeypress = (parsedKey: KeyEvent) => {
       currentRenderer.keyInput.removeListener("keypress", onKeypress)
       resolve(parsedKey)
     }
@@ -29,9 +30,9 @@ async function triggerInput(sequence: string): Promise<ParsedKey> {
   })
 }
 
-async function triggerKittyInput(sequence: string): Promise<ParsedKey> {
+async function triggerKittyInput(sequence: string): Promise<KeyEvent> {
   return new Promise((resolve) => {
-    const onKeypress = (parsedKey: ParsedKey) => {
+    const onKeypress = (parsedKey: KeyEvent) => {
       kittyRenderer.keyInput.removeListener("keypress", onKeypress)
       kittyRenderer.keyInput.removeListener("keyrepeat", onKeypress)
       kittyRenderer.keyInput.removeListener("keyrelease", onKeypress)
@@ -48,7 +49,7 @@ async function triggerKittyInput(sequence: string): Promise<ParsedKey> {
 
 test("basic letters via keyInput events", async () => {
   const result = await triggerInput("a")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     name: "a",
     ctrl: false,
     meta: false,
@@ -61,7 +62,7 @@ test("basic letters via keyInput events", async () => {
   })
 
   const resultShift = await triggerInput("A")
-  expect(resultShift).toEqual({
+  expect(resultShift).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -76,7 +77,7 @@ test("basic letters via keyInput events", async () => {
 
 test("numbers via keyInput events", async () => {
   const result = await triggerInput("1")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "1",
     ctrl: false,
@@ -91,7 +92,7 @@ test("numbers via keyInput events", async () => {
 
 test("special keys via keyInput events", async () => {
   const resultReturn = await triggerInput("\r")
-  expect(resultReturn).toEqual({
+  expect(resultReturn).toMatchObject({
     eventType: "press",
     name: "return",
     ctrl: false,
@@ -104,7 +105,7 @@ test("special keys via keyInput events", async () => {
   })
 
   const resultEnter = await triggerInput("\n")
-  expect(resultEnter).toEqual({
+  expect(resultEnter).toMatchObject({
     eventType: "press",
     name: "enter",
     ctrl: false,
@@ -117,7 +118,7 @@ test("special keys via keyInput events", async () => {
   })
 
   const resultTab = await triggerInput("\t")
-  expect(resultTab).toEqual({
+  expect(resultTab).toMatchObject({
     eventType: "press",
     name: "tab",
     ctrl: false,
@@ -130,7 +131,7 @@ test("special keys via keyInput events", async () => {
   })
 
   const resultBackspace = await triggerInput("\b")
-  expect(resultBackspace).toEqual({
+  expect(resultBackspace).toMatchObject({
     eventType: "press",
     name: "backspace",
     ctrl: false,
@@ -143,7 +144,7 @@ test("special keys via keyInput events", async () => {
   })
 
   const resultEscape = await triggerInput("\x1b")
-  expect(resultEscape).toEqual({
+  expect(resultEscape).toMatchObject({
     name: "escape",
     ctrl: false,
     meta: false,
@@ -156,7 +157,7 @@ test("special keys via keyInput events", async () => {
   })
 
   const resultSpace = await triggerInput(" ")
-  expect(resultSpace).toEqual({
+  expect(resultSpace).toMatchObject({
     eventType: "press",
     name: "space",
     ctrl: false,
@@ -171,7 +172,7 @@ test("special keys via keyInput events", async () => {
 
 test("ctrl+letter combinations via keyInput events", async () => {
   const resultCtrlA = await triggerInput("\x01")
-  expect(resultCtrlA).toEqual({
+  expect(resultCtrlA).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: true,
@@ -184,7 +185,7 @@ test("ctrl+letter combinations via keyInput events", async () => {
   })
 
   const resultCtrlZ = await triggerInput("\x1a")
-  expect(resultCtrlZ).toEqual({
+  expect(resultCtrlZ).toMatchObject({
     eventType: "press",
     name: "z",
     ctrl: true,
@@ -199,7 +200,7 @@ test("ctrl+letter combinations via keyInput events", async () => {
 
 test("meta+character combinations via keyInput events", async () => {
   const resultMetaA = await triggerInput("\x1ba")
-  expect(resultMetaA).toEqual({
+  expect(resultMetaA).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -212,7 +213,7 @@ test("meta+character combinations via keyInput events", async () => {
   })
 
   const resultMetaShiftA = await triggerInput("\x1bA")
-  expect(resultMetaShiftA).toEqual({
+  expect(resultMetaShiftA).toMatchObject({
     eventType: "press",
     name: "A",
     ctrl: false,
@@ -227,7 +228,7 @@ test("meta+character combinations via keyInput events", async () => {
 
 test("function keys via keyInput events", async () => {
   const resultF1 = await triggerInput("\x1bOP")
-  expect(resultF1).toEqual({
+  expect(resultF1).toMatchObject({
     eventType: "press",
     name: "f1",
     ctrl: false,
@@ -241,7 +242,7 @@ test("function keys via keyInput events", async () => {
   })
 
   const resultF1Alt = await triggerInput("\x1b[11~")
-  expect(resultF1Alt).toEqual({
+  expect(resultF1Alt).toMatchObject({
     eventType: "press",
     name: "f1",
     ctrl: false,
@@ -255,7 +256,7 @@ test("function keys via keyInput events", async () => {
   })
 
   const resultF12 = await triggerInput("\x1b[24~")
-  expect(resultF12).toEqual({
+  expect(resultF12).toMatchObject({
     eventType: "press",
     name: "f12",
     ctrl: false,
@@ -271,7 +272,7 @@ test("function keys via keyInput events", async () => {
 
 test("arrow keys via keyInput events", async () => {
   const resultUp = await triggerInput("\x1b[A")
-  expect(resultUp).toEqual({
+  expect(resultUp).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: false,
@@ -285,7 +286,7 @@ test("arrow keys via keyInput events", async () => {
   })
 
   const resultDown = await triggerInput("\x1b[B")
-  expect(resultDown).toEqual({
+  expect(resultDown).toMatchObject({
     eventType: "press",
     name: "down",
     ctrl: false,
@@ -299,7 +300,7 @@ test("arrow keys via keyInput events", async () => {
   })
 
   const resultRight = await triggerInput("\x1b[C")
-  expect(resultRight).toEqual({
+  expect(resultRight).toMatchObject({
     eventType: "press",
     name: "right",
     ctrl: false,
@@ -313,7 +314,7 @@ test("arrow keys via keyInput events", async () => {
   })
 
   const resultLeft = await triggerInput("\x1b[D")
-  expect(resultLeft).toEqual({
+  expect(resultLeft).toMatchObject({
     eventType: "press",
     name: "left",
     ctrl: false,
@@ -329,7 +330,7 @@ test("arrow keys via keyInput events", async () => {
 
 test("navigation keys via keyInput events", async () => {
   const resultHome = await triggerInput("\x1b[H")
-  expect(resultHome).toEqual({
+  expect(resultHome).toMatchObject({
     eventType: "press",
     name: "home",
     ctrl: false,
@@ -343,7 +344,7 @@ test("navigation keys via keyInput events", async () => {
   })
 
   const resultEnd = await triggerInput("\x1b[F")
-  expect(resultEnd).toEqual({
+  expect(resultEnd).toMatchObject({
     eventType: "press",
     name: "end",
     ctrl: false,
@@ -357,7 +358,7 @@ test("navigation keys via keyInput events", async () => {
   })
 
   const resultPageUp = await triggerInput("\x1b[5~")
-  expect(resultPageUp).toEqual({
+  expect(resultPageUp).toMatchObject({
     eventType: "press",
     name: "pageup",
     ctrl: false,
@@ -371,7 +372,7 @@ test("navigation keys via keyInput events", async () => {
   })
 
   const resultPageDown = await triggerInput("\x1b[6~")
-  expect(resultPageDown).toEqual({
+  expect(resultPageDown).toMatchObject({
     eventType: "press",
     name: "pagedown",
     ctrl: false,
@@ -387,7 +388,7 @@ test("navigation keys via keyInput events", async () => {
 
 test("modifier combinations via keyInput events", async () => {
   const resultShiftUp = await triggerInput("\x1b[1;2A")
-  expect(resultShiftUp).toEqual({
+  expect(resultShiftUp).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: false,
@@ -401,7 +402,7 @@ test("modifier combinations via keyInput events", async () => {
   })
 
   const resultMetaAltUp = await triggerInput("\x1b[1;4A")
-  expect(resultMetaAltUp).toEqual({
+  expect(resultMetaAltUp).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: false,
@@ -415,7 +416,7 @@ test("modifier combinations via keyInput events", async () => {
   })
 
   const resultAllModsUp = await triggerInput("\x1b[1;8A")
-  expect(resultAllModsUp).toEqual({
+  expect(resultAllModsUp).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: true,
@@ -431,7 +432,7 @@ test("modifier combinations via keyInput events", async () => {
 
 test("delete key via keyInput events", async () => {
   const resultDelete = await triggerInput("\x1b[3~")
-  expect(resultDelete).toEqual({
+  expect(resultDelete).toMatchObject({
     eventType: "press",
     name: "delete",
     ctrl: false,
@@ -447,8 +448,8 @@ test("delete key via keyInput events", async () => {
 
 test("Buffer input via keyInput events", async () => {
   // Test with Buffer input by emitting buffer data directly
-  const result = await new Promise<ParsedKey>((resolve) => {
-    const onKeypress = (parsedKey: ParsedKey) => {
+  const result = await new Promise<KeyEvent>((resolve) => {
+    const onKeypress = (parsedKey: KeyEvent) => {
       currentRenderer.keyInput.removeListener("keypress", onKeypress)
       resolve(parsedKey)
     }
@@ -457,7 +458,7 @@ test("Buffer input via keyInput events", async () => {
     currentRenderer.stdin.emit("data", Buffer.from("a"))
   })
 
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -472,7 +473,7 @@ test("Buffer input via keyInput events", async () => {
 
 test("special characters via keyInput events", async () => {
   const resultExclamation = await triggerInput("!")
-  expect(resultExclamation).toEqual({
+  expect(resultExclamation).toMatchObject({
     eventType: "press",
     name: "!",
     ctrl: false,
@@ -485,7 +486,7 @@ test("special characters via keyInput events", async () => {
   })
 
   const resultAt = await triggerInput("@")
-  expect(resultAt).toEqual({
+  expect(resultAt).toMatchObject({
     eventType: "press",
     name: "@",
     ctrl: false,
@@ -500,7 +501,7 @@ test("special characters via keyInput events", async () => {
 
 test("meta space and escape combinations via keyInput events", async () => {
   const resultMetaSpace = await triggerInput("\x1b ")
-  expect(resultMetaSpace).toEqual({
+  expect(resultMetaSpace).toMatchObject({
     eventType: "press",
     name: "space",
     ctrl: false,
@@ -513,7 +514,7 @@ test("meta space and escape combinations via keyInput events", async () => {
   })
 
   const resultDoubleEscape = await triggerInput("\x1b\x1b")
-  expect(resultDoubleEscape).toEqual({
+  expect(resultDoubleEscape).toMatchObject({
     eventType: "press",
     name: "escape",
     ctrl: false,
@@ -530,7 +531,7 @@ test("meta space and escape combinations via keyInput events", async () => {
 
 test("Kitty keyboard basic key via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -549,7 +550,7 @@ test("Kitty keyboard basic key via keyInput events", async () => {
 
 test("Kitty keyboard shift+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97:65;2u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -568,7 +569,7 @@ test("Kitty keyboard shift+a via keyInput events", async () => {
 
 test("Kitty keyboard ctrl+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;5u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: true,
@@ -587,7 +588,7 @@ test("Kitty keyboard ctrl+a via keyInput events", async () => {
 
 test("Kitty keyboard alt+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;3u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -606,7 +607,7 @@ test("Kitty keyboard alt+a via keyInput events", async () => {
 
 test("Kitty keyboard function key via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[57364u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "f1",
     ctrl: false,
@@ -626,7 +627,7 @@ test("Kitty keyboard function key via keyInput events", async () => {
 
 test("Kitty keyboard arrow key via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[57352u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: false,
@@ -646,7 +647,7 @@ test("Kitty keyboard arrow key via keyInput events", async () => {
 
 test("Kitty keyboard shift+space via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[32;2u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: " ",
     ctrl: false,
@@ -666,7 +667,7 @@ test("Kitty keyboard shift+space via keyInput events", async () => {
 test("Kitty keyboard event types via keyInput events", async () => {
   // Press event (explicit)
   const pressExplicit = await triggerKittyInput("\x1b[97;1:1u")
-  expect(pressExplicit).toEqual({
+  expect(pressExplicit).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -684,7 +685,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
   // Press event (default when no event type specified)
   const pressDefault = await triggerKittyInput("\x1b[97u")
-  expect(pressDefault).toEqual({
+  expect(pressDefault).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -702,7 +703,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
   // Press event (modifier without event type)
   const pressWithModifier = await triggerKittyInput("\x1b[97;5u") // Ctrl+a
-  expect(pressWithModifier).toEqual({
+  expect(pressWithModifier).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: true,
@@ -720,7 +721,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
   // Repeat event
   const repeat = await triggerKittyInput("\x1b[97;1:2u")
-  expect(repeat).toEqual({
+  expect(repeat).toMatchObject({
     eventType: "repeat",
     name: "a",
     ctrl: false,
@@ -738,7 +739,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
   // Release event
   const release = await triggerKittyInput("\x1b[97;1:3u")
-  expect(release).toEqual({
+  expect(release).toMatchObject({
     eventType: "release",
     name: "a",
     ctrl: false,
@@ -756,7 +757,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
   // Repeat event with modifier
   const repeatWithCtrl = await triggerKittyInput("\x1b[97;5:2u")
-  expect(repeatWithCtrl).toEqual({
+  expect(repeatWithCtrl).toMatchObject({
     eventType: "repeat",
     name: "a",
     ctrl: true,
@@ -774,7 +775,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
   // Release event with modifier
   const releaseWithShift = await triggerKittyInput("\x1b[97;2:3u")
-  expect(releaseWithShift).toEqual({
+  expect(releaseWithShift).toMatchObject({
     eventType: "release",
     name: "a",
     ctrl: false,
@@ -793,7 +794,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
 
 test("Kitty keyboard with text via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;1;97u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -812,7 +813,7 @@ test("Kitty keyboard with text via keyInput events", async () => {
 
 test("Kitty keyboard ctrl+shift+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;6u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: true,
@@ -831,7 +832,7 @@ test("Kitty keyboard ctrl+shift+a via keyInput events", async () => {
 
 test("Kitty keyboard alt+shift+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;4u")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -850,7 +851,7 @@ test("Kitty keyboard alt+shift+a via keyInput events", async () => {
 
 test("Kitty keyboard super+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;9u") // modifier 9 - 1 = 8 = super
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -869,7 +870,7 @@ test("Kitty keyboard super+a via keyInput events", async () => {
 
 test("Kitty keyboard hyper+a via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;17u") // modifier 17 - 1 = 16 = hyper
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -888,7 +889,7 @@ test("Kitty keyboard hyper+a via keyInput events", async () => {
 
 test("Kitty keyboard caps lock via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;65u") // modifier 65 - 1 = 64 = caps lock
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -907,7 +908,7 @@ test("Kitty keyboard caps lock via keyInput events", async () => {
 
 test("Kitty keyboard num lock via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[97;129u") // modifier 129 - 1 = 128 = num lock
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "a",
     ctrl: false,
@@ -926,7 +927,7 @@ test("Kitty keyboard num lock via keyInput events", async () => {
 
 test("Kitty keyboard unicode character via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[233u") // é
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "é",
     ctrl: false,
@@ -945,7 +946,7 @@ test("Kitty keyboard unicode character via keyInput events", async () => {
 
 test("Kitty keyboard emoji via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[128512u") // 😀
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "😀",
     ctrl: false,
@@ -1051,8 +1052,8 @@ test("Kitty keyboard arrow keys with event types via keyInput events", async () 
 
 test("high byte buffer handling via keyInput events", async () => {
   // Test with Buffer input by emitting buffer data directly
-  const result = await new Promise<ParsedKey>((resolve) => {
-    const onKeypress = (parsedKey: ParsedKey) => {
+  const result = await new Promise<KeyEvent>((resolve) => {
+    const onKeypress = (parsedKey: KeyEvent) => {
       currentRenderer.keyInput.removeListener("keypress", onKeypress)
       resolve(parsedKey)
     }
@@ -1062,7 +1063,7 @@ test("high byte buffer handling via keyInput events", async () => {
     currentRenderer.stdin.emit("data", Buffer.from([160]))
   })
 
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "space",
     ctrl: false,
@@ -1077,7 +1078,7 @@ test("high byte buffer handling via keyInput events", async () => {
 
 test("empty input via keyInput events", async () => {
   const result = await triggerInput("")
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     eventType: "press",
     name: "",
     ctrl: false,
@@ -1092,7 +1093,7 @@ test("empty input via keyInput events", async () => {
 
 test("rxvt style arrow keys with modifiers via keyInput events", async () => {
   const resultShiftUp = await triggerInput("\x1b[a")
-  expect(resultShiftUp).toEqual({
+  expect(resultShiftUp).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: false,
@@ -1106,7 +1107,7 @@ test("rxvt style arrow keys with modifiers via keyInput events", async () => {
   })
 
   const resultShiftInsert = await triggerInput("\x1b[2$")
-  expect(resultShiftInsert).toEqual({
+  expect(resultShiftInsert).toMatchObject({
     eventType: "press",
     name: "insert",
     ctrl: false,
@@ -1122,7 +1123,7 @@ test("rxvt style arrow keys with modifiers via keyInput events", async () => {
 
 test("ctrl modifier keys via keyInput events", async () => {
   const resultCtrlUp = await triggerInput("\x1bOa")
-  expect(resultCtrlUp).toEqual({
+  expect(resultCtrlUp).toMatchObject({
     eventType: "press",
     name: "up",
     ctrl: true,
@@ -1136,7 +1137,7 @@ test("ctrl modifier keys via keyInput events", async () => {
   })
 
   const resultCtrlInsert = await triggerInput("\x1b[2^")
-  expect(resultCtrlInsert).toEqual({
+  expect(resultCtrlInsert).toMatchObject({
     eventType: "press",
     name: "insert",
     ctrl: true,
@@ -1259,8 +1260,8 @@ test("regular parsing always defaults to press event type via keyInput events", 
   }
 
   // Test with Buffer input too
-  const bufResult = await new Promise<ParsedKey>((resolve) => {
-    const onKeypress = (parsedKey: ParsedKey) => {
+  const bufResult = await new Promise<KeyEvent>((resolve) => {
+    const onKeypress = (parsedKey: KeyEvent) => {
       currentRenderer.keyInput.removeListener("keypress", onKeypress)
       resolve(parsedKey)
     }

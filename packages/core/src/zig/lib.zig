@@ -6,9 +6,15 @@ const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
 const text_buffer = @import("text-buffer.zig");
+const text_buffer_view = @import("text-buffer-view.zig");
+const edit_buffer_mod = @import("edit-buffer.zig");
+const editor_view = @import("editor-view.zig");
+const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const event_bus = @import("event-bus.zig");
+const utils = @import("utils.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -19,8 +25,8 @@ export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, m
     logger.setLogCallback(callback);
 }
 
-fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
-    return .{ ptr[0], ptr[1], ptr[2], ptr[3] };
+export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.C) void) void {
+    event_bus.setEventCallback(callback);
 }
 
 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -55,7 +61,7 @@ export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
 }
 
 export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
-    rendererPtr.setBackgroundColor(f32PtrToRGBA(color));
+    rendererPtr.setBackgroundColor(utils.f32PtrToRGBA(color));
 }
 
 export fn setRenderOffset(rendererPtr: *renderer.CliRenderer, offset: u32) void {
@@ -151,7 +157,7 @@ export fn setCursorStyle(rendererPtr: *renderer.CliRenderer, stylePtr: [*]const 
 }
 
 export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
-    rendererPtr.terminal.setCursorColor(f32PtrToRGBA(color));
+    rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
 }
 
 export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, corner: u8) void {
@@ -178,7 +184,7 @@ export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]cons
 
 // Buffer functions
 export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const f32) void {
-    bufferPtr.clear(f32PtrToRGBA(bg), null) catch {};
+    bufferPtr.clear(utils.f32PtrToRGBA(bg), null) catch {};
 }
 
 export fn bufferGetCharPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
@@ -222,20 +228,20 @@ export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr
 }
 
 export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
-    const rgbaFg = f32PtrToRGBA(fg);
-    const rgbaBg = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     bufferPtr.drawText(text[0..textLen], x, y, rgbaFg, rgbaBg, attributes) catch {};
 }
 
 export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
-    const rgbaFg = f32PtrToRGBA(fg);
-    const rgbaBg = f32PtrToRGBA(bg);
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.setCellWithAlphaBlending(x, y, char, rgbaFg, rgbaBg, attributes) catch {};
 }
 
 export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
-    const rgbaFg = f32PtrToRGBA(fg);
-    const rgbaBg = f32PtrToRGBA(bg);
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
     const cell = buffer.Cell{
         .char = char,
         .fg = rgbaFg,
@@ -246,7 +252,7 @@ export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char
 }
 
 export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const f32) void {
-    const rgbaBg = f32PtrToRGBA(bg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.fillRect(x, y, width, height, rgbaBg) catch {};
 }
 
@@ -302,8 +308,8 @@ export fn bufferDrawBox(
         height,
         borderChars,
         borderSides,
-        f32PtrToRGBA(borderColor),
-        f32PtrToRGBA(backgroundColor),
+        utils.f32PtrToRGBA(borderColor),
+        utils.f32PtrToRGBA(backgroundColor),
         shouldFill,
         titleSlice,
         titleAlignment,
@@ -346,6 +352,10 @@ export fn disableMouse(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableMouse();
 }
 
+export fn queryPixelResolution(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.queryPixelResolution();
+}
+
 export fn enableKittyKeyboard(rendererPtr: *renderer.CliRenderer, flags: u8) void {
     rendererPtr.enableKittyKeyboard(flags);
 }
@@ -358,80 +368,164 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
     rendererPtr.setupTerminal(useAlternateScreen);
 }
 
-export fn createTextBuffer(widthMethod: u8) ?*text_buffer.TextBuffer {
+export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
 
-    const tb = text_buffer.TextBuffer.init(std.heap.page_allocator, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
+    const tb = text_buffer.UnifiedTextBuffer.init(std.heap.page_allocator, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
         return null;
     };
 
     return tb;
 }
 
-export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
+export fn destroyTextBuffer(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.deinit();
 }
 
-export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
+export fn textBufferGetLength(tb: *text_buffer.UnifiedTextBuffer) u32 {
     return tb.getLength();
 }
 
-export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
+export fn textBufferGetByteSize(tb: *text_buffer.UnifiedTextBuffer) u32 {
+    return tb.getByteSize();
+}
+
+export fn textBufferReset(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.reset();
 }
 
-export fn textBufferSetSelection(tb: *text_buffer.TextBuffer, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    tb.setSelection(start, end, bg, fg);
+export fn textBufferClear(tb: *text_buffer.UnifiedTextBuffer) void {
+    tb.clear();
 }
 
-export fn textBufferResetSelection(tb: *text_buffer.TextBuffer) void {
-    tb.resetSelection();
-}
-
-export fn textBufferSetDefaultFg(tb: *text_buffer.TextBuffer, fg: ?[*]const f32) void {
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
+export fn textBufferSetDefaultFg(tb: *text_buffer.UnifiedTextBuffer, fg: ?[*]const f32) void {
+    const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     tb.setDefaultFg(fgColor);
 }
 
-export fn textBufferSetDefaultBg(tb: *text_buffer.TextBuffer, bg: ?[*]const f32) void {
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
+export fn textBufferSetDefaultBg(tb: *text_buffer.UnifiedTextBuffer, bg: ?[*]const f32) void {
+    const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     tb.setDefaultBg(bgColor);
 }
 
-export fn textBufferSetDefaultAttributes(tb: *text_buffer.TextBuffer, attr: ?[*]const u8) void {
-    const attrValue = if (attr) |a| a[0] else null;
-    tb.setDefaultAttributes(attrValue);
+export fn textBufferSetDefaultAttributes(tb: *text_buffer.UnifiedTextBuffer, attr: ?[*]const u8) void {
+    const attributes = if (attr) |a| a[0] else null;
+    tb.setDefaultAttributes(attributes);
 }
 
-export fn textBufferResetDefaults(tb: *text_buffer.TextBuffer) void {
+export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.resetDefaults();
 }
 
-export fn textBufferWriteChunk(tb: *text_buffer.TextBuffer, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: ?[*]const u8) u32 {
-    const textSlice = textBytes[0..textLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const attrValue = if (attr) |a| a[0] else null;
-
-    return tb.writeChunk(textSlice, fgColor, bgColor, attrValue) catch 0;
+export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
+    const data = dataPtr[0..dataLen];
+    const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;
+    return @intCast(mem_id);
 }
 
-export fn textBufferFinalizeLineInfo(tb: *text_buffer.TextBuffer) void {
-    tb.finalizeLineInfo();
+export fn textBufferReplaceMemBuffer(tb: *text_buffer.UnifiedTextBuffer, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
+    const data = dataPtr[0..dataLen];
+    tb.mem_registry.replace(id, data, owned) catch return false;
+    return true;
 }
 
-export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
+export fn textBufferClearMemRegistry(tb: *text_buffer.UnifiedTextBuffer) void {
+    tb.mem_registry.clear();
+}
+
+export fn textBufferSetTextFromMem(tb: *text_buffer.UnifiedTextBuffer, id: u8) void {
+    tb.setTextFromMemId(id) catch {};
+}
+
+export fn textBufferLoadFile(tb: *text_buffer.UnifiedTextBuffer, pathPtr: [*]const u8, pathLen: usize) bool {
+    const path = pathPtr[0..pathLen];
+    tb.loadFile(path) catch return false;
+    return true;
+}
+
+export fn textBufferSetStyledText(
+    tb: *text_buffer.UnifiedTextBuffer,
+    chunksPtr: [*]const text_buffer.StyledChunk,
+    chunkCount: usize,
+) void {
+    if (chunkCount == 0) return;
+    const chunks = chunksPtr[0..chunkCount];
+    tb.setStyledText(chunks) catch {};
+}
+
+export fn textBufferGetLineCount(tb: *text_buffer.UnifiedTextBuffer) u32 {
     return tb.getLineCount();
 }
 
-export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
-    const line_info = tb.getCachedLineInfo();
+export fn textBufferGetPlainText(tb: *text_buffer.UnifiedTextBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getPlainTextIntoBuffer(outBuffer);
+}
+
+// TextBufferView functions (Array-based for backward compatibility)
+export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.UnifiedTextBufferView {
+    const view = text_buffer_view.UnifiedTextBufferView.init(std.heap.page_allocator, tb) catch {
+        return null;
+    };
+    return view;
+}
+
+export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) void {
+    view.deinit();
+}
+
+export fn textBufferViewSetSelection(view: *text_buffer_view.UnifiedTextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    view.setSelection(start, end, bg, fg);
+}
+
+export fn textBufferViewResetSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
+    view.resetSelection();
+}
+
+export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.UnifiedTextBufferView) u64 {
+    return view.packSelectionInfo();
+}
+
+export fn textBufferViewSetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn textBufferViewResetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
+    view.resetLocalSelection();
+}
+
+export fn textBufferViewSetWrapWidth(view: *text_buffer_view.UnifiedTextBufferView, width: u32) void {
+    view.setWrapWidth(if (width == 0) null else width);
+}
+
+export fn textBufferViewSetWrapMode(view: *text_buffer_view.UnifiedTextBufferView, mode: u8) void {
+    const wrapMode: text_buffer.WrapMode = switch (mode) {
+        0 => .none,
+        1 => .char,
+        2 => .word,
+        else => .none,
+    };
+    view.setWrapMode(wrapMode);
+}
+
+export fn textBufferViewSetViewportSize(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32) void {
+    view.setViewportSize(width, height);
+}
+
+export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextBufferView) u32 {
+    return view.getVirtualLineCount();
+}
+
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getCachedLineInfo();
 
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
@@ -439,86 +533,457 @@ export fn textBufferGetLineInfoDirect(tb: *text_buffer.TextBuffer, lineStartsPtr
     return line_info.max_width;
 }
 
-export fn bufferDrawTextBuffer(
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getLogicalLineInfo();
+
+    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
+    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+
+    return line_info.max_width;
+}
+
+export fn textBufferViewGetSelectedText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.getSelectedTextIntoBuffer(outBuffer);
+}
+
+export fn textBufferViewGetPlainText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.getPlainTextIntoBuffer(outBuffer);
+}
+
+// ===== EditBuffer Exports =====
+
+export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
+    const pool = gp.initGlobalPool(globalArena);
+    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const unicode_data = gp.initGlobalUnicodeData(globalArena);
+    const graphemes_ptr, const display_width_ptr = unicode_data;
+
+    return edit_buffer_mod.EditBuffer.init(
+        std.heap.page_allocator,
+        pool,
+        wMethod,
+        graphemes_ptr,
+        display_width_ptr,
+    ) catch null;
+}
+
+export fn destroyEditBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.deinit();
+}
+
+export fn editBufferGetTextBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) *text_buffer.UnifiedTextBuffer {
+    return edit_buffer.getTextBuffer();
+}
+
+export fn editBufferInsertText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    edit_buffer.insertText(text) catch {};
+}
+
+export fn editBufferDeleteRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32) void {
+    const start = edit_buffer_mod.Cursor{ .row = start_row, .col = start_col };
+    const end = edit_buffer_mod.Cursor{ .row = end_row, .col = end_col };
+    edit_buffer.deleteRange(start, end) catch {};
+}
+
+export fn editBufferDeleteCharBackward(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.backspace() catch {};
+}
+
+export fn editBufferDeleteChar(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.deleteForward() catch {};
+}
+
+export fn editBufferMoveCursorLeft(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveLeft();
+}
+
+export fn editBufferMoveCursorRight(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveRight();
+}
+
+export fn editBufferMoveCursorUp(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveUp();
+}
+
+export fn editBufferMoveCursorDown(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.moveDown();
+}
+
+export fn editBufferGetCursor(edit_buffer: *edit_buffer_mod.EditBuffer, outRow: *u32, outCol: *u32) void {
+    const cursor = edit_buffer.getPrimaryCursor();
+    outRow.* = cursor.row;
+    outCol.* = cursor.col;
+}
+
+export fn editBufferSetCursor(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) void {
+    edit_buffer.setCursor(row, col) catch {};
+}
+
+export fn editBufferSetCursorToLineCol(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) void {
+    edit_buffer.setCursor(row, col) catch {};
+}
+
+export fn editBufferSetCursorByOffset(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32) void {
+    edit_buffer.setCursorByOffset(offset) catch {};
+}
+
+export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
+    const text = textPtr[0..textLen];
+    edit_buffer.setText(text, retain_history) catch {};
+}
+
+export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8, retain_history: bool) void {
+    edit_buffer.setTextFromMemId(mem_id, retain_history) catch {};
+}
+
+export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return edit_buffer.getText(outBuffer);
+}
+
+export fn editBufferInsertChar(edit_buffer: *edit_buffer_mod.EditBuffer, charPtr: [*]const u8, charLen: usize) void {
+    const text = charPtr[0..charLen];
+    edit_buffer.insertText(text) catch {};
+}
+
+export fn editBufferNewLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.insertText("\n") catch {};
+}
+
+export fn editBufferDeleteLine(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.deleteLine() catch {};
+}
+
+export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32) void {
+    edit_buffer.gotoLine(line) catch {};
+}
+
+export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outVisualCol: *u32, outOffset: *u32) void {
+    const pos = edit_buffer.getCursorPosition();
+    outLine.* = pos.line;
+    outVisualCol.* = pos.visual_col;
+    outOffset.* = pos.offset;
+}
+
+export fn editBufferGetId(edit_buffer: *edit_buffer_mod.EditBuffer) u16 {
+    return edit_buffer.getId();
+}
+
+export fn editBufferDebugLogRope(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.debugLogRope();
+}
+
+export fn editBufferUndo(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const prev_meta = edit_buffer.undo() catch return 0;
+    const copyLen = @min(prev_meta.len, maxLen);
+    @memcpy(outPtr[0..copyLen], prev_meta[0..copyLen]);
+    return copyLen;
+}
+
+export fn editBufferRedo(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
+    const next_meta = edit_buffer.redo() catch return 0;
+    const copyLen = @min(next_meta.len, maxLen);
+    @memcpy(outPtr[0..copyLen], next_meta[0..copyLen]);
+    return copyLen;
+}
+
+export fn editBufferCanUndo(edit_buffer: *edit_buffer_mod.EditBuffer) bool {
+    return edit_buffer.canUndo();
+}
+
+export fn editBufferCanRedo(edit_buffer: *edit_buffer_mod.EditBuffer) bool {
+    return edit_buffer.canRedo();
+}
+
+export fn editBufferClearHistory(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.clearHistory();
+}
+
+export fn editBufferSetPlaceholder(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: ?[*]const u8, textLen: usize) void {
+    const text = if (textPtr) |ptr| ptr[0..textLen] else "";
+    edit_buffer.setPlaceholder(text) catch {};
+}
+
+export fn editBufferSetPlaceholderColor(edit_buffer: *edit_buffer_mod.EditBuffer, color: [*]const f32) void {
+    edit_buffer.setPlaceholderColor(utils.f32PtrToRGBA(color)) catch {};
+}
+
+// ===== EditorView Exports =====
+
+export fn createEditorView(edit_buffer: *edit_buffer_mod.EditBuffer, viewport_width: u32, viewport_height: u32) ?*editor_view.EditorView {
+    return editor_view.EditorView.init(globalArena, edit_buffer, viewport_width, viewport_height) catch null;
+}
+
+export fn destroyEditorView(view: *editor_view.EditorView) void {
+    view.deinit();
+}
+
+export fn editorViewSetViewport(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32) void {
+    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height });
+}
+
+export fn editorViewClearViewport(view: *editor_view.EditorView) void {
+    view.setViewport(null);
+}
+
+export fn editorViewGetViewport(view: *editor_view.EditorView, outX: *u32, outY: *u32, outWidth: *u32, outHeight: *u32) bool {
+    view.updateBeforeRender();
+
+    if (view.getViewport()) |vp| {
+        outX.* = vp.x;
+        outY.* = vp.y;
+        outWidth.* = vp.width;
+        outHeight.* = vp.height;
+        return true;
+    }
+    return false;
+}
+
+export fn editorViewSetScrollMargin(view: *editor_view.EditorView, margin: f32) void {
+    view.setScrollMargin(margin);
+}
+
+export fn editorViewEnsureCursorVisible(view: *editor_view.EditorView, cursor_line: u32) void {
+    view.ensureCursorVisible(cursor_line);
+}
+
+export fn editorViewGetVirtualLineCount(view: *editor_view.EditorView) u32 {
+    // TODO: There is a getter for that directly, no?
+    return @intCast(view.getVirtualLines().len);
+}
+
+export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 {
+    return view.getTotalVirtualLineCount();
+}
+
+export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getCachedLineInfo();
+    for (line_info.starts, 0..) |start, i| {
+        lineStartsPtr[i] = start;
+    }
+    for (line_info.widths, 0..) |width, i| {
+        lineWidthsPtr[i] = width;
+    }
+    return line_info.max_width;
+}
+
+export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.UnifiedTextBufferView {
+    return view.getTextBufferView();
+}
+
+export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, height: u32) void {
+    view.setViewportSize(width, height);
+}
+
+export fn editorViewSetWrapMode(view: *editor_view.EditorView, mode: u8) void {
+    const wrapMode: text_buffer.WrapMode = switch (mode) {
+        0 => .none,
+        1 => .char,
+        2 => .word,
+        else => .none,
+    };
+    view.setWrapMode(wrapMode);
+}
+
+// EditorView selection methods - delegate to TextBufferView
+export fn editorViewSetSelection(view: *editor_view.EditorView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    view.text_buffer_view.setSelection(start, end, bg, fg);
+}
+
+export fn editorViewResetSelection(view: *editor_view.EditorView) void {
+    view.text_buffer_view.resetSelection();
+}
+
+export fn editorViewGetSelection(view: *editor_view.EditorView) u64 {
+    return view.text_buffer_view.packSelectionInfo();
+}
+
+export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    return view.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn editorViewResetLocalSelection(view: *editor_view.EditorView) void {
+    view.text_buffer_view.resetLocalSelection();
+}
+
+export fn editorViewGetSelectedTextBytes(view: *editor_view.EditorView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.text_buffer_view.getSelectedTextIntoBuffer(outBuffer);
+}
+
+// EditorView cursor and text methods
+export fn editorViewGetCursor(view: *editor_view.EditorView, outRow: *u32, outCol: *u32) void {
+    const cursor = view.getPrimaryCursor();
+    outRow.* = cursor.row;
+    outCol.* = cursor.col;
+}
+
+export fn editorViewGetText(view: *editor_view.EditorView, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return view.getText(outBuffer);
+}
+
+// ===== EditorView VisualCursor Exports =====
+
+export fn editorViewGetVisualCursor(
+    view: *editor_view.EditorView,
+    outVisualRow: *u32,
+    outVisualCol: *u32,
+    outLogicalRow: *u32,
+    outLogicalCol: *u32,
+    outOffset: *u32,
+) bool {
+    const vcursor = view.getVisualCursor();
+    outVisualRow.* = vcursor.visual_row;
+    outVisualCol.* = vcursor.visual_col;
+    outLogicalRow.* = vcursor.logical_row;
+    outLogicalCol.* = vcursor.logical_col;
+    outOffset.* = vcursor.offset;
+    return true;
+}
+
+export fn editorViewMoveUpVisual(view: *editor_view.EditorView) void {
+    view.moveUpVisual();
+}
+
+export fn editorViewMoveDownVisual(view: *editor_view.EditorView) void {
+    view.moveDownVisual();
+}
+
+export fn editorViewDeleteSelectedText(view: *editor_view.EditorView) void {
+    view.deleteSelectedText() catch {};
+}
+
+export fn editorViewSetCursorByOffset(view: *editor_view.EditorView, offset: u32) void {
+    view.setCursorByOffset(offset) catch {};
+}
+
+export fn bufferDrawEditorView(
     bufferPtr: *buffer.OptimizedBuffer,
-    textBufferPtr: *text_buffer.TextBuffer,
+    viewPtr: *editor_view.EditorView,
     x: i32,
     y: i32,
-    clipX: i32,
-    clipY: i32,
-    clipWidth: u32,
-    clipHeight: u32,
-    hasClipRect: bool,
 ) void {
-    const clip_rect = if (hasClipRect) buffer.ClipRect{
-        .x = clipX,
-        .y = clipY,
-        .width = clipWidth,
-        .height = clipHeight,
-    } else null;
-
-    bufferPtr.drawTextBuffer(textBufferPtr, x, y, clip_rect) catch {};
+    bufferPtr.drawEditorView(viewPtr, x, y) catch {};
 }
 
-// Get selection info as packed u64: [start:u32][end:u32]
-// Returns 0xFFFFFFFF_FFFFFFFF if no selection
-export fn textBufferGetSelectionInfo(tb: *text_buffer.TextBuffer) u64 {
-    return tb.packSelectionInfo();
+export fn bufferDrawTextBufferView(
+    bufferPtr: *buffer.OptimizedBuffer,
+    viewPtr: *text_buffer_view.UnifiedTextBufferView,
+    x: i32,
+    y: i32,
+) void {
+    bufferPtr.drawTextBuffer(viewPtr, x, y) catch {};
 }
 
-export fn textBufferGetSelectedText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
-    const outBuffer = outPtr[0..maxLen];
-    return tb.getSelectedTextIntoBuffer(outBuffer);
+pub const ExternalHighlight = extern struct {
+    start: u32,
+    end: u32,
+    style_id: u32,
+    priority: u8,
+    hl_ref: u16,
+};
+
+export fn textBufferAddHighlightByCharRange(
+    tb: *text_buffer.UnifiedTextBuffer,
+    hl_ptr: [*]const ExternalHighlight,
+) void {
+    const hl = hl_ptr[0];
+    // For char-range highlights, start/end in the struct are unused (passed as char_start/char_end)
+    tb.addHighlightByCharRange(hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
-export fn textBufferGetPlainText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
-    const outBuffer = outPtr[0..maxLen];
-    return tb.getPlainTextIntoBuffer(outBuffer);
+export fn textBufferAddHighlight(
+    tb: *text_buffer.UnifiedTextBuffer,
+    line_idx: u32,
+    hl_ptr: [*]const ExternalHighlight,
+) void {
+    const hl = hl_ptr[0];
+    // For line-based highlights, start/end are column offsets
+    tb.addHighlight(line_idx, hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
-export fn textBufferSetLocalSelection(tb: *text_buffer.TextBuffer, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
-    const bg = if (bgColor) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const fg = if (fgColor) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    return tb.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+export fn textBufferRemoveHighlightsByRef(tb: *text_buffer.UnifiedTextBuffer, hl_ref: u16) void {
+    tb.removeHighlightsByRef(hl_ref);
 }
 
-export fn textBufferResetLocalSelection(tb: *text_buffer.TextBuffer) void {
-    tb.resetLocalSelection();
+export fn textBufferClearLineHighlights(tb: *text_buffer.UnifiedTextBuffer, line_idx: u32) void {
+    tb.clearLineHighlights(line_idx);
 }
 
-export fn textBufferInsertChunkGroup(tb: *text_buffer.TextBuffer, index: usize, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: u8) u32 {
-    const textSlice = textBytes[0..textLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const attrValue = if (attr == 255) null else attr;
-    return tb.insertChunkGroup(index, textSlice, fgColor, bgColor, attrValue) catch 0;
+export fn textBufferClearAllHighlights(tb: *text_buffer.UnifiedTextBuffer) void {
+    tb.clearAllHighlights();
 }
 
-export fn textBufferRemoveChunkGroup(tb: *text_buffer.TextBuffer, index: usize) u32 {
-    return tb.removeChunkGroup(index) catch tb.char_count;
+export fn textBufferSetSyntaxStyle(tb: *text_buffer.UnifiedTextBuffer, style: ?*syntax_style.SyntaxStyle) void {
+    tb.setSyntaxStyle(style);
 }
 
-export fn textBufferReplaceChunkGroup(tb: *text_buffer.TextBuffer, index: usize, textBytes: [*]const u8, textLen: u32, fg: ?[*]const f32, bg: ?[*]const f32, attr: u8) u32 {
-    const textSlice = textBytes[0..textLen];
-    const fgColor = if (fg) |fgPtr| f32PtrToRGBA(fgPtr) else null;
-    const bgColor = if (bg) |bgPtr| f32PtrToRGBA(bgPtr) else null;
-    const attrValue = if (attr == 255) null else attr;
-    return tb.replaceChunkGroup(index, textSlice, fgColor, bgColor, attrValue) catch tb.char_count;
+export fn textBufferGetLineHighlightsPtr(
+    tb: *text_buffer.UnifiedTextBuffer,
+    line_idx: u32,
+    out_count: *usize,
+) ?[*]const ExternalHighlight {
+    const highs = tb.getLineHighlightsSlice(line_idx);
+
+    if (highs.len == 0) {
+        out_count.* = 0;
+        return null;
+    }
+
+    const alloc = std.heap.page_allocator;
+    var slice = alloc.alloc(ExternalHighlight, highs.len) catch return null;
+
+    for (highs, 0..) |hl, i| {
+        slice[i] = .{
+            .start = hl.col_start,
+            .end = hl.col_end,
+            .style_id = hl.style_id,
+            .priority = hl.priority,
+            .hl_ref = hl.hl_ref,
+        };
+    }
+
+    out_count.* = highs.len;
+    return slice.ptr;
 }
 
-export fn textBufferGetChunkGroupCount(tb: *const text_buffer.TextBuffer) usize {
-    return tb.getChunkGroupCount();
+export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: usize) void {
+    const alloc = std.heap.page_allocator;
+    alloc.free(@constCast(ptr)[0..count]);
 }
 
-export fn textBufferSetWrapWidth(tb: *text_buffer.TextBuffer, width: u32) void {
-    tb.setWrapWidth(if (width == 0) null else width);
-}
-
-export fn textBufferSetWrapMode(tb: *text_buffer.TextBuffer, mode: u8) void {
-    const wrapMode: text_buffer.WrapMode = switch (mode) {
-        0 => .char,
-        1 => .word,
-        else => .char,
+// SyntaxStyle functions
+export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
+    return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {
+        logger.err("Failed to create SyntaxStyle: {}", .{err});
+        return null;
     };
-    tb.setWrapMode(wrapMode);
+}
+
+export fn destroySyntaxStyle(style: *syntax_style.SyntaxStyle) void {
+    style.deinit();
+}
+
+export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u8) u32 {
+    const name = namePtr[0..nameLen];
+    const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    return style.registerStyle(name, fgColor, bgColor, attributes) catch 0;
+}
+
+export fn syntaxStyleResolveByName(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize) u32 {
+    const name = namePtr[0..nameLen];
+    return style.resolveByName(name) orelse 0;
+}
+
+export fn syntaxStyleGetStyleCount(style: *syntax_style.SyntaxStyle) usize {
+    return style.getStyleCount();
 }

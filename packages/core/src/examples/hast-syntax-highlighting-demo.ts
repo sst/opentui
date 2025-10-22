@@ -1,13 +1,13 @@
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type ParsedKey } from "../index"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../lib/KeyHandler"
 import { parseColor } from "../lib/RGBA"
-import { hastToStyledText, SyntaxStyle, type HASTElement } from "../lib/hast-styled-text"
+import { hastToStyledText, type HASTElement } from "../lib/hast-styled-text"
+import { SyntaxStyle } from "../syntax-style"
 
 const exampleHAST: HASTElement = (await import("./assets/hast-example.json", { with: { type: "json" } })) as HASTElement
 
 let renderer: CliRenderer | null = null
-let keyboardHandler: ((key: ParsedKey) => void) | null = null
+let keyboardHandler: ((key: KeyEvent) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 
 export function run(rendererInstance: CliRenderer): void {
@@ -53,7 +53,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(codeBox)
 
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = SyntaxStyle.fromStyles({
     keyword: { fg: parseColor("#FF6B9D"), bold: true },
     string: { fg: parseColor("#A8E6CF") },
     comment: { fg: parseColor("#888888"), italic: true },
@@ -88,7 +88,7 @@ export function run(rendererInstance: CliRenderer): void {
   })
   parentContainer.add(timingText)
 
-  keyboardHandler = (key: ParsedKey) => {
+  keyboardHandler = (key: KeyEvent) => {
     if (key.name === "r" || key.name === "R") {
       syntaxStyle.clearCache()
 
@@ -104,12 +104,12 @@ export function run(rendererInstance: CliRenderer): void {
     }
   }
 
-  getKeyHandler().on("keypress", keyboardHandler)
+  rendererInstance.keyInput.on("keypress", keyboardHandler)
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (keyboardHandler) {
-    getKeyHandler().off("keypress", keyboardHandler)
+    rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
   }
 

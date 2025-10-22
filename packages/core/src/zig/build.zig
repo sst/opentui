@@ -23,6 +23,17 @@ fn applyZgDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.b
     module.addImport("code_point", zg_dep.module("code_point"));
     module.addImport("Graphemes", zg_dep.module("Graphemes"));
     module.addImport("DisplayWidth", zg_dep.module("DisplayWidth"));
+
+    // Add uucode for grapheme break detection
+    if (b.lazyDependency("uucode", .{
+        .target = target,
+        .optimize = optimize,
+        .fields = @as([]const []const u8, &.{
+            "grapheme_break",
+        }),
+    })) |uucode_dep| {
+        module.addImport("uucode", uucode_dep.module("uucode"));
+    }
 }
 
 const SupportedTarget = struct {
@@ -103,12 +114,50 @@ pub fn build(b: *std.Build) void {
     const test_exe = b.addTest(.{
         .root_source_file = b.path("test.zig"),
         .target = test_target,
+        .filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter"),
     });
 
     applyZgDependencies(b, test_exe.root_module, .Debug, test_target);
 
     const run_test = b.addRunArtifact(test_exe);
     test_step.dependOn(&run_test.step);
+
+    // Add bench step
+    const bench_step = b.step("bench", "Run benchmarks");
+    const bench_target_query = std.Target.Query{
+        .cpu_arch = builtin.cpu.arch,
+        .os_tag = builtin.os.tag,
+    };
+    const bench_target = b.resolveTargetQuery(bench_target_query);
+
+    const bench_exe = b.addExecutable(.{
+        .name = "opentui-bench",
+        .root_source_file = b.path("bench.zig"),
+        .target = bench_target,
+        .optimize = optimize,
+    });
+
+    applyZgDependencies(b, bench_exe.root_module, optimize, bench_target);
+
+    const run_bench = b.addRunArtifact(bench_exe);
+    if (b.args) |args| {
+        run_bench.addArgs(args);
+    }
+    bench_step.dependOn(&run_bench.step);
+
+    // Add debug step for standalone debugging
+    const debug_step = b.step("debug", "Run debug executable");
+    const debug_exe = b.addExecutable(.{
+        .name = "opentui-debug",
+        .root_source_file = b.path("debug-view.zig"),
+        .target = test_target,
+        .optimize = .Debug,
+    });
+
+    applyZgDependencies(b, debug_exe.root_module, .Debug, test_target);
+
+    const run_debug = b.addRunArtifact(debug_exe);
+    debug_step.dependOn(&run_debug.step);
 }
 
 fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {

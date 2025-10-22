@@ -146,11 +146,11 @@ Listen to keypress events in your components.
 <script setup lang="ts">
 import { ref } from "vue"
 import { useKeyboard } from "@opentui/vue"
-import type { ParsedKey } from "@opentui/core"
+import type { KeyEvent } from "@opentui/core"
 
 const lastKey = ref("")
 
-useKeyboard((key: ParsedKey) => {
+useKeyboard((key: KeyEvent) => {
   lastKey.value = key.name
 })
 </script>

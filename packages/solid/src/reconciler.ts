@@ -65,6 +65,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   )
 
   if (node instanceof SlotRenderable) {
+    node.parent = parent
     node = node.getSlotChild(parent)
   }
 
@@ -109,18 +110,11 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
 
   if (node instanceof SlotRenderable) {
+    node.parent = null
     node = node.getSlotChild(parent)
   }
 
-  if (isTextNodeRenderable(parent)) {
-    if (typeof node !== "string" && !isTextNodeRenderable(node)) {
-      console.warn("Node not a valid child of TextNode")
-    } else {
-      parent.remove(node)
-    }
-  } else {
-    parent.remove(node.id)
-  }
+  parent.remove(node.id)
 
   process.nextTick(() => {
     if (node instanceof BaseRenderable && !node.parent) {
@@ -225,6 +219,10 @@ export const {
     }
 
     switch (name) {
+      case "id":
+        log("Id mapped", node.id, "=", value)
+        node[name] = value
+        break
       case "focused":
         if (!(node instanceof Renderable)) return
         if (value) {
@@ -344,7 +342,7 @@ export const {
       log("No parent found for node:", logId(node))
       return undefined
     }
-    const siblings = getNodeChildren(node)
+    const siblings = getNodeChildren(parent)
 
     const index = siblings.indexOf(node)
 

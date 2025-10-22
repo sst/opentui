@@ -1,6 +1,6 @@
 import type { OptimizedBuffer } from "../buffer"
 import { parseColor, RGBA, type ColorInput } from "../lib"
-import type { ParsedKey } from "../lib/parse.keypress"
+import type { KeyEvent } from "../lib/KeyHandler"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext, Timeout } from "../types"
 import { type BoxOptions } from "./Box"
@@ -263,7 +263,7 @@ export class ScrollBarRenderable extends Renderable {
     }
   }
 
-  public handleKeyPress(key: ParsedKey | string): boolean {
+  public handleKeyPress(key: KeyEvent | string): boolean {
     const keyName = typeof key === "string" ? key : key.name
 
     switch (keyName) {

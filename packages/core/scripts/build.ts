@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
 import { dirname, join, resolve } from "path"
 import { fileURLToPath } from "url"
 import process from "process"
@@ -195,6 +195,18 @@ if (buildLib) {
 
   const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
 
+  // Build main entry points with code splitting
+  // External patterns to prevent bundling tree-sitter assets and default-parsers
+  // to allow standalone executables to work
+  const externalPatterns = [
+    ...externalDeps,
+    "*.wasm",
+    "*.scm",
+    "./lib/tree-sitter/assets/*",
+    "./lib/tree-sitter/default-parsers",
+    "./lib/tree-sitter/default-parsers.ts",
+  ]
+
   spawnSync(
     "bun",
     [
@@ -203,8 +215,28 @@ if (buildLib) {
       "--splitting",
       "--outdir=dist",
       "--sourcemap",
-      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      ...externalPatterns.flatMap((dep) => ["--external", dep]),
       ...entryPoints,
+    ],
+    {
+      cwd: rootDir,
+      stdio: "inherit",
+    },
+  )
+
+  // Build parser worker as standalone bundle (no splitting) so it can be loaded as a Worker
+  // Make web-tree-sitter external so it loads from node_modules with its WASM file
+  spawnSync(
+    "bun",
+    [
+      "build",
+      "--target=bun",
+      "--outdir=dist",
+      "--sourcemap",
+      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      "--external",
+      "web-tree-sitter",
+      "src/lib/tree-sitter/parser.worker.ts",
     ],
     {
       cwd: rootDir,
@@ -216,7 +248,7 @@ if (buildLib) {
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js"]
+  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/lib/tree-sitter/parser.worker.js"]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -260,6 +292,25 @@ if (buildLib) {
     console.log("TypeScript declarations generated")
   }
 
+  const treeSitterSrcDir = join(rootDir, "src", "lib", "tree-sitter")
+
+  const copyAssets = (src: string, dest: string) => {
+    mkdirSync(dest, { recursive: true })
+    const entries = readdirSync(src, { withFileTypes: true })
+    for (const entry of entries) {
+      const srcPath = join(src, entry.name)
+      const destPath = join(dest, entry.name)
+      if (entry.isDirectory()) {
+        copyAssets(srcPath, destPath)
+      } else if (entry.isFile() && (entry.name.endsWith(".wasm") || entry.name.endsWith(".scm"))) {
+        copyFileSync(srcPath, destPath)
+      }
+    }
+  }
+
+  copyAssets(join(treeSitterSrcDir, "assets"), join(distDir, "assets"))
+  console.log("  Copied tree-sitter assets (*.wasm, *.scm) to dist/assets/")
+
   // Configure exports for multiple entry points
   const exports = {
     ".": {
@@ -276,6 +327,11 @@ if (buildLib) {
       import: "./testing.js",
       require: "./testing.js",
       types: "./testing.d.ts",
+    },
+    "./parser.worker": {
+      import: "./lib/tree-sitter/parser.worker.js",
+      require: "./lib/tree-sitter/parser.worker.js",
+      types: "./lib/tree-sitter/parser.worker.d.ts",
     },
   }
 
@@ -301,6 +357,7 @@ if (buildLib) {
         repository: packageJson.repository,
         bugs: packageJson.bugs,
         exports,
+        dependencies: packageJson.dependencies,
         devDependencies: packageJson.devDependencies,
         peerDependencies: packageJson.peerDependencies,
         optionalDependencies: {

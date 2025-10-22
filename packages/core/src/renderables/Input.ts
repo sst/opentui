@@ -1,5 +1,5 @@
 import { OptimizedBuffer } from "../buffer"
-import type { ParsedKey } from "../lib/parse.keypress"
+import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
@@ -190,7 +190,7 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  private insertText(text: string): void {
+  public insertText(text: string): void {
     if (this._value.length + text.length > this._maxLength) {
       return
     }
@@ -204,7 +204,7 @@ export class InputRenderable extends Renderable {
     this.emit(InputRenderableEvents.INPUT, this._value)
   }
 
-  private deleteCharacter(direction: "backward" | "forward"): void {
+  public deleteCharacter(direction: "backward" | "forward"): void {
     if (direction === "backward" && this._cursorPosition > 0) {
       const beforeCursor = this._value.substring(0, this._cursorPosition - 1)
       const afterCursor = this._value.substring(this._cursorPosition)
@@ -223,7 +223,7 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  public handleKeyPress(key: ParsedKey | string): boolean {
+  public handleKeyPress(key: KeyEvent | string): boolean {
     const keyName = typeof key === "string" ? key : key.name
     const keySequence = typeof key === "string" ? key : key.sequence
 

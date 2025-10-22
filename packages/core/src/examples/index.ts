@@ -10,9 +10,9 @@ import {
   SelectRenderableEvents,
   BoxRenderable,
   type SelectOption,
-  type ParsedKey,
+  type KeyEvent,
+  ASCIIFontRenderable,
 } from "../index"
-import { resolveRenderLib } from "../zig"
 import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
@@ -45,10 +45,13 @@ import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
 import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
+import * as treeSitterSyntaxHighlightingExample from "./tree-sitter-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
-import { getKeyHandler } from "../lib/KeyHandler"
+import * as textWrapExample from "./text-wrap"
+import * as editorDemo from "./editor-demo"
+import * as sliderDemo from "./slider-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -78,6 +81,12 @@ const examples: Example[] = [
     destroy: asciiFontSelectionExample.destroy,
   },
   {
+    name: "Text Wrap Demo",
+    description: "Text wrapping example",
+    run: textWrapExample.run,
+    destroy: textWrapExample.destroy,
+  },
+  {
     name: "Console Demo",
     description: "Interactive console logging with clickable buttons for different log levels",
     run: consoleExample.run,
@@ -100,6 +109,12 @@ const examples: Example[] = [
     description: "Convert HAST trees to syntax-highlighted text with efficient chunk generation",
     run: hastSyntaxHighlightingExample.run,
     destroy: hastSyntaxHighlightingExample.destroy,
+  },
+  {
+    name: "Tree-Sitter Syntax Highlighting Demo",
+    description: "Real-time syntax highlighting using tree-sitter with CodeRenderable",
+    run: treeSitterSyntaxHighlightingExample.run,
+    destroy: treeSitterSyntaxHighlightingExample.destroy,
   },
   {
     name: "Live State Management Demo",
@@ -246,6 +261,18 @@ const examples: Example[] = [
     destroy: inputExample.destroy,
   },
   {
+    name: "Editor Demo",
+    description: "Interactive text editor with TextareaRenderable - supports full editing capabilities",
+    run: editorDemo.run,
+    destroy: editorDemo.destroy,
+  },
+  {
+    name: "Slider Demo",
+    description: "Interactive slider components with various orientations and configurations",
+    run: sliderDemo.run,
+    destroy: sliderDemo.destroy,
+  },
+  {
     name: "VNode Composition Demo",
     description: "Declarative Box(Box(Box(children))) composition",
     run: vnodeCompositionDemo.run,
@@ -281,7 +308,6 @@ class ExampleSelector {
     this.createStaticElements()
     this.createSelectElement()
     this.setupKeyboardHandling()
-    this.renderer.requestRender()
 
     this.renderer.on("resize", (width: number, height: number) => {
       this.handleResize(width, height)
@@ -291,28 +317,19 @@ class ExampleSelector {
   private createTitle(width: number, height: number): void {
     const titleText = "OPENTUI EXAMPLES"
     const titleFont = "tiny"
-    const { width: titleWidth, height: titleHeight } = measureText({ text: titleText, font: titleFont })
+    const { width: titleWidth } = measureText({ text: titleText, font: titleFont })
     const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
 
-    this.title = new FrameBufferRenderable(renderer, {
+    this.title = new ASCIIFontRenderable(renderer, {
       id: "title",
-      width: titleWidth,
-      height: titleHeight,
-      position: "absolute",
       left: centerX,
-      top: 1,
-    })
-    this.title.frameBuffer.clear(RGBA.fromInts(0, 17, 34, 0))
-    this.renderer.root.add(this.title)
-
-    renderFontToFrameBuffer(this.title.frameBuffer, {
+      margin: 1,
       text: titleText,
-      x: 0,
-      y: 0,
+      font: titleFont,
       fg: RGBA.fromInts(255, 255, 255, 255),
       bg: RGBA.fromInts(0, 17, 34, 255),
-      font: titleFont,
     })
+    this.renderer.root.add(this.title)
   }
 
   private createStaticElements(): void {
@@ -323,9 +340,8 @@ class ExampleSelector {
 
     this.instructions = new TextRenderable(renderer, {
       id: "instructions",
-      position: "absolute",
-      left: 2,
-      top: 4,
+      marginLeft: 2,
+      marginRight: 2,
       content:
         "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
       fg: "#AAAAAA",
@@ -334,9 +350,6 @@ class ExampleSelector {
   }
 
   private createSelectElement(): void {
-    const width = this.renderer.terminalWidth
-    const height = this.renderer.terminalHeight
-
     const selectOptions: SelectOption[] = examples.map((example) => ({
       name: example.name,
       description: example.description,
@@ -345,11 +358,8 @@ class ExampleSelector {
 
     this.selectBox = new BoxRenderable(renderer, {
       id: "example-selector-box",
-      position: "absolute",
-      left: 1,
-      top: 6,
-      width: width - 2,
-      height: height - 8,
+      margin: 1,
+      flexGrow: 1,
       borderStyle: "single",
       borderColor: "#FFFFFF",
       focusedBorderColor: "#00AAFF",
@@ -362,8 +372,7 @@ class ExampleSelector {
 
     this.selectElement = new SelectRenderable(renderer, {
       id: "example-selector",
-      width: width - 4,
-      height: height - 10,
+      height: "100%",
       options: selectOptions,
       backgroundColor: "#001122",
       selectedBackgroundColor: "#334455",
@@ -381,8 +390,8 @@ class ExampleSelector {
       this.runSelected(option.value as Example)
     })
 
-    this.selectBox.add(this.selectElement)
     this.renderer.root.add(this.selectBox)
+    this.selectBox.add(this.selectElement)
     this.selectElement.focus()
   }
 
@@ -393,21 +402,11 @@ class ExampleSelector {
       this.title.x = centerX
     }
 
-    if (this.selectBox) {
-      this.selectBox.width = width - 2
-      this.selectBox.height = height - 8
-    }
-
-    if (this.selectElement) {
-      this.selectElement.width = width - 4
-      this.selectElement.height = height - 10
-    }
-
     this.renderer.requestRender()
   }
 
   private setupKeyboardHandling(): void {
-    getKeyHandler().on("keypress", (key: ParsedKey) => {
+    this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
       if (!this.inMenu) {
         switch (key.name) {
           case "escape":
@@ -418,8 +417,7 @@ class ExampleSelector {
       switch (key.raw) {
         case "\u0003":
           this.cleanup()
-          process.exit()
-          break
+          return
       }
       switch (key.name) {
         case "c":
@@ -493,6 +491,7 @@ class ExampleSelector {
 
   private restart(): void {
     this.renderer.pause()
+    this.renderer.auto()
     this.showMenuElements()
     this.renderer.setBackgroundColor("#001122")
     this.renderer.requestRender()
@@ -505,13 +504,14 @@ class ExampleSelector {
     if (this.selectElement) {
       this.selectElement.blur()
     }
+    this.renderer.destroy()
   }
 }
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
   targetFps: 60,
-  useAlternateScreen: false,
+  // useAlternateScreen: false,
 })
 
 renderer.setBackgroundColor("#001122")

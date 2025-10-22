@@ -8,6 +8,10 @@
             .url = "https://codeberg.org/atman/zg/archive/v0.14.1.tar.gz",
             .hash = "zg-0.14.1-oGqU3IQ_tALZIiBN026_NTaPJqU-Upm8P_C7QED2Rzm8",
         },
+        .uucode = .{
+            .url = "https://github.com/jacobsandlund/uucode/archive/refs/tags/v0.1.0-zig-0.14.tar.gz",
+            .hash = "uucode-0.1.0-ZZjBPpAFQABNCvd9cVPBg4I7233Ays-NWfWphPNqGbyE",
+        },
     },
     .paths = .{
         "build.zig",

@@ -1,7 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const atomic = std.atomic;
-const AnyWriter = std.io.AnyWriter;
 const assert = std.debug.assert;
 const ansi = @import("ansi.zig");
 const gwidth = @import("gwidth.zig");
@@ -16,7 +15,7 @@ pub const Capabilities = struct {
     kitty_keyboard: bool = false,
     kitty_graphics: bool = false,
     rgb: bool = false,
-    unicode: WidthMethod = .wcwidth,
+    unicode: WidthMethod = .unicode,
     sgr_pixels: bool = false,
     color_scheme_updates: bool = false,
     explicit_width: bool = false,
@@ -75,7 +74,7 @@ pub fn init(opts: Options) Terminal {
     };
 }
 
-pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
+pub fn resetState(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.showCursor);
     try tty.writeAll(ansi.ANSI.reset);
 
@@ -96,16 +95,19 @@ pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
     }
 
     if (self.state.alt_screen) {
-        try tty.writeAll(ansi.ANSI.home);
-        try tty.writeAll(ansi.ANSI.eraseBelowCursor);
         try self.exitAltScreen(tty);
     } else {
-        try tty.writeByte('\r');
-        var i: u16 = 0;
-        while (i < self.state.cursor.row) : (i += 1) {
-            try tty.writeAll(ansi.ANSI.reverseIndex);
+        switch (builtin.os.tag) {
+            .windows => {
+                try tty.writeByte('\r');
+                var i: u16 = 0;
+                while (i < self.state.cursor.row) : (i += 1) {
+                    try tty.writeAll(ansi.ANSI.reverseIndex);
+                }
+                try tty.writeAll(ansi.ANSI.eraseBelowCursor);
+            },
+            else => {},
         }
-        try tty.writeAll(ansi.ANSI.eraseBelowCursor);
     }
 
     if (self.state.color_scheme_updates) {
@@ -116,20 +118,21 @@ pub fn resetState(self: *Terminal, tty: AnyWriter) !void {
     self.setTerminalTitle(tty, "");
 }
 
-pub fn enterAltScreen(self: *Terminal, tty: AnyWriter) !void {
+pub fn enterAltScreen(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.switchToAlternateScreen);
     self.state.alt_screen = true;
 }
 
-pub fn exitAltScreen(self: *Terminal, tty: AnyWriter) !void {
+pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.switchToMainScreen);
     self.state.alt_screen = false;
 }
 
-pub fn queryTerminalSend(self: *Terminal, tty: AnyWriter) !void {
+pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
 
     try tty.writeAll(ansi.ANSI.hideCursor ++
+        ansi.ANSI.saveCursorState ++
         ansi.ANSI.decrqmSgrPixels ++
         ansi.ANSI.decrqmUnicode ++
         ansi.ANSI.decrqmColorScheme ++
@@ -151,12 +154,13 @@ pub fn queryTerminalSend(self: *Terminal, tty: AnyWriter) !void {
         ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery ++
         ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.primaryDeviceAttrs
+        ansi.ANSI.primaryDeviceAttrs ++
+        ansi.ANSI.restoreCursorState
             // ++ ansi.ANSI.sixelGeometryQuery
     );
 }
 
-pub fn enableDetectedFeatures(self: *Terminal, tty: AnyWriter) !void {
+pub fn enableDetectedFeatures(self: *Terminal, tty: anytype) !void {
     switch (builtin.os.tag) {
         .windows => {
             // Windows-specific defaults for ConPTY
@@ -187,6 +191,9 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: AnyWriter) !void {
 fn checkEnvironmentOverrides(self: *Terminal) void {
     var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
     defer env_map.deinit();
+
+    // Always just try to enable bracketed paste, even if it was reported as not supported
+    self.caps.bracketed_paste = true;
 
     if (env_map.get("TERM_PROGRAM")) |prog| {
         if (std.mem.eql(u8, prog, "vscode")) {
@@ -227,7 +234,9 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
-pub fn setMouseMode(self: *Terminal, tty: AnyWriter, enable: bool) !void {
+pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool) !void {
+    if (self.state.mouse == enable) return;
+
     if (enable) {
         self.state.mouse = true;
         try tty.writeAll(ansi.ANSI.enableMouseTracking);
@@ -244,19 +253,19 @@ pub fn setMouseMode(self: *Terminal, tty: AnyWriter, enable: bool) !void {
     }
 }
 
-pub fn setBracketedPaste(self: *Terminal, tty: AnyWriter, enable: bool) !void {
+pub fn setBracketedPaste(self: *Terminal, tty: anytype, enable: bool) !void {
     const seq = if (enable) ansi.ANSI.bracketedPasteSet else ansi.ANSI.bracketedPasteReset;
     try tty.writeAll(seq);
     self.state.bracketed_paste = enable;
 }
 
-pub fn setFocusTracking(self: *Terminal, tty: AnyWriter, enable: bool) !void {
+pub fn setFocusTracking(self: *Terminal, tty: anytype, enable: bool) !void {
     const seq = if (enable) ansi.ANSI.focusSet else ansi.ANSI.focusReset;
     try tty.writeAll(seq);
     self.state.focus_tracking = enable;
 }
 
-pub fn setKittyKeyboard(self: *Terminal, tty: AnyWriter, enable: bool, flags: u8) !void {
+pub fn setKittyKeyboard(self: *Terminal, tty: anytype, enable: bool, flags: u8) !void {
     if (enable) {
         if (!self.state.kitty_keyboard) {
             try tty.print(ansi.ANSI.csiUPush, .{flags});
@@ -389,7 +398,7 @@ pub fn getCursorColor(self: *Terminal) [4]f32 {
     return self.state.cursor.color;
 }
 
-pub fn setTerminalTitle(_: *Terminal, tty: AnyWriter, title: []const u8) void {
+pub fn setTerminalTitle(_: *Terminal, tty: anytype, title: []const u8) void {
     // For Windows, we might need to use different approach, but ANSI sequences work in Windows Terminal, ConPTY, etc.
     // For other platforms, ANSI OSC sequences work reliably
     ansi.ANSI.setTerminalTitleOutput(tty, title) catch {};

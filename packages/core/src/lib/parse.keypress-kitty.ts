@@ -1,7 +1,6 @@
 // Kitty Keyboard Protocol parser
 // Based on https://sw.kovidgoyal.net/kitty/keyboard-protocol/
 
-import { Buffer } from "node:buffer"
 import type { ParsedKey } from "./parse.keypress"
 
 const kittyKeyMap: Record<number, string> = {

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach, test } from "bun:test"
 import { testRender } from "../index"
 import { createSignal, createEffect, createMemo, For, Show, Switch, Match, Index, ErrorBoundary } from "solid-js"
 
@@ -206,6 +206,64 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       frame = testSetup.captureCharFrame()
       expect(frame).not.toContain("Visible content")
       expect(frame).toContain("Always visible")
+    })
+
+    it("should conditionally render content with <Show> in the correct order", async () => {
+      const [showContent, setShowContent] = createSignal(false)
+
+      testSetup = await testRender(
+        () => {
+          return (
+            <box id="container">
+              <box id="first"></box>
+              <Show when={showContent()}>
+                <box id="second" />
+              </Show>
+              <box id="third"></box>
+            </box>
+          )
+        },
+        { width: 20, height: 5 },
+      )
+
+      setShowContent(true)
+      await testSetup.renderOnce()
+
+      const children = testSetup.renderer.root.getChildren()[0]!.getChildren()
+
+      expect(children.length).toBe(3)
+      expect(children[0]!.id).toBe("first")
+      expect(children[1]!.id).toBe("second")
+      expect(children[2]!.id).toBe("third")
+    })
+
+    it("should conditionally render content in fragment with <Show> in the correct order", async () => {
+      const [showContent, setShowContent] = createSignal(false)
+
+      testSetup = await testRender(
+        () => {
+          return (
+            <>
+              <box id="first"></box>
+              <Show when={showContent()}>
+                <box id="second" />
+              </Show>
+              <box id="third"></box>
+            </>
+          )
+        },
+        { width: 20, height: 5 },
+      )
+
+      setShowContent(true)
+      await testSetup.renderOnce()
+
+      const children = testSetup.renderer.root.getChildren()
+
+      expect(children.length).toBe(3)
+      expect(children[0]!.id).toBe("first")
+      expect(children[1]!.id).toBe("second")
+      expect(children[2]!.id).toBe("third")
     })
   })
 
@@ -666,6 +724,107 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).not.toContain("C")
       // Consistent ordering
       expect(frame).toMatchSnapshot()
+    })
+
+    it("should find descendants by id through slot renderables in scrollbox", async () => {
+      const [showContent, setShowContent] = createSignal(false) // Start with FALSE to keep slot in tree
+
+      testSetup = await testRender(
+        () => (
+          <box id="parent-box">
+            <box id="always-visible" border title="Always" />
+            <Show when={showContent()}>
+              <box id="conditional-child" border title="Conditional">
+                <box id="nested-child" border title="Nested" />
+              </box>
+            </Show>
+            <box id="another-visible" border title="Another" />
+          </box>
+        ),
+        { width: 30, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+
+      const parentBox = testSetup.renderer.root.findDescendantById("parent-box")
+      expect(parentBox).toBeDefined()
+
+      // This should work - findDescendantById should be able to traverse through or skip slot renderables
+      // Currently fails because LayoutSlotRenderable (from Show when={false}) doesn't have findDescendantById
+      const anotherVisible = parentBox?.findDescendantById("another-visible")
+      expect(anotherVisible).toBeDefined()
+      expect(anotherVisible?.id).toBe("another-visible")
+    })
+
+    it("REPRODUCE BUG: For component has incorrect ordering after array reordering", async () => {
+      interface Option {
+        id: string
+        display: string
+        description?: string
+      }
+
+      const [options, setOptions] = createSignal<Option[]>([])
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <For each={options()}>
+              {(option, index) => (
+                <box id={`option-${option.id}`}>
+                  <text>
+                    {option.display}
+                    <Show when={option.description}>
+                      <span> - {option.description}</span>
+                    </Show>
+                  </text>
+                </box>
+              )}
+            </For>
+          </box>
+        ),
+        { width: 50, height: 25 },
+      )
+
+      await testSetup.renderOnce()
+
+      // === BUG: Array reversal causes incorrect ordering ===
+      const orderedItems = [
+        { id: "order-1", display: "First" },
+        { id: "order-2", display: "Second" },
+        { id: "order-3", display: "Third" },
+        { id: "order-4", display: "Fourth" },
+        { id: "order-5", display: "Fifth" },
+      ]
+
+      setOptions(orderedItems)
+      await testSetup.renderOnce()
+
+      const container = testSetup.renderer.root.findDescendantById("container")!
+      let children = container.getChildren()
+
+      // Verify initial order
+      expect(children.length).toBe(5)
+      expect(children[0]?.id).toBe("option-order-1")
+      expect(children[1]?.id).toBe("option-order-2")
+      expect(children[2]?.id).toBe("option-order-3")
+      expect(children[3]?.id).toBe("option-order-4")
+      expect(children[4]?.id).toBe("option-order-5")
+
+      // Reverse the array - THIS EXPOSES THE BUG
+      setOptions([...orderedItems].reverse())
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+
+      // BUG: The order is INCORRECT after reversing!
+      // Expected: [order-5, order-4, order-3, order-2, order-1]
+      // Actual might have swapped elements
+      expect(children.length).toBe(5)
+      expect(children[0]?.id).toBe("option-order-5")
+      expect(children[1]?.id).toBe("option-order-4")
+      expect(children[2]?.id).toBe("option-order-3")
+      expect(children[3]?.id).toBe("option-order-2") // ← BUG: This might be order-1
+      expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
     })
   })
 })

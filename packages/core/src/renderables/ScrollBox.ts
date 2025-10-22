@@ -1,5 +1,6 @@
-import { type ParsedKey } from "../lib"
+import { type KeyEvent } from "../lib"
 import { getObjectsInViewport } from "../lib/objects-in-viewport"
+import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration"
 import type { Renderable, RenderableOptions } from "../Renderable"
 import type { MouseEvent } from "../renderer"
 import type { RenderContext } from "../types"
@@ -32,6 +33,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   stickyStart?: "bottom" | "top" | "left" | "right"
   scrollX?: boolean
   scrollY?: boolean
+  scrollAcceleration?: ScrollAcceleration
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -65,6 +67,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollRight: boolean = false
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
+  private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
     return this._stickyScroll
@@ -180,12 +183,12 @@ export class ScrollBoxRenderable extends BoxRenderable {
       stickyStart,
       scrollX = false,
       scrollY = true,
+      scrollAcceleration,
       ...options
     }: ScrollBoxOptions,
   ) {
     // Root
     super(ctx, {
-      flexShrink: 1,
       flexDirection: "row",
       alignItems: "stretch",
       ...(options as BoxOptions),
@@ -196,10 +199,17 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
 
+    // Initialize scroll acceleration
+    if (scrollAcceleration) {
+      this.scrollAccel = scrollAcceleration
+    } else if (process.platform === "darwin") {
+      this.scrollAccel = new MacOSScrollAccel()
+    }
+    this.scrollAccel ??= new LinearScrollAccel()
+
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
       flexGrow: 1,
-      flexShrink: 1,
       ...wrapperOptions,
       id: `scroll-box-wrapper-${this.internalId}`,
     })
@@ -208,7 +218,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.viewport = new BoxRenderable(ctx, {
       flexDirection: "column",
       flexGrow: 1,
-      flexShrink: 1,
       // NOTE: Overflow scroll makes the content size behave weird
       // when the scrollbox is in a container with max-width/height
       overflow: "hidden",
@@ -222,6 +231,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     this.content = new ContentRenderable(ctx, this.viewport, {
       alignSelf: "flex-start",
+      flexShrink: 0,
       ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
       ...(scrollY ? { minHeight: "100%" } : { minHeight: "100%", maxHeight: "100%" }),
       onSizeChange: () => {
@@ -308,6 +318,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
     return this.content.add(obj, index)
   }
 
+  public insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+    return this.content.insertBefore(obj, anchor)
+  }
+
   public remove(id: string): void {
     this.content.remove(id)
   }
@@ -322,10 +336,19 @@ export class ScrollBoxRenderable extends BoxRenderable {
       if (event.modifiers.shift)
         dir = dir === "up" ? "left" : dir === "down" ? "right" : dir === "right" ? "down" : "up"
 
-      if (dir === "up") this.scrollTop -= event.scroll?.delta ?? 0
-      else if (dir === "down") this.scrollTop += event.scroll?.delta ?? 0
-      else if (dir === "left") this.scrollLeft -= event.scroll?.delta ?? 0
-      else if (dir === "right") this.scrollLeft += event.scroll?.delta ?? 0
+      const baseDelta = event.scroll?.delta ?? 0
+      const now = Date.now()
+      const multiplier = this.scrollAccel.tick(now)
+
+      if (dir === "up") {
+        this.scrollTop -= baseDelta * multiplier
+      } else if (dir === "down") {
+        this.scrollTop += baseDelta * multiplier
+      } else if (dir === "left") {
+        this.scrollLeft -= baseDelta * multiplier
+      } else if (dir === "right") {
+        this.scrollLeft += baseDelta * multiplier
+      }
 
       this._hasManualScroll = true
     }
@@ -337,13 +360,16 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
-  public handleKeyPress(key: ParsedKey | string): boolean {
+  public handleKeyPress(key: KeyEvent | string): boolean {
+    // Let scrollbars handle their own acceleration
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
+      this.scrollAccel.reset()
       return true
     }
     if (this.horizontalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
+      this.scrollAccel.reset()
       return true
     }
     return false
@@ -559,6 +585,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public set horizontalScrollbarOptions(options: ScrollBoxOptions["horizontalScrollbarOptions"]) {
     Object.assign(this.horizontalScrollBar, options)
     this.requestRender()
+  }
+
+  public get scrollAcceleration(): ScrollAcceleration {
+    return this.scrollAccel
+  }
+
+  public set scrollAcceleration(value: ScrollAcceleration) {
+    this.scrollAccel = value
   }
 
   protected destroySelf(): void {

@@ -1,6 +1,5 @@
 import { createCliRenderer, TextRenderable, t, type CliRenderer, BoxRenderable, bold, fg } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { getKeyHandler } from "../lib/KeyHandler"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
 
 let text: TextRenderable | null = null
@@ -398,12 +397,12 @@ export function run(rendererInstance: CliRenderer): void {
     }
   }
 
-  getKeyHandler().on("keypress", keyHandler)
+  rendererInstance.keyInput.on("keypress", keyHandler)
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (keyHandler) {
-    getKeyHandler().off("keypress", keyHandler)
+    rendererInstance.keyInput.off("keypress", keyHandler)
     keyHandler = null
   }
 

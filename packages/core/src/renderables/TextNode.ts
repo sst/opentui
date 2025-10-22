@@ -146,16 +146,16 @@ export class TextNodeRenderable extends BaseRenderable {
     return this
   }
 
-  public remove(child: string | TextNodeRenderable): this {
-    const childIndex = this._children.indexOf(child)
+  public remove(id: string): this {
+    const childIndex = this.getRenderableIndex(id)
     if (childIndex === -1) {
       throw new Error("Child not found in children")
     }
 
+    const child = this._children[childIndex] as TextNodeRenderable
+
     this._children.splice(childIndex, 1)
-    if (typeof child !== "string") {
-      child.parent = null
-    }
+    child.parent = null
     this.requestRender()
     return this
   }
@@ -236,6 +236,10 @@ export class TextNodeRenderable extends BaseRenderable {
     return this._children.find((child): child is TextNodeRenderable => typeof child !== "string" && child.id === id)
   }
 
+  public getRenderableIndex(id: string): number {
+    return this._children.findIndex((child) => isTextNodeRenderable(child) && child.id === id)
+  }
+
   public get fg(): RGBA | undefined {
     return this._fg
   }
@@ -271,6 +275,10 @@ export class TextNodeRenderable extends BaseRenderable {
 
   public get attributes(): number {
     return this._attributes
+  }
+
+  public findDescendantById(id: string): BaseRenderable | undefined {
+    return undefined
   }
 }
 
