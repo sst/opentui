@@ -72,7 +72,7 @@ export class TextBuffer {
   public setStyledText(text: StyledText): void {
     this.guard()
 
-    // Convert StyledText chunks to the format expected by the native layer
+    // TODO: This should not be necessary anymore, the struct packing should take care of this
     const chunks = text.chunks.map((chunk) => ({
       text: chunk.text,
       fg: chunk.fg || null,
@@ -80,10 +80,8 @@ export class TextBuffer {
       attributes: chunk.attributes ?? 0,
     }))
 
-    // Call the native implementation which handles width calculation correctly
     this.lib.textBufferSetStyledText(this.bufferPtr, chunks)
 
-    // Update cached length and line info
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined

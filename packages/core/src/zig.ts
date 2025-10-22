@@ -1779,6 +1779,7 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ): void {
+    // TODO: This should be a filter on the struct packing to not iterate twice
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
     if (nonEmptyChunks.length === 0) {
       this.textBufferClear(buffer)
