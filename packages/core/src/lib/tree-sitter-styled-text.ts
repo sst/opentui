@@ -1,6 +1,6 @@
 import type { TextChunk } from "../text-buffer"
 import { StyledText } from "./styled-text"
-import { SyntaxStyle } from "./syntax-style"
+import { SyntaxStyle } from "../syntax-style"
 import { TreeSitterClient } from "./tree-sitter/client"
 import type { SimpleHighlight } from "./tree-sitter/types"
 import { createTextAttributes } from "../utils"

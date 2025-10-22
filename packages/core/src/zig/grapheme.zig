@@ -38,9 +38,15 @@ pub const SLOT_MASK: u32 = (@as(u32, 1) << SLOT_BITS) - 1; // 0xFFFF
 pub const GraphemePool = struct {
     const MAX_CLASSES: u5 = 5; // 0..4 => 8,16,32,64,128
     const CLASS_SIZES = [_]u32{ 8, 16, 32, 64, 128 };
-    const SLOTS_PER_PAGE = [_]u32{ 256, 128, 64, 16, 8 };
+    const DEFAULT_SLOTS_PER_PAGE = [_]u32{ 256, 128, 64, 16, 8 };
 
     pub const IdPayload = u32;
+
+    pub const InitOptions = struct {
+        /// Slots per page for each size class. If null, uses DEFAULT_SLOTS_PER_PAGE.
+        /// Used to limit pool size for testing.
+        slots_per_page: ?[MAX_CLASSES]u32 = null,
+    };
 
     allocator: std.mem.Allocator,
     classes: [MAX_CLASSES]ClassPool,
@@ -49,13 +55,19 @@ pub const GraphemePool = struct {
         len: u16,
         refcount: u32,
         generation: u32,
+        is_owned: u32, // 0 = unowned (external memory), 1 = owned (copied into pool)
     };
 
     pub fn init(allocator: std.mem.Allocator) GraphemePool {
+        return initWithOptions(allocator, .{});
+    }
+
+    pub fn initWithOptions(allocator: std.mem.Allocator, options: InitOptions) GraphemePool {
+        const slots_per_page = options.slots_per_page orelse DEFAULT_SLOTS_PER_PAGE;
         var classes: [MAX_CLASSES]ClassPool = undefined;
         var i: usize = 0;
         while (i < MAX_CLASSES) : (i += 1) {
-            classes[i] = ClassPool.init(allocator, CLASS_SIZES[i], SLOTS_PER_PAGE[i]);
+            classes[i] = ClassPool.init(allocator, CLASS_SIZES[i], slots_per_page[i]);
         }
         return .{ .allocator = allocator, .classes = classes };
     }
@@ -75,14 +87,29 @@ pub const GraphemePool = struct {
         return 4; // up to 128
     }
 
-    pub fn alloc(self: *GraphemePool, bytes: []const u8) GraphemePoolError!IdPayload {
-        const class_id: u32 = classForSize(bytes.len);
-        const slot_index = try self.classes[class_id].alloc(bytes);
+    fn packId(class_id: u32, slot_index: u32, generation: u32) GraphemePoolError!IdPayload {
         if (slot_index > SLOT_MASK) return GraphemePoolError.OutOfMemory;
-        const generation = self.classes[class_id].getGeneration(slot_index);
         return (class_id << (GENERATION_BITS + SLOT_BITS)) |
             ((generation & GENERATION_MASK) << SLOT_BITS) |
             (slot_index & SLOT_MASK);
+    }
+
+    pub fn alloc(self: *GraphemePool, bytes: []const u8) GraphemePoolError!IdPayload {
+        const class_id: u32 = classForSize(bytes.len);
+        const slot_index = try self.classes[class_id].allocInternal(bytes, true);
+        const generation = self.classes[class_id].getGeneration(slot_index);
+        return try packId(class_id, slot_index, generation);
+    }
+
+    /// Allocate an ID for externally managed memory (no copy, just reference)
+    /// The caller is responsible for keeping the memory valid while the ID is in use
+    pub fn allocUnowned(self: *GraphemePool, bytes: []const u8) GraphemePoolError!IdPayload {
+        // For unowned allocations, we need space for a pointer
+        const ptr_size = @sizeOf(usize);
+        const class_id: u32 = classForSize(ptr_size);
+        const slot_index = try self.classes[class_id].allocInternal(bytes, false);
+        const generation = self.classes[class_id].getGeneration(slot_index);
+        return try packId(class_id, slot_index, generation);
     }
 
     pub fn incref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
@@ -104,6 +131,13 @@ pub const GraphemePool = struct {
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         return self.classes[class_id].get(slot_index, generation);
+    }
+
+    pub fn getRefcount(self: *GraphemePool, id: IdPayload) GraphemePoolError!u32 {
+        const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        const slot_index: u32 = id & SLOT_MASK;
+        const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        return self.classes[class_id].getRefcount(slot_index, generation);
     }
 
     const ClassPool = struct {
@@ -151,10 +185,12 @@ pub const GraphemePool = struct {
             return &self.slots.items[offset];
         }
 
-        pub fn alloc(self: *ClassPool, bytes: []const u8) GraphemePoolError!u32 {
-            if (bytes.len > self.slot_capacity) {
-                @panic("ClassPool.alloc: bytes.len > slot_capacity");
+        pub fn allocInternal(self: *ClassPool, bytes: []const u8, is_owned: bool) GraphemePoolError!u32 {
+            // Validate size for owned allocations
+            if (is_owned and bytes.len > self.slot_capacity) {
+                @panic("ClassPool.allocInternal: bytes.len > slot_capacity");
             }
+
             if (self.free_list.items.len == 0) try self.grow();
 
             const slot_index = self.free_list.pop().?;
@@ -164,15 +200,26 @@ pub const GraphemePool = struct {
             // Increment generation when reusing a slot, wrapping at 7 bits (128 values)
             const new_generation = (header_ptr.generation + 1) & GENERATION_MASK;
 
+            // Calculate length based on ownership
+            const len: u16 = if (is_owned) @intCast(@min(bytes.len, self.slot_capacity)) else @intCast(bytes.len);
+
             header_ptr.* = .{
-                .len = @intCast(@min(bytes.len, self.slot_capacity)),
-                .refcount = 1, // Start with refcount of 1 for new allocation
+                .len = len,
+                .refcount = 0,
                 .generation = new_generation,
+                .is_owned = if (is_owned) 1 else 0,
             };
 
             const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
-            @memcpy(data_ptr[0..header_ptr.len], bytes[0..header_ptr.len]);
+            if (is_owned) {
+                // Owned: copy bytes into our storage
+                @memcpy(data_ptr[0..header_ptr.len], bytes[0..header_ptr.len]);
+            } else {
+                // Unowned: store pointer to external memory
+                const ptr_storage = @as(*[*]const u8, @ptrCast(@alignCast(data_ptr)));
+                ptr_storage.* = bytes.ptr;
+            }
 
             return slot_index;
         }
@@ -218,7 +265,23 @@ pub const GraphemePool = struct {
 
             const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
-            return data_ptr[0..header_ptr.len];
+            if (header_ptr.is_owned == 1) {
+                // Owned memory: return slice from our storage
+                return data_ptr[0..header_ptr.len];
+            } else {
+                // Unowned memory: dereference stored pointer
+                const ptr_storage = @as(*[*]const u8, @ptrCast(@alignCast(data_ptr)));
+                const external_ptr = ptr_storage.*;
+                return external_ptr[0..header_ptr.len];
+            }
+        }
+
+        pub fn getRefcount(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!u32 {
+            if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
+            const p = self.slotPtr(slot_index);
+            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
+            return header_ptr.refcount;
         }
     };
 };
@@ -281,8 +344,12 @@ pub fn encodedCharWidth(c: u32) u32 {
 var GLOBAL_POOL_STORAGE: ?GraphemePool = null;
 
 pub fn initGlobalPool(allocator: std.mem.Allocator) *GraphemePool {
+    return initGlobalPoolWithOptions(allocator, .{});
+}
+
+pub fn initGlobalPoolWithOptions(allocator: std.mem.Allocator, options: GraphemePool.InitOptions) *GraphemePool {
     if (GLOBAL_POOL_STORAGE == null) {
-        GLOBAL_POOL_STORAGE = GraphemePool.init(allocator);
+        GLOBAL_POOL_STORAGE = GraphemePool.initWithOptions(allocator, options);
     }
     return &GLOBAL_POOL_STORAGE.?;
 }

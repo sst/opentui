@@ -96,7 +96,7 @@ export function createMockKeys(renderer: CliRenderer) {
     }
   }
 
-  const pressKey = (key: KeyInput): void => {
+  const pressKey = (key: KeyInput, modifiers?: { shift?: boolean; ctrl?: boolean; alt?: boolean }): void => {
     let keyCode: string
     if (typeof key === "string") {
       // If it's a string but also exists in KeyCodes, use the KeyCodes value
@@ -110,6 +110,21 @@ export function createMockKeys(renderer: CliRenderer) {
       keyCode = KeyCodes[key]
       if (!keyCode) {
         throw new Error(`Unknown key: ${key}`)
+      }
+    }
+
+    // Apply modifiers if present
+    if (modifiers) {
+      // For arrow keys and special keys, modify the escape sequence
+      if (keyCode.startsWith("\x1b[") && keyCode.length > 2) {
+        // Arrow keys: \x1b[A, \x1b[B, \x1b[C, \x1b[D
+        // With shift modifier: \x1b[1;2A, \x1b[1;2B, \x1b[1;2C, \x1b[1;2D
+        const modifier = 1 + (modifiers.shift ? 1 : 0) + (modifiers.alt ? 2 : 0) + (modifiers.ctrl ? 4 : 0)
+        if (modifier > 1) {
+          // Insert modifier into sequence
+          const ending = keyCode.slice(-1)
+          keyCode = `\x1b[1;${modifier}${ending}`
+        }
       }
     }
 
@@ -137,14 +152,17 @@ export function createMockKeys(renderer: CliRenderer) {
     pressKey(KeyCodes.BACKSPACE)
   }
 
-  const pressArrow = (direction: "up" | "down" | "left" | "right"): void => {
+  const pressArrow = (
+    direction: "up" | "down" | "left" | "right",
+    modifiers?: { shift?: boolean; ctrl?: boolean; alt?: boolean },
+  ): void => {
     const keyMap = {
       up: KeyCodes.ARROW_UP,
       down: KeyCodes.ARROW_DOWN,
       left: KeyCodes.ARROW_LEFT,
       right: KeyCodes.ARROW_RIGHT,
     }
-    pressKey(keyMap[direction])
+    pressKey(keyMap[direction], modifiers)
   }
 
   const pressCtrlC = (): void => {

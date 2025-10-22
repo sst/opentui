@@ -506,7 +506,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get widthMethod(): WidthMethod {
     const caps = this.capabilities
-    return caps?.unicode === "unicode" ? "unicode" : "wcwidth"
+    return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
@@ -1491,15 +1491,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers = []
   }
 
-  private startSelection(startRenderable: Renderable, x: number, y: number): void {
-    this.clearSelection()
-    this.selectionContainers.push(startRenderable.parent || this.root)
+  /**
+   * Start a new selection at the given coordinates.
+   * Used by both mouse and keyboard selection.
+   */
+  public startSelection(renderable: Renderable, x: number, y: number): void {
+    if (!renderable.selectable) return
 
-    this.currentSelection = new Selection(startRenderable, { x, y }, { x, y })
+    this.clearSelection()
+    this.selectionContainers.push(renderable.parent || this.root)
+    this.currentSelection = new Selection(renderable, { x, y }, { x, y })
     this.notifySelectablesOfSelectionChange()
   }
 
-  private updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
+  public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
     if (this.currentSelection) {
       this.currentSelection.focus = { x, y }
 

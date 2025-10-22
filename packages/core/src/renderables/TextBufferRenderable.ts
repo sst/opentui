@@ -1,11 +1,13 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
 import { TextBuffer, type TextChunk } from "../text-buffer"
+import { TextBufferView } from "../text-buffer-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { LineInfo } from "../zig"
+import { SyntaxStyle } from "../syntax-style"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -14,8 +16,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   selectionFg?: string | RGBA
   selectable?: boolean
   attributes?: number
-  wrap?: boolean
-  wrapMode?: "char" | "word"
+  wrapMode?: "none" | "char" | "word"
 }
 
 export abstract class TextBufferRenderable extends Renderable {
@@ -26,11 +27,11 @@ export abstract class TextBufferRenderable extends Renderable {
   protected _defaultAttributes: number
   protected _selectionBg: RGBA | undefined
   protected _selectionFg: RGBA | undefined
-  protected _wrap: boolean = false
-  protected _wrapMode: "char" | "word" = "word"
+  protected _wrapMode: "none" | "char" | "word" = "word"
   protected lastLocalSelection: LocalSelectionBounds | null = null
 
   protected textBuffer: TextBuffer
+  protected textBufferView: TextBufferView
   protected _lineInfo: LineInfo = { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
 
   protected _defaultOptions = {
@@ -40,8 +41,7 @@ export abstract class TextBufferRenderable extends Renderable {
     selectionFg: undefined,
     selectable: true,
     attributes: 0,
-    wrap: true,
-    wrapMode: "word" as "char" | "word",
+    wrapMode: "word" as "none" | "char" | "word",
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -53,19 +53,22 @@ export abstract class TextBufferRenderable extends Renderable {
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
-    this._wrap = options.wrap ?? this._defaultOptions.wrap
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    this.textBufferView = TextBufferView.create(this.textBuffer)
 
-    this.textBuffer.setWrapMode(this._wrapMode)
+    const style = SyntaxStyle.create()
+    this.textBuffer.setSyntaxStyle(style)
+
+    this.textBufferView.setWrapMode(this._wrapMode)
     this.setupMeasureFunc()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
 
-    if (this._wrap && this.width > 0) {
+    if (this._wrapMode !== "none" && this.width > 0) {
       this.updateWrapWidth(this.width)
     }
 
@@ -151,32 +154,27 @@ export abstract class TextBufferRenderable extends Renderable {
     }
   }
 
-  get wrap(): boolean {
-    return this._wrap
-  }
-
-  set wrap(value: boolean) {
-    if (this._wrap !== value) {
-      this._wrap = value
-      // Set or clear wrap width based on current setting
-      this.textBuffer.setWrapWidth(this._wrap ? this.width : null)
-      this.requestRender()
-    }
-  }
-
-  get wrapMode(): "char" | "word" {
+  get wrapMode(): "none" | "char" | "word" {
     return this._wrapMode
   }
 
-  set wrapMode(value: "char" | "word") {
+  set wrapMode(value: "none" | "char" | "word") {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      this.textBuffer.setWrapMode(this._wrapMode)
+      this.textBufferView.setWrapMode(this._wrapMode)
+      if (value !== "none" && this.width > 0) {
+        this.updateWrapWidth(this.width)
+      }
+      // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
+      this.yogaNode.markDirty()
       this.requestRender()
     }
   }
 
   protected onResize(width: number, height: number): void {
+    // Update viewport size to match renderable dimensions
+    this.textBufferView.setViewportSize(width, height)
+
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -194,11 +192,11 @@ export abstract class TextBufferRenderable extends Renderable {
 
   private updateLocalSelection(localSelection: LocalSelectionBounds | null): boolean {
     if (!localSelection?.isActive) {
-      this.textBuffer.resetLocalSelection()
+      this.textBufferView.resetLocalSelection()
       return true
     }
 
-    return this.textBuffer.setLocalSelection(
+    return this.textBufferView.setLocalSelection(
       localSelection.anchorX,
       localSelection.anchorY,
       localSelection.focusX,
@@ -221,14 +219,14 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   private updateLineInfo(): void {
-    const lineInfo = this.textBuffer.lineInfo
+    const lineInfo = this.textBufferView.logicalLineInfo
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
     this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
   }
 
   private updateWrapWidth(width: number): void {
-    this.textBuffer.setWrapWidth(width)
+    this.textBufferView.setWrapWidth(width)
     this.updateLineInfo()
   }
 
@@ -239,7 +237,7 @@ export abstract class TextBufferRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      if (this._wrap && this.width !== width) {
+      if (this._wrapMode !== "none" && this.width !== width) {
         this.updateWrapWidth(width)
       } else {
         this.updateLineInfo()
@@ -257,27 +255,6 @@ export abstract class TextBufferRenderable extends Renderable {
     }
 
     this.yogaNode.setMeasureFunc(measureFunc)
-  }
-
-  insertChunk(chunk: TextChunk, index?: number): void {
-    this.textBuffer.insertChunkGroup(
-      index ?? this.textBuffer.chunkGroupCount,
-      chunk.text,
-      chunk.fg,
-      chunk.bg,
-      chunk.attributes,
-    )
-    this.updateTextInfo()
-  }
-
-  removeChunk(index: number): void {
-    this.textBuffer.removeChunkGroup(index)
-    this.updateTextInfo()
-  }
-
-  replaceChunk(index: number, chunk: TextChunk): void {
-    this.textBuffer.replaceChunkGroup(index, chunk.text, chunk.fg, chunk.bg, chunk.attributes)
-    this.updateTextInfo()
   }
 
   shouldStartSelection(x: number, y: number): boolean {
@@ -303,15 +280,15 @@ export abstract class TextBufferRenderable extends Renderable {
   }
 
   getSelectedText(): string {
-    return this.textBuffer.getSelectedText()
+    return this.textBufferView.getSelectedText()
   }
 
   hasSelection(): boolean {
-    return this.textBuffer.hasSelection()
+    return this.textBufferView.hasSelection()
   }
 
   getSelection(): { start: number; end: number } | null {
-    return this.textBuffer.getSelection()
+    return this.textBufferView.getSelection()
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {
@@ -325,18 +302,12 @@ export abstract class TextBufferRenderable extends Renderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
-      const clipRect = {
-        x: this.x,
-        y: this.y,
-        width: this.width,
-        height: this.height,
-      }
-
-      buffer.drawTextBuffer(this.textBuffer, this.x, this.y, clipRect)
+      buffer.drawTextBuffer(this.textBufferView, this.x, this.y)
     }
   }
 
   destroy(): void {
+    this.textBufferView.destroy()
     this.textBuffer.destroy()
     super.destroy()
   }

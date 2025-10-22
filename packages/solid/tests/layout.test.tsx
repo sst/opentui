@@ -200,7 +200,7 @@ describe("SolidJS Renderer Integration Tests", () => {
 
       testSetup = await testRender(
         () => (
-          <text wrap={false}>
+          <text wrapMode="none">
             Always visible
             <Show when={showText()} fallback="">
               {" - Conditional text"}
@@ -232,27 +232,27 @@ describe("SolidJS Renderer Integration Tests", () => {
         () => (
           <box style={{ width: 40, border: true }} title="Complex Layout">
             <box style={{ left: 2, width: 15, height: 5, border: true, backgroundColor: "#333" }}>
-              <text wrap={false} style={{ fg: "cyan" }}>
+              <text wrapMode="none" style={{ fg: "cyan" }}>
                 Header Section
               </text>
-              <text wrap={false} style={{ fg: "yellow" }}>
+              <text wrapMode="none" style={{ fg: "yellow" }}>
                 Menu Item 1
               </text>
-              <text wrap={false} style={{ fg: "yellow" }}>
+              <text wrapMode="none" style={{ fg: "yellow" }}>
                 Menu Item 2
               </text>
             </box>
             <box style={{ left: 18, width: 18, height: 8, border: true, backgroundColor: "#222" }}>
-              <text wrap={false} style={{ fg: "green" }}>
+              <text wrapMode="none" style={{ fg: "green" }}>
                 Content Area
               </text>
-              <text wrap={false} style={{ fg: "white" }}>
+              <text wrapMode="none" style={{ fg: "white" }}>
                 Some content here
               </text>
-              <text wrap={false} style={{ fg: "white" }}>
+              <text wrapMode="none" style={{ fg: "white" }}>
                 More content
               </text>
-              <text wrap={false} style={{ fg: "magenta" }}>
+              <text wrapMode="none" style={{ fg: "magenta" }}>
                 Footer text
               </text>
             </box>

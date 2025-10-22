@@ -18,6 +18,7 @@
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
     "test:native": "cd src/zig && zig build test --summary all",
+    "bench:native": "cd src/zig && zig build bench -Doptimize=ReleaseFast --",
     "publish": "bun scripts/publish.ts",
     "test:js": "bun test",
     "test": "bun run test:native && bun run test:js"
@@ -32,6 +33,7 @@
     "web-tree-sitter": "^0.26.0"
   },
   "dependencies": {
+    "bun-ffi-structs": "^0.1.0",
     "jimp": "1.6.0",
     "yoga-layout": "3.2.1"
   },

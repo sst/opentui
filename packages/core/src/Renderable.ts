@@ -230,6 +230,7 @@ export abstract class Renderable extends BaseRenderable {
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
+  private _flexShrink: number = 1
 
   private renderableMapById: Map<string, Renderable> = new Map()
   protected _childrenInLayoutOrder: Renderable[] = []
@@ -537,6 +538,12 @@ export abstract class Renderable extends BaseRenderable {
     if (isDimensionType(value)) {
       this._width = value
       this.yogaNode.setWidth(value)
+
+      if (typeof value === "number" && this._flexShrink === 1) {
+        this._flexShrink = 0
+        this.yogaNode.setFlexShrink(0)
+      }
+
       this.requestRender()
     }
   }
@@ -549,6 +556,12 @@ export abstract class Renderable extends BaseRenderable {
     if (isDimensionType(value)) {
       this._height = value
       this.yogaNode.setHeight(value)
+
+      if (typeof value === "number" && this._flexShrink === 1) {
+        this._flexShrink = 0
+        this.yogaNode.setFlexShrink(0)
+      }
+
       this.requestRender()
     }
   }
@@ -619,10 +632,15 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     if (options.flexShrink !== undefined) {
+      this._flexShrink = options.flexShrink
       node.setFlexShrink(options.flexShrink)
     } else {
-      // Yoga defaults to 0, web defaults to 1
-      node.setFlexShrink(1)
+      // If explicit numeric width is set, don't shrink by default
+      // Otherwise follow web default of 1
+      const hasExplicitWidth = typeof options.width === "number"
+      const hasExplicitHeight = typeof options.height === "number"
+      this._flexShrink = hasExplicitWidth || hasExplicitHeight ? 0 : 1
+      node.setFlexShrink(this._flexShrink)
     }
 
     if (options.flexDirection !== undefined) {
@@ -796,6 +814,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set flexShrink(shrink: number) {
+    this._flexShrink = shrink
     this.yogaNode.setFlexShrink(shrink)
     this.requestRender()
   }

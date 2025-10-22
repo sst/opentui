@@ -328,6 +328,7 @@ test("SliderRenderable > Mouse interaction - vertical click on thumb", async () 
   expect(slider.value).toBe(50)
 })
 
+// TODO: This seems flaky suddenly, because it now fails for all previous commits
 test("SliderRenderable > Mouse interaction - vertical click on track", async () => {
   const { slider } = await createSliderRenderable(currentRenderer, {
     orientation: "vertical",

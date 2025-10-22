@@ -45,10 +45,13 @@ import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
 import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
+import * as treeSitterSyntaxHighlightingExample from "./tree-sitter-syntax-highlighting-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
 import * as textWrapExample from "./text-wrap"
+import * as editorDemo from "./editor-demo"
+import * as sliderDemo from "./slider-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -106,6 +109,12 @@ const examples: Example[] = [
     description: "Convert HAST trees to syntax-highlighted text with efficient chunk generation",
     run: hastSyntaxHighlightingExample.run,
     destroy: hastSyntaxHighlightingExample.destroy,
+  },
+  {
+    name: "Tree-Sitter Syntax Highlighting Demo",
+    description: "Real-time syntax highlighting using tree-sitter with CodeRenderable",
+    run: treeSitterSyntaxHighlightingExample.run,
+    destroy: treeSitterSyntaxHighlightingExample.destroy,
   },
   {
     name: "Live State Management Demo",
@@ -250,6 +259,18 @@ const examples: Example[] = [
     description: "Interactive InputElement demo with validation and multiple fields",
     run: inputExample.run,
     destroy: inputExample.destroy,
+  },
+  {
+    name: "Editor Demo",
+    description: "Interactive text editor with TextareaRenderable - supports full editing capabilities",
+    run: editorDemo.run,
+    destroy: editorDemo.destroy,
+  },
+  {
+    name: "Slider Demo",
+    description: "Interactive slider components with various orientations and configurations",
+    run: sliderDemo.run,
+    destroy: sliderDemo.destroy,
   },
   {
     name: "VNode Composition Demo",
