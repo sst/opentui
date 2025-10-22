@@ -417,13 +417,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
 
-    // Apply background color from config if provided
-    if (config.backgroundColor !== undefined) {
-      const parsedBg = parseColor(config.backgroundColor)
-      this.backgroundColor = parsedBg as RGBA
-      this.lib.setBackgroundColor(this.rendererPtr, parsedBg as RGBA)
-    }
-
     this.root = new RootRenderable(this)
 
     if (this.memorySnapshotInterval > 0) {

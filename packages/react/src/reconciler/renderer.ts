@@ -5,13 +5,8 @@ import { _render } from "./reconciler"
 import { ErrorBoundary } from "../components/error-boundary"
 
 export async function render(node: ReactNode, rendererConfig: CliRendererConfig = {}): Promise<void> {
-  // Default to transparent background if not specified
-  const config: CliRendererConfig = {
-    backgroundColor: "transparent",
-    ...rendererConfig,
-  }
 
-  const renderer = await createCliRenderer(config)
+  const renderer = await createCliRenderer(rendererConfig)
   engine.attach(renderer)
   _render(
     React.createElement(
