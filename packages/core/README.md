@@ -30,6 +30,16 @@ bun install
 bun run src/examples/index.ts
 ```
 
+## Benchmarks
+
+Run native performance benchmarks:
+
+```bash
+bun run bench:native
+```
+
+See [src/zig/bench.zig](src/zig/bench.zig) for available options like `--filter` and `--mem`.
+
 ## CLI Renderer
 
 ### Renderables

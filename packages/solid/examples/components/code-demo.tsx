@@ -1,7 +1,7 @@
 import { SyntaxStyle, RGBA } from "@opentui/core"
 
 export function CodeDemo() {
-  const syntaxStyle = new SyntaxStyle({
+  const syntaxStyle = SyntaxStyle.fromStyles({
     keyword: { fg: RGBA.fromHex("#ff6b6b"), bold: true }, // red, bold
     string: { fg: RGBA.fromHex("#51cf66") }, // green
     comment: { fg: RGBA.fromHex("#868e96"), italic: true }, // gray, italic

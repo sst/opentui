@@ -186,4 +186,82 @@ describe("mock-keys", () => {
     expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(8) // Allow some tolerance
     expect(timestamps[1] - timestamps[0]).toBeLessThan(20)
   })
+
+  test("pressKey with shift modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_RIGHT, { shift: true })
+
+    // Arrow right with shift: \x1b[1;2C
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;2C")
+  })
+
+  test("pressKey with ctrl modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_LEFT, { ctrl: true })
+
+    // Arrow left with ctrl: \x1b[1;5D (1 base + 4 ctrl = 5)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;5D")
+  })
+
+  test("pressKey with shift+ctrl modifiers", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_UP, { shift: true, ctrl: true })
+
+    // Arrow up with shift+ctrl: \x1b[1;6A (1 base + 1 shift + 4 ctrl = 6)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;6A")
+  })
+
+  test("pressKey with alt modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_DOWN, { alt: true })
+
+    // Arrow down with alt: \x1b[1;3B (1 base + 2 alt = 3)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;3B")
+  })
+
+  test("pressArrow with shift modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressArrow("right", { shift: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;2C")
+  })
+
+  test("pressArrow without modifiers still works", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressArrow("left")
+
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[D")
+  })
+
+  test("pressKey with modifiers on HOME key", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.HOME, { shift: true })
+
+    // HOME with shift: \x1b[1;2H
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;2H")
+  })
+
+  test("pressKey with modifiers on END key", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.END, { shift: true })
+
+    // END with shift: \x1b[1;2F
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;2F")
+  })
 })

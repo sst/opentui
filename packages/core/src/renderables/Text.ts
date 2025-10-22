@@ -82,25 +82,6 @@ export class TextRenderable extends TextBufferRenderable {
     }
   }
 
-  insertChunk(chunk: TextChunk, index?: number): void {
-    super.insertChunk(chunk, index)
-    this.clearChunks(this._text)
-  }
-
-  removeChunkByObject(chunk: TextChunk): void {
-    const index = this._text.chunks.indexOf(chunk)
-    if (index === -1) return
-    super.removeChunk(index)
-    this.clearChunks(this._text)
-  }
-
-  replaceChunkByObject(chunk: TextChunk, oldChunk: TextChunk): void {
-    const index = this._text.chunks.indexOf(oldChunk)
-    if (index === -1) return
-    super.replaceChunk(index, chunk)
-    this.clearChunks(this._text)
-  }
-
   private updateTextFromNodes(): void {
     if (this.rootTextNode.isDirty && !this._hasManualStyledText) {
       const chunks = this.rootTextNode.gatherWithInheritedStyle({

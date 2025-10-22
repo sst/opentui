@@ -4,7 +4,6 @@ Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
 - Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
 - Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
 - Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
 - Bun automatically loads .env, so don't use dotenv.
@@ -24,7 +23,7 @@ The build is only needed when changing native code.
 
 ## Testing
 
-Use `bun test` to run tests.
+Use `bun test` to run tests from the packages directories for a specific package.
 
 ```ts#index.test.ts
 import { test, expect } from "bun:test";
@@ -38,13 +37,19 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 
 ## Build/Test Commands
 
-- `bun test` - Run all tests
-- `bun test <file>` - Run specific test file (e.g., `bun test src/animation/Timeline.test.ts`)
-- `cd src/zig && zig build` - Build Zig components (production)
-- `cd src/zig && zig build -Doptimize=Debug` - Build Zig components (debug)
-- `cd src/zig && zig build -Doptimize=ReleaseFast` - Build Zig components (optimized)
+To build the project (before running typescript tests), run
+`bun run build`
+FROM THE REPO ROOT to make sure all packages are built correctly.
 
-## Code Style
+To run native tests for `packages/core`, run
+`bun run test:native`
+FROM THE `packages/core` DIRECTORY.
+
+To filter native tests, use:
+`bun run test:native -Dtest-filter="test name"`
+FROM THE `packages/core` DIRECTORY.
+
+## Typescript Code Style
 
 - **Runtime**: Bun with TypeScript
 - **Formatting**: Prettier (semi: false, printWidth: 120)
@@ -53,6 +58,11 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 - **Naming**: camelCase for variables/functions, PascalCase for classes/interfaces, UPPER_CASE for constants
 - **Error Handling**: Use proper Error objects, avoid silent failures
 - **Async**: Prefer async/await over Promises, handle errors explicitly
-- **Comments**: Minimal comments, focus on JSDoc for public APIs only
+- **Comments**: Minimal comments, NO JSDoc
 - **File Structure**: Index files for clean exports, group related functionality
 - **Testing**: Bun test framework, descriptive test names, use beforeEach/afterEach for setup
+
+## Debugging
+
+Reproduce the issue in a test case. Do NOT start fixing without a reproducible test case.
+Use debug logs to see what is actually happening. DO NOT GUESS.

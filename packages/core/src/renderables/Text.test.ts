@@ -121,10 +121,51 @@ describe("TextRenderable Selection", () => {
 
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
-      expect(selection!.start).toBe(9) // Position of "n" in "Line 2"
-      expect(selection!.end).toBe(18) // Position after "Line"
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 starts at 7
+      // Position "n" in "Line 2" is at 7 + 2 = 9
+      expect(selection!.start).toBe(9)
+      // Line 2 starts at 14, position after "Line" is 14 + 4 = 18
+      expect(selection!.end).toBe(18)
 
       expect(text.getSelectedText()).toBe("ne 2\nLine")
+    })
+
+    it("should handle selection across empty lines", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\n\nLine 4",
+        selectable: true,
+      })
+
+      // Select from start of line 1 to position 2 on empty line 3
+      await currentMouse.drag(text.x, text.y, text.x + 2, text.y + 2)
+      await renderOnce()
+
+      const selection = text.getSelection()
+      expect(selection).not.toBe(null)
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 empty (14)
+      // Selecting to (col=2, row=2) on empty line clamps to col=0, so end=14
+      expect(selection!.start).toBe(0)
+      expect(selection!.end).toBe(14)
+      expect(text.getSelectedText()).toBe("Line 1\nLine 2")
+    })
+
+    it("should handle selection ending in empty line", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\n\nLine 3",
+        selectable: true,
+      })
+
+      // Select from start of line 1 into the empty line 2
+      await currentMouse.drag(text.x, text.y, text.x + 3, text.y + 1)
+      await renderOnce()
+
+      const selection = text.getSelection()
+      expect(selection).not.toBe(null)
+      // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 empty (7)
+      // Selecting to (col=3, row=1) on empty line clamps to col=0, so end=7
+      expect(selection!.start).toBe(0)
+      expect(selection!.end).toBe(7)
+      expect(text.getSelectedText()).toBe("Line 1")
     })
 
     it("should handle selection spanning multiple lines completely", async () => {
@@ -385,14 +426,9 @@ describe("TextRenderable Selection", () => {
         selectable: true,
       })
 
-      // Note: In a real scenario, the TextRenderable would handle width constraints
-      // For this test, we're just verifying that selection works with multi-line content
-
       await currentMouse.drag(text.x, text.y, text.x + 10, text.y + 2)
       await renderOnce()
 
-      // The exact start/end positions will depend on how text wraps,
-      // but we verify the selection exists and has valid bounds
       const selection = text.getSelection()
       expect(selection).not.toBe(null)
       expect(selection!.start).toBeGreaterThanOrEqual(0)
@@ -474,7 +510,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 0,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
@@ -482,7 +518,7 @@ describe("TextRenderable Selection", () => {
         content: '"Hello"',
         selectable: true,
         fg: "#7dd3fc",
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: debugText } = await createTextRenderable(currentRenderer, {
@@ -490,7 +526,7 @@ describe("TextRenderable Selection", () => {
         content: "Selected renderables: 2/5",
         selectable: true,
         fg: "#e6edf3",
-        wrap: false,
+        wrapMode: "none",
       })
 
       await currentMouse.drag(0, 0, 50, 5)
@@ -527,7 +563,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 0,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const statusNode = new TextNodeRenderable({})
@@ -539,7 +575,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 1,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const selectionNode = new TextNodeRenderable({})
@@ -551,7 +587,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#e6edf3",
         top: 2,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const debugNode = new TextNodeRenderable({})
@@ -598,7 +634,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#f0f6fc",
         top: 2,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: selectionStartText } = await createTextRenderable(currentRenderer, {
@@ -606,7 +642,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 3,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: selectionEndText } = await createTextRenderable(currentRenderer, {
@@ -614,7 +650,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#7dd3fc",
         top: 4,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const { text: debugText } = await createTextRenderable(currentRenderer, {
@@ -622,7 +658,7 @@ describe("TextRenderable Selection", () => {
         selectable: true,
         fg: "#e6edf3",
         top: 5,
-        wrap: false,
+        wrapMode: "none",
       })
 
       const allRenderables = [statusText, selectionStartText, selectionEndText, debugText]
@@ -1100,9 +1136,6 @@ describe("TextRenderable Selection", () => {
       expect(chunks[1].text).toBe(" Change")
     })
 
-    // NOTE: This was meant to cover incremental updates,
-    // but currently when the TextNode tree changes it just replaces the whole text content.
-    // Should be optimised at some point.
     it("should handle TextNode commands with multiple operations per render", async () => {
       const { text, root } = await createTextRenderable(currentRenderer, {
         content: "",
@@ -1120,16 +1153,12 @@ describe("TextRenderable Selection", () => {
 
       text.add(node1)
       text.add(node2)
-      text.insertBefore(node3, node1) // Insert before node1, so order will be: node3, node1, node2
+      text.insertBefore(node3, node1)
 
-      // Modify node2 after adding - this should generate additional commands
-      // Note: This test may fail if modifications after adding don't get tracked
       node2.add(" Modified")
 
       await renderOnce()
 
-      // The order should be: Third (inserted before node1), First, Second Modified
-      // TODO: This may need to be updated based on actual behavior
       expect(text.plainText).toBe("ThirdFirstSecond Modified")
     })
   })
@@ -1337,7 +1366,6 @@ describe("TextRenderable Selection", () => {
     it("should render text with character wrapping correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "This is a very long text that should wrap to multiple lines when wrap is enabled",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 15, // Force wrapping at 15 characters width
         left: 0,
@@ -1351,7 +1379,6 @@ describe("TextRenderable Selection", () => {
     it("should render wrapped text with different content", async () => {
       await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 10, // Force wrapping at 10 characters width
         left: 2,
@@ -1365,7 +1392,6 @@ describe("TextRenderable Selection", () => {
     it("should render wrapped text with emojis and graphemes", async () => {
       await createTextRenderable(currentRenderer, {
         content: "Hello 🌍 World 👋 This is a test with emojis 🚀 that should wrap properly",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 12, // Force wrapping at 12 characters width
         left: 1,
@@ -1379,7 +1405,6 @@ describe("TextRenderable Selection", () => {
     it("should render wrapped multiline text correctly", async () => {
       await createTextRenderable(currentRenderer, {
         content: "First line with long content\nSecond line also with content\nThird line",
-        wrap: true,
         wrapMode: "char", // Explicitly test character wrapping
         width: 8, // Force wrapping at 8 characters width
         left: 0,
@@ -1396,7 +1421,6 @@ describe("TextRenderable Selection", () => {
       const { text: firstText } = await createTextRenderable(currentRenderer, {
         content: "",
         width: 20,
-        wrap: true,
         wrapMode: "char",
       })
 
@@ -1432,7 +1456,6 @@ describe("TextRenderable Selection", () => {
       resize(20, 10)
       const { text: firstText } = await createTextRenderable(currentRenderer, {
         width: 10,
-        wrap: true,
         wrapMode: "word",
       })
 
@@ -1444,7 +1467,6 @@ describe("TextRenderable Selection", () => {
 
       const { text: secondText } = await createTextRenderable(currentRenderer, {
         width: 12,
-        wrap: true,
         wrapMode: "word",
       })
       secondText.add("Middle text")
@@ -1469,9 +1491,317 @@ describe("TextRenderable Selection", () => {
       const finalFrame = captureFrame()
       expect(finalFrame).toMatchSnapshot()
 
-      expect(firstText.height).toEqual(4)
-      expect(secondText.y).toEqual(4)
-      expect(thirdText.y).toEqual(5)
+      expect(firstText.height).toEqual(5)
+      expect(secondText.y).toEqual(5)
+      expect(thirdText.y).toEqual(6)
+    })
+  })
+
+  describe("Height and Width Measurement", () => {
+    it("should grow height for multiline text without wrapping", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+
+      expect(text.height).toBe(5)
+      expect(text.width).toBeGreaterThanOrEqual(6)
+    })
+
+    it("should grow height for wrapped text when wrapping enabled", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a very long line that will definitely wrap to multiple lines",
+        wrapMode: "word",
+        width: 15,
+      })
+
+      await renderOnce()
+
+      expect(text.height).toBeGreaterThan(1)
+      expect(text.width).toBeLessThanOrEqual(15)
+    })
+
+    it("should measure full width when wrapping is disabled and not constrained by parent", async () => {
+      const longLine = "This is a very long line that would wrap but wrapping is disabled"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: longLine,
+        wrapMode: "none",
+        position: "absolute",
+      })
+
+      await renderOnce()
+
+      expect(text.height).toBe(1)
+      expect(text.width).toBe(longLine.length)
+    })
+
+    it("should update height when content changes from single to multiline", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Single line",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+      expect(text.height).toBe(1)
+
+      text.content = "Line 1\nLine 2\nLine 3"
+      await renderOnce()
+
+      expect(text.height).toBe(3)
+    })
+
+    it("should update height when wrapping mode changes", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a long line that will wrap to multiple lines",
+        wrapMode: "none",
+        width: 15,
+      })
+
+      await renderOnce()
+      const unwrappedHeight = text.height
+      expect(unwrappedHeight).toBe(1)
+      expect(text.width).toBe(15)
+
+      text.wrapMode = "word"
+      await renderOnce()
+
+      const wrappedHeight = text.height
+
+      expect(wrappedHeight).toBeGreaterThan(unwrappedHeight)
+      expect(wrappedHeight).toBeGreaterThanOrEqual(3)
+    })
+
+    it("should shrink height when content changes from multi-line to single line", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+      expect(text.height).toBe(5)
+
+      text.content = "Single line"
+      await renderOnce()
+
+      expect(text.height).toBe(1)
+    })
+
+    it("should shrink width when replacing long line with shorter (wrapMode: none, position: absolute)", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "This is a very long line with many characters",
+        wrapMode: "none",
+        position: "absolute",
+      })
+
+      await renderOnce()
+      const initialWidth = text.width
+      expect(initialWidth).toBe(45) // length of the long line
+
+      text.content = "Short"
+      await renderOnce()
+
+      expect(text.width).toBe(5)
+      expect(text.width).toBeLessThan(initialWidth)
+    })
+  })
+
+  describe("Width/Height Setter Layout Tests", () => {
+    it("should not shrink box when width is set via setter", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00" })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      const initialIndicatorWidth = indicator.width
+
+      indicator.width = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBe(5)
+      expect(content.width).toBeGreaterThan(0)
+      expect(content.width).toBeLessThan(30) // Should be compressed but not zero
+    })
+
+    it("should not shrink box when height is set via setter in column layout with text", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(30, 15)
+
+      const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
+      currentRenderer.root.add(outerBox)
+
+      const column = new BoxRenderable(currentRenderer, { flexDirection: "column", height: "100%" })
+      outerBox.add(column)
+
+      const header = new BoxRenderable(currentRenderer, { backgroundColor: "#f00" })
+      column.add(header)
+
+      const headerText = new TextRenderable(currentRenderer, { content: "Header" })
+      header.add(headerText)
+
+      const mainContent = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      column.add(mainContent)
+
+      const mainText = new TextRenderable(currentRenderer, {
+        content: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8",
+      })
+      mainContent.add(mainText)
+
+      const footer = new BoxRenderable(currentRenderer, { height: 2, backgroundColor: "#00f" })
+      column.add(footer)
+
+      const footerText = new TextRenderable(currentRenderer, { content: "Footer" })
+      footer.add(footerText)
+
+      await renderOnce()
+
+      header.height = 3
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(header.height).toBe(3)
+      expect(mainContent.height).toBeGreaterThan(0)
+      expect(footer.height).toBe(2)
+    })
+
+    it("should not shrink box when minWidth is set via setter", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      indicator.minWidth = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBeGreaterThanOrEqual(5)
+      expect(content.width).toBeGreaterThan(0)
+    })
+
+    it("should not shrink box when minHeight is set via setter in column layout with text", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(30, 15)
+
+      const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
+      currentRenderer.root.add(outerBox)
+
+      const column = new BoxRenderable(currentRenderer, { flexDirection: "column", height: "100%" })
+      outerBox.add(column)
+
+      const header = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      column.add(header)
+
+      const headerText = new TextRenderable(currentRenderer, { content: "Header" })
+      header.add(headerText)
+
+      const mainContent = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      column.add(mainContent)
+
+      const mainText = new TextRenderable(currentRenderer, {
+        content: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8",
+      })
+      mainContent.add(mainText)
+
+      const footer = new BoxRenderable(currentRenderer, { height: 2, backgroundColor: "#00f" })
+      column.add(footer)
+
+      const footerText = new TextRenderable(currentRenderer, { content: "Footer" })
+      footer.add(footerText)
+
+      await renderOnce()
+
+      header.minHeight = 3
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(header.height).toBeGreaterThanOrEqual(3)
+      expect(mainContent.height).toBeGreaterThan(0)
+      expect(footer.height).toBe(2)
+    })
+
+    it("should not shrink box when width is set from undefined via setter", async () => {
+      const { BoxRenderable } = await import("./Box")
+
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      indicator.width = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBe(5)
+      expect(content.width).toBeGreaterThan(0)
     })
   })
 
@@ -1487,7 +1817,6 @@ describe("TextRenderable Selection", () => {
     it("should wrap at word boundaries when using word mode", async () => {
       await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps over the lazy dog",
-        wrap: true,
         wrapMode: "word",
         width: 15,
         left: 0,
@@ -1501,7 +1830,6 @@ describe("TextRenderable Selection", () => {
     it("should wrap at character boundaries when using char mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps over the lazy dog",
-        wrap: true,
         wrapMode: "char",
         width: 15,
         left: 0,
@@ -1515,7 +1843,6 @@ describe("TextRenderable Selection", () => {
     it("should handle word wrapping with punctuation", async () => {
       await createTextRenderable(currentRenderer, {
         content: "Hello,World.Test-Example/Path",
-        wrap: true,
         wrapMode: "word",
         width: 10,
         left: 0,
@@ -1529,7 +1856,6 @@ describe("TextRenderable Selection", () => {
     it("should handle word wrapping with hyphens and dashes", async () => {
       await createTextRenderable(currentRenderer, {
         content: "self-contained multi-line text-wrapping example",
-        wrap: true,
         wrapMode: "word",
         width: 12,
         left: 0,
@@ -1543,7 +1869,6 @@ describe("TextRenderable Selection", () => {
     it("should dynamically change wrap mode", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
         content: "The quick brown fox jumps",
-        wrap: true,
         wrapMode: "char",
         width: 10,
         left: 0,
@@ -1564,7 +1889,6 @@ describe("TextRenderable Selection", () => {
     it("should handle long words that exceed wrap width in word mode", async () => {
       await createTextRenderable(currentRenderer, {
         content: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        wrap: true,
         wrapMode: "word",
         width: 10,
         left: 0,
@@ -1579,7 +1903,6 @@ describe("TextRenderable Selection", () => {
     it("should preserve empty lines with word wrapping", async () => {
       await createTextRenderable(currentRenderer, {
         content: "First line\n\nThird line",
-        wrap: true,
         wrapMode: "word",
         width: 8,
         left: 0,
@@ -1593,7 +1916,6 @@ describe("TextRenderable Selection", () => {
     it("should handle word wrapping with single character words", async () => {
       await createTextRenderable(currentRenderer, {
         content: "a b c d e f g h i j k l m n o p",
-        wrap: true,
         wrapMode: "word",
         width: 8,
         left: 0,
@@ -1610,7 +1932,6 @@ describe("TextRenderable Selection", () => {
       // Test with char mode
       const { text: charText } = await createTextRenderable(currentRenderer, {
         content,
-        wrap: true,
         wrapMode: "char",
         width: 12,
         left: 0,
@@ -1625,7 +1946,6 @@ describe("TextRenderable Selection", () => {
 
       await createTextRenderable(currentRenderer, {
         content,
-        wrap: true,
         wrapMode: "word",
         width: 12,
         left: 0,

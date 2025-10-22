@@ -6,7 +6,10 @@
 import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type MouseEvent, t, fg, bold } from ".."
 import { TextNodeRenderable } from "../renderables/TextNode"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
+import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { existsSync } from "fs"
+import { resolve } from "path"
 
 let mainContainer: BoxRenderable | null = null
 let contentBox: BoxRenderable | null = null
@@ -15,6 +18,9 @@ let textRenderable: TextRenderable | null = null
 let instructionsBox: BoxRenderable | null = null
 let instructionsText1: TextRenderable | null = null
 let instructionsText2: TextRenderable | null = null
+let filePathInput: InputRenderable | null = null
+let fileInputContainer: BoxRenderable | null = null
+let isInputVisible: boolean = false
 
 // Resize state
 let isResizing = false
@@ -62,6 +68,24 @@ function getResizeDirection(
   if (right) return "e"
 
   return null
+}
+
+// Helper functions for file input
+function showFileInput(): void {
+  if (fileInputContainer && filePathInput) {
+    fileInputContainer.visible = true
+    filePathInput.value = ""
+    filePathInput.focus()
+    isInputVisible = true
+  }
+}
+
+function hideFileInput(): void {
+  if (fileInputContainer && filePathInput) {
+    fileInputContainer.visible = false
+    filePathInput.blur()
+    isInputVisible = false
+  }
 }
 
 // Mouse event handler for resizing
@@ -256,25 +280,25 @@ function createDemoText(): TextNodeRenderable {
   const feature1Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Word-based wrapping", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Preserves word boundaries when breaking lines", { fg: "#565f89" }),
+    TextNodeRenderable.fromString(" - Preserves word boundaries when breaking lines 📖", { fg: "#565f89" }),
   ])
 
   const feature2Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Character-based wrapping", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Breaks at any character for precise control", { fg: "#565f89" }),
+    TextNodeRenderable.fromString(" - Breaks at any character for precise control ✂️", { fg: "#565f89" }),
   ])
 
   const feature3Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Dynamic resizing", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Text reflows automatically as container dimensions change", { fg: "#565f89" }),
+    TextNodeRenderable.fromString(" - Text reflows automatically as container dimensions change 🔄", { fg: "#565f89" }),
   ])
 
   const feature4Node = TextNodeRenderable.fromNodes([
     TextNodeRenderable.fromString("\n• ", { fg: "#9ece6a" }),
     TextNodeRenderable.fromString("Rich styling", { fg: "#c0caf5", attributes: 1 }),
-    TextNodeRenderable.fromString(" - Individual text segments can have different colors and attributes", {
+    TextNodeRenderable.fromString(" - Individual text segments can have different colors and attributes 🎨", {
       fg: "#565f89",
     }),
   ])
@@ -321,7 +345,7 @@ function createDemoText(): TextNodeRenderable {
     },
   )
 
-  const codeTitle = TextNodeRenderable.fromString("\n\n💻 Example Code:", {
+  const codeTitle = TextNodeRenderable.fromString("\n\n💻 Example Code: 🖥️", {
     fg: "#bb9af7",
     attributes: 1,
   })
@@ -383,7 +407,7 @@ textRenderable.add(styledText);`,
   )
 
   const conclusionNode = TextNodeRenderable.fromString(
-    "\n\n🚀 This demonstrates the power of OpenTUI's flexible text rendering system, combining rich styling with dynamic layout capabilities!",
+    "\n\n🚀 This demonstrates the power of OpenTUI's flexible text rendering system, combining rich styling with dynamic layout capabilities! ✨🎨📝",
     {
       fg: "#9ece6a",
       attributes: 1,
@@ -466,8 +490,7 @@ export function run(renderer: CliRenderer): void {
   textRenderable = new TextRenderable(renderer, {
     id: "text-renderable",
     fg: "#c0caf5",
-    wrapMode: "word",
-    wrap: true, // Enable text wrapping
+    wrapMode: "word", // Enable text wrapping with word mode
   })
   textRenderable.add(createDemoText())
   textBox.add(textRenderable)
@@ -486,16 +509,123 @@ export function run(renderer: CliRenderer): void {
   // Instructions with styled text
   instructionsText1 = new TextRenderable(renderer, {
     id: "instructions-1",
-    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Toggle wrapping")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Switch mode (char/word)")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("D"))} ${fg("#c0caf5")("Download Babylon.js")} ${fg("#565f89")("|")} ${bold(fg("#ff9e64")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
+    content: t`${bold(fg("#7aa2f7")("Text Wrap Demo"))} ${fg("#565f89")("-")} ${bold(fg("#9ece6a")("W"))} ${fg("#c0caf5")("Cycle wrap mode")} ${fg("#565f89")("|")} ${bold(fg("#bb9af7")("M"))} ${fg("#c0caf5")("Toggle char/word")} ${fg("#565f89")("|")} ${bold(fg("#f7768e")("D"))} ${fg("#c0caf5")("Download Babylon.js")} ${fg("#565f89")("|")} ${bold(fg("#e0af68")("L"))} ${fg("#c0caf5")("Load file")} ${fg("#565f89")("|")} ${bold(fg("#ff9e64")("Drag"))} ${fg("#c0caf5")("borders/corners to resize")}`,
   })
 
   instructionsText2 = new TextRenderable(renderer, {
     id: "instructions-2",
-    content: t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")("word")}${fg("#c0caf5")(")")}`,
+    content: t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Wrap mode:")} ${fg("#bb9af7")("word")}`,
   })
 
   instructionsBox.add(instructionsText1)
   instructionsBox.add(instructionsText2)
+
+  // Create file path input container (hidden by default, centered with border)
+  fileInputContainer = new BoxRenderable(renderer, {
+    id: "file-input-container",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 60,
+    height: 3,
+    marginLeft: -30,
+    marginTop: -2,
+    zIndex: 200,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: "#7aa2f7",
+    backgroundColor: "#1e1e2e",
+    visible: false,
+  })
+  mainContainer.add(fileInputContainer)
+
+  // Create file path input
+  filePathInput = new InputRenderable(renderer, {
+    id: "file-path-input",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#1e1e2e",
+    textColor: "#c0caf5",
+    placeholder: "Enter file path (relative to cwd or absolute)...",
+    placeholderColor: "#565f89",
+    cursorColor: "#7aa2f7",
+    value: "",
+    maxLength: 500,
+    onKeyDown: (key) => {
+      // If backspace is pressed and input is empty, close the prompt
+      if (key.name === "backspace" && filePathInput && filePathInput.value === "" && isInputVisible) {
+        hideFileInput()
+      }
+    },
+  })
+  fileInputContainer.add(filePathInput)
+
+  // Handle file path input submission
+  filePathInput.on(InputRenderableEvents.ENTER, async (value: string) => {
+    if (!value.trim()) {
+      hideFileInput()
+      return
+    }
+
+    // Close prompt immediately before loading
+    hideFileInput()
+
+    try {
+      const filePath = value.trim()
+
+      // Update status to show loading
+      if (instructionsText2) {
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Loading file...")}`
+      }
+
+      // Get file size for display
+      const fileStats = await Bun.file(filePath).stat()
+      const fileSizeBytes = fileStats.size
+      const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2)
+
+      // Replace the current content and load file directly into buffer
+      if (textRenderable) {
+        textRenderable.clear()
+
+        // Add header text node
+        const headerNode = TextNodeRenderable.fromString(`// Loaded from: ${filePath}\n// Size: ${fileSizeMB} MB\n\n`, {
+          fg: "#9ece6a",
+        })
+        textRenderable.add(headerNode)
+
+        // Trigger lifecycle to commit header
+        textRenderable.onLifecyclePass()
+
+        // Load file directly into the text buffer
+        const textBuffer = (textRenderable as any).textBuffer
+        textBuffer.loadFile(filePath)
+
+        // Get the text buffer size after loading (in bytes)
+        const textBufferBytes = textBuffer.byteSize
+        const textBufferMB = (textBufferBytes / (1024 * 1024)).toFixed(2)
+
+        // Update status
+        if (instructionsText2) {
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("File: ")} ${fg("#9ece6a")(fileSizeMB)}${fg("#c0caf5")(" MB, Buffer: ")} ${fg("#9ece6a")(textBufferMB)}${fg("#c0caf5")(" MB, Mode: ")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+        }
+      }
+    } catch (error) {
+      // Show error in text renderable
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      const errorTextNode = TextNodeRenderable.fromString(`ERROR: ${errorMessage}\n\nPress L to try again.`, {
+        fg: "#f7768e",
+      })
+
+      if (textRenderable) {
+        textRenderable.clear()
+        textRenderable.add(errorTextNode)
+      }
+
+      if (instructionsText2) {
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Error loading file")}`
+      }
+    }
+  })
 
   // Add content and instructions to main container
   mainContainer.add(contentBox)
@@ -505,20 +635,35 @@ export function run(renderer: CliRenderer): void {
   renderer.on("key", async (data) => {
     const key = data.toString()
 
-    if (key === "w" || key === "W") {
-      // Toggle wrap on the text
+    // If input is visible, don't process other keys (let input handle them)
+    if (isInputVisible) {
+      return
+    }
+
+    if (key === "l" || key === "L") {
+      // Show file input prompt
+      showFileInput()
+    } else if (key === "w" || key === "W") {
+      // Cycle through wrap modes: word -> char -> none -> word
       if (textRenderable && instructionsText2) {
-        textRenderable.wrap = !textRenderable.wrap
-        if (textRenderable.wrap) {
-          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+        if (textRenderable.wrapMode === "word") {
+          textRenderable.wrapMode = "char"
+        } else if (textRenderable.wrapMode === "char") {
+          textRenderable.wrapMode = "none"
         } else {
-          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#f7768e")("false")}${fg("#c0caf5")(")")}`
+          textRenderable.wrapMode = "word"
         }
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Wrap mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}`
       }
     } else if (key === "m" || key === "M") {
-      if (textRenderable && textRenderable.wrap && instructionsText2) {
-        textRenderable.wrapMode = textRenderable.wrapMode === "char" ? "word" : "char"
-        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Text (wrap:")} ${fg("#9ece6a")("true")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+      // Cycle through word/char modes (skip none)
+      if (textRenderable && instructionsText2) {
+        if (textRenderable.wrapMode === "none") {
+          textRenderable.wrapMode = "word"
+        } else {
+          textRenderable.wrapMode = textRenderable.wrapMode === "char" ? "word" : "char"
+        }
+        instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Wrap mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}`
       }
     } else if (key === "d" || key === "D") {
       // Download Babylon.js and display it
@@ -534,6 +679,10 @@ export function run(renderer: CliRenderer): void {
           }
           const content = await response.text()
 
+          // Get file size in bytes from the downloaded content
+          const fileSizeBytes = new Blob([content]).size
+          const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2)
+
           // Store in OS tmp directory
           const tempDir = process.env.TMPDIR || process.env.TEMP || "/tmp"
           const fileName = `babylon-${Date.now()}.js`
@@ -546,7 +695,7 @@ export function run(renderer: CliRenderer): void {
 
           // Create a new TextNodeRenderable with the downloaded content
           const babylonTextNode = TextNodeRenderable.fromString(
-            `// Downloaded Babylon.js (${loadedContent.length} chars)\n// Stored at: ${filePath}\n\n${loadedContent}`,
+            `// Downloaded Babylon.js (${loadedContent.length.toLocaleString()} chars, ${fileSizeMB} MB)\n// Stored at: ${filePath}\n\n${loadedContent}`,
             {
               fg: "#c0caf5",
             },
@@ -556,8 +705,15 @@ export function run(renderer: CliRenderer): void {
           textRenderable.clear()
           textRenderable.add(babylonTextNode)
 
+          // Trigger the lifecycle pass to commit text to buffer
+          textRenderable.onLifecyclePass()
+
+          // Get the text buffer size after loading (in bytes)
+          const textBufferBytes = (textRenderable as any).textBuffer.byteSize
+          const textBufferMB = (textBufferBytes / (1024 * 1024)).toFixed(2)
+
           // Update status
-          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Babylon.js loaded (")} ${fg("#9ece6a")(loadedContent.length.toString())}${fg("#c0caf5")(" chars, wrap:")} ${textRenderable.wrap ? fg("#9ece6a")("true") : fg("#f7768e")("false")}${fg("#c0caf5")(", mode:")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
+          instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#c0caf5")("Downloaded: ")} ${fg("#9ece6a")(fileSizeMB)}${fg("#c0caf5")(" MB, Buffer: ")} ${fg("#9ece6a")(textBufferMB)}${fg("#c0caf5")(" MB, Mode: ")} ${fg("#bb9af7")(textRenderable.wrapMode)}${fg("#c0caf5")(")")}`
         } catch (error) {
           // Show error in status
           instructionsText2.content = t`${bold(fg("#7aa2f7")("Status:"))} ${fg("#f7768e")("Download failed:")} ${fg("#c0caf5")(error instanceof Error ? error.message : "Unknown error")}`
@@ -576,6 +732,9 @@ export function destroy(renderer: CliRenderer): void {
   instructionsBox = null
   instructionsText1 = null
   instructionsText2 = null
+  filePathInput = null
+  fileInputContainer = null
+  isInputVisible = false
 }
 
 if (import.meta.main) {

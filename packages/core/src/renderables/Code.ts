@@ -1,6 +1,6 @@
 import { type RenderContext } from "../types"
 import { StyledText } from "../lib/styled-text"
-import { SyntaxStyle } from "../lib/syntax-style"
+import { SyntaxStyle } from "../syntax-style"
 import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
 

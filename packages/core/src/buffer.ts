@@ -4,6 +4,8 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays } from "./lib"
 import { type WidthMethod } from "./types"
+import type { TextBufferView } from "./text-buffer-view"
+import type { EditorView } from "./editor-view"
 
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
@@ -234,14 +236,14 @@ export class OptimizedBuffer {
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 
-  public drawTextBuffer(
-    textBuffer: TextBuffer,
-    x: number,
-    y: number,
-    clipRect?: { x: number; y: number; width: number; height: number },
-  ): void {
+  public drawTextBuffer(textBufferView: TextBufferView, x: number, y: number): void {
     this.guard()
-    this.lib.bufferDrawTextBuffer(this.bufferPtr, textBuffer.ptr, x, y, clipRect)
+    this.lib.bufferDrawTextBufferView(this.bufferPtr, textBufferView.ptr, x, y)
+  }
+
+  public drawEditorView(editorView: EditorView, x: number, y: number): void {
+    this.guard()
+    this.lib.bufferDrawEditorView(this.bufferPtr, editorView.ptr, x, y)
   }
 
   public drawSuperSampleBuffer(
