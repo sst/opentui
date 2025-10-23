@@ -445,10 +445,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const nextWord = this.editBuffer.getNextWordBoundary()
 
     if (nextWord.offset > currentCursor.offset) {
-      this.editBuffer.setCursorByOffset(currentCursor.offset)
-      for (let i = 0; i < nextWord.offset - currentCursor.offset; i++) {
-        this.editBuffer.deleteChar()
-      }
+      this.editBuffer.deleteRange(currentCursor.line, currentCursor.visualColumn, nextWord.line, nextWord.visualColumn)
     }
 
     this._ctx.clearSelection()
@@ -466,10 +463,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const prevWord = this.editBuffer.getPrevWordBoundary()
 
     if (prevWord.offset < currentCursor.offset) {
-      const deleteCount = currentCursor.offset - prevWord.offset
-      for (let i = 0; i < deleteCount; i++) {
-        this.editBuffer.deleteCharBackward()
-      }
+      this.editBuffer.deleteRange(prevWord.line, prevWord.visualColumn, currentCursor.line, currentCursor.visualColumn)
     }
 
     this._ctx.clearSelection()
