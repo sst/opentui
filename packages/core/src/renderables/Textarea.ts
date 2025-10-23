@@ -160,7 +160,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
 
-    const bindingKeyWithShift = getKeyBindingKey({
+    const bindingKey = getKeyBindingKey({
       name: keyName,
       ctrl: keyCtrl,
       shift: keyShift,
@@ -168,7 +168,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       action: "move-left" as TextareaAction,
     })
 
-    const action = this._keyBindingsMap.get(bindingKeyWithShift)
+    const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
       const handler = this._actionHandlers.get(action)

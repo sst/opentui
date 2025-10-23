@@ -953,6 +953,131 @@ describe("TextareaRenderable", () => {
     })
   })
 
+  describe("Keyboard Input - Meta Key Bindings", () => {
+    it("should bind custom action to meta key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "b", meta: true, action: "buffer-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("ALT_B")
+
+      const cursor = editor.cursor
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+
+    it("should bind meta key actions", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "f", meta: true, action: "buffer-end" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("ALT_F")
+
+      const cursor = editor.cursor
+      expect(cursor.line).toBe(0)
+    })
+
+    it("should work with meta key for navigation", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "j", meta: true, action: "move-down" }],
+      })
+
+      editor.focus()
+      expect(editor.cursor.line).toBe(0)
+
+      currentMockInput.pressKey("ALT_J")
+      expect(editor.cursor.line).toBe(1)
+    })
+
+    it("should allow meta key binding override", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "k", meta: true, action: "move-up" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(2)
+      expect(editor.cursor.line).toBe(2)
+
+      currentMockInput.pressKey("k", { meta: true })
+      expect(editor.cursor.line).toBe(1)
+    })
+
+    it("should work with Meta+Arrow keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "ABC",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "left", meta: true, action: "line-home" },
+          { name: "right", meta: true, action: "line-end" },
+        ],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 2; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressArrow("left", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressArrow("right", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(3)
+    })
+
+    it("should support meta with shift modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "H", meta: true, shift: true, action: "line-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.cursor.visualColumn).toBe(11)
+
+      currentMockInput.pressKey("h", { meta: true, shift: true })
+
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should not trigger action without meta when meta binding exists", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "x", meta: true, action: "delete-line" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("x")
+      expect(editor.plainText).toBe("xTest")
+
+      currentMockInput.pressKey("ALT_X")
+      expect(editor.plainText).toBe("")
+    })
+  })
+
   describe("Chunk Boundary Navigation", () => {
     it("should move cursor across chunks created by insertions", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
