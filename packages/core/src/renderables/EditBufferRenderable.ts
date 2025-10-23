@@ -3,7 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { EditBuffer, type CursorPosition } from "../edit-buffer"
 import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { type RenderContext } from "../types"
+import { type RenderContext, type Highlight } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { SyntaxStyle } from "../syntax-style"
@@ -134,8 +134,13 @@ export abstract class EditBufferRenderable extends Renderable {
     return this.editorView.getVisualCursor()
   }
 
+  get cursorOffset(): number {
+    return this.editorView.getVisualCursor().offset
+  }
+
   set cursorOffset(offset: number) {
     this.editorView.setCursorByOffset(offset)
+    this.requestRender()
   }
 
   get textColor(): RGBA {
@@ -415,5 +420,34 @@ export abstract class EditBufferRenderable extends Renderable {
   set syntaxStyle(style: SyntaxStyle | null) {
     this.editBuffer.setSyntaxStyle(style)
     this.requestRender()
+  }
+
+  public addHighlight(lineIdx: number, highlight: Highlight): void {
+    this.editBuffer.addHighlight(lineIdx, highlight)
+    this.requestRender()
+  }
+
+  public addHighlightByCharRange(highlight: Highlight): void {
+    this.editBuffer.addHighlightByCharRange(highlight)
+    this.requestRender()
+  }
+
+  public removeHighlightsByRef(hlRef: number): void {
+    this.editBuffer.removeHighlightsByRef(hlRef)
+    this.requestRender()
+  }
+
+  public clearLineHighlights(lineIdx: number): void {
+    this.editBuffer.clearLineHighlights(lineIdx)
+    this.requestRender()
+  }
+
+  public clearAllHighlights(): void {
+    this.editBuffer.clearAllHighlights()
+    this.requestRender()
+  }
+
+  public getLineHighlights(lineIdx: number): Array<Highlight> {
+    return this.editBuffer.getLineHighlights(lineIdx)
   }
 }
