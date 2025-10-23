@@ -8,8 +8,14 @@ export type TextareaAction =
   | "move-right"
   | "move-up"
   | "move-down"
+  | "select-left"
+  | "select-right"
+  | "select-up"
+  | "select-down"
   | "line-home"
   | "line-end"
+  | "select-line-home"
+  | "select-line-end"
   | "buffer-home"
   | "buffer-end"
   | "delete-line"
@@ -33,8 +39,14 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "right", action: "move-right" },
   { name: "up", action: "move-up" },
   { name: "down", action: "move-down" },
+  { name: "left", shift: true, action: "select-left" },
+  { name: "right", shift: true, action: "select-right" },
+  { name: "up", shift: true, action: "select-up" },
+  { name: "down", shift: true, action: "select-down" },
   { name: "home", action: "line-home" },
   { name: "end", action: "line-end" },
+  { name: "home", shift: true, action: "select-line-home" },
+  { name: "end", shift: true, action: "select-line-end" },
   { name: "a", ctrl: true, action: "buffer-home" },
   { name: "e", ctrl: true, action: "buffer-end" },
   { name: "d", ctrl: true, action: "delete-line" },
@@ -67,7 +79,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _focusedTextColor: RGBA
   private _placeholderColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
-  private _actionHandlers: Map<TextareaAction, (shift: boolean) => boolean>
+  private _actionHandlers: Map<TextareaAction, () => boolean>
 
   private static readonly defaults = {
     value: "",
@@ -137,23 +149,29 @@ export class TextareaRenderable extends EditBufferRenderable {
     return map
   }
 
-  private buildActionHandlers(): Map<TextareaAction, (shift: boolean) => boolean> {
+  private buildActionHandlers(): Map<TextareaAction, () => boolean> {
     return new Map([
-      ["move-left", (shift: boolean) => this.moveCursorLeft({ select: shift })],
-      ["move-right", (shift: boolean) => this.moveCursorRight({ select: shift })],
-      ["move-up", (shift: boolean) => this.moveCursorUp({ select: shift })],
-      ["move-down", (shift: boolean) => this.moveCursorDown({ select: shift })],
-      ["line-home", (shift: boolean) => this.gotoLineHome({ select: shift })],
-      ["line-end", (shift: boolean) => this.gotoLineEnd({ select: shift })],
-      ["buffer-home", (_shift: boolean) => this.gotoBufferHome()],
-      ["buffer-end", (_shift: boolean) => this.gotoBufferEnd()],
-      ["delete-line", (_shift: boolean) => this.deleteLine()],
-      ["delete-to-line-end", (_shift: boolean) => this.deleteToLineEnd()],
-      ["backspace", (_shift: boolean) => this.deleteCharBackward()],
-      ["delete", (_shift: boolean) => this.deleteChar()],
-      ["newline", (_shift: boolean) => this.newLine()],
-      ["undo", (_shift: boolean) => this.undo()],
-      ["redo", (_shift: boolean) => this.redo()],
+      ["move-left", () => this.moveCursorLeft()],
+      ["move-right", () => this.moveCursorRight()],
+      ["move-up", () => this.moveCursorUp()],
+      ["move-down", () => this.moveCursorDown()],
+      ["select-left", () => this.moveCursorLeft({ select: true })],
+      ["select-right", () => this.moveCursorRight({ select: true })],
+      ["select-up", () => this.moveCursorUp({ select: true })],
+      ["select-down", () => this.moveCursorDown({ select: true })],
+      ["line-home", () => this.gotoLineHome()],
+      ["line-end", () => this.gotoLineEnd()],
+      ["select-line-home", () => this.gotoLineHome({ select: true })],
+      ["select-line-end", () => this.gotoLineEnd({ select: true })],
+      ["buffer-home", () => this.gotoBufferHome()],
+      ["buffer-end", () => this.gotoBufferEnd()],
+      ["delete-line", () => this.deleteLine()],
+      ["delete-to-line-end", () => this.deleteToLineEnd()],
+      ["backspace", () => this.deleteCharBackward()],
+      ["delete", () => this.deleteChar()],
+      ["newline", () => this.newLine()],
+      ["undo", () => this.undo()],
+      ["redo", () => this.redo()],
     ])
   }
 
@@ -176,23 +194,12 @@ export class TextareaRenderable extends EditBufferRenderable {
       action: "move-left",
     })
 
-    let action = this._keyBindingsMap.get(bindingKeyWithShift)
-
-    if (!action && keyShift) {
-      const bindingKeyWithoutShift = this.getKeyBindingKey({
-        name: keyName,
-        ctrl: keyCtrl,
-        shift: false,
-        meta: keyMeta,
-        action: "move-left",
-      })
-      action = this._keyBindingsMap.get(bindingKeyWithoutShift)
-    }
+    const action = this._keyBindingsMap.get(bindingKeyWithShift)
 
     if (action) {
       const handler = this._actionHandlers.get(action)
       if (handler) {
-        return handler(keyShift)
+        return handler()
       }
     }
 
