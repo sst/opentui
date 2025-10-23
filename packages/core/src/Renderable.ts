@@ -748,7 +748,7 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
-  set position(positionType: PositionTypeString) {
+  set position(positionType: PositionTypeString | null | undefined) {
     if (!isPositionTypeType(positionType) || this._positionType === positionType) return
 
     this._positionType = positionType
@@ -760,7 +760,7 @@ export abstract class Renderable extends BaseRenderable {
     return this._overflow
   }
 
-  set overflow(overflow: OverflowString) {
+  set overflow(overflow: OverflowString | null | undefined) {
     if (!isOverflowType(overflow) || this._overflow === overflow) return
 
     this._overflow = overflow
@@ -808,78 +808,83 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
   }
 
-  public set flexGrow(grow: number) {
-    this.yogaNode.setFlexGrow(grow)
+  public set flexGrow(grow: number | null | undefined) {
+    if (grow == null) {
+      this.yogaNode.setFlexGrow(0)
+    } else {
+      this.yogaNode.setFlexGrow(grow)
+    }
     this.requestRender()
   }
 
-  public set flexShrink(shrink: number) {
-    this._flexShrink = shrink
-    this.yogaNode.setFlexShrink(shrink)
+  public set flexShrink(shrink: number | null | undefined) {
+    const value = shrink == null ? 1 : shrink
+    this._flexShrink = value
+    this.yogaNode.setFlexShrink(value)
     this.requestRender()
   }
 
-  public set flexDirection(direction: FlexDirectionString) {
+  public set flexDirection(direction: FlexDirectionString | null | undefined) {
     this.yogaNode.setFlexDirection(parseFlexDirection(direction))
     this.requestRender()
   }
 
-  public set flexWrap(wrap: WrapString) {
+  public set flexWrap(wrap: WrapString | null | undefined) {
     this.yogaNode.setFlexWrap(parseWrap(wrap))
     this.requestRender()
   }
 
-  public set alignItems(alignItems: AlignString) {
+  public set alignItems(alignItems: AlignString | null | undefined) {
     this.yogaNode.setAlignItems(parseAlign(alignItems))
     this.requestRender()
   }
 
-  public set justifyContent(justifyContent: JustifyString) {
+  public set justifyContent(justifyContent: JustifyString | null | undefined) {
     this.yogaNode.setJustifyContent(parseJustify(justifyContent))
     this.requestRender()
   }
 
-  public set alignSelf(alignSelf: AlignString) {
+  public set alignSelf(alignSelf: AlignString | null | undefined) {
     this.yogaNode.setAlignSelf(parseAlign(alignSelf))
     this.requestRender()
   }
 
-  public set flexBasis(basis: number | "auto" | undefined) {
+  public set flexBasis(basis: number | "auto" | null | undefined) {
     if (isFlexBasisType(basis)) {
       this.yogaNode.setFlexBasis(basis)
       this.requestRender()
     }
   }
 
-  public set minWidth(minWidth: number | `${number}%` | undefined) {
+  public set minWidth(minWidth: number | `${number}%` | null | undefined) {
     if (isSizeType(minWidth)) {
       this.yogaNode.setMinWidth(minWidth)
       this.requestRender()
     }
   }
 
-  public set maxWidth(maxWidth: number | `${number}%` | undefined) {
+  public set maxWidth(maxWidth: number | `${number}%` | null | undefined) {
     if (isSizeType(maxWidth)) {
       this.yogaNode.setMaxWidth(maxWidth)
       this.requestRender()
     }
   }
 
-  public set minHeight(minHeight: number | `${number}%` | undefined) {
+  public set minHeight(minHeight: number | `${number}%` | null | undefined) {
     if (isSizeType(minHeight)) {
       this.yogaNode.setMinHeight(minHeight)
       this.requestRender()
     }
   }
 
-  public set maxHeight(maxHeight: number | `${number}%` | undefined) {
+  public set maxHeight(maxHeight: number | `${number}%` | null | undefined) {
     if (isSizeType(maxHeight)) {
       this.yogaNode.setMaxHeight(maxHeight)
       this.requestRender()
     }
   }
 
-  public set margin(margin: number | "auto" | `${number}%` | undefined) {
+  public set margin(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       const node = this.yogaNode
       node.setMargin(Edge.Top, margin)
@@ -890,35 +895,35 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
-  public set marginTop(margin: number | "auto" | `${number}%` | undefined) {
+  public set marginTop(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       this.yogaNode.setMargin(Edge.Top, margin)
       this.requestRender()
     }
   }
 
-  public set marginRight(margin: number | "auto" | `${number}%` | undefined) {
+  public set marginRight(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       this.yogaNode.setMargin(Edge.Right, margin)
       this.requestRender()
     }
   }
 
-  public set marginBottom(margin: number | "auto" | `${number}%` | undefined) {
+  public set marginBottom(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       this.yogaNode.setMargin(Edge.Bottom, margin)
       this.requestRender()
     }
   }
 
-  public set marginLeft(margin: number | "auto" | `${number}%` | undefined) {
+  public set marginLeft(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       this.yogaNode.setMargin(Edge.Left, margin)
       this.requestRender()
     }
   }
 
-  public set padding(padding: number | `${number}%` | undefined) {
+  public set padding(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
       const node = this.yogaNode
       node.setPadding(Edge.Top, padding)
@@ -929,28 +934,28 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
-  public set paddingTop(padding: number | `${number}%` | undefined) {
+  public set paddingTop(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
       this.yogaNode.setPadding(Edge.Top, padding)
       this.requestRender()
     }
   }
 
-  public set paddingRight(padding: number | `${number}%` | undefined) {
+  public set paddingRight(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
       this.yogaNode.setPadding(Edge.Right, padding)
       this.requestRender()
     }
   }
 
-  public set paddingBottom(padding: number | `${number}%` | undefined) {
+  public set paddingBottom(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
       this.yogaNode.setPadding(Edge.Bottom, padding)
       this.requestRender()
     }
   }
 
-  public set paddingLeft(padding: number | `${number}%` | undefined) {
+  public set paddingLeft(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
       this.yogaNode.setPadding(Edge.Left, padding)
       this.requestRender()
