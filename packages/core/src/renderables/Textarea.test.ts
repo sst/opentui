@@ -3785,6 +3785,585 @@ describe("TextareaRenderable", () => {
     })
   })
 
+  describe("Key Bindings", () => {
+    it("should use default keybindings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      currentMockInput.pressKey("HOME")
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressKey("END")
+      expect(editor.cursor.visualColumn).toBe(11)
+    })
+
+    it("should allow custom keybindings to override defaults", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "j", action: "move-left" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.cursor.visualColumn).toBe(11)
+
+      currentMockInput.pressKey("j")
+      expect(editor.cursor.visualColumn).toBe(10)
+    })
+
+    it("should map multiple custom keys to the same action", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "h", action: "move-left" },
+          { name: "j", action: "move-down" },
+          { name: "k", action: "move-up" },
+          { name: "l", action: "move-right" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("l")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      currentMockInput.pressKey("l")
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressKey("h")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      currentMockInput.pressKey("h")
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should support custom keybindings with ctrl modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "g", ctrl: true, action: "buffer-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.cursor.line).toBe(2)
+
+      currentMockInput.pressKey("CTRL_G")
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should support custom keybindings with shift modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+        keyBindings: [{ name: "l", shift: true, action: "select-right" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("L", { shift: true })
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("H")
+
+      currentMockInput.pressKey("L", { shift: true })
+      expect(editor.getSelectedText()).toBe("He")
+    })
+
+    it("should support custom keybindings with alt modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "b", ctrl: true, action: "buffer-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(2)
+
+      currentMockInput.pressKey("CTRL_B")
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should support keybindings with multiple modifiers", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+        keyBindings: [{ name: "right", ctrl: true, shift: true, action: "select-line-end" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right", { ctrl: true, shift: true })
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello World")
+    })
+
+    it("should map newline action to custom key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "n", ctrl: true, action: "newline" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("CTRL_N")
+      expect(editor.plainText).toBe("Hello\n")
+    })
+
+    it("should map backspace action to custom key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "h", ctrl: true, action: "backspace" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("CTRL_H")
+      expect(editor.plainText).toBe("Hell")
+    })
+
+    it("should map delete action to custom key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "d", ctrl: false, action: "delete" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("d")
+      expect(editor.plainText).toBe("ello")
+    })
+
+    it("should map line-home and line-end to custom keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "a", action: "line-home" },
+          { name: "e", action: "line-end" },
+        ],
+      })
+
+      editor.focus()
+      editor.moveCursorRight()
+      editor.moveCursorRight()
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressKey("a")
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressKey("e")
+      expect(editor.cursor.visualColumn).toBe(11)
+    })
+
+    it("should override default shift+home and shift+end keybindings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+        keyBindings: [
+          { name: "home", shift: true, action: "buffer-home" },
+          { name: "end", shift: true, action: "buffer-end" },
+        ],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.cursor.visualColumn).toBe(6)
+
+      currentMockInput.pressKey("HOME", { shift: true })
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      editor.moveCursorRight()
+      currentMockInput.pressKey("END", { shift: true })
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.cursor.line).toBe(0)
+    })
+
+    it("should map undo and redo actions to custom keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "u", action: "undo" },
+          { name: "r", action: "redo" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("H")
+      currentMockInput.pressKey("i")
+      expect(editor.plainText).toBe("Hi")
+
+      currentMockInput.pressKey("u")
+      expect(editor.plainText).toBe("H")
+
+      currentMockInput.pressKey("r")
+      expect(editor.plainText).toBe("Hi")
+    })
+
+    it("should map delete-line action to custom key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "x", ctrl: true, action: "delete-line" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+
+      currentMockInput.pressKey("CTRL_X")
+      expect(editor.plainText).toBe("Line 1\nLine 3")
+    })
+
+    it("should map delete-to-line-end action to custom key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "k", action: "delete-to-line-end" }],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("k")
+      expect(editor.plainText).toBe("Hello ")
+    })
+
+    it("should map buffer-home and buffer-end to custom keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "g", action: "buffer-home" },
+          { name: "b", action: "buffer-end" },
+        ],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.cursor.line).toBe(2)
+
+      currentMockInput.pressKey("g")
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressKey("b")
+      expect(editor.cursor.line).toBe(2)
+    })
+
+    it("should map select-up and select-down to custom keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        selectable: true,
+        keyBindings: [
+          { name: "k", shift: true, action: "select-up" },
+          { name: "j", shift: true, action: "select-down" },
+        ],
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+
+      currentMockInput.pressKey("J", { shift: true })
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+      expect(selectedText.includes("Line")).toBe(true)
+    })
+
+    it("should preserve default keybindings when custom bindings don't override them", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "j", action: "move-down" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      currentMockInput.pressKey("HOME")
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should allow remapping default keys to different actions", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "up", action: "buffer-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(2)
+
+      currentMockInput.pressArrow("up")
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should handle complex keybinding scenario with multiple custom mappings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "h", action: "move-left" },
+          { name: "j", action: "move-down" },
+          { name: "k", action: "move-up" },
+          { name: "l", action: "move-right" },
+          { name: "i", action: "buffer-home" },
+          { name: "a", action: "line-end" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("i")
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressKey("a")
+      expect(editor.cursor.visualColumn).toBe(6)
+
+      currentMockInput.pressKey("h")
+      expect(editor.cursor.visualColumn).toBe(5)
+
+      currentMockInput.pressKey("j")
+      expect(editor.cursor.line).toBe(1)
+
+      currentMockInput.pressKey("k")
+      expect(editor.cursor.line).toBe(0)
+
+      currentMockInput.pressKey("l")
+      expect(editor.cursor.visualColumn).toBe(6)
+    })
+
+    it("should not insert text when key is bound to action", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "x", action: "delete" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("x")
+      expect(editor.plainText).toBe("ello")
+
+      expect(editor.plainText).not.toContain("x")
+    })
+
+    it("should still insert unbound keys as text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "j", action: "move-down" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("h")
+      expect(editor.plainText).toBe("h")
+
+      currentMockInput.pressKey("i")
+      expect(editor.plainText).toBe("hi")
+
+      currentMockInput.pressKey("j")
+      expect(editor.plainText).toBe("hi")
+    })
+
+    it("should differentiate between key with and without modifiers", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "d", action: "delete" },
+          { name: "d", ctrl: true, action: "delete-line" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("d")
+      expect(editor.plainText).toBe("ello")
+    })
+
+    it("should support selection actions with custom keybindings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+        keyBindings: [
+          { name: "h", shift: true, action: "select-left" },
+          { name: "l", shift: true, action: "select-right" },
+        ],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("H", { shift: true })
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("d")
+
+      currentMockInput.pressKey("H", { shift: true })
+      expect(editor.getSelectedText()).toBe("ld")
+
+      currentMockInput.pressKey("L", { shift: true })
+      expect(editor.getSelectedText()).toBe("d")
+    })
+
+    it("should execute correct action when multiple keys map to different actions with same base", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "j", action: "move-down" },
+          { name: "j", ctrl: true, action: "buffer-end" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("j")
+      expect(editor.cursor.line).toBe(1)
+
+      editor.gotoLine(0)
+      currentMockInput.pressKey("CTRL_J")
+      expect(editor.cursor.line).toBe(1)
+    })
+
+    it("should handle all action types via custom keybindings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        selectable: true,
+        keyBindings: [
+          { name: "1", action: "move-left" },
+          { name: "2", action: "move-right" },
+          { name: "3", action: "move-up" },
+          { name: "4", action: "move-down" },
+          { name: "5", shift: true, action: "select-left" },
+          { name: "6", shift: true, action: "select-right" },
+          { name: "7", shift: true, action: "select-up" },
+          { name: "8", shift: true, action: "select-down" },
+          { name: "a", action: "line-home" },
+          { name: "b", action: "line-end" },
+          { name: "c", shift: true, action: "select-line-home" },
+          { name: "d", shift: true, action: "select-line-end" },
+          { name: "e", action: "buffer-home" },
+          { name: "f", action: "buffer-end" },
+          { name: "g", action: "delete-line" },
+          { name: "h", action: "delete-to-line-end" },
+          { name: "i", action: "backspace" },
+          { name: "j", action: "delete" },
+          { name: "k", action: "newline" },
+          { name: "u", action: "undo" },
+          { name: "r", action: "redo" },
+        ],
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+      editor.moveCursorRight()
+      editor.moveCursorRight()
+      expect(editor.cursor.line).toBe(1)
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressKey("1")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      currentMockInput.pressKey("2")
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressKey("3")
+      expect(editor.cursor.line).toBe(0)
+
+      currentMockInput.pressKey("4")
+      expect(editor.cursor.line).toBe(1)
+
+      currentMockInput.pressKey("a")
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressKey("b")
+      expect(editor.cursor.visualColumn).toBe(6)
+
+      currentMockInput.pressKey("e")
+      expect(editor.cursor.line).toBe(0)
+
+      currentMockInput.pressKey("f")
+      expect(editor.cursor.line).toBe(2)
+    })
+
+    it("should not break when empty keyBindings array is provided", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      currentMockInput.pressKey("HOME")
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+  })
+
   describe("Change Events", () => {
     describe("onCursorChange", () => {
       it("should fire onCursorChange when cursor moves", async () => {
