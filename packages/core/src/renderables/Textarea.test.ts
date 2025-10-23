@@ -4362,6 +4362,57 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("HOME")
       expect(editor.cursor.visualColumn).toBe(0)
     })
+
+    it("should document limitation: bound character keys cannot be typed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "h", action: "move-left" },
+          { name: "j", action: "move-down" },
+          { name: "k", action: "move-up" },
+          { name: "l", action: "move-right" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("h")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("o")
+
+      expect(editor.plainText).toBe("eo")
+    })
+
+    it("should allow typing bound characters when using modifier keys for bindings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "h", ctrl: true, action: "move-left" },
+          { name: "j", ctrl: true, action: "move-down" },
+          { name: "k", ctrl: true, action: "move-up" },
+          { name: "l", ctrl: true, action: "move-right" },
+        ],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("h")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("o")
+
+      expect(editor.plainText).toBe("hello")
+
+      currentMockInput.pressKey("CTRL_H")
+      expect(editor.cursor.visualColumn).toBe(4)
+    })
   })
 
   describe("Change Events", () => {
