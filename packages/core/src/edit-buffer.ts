@@ -136,6 +136,11 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferDeleteCharBackward(this.bufferPtr)
   }
 
+  public deleteRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
+    this.guard()
+    this.lib.editBufferDeleteRange(this.bufferPtr, startLine, startCol, endLine, endCol)
+  }
+
   public newLine(): void {
     this.guard()
     this.lib.editBufferNewLine(this.bufferPtr)

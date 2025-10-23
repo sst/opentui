@@ -530,6 +530,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    editBufferDeleteRange: {
+      args: ["ptr", "u32", "u32", "u32", "u32"],
+      returns: "void",
+    },
     editBufferNewLine: {
       args: ["ptr"],
       returns: "void",
@@ -1109,6 +1113,7 @@ export interface RenderLib {
   editBufferInsertText: (buffer: Pointer, text: string) => void
   editBufferDeleteChar: (buffer: Pointer) => void
   editBufferDeleteCharBackward: (buffer: Pointer) => void
+  editBufferDeleteRange: (buffer: Pointer, startLine: number, startCol: number, endLine: number, endCol: number) => void
   editBufferNewLine: (buffer: Pointer) => void
   editBufferDeleteLine: (buffer: Pointer) => void
   editBufferMoveCursorLeft: (buffer: Pointer) => void
@@ -2157,6 +2162,16 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferDeleteCharBackward(buffer: Pointer): void {
     this.opentui.symbols.editBufferDeleteCharBackward(buffer)
+  }
+
+  public editBufferDeleteRange(
+    buffer: Pointer,
+    startLine: number,
+    startCol: number,
+    endLine: number,
+    endCol: number,
+  ): void {
+    this.opentui.symbols.editBufferDeleteRange(buffer, startLine, startCol, endLine, endCol)
   }
 
   public editBufferNewLine(buffer: Pointer): void {

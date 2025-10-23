@@ -210,6 +210,62 @@ describe("EditBuffer", () => {
       expect(buffer.getText()).toBe("tes")
     })
 
+    it("should delete range within a single line", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 0, 0, 5)
+
+      expect(buffer.getText()).toBe(" World")
+    })
+
+    it("should delete range across multiple lines", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+
+      buffer.deleteRange(0, 5, 2, 5)
+
+      expect(buffer.getText()).toBe("Line 3")
+    })
+
+    it("should handle deleteRange with start equal to end (no-op)", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 5, 0, 5)
+
+      expect(buffer.getText()).toBe("Hello World")
+    })
+
+    it("should handle deleteRange with reversed start and end", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 10, 0, 5)
+
+      expect(buffer.getText()).toBe("Hellod")
+    })
+
+    it("should delete from middle of one line to middle of another", () => {
+      buffer.setText("AAAA\nBBBB\nCCCC")
+
+      buffer.deleteRange(0, 2, 2, 2)
+
+      expect(buffer.getText()).toBe("AACC")
+    })
+
+    it("should delete entire content with deleteRange", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 0, 0, 11)
+
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle deleteRange with Unicode characters", () => {
+      buffer.setText("Hello 世界 🌟")
+
+      buffer.deleteRange(0, 6, 0, 10)
+
+      expect(buffer.getText()).toBe("Hello  🌟")
+    })
+
     it("should delete entire line", () => {
       buffer.setText("Line 1\nLine 2\nLine 3")
 
