@@ -8,6 +8,20 @@ interface ViewportObject {
   zIndex: number
 }
 
+/**
+ * Returns objects that overlap with the viewport bounds.
+ *
+ * @param viewport - The viewport bounds to check against
+ * @param objects - Array of objects MUST be sorted by position (y for column, x for row direction)
+ * @param direction - Primary scroll direction: "column" (vertical) or "row" (horizontal)
+ * @param padding - Extra padding around viewport to include nearby objects
+ * @param minTriggerSize - Minimum array size to use binary search optimization
+ * @returns Array of visible objects sorted by zIndex
+ *
+ * @remarks
+ * Objects must be pre-sorted by their start position (y for column direction, x for row direction).
+ * Unsorted input will produce incorrect results.
+ */
 export function getObjectsInViewport<T extends ViewportObject>(
   viewport: ViewportBounds,
   objects: T[],
@@ -42,9 +56,9 @@ export function getObjectsInViewport<T extends ViewportObject>(
     const end = isRow ? c.x + c.width : c.y + c.height
 
     if (end < vpStart) {
-      lo = mid + 1 // before viewport along axis
+      lo = mid + 1
     } else if (start > vpEnd) {
-      hi = mid - 1 // after viewport along axis
+      hi = mid - 1
     } else {
       candidate = mid
       break
@@ -52,28 +66,59 @@ export function getObjectsInViewport<T extends ViewportObject>(
   }
 
   const visibleChildren: T[] = []
+
+  // If binary search found no candidate, the viewport might be in a gap between objects
+  // Start from the position where the search ended
   if (candidate === -1) {
-    return visibleChildren
+    // Binary search failed to find overlap - viewport is in a gap
+    // We need to check objects before lo for any that extend into the viewport
+    candidate = lo > 0 ? lo - 1 : 0
   }
 
+  // Expand left to find all objects that overlap the viewport
+  // To handle large objects that start early but extend far, we continue
+  // checking even after finding objects that don't overlap, up to a limit
+  // This handles cases where many small objects sit between a large object and the viewport
+  // Real-world examples: background panels, large images, or spanning containers
+  const maxLookBehind = 50
   let left = candidate
+  let gapCount = 0
+
   while (left - 1 >= 0) {
     const prev = children[left - 1]
-    if ((isRow ? prev.x + prev.width : prev.y + prev.height) < vpStart) break
+    const prevEnd = isRow ? prev.x + prev.width : prev.y + prev.height
+
+    if (prevEnd <= vpStart) {
+      gapCount++
+      if (gapCount >= maxLookBehind) {
+        break
+      }
+    } else {
+      gapCount = 0
+    }
+
     left--
   }
 
+  // Expand right to find the rightmost overlapping object
   let right = candidate + 1
   while (right < totalChildren) {
     const next = children[right]
-    if ((isRow ? next.x : next.y) > vpEnd) break
+    if ((isRow ? next.x : next.y) >= vpEnd) break
     right++
   }
 
   // Collect candidates that also overlap on the cross axis
   for (let i = left; i < right; i++) {
     const child = children[i]
+    const start = isRow ? child.x : child.y
+    const end = isRow ? child.x + child.width : child.y + child.height
 
+    // Check primary axis overlap (optimization: skip objects that don't overlap)
+    if (end <= vpStart) continue
+    if (start >= vpEnd) break
+
+    // Check cross-axis overlap
     if (isRow) {
       const childBottom = child.y + child.height
       if (childBottom < viewportTop) continue
@@ -89,7 +134,7 @@ export function getObjectsInViewport<T extends ViewportObject>(
     visibleChildren.push(child)
   }
 
-  // At this point there should be not a lot of children, so this should be fast
+  // Sort by zIndex
   if (visibleChildren.length > 1) {
     visibleChildren.sort((a, b) => (a.zIndex > b.zIndex ? 1 : a.zIndex < b.zIndex ? -1 : 0))
   }
