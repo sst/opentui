@@ -73,9 +73,11 @@ export function hexToRgb(hex: string): RGBA {
 
   if (hex.length === 3) {
     hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]
+  } else if (hex.length === 4) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3]
   }
 
-  if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
+  if (!/^[0-9A-Fa-f]{6}$/.test(hex) && !/^[0-9A-Fa-f]{8}$/.test(hex)) {
     console.warn(`Invalid hex color: ${hex}, defaulting to magenta`)
     return RGBA.fromValues(1, 0, 1, 1)
   }
@@ -83,14 +85,16 @@ export function hexToRgb(hex: string): RGBA {
   const r = parseInt(hex.substring(0, 2), 16) / 255
   const g = parseInt(hex.substring(2, 4), 16) / 255
   const b = parseInt(hex.substring(4, 6), 16) / 255
+  const a = hex.length === 8 ? parseInt(hex.substring(6, 8), 16) / 255 : 1
 
-  return RGBA.fromValues(r, g, b, 1)
+  return RGBA.fromValues(r, g, b, a)
 }
 
 export function rgbToHex(rgb: RGBA): string {
+  const components = rgb.a === 1 ? [rgb.r, rgb.g, rgb.b] : [rgb.r, rgb.g, rgb.b, rgb.a]
   return (
     "#" +
-    [rgb.r, rgb.g, rgb.b]
+    components
       .map((x) => {
         const hex = Math.floor(Math.max(0, Math.min(1, x) * 255)).toString(16)
         return hex.length === 1 ? "0" + hex : hex
