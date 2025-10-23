@@ -630,6 +630,33 @@ export fn editBufferSetCursorByOffset(edit_buffer: *edit_buffer_mod.EditBuffer, 
     edit_buffer.setCursorByOffset(offset) catch {};
 }
 
+export fn editBufferGetNextWordBoundary(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *ExternalLogicalCursor) void {
+    const cursor = edit_buffer.getNextWordBoundary();
+    outPtr.* = .{
+        .row = cursor.row,
+        .col = cursor.col,
+        .offset = cursor.offset,
+    };
+}
+
+export fn editBufferGetPrevWordBoundary(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *ExternalLogicalCursor) void {
+    const cursor = edit_buffer.getPrevWordBoundary();
+    outPtr.* = .{
+        .row = cursor.row,
+        .col = cursor.col,
+        .offset = cursor.offset,
+    };
+}
+
+export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *ExternalLogicalCursor) void {
+    const cursor = edit_buffer.getEOL();
+    outPtr.* = .{
+        .row = cursor.row,
+        .col = cursor.col,
+        .offset = cursor.offset,
+    };
+}
+
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text, retain_history) catch {};
@@ -832,21 +859,15 @@ export fn editorViewGetText(view: *editor_view.EditorView, outPtr: [*]u8, maxLen
 
 // ===== EditorView VisualCursor Exports =====
 
-export fn editorViewGetVisualCursor(
-    view: *editor_view.EditorView,
-    outVisualRow: *u32,
-    outVisualCol: *u32,
-    outLogicalRow: *u32,
-    outLogicalCol: *u32,
-    outOffset: *u32,
-) bool {
+export fn editorViewGetVisualCursor(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
     const vcursor = view.getVisualCursor();
-    outVisualRow.* = vcursor.visual_row;
-    outVisualCol.* = vcursor.visual_col;
-    outLogicalRow.* = vcursor.logical_row;
-    outLogicalCol.* = vcursor.logical_col;
-    outOffset.* = vcursor.offset;
-    return true;
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
 }
 
 export fn editorViewMoveUpVisual(view: *editor_view.EditorView) void {
@@ -863,6 +884,39 @@ export fn editorViewDeleteSelectedText(view: *editor_view.EditorView) void {
 
 export fn editorViewSetCursorByOffset(view: *editor_view.EditorView, offset: u32) void {
     view.setCursorByOffset(offset) catch {};
+}
+
+export fn editorViewGetNextWordBoundary(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getNextWordBoundary();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
+export fn editorViewGetPrevWordBoundary(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getPrevWordBoundary();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
+export fn editorViewGetEOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getEOL();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
 }
 
 export fn bufferDrawEditorView(
@@ -889,6 +943,20 @@ pub const ExternalHighlight = extern struct {
     style_id: u32,
     priority: u8,
     hl_ref: u16,
+};
+
+pub const ExternalLogicalCursor = extern struct {
+    row: u32,
+    col: u32,
+    offset: u32,
+};
+
+pub const ExternalVisualCursor = extern struct {
+    visual_row: u32,
+    visual_col: u32,
+    logical_row: u32,
+    logical_col: u32,
+    offset: u32,
 };
 
 export fn textBufferAddHighlightByCharRange(

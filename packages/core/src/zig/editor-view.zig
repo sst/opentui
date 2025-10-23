@@ -417,4 +417,19 @@ pub const EditorView = struct {
         try self.edit_buffer.setCursorByOffset(offset);
         self.updateBeforeRender();
     }
+
+    pub fn getNextWordBoundary(self: *EditorView) VisualCursor {
+        const logical_cursor = self.edit_buffer.getNextWordBoundary();
+        return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
+    }
+
+    pub fn getPrevWordBoundary(self: *EditorView) VisualCursor {
+        const logical_cursor = self.edit_buffer.getPrevWordBoundary();
+        return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
+    }
+
+    pub fn getEOL(self: *EditorView) VisualCursor {
+        const logical_cursor = self.edit_buffer.getEOL();
+        return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
+    }
 };

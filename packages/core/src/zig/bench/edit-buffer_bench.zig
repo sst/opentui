@@ -308,6 +308,193 @@ fn benchMixedOperations(
     return try results.toOwnedSlice();
 }
 
+fn benchWordBoundaryOperations(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    graphemes_ptr: *Graphemes,
+    display_width_ptr: *DisplayWidth,
+    iterations: usize,
+    show_mem: bool,
+) ![]BenchResult {
+    var results = std.ArrayList(BenchResult).init(allocator);
+
+    // Next word boundary navigation
+    {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+        var final_mem: usize = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            defer eb.deinit();
+
+            // Build text with many words
+            const text = "The quick brown fox jumps over the lazy dog. ";
+            var i: u32 = 0;
+            while (i < 100) : (i += 1) {
+                try eb.insertText(text);
+            }
+
+            try eb.setCursor(0, 0);
+
+            var timer = try std.time.Timer.start();
+            // Navigate through 1000 word boundaries
+            i = 0;
+            while (i < 1000) : (i += 1) {
+                const cursor = eb.getNextWordBoundary();
+                try eb.setCursor(cursor.row, cursor.col);
+            }
+            const elapsed = timer.read();
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+
+            if (iter == iterations - 1 and show_mem) {
+                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+            }
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "EditBuffer getNextWordBoundary 1k times", .{});
+        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+            const stats = try allocator.alloc(MemStat, 1);
+            stats[0] = .{ .name = "TB", .bytes = final_mem };
+            break :blk stats;
+        } else null;
+
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = mem_stats,
+        });
+    }
+
+    // Previous word boundary navigation
+    {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+        var final_mem: usize = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            defer eb.deinit();
+
+            // Build text with many words
+            const text = "The quick brown fox jumps over the lazy dog. ";
+            var i: u32 = 0;
+            while (i < 100) : (i += 1) {
+                try eb.insertText(text);
+            }
+
+            // Start at end
+            const line_count = eb.getTextBuffer().lineCount();
+            const last_line = if (line_count > 0) line_count - 1 else 0;
+            try eb.setCursor(last_line, 4500);
+
+            var timer = try std.time.Timer.start();
+            // Navigate backward through 1000 word boundaries
+            i = 0;
+            while (i < 1000) : (i += 1) {
+                const cursor = eb.getPrevWordBoundary();
+                try eb.setCursor(cursor.row, cursor.col);
+            }
+            const elapsed = timer.read();
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+
+            if (iter == iterations - 1 and show_mem) {
+                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+            }
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "EditBuffer getPrevWordBoundary 1k times", .{});
+        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+            const stats = try allocator.alloc(MemStat, 1);
+            stats[0] = .{ .name = "TB", .bytes = final_mem };
+            break :blk stats;
+        } else null;
+
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = mem_stats,
+        });
+    }
+
+    // Word boundary with multi-line text
+    {
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+        var final_mem: usize = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            defer eb.deinit();
+
+            // Build multi-line text with words
+            const text = "Hello world test\nAnother line here\nThird line content\n";
+            var i: u32 = 0;
+            while (i < 100) : (i += 1) {
+                try eb.insertText(text);
+            }
+
+            try eb.setCursor(0, 0);
+
+            var timer = try std.time.Timer.start();
+            // Navigate through 500 word boundaries across lines
+            i = 0;
+            while (i < 500) : (i += 1) {
+                const cursor = eb.getNextWordBoundary();
+                try eb.setCursor(cursor.row, cursor.col);
+            }
+            const elapsed = timer.read();
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+
+            if (iter == iterations - 1 and show_mem) {
+                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+            }
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "EditBuffer word boundary multi-line 500 times", .{});
+        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+            const stats = try allocator.alloc(MemStat, 1);
+            stats[0] = .{ .name = "TB", .bytes = final_mem };
+            break :blk stats;
+        } else null;
+
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = mem_stats,
+        });
+    }
+
+    return try results.toOwnedSlice();
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
@@ -340,6 +527,10 @@ pub fn run(
     const mixed_results = try benchMixedOperations(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
     defer allocator.free(mixed_results);
     try all_results.appendSlice(mixed_results);
+
+    const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    defer allocator.free(word_boundary_results);
+    try all_results.appendSlice(word_boundary_results);
 
     return try all_results.toOwnedSlice();
 }

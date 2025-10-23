@@ -136,6 +136,11 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferDeleteCharBackward(this.bufferPtr)
   }
 
+  public deleteRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
+    this.guard()
+    this.lib.editBufferDeleteRange(this.bufferPtr, startLine, startCol, endLine, endCol)
+  }
+
   public newLine(): void {
     this.guard()
     this.lib.editBufferNewLine(this.bufferPtr)
@@ -189,6 +194,36 @@ export class EditBuffer extends EventEmitter {
   public getCursorPosition(): CursorPosition {
     this.guard()
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
+  }
+
+  public getNextWordBoundary(): CursorPosition {
+    this.guard()
+    const boundary = this.lib.editBufferGetNextWordBoundary(this.bufferPtr)
+    return {
+      line: boundary.row,
+      visualColumn: boundary.col,
+      offset: boundary.offset,
+    }
+  }
+
+  public getPrevWordBoundary(): CursorPosition {
+    this.guard()
+    const boundary = this.lib.editBufferGetPrevWordBoundary(this.bufferPtr)
+    return {
+      line: boundary.row,
+      visualColumn: boundary.col,
+      offset: boundary.offset,
+    }
+  }
+
+  public getEOL(): CursorPosition {
+    this.guard()
+    const boundary = this.lib.editBufferGetEOL(this.bufferPtr)
+    return {
+      line: boundary.row,
+      visualColumn: boundary.col,
+      offset: boundary.offset,
+    }
   }
 
   public debugLogRope(): void {

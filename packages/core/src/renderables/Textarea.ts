@@ -31,6 +31,12 @@ export type TextareaAction =
   | "newline"
   | "undo"
   | "redo"
+  | "word-forward"
+  | "word-backward"
+  | "select-word-forward"
+  | "select-word-backward"
+  | "delete-word-forward"
+  | "delete-word-backward"
 
 export type KeyBinding = BaseKeyBinding<TextareaAction>
 
@@ -56,8 +62,19 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "return", action: "newline" },
   { name: "enter", action: "newline" },
   { name: "z", ctrl: true, action: "undo" },
-  { name: "z", ctrl: true, shift: true, action: "redo" },
+  { name: "Z", ctrl: true, shift: true, action: "redo" },
   { name: "y", ctrl: true, action: "redo" },
+  { name: "f", meta: true, action: "word-forward" },
+  { name: "b", meta: true, action: "word-backward" },
+  { name: "right", meta: true, action: "word-forward" },
+  { name: "left", meta: true, action: "word-backward" },
+  { name: "F", meta: true, shift: true, action: "select-word-forward" },
+  { name: "B", meta: true, shift: true, action: "select-word-backward" },
+  { name: "right", meta: true, shift: true, action: "select-word-forward" },
+  { name: "left", meta: true, shift: true, action: "select-word-backward" },
+  { name: "d", meta: true, action: "delete-word-forward" },
+  { name: "backspace", meta: true, action: "delete-word-backward" },
+  { name: "w", ctrl: true, action: "delete-word-backward" },
 ]
 
 export interface TextareaOptions extends EditBufferOptions {
@@ -146,6 +163,12 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["newline", () => this.newLine()],
       ["undo", () => this.undo()],
       ["redo", () => this.redo()],
+      ["word-forward", () => this.moveWordForward()],
+      ["word-backward", () => this.moveWordBackward()],
+      ["select-word-forward", () => this.moveWordForward({ select: true })],
+      ["select-word-backward", () => this.moveWordBackward({ select: true })],
+      ["delete-word-forward", () => this.deleteWordForward()],
+      ["delete-word-backward", () => this.deleteWordBackward()],
     ])
   }
 
@@ -160,7 +183,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
 
-    const bindingKeyWithShift = getKeyBindingKey({
+    const bindingKey = getKeyBindingKey({
       name: keyName,
       ctrl: keyCtrl,
       shift: keyShift,
@@ -168,7 +191,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       action: "move-left" as TextareaAction,
     })
 
-    const action = this._keyBindingsMap.get(bindingKeyWithShift)
+    const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
       const handler = this._actionHandlers.get(action)
@@ -334,14 +357,8 @@ export class TextareaRenderable extends EditBufferRenderable {
   public gotoLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
     this.handleShiftSelection(select, true)
-    const cursor = this.editorView.getCursor()
-
-    this.editBuffer.gotoLine(9999)
-    const afterCursor = this.editorView.getCursor()
-
-    if (afterCursor.row !== cursor.row) {
-      this.editBuffer.setCursor(cursor.row, 9999)
-    }
+    const eol = this.editBuffer.getEOL()
+    this.editBuffer.setCursor(eol.line, eol.visualColumn)
     this.handleShiftSelection(select, false)
     this.requestRender()
     return true
@@ -361,19 +378,10 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public deleteToLineEnd(): boolean {
     const cursor = this.editorView.getCursor()
-    const startCol = cursor.col
+    const eol = this.editBuffer.getEOL()
 
-    const tempCursor = this.editorView.getCursor()
-    this.editBuffer.setCursor(tempCursor.row, 9999)
-    const endCursor = this.editorView.getCursor()
-    const endCol = endCursor.col
-
-    this.editBuffer.setCursor(cursor.row, startCol)
-
-    if (endCol > startCol) {
-      for (let i = 0; i < endCol - startCol; i++) {
-        this.deleteChar()
-      }
+    if (eol.visualColumn > cursor.col) {
+      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.line, eol.visualColumn)
     }
 
     this.requestRender()
@@ -390,6 +398,62 @@ export class TextareaRenderable extends EditBufferRenderable {
   public redo(): boolean {
     this._ctx.clearSelection()
     this.editBuffer.redo()
+    this.requestRender()
+    return true
+  }
+
+  public moveWordForward(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
+    const nextWord = this.editBuffer.getNextWordBoundary()
+    this.editBuffer.setCursorByOffset(nextWord.offset)
+    this.handleShiftSelection(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public moveWordBackward(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
+    const prevWord = this.editBuffer.getPrevWordBoundary()
+    this.editBuffer.setCursorByOffset(prevWord.offset)
+    this.handleShiftSelection(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public deleteWordForward(): boolean {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+      return true
+    }
+
+    const currentCursor = this.editBuffer.getCursorPosition()
+    const nextWord = this.editBuffer.getNextWordBoundary()
+
+    if (nextWord.offset > currentCursor.offset) {
+      this.editBuffer.deleteRange(currentCursor.line, currentCursor.visualColumn, nextWord.line, nextWord.visualColumn)
+    }
+
+    this._ctx.clearSelection()
+    this.requestRender()
+    return true
+  }
+
+  public deleteWordBackward(): boolean {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+      return true
+    }
+
+    const currentCursor = this.editBuffer.getCursorPosition()
+    const prevWord = this.editBuffer.getPrevWordBoundary()
+
+    if (prevWord.offset < currentCursor.offset) {
+      this.editBuffer.deleteRange(prevWord.line, prevWord.visualColumn, currentCursor.line, currentCursor.visualColumn)
+    }
+
+    this._ctx.clearSelection()
     this.requestRender()
     return true
   }

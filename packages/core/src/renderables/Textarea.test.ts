@@ -191,7 +191,7 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("Line 1\nLine 3")
     })
 
-    it.skip("should delete to line end", async () => {
+    it("should delete to line end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         value: "Hello World",
         width: 40,
@@ -201,10 +201,9 @@ describe("TextareaRenderable", () => {
       for (let i = 0; i < 6; i++) {
         editor.moveCursorRight()
       }
-      // TODO: Re-implement deleteToLineEnd as scripted method
-      // editor.deleteToLineEnd()
+      editor.deleteToLineEnd()
 
-      // expect(editor.plainText).toBe("Hello ")
+      expect(editor.plainText).toBe("Hello ")
     })
   })
 
@@ -950,6 +949,373 @@ describe("TextareaRenderable", () => {
 
       currentMockInput.pressKey("CTRL_K")
       expect(editor.plainText).toBe("Hello ")
+    })
+  })
+
+  describe("Word Movement and Deletion", () => {
+    it("should move forward by word with Alt+F", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo bar",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.visualColumn).toBe(6)
+
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.visualColumn).toBe(12)
+
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.visualColumn).toBe(16)
+    })
+
+    it("should move backward by word with Alt+B", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo bar",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.cursor.visualColumn).toBe(19)
+
+      currentMockInput.pressKey("ALT_B")
+      expect(editor.cursor.visualColumn).toBe(16)
+
+      currentMockInput.pressKey("ALT_B")
+      expect(editor.cursor.visualColumn).toBe(12)
+
+      currentMockInput.pressKey("ALT_B")
+      expect(editor.cursor.visualColumn).toBe(6)
+    })
+
+    it("should move forward by word with Meta+Right", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "one two three",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(4)
+
+      currentMockInput.pressArrow("right", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(8)
+    })
+
+    it("should move backward by word with Meta+Left", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "one two three",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressArrow("left", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(8)
+
+      currentMockInput.pressArrow("left", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(4)
+    })
+
+    it("should delete word forward with Alt+D", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("hello world foo")
+
+      currentMockInput.pressKey("ALT_D")
+      expect(editor.plainText).toBe("world foo")
+
+      currentMockInput.pressKey("ALT_D")
+      expect(editor.plainText).toBe("foo")
+    })
+
+    it("should delete word backward with Alt+Backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("BACKSPACE", { meta: true })
+      const text = editor.plainText
+      expect(text.startsWith("hello world")).toBe(true)
+      expect(text.length).toBeLessThan(15)
+    })
+
+    it("should delete word backward with Ctrl+W", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "test string here",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("CTRL_W")
+      expect(editor.plainText).toBe("test string ")
+
+      currentMockInput.pressKey("CTRL_W")
+      expect(editor.plainText).toBe("test ")
+    })
+
+    it("should select word forward with Alt+Shift+F", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("f", { meta: true, shift: true })
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("hello ")
+    })
+
+    it("should select word backward with Alt+Shift+B", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("b", { meta: true, shift: true })
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("foo")
+    })
+
+    it("should handle word movement across multiple lines", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "first line\nsecond line",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.visualColumn).toBe(6)
+
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.line).toBe(1)
+    })
+
+    it("should delete word forward from line start", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello\nworld test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+      const initialLength = editor.plainText.length
+
+      currentMockInput.pressKey("ALT_D")
+      expect(editor.plainText.length).toBeLessThan(initialLength)
+      expect(editor.plainText).toContain("hello")
+    })
+
+    it("should handle word deletion operations", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      const initialText = editor.plainText
+
+      currentMockInput.pressKey("ALT_D")
+      expect(editor.plainText.length).toBeLessThan(initialText.length)
+      expect(editor.plainText).toContain("world")
+    })
+
+    it("should navigate by words and characters", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "abc def ghi",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("ALT_F")
+      const col1 = editor.cursor.visualColumn
+      expect(col1).toBeGreaterThan(0)
+
+      currentMockInput.pressArrow("right")
+      const col2 = editor.cursor.visualColumn
+      expect(col2).toBe(col1 + 1)
+
+      currentMockInput.pressKey("ALT_F")
+      const col3 = editor.cursor.visualColumn
+      expect(col3).toBeGreaterThan(col2)
+    })
+
+    it("should delete selected text when deleting word with selection", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "hello world foo",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right", { shift: true })
+      currentMockInput.pressArrow("right", { shift: true })
+      currentMockInput.pressArrow("right", { shift: true })
+      expect(editor.hasSelection()).toBe(true)
+
+      currentMockInput.pressKey("ALT_D")
+      expect(editor.plainText).toBe("lo world foo")
+    })
+  })
+
+  describe("Keyboard Input - Meta Key Bindings", () => {
+    it("should bind custom action to meta key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "b", meta: true, action: "buffer-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("ALT_B")
+
+      const cursor = editor.cursor
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+
+    it("should bind meta key actions", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "f", meta: true, action: "buffer-end" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("ALT_F")
+
+      const cursor = editor.cursor
+      expect(cursor.line).toBe(0)
+    })
+
+    it("should work with meta key for navigation", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "j", meta: true, action: "move-down" }],
+      })
+
+      editor.focus()
+      expect(editor.cursor.line).toBe(0)
+
+      currentMockInput.pressKey("ALT_J")
+      expect(editor.cursor.line).toBe(1)
+    })
+
+    it("should allow meta key binding override", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "k", meta: true, action: "move-up" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(2)
+      expect(editor.cursor.line).toBe(2)
+
+      currentMockInput.pressKey("k", { meta: true })
+      expect(editor.cursor.line).toBe(1)
+    })
+
+    it("should work with Meta+Arrow keys", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "ABC",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "left", meta: true, action: "line-home" },
+          { name: "right", meta: true, action: "line-end" },
+        ],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 2; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressArrow("left", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      currentMockInput.pressArrow("right", { meta: true })
+      expect(editor.cursor.visualColumn).toBe(3)
+    })
+
+    it("should support meta with shift modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "H", meta: true, shift: true, action: "line-home" }],
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.cursor.visualColumn).toBe(11)
+
+      currentMockInput.pressKey("h", { meta: true, shift: true })
+
+      expect(editor.cursor.visualColumn).toBe(0)
+    })
+
+    it("should not trigger action without meta when meta binding exists", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        value: "Test",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "x", meta: true, action: "delete-line" }],
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("x")
+      expect(editor.plainText).toBe("xTest")
+
+      currentMockInput.pressKey("ALT_X")
+      expect(editor.plainText).toBe("")
     })
   })
 

@@ -217,13 +217,13 @@ describe("mock-keys", () => {
     expect(mockRenderer.getEmittedData()).toBe("\x1b[1;6A")
   })
 
-  test("pressKey with alt modifier", () => {
+  test("pressKey with meta modifier", () => {
     const mockRenderer = new MockRenderer()
     const mockKeys = createMockKeys(mockRenderer as any)
 
-    mockKeys.pressKey(KeyCodes.ARROW_DOWN, { alt: true })
+    mockKeys.pressKey(KeyCodes.ARROW_DOWN, { meta: true })
 
-    // Arrow down with alt: \x1b[1;3B (1 base + 2 alt = 3)
+    // Arrow down with meta: \x1b[1;3B (1 base + 2 meta = 3)
     expect(mockRenderer.getEmittedData()).toBe("\x1b[1;3B")
   })
 
@@ -263,5 +263,76 @@ describe("mock-keys", () => {
 
     // END with shift: \x1b[1;2F
     expect(mockRenderer.getEmittedData()).toBe("\x1b[1;2F")
+  })
+
+  test("pressKey with meta on regular character", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("a", { meta: true })
+
+    // Meta+a: \x1ba (escape + a)
+    expect(mockRenderer.getEmittedData()).toBe("\x1ba")
+  })
+
+  test("pressKey with meta+shift on character", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("a", { meta: true, shift: true })
+
+    // Meta+Shift+a: \x1bA (escape + uppercase A)
+    expect(mockRenderer.getEmittedData()).toBe("\x1bA")
+  })
+
+  test("pressKey with meta+ctrl on arrow", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_RIGHT, { meta: true, ctrl: true })
+
+    // Arrow right with meta+ctrl: \x1b[1;7C (1 base + 2 meta + 4 ctrl = 7)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;7C")
+  })
+
+  test("pressKey with meta+shift+ctrl on arrow", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_UP, { meta: true, shift: true, ctrl: true })
+
+    // Arrow up with all modifiers: \x1b[1;8A (1 base + 1 shift + 2 meta + 4 ctrl = 8)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;8A")
+  })
+
+  test("pressArrow with meta modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressArrow("left", { meta: true })
+
+    // Arrow left with meta: \x1b[1;3D
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;3D")
+  })
+
+  test("pressArrow with meta+shift modifiers", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressArrow("down", { meta: true, shift: true })
+
+    // Arrow down with meta+shift: \x1b[1;4B (1 base + 1 shift + 2 meta = 4)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;4B")
+  })
+
+  test("ALT_* KeyCodes produce meta sequences", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ALT_A)
+    mockKeys.pressKey(KeyCodes.ALT_Z)
+
+    // ALT_A and ALT_Z should produce escape sequences
+    expect(mockRenderer.getEmittedData()).toBe("\x1ba\x1bz")
   })
 })

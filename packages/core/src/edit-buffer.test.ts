@@ -210,6 +210,62 @@ describe("EditBuffer", () => {
       expect(buffer.getText()).toBe("tes")
     })
 
+    it("should delete range within a single line", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 0, 0, 5)
+
+      expect(buffer.getText()).toBe(" World")
+    })
+
+    it("should delete range across multiple lines", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+
+      buffer.deleteRange(0, 5, 2, 5)
+
+      expect(buffer.getText()).toBe("Line 3")
+    })
+
+    it("should handle deleteRange with start equal to end (no-op)", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 5, 0, 5)
+
+      expect(buffer.getText()).toBe("Hello World")
+    })
+
+    it("should handle deleteRange with reversed start and end", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 10, 0, 5)
+
+      expect(buffer.getText()).toBe("Hellod")
+    })
+
+    it("should delete from middle of one line to middle of another", () => {
+      buffer.setText("AAAA\nBBBB\nCCCC")
+
+      buffer.deleteRange(0, 2, 2, 2)
+
+      expect(buffer.getText()).toBe("AACC")
+    })
+
+    it("should delete entire content with deleteRange", () => {
+      buffer.setText("Hello World")
+
+      buffer.deleteRange(0, 0, 0, 11)
+
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle deleteRange with Unicode characters", () => {
+      buffer.setText("Hello 世界 🌟")
+
+      buffer.deleteRange(0, 6, 0, 10)
+
+      expect(buffer.getText()).toBe("Hello  🌟")
+    })
+
     it("should delete entire line", () => {
       buffer.setText("Line 1\nLine 2\nLine 3")
 
@@ -309,6 +365,123 @@ describe("EditBuffer", () => {
       const cursor = buffer.getCursorPosition()
       expect(cursor.line).toBe(1)
       expect(cursor.visualColumn).toBe(3)
+    })
+  })
+
+  describe("word boundary navigation", () => {
+    it("should get next word boundary", () => {
+      buffer.setText("hello world foo")
+      buffer.setCursorToLineCol(0, 0)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.visualColumn).toBeGreaterThan(0)
+    })
+
+    it("should get previous word boundary", () => {
+      buffer.setText("hello world foo")
+      buffer.setCursorToLineCol(0, 15)
+
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.visualColumn).toBeLessThan(15)
+    })
+
+    it("should handle word boundary at start", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 0)
+
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.line).toBe(0)
+      expect(prevBoundary.visualColumn).toBe(0)
+    })
+
+    it("should handle word boundary at end", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 11)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.visualColumn).toBe(11)
+    })
+
+    it("should navigate across lines", () => {
+      buffer.setText("hello\nworld")
+      buffer.setCursorToLineCol(0, 5)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.line).toBeGreaterThanOrEqual(0)
+    })
+
+    it("should handle punctuation boundaries", () => {
+      buffer.setText("hello-world test")
+      buffer.setCursorToLineCol(0, 0)
+
+      const next1 = buffer.getNextWordBoundary()
+      expect(next1.visualColumn).toBeGreaterThan(0)
+    })
+  })
+
+  describe("getEOL navigation", () => {
+    it("should get end of line from start", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 0)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(0)
+      expect(eol.visualColumn).toBe(11)
+    })
+
+    it("should get end of line from middle", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(0)
+      expect(eol.visualColumn).toBe(11)
+    })
+
+    it("should stay at end of line when already there", () => {
+      buffer.setText("Hello")
+      buffer.setCursorToLineCol(0, 5)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(0)
+      expect(eol.visualColumn).toBe(5)
+    })
+
+    it("should handle multi-line text", () => {
+      buffer.setText("Hello\nWorld\nTest")
+      buffer.setCursorToLineCol(1, 0)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(1)
+      expect(eol.visualColumn).toBe(5)
+    })
+
+    it("should handle empty lines", () => {
+      buffer.setText("Hello\n\nWorld")
+      buffer.setCursorToLineCol(1, 0)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(1)
+      expect(eol.visualColumn).toBe(0)
+    })
+
+    it("should work on different lines", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+
+      buffer.setCursorToLineCol(0, 0)
+      const eol0 = buffer.getEOL()
+      expect(eol0.line).toBe(0)
+      expect(eol0.visualColumn).toBe(6)
+
+      buffer.setCursorToLineCol(1, 0)
+      const eol1 = buffer.getEOL()
+      expect(eol1.line).toBe(1)
+      expect(eol1.visualColumn).toBe(6)
+
+      buffer.setCursorToLineCol(2, 0)
+      const eol2 = buffer.getEOL()
+      expect(eol2.line).toBe(2)
+      expect(eol2.visualColumn).toBe(6)
     })
   })
 

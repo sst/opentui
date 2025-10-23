@@ -36,3 +36,17 @@ export const HighlightStruct = defineStruct([
   ["priority", "u8", { default: 0 }],
   ["hlRef", "u16", { default: 0 }],
 ])
+
+export const LogicalCursorStruct = defineStruct([
+  ["row", "u32"],
+  ["col", "u32"],
+  ["offset", "u32"],
+])
+
+export const VisualCursorStruct = defineStruct([
+  ["visualRow", "u32"],
+  ["visualCol", "u32"],
+  ["logicalRow", "u32"],
+  ["logicalCol", "u32"],
+  ["offset", "u32"],
+])
