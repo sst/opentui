@@ -741,6 +741,20 @@ describe("Yoga Prop Setters - width", () => {
       renderable.width = "50%"
     }).not.toThrow()
   })
+
+  test("handles null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-width-null" })
+    expect(() => {
+      renderable.width = null as any
+    }).not.toThrow()
+  })
+
+  test("handles undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-width-undefined" })
+    expect(() => {
+      renderable.width = undefined as any
+    }).not.toThrow()
+  })
 })
 
 describe("Yoga Prop Setters - height", () => {
@@ -762,6 +776,20 @@ describe("Yoga Prop Setters - height", () => {
     const renderable = new TestRenderable(testRenderer, { id: "test-height-percent" })
     expect(() => {
       renderable.height = "50%"
+    }).not.toThrow()
+  })
+
+  test("handles null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-height-null" })
+    expect(() => {
+      renderable.height = null as any
+    }).not.toThrow()
+  })
+
+  test("handles undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-height-undefined" })
+    expect(() => {
+      renderable.height = undefined as any
     }).not.toThrow()
   })
 })
