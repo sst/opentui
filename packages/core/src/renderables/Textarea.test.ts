@@ -995,7 +995,7 @@ describe("TextareaRenderable", () => {
       expect(editor.cursor.visualColumn).toBe(6)
     })
 
-    it("should move forward by word with Ctrl+Right", async () => {
+    it("should move forward by word with Meta+Right", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         value: "one two three",
         width: 40,
@@ -1004,14 +1004,14 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      currentMockInput.pressArrow("right", { ctrl: true })
+      currentMockInput.pressArrow("right", { meta: true })
       expect(editor.cursor.visualColumn).toBe(4)
 
-      currentMockInput.pressArrow("right", { ctrl: true })
+      currentMockInput.pressArrow("right", { meta: true })
       expect(editor.cursor.visualColumn).toBe(8)
     })
 
-    it("should move backward by word with Ctrl+Left", async () => {
+    it("should move backward by word with Meta+Left", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         value: "one two three",
         width: 40,
@@ -1021,10 +1021,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressArrow("left", { ctrl: true })
+      currentMockInput.pressArrow("left", { meta: true })
       expect(editor.cursor.visualColumn).toBe(8)
 
-      currentMockInput.pressArrow("left", { ctrl: true })
+      currentMockInput.pressArrow("left", { meta: true })
       expect(editor.cursor.visualColumn).toBe(4)
     })
 
@@ -1055,7 +1055,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressBackspace({ meta: true })
+      currentMockInput.pressKey("BACKSPACE", { meta: true })
       const text = editor.plainText
       expect(text.startsWith("hello world")).toBe(true)
       expect(text.length).toBeLessThan(15)
