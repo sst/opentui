@@ -172,3 +172,162 @@ test "EditBuffer - backspace to empty reactivates placeholder" {
     const tb_len = eb.getTextBuffer().getPlainTextIntoBuffer(&out_buffer);
     try std.testing.expectEqualStrings("Empty...", out_buffer[0..tb_len]);
 }
+
+test "EditBuffer - next word boundary basic" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), next_cursor.col);
+}
+
+test "EditBuffer - prev word boundary basic" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 7);
+
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor.row);
+    try std.testing.expectEqual(@as(u32, 6), prev_cursor.col);
+}
+
+test "EditBuffer - next word boundary across line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld");
+    try eb.setCursor(0, 5);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 1), next_cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), next_cursor.col);
+}
+
+test "EditBuffer - prev word boundary across line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld");
+    try eb.setCursor(1, 0);
+
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), prev_cursor.col);
+}
+
+test "EditBuffer - hyphen word boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("self-contained");
+    try eb.setCursor(0, 0);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), next_cursor.col);
+}
+
+test "EditBuffer - multiple word boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("The quick brown fox");
+    try eb.setCursor(0, 0);
+
+    var cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    try eb.setCursor(cursor.row, cursor.col);
+    cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 10), cursor.col);
+
+    try eb.setCursor(cursor.row, cursor.col);
+    cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 16), cursor.col);
+}
+
+test "EditBuffer - word boundary at end of line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+    try eb.setCursor(0, 5);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), next_cursor.col);
+}
+
+test "EditBuffer - word boundary at start of line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+    try eb.setCursor(0, 0);
+
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor.col);
+}
