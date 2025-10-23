@@ -3,6 +3,51 @@ import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRender
 import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 
+export type TextareaAction =
+  | "move-left"
+  | "move-right"
+  | "move-up"
+  | "move-down"
+  | "line-home"
+  | "line-end"
+  | "buffer-home"
+  | "buffer-end"
+  | "delete-line"
+  | "delete-to-line-end"
+  | "backspace"
+  | "delete"
+  | "newline"
+  | "undo"
+  | "redo"
+
+export interface KeyBinding {
+  name: string
+  ctrl?: boolean
+  shift?: boolean
+  meta?: boolean
+  action: TextareaAction
+}
+
+const defaultTextareaKeybindings: KeyBinding[] = [
+  { name: "left", action: "move-left" },
+  { name: "right", action: "move-right" },
+  { name: "up", action: "move-up" },
+  { name: "down", action: "move-down" },
+  { name: "home", action: "line-home" },
+  { name: "end", action: "line-end" },
+  { name: "a", ctrl: true, action: "buffer-home" },
+  { name: "e", ctrl: true, action: "buffer-end" },
+  { name: "d", ctrl: true, action: "delete-line" },
+  { name: "k", ctrl: true, action: "delete-to-line-end" },
+  { name: "backspace", action: "backspace" },
+  { name: "delete", action: "delete" },
+  { name: "return", action: "newline" },
+  { name: "enter", action: "newline" },
+  { name: "z", ctrl: true, action: "undo" },
+  { name: "z", ctrl: true, shift: true, action: "redo" },
+  { name: "y", ctrl: true, action: "redo" },
+]
+
 export interface TextareaOptions extends EditBufferOptions {
   value?: string
   backgroundColor?: ColorInput
@@ -11,6 +56,7 @@ export interface TextareaOptions extends EditBufferOptions {
   focusedTextColor?: ColorInput
   placeholder?: string | null
   placeholderColor?: ColorInput
+  keyBindings?: KeyBinding[]
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
@@ -20,6 +66,8 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _focusedBackgroundColor: RGBA
   private _focusedTextColor: RGBA
   private _placeholderColor: RGBA
+  private _keyBindingsMap: Map<string, TextareaAction>
+  private _actionHandlers: Map<TextareaAction, (shift: boolean) => boolean>
 
   private static readonly defaults = {
     value: "",
@@ -52,11 +100,61 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._placeholder = options.placeholder ?? defaults.placeholder
     this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
 
+    const mergedBindings = this.mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
+    this._keyBindingsMap = this.buildKeyBindingsMap(mergedBindings)
+    this._actionHandlers = this.buildActionHandlers()
+
     this.updateValue(options.value ?? defaults.value)
     this.updateColors()
 
     this.editBuffer.setPlaceholder(this._placeholder)
     this.editBuffer.setPlaceholderColor(this._placeholderColor)
+  }
+
+  private mergeKeyBindings(defaults: KeyBinding[], custom: KeyBinding[]): KeyBinding[] {
+    const map = new Map<string, KeyBinding>()
+    for (const binding of defaults) {
+      const key = this.getKeyBindingKey(binding)
+      map.set(key, binding)
+    }
+    for (const binding of custom) {
+      const key = this.getKeyBindingKey(binding)
+      map.set(key, binding)
+    }
+    return Array.from(map.values())
+  }
+
+  private getKeyBindingKey(binding: KeyBinding): string {
+    return `${binding.name}:${!!binding.ctrl}:${!!binding.shift}:${!!binding.meta}`
+  }
+
+  private buildKeyBindingsMap(bindings: KeyBinding[]): Map<string, TextareaAction> {
+    const map = new Map<string, TextareaAction>()
+    for (const binding of bindings) {
+      const key = this.getKeyBindingKey(binding)
+      map.set(key, binding.action)
+    }
+    return map
+  }
+
+  private buildActionHandlers(): Map<TextareaAction, (shift: boolean) => boolean> {
+    return new Map([
+      ["move-left", (shift: boolean) => this.moveCursorLeft({ select: shift })],
+      ["move-right", (shift: boolean) => this.moveCursorRight({ select: shift })],
+      ["move-up", (shift: boolean) => this.moveCursorUp({ select: shift })],
+      ["move-down", (shift: boolean) => this.moveCursorDown({ select: shift })],
+      ["line-home", (shift: boolean) => this.gotoLineHome({ select: shift })],
+      ["line-end", (shift: boolean) => this.gotoLineEnd({ select: shift })],
+      ["buffer-home", (_shift: boolean) => this.gotoBufferHome()],
+      ["buffer-end", (_shift: boolean) => this.gotoBufferEnd()],
+      ["delete-line", (_shift: boolean) => this.deleteLine()],
+      ["delete-to-line-end", (_shift: boolean) => this.deleteToLineEnd()],
+      ["backspace", (_shift: boolean) => this.deleteCharBackward()],
+      ["delete", (_shift: boolean) => this.deleteChar()],
+      ["newline", (_shift: boolean) => this.newLine()],
+      ["undo", (_shift: boolean) => this.undo()],
+      ["redo", (_shift: boolean) => this.redo()],
+    ])
   }
 
   public handlePaste(text: string): void {
@@ -70,75 +168,41 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
 
-    if (keyCtrl && keyName === "z" && !keyShift) {
-      this.undo()
-      return true
-    } else if ((keyCtrl && keyName === "y") || (keyCtrl && keyShift && keyName === "z")) {
-      this.redo()
-      return true
-    } else if (keyName === "left") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorLeft()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyName === "right") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorRight()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyName === "up") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorUp()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyName === "down") {
-      this.handleShiftSelection(keyShift, true)
-      this.moveCursorDown()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyName === "home") {
-      this.handleShiftSelection(keyShift, true)
-      const cursor = this.editorView.getCursor()
-      this.editBuffer.setCursor(cursor.row, 0)
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyName === "end") {
-      this.handleShiftSelection(keyShift, true)
-      this.gotoLineEnd()
-      this.handleShiftSelection(keyShift, false)
-      return true
-    } else if (keyCtrl && keyName === "a") {
-      this.editBuffer.setCursor(0, 0)
-      return true
-    } else if (keyCtrl && keyName === "e") {
-      this.gotoBufferEnd()
-      return true
-    } else if (keyCtrl && keyName === "d") {
-      this.deleteLine()
-      return true
-    } else if (keyCtrl && keyName === "k") {
-      this.deleteToLineEnd()
-      return true
-    } else if (keyName === "backspace") {
-      this.deleteCharBackward()
-      return true
-    } else if (keyName === "delete") {
-      this.deleteChar()
-      return true
-    } else if (keyName === "return" || keyName === "enter") {
-      this.newLine()
-      return true
+    const bindingKeyWithShift = this.getKeyBindingKey({
+      name: keyName,
+      ctrl: keyCtrl,
+      shift: keyShift,
+      meta: keyMeta,
+      action: "move-left",
+    })
+
+    let action = this._keyBindingsMap.get(bindingKeyWithShift)
+
+    if (!action && keyShift) {
+      const bindingKeyWithoutShift = this.getKeyBindingKey({
+        name: keyName,
+        ctrl: keyCtrl,
+        shift: false,
+        meta: keyMeta,
+        action: "move-left",
+      })
+      action = this._keyBindingsMap.get(bindingKeyWithoutShift)
     }
-    // Filter to printable ASCII/Unicode (excludes control sequences)
-    else if (keySequence && !keyCtrl && !keyMeta) {
+
+    if (action) {
+      const handler = this._actionHandlers.get(action)
+      if (handler) {
+        return handler(keyShift)
+      }
+    }
+
+    if (keySequence && !keyCtrl && !keyMeta) {
       const firstCharCode = keySequence.charCodeAt(0)
 
-      // Reject control characters (0-31) and escape sequences starting with ESC (27)
       if (firstCharCode < 32) {
         return false
       }
 
-      // Reject DEL (127)
       if (firstCharCode === 127) {
         return false
       }
@@ -190,26 +254,28 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public deleteChar(): void {
+  public deleteChar(): boolean {
     if (this.hasSelection()) {
       this.deleteSelectedText()
-      return
+      return true
     }
 
     this._ctx.clearSelection()
     this.editBuffer.deleteChar()
     this.requestRender()
+    return true
   }
 
-  public deleteCharBackward(): void {
+  public deleteCharBackward(): boolean {
     if (this.hasSelection()) {
       this.deleteSelectedText()
-      return
+      return true
     }
 
     this._ctx.clearSelection()
     this.editBuffer.deleteCharBackward()
     this.requestRender()
+    return true
   }
 
   private deleteSelectedText(): void {
@@ -219,36 +285,54 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public newLine(): void {
+  public newLine(): boolean {
     this._ctx.clearSelection()
     this.editBuffer.newLine()
     this.requestRender()
+    return true
   }
 
-  public deleteLine(): void {
+  public deleteLine(): boolean {
     this._ctx.clearSelection()
     this.editBuffer.deleteLine()
     this.requestRender()
+    return true
   }
 
-  public moveCursorLeft(): void {
+  public moveCursorLeft(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
     this.editBuffer.moveCursorLeft()
+    this.handleShiftSelection(select, false)
     this.requestRender()
+    return true
   }
 
-  public moveCursorRight(): void {
+  public moveCursorRight(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
     this.editBuffer.moveCursorRight()
+    this.handleShiftSelection(select, false)
     this.requestRender()
+    return true
   }
 
-  public moveCursorUp(): void {
+  public moveCursorUp(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
     this.editorView.moveUpVisual()
+    this.handleShiftSelection(select, false)
     this.requestRender()
+    return true
   }
 
-  public moveCursorDown(): void {
+  public moveCursorDown(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
     this.editorView.moveDownVisual()
+    this.handleShiftSelection(select, false)
     this.requestRender()
+    return true
   }
 
   public gotoLine(line: number): void {
@@ -256,24 +340,45 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.requestRender()
   }
 
-  public gotoLineEnd(): void {
+  public gotoLineHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
+    const cursor = this.editorView.getCursor()
+    this.editBuffer.setCursor(cursor.row, 0)
+    this.handleShiftSelection(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoLineEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.handleShiftSelection(select, true)
     const cursor = this.editorView.getCursor()
 
-    this.editBuffer.gotoLine(9999) // Temp hack - move to way past end to trigger end-of-line
+    this.editBuffer.gotoLine(9999)
     const afterCursor = this.editorView.getCursor()
 
     if (afterCursor.row !== cursor.row) {
       this.editBuffer.setCursor(cursor.row, 9999)
     }
+    this.handleShiftSelection(select, false)
     this.requestRender()
+    return true
   }
 
-  public gotoBufferEnd(): void {
+  public gotoBufferHome(): boolean {
+    this.editBuffer.setCursor(0, 0)
+    this.requestRender()
+    return true
+  }
+
+  public gotoBufferEnd(): boolean {
     this.editBuffer.gotoLine(999999)
     this.requestRender()
+    return true
   }
 
-  public deleteToLineEnd(): void {
+  public deleteToLineEnd(): boolean {
     const cursor = this.editorView.getCursor()
     const startCol = cursor.col
 
@@ -291,18 +396,21 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
 
     this.requestRender()
+    return true
   }
 
-  public undo(): void {
+  public undo(): boolean {
     this._ctx.clearSelection()
     this.editBuffer.undo()
     this.requestRender()
+    return true
   }
 
-  public redo(): void {
+  public redo(): boolean {
     this._ctx.clearSelection()
     this.editBuffer.redo()
     this.requestRender()
+    return true
   }
 
   private handleShiftSelection(shiftPressed: boolean, isBeforeMovement: boolean): void {
