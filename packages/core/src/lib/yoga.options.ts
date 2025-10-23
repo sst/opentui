@@ -41,7 +41,10 @@ export type PositionTypeString = "static" | "relative" | "absolute"
 export type UnitString = "undefined" | "point" | "percent" | "auto"
 export type WrapString = "no-wrap" | "wrap" | "wrap-reverse"
 
-export function parseAlign(value: string): Align {
+export function parseAlign(value: string | null | undefined): Align {
+  if (value == null) {
+    return Align.Auto
+  }
   switch (value.toLowerCase()) {
     case "auto":
       return Align.Auto
@@ -67,6 +70,9 @@ export function parseAlign(value: string): Align {
 }
 
 export function parseBoxSizing(value: string): BoxSizing {
+  if (value == null) {
+    return BoxSizing.BorderBox
+  }
   switch (value.toLowerCase()) {
     case "border-box":
       return BoxSizing.BorderBox
@@ -78,6 +84,9 @@ export function parseBoxSizing(value: string): BoxSizing {
 }
 
 export function parseDimension(value: string): Dimension {
+  if (value == null) {
+    return Dimension.Width
+  }
   switch (value.toLowerCase()) {
     case "width":
       return Dimension.Width
@@ -89,6 +98,9 @@ export function parseDimension(value: string): Dimension {
 }
 
 export function parseDirection(value: string): Direction {
+  if (value == null) {
+    return Direction.LTR
+  }
   switch (value.toLowerCase()) {
     case "inherit":
       return Direction.Inherit
@@ -102,6 +114,9 @@ export function parseDirection(value: string): Direction {
 }
 
 export function parseDisplay(value: string): Display {
+  if (value == null) {
+    return Display.Flex
+  }
   switch (value.toLowerCase()) {
     case "flex":
       return Display.Flex
@@ -115,6 +130,9 @@ export function parseDisplay(value: string): Display {
 }
 
 export function parseEdge(value: string): Edge {
+  if (value == null) {
+    return Edge.All
+  }
   switch (value.toLowerCase()) {
     case "left":
       return Edge.Left
@@ -139,7 +157,10 @@ export function parseEdge(value: string): Edge {
   }
 }
 
-export function parseFlexDirection(value: string): FlexDirection {
+export function parseFlexDirection(value: string | null | undefined): FlexDirection {
+  if (value == null) {
+    return FlexDirection.Column
+  }
   switch (value.toLowerCase()) {
     case "column":
       return FlexDirection.Column
@@ -155,6 +176,9 @@ export function parseFlexDirection(value: string): FlexDirection {
 }
 
 export function parseGutter(value: string): Gutter {
+  if (value == null) {
+    return Gutter.All
+  }
   switch (value.toLowerCase()) {
     case "column":
       return Gutter.Column
@@ -167,7 +191,10 @@ export function parseGutter(value: string): Gutter {
   }
 }
 
-export function parseJustify(value: string): Justify {
+export function parseJustify(value: string | null | undefined): Justify {
+  if (value == null) {
+    return Justify.FlexStart
+  }
   switch (value.toLowerCase()) {
     case "flex-start":
       return Justify.FlexStart
@@ -187,6 +214,9 @@ export function parseJustify(value: string): Justify {
 }
 
 export function parseLogLevel(value: string): LogLevel {
+  if (value == null) {
+    return LogLevel.Info
+  }
   switch (value.toLowerCase()) {
     case "error":
       return LogLevel.Error
@@ -206,6 +236,9 @@ export function parseLogLevel(value: string): LogLevel {
 }
 
 export function parseMeasureMode(value: string): MeasureMode {
+  if (value == null) {
+    return MeasureMode.Undefined
+  }
   switch (value.toLowerCase()) {
     case "undefined":
       return MeasureMode.Undefined
@@ -218,7 +251,10 @@ export function parseMeasureMode(value: string): MeasureMode {
   }
 }
 
-export function parseOverflow(value: string): Overflow {
+export function parseOverflow(value: string | null | undefined): Overflow {
+  if (value == null) {
+    return Overflow.Visible
+  }
   switch (value.toLowerCase()) {
     case "visible":
       return Overflow.Visible
@@ -231,7 +267,10 @@ export function parseOverflow(value: string): Overflow {
   }
 }
 
-export function parsePositionType(value: string): PositionType {
+export function parsePositionType(value: string | null | undefined): PositionType {
+  if (value == null) {
+    return PositionType.Relative
+  }
   switch (value.toLowerCase()) {
     case "static":
       return PositionType.Static
@@ -245,6 +284,9 @@ export function parsePositionType(value: string): PositionType {
 }
 
 export function parseUnit(value: string): Unit {
+  if (value == null) {
+    return Unit.Point
+  }
   switch (value.toLowerCase()) {
     case "undefined":
       return Unit.Undefined
@@ -259,7 +301,10 @@ export function parseUnit(value: string): Unit {
   }
 }
 
-export function parseWrap(value: string): Wrap {
+export function parseWrap(value: string | null | undefined): Wrap {
+  if (value == null) {
+    return Wrap.NoWrap
+  }
   switch (value.toLowerCase()) {
     case "no-wrap":
       return Wrap.NoWrap
