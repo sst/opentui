@@ -41,7 +41,10 @@ export type PositionTypeString = "static" | "relative" | "absolute"
 export type UnitString = "undefined" | "point" | "percent" | "auto"
 export type WrapString = "no-wrap" | "wrap" | "wrap-reverse"
 
-export function parseAlign(value: string): Align {
+export function parseAlign(value: string | null | undefined): Align {
+  if (value == null) {
+    return Align.Auto
+  }
   switch (value.toLowerCase()) {
     case "auto":
       return Align.Auto
@@ -139,7 +142,10 @@ export function parseEdge(value: string): Edge {
   }
 }
 
-export function parseFlexDirection(value: string): FlexDirection {
+export function parseFlexDirection(value: string | null | undefined): FlexDirection {
+  if (value == null) {
+    return FlexDirection.Column
+  }
   switch (value.toLowerCase()) {
     case "column":
       return FlexDirection.Column
@@ -167,7 +173,10 @@ export function parseGutter(value: string): Gutter {
   }
 }
 
-export function parseJustify(value: string): Justify {
+export function parseJustify(value: string | null | undefined): Justify {
+  if (value == null) {
+    return Justify.FlexStart
+  }
   switch (value.toLowerCase()) {
     case "flex-start":
       return Justify.FlexStart
@@ -259,7 +268,10 @@ export function parseUnit(value: string): Unit {
   }
 }
 
-export function parseWrap(value: string): Wrap {
+export function parseWrap(value: string | null | undefined): Wrap {
+  if (value == null) {
+    return Wrap.NoWrap
+  }
   switch (value.toLowerCase()) {
     case "no-wrap":
       return Wrap.NoWrap

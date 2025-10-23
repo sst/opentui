@@ -808,38 +808,43 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
   }
 
-  public set flexGrow(grow: number) {
-    this.yogaNode.setFlexGrow(grow)
+  public set flexGrow(grow: number | null | undefined) {
+    if (grow == null) {
+      this.yogaNode.setFlexGrow(0)
+    } else {
+      this.yogaNode.setFlexGrow(grow)
+    }
     this.requestRender()
   }
 
-  public set flexShrink(shrink: number) {
-    this._flexShrink = shrink
-    this.yogaNode.setFlexShrink(shrink)
+  public set flexShrink(shrink: number | null | undefined) {
+    const value = shrink == null ? 1 : shrink
+    this._flexShrink = value
+    this.yogaNode.setFlexShrink(value)
     this.requestRender()
   }
 
-  public set flexDirection(direction: FlexDirectionString) {
+  public set flexDirection(direction: FlexDirectionString | null | undefined) {
     this.yogaNode.setFlexDirection(parseFlexDirection(direction))
     this.requestRender()
   }
 
-  public set flexWrap(wrap: WrapString) {
+  public set flexWrap(wrap: WrapString | null | undefined) {
     this.yogaNode.setFlexWrap(parseWrap(wrap))
     this.requestRender()
   }
 
-  public set alignItems(alignItems: AlignString) {
+  public set alignItems(alignItems: AlignString | null | undefined) {
     this.yogaNode.setAlignItems(parseAlign(alignItems))
     this.requestRender()
   }
 
-  public set justifyContent(justifyContent: JustifyString) {
+  public set justifyContent(justifyContent: JustifyString | null | undefined) {
     this.yogaNode.setJustifyContent(parseJustify(justifyContent))
     this.requestRender()
   }
 
-  public set alignSelf(alignSelf: AlignString) {
+  public set alignSelf(alignSelf: AlignString | null | undefined) {
     this.yogaNode.setAlignSelf(parseAlign(alignSelf))
     this.requestRender()
   }
