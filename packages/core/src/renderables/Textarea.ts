@@ -357,14 +357,8 @@ export class TextareaRenderable extends EditBufferRenderable {
   public gotoLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
     this.handleShiftSelection(select, true)
-    const cursor = this.editorView.getCursor()
-
-    this.editBuffer.gotoLine(9999)
-    const afterCursor = this.editorView.getCursor()
-
-    if (afterCursor.row !== cursor.row) {
-      this.editBuffer.setCursor(cursor.row, 9999)
-    }
+    const eol = this.editBuffer.getEOL()
+    this.editBuffer.setCursor(eol.line, eol.visualColumn)
     this.handleShiftSelection(select, false)
     this.requestRender()
     return true
@@ -384,19 +378,10 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public deleteToLineEnd(): boolean {
     const cursor = this.editorView.getCursor()
-    const startCol = cursor.col
+    const eol = this.editBuffer.getEOL()
 
-    const tempCursor = this.editorView.getCursor()
-    this.editBuffer.setCursor(tempCursor.row, 9999)
-    const endCursor = this.editorView.getCursor()
-    const endCol = endCursor.col
-
-    this.editBuffer.setCursor(cursor.row, startCol)
-
-    if (endCol > startCol) {
-      for (let i = 0; i < endCol - startCol; i++) {
-        this.deleteChar()
-      }
+    if (eol.visualColumn > cursor.col) {
+      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.line, eol.visualColumn)
     }
 
     this.requestRender()

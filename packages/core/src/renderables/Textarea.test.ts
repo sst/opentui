@@ -191,7 +191,7 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("Line 1\nLine 3")
     })
 
-    it.skip("should delete to line end", async () => {
+    it("should delete to line end", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         value: "Hello World",
         width: 40,
@@ -201,10 +201,9 @@ describe("TextareaRenderable", () => {
       for (let i = 0; i < 6; i++) {
         editor.moveCursorRight()
       }
-      // TODO: Re-implement deleteToLineEnd as scripted method
-      // editor.deleteToLineEnd()
+      editor.deleteToLineEnd()
 
-      // expect(editor.plainText).toBe("Hello ")
+      expect(editor.plainText).toBe("Hello ")
     })
   })
 
