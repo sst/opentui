@@ -5,7 +5,6 @@ import { _render } from "./reconciler"
 import { ErrorBoundary } from "../components/error-boundary"
 
 export async function render(node: ReactNode, rendererConfig: CliRendererConfig = {}): Promise<void> {
-
   const renderer = await createCliRenderer(rendererConfig)
   engine.attach(renderer)
   _render(
