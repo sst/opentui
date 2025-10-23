@@ -345,7 +345,7 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
                 const start_char = (i * 2) % 50;
                 const end_char = start_char + 3;
                 const style_id = (i % 5) + 1;
-                tb.addHighlightByCharRange(start_char, end_char, style_id, 1, null) catch {};
+                tb.addHighlightByCharRange(start_char, end_char, style_id, 1, 0) catch {};
             }
 
             const elapsed = timer.read();
@@ -398,7 +398,7 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
                 const start_char = (i * 2) % 50;
                 const end_char = start_char + 3;
                 const style_id = (i % 5) + 1;
-                tb.addHighlightByCharRange(start_char, end_char, style_id, 1, null) catch {};
+                tb.addHighlightByCharRange(start_char, end_char, style_id, 1, 0) catch {};
             }
 
             const elapsed = timer.read();
