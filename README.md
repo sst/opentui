@@ -15,8 +15,8 @@ This monorepo contains the following packages:
 - [`@opentui/core`](packages/core) - The core library works completely standalone, providing an imperative API and all the primitives.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
-- [`@opentui/vue`](packages/vue) - The Vue reconciler for OpenTUI.
-- [`@opentui/go`](packages/go) - Go bindings for OpenTUI
+- [`@opentui/vue`](packages/vue) - The Vue reconciler (unmaintained)
+- [`@opentui/go`](packages/go) - Go bindings (unmaintained)
 
 ## Install
 

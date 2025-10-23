@@ -792,4 +792,117 @@ pub const EditBuffer = struct {
     fn shouldInsertPlaceholder(self: *const EditBuffer) bool {
         return self.tb.getLength() == 0 and self.placeholder_bytes != null and !self.placeholder_active;
     }
+
+    pub fn getNextWordBoundary(self: *EditBuffer) Cursor {
+        if (self.cursors.items.len == 0) return .{ .row = 0, .col = 0 };
+        const cursor = self.cursors.items[0];
+
+        const line_count = self.tb.lineCount();
+        if (cursor.row >= line_count) return cursor;
+
+        const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
+
+        const linestart = self.tb.rope.getMarker(.linestart, cursor.row) orelse return cursor;
+        var seg_idx = linestart.leaf_index + 1;
+        var cols_before: u32 = 0;
+
+        while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
+            const seg = self.tb.rope.get(seg_idx) orelse break;
+            if (seg.isBreak() or seg.isLineStart()) break;
+            if (seg.asText()) |chunk| {
+                const next_cols = cols_before + chunk.width;
+
+                if (cursor.col < next_cols) {
+                    const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator) catch {
+                        cols_before = next_cols;
+                        continue;
+                    };
+
+                    const local_col = cursor.col - cols_before;
+
+                    for (wrap_offsets) |wrap_break| {
+                        const break_col = @as(u32, wrap_break.char_offset);
+                        if (break_col > local_col) {
+                            const target_col = cols_before + break_col + 1;
+                            if (target_col <= line_width) {
+                                const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, target_col) orelse cursor.offset;
+                                return .{ .row = cursor.row, .col = target_col, .desired_col = target_col, .offset = offset };
+                            }
+                        }
+                    }
+                }
+
+                cols_before = next_cols;
+            }
+        }
+
+        if (cursor.row + 1 < line_count) {
+            const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row + 1, 0) orelse cursor.offset;
+            return .{ .row = cursor.row + 1, .col = 0, .desired_col = 0, .offset = offset };
+        }
+
+        const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, line_width) orelse cursor.offset;
+        return .{ .row = cursor.row, .col = line_width, .desired_col = line_width, .offset = offset };
+    }
+
+    pub fn getPrevWordBoundary(self: *EditBuffer) Cursor {
+        if (self.cursors.items.len == 0) return .{ .row = 0, .col = 0 };
+        const cursor = self.cursors.items[0];
+
+        if (cursor.row == 0 and cursor.col == 0) return cursor;
+
+        const linestart = self.tb.rope.getMarker(.linestart, cursor.row) orelse return cursor;
+        var seg_idx = linestart.leaf_index + 1;
+        var cols_before: u32 = 0;
+        var last_boundary: ?u32 = null;
+
+        while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
+            const seg = self.tb.rope.get(seg_idx) orelse break;
+            if (seg.isBreak() or seg.isLineStart()) break;
+            if (seg.asText()) |chunk| {
+                const next_cols = cols_before + chunk.width;
+
+                const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator) catch {
+                    cols_before = next_cols;
+                    continue;
+                };
+
+                for (wrap_offsets) |wrap_break| {
+                    const break_col = cols_before + @as(u32, wrap_break.char_offset) + 1;
+                    if (break_col < cursor.col) {
+                        last_boundary = break_col;
+                    }
+                }
+
+                cols_before = next_cols;
+                if (cursor.col <= cols_before) break;
+            }
+        }
+
+        if (last_boundary) |boundary_col| {
+            const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, boundary_col) orelse cursor.offset;
+            return .{ .row = cursor.row, .col = boundary_col, .desired_col = boundary_col, .offset = offset };
+        }
+
+        if (cursor.row > 0) {
+            const prev_line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row - 1);
+            const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row - 1, prev_line_width) orelse cursor.offset;
+            return .{ .row = cursor.row - 1, .col = prev_line_width, .desired_col = prev_line_width, .offset = offset };
+        }
+
+        return .{ .row = 0, .col = 0, .desired_col = 0, .offset = 0 };
+    }
+
+    pub fn getEOL(self: *EditBuffer) Cursor {
+        if (self.cursors.items.len == 0) return .{ .row = 0, .col = 0 };
+        const cursor = self.cursors.items[0];
+
+        const line_count = self.tb.lineCount();
+        if (cursor.row >= line_count) return cursor;
+
+        const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
+        const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, line_width) orelse cursor.offset;
+
+        return .{ .row = cursor.row, .col = line_width, .desired_col = line_width, .offset = offset };
+    }
 };

@@ -60,11 +60,37 @@ export const KeyCodes = {
   CTRL_Y: "\x19",
   CTRL_Z: "\x1a",
 
-  // Alt combinations
+  // Alt combinations (meta key)
   ALT_A: "\x1ba",
   ALT_B: "\x1bb",
   ALT_C: "\x1bc",
-  // ... add more as needed
+  ALT_D: "\x1bd",
+  ALT_E: "\x1be",
+  ALT_F: "\x1bf",
+  ALT_G: "\x1bg",
+  ALT_H: "\x1bh",
+  ALT_I: "\x1bi",
+  ALT_J: "\x1bj",
+  ALT_K: "\x1bk",
+  ALT_L: "\x1bl",
+  ALT_M: "\x1bm",
+  ALT_N: "\x1bn",
+  ALT_O: "\x1bo",
+  ALT_P: "\x1bp",
+  ALT_Q: "\x1bq",
+  ALT_R: "\x1br",
+  ALT_S: "\x1bs",
+  ALT_T: "\x1bt",
+  ALT_U: "\x1bu",
+  ALT_V: "\x1bv",
+  ALT_W: "\x1bw",
+  ALT_X: "\x1bx",
+  ALT_Y: "\x1by",
+  ALT_Z: "\x1bz",
+  ALT_LEFT: "\x1b\x1b[D",
+  ALT_RIGHT: "\x1b\x1b[C",
+  ALT_UP: "\x1b\x1b[A",
+  ALT_DOWN: "\x1b\x1b[B",
 } as const
 
 export type KeyInput = string | keyof typeof KeyCodes
@@ -96,7 +122,7 @@ export function createMockKeys(renderer: CliRenderer) {
     }
   }
 
-  const pressKey = (key: KeyInput, modifiers?: { shift?: boolean; ctrl?: boolean; alt?: boolean }): void => {
+  const pressKey = (key: KeyInput, modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
     let keyCode: string
     if (typeof key === "string") {
       // If it's a string but also exists in KeyCodes, use the KeyCodes value
@@ -119,11 +145,23 @@ export function createMockKeys(renderer: CliRenderer) {
       if (keyCode.startsWith("\x1b[") && keyCode.length > 2) {
         // Arrow keys: \x1b[A, \x1b[B, \x1b[C, \x1b[D
         // With shift modifier: \x1b[1;2A, \x1b[1;2B, \x1b[1;2C, \x1b[1;2D
-        const modifier = 1 + (modifiers.shift ? 1 : 0) + (modifiers.alt ? 2 : 0) + (modifiers.ctrl ? 4 : 0)
+        const modifier = 1 + (modifiers.shift ? 1 : 0) + (modifiers.meta ? 2 : 0) + (modifiers.ctrl ? 4 : 0)
         if (modifier > 1) {
           // Insert modifier into sequence
           const ending = keyCode.slice(-1)
           keyCode = `\x1b[1;${modifier}${ending}`
+        }
+      } else if (keyCode.length === 1 && !modifiers.ctrl) {
+        // For regular characters with modifiers
+        let char = keyCode
+        if (modifiers.shift && char >= "a" && char <= "z") {
+          char = char.toUpperCase()
+        }
+        if (modifiers.meta) {
+          // For meta+character, prefix with escape
+          keyCode = `\x1b${char}`
+        } else {
+          keyCode = char
         }
       }
     }
@@ -154,7 +192,7 @@ export function createMockKeys(renderer: CliRenderer) {
 
   const pressArrow = (
     direction: "up" | "down" | "left" | "right",
-    modifiers?: { shift?: boolean; ctrl?: boolean; alt?: boolean },
+    modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean },
   ): void => {
     const keyMap = {
       up: KeyCodes.ARROW_UP,

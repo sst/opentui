@@ -1988,6 +1988,195 @@ test "EditorView - horizontal scroll: goto end of long line" {
     try std.testing.expect(cursor.col < vp.x + vp.width);
 }
 
+test "EditorView - getNextWordBoundary returns VisualCursor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World Test");
+    try eb.setCursor(0, 0);
+
+    const next_vcursor = ev.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 6), next_vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 6), next_vcursor.visual_col);
+}
+
+test "EditorView - getPrevWordBoundary returns VisualCursor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World Test");
+    try eb.setCursor(0, 12);
+
+    const prev_vcursor = ev.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 6), prev_vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 0), prev_vcursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 6), prev_vcursor.visual_col);
+}
+
+test "EditorView - word boundary with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.char);
+
+    try eb.setText("This is a very long line that will wrap and has multiple words", false);
+    try eb.setCursor(0, 0);
+
+    const next_vcursor = ev.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 5), next_vcursor.logical_col);
+
+    // Visual row might differ due to wrapping, but logical should be consistent
+    try std.testing.expect(next_vcursor.visual_col <= 20);
+}
+
+test "EditorView - word boundary across lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("Hello\nWorld");
+    try eb.setCursor(0, 5);
+
+    const next_vcursor = ev.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 1), next_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 1), next_vcursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.visual_col);
+}
+
+test "EditorView - word boundary prev across lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("Hello\nWorld");
+    try eb.setCursor(1, 0);
+
+    const prev_vcursor = ev.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 5), prev_vcursor.logical_col);
+    try std.testing.expectEqual(@as(u32, 0), prev_vcursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 5), prev_vcursor.visual_col);
+}
+
+test "EditorView - word boundary with punctuation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("self-contained multi-word");
+    try eb.setCursor(0, 0);
+
+    const next_vcursor = ev.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 5), next_vcursor.logical_col);
+}
+
+test "EditorView - word boundary at end of buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 11);
+
+    const next_vcursor = ev.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), next_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 11), next_vcursor.logical_col);
+}
+
+test "EditorView - word boundary at start of buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+
+    const prev_vcursor = ev.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_vcursor.logical_row);
+    try std.testing.expectEqual(@as(u32, 0), prev_vcursor.logical_col);
+}
+
 test "EditorView - horizontal scroll: combined vertical and horizontal scrolling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1999,7 +2188,7 @@ test "EditorView - horizontal scroll: combined vertical and horizontal scrolling
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    var ev = try EditorView.init(std.testing.allocator, eb, 20, 5);
+    var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
     const line0 = "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJ";
