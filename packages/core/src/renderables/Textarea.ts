@@ -2,6 +2,12 @@ import { type RenderContext, type Highlight } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
 import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import {
+  type KeyBinding as BaseKeyBinding,
+  mergeKeyBindings,
+  getKeyBindingKey,
+  buildKeyBindingsMap,
+} from "../lib/keymapping"
 
 export type TextareaAction =
   | "move-left"
@@ -26,13 +32,7 @@ export type TextareaAction =
   | "undo"
   | "redo"
 
-export interface KeyBinding {
-  name: string
-  ctrl?: boolean
-  shift?: boolean
-  meta?: boolean
-  action: TextareaAction
-}
+export type KeyBinding = BaseKeyBinding<TextareaAction>
 
 const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "left", action: "move-left" },
@@ -112,8 +112,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._placeholder = options.placeholder ?? defaults.placeholder
     this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
 
-    const mergedBindings = this.mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
-    this._keyBindingsMap = this.buildKeyBindingsMap(mergedBindings)
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
     this._actionHandlers = this.buildActionHandlers()
 
     this.updateValue(options.value ?? defaults.value)
@@ -121,32 +121,6 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     this.editBuffer.setPlaceholder(this._placeholder)
     this.editBuffer.setPlaceholderColor(this._placeholderColor)
-  }
-
-  private mergeKeyBindings(defaults: KeyBinding[], custom: KeyBinding[]): KeyBinding[] {
-    const map = new Map<string, KeyBinding>()
-    for (const binding of defaults) {
-      const key = this.getKeyBindingKey(binding)
-      map.set(key, binding)
-    }
-    for (const binding of custom) {
-      const key = this.getKeyBindingKey(binding)
-      map.set(key, binding)
-    }
-    return Array.from(map.values())
-  }
-
-  private getKeyBindingKey(binding: KeyBinding): string {
-    return `${binding.name}:${!!binding.ctrl}:${!!binding.shift}:${!!binding.meta}`
-  }
-
-  private buildKeyBindingsMap(bindings: KeyBinding[]): Map<string, TextareaAction> {
-    const map = new Map<string, TextareaAction>()
-    for (const binding of bindings) {
-      const key = this.getKeyBindingKey(binding)
-      map.set(key, binding.action)
-    }
-    return map
   }
 
   private buildActionHandlers(): Map<TextareaAction, () => boolean> {
@@ -186,12 +160,12 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
 
-    const bindingKeyWithShift = this.getKeyBindingKey({
+    const bindingKeyWithShift = getKeyBindingKey({
       name: keyName,
       ctrl: keyCtrl,
       shift: keyShift,
       meta: keyMeta,
-      action: "move-left",
+      action: "move-left" as TextareaAction,
     })
 
     const action = this._keyBindingsMap.get(bindingKeyWithShift)
