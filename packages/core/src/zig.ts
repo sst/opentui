@@ -614,6 +614,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    editBufferGetNextWordBoundary: {
+      args: ["ptr", "ptr", "ptr", "ptr"],
+      returns: "void",
+    },
+    editBufferGetPrevWordBoundary: {
+      args: ["ptr", "ptr", "ptr", "ptr"],
+      returns: "void",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -669,6 +677,14 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewSetCursorByOffset: {
       args: ["ptr", "u32"],
+      returns: "void",
+    },
+    editorViewGetNextWordBoundary: {
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewGetPrevWordBoundary: {
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "void",
     },
 
@@ -1114,6 +1130,8 @@ export interface RenderLib {
   editBufferClearHistory: (buffer: Pointer) => void
   editBufferSetPlaceholder: (buffer: Pointer, text: string | null) => void
   editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
+  editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
+  editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -1152,6 +1170,8 @@ export interface RenderLib {
   editorViewMoveDownVisual: (view: Pointer) => void
   editorViewDeleteSelectedText: (view: Pointer) => void
   editorViewSetCursorByOffset: (view: Pointer, offset: number) => void
+  editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
+  editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2248,6 +2268,30 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferSetPlaceholderColor(buffer, color.buffer)
   }
 
+  public editBufferGetNextWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
+    const row = new Uint32Array(1)
+    const col = new Uint32Array(1)
+    const offset = new Uint32Array(1)
+    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, ptr(row), ptr(col), ptr(offset))
+    return {
+      row: row[0],
+      col: col[0],
+      offset: offset[0],
+    }
+  }
+
+  public editBufferGetPrevWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
+    const row = new Uint32Array(1)
+    const col = new Uint32Array(1)
+    const offset = new Uint32Array(1)
+    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, ptr(row), ptr(col), ptr(offset))
+    return {
+      row: row[0],
+      col: col[0],
+      offset: offset[0],
+    }
+  }
+
   // EditorView selection and editing implementations
   public editorViewSetSelection(
     view: Pointer,
@@ -2360,6 +2404,56 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewSetCursorByOffset(view: Pointer, offset: number): void {
     this.opentui.symbols.editorViewSetCursorByOffset(view, offset)
+  }
+
+  public editorViewGetNextWordBoundary(view: Pointer): VisualCursor {
+    const visualRow = new Uint32Array(1)
+    const visualCol = new Uint32Array(1)
+    const logicalRow = new Uint32Array(1)
+    const logicalCol = new Uint32Array(1)
+    const offset = new Uint32Array(1)
+
+    this.opentui.symbols.editorViewGetNextWordBoundary(
+      view,
+      ptr(visualRow),
+      ptr(visualCol),
+      ptr(logicalRow),
+      ptr(logicalCol),
+      ptr(offset),
+    )
+
+    return {
+      visualRow: visualRow[0],
+      visualCol: visualCol[0],
+      logicalRow: logicalRow[0],
+      logicalCol: logicalCol[0],
+      offset: offset[0],
+    }
+  }
+
+  public editorViewGetPrevWordBoundary(view: Pointer): VisualCursor {
+    const visualRow = new Uint32Array(1)
+    const visualCol = new Uint32Array(1)
+    const logicalRow = new Uint32Array(1)
+    const logicalCol = new Uint32Array(1)
+    const offset = new Uint32Array(1)
+
+    this.opentui.symbols.editorViewGetPrevWordBoundary(
+      view,
+      ptr(visualRow),
+      ptr(visualCol),
+      ptr(logicalRow),
+      ptr(logicalCol),
+      ptr(offset),
+    )
+
+    return {
+      visualRow: visualRow[0],
+      visualCol: visualCol[0],
+      logicalRow: logicalRow[0],
+      logicalCol: logicalCol[0],
+      offset: offset[0],
+    }
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {

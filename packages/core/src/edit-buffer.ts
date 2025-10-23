@@ -191,6 +191,26 @@ export class EditBuffer extends EventEmitter {
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
   }
 
+  public getNextWordBoundary(): CursorPosition {
+    this.guard()
+    const boundary = this.lib.editBufferGetNextWordBoundary(this.bufferPtr)
+    return {
+      line: boundary.row,
+      visualColumn: boundary.col,
+      offset: boundary.offset,
+    }
+  }
+
+  public getPrevWordBoundary(): CursorPosition {
+    this.guard()
+    const boundary = this.lib.editBufferGetPrevWordBoundary(this.bufferPtr)
+    return {
+      line: boundary.row,
+      visualColumn: boundary.col,
+      offset: boundary.offset,
+    }
+  }
+
   public debugLogRope(): void {
     this.guard()
     this.lib.editBufferDebugLogRope(this.bufferPtr)

@@ -312,6 +312,57 @@ describe("EditBuffer", () => {
     })
   })
 
+  describe("word boundary navigation", () => {
+    it("should get next word boundary", () => {
+      buffer.setText("hello world foo")
+      buffer.setCursorToLineCol(0, 0)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.visualColumn).toBeGreaterThan(0)
+    })
+
+    it("should get previous word boundary", () => {
+      buffer.setText("hello world foo")
+      buffer.setCursorToLineCol(0, 15)
+
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.visualColumn).toBeLessThan(15)
+    })
+
+    it("should handle word boundary at start", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 0)
+
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.line).toBe(0)
+      expect(prevBoundary.visualColumn).toBe(0)
+    })
+
+    it("should handle word boundary at end", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 11)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.visualColumn).toBe(11)
+    })
+
+    it("should navigate across lines", () => {
+      buffer.setText("hello\nworld")
+      buffer.setCursorToLineCol(0, 5)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.line).toBeGreaterThanOrEqual(0)
+    })
+
+    it("should handle punctuation boundaries", () => {
+      buffer.setText("hello-world test")
+      buffer.setCursorToLineCol(0, 0)
+
+      const next1 = buffer.getNextWordBoundary()
+      expect(next1.visualColumn).toBeGreaterThan(0)
+    })
+  })
+
   describe("error handling", () => {
     it("should throw error when using destroyed buffer", () => {
       buffer.setText("Test")

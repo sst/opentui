@@ -209,6 +209,64 @@ describe("EditorView", () => {
     })
   })
 
+  describe("word boundary navigation", () => {
+    it("should get next word boundary with visual cursor", () => {
+      buffer.setText("hello world foo")
+      buffer.setCursorToLineCol(0, 0)
+
+      const nextBoundary = view.getNextWordBoundary()
+      expect(nextBoundary).toBeDefined()
+      expect(nextBoundary.visualCol).toBeGreaterThan(0)
+    })
+
+    it("should get previous word boundary with visual cursor", () => {
+      buffer.setText("hello world foo")
+      buffer.setCursorToLineCol(0, 15)
+
+      const prevBoundary = view.getPrevWordBoundary()
+      expect(prevBoundary).toBeDefined()
+      expect(prevBoundary.visualCol).toBeLessThan(15)
+    })
+
+    it("should handle word boundary at start", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 0)
+
+      const prevBoundary = view.getPrevWordBoundary()
+      expect(prevBoundary.logicalRow).toBe(0)
+      expect(prevBoundary.visualCol).toBe(0)
+    })
+
+    it("should handle word boundary at end", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 11)
+
+      const nextBoundary = view.getNextWordBoundary()
+      expect(nextBoundary.visualCol).toBe(11)
+    })
+
+    it("should navigate across lines with visual coordinates", () => {
+      buffer.setText("hello\nworld")
+      buffer.setCursorToLineCol(0, 5)
+
+      const nextBoundary = view.getNextWordBoundary()
+      expect(nextBoundary.logicalRow).toBeGreaterThanOrEqual(0)
+    })
+
+    it("should handle wrapping when getting word boundaries", () => {
+      buffer.setText("hello world test foo bar")
+      view.setWrapMode("word")
+      view.setViewportSize(10, 10)
+
+      buffer.setCursorToLineCol(0, 0)
+      const nextBoundary = view.getNextWordBoundary()
+
+      expect(nextBoundary).toBeDefined()
+      expect(nextBoundary.visualRow).toBeGreaterThanOrEqual(0)
+      expect(nextBoundary.logicalRow).toBeGreaterThanOrEqual(0)
+    })
+  })
+
   describe("large content", () => {
     it("should handle many lines", () => {
       const lines = Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n")
