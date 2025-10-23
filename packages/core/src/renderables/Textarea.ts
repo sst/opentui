@@ -62,7 +62,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "return", action: "newline" },
   { name: "enter", action: "newline" },
   { name: "z", ctrl: true, action: "undo" },
-  { name: "z", ctrl: true, shift: true, action: "redo" },
+  { name: "Z", ctrl: true, shift: true, action: "redo" },
   { name: "y", ctrl: true, action: "redo" },
   { name: "f", meta: true, action: "word-forward" },
   { name: "b", meta: true, action: "word-backward" },
