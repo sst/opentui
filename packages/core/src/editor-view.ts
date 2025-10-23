@@ -173,6 +173,11 @@ export class EditorView {
     return this.lib.editorViewGetPrevWordBoundary(this.viewPtr)
   }
 
+  public getEOL(): VisualCursor {
+    this.guard()
+    return this.lib.editorViewGetEOL(this.viewPtr)
+  }
+
   public getLineInfo(): LineInfo {
     this.guard()
     const textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)

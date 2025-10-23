@@ -695,6 +695,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    editorViewGetEOL: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
 
     getArenaAllocatedBytes: {
       args: [],
@@ -1182,6 +1186,7 @@ export interface RenderLib {
   editorViewSetCursorByOffset: (view: Pointer, offset: number) => void
   editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
+  editorViewGetEOL: (view: Pointer) => VisualCursor
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2405,6 +2410,12 @@ class FFIRenderLib implements RenderLib {
   public editorViewGetPrevWordBoundary(view: Pointer): VisualCursor {
     const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
     this.opentui.symbols.editorViewGetPrevWordBoundary(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editorViewGetEOL(view: Pointer): VisualCursor {
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetEOL(view, ptr(cursorBuffer))
     return VisualCursorStruct.unpack(cursorBuffer)
   }
 

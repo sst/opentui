@@ -908,6 +908,17 @@ export fn editorViewGetPrevWordBoundary(view: *editor_view.EditorView, outPtr: *
     };
 }
 
+export fn editorViewGetEOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getEOL();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
 export fn bufferDrawEditorView(
     bufferPtr: *buffer.OptimizedBuffer,
     viewPtr: *editor_view.EditorView,
