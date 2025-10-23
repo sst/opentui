@@ -128,6 +128,22 @@ describe("RGBA class", () => {
       expect(rgba.b).toBeCloseTo(0.251, 2)
       expect(rgba.a).toBe(1)
     })
+
+    test("creates RGBA from 8-digit hex with alpha", () => {
+      const rgba = RGBA.fromHex("#FF804080")
+      expect(rgba.r).toBeCloseTo(1.0, 2)
+      expect(rgba.g).toBeCloseTo(0.502, 2)
+      expect(rgba.b).toBeCloseTo(0.251, 2)
+      expect(rgba.a).toBeCloseTo(0.502, 2)
+    })
+
+    test("creates RGBA from 4-digit hex with alpha", () => {
+      const rgba = RGBA.fromHex("#F808")
+      expect(rgba.r).toBeCloseTo(1.0, 2)
+      expect(rgba.g).toBeCloseTo(0.533, 2)
+      expect(rgba.b).toBeCloseTo(0.0, 2)
+      expect(rgba.a).toBeCloseTo(0.533, 2)
+    })
   })
 
   describe("toInts", () => {
@@ -419,6 +435,70 @@ describe("hexToRgb", () => {
     expect(rgba.b).toBe(1)
     expect(rgba.a).toBe(1)
   })
+
+  test("converts 8-digit hex with alpha channel", () => {
+    const rgba = hexToRgb("#FF804080")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.502, 2)
+    expect(rgba.b).toBeCloseTo(0.251, 2)
+    expect(rgba.a).toBeCloseTo(0.502, 2)
+  })
+
+  test("converts 8-digit hex without # prefix", () => {
+    const rgba = hexToRgb("FF804080")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.502, 2)
+    expect(rgba.b).toBeCloseTo(0.251, 2)
+    expect(rgba.a).toBeCloseTo(0.502, 2)
+  })
+
+  test("converts 4-digit hex with alpha channel", () => {
+    const rgba = hexToRgb("#F808")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.533, 2)
+    expect(rgba.b).toBeCloseTo(0.0, 2)
+    expect(rgba.a).toBeCloseTo(0.533, 2)
+  })
+
+  test("converts 4-digit hex without # prefix", () => {
+    const rgba = hexToRgb("F808")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.533, 2)
+    expect(rgba.b).toBeCloseTo(0.0, 2)
+    expect(rgba.a).toBeCloseTo(0.533, 2)
+  })
+
+  test("converts 8-digit hex with full alpha (FF)", () => {
+    const rgba = hexToRgb("#FF8040FF")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.502, 2)
+    expect(rgba.b).toBeCloseTo(0.251, 2)
+    expect(rgba.a).toBeCloseTo(1.0, 2)
+  })
+
+  test("converts 8-digit hex with zero alpha", () => {
+    const rgba = hexToRgb("#FF804000")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.502, 2)
+    expect(rgba.b).toBeCloseTo(0.251, 2)
+    expect(rgba.a).toBe(0)
+  })
+
+  test("converts 4-digit hex with full alpha (F)", () => {
+    const rgba = hexToRgb("#F80F")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.533, 2)
+    expect(rgba.b).toBeCloseTo(0.0, 2)
+    expect(rgba.a).toBeCloseTo(1.0, 2)
+  })
+
+  test("converts 4-digit hex with zero alpha", () => {
+    const rgba = hexToRgb("#F800")
+    expect(rgba.r).toBeCloseTo(1.0, 2)
+    expect(rgba.g).toBeCloseTo(0.533, 2)
+    expect(rgba.b).toBeCloseTo(0.0, 2)
+    expect(rgba.a).toBe(0)
+  })
 })
 
 describe("rgbToHex", () => {
@@ -452,9 +532,9 @@ describe("rgbToHex", () => {
     expect(rgbToHex(rgba)).toBe("#0000ff")
   })
 
-  test("ignores alpha channel", () => {
+  test("includes alpha channel when not fully opaque", () => {
     const rgba = RGBA.fromInts(255, 128, 64, 128)
-    expect(rgbToHex(rgba)).toBe("#ff8040")
+    expect(rgbToHex(rgba)).toBe("#ff804080")
   })
 
   test("clamps values below 0 to 0", () => {
@@ -480,6 +560,31 @@ describe("rgbToHex", () => {
   test("converts gray values correctly", () => {
     const rgba = RGBA.fromValues(0.5, 0.5, 0.5, 1)
     expect(rgbToHex(rgba)).toBe("#7f7f7f")
+  })
+
+  test("includes alpha channel when alpha is not 1.0", () => {
+    const rgba = RGBA.fromInts(255, 128, 64, 128)
+    expect(rgbToHex(rgba)).toBe("#ff804080")
+  })
+
+  test("excludes alpha channel when alpha is 1.0", () => {
+    const rgba = RGBA.fromInts(255, 128, 64, 255)
+    expect(rgbToHex(rgba)).toBe("#ff8040")
+  })
+
+  test("includes alpha channel for transparent color", () => {
+    const rgba = RGBA.fromValues(1, 0, 0, 0)
+    expect(rgbToHex(rgba)).toBe("#ff000000")
+  })
+
+  test("includes alpha channel for semi-transparent", () => {
+    const rgba = RGBA.fromValues(0, 1, 0, 0.5)
+    expect(rgbToHex(rgba)).toBe("#00ff007f")
+  })
+
+  test("excludes alpha for fully opaque black", () => {
+    const rgba = RGBA.fromValues(0, 0, 0, 1)
+    expect(rgbToHex(rgba)).toBe("#000000")
   })
 })
 
