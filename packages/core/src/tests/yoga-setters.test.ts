@@ -719,3 +719,49 @@ describe("Yoga Prop Setters - paddingLeft", () => {
     }).not.toThrow()
   })
 })
+
+describe("Yoga Prop Setters - width", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-width" })
+    expect(() => {
+      renderable.width = 100
+    }).not.toThrow()
+  })
+
+  test("accepts auto", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-width-auto" })
+    expect(() => {
+      renderable.width = "auto"
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-width-percent" })
+    expect(() => {
+      renderable.width = "50%"
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - height", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-height" })
+    expect(() => {
+      renderable.height = 100
+    }).not.toThrow()
+  })
+
+  test("accepts auto", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-height-auto" })
+    expect(() => {
+      renderable.height = "auto"
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-height-percent" })
+    expect(() => {
+      renderable.height = "50%"
+    }).not.toThrow()
+  })
+})
