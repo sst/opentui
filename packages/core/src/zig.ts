@@ -6,7 +6,7 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
-import { StyledChunkStruct, HighlightStruct } from "./zig-structs"
+import { StyledChunkStruct, HighlightStruct, LogicalCursorStruct, VisualCursorStruct } from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -615,11 +615,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferGetNextWordBoundary: {
-      args: ["ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     editBufferGetPrevWordBoundary: {
-      args: ["ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
 
@@ -659,8 +659,8 @@ function getOpenTUILib(libPath?: string) {
 
     // EditorView VisualCursor methods
     editorViewGetVisualCursor: {
-      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
-      returns: "bool",
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
 
     editorViewMoveUpVisual: {
@@ -680,11 +680,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewGetNextWordBoundary: {
-      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     editorViewGetPrevWordBoundary: {
-      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
 
@@ -2269,27 +2269,15 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferGetNextWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
-    const row = new Uint32Array(1)
-    const col = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, ptr(row), ptr(col), ptr(offset))
-    return {
-      row: row[0],
-      col: col[0],
-      offset: offset[0],
-    }
+    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
+    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, ptr(cursorBuffer))
+    return LogicalCursorStruct.unpack(cursorBuffer)
   }
 
   public editBufferGetPrevWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
-    const row = new Uint32Array(1)
-    const col = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, ptr(row), ptr(col), ptr(offset))
-    return {
-      row: row[0],
-      col: col[0],
-      offset: offset[0],
-    }
+    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
+    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, ptr(cursorBuffer))
+    return LogicalCursorStruct.unpack(cursorBuffer)
   }
 
   // EditorView selection and editing implementations
@@ -2361,33 +2349,9 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewGetVisualCursor(view: Pointer): VisualCursor {
-    const visualRow = new Uint32Array(1)
-    const visualCol = new Uint32Array(1)
-    const logicalRow = new Uint32Array(1)
-    const logicalCol = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-
-    const success = this.opentui.symbols.editorViewGetVisualCursor(
-      view,
-      ptr(visualRow),
-      ptr(visualCol),
-      ptr(logicalRow),
-      ptr(logicalCol),
-      ptr(offset),
-    )
-
-    // Defensive fallback - should always succeed now
-    if (!success) {
-      return { visualRow: 0, visualCol: 0, logicalRow: 0, logicalCol: 0, offset: 0 }
-    }
-
-    return {
-      visualRow: visualRow[0],
-      visualCol: visualCol[0],
-      logicalRow: logicalRow[0],
-      logicalCol: logicalCol[0],
-      offset: offset[0],
-    }
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetVisualCursor(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
   }
 
   public editorViewMoveUpVisual(view: Pointer): void {
@@ -2407,53 +2371,15 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewGetNextWordBoundary(view: Pointer): VisualCursor {
-    const visualRow = new Uint32Array(1)
-    const visualCol = new Uint32Array(1)
-    const logicalRow = new Uint32Array(1)
-    const logicalCol = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-
-    this.opentui.symbols.editorViewGetNextWordBoundary(
-      view,
-      ptr(visualRow),
-      ptr(visualCol),
-      ptr(logicalRow),
-      ptr(logicalCol),
-      ptr(offset),
-    )
-
-    return {
-      visualRow: visualRow[0],
-      visualCol: visualCol[0],
-      logicalRow: logicalRow[0],
-      logicalCol: logicalCol[0],
-      offset: offset[0],
-    }
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetNextWordBoundary(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
   }
 
   public editorViewGetPrevWordBoundary(view: Pointer): VisualCursor {
-    const visualRow = new Uint32Array(1)
-    const visualCol = new Uint32Array(1)
-    const logicalRow = new Uint32Array(1)
-    const logicalCol = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-
-    this.opentui.symbols.editorViewGetPrevWordBoundary(
-      view,
-      ptr(visualRow),
-      ptr(visualCol),
-      ptr(logicalRow),
-      ptr(logicalCol),
-      ptr(offset),
-    )
-
-    return {
-      visualRow: visualRow[0],
-      visualCol: visualCol[0],
-      logicalRow: logicalRow[0],
-      logicalCol: logicalCol[0],
-      offset: offset[0],
-    }
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetPrevWordBoundary(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {
