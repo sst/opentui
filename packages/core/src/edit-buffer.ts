@@ -216,6 +216,16 @@ export class EditBuffer extends EventEmitter {
     }
   }
 
+  public getEOL(): CursorPosition {
+    this.guard()
+    const boundary = this.lib.editBufferGetEOL(this.bufferPtr)
+    return {
+      line: boundary.row,
+      visualColumn: boundary.col,
+      offset: boundary.offset,
+    }
+  }
+
   public debugLogRope(): void {
     this.guard()
     this.lib.editBufferDebugLogRope(this.bufferPtr)

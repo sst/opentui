@@ -648,6 +648,15 @@ export fn editBufferGetPrevWordBoundary(edit_buffer: *edit_buffer_mod.EditBuffer
     };
 }
 
+export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *ExternalLogicalCursor) void {
+    const cursor = edit_buffer.getEOL();
+    outPtr.* = .{
+        .row = cursor.row,
+        .col = cursor.col,
+        .offset = cursor.offset,
+    };
+}
+
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text, retain_history) catch {};

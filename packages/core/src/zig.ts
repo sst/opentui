@@ -626,6 +626,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    editBufferGetEOL: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -1137,6 +1141,7 @@ export interface RenderLib {
   editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
   editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
+  editBufferGetEOL: (buffer: Pointer) => { row: number; col: number; offset: number }
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -2292,6 +2297,12 @@ class FFIRenderLib implements RenderLib {
   public editBufferGetPrevWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
     const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
     this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, ptr(cursorBuffer))
+    return LogicalCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editBufferGetEOL(buffer: Pointer): { row: number; col: number; offset: number } {
+    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
+    this.opentui.symbols.editBufferGetEOL(buffer, ptr(cursorBuffer))
     return LogicalCursorStruct.unpack(cursorBuffer)
   }
 

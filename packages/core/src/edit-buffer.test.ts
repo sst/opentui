@@ -419,6 +419,72 @@ describe("EditBuffer", () => {
     })
   })
 
+  describe("getEOL navigation", () => {
+    it("should get end of line from start", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 0)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(0)
+      expect(eol.visualColumn).toBe(11)
+    })
+
+    it("should get end of line from middle", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(0)
+      expect(eol.visualColumn).toBe(11)
+    })
+
+    it("should stay at end of line when already there", () => {
+      buffer.setText("Hello")
+      buffer.setCursorToLineCol(0, 5)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(0)
+      expect(eol.visualColumn).toBe(5)
+    })
+
+    it("should handle multi-line text", () => {
+      buffer.setText("Hello\nWorld\nTest")
+      buffer.setCursorToLineCol(1, 0)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(1)
+      expect(eol.visualColumn).toBe(5)
+    })
+
+    it("should handle empty lines", () => {
+      buffer.setText("Hello\n\nWorld")
+      buffer.setCursorToLineCol(1, 0)
+
+      const eol = buffer.getEOL()
+      expect(eol.line).toBe(1)
+      expect(eol.visualColumn).toBe(0)
+    })
+
+    it("should work on different lines", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+
+      buffer.setCursorToLineCol(0, 0)
+      const eol0 = buffer.getEOL()
+      expect(eol0.line).toBe(0)
+      expect(eol0.visualColumn).toBe(6)
+
+      buffer.setCursorToLineCol(1, 0)
+      const eol1 = buffer.getEOL()
+      expect(eol1.line).toBe(1)
+      expect(eol1.visualColumn).toBe(6)
+
+      buffer.setCursorToLineCol(2, 0)
+      const eol2 = buffer.getEOL()
+      expect(eol2.line).toBe(2)
+      expect(eol2.visualColumn).toBe(6)
+    })
+  })
+
   describe("error handling", () => {
     it("should throw error when using destroyed buffer", () => {
       buffer.setText("Test")

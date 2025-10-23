@@ -892,4 +892,17 @@ pub const EditBuffer = struct {
 
         return .{ .row = 0, .col = 0, .desired_col = 0, .offset = 0 };
     }
+
+    pub fn getEOL(self: *EditBuffer) Cursor {
+        if (self.cursors.items.len == 0) return .{ .row = 0, .col = 0 };
+        const cursor = self.cursors.items[0];
+
+        const line_count = self.tb.lineCount();
+        if (cursor.row >= line_count) return cursor;
+
+        const line_width = iter_mod.lineWidthAt(&self.tb.rope, cursor.row);
+        const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, line_width) orelse cursor.offset;
+
+        return .{ .row = cursor.row, .col = line_width, .desired_col = line_width, .offset = offset };
+    }
 };

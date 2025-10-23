@@ -331,3 +331,79 @@ test "EditBuffer - word boundary at start of line" {
     try std.testing.expectEqual(@as(u32, 0), prev_cursor.row);
     try std.testing.expectEqual(@as(u32, 0), prev_cursor.col);
 }
+
+test "EditBuffer - getEOL basic" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 0);
+
+    const eol_cursor = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 0), eol_cursor.row);
+    try std.testing.expectEqual(@as(u32, 11), eol_cursor.col);
+}
+
+test "EditBuffer - getEOL at end of line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+    try eb.setCursor(0, 5);
+
+    const eol_cursor = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 0), eol_cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), eol_cursor.col);
+}
+
+test "EditBuffer - getEOL multi-line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld\nTest");
+    try eb.setCursor(1, 0);
+
+    const eol_cursor = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 1), eol_cursor.row);
+    try std.testing.expectEqual(@as(u32, 5), eol_cursor.col);
+}
+
+test "EditBuffer - getEOL empty line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\n\nWorld");
+    try eb.setCursor(1, 0);
+
+    const eol_cursor = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 1), eol_cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), eol_cursor.col);
+}
