@@ -227,7 +227,10 @@ export function parseMeasureMode(value: string): MeasureMode {
   }
 }
 
-export function parseOverflow(value: string): Overflow {
+export function parseOverflow(value: string | null | undefined): Overflow {
+  if (value == null) {
+    return Overflow.Visible
+  }
   switch (value.toLowerCase()) {
     case "visible":
       return Overflow.Visible
@@ -240,7 +243,10 @@ export function parseOverflow(value: string): Overflow {
   }
 }
 
-export function parsePositionType(value: string): PositionType {
+export function parsePositionType(value: string | null | undefined): PositionType {
+  if (value == null) {
+    return PositionType.Relative
+  }
   switch (value.toLowerCase()) {
     case "static":
       return PositionType.Static

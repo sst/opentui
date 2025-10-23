@@ -318,3 +318,404 @@ describe("Yoga Prop Setters - position", () => {
     }).not.toThrow()
   })
 })
+
+describe("Yoga Prop Setters - flexBasis", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-flex-basis" })
+    expect(() => {
+      renderable.flexBasis = 100
+    }).not.toThrow()
+  })
+
+  test("accepts auto", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-flex-basis-auto" })
+    expect(() => {
+      renderable.flexBasis = "auto"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-flex-basis-null" })
+    expect(() => {
+      renderable.flexBasis = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-flex-basis-undefined" })
+    expect(() => {
+      renderable.flexBasis = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - minWidth", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-width" })
+    expect(() => {
+      renderable.minWidth = 100
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-width-percent" })
+    expect(() => {
+      renderable.minWidth = "50%"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-width-null" })
+    expect(() => {
+      renderable.minWidth = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-width-undefined" })
+    expect(() => {
+      renderable.minWidth = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - maxWidth", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-width" })
+    expect(() => {
+      renderable.maxWidth = 100
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-width-percent" })
+    expect(() => {
+      renderable.maxWidth = "50%"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-width-null" })
+    expect(() => {
+      renderable.maxWidth = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-width-undefined" })
+    expect(() => {
+      renderable.maxWidth = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - minHeight", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-height" })
+    expect(() => {
+      renderable.minHeight = 100
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-height-percent" })
+    expect(() => {
+      renderable.minHeight = "50%"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-height-null" })
+    expect(() => {
+      renderable.minHeight = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-min-height-undefined" })
+    expect(() => {
+      renderable.minHeight = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - maxHeight", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-height" })
+    expect(() => {
+      renderable.maxHeight = 100
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-height-percent" })
+    expect(() => {
+      renderable.maxHeight = "50%"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-height-null" })
+    expect(() => {
+      renderable.maxHeight = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-max-height-undefined" })
+    expect(() => {
+      renderable.maxHeight = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - margin", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin" })
+    expect(() => {
+      renderable.margin = 10
+    }).not.toThrow()
+  })
+
+  test("accepts auto", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-auto" })
+    expect(() => {
+      renderable.margin = "auto"
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-percent" })
+    expect(() => {
+      renderable.margin = "10%"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-null" })
+    expect(() => {
+      renderable.margin = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-undefined" })
+    expect(() => {
+      renderable.margin = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - marginTop", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-top" })
+    expect(() => {
+      renderable.marginTop = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-top-null" })
+    expect(() => {
+      renderable.marginTop = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-top-undefined" })
+    expect(() => {
+      renderable.marginTop = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - marginRight", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-right" })
+    expect(() => {
+      renderable.marginRight = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-right-null" })
+    expect(() => {
+      renderable.marginRight = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-right-undefined" })
+    expect(() => {
+      renderable.marginRight = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - marginBottom", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-bottom" })
+    expect(() => {
+      renderable.marginBottom = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-bottom-null" })
+    expect(() => {
+      renderable.marginBottom = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-bottom-undefined" })
+    expect(() => {
+      renderable.marginBottom = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - marginLeft", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-left" })
+    expect(() => {
+      renderable.marginLeft = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-left-null" })
+    expect(() => {
+      renderable.marginLeft = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-left-undefined" })
+    expect(() => {
+      renderable.marginLeft = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - padding", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding" })
+    expect(() => {
+      renderable.padding = 10
+    }).not.toThrow()
+  })
+
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-percent" })
+    expect(() => {
+      renderable.padding = "10%"
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-null" })
+    expect(() => {
+      renderable.padding = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-undefined" })
+    expect(() => {
+      renderable.padding = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - paddingTop", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-top" })
+    expect(() => {
+      renderable.paddingTop = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-top-null" })
+    expect(() => {
+      renderable.paddingTop = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-top-undefined" })
+    expect(() => {
+      renderable.paddingTop = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - paddingRight", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-right" })
+    expect(() => {
+      renderable.paddingRight = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-right-null" })
+    expect(() => {
+      renderable.paddingRight = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-right-undefined" })
+    expect(() => {
+      renderable.paddingRight = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - paddingBottom", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-bottom" })
+    expect(() => {
+      renderable.paddingBottom = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-bottom-null" })
+    expect(() => {
+      renderable.paddingBottom = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-bottom-undefined" })
+    expect(() => {
+      renderable.paddingBottom = undefined
+    }).not.toThrow()
+  })
+})
+
+describe("Yoga Prop Setters - paddingLeft", () => {
+  test("accepts valid number", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-left" })
+    expect(() => {
+      renderable.paddingLeft = 10
+    }).not.toThrow()
+  })
+
+  test("accepts null", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-left-null" })
+    expect(() => {
+      renderable.paddingLeft = null
+    }).not.toThrow()
+  })
+
+  test("accepts undefined", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-padding-left-undefined" })
+    expect(() => {
+      renderable.paddingLeft = undefined
+    }).not.toThrow()
+  })
+})
