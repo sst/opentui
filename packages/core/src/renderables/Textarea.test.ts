@@ -1378,6 +1378,44 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("ALT_F")
       expect(editor.cursor.line).toBe(0)
     })
+
+    it("should override return/enter keys to swap newline and submit actions", async () => {
+      let submitCalled = false
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Line 1",
+        width: 40,
+        height: 10,
+        onSubmit: () => {
+          submitCalled = true
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressEnter()
+      expect(editor.plainText).toBe("Line 1\n")
+      expect(submitCalled).toBe(false)
+
+      currentMockInput.pressKey("ALT_RETURN")
+      expect(submitCalled).toBe(true)
+      submitCalled = false
+
+      editor.keyBindings = [
+        { name: "return", meta: true, action: "newline" },
+        { name: "enter", meta: true, action: "newline" },
+        { name: "return", action: "submit" },
+        { name: "enter", action: "submit" },
+      ]
+
+      currentMockInput.pressEnter()
+      expect(submitCalled).toBe(true)
+      submitCalled = false
+
+      currentMockInput.pressKey("ALT_RETURN")
+      expect(editor.plainText).toBe("Line 1\n\n")
+      expect(submitCalled).toBe(false)
+    })
   })
 
   describe("Chunk Boundary Navigation", () => {
