@@ -168,12 +168,14 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     }
   }
 
-  if (s === "\r") {
+  if (s === "\r" || s === "\x1b\r") {
     // carriage return
     key.name = "return"
-  } else if (s === "\n") {
+    key.meta = s.length === 2
+  } else if (s === "\n" || s === "\x1b\n") {
     // enter, should have been called linefeed
     key.name = "enter"
+    key.meta = s.length === 2
   } else if (s === "\t") {
     // tab
     key.name = "tab"
