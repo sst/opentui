@@ -1713,44 +1713,20 @@ test "TextBuffer setText - validate rope structure is correct" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    const rope_text = try tb.rope.toText(std.testing.allocator);
-    defer std.testing.allocator.free(rope_text);
-    std.debug.print("\nRope structure: {s}\n", .{rope_text});
-
     const line_count = tb.lineCount();
-    std.debug.print("Line count: {}\n", .{line_count});
     try std.testing.expectEqual(@as(u32, 3), line_count);
 
     const break_count = tb.rope.markerCount(.brk);
-    std.debug.print("Break marker count: {}\n", .{break_count});
     try std.testing.expectEqual(@as(u32, 2), break_count);
 
     const linestart_count = tb.rope.markerCount(.linestart);
-    std.debug.print("Linestart marker count: {}\n", .{linestart_count});
     try std.testing.expectEqual(@as(u32, 3), linestart_count);
-
-    var i: u32 = 0;
-    while (i < break_count) : (i += 1) {
-        const marker = tb.rope.getMarker(.brk, i);
-        std.debug.print("Break marker {}: {any}\n", .{ i, marker });
-    }
-
-    i = 0;
-    while (i < linestart_count) : (i += 1) {
-        const marker = tb.rope.getMarker(.linestart, i);
-        std.debug.print("Linestart marker {}: {any}\n", .{ i, marker });
-    }
-
-    std.debug.print("Line 0 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 0)});
-    std.debug.print("Line 1 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 1)});
-    std.debug.print("Line 2 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 2)});
 
     try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 0));
     try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
     try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 2));
 
     const total_weight = tb.rope.totalWeight();
-    std.debug.print("Total weight: {}\n", .{total_weight});
     try std.testing.expectEqual(@as(u32, 20), total_weight);
 }
 
@@ -1768,42 +1744,8 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
 
     try eb.setText("Line 1\nLine 2\nLine 3", false);
 
-    std.debug.print("\n=== After setText ===\n", .{});
-    {
-        const rope_text_init = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-        defer std.testing.allocator.free(rope_text_init);
-        std.debug.print("Rope: {s}\n", .{rope_text_init});
-        std.debug.print("Line count: {}, Break count: {}, Total weight: {}\n", .{ eb.getTextBuffer().lineCount(), eb.getTextBuffer().rope.markerCount(.brk), eb.getTextBuffer().rope.totalWeight() });
-    }
-
-    // Line 3 starts at row 2, col 0 and ends at row 2, col 6
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
 
-    std.debug.print("\n=== After deleting 'Line 3' ===\n", .{});
-    {
-        const rope_text_after = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-        defer std.testing.allocator.free(rope_text_after);
-        std.debug.print("Rope: {s}\n", .{rope_text_after});
-        std.debug.print("Line count: {}, Break count: {}, Total weight: {}\n", .{ eb.getTextBuffer().lineCount(), eb.getTextBuffer().rope.markerCount(.brk), eb.getTextBuffer().rope.totalWeight() });
-    }
-    const break_count = eb.getTextBuffer().rope.markerCount(.brk);
-    var i: u32 = 0;
-    while (i < break_count) : (i += 1) {
-        const marker = eb.getTextBuffer().rope.getMarker(.brk, i);
-        std.debug.print("Break marker {}: {any}\n", .{ i, marker });
-    }
-
-    const linestart_count = eb.getTextBuffer().rope.markerCount(.linestart);
-    i = 0;
-    while (i < linestart_count) : (i += 1) {
-        const marker = eb.getTextBuffer().rope.getMarker(.linestart, i);
-        std.debug.print("Linestart marker {}: {any}\n", .{ i, marker });
-    }
-
-    // After deleting "Line 3" with EditBuffer.deleteRange, we should have:
-    // - 2 lines remaining
-    // - 2 break markers (after Line 1 and after Line 2 - document ends with newline)
-    // - 2 linestart markers
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.brk));
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.linestart));

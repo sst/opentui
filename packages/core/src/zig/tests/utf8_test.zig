@@ -176,26 +176,10 @@ fn testLineBreaks(test_case: LineBreakTestCase, allocator: std.mem.Allocator) !v
 
     try utf8.findLineBreaksSIMD16(test_case.input, &result);
 
-    if (result.breaks.items.len != test_case.expected.len) {
-        std.debug.print("\nLine break test FAILED on '{s}':\n", .{test_case.name});
-        std.debug.print("  Expected {d} breaks, got {d}\n", .{ test_case.expected.len, result.breaks.items.len });
-        std.debug.print("  Expected: {any}\n", .{test_case.expected});
-        std.debug.print("  Got:      {any}\n", .{result.breaks.items});
-        return error.TestFailed;
-    }
+    try testing.expectEqual(test_case.expected.len, result.breaks.items.len);
 
     for (test_case.expected, 0..) |exp, i| {
-        if (result.breaks.items[i].pos != exp) {
-            std.debug.print("\nLine break test FAILED on '{s}':\n", .{test_case.name});
-            std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i].pos });
-            std.debug.print("  Expected: {any}\n", .{test_case.expected});
-            std.debug.print("  Got:      ", .{});
-            for (result.breaks.items) |brk| {
-                std.debug.print("{d} ", .{brk.pos});
-            }
-            std.debug.print("\n", .{});
-            return error.TestFailed;
-        }
+        try testing.expectEqual(exp, result.breaks.items[i].pos);
     }
 }
 
@@ -451,28 +435,10 @@ fn testWrapBreaks(test_case: WrapBreakTestCase, allocator: std.mem.Allocator) !v
 
     try utf8.findWrapBreaksSIMD16(test_case.input, &result);
 
-    if (result.breaks.items.len != test_case.expected.len) {
-        std.debug.print("\nWrap break test FAILED on '{s}':\n", .{test_case.name});
-        std.debug.print("  Input: \"{s}\"\n", .{test_case.input});
-        std.debug.print("  Expected {d} breaks, got {d}\n", .{ test_case.expected.len, result.breaks.items.len });
-        std.debug.print("  Expected: {any}\n", .{test_case.expected});
-        std.debug.print("  Got:      {any}\n", .{result.breaks.items});
-        return error.TestFailed;
-    }
+    try testing.expectEqual(test_case.expected.len, result.breaks.items.len);
 
     for (test_case.expected, 0..) |exp, i| {
-        if (result.breaks.items[i].byte_offset != exp) {
-            std.debug.print("\nWrap break test FAILED on '{s}':\n", .{test_case.name});
-            std.debug.print("  Input: \"{s}\"\n", .{test_case.input});
-            std.debug.print("  Break {d}: expected {d}, got {d}\n", .{ i, exp, result.breaks.items[i].byte_offset });
-            std.debug.print("  Expected: {any}\n", .{test_case.expected});
-            std.debug.print("  Got byte_offsets: ", .{});
-            for (result.breaks.items) |brk| {
-                std.debug.print("{d} ", .{brk.byte_offset});
-            }
-            std.debug.print("\n", .{});
-            return error.TestFailed;
-        }
+        try testing.expectEqual(exp, result.breaks.items[i].byte_offset);
     }
 }
 

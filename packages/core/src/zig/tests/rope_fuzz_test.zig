@@ -38,9 +38,6 @@ fn verifyInvariants(rope: *const rope_mod.Rope(TestItem)) !void {
     // Verify depth is logarithmic (allow slack for imbalance and sequential inserts)
     const depth = rope.root.depth();
     const max_expected_depth: u32 = if (count <= 1) 1 else @as(u32, @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(count)))) * 4.5));
-    if (depth > max_expected_depth) {
-        std.debug.print("Depth check failed: depth={d}, max_expected={d}, count={d}\n", .{ depth, max_expected_depth, count });
-    }
     try std.testing.expect(depth <= max_expected_depth);
 }
 
