@@ -62,7 +62,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   // Create interactive editor
   editor = new TextareaRenderable(renderer, {
     id: "editor",
-    value: initialContent,
+    initialValue: initialContent,
     textColor: "#F0F6FC",
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
