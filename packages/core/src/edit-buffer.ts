@@ -335,7 +335,7 @@ export class EditBuffer extends EventEmitter {
 
   public clear(): void {
     this.guard()
-    this.lib.textBufferClear(this.textBufferPtr)
+    this.lib.editBufferClear(this.bufferPtr)
   }
 
   public destroy(): void {

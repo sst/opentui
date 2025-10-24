@@ -1635,6 +1635,35 @@ describe("TextareaRenderable", () => {
       expect(editor.getLineHighlights(0).length).toBe(0)
       expect(editor.getLineHighlights(1).length).toBe(0)
     })
+
+    it("should allow typing after clear()", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("Hello World")
+
+      currentMockInput.pressKey("!")
+      expect(editor.plainText).toBe("!Hello World")
+
+      editor.clear()
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("N")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("w")
+      expect(editor.plainText).toBe("New")
+
+      currentMockInput.pressKey(" ")
+      currentMockInput.pressKey("T")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("x")
+      currentMockInput.pressKey("t")
+      expect(editor.plainText).toBe("New Text")
+    })
   })
 
   describe("Wrapping", () => {

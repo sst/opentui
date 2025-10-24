@@ -1422,3 +1422,314 @@ describe("EditBuffer History Management", () => {
     })
   })
 })
+
+describe("EditBuffer Clear Method", () => {
+  let buffer: EditBuffer
+
+  beforeEach(() => {
+    buffer = EditBuffer.create("wcwidth")
+  })
+
+  afterEach(() => {
+    buffer.destroy()
+  })
+
+  describe("basic clear functionality", () => {
+    it("should clear text content", () => {
+      buffer.setText("Hello World")
+      expect(buffer.getText()).toBe("Hello World")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should reset cursor to 0,0", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+      expect(buffer.getCursorPosition().visualColumn).toBe(5)
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+      expect(cursor.offset).toBe(0)
+    })
+
+    it("should clear multi-line text", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      expect(buffer.getText()).toBe("Line 1\nLine 2\nLine 3")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear Unicode text", () => {
+      buffer.setText("Hello 世界 🌟")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clearing already empty buffer", () => {
+      buffer.setText("")
+      expect(buffer.getText()).toBe("")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+
+    it("should handle clearing after multiple edits", () => {
+      buffer.setText("Hello")
+      buffer.setCursorToLineCol(0, 5) // Move to end
+      buffer.insertText(" World")
+      buffer.insertText("!")
+      expect(buffer.getText()).toBe("Hello World!")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+  })
+
+  describe("clear with cursor positions", () => {
+    it("should reset cursor from end of text", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 11) // End of text
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+
+    it("should reset cursor from middle of multi-line text", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      buffer.setCursorToLineCol(1, 3) // Middle of line 2
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+
+    it("should reset cursor from last line", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      buffer.gotoLine(2) // Last line
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+  })
+
+  describe("clear with placeholder", () => {
+    it("should restore placeholder after clear", () => {
+      buffer.setPlaceholder("Enter text here...")
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Hello")
+      expect(buffer.getText()).toBe("Hello")
+
+      buffer.clear()
+      // Placeholder should be active again
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clear without placeholder", () => {
+      buffer.setText("Hello World")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clear with multi-line placeholder", () => {
+      buffer.setPlaceholder("Line 1\nLine 2")
+
+      buffer.insertText("Test")
+      expect(buffer.getText()).toBe("Test")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear and restore placeholder multiple times", () => {
+      buffer.setPlaceholder("Placeholder")
+
+      buffer.insertText("Text 1")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Text 2")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Text 3")
+      expect(buffer.getText()).toBe("Text 3")
+    })
+  })
+
+  describe("clear with events", () => {
+    it("should emit content-changed event on clear", async () => {
+      let eventCount = 0
+      buffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      buffer.setText("Hello World")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      buffer.clear()
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+    })
+
+    it("should emit cursor-changed event on clear", async () => {
+      let eventCount = 0
+      buffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+      await Bun.sleep(10)
+      const countBeforeClear = eventCount
+
+      buffer.clear()
+      await Bun.sleep(10)
+
+      // Should emit cursor-changed when resetting cursor to 0,0
+      expect(eventCount).toBeGreaterThan(countBeforeClear)
+    })
+
+    it("should emit both events on clear", async () => {
+      let contentChangedCount = 0
+      let cursorChangedCount = 0
+
+      buffer.on("content-changed", () => {
+        contentChangedCount++
+      })
+      buffer.on("cursor-changed", () => {
+        cursorChangedCount++
+      })
+
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+      await Bun.sleep(10)
+
+      const contentCountBefore = contentChangedCount
+      const cursorCountBefore = cursorChangedCount
+
+      buffer.clear()
+      await Bun.sleep(10)
+
+      expect(contentChangedCount).toBeGreaterThan(contentCountBefore)
+      expect(cursorChangedCount).toBeGreaterThan(cursorCountBefore)
+    })
+  })
+
+  describe("clear and subsequent operations", () => {
+    it("should allow inserting text after clear", () => {
+      buffer.setText("Hello")
+      buffer.clear()
+
+      buffer.insertText("World")
+      expect(buffer.getText()).toBe("World")
+    })
+
+    it("should allow setText after clear", () => {
+      buffer.setText("Hello")
+      buffer.clear()
+
+      buffer.setText("New Text")
+      expect(buffer.getText()).toBe("New Text")
+    })
+
+    it("should maintain correct cursor after clear and insert", () => {
+      buffer.setText("Hello World")
+      buffer.clear()
+
+      buffer.insertText("Test")
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(4)
+    })
+
+    it("should allow multiple clear operations", () => {
+      buffer.setText("Text 1")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.setText("Text 2")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.setText("Text 3")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+  })
+
+  describe("clear with complex scenarios", () => {
+    it("should clear after edit session", () => {
+      buffer.setText("Hello")
+      buffer.setCursorToLineCol(0, 5) // Move to end
+      buffer.insertText(" World")
+      buffer.insertText("!")
+      buffer.setCursorToLineCol(0, 0) // Move to start
+      buffer.insertText(">> ")
+
+      expect(buffer.getText()).toBe(">> Hello World!")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+
+    it("should clear after line operations", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      buffer.gotoLine(1)
+      buffer.deleteLine()
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear after range deletion", () => {
+      buffer.setText("Hello World Test")
+      buffer.deleteRange(0, 6, 0, 11)
+      expect(buffer.getText()).toBe("Hello  Test")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clear with wide characters", () => {
+      buffer.setText("A世🌟B")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.line).toBe(0)
+      expect(cursor.visualColumn).toBe(0)
+    })
+  })
+
+  describe("error handling", () => {
+    it("should throw error when clearing destroyed buffer", () => {
+      buffer.setText("Test")
+      buffer.destroy()
+
+      expect(() => buffer.clear()).toThrow("EditBuffer is destroyed")
+    })
+  })
+})
