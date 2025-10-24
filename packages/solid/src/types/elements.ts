@@ -118,7 +118,7 @@ export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable>
 
 export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> & {
   focused?: boolean
-  onSubmit?: (value: string) => void
+  onSubmit?: () => void
   onContentChange?: (value: string) => void
   onCursorChange?: (value: { line: number; visualColumn: number }) => void
   onKeyDown?: (event: KeyboardEvent) => void

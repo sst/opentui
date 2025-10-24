@@ -12,6 +12,7 @@ import {
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
+  TextareaRenderable,
   TextNodeRenderable,
   TextRenderable,
   type TextNodeOptions,
@@ -270,6 +271,9 @@ export const {
           if (prev) {
             node.off(InputRenderableEvents.ENTER, prev)
           }
+        } else {
+          // @ts-expect-error todo validate if prop is actually settable
+          node[name] = value
         }
         break
       case "onSelect":
