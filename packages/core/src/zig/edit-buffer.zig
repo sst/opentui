@@ -679,6 +679,21 @@ pub const EditBuffer = struct {
         self.tb.rope.clear_history();
     }
 
+    pub fn clear(self: *EditBuffer) !void {
+        if (self.placeholder_active) {
+            self.placeholder_active = false;
+            self.saved_style_ptr = null;
+        }
+
+        self.tb.clear();
+        try self.setCursor(0, 0);
+        self.emitNativeEvent("content-changed");
+
+        if (self.placeholder_bytes != null) {
+            try self.insertPlaceholder();
+        }
+    }
+
     pub fn setPlaceholder(self: *EditBuffer, text: []const u8) !void {
         // Store the placeholder text (allocate in EditBuffer's allocator)
         if (self.placeholder_bytes) |old| {

@@ -618,6 +618,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    editBufferClear: {
+      args: ["ptr"],
+      returns: "void",
+    },
     editBufferGetNextWordBoundary: {
       args: ["ptr", "ptr"],
       returns: "void",
@@ -1143,6 +1147,7 @@ export interface RenderLib {
   editBufferClearHistory: (buffer: Pointer) => void
   editBufferSetPlaceholder: (buffer: Pointer, text: string | null) => void
   editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
+  editBufferClear: (buffer: Pointer) => void
   editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetEOL: (buffer: Pointer) => { row: number; col: number; offset: number }
@@ -2291,6 +2296,10 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferSetPlaceholderColor(buffer: Pointer, color: RGBA): void {
     this.opentui.symbols.editBufferSetPlaceholderColor(buffer, color.buffer)
+  }
+
+  public editBufferClear(buffer: Pointer): void {
+    this.opentui.symbols.editBufferClear(buffer)
   }
 
   public editBufferGetNextWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {

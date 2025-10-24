@@ -738,6 +738,10 @@ export fn editBufferSetPlaceholderColor(edit_buffer: *edit_buffer_mod.EditBuffer
     edit_buffer.setPlaceholderColor(utils.f32PtrToRGBA(color)) catch {};
 }
 
+export fn editBufferClear(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.clear() catch {};
+}
+
 // ===== EditorView Exports =====
 
 export fn createEditorView(edit_buffer: *edit_buffer_mod.EditBuffer, viewport_width: u32, viewport_height: u32) ?*editor_view.EditorView {
