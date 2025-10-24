@@ -321,8 +321,6 @@ pub const EditBuffer = struct {
 
         if (result.segments.items.len > 0) {
             try self.tb.rope.insertSliceByWeight(insert_offset, result.segments.items, &self.segment_splitter);
-
-            self.tb.char_count += inserted_width;
         }
         if (num_breaks > 0) {
             const new_row = cursor.row + @as(u32, @intCast(num_breaks));
@@ -369,15 +367,7 @@ pub const EditBuffer = struct {
 
         if (start_offset >= end_offset) return;
 
-        const deleted_width = end_offset - start_offset;
-
         try self.tb.rope.deleteRangeByWeight(start_offset, end_offset, &self.segment_splitter);
-
-        if (self.tb.char_count >= deleted_width) {
-            self.tb.char_count -= deleted_width;
-        } else {
-            self.tb.char_count = 0;
-        }
 
         self.tb.markViewsDirty();
 
@@ -654,8 +644,6 @@ pub const EditBuffer = struct {
     pub fn undo(self: *EditBuffer) ![]const u8 {
         const prev_meta = try self.tb.rope.undo("current");
 
-        self.tb.char_count = self.tb.rope.root.metrics().weight();
-
         const cursor = self.getPrimaryCursor();
         try self.setCursor(cursor.row, cursor.col);
 
@@ -668,8 +656,6 @@ pub const EditBuffer = struct {
 
     pub fn redo(self: *EditBuffer) ![]const u8 {
         const next_meta = try self.tb.rope.redo();
-
-        self.tb.char_count = self.tb.rope.root.metrics().weight();
 
         const cursor = self.getPrimaryCursor();
         try self.setCursor(cursor.row, cursor.col);
@@ -766,7 +752,6 @@ pub const EditBuffer = struct {
 
         if (result.segments.items.len > 0) {
             try self.tb.rope.insertSliceByWeight(insert_offset, result.segments.items, &self.segment_splitter);
-            self.tb.char_count += inserted_width;
         }
 
         try self.tb.addHighlightByCharRange(0, inserted_width, self.placeholder_style_id, 255, self.placeholder_hl_ref);
@@ -782,7 +767,6 @@ pub const EditBuffer = struct {
 
         self.tb.removeHighlightsByRef(self.placeholder_hl_ref);
         self.tb.rope.clear();
-        self.tb.char_count = 0;
         self.tb.setSyntaxStyle(self.saved_style_ptr);
         self.saved_style_ptr = null;
         self.placeholder_active = false;
