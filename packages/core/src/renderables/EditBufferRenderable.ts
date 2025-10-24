@@ -463,4 +463,16 @@ export abstract class EditBufferRenderable extends Renderable {
     this.yogaNode.markDirty()
     this.requestRender()
   }
+
+  public deleteRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
+    this.editBuffer.deleteRange(startLine, startCol, endLine, endCol)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  public insertText(text: string): void {
+    this.editBuffer.insertText(text)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
 }

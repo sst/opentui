@@ -6496,4 +6496,194 @@ describe("TextareaRenderable", () => {
       })
     })
   })
+
+  describe("EditBufferRenderable Methods", () => {
+    describe("deleteRange", () => {
+      it("should delete range within a single line", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Hello World",
+          width: 40,
+          height: 10,
+        })
+
+        editor.deleteRange(0, 6, 0, 11)
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Hello ")
+      })
+
+      it("should delete range across multiple lines", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Line 1\nLine 2\nLine 3",
+          width: 40,
+          height: 10,
+        })
+
+        editor.deleteRange(0, 5, 2, 5)
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Line 3")
+      })
+
+      it("should delete entire line", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "First\nSecond\nThird",
+          width: 40,
+          height: 10,
+        })
+
+        editor.deleteRange(1, 0, 1, 6)
+        await renderOnce()
+
+        expect(editor.plainText).toBe("First\n\nThird")
+      })
+
+      it("should mark yoga node as dirty and request render", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Test text",
+          width: 40,
+          height: 10,
+        })
+
+        const initialHeight = editor.height
+        editor.deleteRange(0, 0, 0, 5)
+        await renderOnce()
+
+        expect(editor.plainText).toBe("text")
+      })
+
+      it("should handle empty range deletion", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Hello",
+          width: 40,
+          height: 10,
+        })
+
+        editor.deleteRange(0, 2, 0, 2)
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Hello")
+      })
+    })
+
+    describe("insertText", () => {
+      it("should insert text at cursor position", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Hello",
+          width: 40,
+          height: 10,
+        })
+
+        editor.insertText(" World")
+        await renderOnce()
+
+        expect(editor.plainText).toBe(" WorldHello")
+      })
+
+      it("should insert text in middle of content", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "HelloWorld",
+          width: 40,
+          height: 10,
+        })
+
+        editor.editBuffer.setCursor(0, 5)
+        editor.insertText(" ")
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Hello World")
+      })
+
+      it("should insert multiline text", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Start",
+          width: 40,
+          height: 10,
+        })
+
+        editor.editBuffer.setCursor(0, 5)
+        editor.insertText("\nEnd")
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Start\nEnd")
+      })
+
+      it("should mark yoga node as dirty and request render", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "",
+          width: 40,
+          height: 10,
+        })
+
+        editor.insertText("Test")
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Test")
+      })
+
+      it("should insert multiline text and update content", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Line 1",
+          width: 40,
+          height: 10,
+        })
+
+        editor.editBuffer.setCursor(0, 6)
+        editor.insertText("\nLine 2\nLine 3")
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Line 1\nLine 2\nLine 3")
+        expect(editor.cursor.line).toBe(2)
+      })
+    })
+
+    describe("Combined deleteRange and insertText", () => {
+      it("should replace text by deleting range then inserting", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Hello World",
+          width: 40,
+          height: 10,
+        })
+
+        editor.deleteRange(0, 6, 0, 11)
+        editor.editBuffer.setCursor(0, 6)
+        editor.insertText("Friend")
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Hello Friend")
+      })
+
+      it("should handle complex editing operations", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Line 1\nLine 2\nLine 3",
+          width: 40,
+          height: 10,
+        })
+
+        editor.deleteRange(1, 0, 1, 6)
+        editor.editBuffer.setCursor(1, 0)
+        editor.insertText("Modified")
+        await renderOnce()
+
+        expect(editor.plainText).toBe("Line 1\nModified\nLine 3")
+      })
+
+      it("should work after multiple operations", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Start",
+          width: 40,
+          height: 10,
+        })
+
+        editor.editBuffer.setCursor(0, 5)
+        editor.insertText(" Middle")
+        editor.editBuffer.setCursor(0, 12)
+        editor.insertText(" End")
+        editor.deleteRange(0, 0, 0, 5)
+        await renderOnce()
+
+        expect(editor.plainText).toBe(" Middle End")
+      })
+    })
+  })
 })
