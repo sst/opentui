@@ -333,6 +333,11 @@ export class EditBuffer extends EventEmitter {
     return this.lib.textBufferGetLineHighlights(this.textBufferPtr, lineIdx)
   }
 
+  public clear(): void {
+    this.guard()
+    this.lib.textBufferClear(this.textBufferPtr)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
 

@@ -456,4 +456,11 @@ export abstract class EditBufferRenderable extends Renderable {
     this.yogaNode.markDirty()
     this.requestRender()
   }
+
+  public clear(): void {
+    this.editBuffer.clear()
+    this.editBuffer.clearAllHighlights()
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
 }

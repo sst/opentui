@@ -1565,6 +1565,76 @@ describe("TextareaRenderable", () => {
       expect(editor.cursor.line).toBe(0)
       expect(editor.cursor.visualColumn).toBe(0)
     })
+
+    it("should clear text with clear() method", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      expect(editor.plainText).toBe("Hello World")
+
+      editor.clear()
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should clear highlights with clear() method", async () => {
+      const style = SyntaxStyle.create()
+      const styleId = style.registerStyle("highlight", {
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        syntaxStyle: style,
+      })
+
+      editor.addHighlightByCharRange({
+        start: 0,
+        end: 5,
+        styleId: styleId,
+        priority: 0,
+      })
+
+      const highlightsBefore = editor.getLineHighlights(0)
+      expect(highlightsBefore.length).toBeGreaterThan(0)
+
+      editor.clear()
+
+      expect(editor.plainText).toBe("")
+      const highlightsAfter = editor.getLineHighlights(0)
+      expect(highlightsAfter.length).toBe(0)
+    })
+
+    it("should clear both text and highlights together", async () => {
+      const style = SyntaxStyle.create()
+      const styleId = style.registerStyle("highlight", {
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        syntaxStyle: style,
+      })
+
+      editor.addHighlight(0, { start: 0, end: 6, styleId: styleId, priority: 0 })
+      editor.addHighlight(1, { start: 0, end: 6, styleId: styleId, priority: 0 })
+
+      expect(editor.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(editor.getLineHighlights(0).length).toBe(1)
+      expect(editor.getLineHighlights(1).length).toBe(1)
+
+      editor.clear()
+
+      expect(editor.plainText).toBe("")
+      expect(editor.getLineHighlights(0).length).toBe(0)
+      expect(editor.getLineHighlights(1).length).toBe(0)
+    })
   })
 
   describe("Wrapping", () => {
