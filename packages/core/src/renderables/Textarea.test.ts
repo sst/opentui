@@ -5330,6 +5330,173 @@ describe("TextareaRenderable", () => {
       })
     })
 
+    describe("onSubmit", () => {
+      it("should fire onSubmit with default keybinding (Meta+Enter)", async () => {
+        let submitCount = 0
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Test content",
+          width: 40,
+          height: 10,
+          onSubmit: () => {
+            submitCount++
+          },
+        })
+
+        editor.focus()
+        const initialCount = submitCount
+
+        currentMockInput.pressKey("ALT_ENTER")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect(submitCount).toBe(initialCount + 1)
+        expect(editor.plainText).toBe("Test content")
+      })
+
+      it("should fire onSubmit with alternative keybinding (Meta+Return)", async () => {
+        let submitCount = 0
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Test",
+          width: 40,
+          height: 10,
+          onSubmit: () => {
+            submitCount++
+          },
+        })
+
+        editor.focus()
+
+        currentMockInput.pressKey("ALT_RETURN")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect(submitCount).toBe(1)
+      })
+
+      it("should not insert newline when submitting", async () => {
+        let submitCount = 0
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Test",
+          width: 40,
+          height: 10,
+          onSubmit: () => {
+            submitCount++
+          },
+        })
+
+        editor.focus()
+        editor.gotoLine(9999)
+
+        currentMockInput.pressKey("ALT_ENTER")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect(submitCount).toBe(1)
+        expect(editor.plainText).toBe("Test")
+      })
+
+      it("should update handler via setter", async () => {
+        let firstHandlerCalled = false
+        let secondHandlerCalled = false
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "",
+          width: 40,
+          height: 10,
+          onSubmit: () => {
+            firstHandlerCalled = true
+          },
+        })
+
+        editor.focus()
+
+        currentMockInput.pressKey("ALT_ENTER")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(firstHandlerCalled).toBe(true)
+
+        editor.onSubmit = () => {
+          secondHandlerCalled = true
+        }
+
+        currentMockInput.pressKey("ALT_ENTER")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(secondHandlerCalled).toBe(true)
+      })
+
+      it("should not fire when handler is undefined", async () => {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Test",
+          width: 40,
+          height: 10,
+          onSubmit: undefined,
+        })
+
+        editor.focus()
+
+        currentMockInput.pressKey("ALT_ENTER")
+        expect(editor.plainText).toBe("Test")
+      })
+
+      it("should support custom keybinding for submit", async () => {
+        let submitCount = 0
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "Test",
+          width: 40,
+          height: 10,
+          keyBindings: [{ name: "s", ctrl: true, action: "submit" }],
+          onSubmit: () => {
+            submitCount++
+          },
+        })
+
+        editor.focus()
+
+        currentMockInput.pressKey("CTRL_S")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+
+        expect(submitCount).toBe(1)
+      })
+
+      it("should get current handler via getter", async () => {
+        const handler = () => {}
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "",
+          width: 40,
+          height: 10,
+          onSubmit: handler,
+        })
+
+        expect(editor.onSubmit).toBe(handler)
+      })
+
+      it("should allow removing handler by setting to undefined", async () => {
+        let submitCount = 0
+
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+          initialValue: "",
+          width: 40,
+          height: 10,
+          onSubmit: () => {
+            submitCount++
+          },
+        })
+
+        editor.focus()
+
+        currentMockInput.pressKey("ALT_ENTER")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(submitCount).toBe(1)
+
+        editor.onSubmit = undefined
+
+        currentMockInput.pressKey("ALT_ENTER")
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(submitCount).toBe(1)
+      })
+    })
+
     describe("Combined cursor and content events", () => {
       it("should fire both onCursorChange and onContentChange when typing", async () => {
         let cursorChangeCount = 0

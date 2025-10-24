@@ -91,6 +91,8 @@ export const KeyCodes = {
   ALT_RIGHT: "\x1b\x1b[C",
   ALT_UP: "\x1b\x1b[A",
   ALT_DOWN: "\x1b\x1b[B",
+  ALT_ENTER: "\x1b\r",
+  ALT_RETURN: "\x1b\r",
 } as const
 
 export type KeyInput = string | keyof typeof KeyCodes

@@ -37,6 +37,7 @@ export type TextareaAction =
   | "select-word-backward"
   | "delete-word-forward"
   | "delete-word-backward"
+  | "submit"
 
 export type KeyBinding = BaseKeyBinding<TextareaAction>
 
@@ -61,6 +62,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "delete", action: "delete" },
   { name: "return", action: "newline" },
   { name: "enter", action: "newline" },
+  { name: "return", meta: true, action: "submit" },
+  { name: "enter", meta: true, action: "submit" },
   { name: "z", ctrl: true, action: "undo" },
   { name: "Z", ctrl: true, shift: true, action: "redo" },
   { name: "y", ctrl: true, action: "redo" },
@@ -77,6 +80,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "w", ctrl: true, action: "delete-word-backward" },
 ]
 
+export interface SubmitEvent {}
+
 export interface TextareaOptions extends EditBufferOptions {
   initialValue?: string
   backgroundColor?: ColorInput
@@ -86,6 +91,7 @@ export interface TextareaOptions extends EditBufferOptions {
   placeholder?: string | null
   placeholderColor?: ColorInput
   keyBindings?: KeyBinding[]
+  onSubmit?: (event: SubmitEvent) => void
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
@@ -98,6 +104,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _keyBindingsMap: Map<string, TextareaAction>
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
+  private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
 
   private static readonly defaults = {
     backgroundColor: "transparent",
@@ -132,6 +139,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
     this._actionHandlers = this.buildActionHandlers()
+    this._submitListener = options.onSubmit
 
     if (options.initialValue) {
       this.setText(options.initialValue)
@@ -172,6 +180,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["select-word-backward", () => this.moveWordBackward({ select: true })],
       ["delete-word-forward", () => this.deleteWordForward()],
       ["delete-word-backward", () => this.deleteWordBackward()],
+      ["submit", () => this.submit()],
     ])
   }
 
@@ -546,5 +555,20 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.setText(value)
       this._initialValueSet = true
     }
+  }
+
+  public submit(): boolean {
+    if (this._submitListener) {
+      this._submitListener({})
+    }
+    return true
+  }
+
+  public set onSubmit(handler: ((event: SubmitEvent) => void) | undefined) {
+    this._submitListener = handler
+  }
+
+  public get onSubmit(): ((event: SubmitEvent) => void) | undefined {
+    return this._submitListener
   }
 }

@@ -67,6 +67,30 @@ test("parseKeypress - special keys", () => {
     raw: "\n",
   })
 
+  expect(parseKeypress("\x1b\r")).toEqual({
+    eventType: "press",
+    name: "return",
+    ctrl: false,
+    meta: true,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x1b\r",
+    raw: "\x1b\r",
+  })
+
+  expect(parseKeypress("\x1b\n")).toEqual({
+    eventType: "press",
+    name: "enter",
+    ctrl: false,
+    meta: true,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x1b\n",
+    raw: "\x1b\n",
+  })
+
   expect(parseKeypress("\t")).toEqual({
     eventType: "press",
     name: "tab",
