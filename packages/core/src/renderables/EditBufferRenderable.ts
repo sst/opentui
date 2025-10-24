@@ -51,8 +51,8 @@ export abstract class EditBufferRenderable extends Renderable {
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
 
-  public editBuffer: EditBuffer
-  public editorView: EditorView
+  public readonly editBuffer: EditBuffer
+  public readonly editorView: EditorView
 
   protected _defaultOptions = {
     textColor: RGBA.fromValues(1, 1, 1, 1),
