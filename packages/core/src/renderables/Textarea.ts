@@ -571,4 +571,9 @@ export class TextareaRenderable extends EditBufferRenderable {
   public get onSubmit(): ((event: SubmitEvent) => void) | undefined {
     return this._submitListener
   }
+
+  public set keyBindings(bindings: KeyBinding[]) {
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, bindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
+  }
 }

@@ -1315,6 +1315,69 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("ALT_X")
       expect(editor.plainText).toBe("")
     })
+
+    it("should update keyBindings dynamically with setter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressKey("ALT_B")
+      expect(editor.cursor.line).toBe(0)
+      expect(editor.cursor.visualColumn).toBe(0)
+
+      editor.keyBindings = [{ name: "b", meta: true, action: "buffer-end" }]
+
+      editor.gotoLine(0)
+      expect(editor.cursor.line).toBe(0)
+
+      currentMockInput.pressKey("ALT_B")
+      expect(editor.cursor.line).toBe(0)
+    })
+
+    it("should merge new keyBindings with defaults", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right")
+      expect(editor.cursor.visualColumn).toBe(1)
+
+      editor.keyBindings = [{ name: "x", meta: true, action: "delete-line" }]
+
+      currentMockInput.pressArrow("right")
+      expect(editor.cursor.visualColumn).toBe(2)
+
+      currentMockInput.pressKey("ALT_X")
+      expect(editor.plainText).toBe("Line 2")
+    })
+
+    it("should override default keyBindings with new bindings", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.visualColumn).toBe(6)
+
+      editor.keyBindings = [{ name: "f", meta: true, action: "buffer-end" }]
+
+      editor.gotoLine(0)
+      currentMockInput.pressKey("ALT_F")
+      expect(editor.cursor.line).toBe(0)
+    })
   })
 
   describe("Chunk Boundary Navigation", () => {
