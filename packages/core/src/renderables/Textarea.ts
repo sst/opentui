@@ -97,9 +97,9 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _placeholderColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
   private _actionHandlers: Map<TextareaAction, () => boolean>
+  private _initialValueSet: boolean = false
 
   private static readonly defaults = {
-    initialValue: "",
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
     focusedBackgroundColor: "transparent",
@@ -133,7 +133,10 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
     this._actionHandlers = this.buildActionHandlers()
 
-    this.setText(options.initialValue ?? defaults.initialValue)
+    if (options.initialValue) {
+      this.setText(options.initialValue)
+      this._initialValueSet = true
+    }
     this.updateColors()
 
     this.editBuffer.setPlaceholder(this._placeholder)
@@ -535,6 +538,13 @@ export class TextareaRenderable extends EditBufferRenderable {
       this._placeholderColor = newColor
       this.editBuffer.setPlaceholderColor(newColor)
       this.requestRender()
+    }
+  }
+
+  set initialValue(value: string) {
+    if (!this._initialValueSet) {
+      this.setText(value)
+      this._initialValueSet = true
     }
   }
 }

@@ -21,7 +21,9 @@ describe("Textarea Layout Tests", () => {
   describe("Basic Textarea Rendering", () => {
     it("should render simple textarea correctly", async () => {
       testSetup = await testRender(
-        () => <textarea value="Hello World" width={20} height={5} backgroundColor="#1e1e1e" textColor="#ffffff" />,
+        () => (
+          <textarea initialValue="Hello World" width={20} height={5} backgroundColor="#1e1e1e" textColor="#ffffff" />
+        ),
         {
           width: 30,
           height: 10,
@@ -37,7 +39,7 @@ describe("Textarea Layout Tests", () => {
       testSetup = await testRender(
         () => (
           <textarea
-            value={"Line 1\nLine 2\nLine 3"}
+            initialValue={"Line 1\nLine 2\nLine 3"}
             width={20}
             height={10}
             backgroundColor="#1e1e1e"
@@ -59,7 +61,7 @@ describe("Textarea Layout Tests", () => {
       testSetup = await testRender(
         () => (
           <textarea
-            value="This is a very long line that should wrap to multiple lines when word wrapping is enabled"
+            initialValue="This is a very long line that should wrap to multiple lines when word wrapping is enabled"
             wrapMode="word"
             width={20}
             backgroundColor="#1e1e1e"
@@ -81,7 +83,7 @@ describe("Textarea Layout Tests", () => {
       testSetup = await testRender(
         () => (
           <textarea
-            value=""
+            initialValue=""
             placeholder="Type something here..."
             placeholderColor="#666666"
             width={30}
@@ -118,7 +120,7 @@ describe("Textarea Layout Tests", () => {
               {/* Textarea container */}
               <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
                 <textarea
-                  value="Hello from the prompt"
+                  initialValue="Hello from the prompt"
                   flexShrink={1}
                   backgroundColor="#1e1e1e"
                   textColor="#ffffff"
@@ -163,7 +165,7 @@ describe("Textarea Layout Tests", () => {
 
               <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
                 <textarea
-                  value="This is a very long prompt that will wrap across multiple lines in the textarea. It should maintain proper layout with the indicator on the left."
+                  initialValue="This is a very long prompt that will wrap across multiple lines in the textarea. It should maintain proper layout with the indicator on the left."
                   wrapMode="word"
                   flexShrink={1}
                   backgroundColor="#1e1e1e"
@@ -205,7 +207,7 @@ describe("Textarea Layout Tests", () => {
 
               <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
                 <textarea
-                  value="ls -la"
+                  initialValue="ls -la"
                   flexShrink={1}
                   backgroundColor="#1e1e1e"
                   textColor="#ffffff"
@@ -233,85 +235,6 @@ describe("Textarea Layout Tests", () => {
     })
   })
 
-  describe("Reactive Textarea Updates", () => {
-    it("should update textarea content reactively", async () => {
-      const [value, setValue] = createSignal("Initial text")
-
-      testSetup = await testRender(
-        () => (
-          <box border width="100%">
-            <box flexDirection="row" width="100%">
-              <box width={3} backgroundColor="#2d2d2d" justifyContent="center" alignItems="center">
-                <text fg="#00ff00">{">"}</text>
-              </box>
-              <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
-                <textarea
-                  value={value()}
-                  flexShrink={1}
-                  wrapMode="word"
-                  backgroundColor="#1e1e1e"
-                  textColor="#ffffff"
-                />
-              </box>
-            </box>
-          </box>
-        ),
-        {
-          width: 50,
-          height: 12,
-        },
-      )
-
-      await testSetup.renderOnce()
-      const initialFrame = testSetup.captureCharFrame()
-
-      setValue("Updated text that is much longer and should wrap to multiple lines if word wrapping is enabled")
-      await testSetup.renderOnce()
-      const updatedFrame = testSetup.captureCharFrame()
-
-      expect(initialFrame).toMatchSnapshot()
-      expect(updatedFrame).toMatchSnapshot()
-      expect(updatedFrame).not.toBe(initialFrame)
-    })
-
-    it("should handle textarea growth with word wrapping", async () => {
-      const [value, setValue] = createSignal("Short")
-
-      testSetup = await testRender(
-        () => (
-          <box border>
-            <box flexDirection="row">
-              <box width={3} backgroundColor="#2d2d2d">
-                <text>{">"}</text>
-              </box>
-              <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
-                <textarea value={value()} wrapMode="word" flexShrink={1} backgroundColor="#1e1e1e" />
-              </box>
-            </box>
-            <text fg="#888888">Status line below textarea</text>
-          </box>
-        ),
-        {
-          width: 40,
-          height: 20,
-        },
-      )
-
-      await testSetup.renderOnce()
-      const shortFrame = testSetup.captureCharFrame()
-
-      setValue(
-        "This is a very long text that will definitely wrap to multiple lines and cause the textarea to grow in height. It should push down the status line below it.",
-      )
-      await testSetup.renderOnce()
-      const longFrame = testSetup.captureCharFrame()
-
-      expect(shortFrame).toMatchSnapshot()
-      expect(longFrame).toMatchSnapshot()
-      expect(longFrame).not.toBe(shortFrame)
-    })
-  })
-
   describe("Complex Layouts with Multiple Textareas", () => {
     it("should render multiple textareas in a column layout", async () => {
       testSetup = await testRender(
@@ -325,7 +248,7 @@ describe("Textarea Layout Tests", () => {
                 </box>
                 <box paddingLeft={1} backgroundColor="#1e1e1e" flexGrow={1}>
                   <textarea
-                    value="What is the weather like today?"
+                    initialValue="What is the weather like today?"
                     wrapMode="word"
                     backgroundColor="#1e1e1e"
                     textColor="#ffffff"
@@ -342,7 +265,7 @@ describe("Textarea Layout Tests", () => {
                 </box>
                 <box paddingLeft={1} backgroundColor="#1e1e1e" flexGrow={1}>
                   <textarea
-                    value="I don't have access to real-time weather data, but I can help you find that information through various weather services."
+                    initialValue="I don't have access to real-time weather data, but I can help you find that information through various weather services."
                     wrapMode="word"
                     backgroundColor="#1e1e1e"
                     textColor="#ffffff"
@@ -372,7 +295,7 @@ describe("Textarea Layout Tests", () => {
               <box width={20} border borderColor="#00ff00">
                 <text fg="#00ff00">Input 1:</text>
                 <textarea
-                  value="Left panel content"
+                  initialValue="Left panel content"
                   wrapMode="word"
                   backgroundColor="#1e1e1e"
                   textColor="#ffffff"
@@ -384,7 +307,7 @@ describe("Textarea Layout Tests", () => {
               <box flexGrow={1} border borderColor="#0088ff">
                 <text fg="#0088ff">Input 2:</text>
                 <textarea
-                  value="Right panel with longer content that may wrap"
+                  initialValue="Right panel with longer content that may wrap"
                   wrapMode="word"
                   backgroundColor="#1e1e1e"
                   textColor="#ffffff"
@@ -397,7 +320,7 @@ describe("Textarea Layout Tests", () => {
             <box border borderColor="#ff9900" marginTop={1}>
               <text fg="#ff9900">Bottom input:</text>
               <textarea
-                value="Bottom panel spanning full width"
+                initialValue="Bottom panel spanning full width"
                 wrapMode="word"
                 backgroundColor="#1e1e1e"
                 textColor="#ffffff"
@@ -738,7 +661,7 @@ describe("Textarea Layout Tests", () => {
                 <text>Header</text>
               </box>
               <box backgroundColor="#0f0" flexGrow={1}>
-                <textarea value={"Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8"} />
+                <textarea initialValue={"Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8"} />
               </box>
               <box height={2} backgroundColor="#00f">
                 <text>Footer</text>
@@ -770,7 +693,7 @@ describe("Textarea Layout Tests", () => {
               </box>
               <box backgroundColor="#1e1e1e" flexGrow={1} paddingTop={1} paddingBottom={1}>
                 <textarea
-                  value="Focused textarea"
+                  initialValue="Focused textarea"
                   backgroundColor="#1e1e1e"
                   textColor="#888888"
                   focusedBackgroundColor="#2d2d2d"
@@ -805,7 +728,7 @@ describe("Textarea Layout Tests", () => {
 
               <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
                 <textarea
-                  value=""
+                  initialValue=""
                   placeholder="Enter your prompt here..."
                   placeholderColor="#666666"
                   flexShrink={1}
@@ -843,7 +766,7 @@ describe("Textarea Layout Tests", () => {
               </box>
               <box backgroundColor="#1e1e1e" flexGrow={1} paddingTop={1} paddingBottom={1}>
                 <textarea
-                  value="ThisIsAVeryLongLineWithNoSpacesThatWillWrapByCharacterWhenCharWrappingIsEnabled"
+                  initialValue="ThisIsAVeryLongLineWithNoSpacesThatWillWrapByCharacterWhenCharWrappingIsEnabled"
                   wrapMode="char"
                   flexShrink={1}
                   backgroundColor="#1e1e1e"
@@ -881,7 +804,7 @@ describe("Textarea Layout Tests", () => {
                 {/* Input area */}
                 <box paddingTop={1} paddingBottom={1} backgroundColor="#1e1e1e" flexGrow={1}>
                   <textarea
-                    value="Explain how async/await works in JavaScript and provide some examples"
+                    initialValue="Explain how async/await works in JavaScript and provide some examples"
                     wrapMode="word"
                     flexShrink={1}
                     backgroundColor="#1e1e1e"
