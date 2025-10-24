@@ -12,7 +12,6 @@ import {
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
-  TextareaRenderable,
   TextNodeRenderable,
   TextRenderable,
   type TextNodeOptions,
