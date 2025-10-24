@@ -78,7 +78,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
 ]
 
 export interface TextareaOptions extends EditBufferOptions {
-  value?: string
+  initialValue?: string
   backgroundColor?: ColorInput
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
@@ -99,7 +99,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _actionHandlers: Map<TextareaAction, () => boolean>
 
   private static readonly defaults = {
-    value: "",
+    initialValue: "",
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
     focusedBackgroundColor: "transparent",
@@ -133,7 +133,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
     this._actionHandlers = this.buildActionHandlers()
 
-    this.updateValue(options.value ?? defaults.value)
+    this.setText(options.initialValue ?? defaults.initialValue)
     this.updateColors()
 
     this.editBuffer.setPlaceholder(this._placeholder)
@@ -216,20 +216,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
 
     return false
-  }
-
-  get value(): string {
-    return this.editBuffer.getText()
-  }
-
-  set value(value: string) {
-    this.updateValue(value)
-  }
-
-  private updateValue(value: string): void {
-    this.editBuffer.setText(value, { history: false })
-    this.yogaNode.markDirty()
-    this.requestRender()
   }
 
   private updateColors(): void {

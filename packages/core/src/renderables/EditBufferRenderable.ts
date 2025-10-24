@@ -450,4 +450,10 @@ export abstract class EditBufferRenderable extends Renderable {
   public getLineHighlights(lineIdx: number): Array<Highlight> {
     return this.editBuffer.getLineHighlights(lineIdx)
   }
+
+  public setText(text: string, opts?: { history?: boolean }): void {
+    this.editBuffer.setText(text, opts)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
 }
