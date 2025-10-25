@@ -576,4 +576,12 @@ export class TextareaRenderable extends EditBufferRenderable {
     const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, bindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
   }
+
+  public get extmarks(): any {
+    if (!this.editBuffer.extmarksController) {
+      const { createExtmarksController } = require("../lib/extmarks")
+      this.editBuffer.extmarksController = createExtmarksController(this.editBuffer, this.editorView)
+    }
+    return this.editBuffer.extmarksController
+  }
 }

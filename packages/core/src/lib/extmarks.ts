@@ -1,4 +1,5 @@
-import type { TextareaRenderable } from "../renderables/Textarea"
+import type { EditBuffer } from "../edit-buffer"
+import type { EditorView } from "../editor-view"
 import { EventEmitter } from "events"
 
 export interface Extmark {
@@ -31,50 +32,44 @@ export interface ExtmarksControllerEvents {
 }
 
 export class ExtmarksController extends EventEmitter {
-  private textarea: TextareaRenderable
+  private editBuffer: EditBuffer
+  private editorView: EditorView
   private extmarks = new Map<number, Extmark>()
   private nextId = 1
   private destroyed = false
 
-  private originalMoveCursorLeft: typeof TextareaRenderable.prototype.moveCursorLeft
-  private originalMoveCursorRight: typeof TextareaRenderable.prototype.moveCursorRight
-  private originalMoveWordForward: typeof TextareaRenderable.prototype.moveWordForward
-  private originalMoveWordBackward: typeof TextareaRenderable.prototype.moveWordBackward
-  private originalDeleteCharBackward: typeof TextareaRenderable.prototype.deleteCharBackward
-  private originalDeleteChar: typeof TextareaRenderable.prototype.deleteChar
-  private originalInsertText: typeof TextareaRenderable.prototype.insertText
-  private originalInsertChar: typeof TextareaRenderable.prototype.insertChar
-  private originalDeleteRange: typeof TextareaRenderable.prototype.deleteRange
-  private originalSetText: typeof TextareaRenderable.prototype.setText
-  private originalClear: typeof TextareaRenderable.prototype.clear
-  private originalNewLine: typeof TextareaRenderable.prototype.newLine
-  private originalDeleteLine: typeof TextareaRenderable.prototype.deleteLine
-  private originalDeleteToLineEnd: typeof TextareaRenderable.prototype.deleteToLineEnd
-  private originalDeleteWordForward: typeof TextareaRenderable.prototype.deleteWordForward
-  private originalDeleteWordBackward: typeof TextareaRenderable.prototype.deleteWordBackward
-  private originalEditorViewDeleteSelectedText: typeof TextareaRenderable.prototype.editorView.deleteSelectedText
+  private originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
+  private originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
+  private originalSetCursorByOffset: typeof EditBuffer.prototype.setCursorByOffset
+  private originalDeleteCharBackward: typeof EditBuffer.prototype.deleteCharBackward
+  private originalDeleteChar: typeof EditBuffer.prototype.deleteChar
+  private originalInsertText: typeof EditBuffer.prototype.insertText
+  private originalInsertChar: typeof EditBuffer.prototype.insertChar
+  private originalDeleteRange: typeof EditBuffer.prototype.deleteRange
+  private originalSetText: typeof EditBuffer.prototype.setText
+  private originalClear: typeof EditBuffer.prototype.clear
+  private originalNewLine: typeof EditBuffer.prototype.newLine
+  private originalDeleteLine: typeof EditBuffer.prototype.deleteLine
+  private originalEditorViewDeleteSelectedText: typeof EditorView.prototype.deleteSelectedText
 
-  constructor(textarea: TextareaRenderable) {
+  constructor(editBuffer: EditBuffer, editorView: EditorView) {
     super()
-    this.textarea = textarea
+    this.editBuffer = editBuffer
+    this.editorView = editorView
 
-    this.originalMoveCursorLeft = textarea.moveCursorLeft.bind(textarea)
-    this.originalMoveCursorRight = textarea.moveCursorRight.bind(textarea)
-    this.originalMoveWordForward = textarea.moveWordForward.bind(textarea)
-    this.originalMoveWordBackward = textarea.moveWordBackward.bind(textarea)
-    this.originalDeleteCharBackward = textarea.deleteCharBackward.bind(textarea)
-    this.originalDeleteChar = textarea.deleteChar.bind(textarea)
-    this.originalInsertText = textarea.insertText.bind(textarea)
-    this.originalInsertChar = textarea.insertChar.bind(textarea)
-    this.originalDeleteRange = textarea.deleteRange.bind(textarea)
-    this.originalSetText = textarea.setText.bind(textarea)
-    this.originalClear = textarea.clear.bind(textarea)
-    this.originalNewLine = textarea.newLine.bind(textarea)
-    this.originalDeleteLine = textarea.deleteLine.bind(textarea)
-    this.originalDeleteToLineEnd = textarea.deleteToLineEnd.bind(textarea)
-    this.originalDeleteWordForward = textarea.deleteWordForward.bind(textarea)
-    this.originalDeleteWordBackward = textarea.deleteWordBackward.bind(textarea)
-    this.originalEditorViewDeleteSelectedText = textarea.editorView.deleteSelectedText.bind(textarea.editorView)
+    this.originalMoveCursorLeft = editBuffer.moveCursorLeft.bind(editBuffer)
+    this.originalMoveCursorRight = editBuffer.moveCursorRight.bind(editBuffer)
+    this.originalSetCursorByOffset = editBuffer.setCursorByOffset.bind(editBuffer)
+    this.originalDeleteCharBackward = editBuffer.deleteCharBackward.bind(editBuffer)
+    this.originalDeleteChar = editBuffer.deleteChar.bind(editBuffer)
+    this.originalInsertText = editBuffer.insertText.bind(editBuffer)
+    this.originalInsertChar = editBuffer.insertChar.bind(editBuffer)
+    this.originalDeleteRange = editBuffer.deleteRange.bind(editBuffer)
+    this.originalSetText = editBuffer.setText.bind(editBuffer)
+    this.originalClear = editBuffer.clear.bind(editBuffer)
+    this.originalNewLine = editBuffer.newLine.bind(editBuffer)
+    this.originalDeleteLine = editBuffer.deleteLine.bind(editBuffer)
+    this.originalEditorViewDeleteSelectedText = editorView.deleteSelectedText.bind(editorView)
 
     this.wrapCursorMovement()
     this.wrapDeletion()
@@ -84,115 +79,119 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private wrapCursorMovement(): void {
-    this.textarea.moveCursorLeft = (options?: { select?: boolean }): boolean => {
-      if (this.destroyed) return this.originalMoveCursorLeft(options)
+    this.editBuffer.moveCursorLeft = (): void => {
+      if (this.destroyed) {
+        this.originalMoveCursorLeft()
+        return
+      }
 
-      const currentOffset = this.textarea.cursorOffset
-      const select = options?.select ?? false
+      const currentOffset = this.editorView.getVisualCursor().offset
+      const hasSelection = this.editorView.hasSelection()
 
-      if (select) {
-        return this.originalMoveCursorLeft(options)
+      if (hasSelection) {
+        this.originalMoveCursorLeft()
+        return
       }
 
       const targetOffset = currentOffset - 1
       if (targetOffset < 0) {
-        return this.originalMoveCursorLeft(options)
+        this.originalMoveCursorLeft()
+        return
       }
 
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
       if (virtualExtmark && currentOffset >= virtualExtmark.end) {
-        this.textarea.cursorOffset = virtualExtmark.start - 1
-        return true
+        this.editBuffer.setCursorByOffset(virtualExtmark.start - 1)
+        return
       }
 
-      return this.originalMoveCursorLeft(options)
+      this.originalMoveCursorLeft()
     }
 
-    this.textarea.moveCursorRight = (options?: { select?: boolean }): boolean => {
-      if (this.destroyed) return this.originalMoveCursorRight(options)
+    this.editBuffer.moveCursorRight = (): void => {
+      if (this.destroyed) {
+        this.originalMoveCursorRight()
+        return
+      }
 
-      const currentOffset = this.textarea.cursorOffset
-      const select = options?.select ?? false
+      const currentOffset = this.editorView.getVisualCursor().offset
+      const hasSelection = this.editorView.hasSelection()
 
-      if (select) {
-        return this.originalMoveCursorRight(options)
+      if (hasSelection) {
+        this.originalMoveCursorRight()
+        return
       }
 
       const targetOffset = currentOffset + 1
-      const textLength = this.textarea.plainText.length
+      const textLength = this.editBuffer.getText().length
 
       if (targetOffset > textLength) {
-        return this.originalMoveCursorRight(options)
+        this.originalMoveCursorRight()
+        return
       }
 
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
       if (virtualExtmark && currentOffset <= virtualExtmark.start) {
-        this.textarea.cursorOffset = virtualExtmark.end
-        return true
+        this.editBuffer.setCursorByOffset(virtualExtmark.end)
+        return
       }
 
-      return this.originalMoveCursorRight(options)
+      this.originalMoveCursorRight()
     }
 
-    this.textarea.moveWordForward = (options?: { select?: boolean }): boolean => {
-      if (this.destroyed) return this.originalMoveWordForward(options)
-
-      const select = options?.select ?? false
-
-      if (select) {
-        return this.originalMoveWordForward(options)
+    this.editBuffer.setCursorByOffset = (offset: number): void => {
+      if (this.destroyed) {
+        this.originalSetCursorByOffset(offset)
+        return
       }
 
-      const currentOffset = this.textarea.cursorOffset
-      const result = this.originalMoveWordForward(options)
-      const newOffset = this.textarea.cursorOffset
+      const currentOffset = this.editorView.getVisualCursor().offset
+      const hasSelection = this.editorView.hasSelection()
 
-      const virtualExtmark = this.findVirtualExtmarkContaining(newOffset)
-      if (virtualExtmark && currentOffset <= virtualExtmark.start) {
-        this.textarea.cursorOffset = virtualExtmark.end
-        return true
+      if (hasSelection) {
+        this.originalSetCursorByOffset(offset)
+        return
       }
 
-      return result
-    }
+      const movingForward = offset > currentOffset
 
-    this.textarea.moveWordBackward = (options?: { select?: boolean }): boolean => {
-      if (this.destroyed) return this.originalMoveWordBackward(options)
-
-      const select = options?.select ?? false
-
-      if (select) {
-        return this.originalMoveWordBackward(options)
-      }
-
-      const currentOffset = this.textarea.cursorOffset
-      const result = this.originalMoveWordBackward(options)
-      const newOffset = this.textarea.cursorOffset
-
-      for (const extmark of this.extmarks.values()) {
-        if (extmark.virtual && currentOffset >= extmark.end && newOffset < extmark.end && newOffset >= extmark.start) {
-          this.textarea.cursorOffset = extmark.start - 1
-          return true
+      if (movingForward) {
+        const virtualExtmark = this.findVirtualExtmarkContaining(offset)
+        if (virtualExtmark && currentOffset <= virtualExtmark.start) {
+          this.originalSetCursorByOffset(virtualExtmark.end)
+          return
+        }
+      } else {
+        for (const extmark of this.extmarks.values()) {
+          if (extmark.virtual && currentOffset >= extmark.end && offset < extmark.end && offset >= extmark.start) {
+            this.originalSetCursorByOffset(extmark.start - 1)
+            return
+          }
         }
       }
 
-      return result
+      this.originalSetCursorByOffset(offset)
     }
   }
 
   private wrapDeletion(): void {
-    this.textarea.deleteCharBackward = (): boolean => {
-      if (this.destroyed) return this.originalDeleteCharBackward()
+    this.editBuffer.deleteCharBackward = (): void => {
+      if (this.destroyed) {
+        this.originalDeleteCharBackward()
+        return
+      }
 
-      const currentOffset = this.textarea.cursorOffset
-      const hadSelection = this.textarea.hasSelection()
+      const currentOffset = this.editorView.getVisualCursor().offset
+      const hadSelection = this.editorView.hasSelection()
 
       if (currentOffset === 0) {
-        return this.originalDeleteCharBackward()
+        this.originalDeleteCharBackward()
+        return
       }
 
       if (hadSelection) {
-        return this.originalDeleteCharBackward()
+        this.originalDeleteCharBackward()
+        return
       }
 
       const targetOffset = currentOffset - 1
@@ -216,29 +215,31 @@ export class ExtmarksController extends EventEmitter {
 
         this.updateHighlights()
 
-        return true
+        return
       }
 
-      const result = this.originalDeleteCharBackward()
-      if (result) {
-        this.adjustExtmarksAfterDeletion(targetOffset, 1)
-      }
-      return result
+      this.originalDeleteCharBackward()
+      this.adjustExtmarksAfterDeletion(targetOffset, 1)
     }
 
-    this.textarea.deleteChar = (): boolean => {
-      if (this.destroyed) return this.originalDeleteChar()
+    this.editBuffer.deleteChar = (): void => {
+      if (this.destroyed) {
+        this.originalDeleteChar()
+        return
+      }
 
-      const currentOffset = this.textarea.cursorOffset
-      const textLength = this.textarea.plainText.length
-      const hadSelection = this.textarea.hasSelection()
+      const currentOffset = this.editorView.getVisualCursor().offset
+      const textLength = this.editBuffer.getText().length
+      const hadSelection = this.editorView.hasSelection()
 
       if (currentOffset >= textLength) {
-        return this.originalDeleteChar()
+        this.originalDeleteChar()
+        return
       }
 
       if (hadSelection) {
-        return this.originalDeleteChar()
+        this.originalDeleteChar()
+        return
       }
 
       const targetOffset = currentOffset
@@ -262,17 +263,14 @@ export class ExtmarksController extends EventEmitter {
 
         this.updateHighlights()
 
-        return true
+        return
       }
 
-      const result = this.originalDeleteChar()
-      if (result) {
-        this.adjustExtmarksAfterDeletion(targetOffset, 1)
-      }
-      return result
+      this.originalDeleteChar()
+      this.adjustExtmarksAfterDeletion(targetOffset, 1)
     }
 
-    this.textarea.deleteRange = (startLine: number, startCol: number, endLine: number, endCol: number): void => {
+    this.editBuffer.deleteRange = (startLine: number, startCol: number, endLine: number, endCol: number): void => {
       if (this.destroyed) {
         this.originalDeleteRange(startLine, startCol, endLine, endCol)
         return
@@ -285,65 +283,15 @@ export class ExtmarksController extends EventEmitter {
       this.originalDeleteRange(startLine, startCol, endLine, endCol)
       this.adjustExtmarksAfterDeletion(startOffset, length)
     }
-  }
 
-  private wrapInsertion(): void {
-    this.textarea.insertText = (text: string): void => {
+    this.editBuffer.deleteLine = (): void => {
       if (this.destroyed) {
-        this.originalInsertText(text)
+        this.originalDeleteLine()
         return
       }
 
-      const currentOffset = this.textarea.cursorOffset
-      this.originalInsertText(text)
-      this.adjustExtmarksAfterInsertion(currentOffset, text.length)
-    }
-
-    this.textarea.insertChar = (char: string): void => {
-      if (this.destroyed) {
-        this.originalInsertChar(char)
-        return
-      }
-
-      const currentOffset = this.textarea.cursorOffset
-      this.originalInsertChar(char)
-      this.adjustExtmarksAfterInsertion(currentOffset, 1)
-    }
-
-    this.textarea.setText = (text: string, opts?: { history?: boolean }): void => {
-      if (this.destroyed) {
-        this.originalSetText(text, opts)
-        return
-      }
-
-      this.clear()
-      this.originalSetText(text, opts)
-    }
-
-    this.textarea.clear = (): void => {
-      if (this.destroyed) {
-        this.originalClear()
-        return
-      }
-
-      this.clear()
-      this.originalClear()
-    }
-
-    this.textarea.newLine = (): boolean => {
-      if (this.destroyed) return this.originalNewLine()
-
-      const currentOffset = this.textarea.cursorOffset
-      const result = this.originalNewLine()
-      this.adjustExtmarksAfterInsertion(currentOffset, 1)
-      return result
-    }
-
-    this.textarea.deleteLine = (): boolean => {
-      if (this.destroyed) return this.originalDeleteLine()
-
-      const text = this.textarea.plainText
-      const currentOffset = this.textarea.cursorOffset
+      const text = this.editBuffer.getText()
+      const currentOffset = this.editorView.getVisualCursor().offset
 
       let lineStart = 0
       for (let i = currentOffset - 1; i >= 0; i--) {
@@ -363,75 +311,74 @@ export class ExtmarksController extends EventEmitter {
 
       const deleteLength = lineEnd - lineStart
 
-      const result = this.originalDeleteLine()
+      this.originalDeleteLine()
       this.adjustExtmarksAfterDeletion(lineStart, deleteLength)
-      return result
+    }
+  }
+
+  private wrapInsertion(): void {
+    this.editBuffer.insertText = (text: string): void => {
+      if (this.destroyed) {
+        this.originalInsertText(text)
+        return
+      }
+
+      const currentOffset = this.editorView.getVisualCursor().offset
+      this.originalInsertText(text)
+      this.adjustExtmarksAfterInsertion(currentOffset, text.length)
     }
 
-    this.textarea.deleteToLineEnd = (): boolean => {
-      if (this.destroyed) return this.originalDeleteToLineEnd()
-
-      const text = this.textarea.plainText
-      const currentOffset = this.textarea.cursorOffset
-
-      let lineEnd = text.length
-      for (let i = currentOffset; i < text.length; i++) {
-        if (text[i] === "\n") {
-          lineEnd = i
-          break
-        }
+    this.editBuffer.insertChar = (char: string): void => {
+      if (this.destroyed) {
+        this.originalInsertChar(char)
+        return
       }
 
-      const deleteLength = lineEnd - currentOffset
-
-      const result = this.originalDeleteToLineEnd()
-      if (deleteLength > 0) {
-        this.adjustExtmarksAfterDeletion(currentOffset, deleteLength)
-      }
-      return result
+      const currentOffset = this.editorView.getVisualCursor().offset
+      this.originalInsertChar(char)
+      this.adjustExtmarksAfterInsertion(currentOffset, 1)
     }
 
-    this.textarea.deleteWordForward = (): boolean => {
-      if (this.destroyed) return this.originalDeleteWordForward()
-
-      const currentOffset = this.textarea.cursorOffset
-      const currentCursor = this.textarea.editBuffer.getCursorPosition()
-      const nextWord = this.textarea.editBuffer.getNextWordBoundary()
-
-      const deleteLength = nextWord.offset - currentCursor.offset
-
-      const result = this.originalDeleteWordForward()
-      if (deleteLength > 0) {
-        this.adjustExtmarksAfterDeletion(currentOffset, deleteLength)
+    this.editBuffer.setText = (text: string, opts?: { history?: boolean }): void => {
+      if (this.destroyed) {
+        this.originalSetText(text, opts)
+        return
       }
-      return result
+
+      this.clear()
+      this.originalSetText(text, opts)
     }
 
-    this.textarea.deleteWordBackward = (): boolean => {
-      if (this.destroyed) return this.originalDeleteWordBackward()
-
-      const currentCursor = this.textarea.editBuffer.getCursorPosition()
-      const prevWord = this.textarea.editBuffer.getPrevWordBoundary()
-
-      const deleteOffset = prevWord.offset
-      const deleteLength = currentCursor.offset - prevWord.offset
-
-      const result = this.originalDeleteWordBackward()
-      if (deleteLength > 0) {
-        this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
+    this.editBuffer.clear = (): void => {
+      if (this.destroyed) {
+        this.originalClear()
+        return
       }
-      return result
+
+      this.clear()
+      this.originalClear()
+    }
+
+    this.editBuffer.newLine = (): void => {
+      if (this.destroyed) {
+        this.originalNewLine()
+        return
+      }
+
+      const currentOffset = this.editorView.getVisualCursor().offset
+      this.originalNewLine()
+      this.adjustExtmarksAfterInsertion(currentOffset, 1)
     }
   }
 
   private wrapEditorViewDeleteSelectedText(): void {
-    this.textarea.editorView.deleteSelectedText = (): void => {
+    this.editorView.deleteSelectedText = (): void => {
       if (this.destroyed) {
         this.originalEditorViewDeleteSelectedText()
         return
       }
 
-      const selection = this.textarea.getSelection()
+      const selection = this.editorView.getSelection()
       if (!selection) {
         this.originalEditorViewDeleteSelectedText()
         return
@@ -449,7 +396,7 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private setupContentChangeListener(): void {
-    this.textarea.editBuffer.on("content-changed", () => {
+    this.editBuffer.on("content-changed", () => {
       if (this.destroyed) return
       this.updateHighlights()
     })
@@ -521,7 +468,7 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private offsetToPosition(offset: number): { row: number; col: number } {
-    const text = this.textarea.plainText
+    const text = this.editBuffer.getText()
     let currentOffset = 0
     let row = 0
     let col = 0
@@ -540,7 +487,7 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private positionToOffset(row: number, col: number): number {
-    const text = this.textarea.plainText
+    const text = this.editBuffer.getText()
     let currentRow = 0
     let offset = 0
 
@@ -558,7 +505,7 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private getLineStartOffset(targetRow: number): number {
-    const text = this.textarea.plainText
+    const text = this.editBuffer.getText()
     let row = 0
     let offset = 0
 
@@ -576,14 +523,14 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private updateHighlights(): void {
-    this.textarea.clearAllHighlights()
+    this.editBuffer.clearAllHighlights()
 
     for (const extmark of this.extmarks.values()) {
       if (extmark.styleId !== undefined) {
         const startWithoutNewlines = this.offsetToCharOffset(extmark.start)
         const endWithoutNewlines = this.offsetToCharOffset(extmark.end)
 
-        this.textarea.addHighlightByCharRange({
+        this.editBuffer.addHighlightByCharRange({
           start: startWithoutNewlines,
           end: endWithoutNewlines,
           styleId: extmark.styleId,
@@ -595,7 +542,7 @@ export class ExtmarksController extends EventEmitter {
   }
 
   private offsetToCharOffset(offset: number): number {
-    const text = this.textarea.plainText
+    const text = this.editBuffer.getText()
     let charOffset = 0
 
     for (let i = 0; i < offset && i < text.length; i++) {
@@ -705,23 +652,19 @@ export class ExtmarksController extends EventEmitter {
   public destroy(): void {
     if (this.destroyed) return
 
-    this.textarea.moveCursorLeft = this.originalMoveCursorLeft
-    this.textarea.moveCursorRight = this.originalMoveCursorRight
-    this.textarea.moveWordForward = this.originalMoveWordForward
-    this.textarea.moveWordBackward = this.originalMoveWordBackward
-    this.textarea.deleteCharBackward = this.originalDeleteCharBackward
-    this.textarea.deleteChar = this.originalDeleteChar
-    this.textarea.insertText = this.originalInsertText
-    this.textarea.insertChar = this.originalInsertChar
-    this.textarea.deleteRange = this.originalDeleteRange
-    this.textarea.setText = this.originalSetText
-    this.textarea.clear = this.originalClear
-    this.textarea.newLine = this.originalNewLine
-    this.textarea.deleteLine = this.originalDeleteLine
-    this.textarea.deleteToLineEnd = this.originalDeleteToLineEnd
-    this.textarea.deleteWordForward = this.originalDeleteWordForward
-    this.textarea.deleteWordBackward = this.originalDeleteWordBackward
-    this.textarea.editorView.deleteSelectedText = this.originalEditorViewDeleteSelectedText
+    this.editBuffer.moveCursorLeft = this.originalMoveCursorLeft
+    this.editBuffer.moveCursorRight = this.originalMoveCursorRight
+    this.editBuffer.setCursorByOffset = this.originalSetCursorByOffset
+    this.editBuffer.deleteCharBackward = this.originalDeleteCharBackward
+    this.editBuffer.deleteChar = this.originalDeleteChar
+    this.editBuffer.insertText = this.originalInsertText
+    this.editBuffer.insertChar = this.originalInsertChar
+    this.editBuffer.deleteRange = this.originalDeleteRange
+    this.editBuffer.setText = this.originalSetText
+    this.editBuffer.clear = this.originalClear
+    this.editBuffer.newLine = this.originalNewLine
+    this.editBuffer.deleteLine = this.originalDeleteLine
+    this.editorView.deleteSelectedText = this.originalEditorViewDeleteSelectedText
 
     this.extmarks.clear()
     this.destroyed = true
@@ -729,6 +672,6 @@ export class ExtmarksController extends EventEmitter {
   }
 }
 
-export function createExtmarksController(textarea: TextareaRenderable): ExtmarksController {
-  return new ExtmarksController(textarea)
+export function createExtmarksController(editBuffer: EditBuffer, editorView: EditorView): ExtmarksController {
+  return new ExtmarksController(editBuffer, editorView)
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from "bun:test"
 import { TextareaRenderable } from "../renderables/Textarea"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../testing/test-renderer"
-import { createExtmarksController, type ExtmarksController, type ExtmarkDeletedEvent } from "./extmarks"
+import { type ExtmarksController, type ExtmarkDeletedEvent } from "./extmarks"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "./RGBA"
 
@@ -28,7 +28,7 @@ async function setup(initialValue: string = "Hello World") {
   currentRenderer.root.add(textarea)
   await renderOnce()
 
-  extmarks = createExtmarksController(textarea)
+  extmarks = textarea.extmarks
 
   return { textarea, extmarks }
 }
