@@ -69,12 +69,15 @@ async function setupTestRenderer(config: TestRendererOptions) {
   if (!rendererPtr) {
     throw new Error("Failed to create test renderer")
   }
-  if (config.useThread === undefined) {
-    config.useThread = true
-  }
-
-  if (process.platform === "linux") {
+  if (config.jsFlush) {
     config.useThread = false
+  } else {
+    if (config.useThread === undefined) {
+      config.useThread = true
+    }
+    if (process.platform === "linux") {
+      config.useThread = false
+    }
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 

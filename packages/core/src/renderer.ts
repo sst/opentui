@@ -409,7 +409,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._terminalHeight = stdout.rows
     this.width = width
     this.height = height
-    this._useThread = config.useThread === undefined ? false : config.useThread
+    const requestedUseThread = config.useThread === undefined ? false : config.useThread
+    this._useThread = this.jsFlush ? false : requestedUseThread
     this._splitHeight = config.experimental_splitHeight || 0
 
     if (this._splitHeight > 0) {
@@ -420,6 +421,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
+    this.lib.setUseThread(this.rendererPtr, this._useThread)
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
@@ -809,6 +811,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public set useThread(useThread: boolean) {
+    if (this.jsFlush && useThread) {
+      throw new Error("jsFlush mode requires useThread=false")
+    }
     this._useThread = useThread
     this.lib.setUseThread(this.rendererPtr, useThread)
   }

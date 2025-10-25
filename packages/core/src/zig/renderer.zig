@@ -5,6 +5,7 @@ const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
+const AnyWriter = std.io.AnyWriter;
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
@@ -63,7 +64,11 @@ const WriteBuffer = struct {
 };
 
 const WriteBufferWriter = std.io.Writer(*WriteBuffer, error{OutOfMemory}, WriteBuffer.writeFn);
-const AnyWriter = std.io.AnyWriter;
+
+const TerminalWriteContext = struct {
+    writer: AnyWriter,
+    target: WriteTarget,
+};
 
 pub const RendererError = error{
     OutOfMemory,
@@ -313,34 +318,18 @@ pub const CliRenderer = struct {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
 
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        const writer = ctx.writer;
 
-            self.terminal.queryTerminalSend(writer) catch {
-                logger.warn("Failed to query terminal capabilities", .{});
-            };
-            writer.writeAll(ansi.ANSI.saveCursorState) catch {};
-            if (useAlternateScreen) {
-                self.terminal.enterAltScreen(writer) catch {};
-            } else {
-                ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
-            }
+        self.terminal.queryTerminalSend(writer) catch {
+            logger.warn("Failed to query terminal capabilities", .{});
+        };
+        writer.writeAll(ansi.ANSI.saveCursorState) catch {};
+        if (useAlternateScreen) {
+            self.terminal.enterAltScreen(writer) catch {};
         } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-
-            self.terminal.queryTerminalSend(writer) catch {
-                logger.warn("Failed to query terminal capabilities", .{});
-            };
-            writer.writeAll(ansi.ANSI.saveCursorState) catch {};
-            if (useAlternateScreen) {
-                self.terminal.enterAltScreen(writer) catch {};
-            } else {
-                ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
-            }
-            self.stdoutWriter.flush() catch {};
+            ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
         }
 
         self.terminal.setCursorPosition(1, 1, false);
@@ -349,51 +338,25 @@ pub const CliRenderer = struct {
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        const writer = ctx.writer;
 
-            self.terminal.resetState(writer) catch {
-                logger.warn("Failed to reset terminal state", .{});
-            };
+        self.terminal.resetState(writer) catch {
+            logger.warn("Failed to reset terminal state", .{});
+        };
 
-            if (!self.useAlternateScreen and self.renderOffset == 0) {
-                writer.writeAll("\x1b[H\x1b[J") catch {};
-            }
-
-            writer.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
-            writer.writeAll(ansi.ANSI.resetCursorColor) catch {};
-            writer.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
-            writer.writeAll(ansi.ANSI.showCursor) catch {};
-            std.time.sleep(10 * std.time.ns_per_ms);
-            writer.writeAll(ansi.ANSI.showCursor) catch {};
-            std.time.sleep(10 * std.time.ns_per_ms);
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-
-            self.terminal.resetState(writer) catch {
-                logger.warn("Failed to reset terminal state", .{});
-            };
-
-            if (self.useAlternateScreen) {
-                self.stdoutWriter.flush() catch {};
-            } else if (self.renderOffset == 0) {
-                writer.writeAll("\x1b[H\x1b[J") catch {};
-                self.stdoutWriter.flush() catch {};
-            }
-
-            writer.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
-            writer.writeAll(ansi.ANSI.resetCursorColor) catch {};
-            writer.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
-            writer.writeAll(ansi.ANSI.showCursor) catch {};
-            self.stdoutWriter.flush() catch {};
-            std.time.sleep(10 * std.time.ns_per_ms);
-            writer.writeAll(ansi.ANSI.showCursor) catch {};
-            self.stdoutWriter.flush() catch {};
-            std.time.sleep(10 * std.time.ns_per_ms);
+        if (!self.useAlternateScreen and self.renderOffset == 0) {
+            writer.writeAll("\x1b[H\x1b[J") catch {};
         }
+
+        writer.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
+        writer.writeAll(ansi.ANSI.resetCursorColor) catch {};
+        writer.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
+        writer.writeAll(ansi.ANSI.showCursor) catch {};
+        std.time.sleep(10 * std.time.ns_per_ms);
+        writer.writeAll(ansi.ANSI.showCursor) catch {};
+        std.time.sleep(10 * std.time.ns_per_ms);
     }
 
     fn addStatSample(comptime T: type, samples: *std.ArrayList(T), value: T) void {
@@ -497,18 +460,25 @@ pub const CliRenderer = struct {
         self.renderOffset = offset;
     }
 
-    pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
+    fn beginTerminalWrite(self: *CliRenderer) TerminalWriteContext {
         if (self.writeTarget == .buffer) {
             self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            self.terminal.setTerminalTitle(writer, title);
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            self.terminal.setTerminalTitle(writer, title);
+            return .{ .writer = self.writeBuffer.writer().any(), .target = .buffer };
+        }
+
+        return .{ .writer = self.stdoutWriter.writer().any(), .target = .tty };
+    }
+
+    fn endTerminalWrite(self: *CliRenderer, ctx: TerminalWriteContext) void {
+        if (ctx.target == .tty) {
             self.stdoutWriter.flush() catch {};
         }
+    }
+
+    pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        self.terminal.setTerminalTitle(ctx.writer, title);
     }
 
     pub fn setWriteTarget(self: *CliRenderer, target: WriteTarget) void {
@@ -863,17 +833,9 @@ pub const CliRenderer = struct {
     }
 
     pub fn clearTerminal(self: *CliRenderer) void {
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            writer.writeAll(ansi.ANSI.clearAndHome) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            writer.writeAll(ansi.ANSI.clearAndHome) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        ctx.writer.writeAll(ansi.ANSI.clearAndHome) catch {};
     }
 
     pub fn addToHitGrid(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
@@ -1010,73 +972,33 @@ pub const CliRenderer = struct {
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         _ = enableMovement; // TODO: Use this to control motion tracking levels
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            self.terminal.setMouseMode(writer, true) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            self.terminal.setMouseMode(writer, true) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        self.terminal.setMouseMode(ctx.writer, true) catch {};
     }
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        ctx.writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            self.terminal.setMouseMode(writer, false) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            self.terminal.setMouseMode(writer, false) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        self.terminal.setMouseMode(ctx.writer, false) catch {};
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            self.terminal.setKittyKeyboard(writer, true, flags) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            self.terminal.setKittyKeyboard(writer, true, flags) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        self.terminal.setKittyKeyboard(ctx.writer, true, flags) catch {};
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            self.terminal.setKittyKeyboard(writer, false, 0) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            self.terminal.setKittyKeyboard(writer, false, 0) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        self.terminal.setKittyKeyboard(ctx.writer, false, 0) catch {};
     }
 
     pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
@@ -1085,17 +1007,9 @@ pub const CliRenderer = struct {
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
-        if (self.writeTarget == .buffer) {
-            self.writeBuffer.reset();
-            const buf_writer = self.writeBuffer.writer();
-            const writer = buf_writer.any();
-            self.terminal.enableDetectedFeatures(writer) catch {};
-        } else {
-            const stdout_writer = self.stdoutWriter.writer();
-            const writer = stdout_writer.any();
-            self.terminal.enableDetectedFeatures(writer) catch {};
-            self.stdoutWriter.flush() catch {};
-        }
+        var ctx = self.beginTerminalWrite();
+        defer self.endTerminalWrite(ctx);
+        self.terminal.enableDetectedFeatures(ctx.writer) catch {};
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
