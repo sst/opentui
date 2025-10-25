@@ -1,16 +1,9 @@
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { resolveRenderLib, type LogicalCursor, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod, type Highlight } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { EventEmitter } from "events"
 import type { SyntaxStyle } from "./syntax-style"
-
-// TODO: make this row/col as anything else
-export interface CursorPosition {
-  line: number
-  visualColumn: number
-  offset: number
-}
 
 /**
  * EditBuffer provides a text editing buffer with cursor management,
@@ -191,37 +184,37 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferSetCursorByOffset(this.bufferPtr, offset)
   }
 
-  public getCursorPosition(): CursorPosition {
+  public getCursorPosition(): LogicalCursor {
     this.guard()
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
   }
 
-  public getNextWordBoundary(): CursorPosition {
+  public getNextWordBoundary(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetNextWordBoundary(this.bufferPtr)
     return {
-      line: boundary.row,
-      visualColumn: boundary.col,
+      row: boundary.row,
+      col: boundary.col,
       offset: boundary.offset,
     }
   }
 
-  public getPrevWordBoundary(): CursorPosition {
+  public getPrevWordBoundary(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetPrevWordBoundary(this.bufferPtr)
     return {
-      line: boundary.row,
-      visualColumn: boundary.col,
+      row: boundary.row,
+      col: boundary.col,
       offset: boundary.offset,
     }
   }
 
-  public getEOL(): CursorPosition {
+  public getEOL(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetEOL(this.bufferPtr)
     return {
-      line: boundary.row,
-      visualColumn: boundary.col,
+      row: boundary.row,
+      col: boundary.col,
       offset: boundary.offset,
     }
   }

@@ -213,17 +213,17 @@ describe("TextareaRenderable", () => {
         height: 10,
       })
 
-      const initialCursor = editor.cursor
-      expect(initialCursor.visualColumn).toBe(0)
+      const initialCursor = editor.logicalCursor
+      expect(initialCursor.col).toBe(0)
 
       editor.moveCursorRight()
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       editor.moveCursorRight()
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       editor.moveCursorLeft()
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
     })
 
     it("should move cursor up and down", async () => {
@@ -233,16 +233,16 @@ describe("TextareaRenderable", () => {
         height: 10,
       })
 
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       editor.moveCursorDown()
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       editor.moveCursorDown()
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
 
       editor.moveCursorUp()
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should move to line start and end", async () => {
@@ -252,12 +252,12 @@ describe("TextareaRenderable", () => {
         height: 10,
       })
 
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
-      expect(editor.cursor.visualColumn).toBe(11)
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
+      expect(editor.logicalCursor.col).toBe(11)
 
-      editor.editBuffer.setCursor(editor.cursor.line, 0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      editor.editBuffer.setCursor(editor.logicalCursor.row, 0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should move to buffer start and end", async () => {
@@ -268,13 +268,13 @@ describe("TextareaRenderable", () => {
       })
 
       editor.gotoLine(9999) // Move to end
-      let cursor = editor.cursor
-      expect(cursor.line).toBe(2)
+      let cursor = editor.logicalCursor
+      expect(cursor.row).toBe(2)
 
       editor.gotoLine(0) // Move to start
-      cursor = editor.cursor
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(0)
+      cursor = editor.logicalCursor
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
     })
 
     it("should goto specific line", async () => {
@@ -285,10 +285,10 @@ describe("TextareaRenderable", () => {
       })
 
       editor.gotoLine(1)
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       editor.gotoLine(2)
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
     })
   })
 
@@ -372,13 +372,13 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999) // Move to end
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
 
       currentMockInput.pressArrow("left")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressArrow("left")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
     })
 
     it("should move cursor right with arrow key", async () => {
@@ -389,13 +389,13 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
     })
 
     it("should move cursor up and down with arrow keys", async () => {
@@ -406,16 +406,16 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       currentMockInput.pressArrow("down")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       currentMockInput.pressArrow("down")
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
 
       currentMockInput.pressArrow("up")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should move cursor smoothly from end of one line to start of next", async () => {
@@ -426,19 +426,19 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line // End of "ABC"
-      expect(editor.cursor.visualColumn).toBe(3)
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line // End of "ABC"
+      expect(editor.logicalCursor.col).toBe(3)
 
       // Move right should go to start of next line
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
 
       // Move left should go back to end of previous line
       currentMockInput.pressArrow("left")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(3)
     })
   })
 
@@ -483,13 +483,13 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(1) // Move to line 2 (0-indexed line 1)
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("HelloWorld")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(5) // Should be at end of "Hello"
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(5) // Should be at end of "Hello"
     })
 
     it("should remove empty line when backspace at start", async () => {
@@ -501,11 +501,11 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(1) // Move to empty line
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("Hello\nWorld")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
     })
 
     it("should join lines with content when backspace at start", async () => {
@@ -517,13 +517,13 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(2) // Move to "Line3"
-      expect(editor.cursor.line).toBe(2)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(2)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("Line1\nLine2Line3")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(5) // After "Line2"
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(5) // After "Line2"
     })
 
     it("should not do anything when backspace at start of first line", async () => {
@@ -534,13 +534,13 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("Hello\nWorld")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should handle multiple backspaces joining multiple lines", async () => {
@@ -552,38 +552,38 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(3) // Line "D"
-      expect(editor.cursor.line).toBe(3)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(3)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("A\nB\nCD")
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
       // Cursor should be at the join point (after "C")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       // Now delete "C" by pressing backspace
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("A\nB\nD")
-      expect(editor.cursor.line).toBe(2)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(2)
+      expect(editor.logicalCursor.col).toBe(0)
 
       // Now join line 2 with line 1
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("A\nBD")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(1) // After "B"
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1) // After "B"
 
       // Delete "B"
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("A\nD")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
 
       // Now join line 1 with line 0
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("AD")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(1)
     })
 
     it("should handle backspace after typing on new line", async () => {
@@ -609,7 +609,7 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("Hello\nWo")
 
       // Move to start of line and backspace to join
-      editor.editBuffer.setCursor(editor.cursor.line, 0)
+      editor.editBuffer.setCursor(editor.logicalCursor.row, 0)
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("HelloWo")
     })
@@ -623,20 +623,20 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(1) // Move to "World"
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
 
       // Join lines with backspace
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("HelloWorld")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(5) // After "Hello"
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(5) // After "Hello"
 
       // Press right repeatedly - should advance one at a time
-      const positions: number[] = [editor.cursor.visualColumn]
+      const positions: number[] = [editor.logicalCursor.col]
       for (let i = 0; i < 5; i++) {
         currentMockInput.pressArrow("right")
-        positions.push(editor.cursor.visualColumn)
+        positions.push(editor.logicalCursor.col)
       }
 
       // Should advance one position each time: [5, 6, 7, 8, 9, 10]
@@ -656,11 +656,11 @@ describe("TextareaRenderable", () => {
       // Backspace to join
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCD")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       // Press right - should advance by 1
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
     })
 
     it("should advance cursor by 1 at every position after join", async () => {
@@ -676,13 +676,13 @@ describe("TextareaRenderable", () => {
       // Join lines
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEFGHIJ")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       // Each right press should advance by exactly 1
       const expectedPositions = [5, 6, 7, 8, 9, 10]
 
       for (let i = 0; i < expectedPositions.length; i++) {
-        expect(editor.cursor.visualColumn).toBe(expectedPositions[i])
+        expect(editor.logicalCursor.col).toBe(expectedPositions[i])
         if (i < expectedPositions.length - 1) {
           currentMockInput.pressArrow("right")
         }
@@ -700,10 +700,10 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(1)
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
     })
 
     it("should move right after backspace join - typed content", async () => {
@@ -725,16 +725,16 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("F")
 
       // Join and verify cursor advances
-      editor.editBuffer.setCursor(editor.cursor.line, 0)
+      editor.editBuffer.setCursor(editor.logicalCursor.row, 0)
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
     })
 
     it("should move cursor left after joining lines with backspace", async () => {
@@ -750,18 +750,18 @@ describe("TextareaRenderable", () => {
       // Join lines
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.cursor.visualColumn).toBe(3) // After "ABC"
+      expect(editor.logicalCursor.col).toBe(3) // After "ABC"
 
       // Move right past the boundary
       currentMockInput.pressArrow("right")
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       // Now move left - should move smoothly back one at a time
-      const positions: number[] = [editor.cursor.visualColumn]
+      const positions: number[] = [editor.logicalCursor.col]
       for (let i = 0; i < 5; i++) {
         currentMockInput.pressArrow("left")
-        positions.push(editor.cursor.visualColumn)
+        positions.push(editor.logicalCursor.col)
       }
 
       // Should go back one at a time: [5, 4, 3, 2, 1, 0]
@@ -781,25 +781,25 @@ describe("TextareaRenderable", () => {
       // Join lines
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.cursor.visualColumn).toBe(3) // After "ABC"
+      expect(editor.logicalCursor.col).toBe(3) // After "ABC"
 
       // Move right to "D"
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
 
       // Move right to "E"
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       // Now move left back across the chunk boundary
       currentMockInput.pressArrow("left")
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
 
       currentMockInput.pressArrow("left")
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
 
       currentMockInput.pressArrow("left")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
     })
   })
 
@@ -867,10 +867,10 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999) // Move to end
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
 
       currentMockInput.pressKey("HOME")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should move to line end with End", async () => {
@@ -881,10 +881,10 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("END")
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
     })
   })
 
@@ -900,9 +900,9 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(9999) // Move to end
 
       currentMockInput.pressKey("CTRL_A")
-      const cursor = editor.cursor
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(0)
+      const cursor = editor.logicalCursor
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
     })
 
     it("should move to buffer end with Ctrl+E", async () => {
@@ -915,8 +915,8 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("CTRL_E")
-      const cursor = editor.cursor
-      expect(cursor.line).toBe(2)
+      const cursor = editor.logicalCursor
+      expect(cursor.row).toBe(2)
     })
 
     it("should delete line with Ctrl+D", async () => {
@@ -959,16 +959,16 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.visualColumn).toBe(12)
+      expect(editor.logicalCursor.col).toBe(12)
 
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.visualColumn).toBe(16)
+      expect(editor.logicalCursor.col).toBe(16)
     })
 
     it("should move backward by word with Alt+B", async () => {
@@ -980,16 +980,16 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999)
-      expect(editor.cursor.visualColumn).toBe(19)
+      expect(editor.logicalCursor.col).toBe(19)
 
       currentMockInput.pressKey("ALT_B")
-      expect(editor.cursor.visualColumn).toBe(16)
+      expect(editor.logicalCursor.col).toBe(16)
 
       currentMockInput.pressKey("ALT_B")
-      expect(editor.cursor.visualColumn).toBe(12)
+      expect(editor.logicalCursor.col).toBe(12)
 
       currentMockInput.pressKey("ALT_B")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
     })
 
     it("should move forward by word with Meta+Right", async () => {
@@ -1002,10 +1002,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressArrow("right", { meta: true })
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
 
       currentMockInput.pressArrow("right", { meta: true })
-      expect(editor.cursor.visualColumn).toBe(8)
+      expect(editor.logicalCursor.col).toBe(8)
     })
 
     it("should move backward by word with Meta+Left", async () => {
@@ -1019,10 +1019,10 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(9999)
 
       currentMockInput.pressArrow("left", { meta: true })
-      expect(editor.cursor.visualColumn).toBe(8)
+      expect(editor.logicalCursor.col).toBe(8)
 
       currentMockInput.pressArrow("left", { meta: true })
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
     })
 
     it("should delete word forward with Alt+D", async () => {
@@ -1114,10 +1114,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should delete word forward from line start", async () => {
@@ -1161,15 +1161,15 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("ALT_F")
-      const col1 = editor.cursor.visualColumn
+      const col1 = editor.logicalCursor.col
       expect(col1).toBeGreaterThan(0)
 
       currentMockInput.pressArrow("right")
-      const col2 = editor.cursor.visualColumn
+      const col2 = editor.logicalCursor.col
       expect(col2).toBe(col1 + 1)
 
       currentMockInput.pressKey("ALT_F")
-      const col3 = editor.cursor.visualColumn
+      const col3 = editor.logicalCursor.col
       expect(col3).toBeGreaterThan(col2)
     })
 
@@ -1206,9 +1206,9 @@ describe("TextareaRenderable", () => {
 
       currentMockInput.pressKey("ALT_B")
 
-      const cursor = editor.cursor
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(0)
+      const cursor = editor.logicalCursor
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
     })
 
     it("should bind meta key actions", async () => {
@@ -1223,8 +1223,8 @@ describe("TextareaRenderable", () => {
 
       currentMockInput.pressKey("ALT_F")
 
-      const cursor = editor.cursor
-      expect(cursor.line).toBe(0)
+      const cursor = editor.logicalCursor
+      expect(cursor.row).toBe(0)
     })
 
     it("should work with meta key for navigation", async () => {
@@ -1236,10 +1236,10 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       currentMockInput.pressKey("ALT_J")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should allow meta key binding override", async () => {
@@ -1252,10 +1252,10 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(2)
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
 
       currentMockInput.pressKey("k", { meta: true })
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should work with Meta+Arrow keys", async () => {
@@ -1273,13 +1273,13 @@ describe("TextareaRenderable", () => {
       for (let i = 0; i < 2; i++) {
         editor.moveCursorRight()
       }
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressArrow("left", { meta: true })
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressArrow("right", { meta: true })
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
     })
 
     it("should support meta with shift modifier", async () => {
@@ -1292,11 +1292,11 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999)
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
 
       currentMockInput.pressKey("h", { meta: true, shift: true })
 
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should not trigger action without meta when meta binding exists", async () => {
@@ -1327,16 +1327,16 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(9999)
 
       currentMockInput.pressKey("ALT_B")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       editor.keyBindings = [{ name: "b", meta: true, action: "buffer-end" }]
 
       editor.gotoLine(0)
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       currentMockInput.pressKey("ALT_B")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
     })
 
     it("should merge new keyBindings with defaults", async () => {
@@ -1349,12 +1349,12 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       editor.keyBindings = [{ name: "x", meta: true, action: "delete-line" }]
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressKey("ALT_X")
       expect(editor.plainText).toBe("Line 2")
@@ -1370,13 +1370,13 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       editor.keyBindings = [{ name: "f", meta: true, action: "buffer-end" }]
 
       editor.gotoLine(0)
       currentMockInput.pressKey("ALT_F")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
     })
 
     it("should override return/enter keys to swap newline and submit actions", async () => {
@@ -1435,30 +1435,30 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("l")
       currentMockInput.pressKey("o")
       expect(editor.plainText).toBe("Hello")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       // Move cursor back to position 2
       for (let i = 0; i < 3; i++) {
         currentMockInput.pressArrow("left")
       }
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       // Insert "XXX" - this creates a new chunk in the middle
       currentMockInput.pressKey("X")
       currentMockInput.pressKey("X")
       currentMockInput.pressKey("X")
       expect(editor.plainText).toBe("HeXXXllo")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       // Now move right - should move smoothly across chunk boundaries
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(6) // "l"
+      expect(editor.logicalCursor.col).toBe(6) // "l"
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(7) // "l"
+      expect(editor.logicalCursor.col).toBe(7) // "l"
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(8) // "o"
+      expect(editor.logicalCursor.col).toBe(8) // "o"
     })
 
     it("should move cursor left across multiple chunks", async () => {
@@ -1485,14 +1485,14 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("A")
       currentMockInput.pressKey("B")
       expect(editor.plainText).toBe("TestAB123")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       // Now move left across all chunk boundaries
       for (let i = 6; i > 0; i--) {
         currentMockInput.pressArrow("left")
-        expect(editor.cursor.visualColumn).toBe(i - 1)
+        expect(editor.logicalCursor.col).toBe(i - 1)
       }
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should move cursor right across all chunks to end", async () => {
@@ -1503,9 +1503,9 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
-      expect(editor.cursor.visualColumn).toBe(2)
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
+      expect(editor.logicalCursor.col).toBe(2)
 
       // Insert at end
       currentMockInput.pressKey("C")
@@ -1514,12 +1514,12 @@ describe("TextareaRenderable", () => {
 
       // Move to start
       editor.gotoLine(0) // Move to start
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       // Move right through all characters
       for (let i = 0; i < 4; i++) {
         currentMockInput.pressArrow("right")
-        expect(editor.cursor.visualColumn).toBe(i + 1)
+        expect(editor.logicalCursor.col).toBe(i + 1)
       }
     })
 
@@ -1532,7 +1532,7 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999) // Move to end
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       // Insert text
       currentMockInput.pressKey("1")
@@ -1552,10 +1552,10 @@ describe("TextareaRenderable", () => {
 
       // Move right through all characters one by one
       for (let i = 0; i < 8; i++) {
-        expect(editor.cursor.visualColumn).toBe(i)
+        expect(editor.logicalCursor.col).toBe(i)
         currentMockInput.pressArrow("right")
       }
-      expect(editor.cursor.visualColumn).toBe(8)
+      expect(editor.logicalCursor.col).toBe(8)
     })
   })
 
@@ -1659,12 +1659,12 @@ describe("TextareaRenderable", () => {
       })
 
       editor.gotoLine(9999) // Move to end
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
 
       editor.setText("New")
       // Cursor should reset to start
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should clear text with clear() method", async () => {
@@ -1959,16 +1959,16 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressArrow("right") // Move past A
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressArrow("right") // Move past emoji (2 cells)
-      expect(editor.cursor.visualColumn).toBe(3)
+      expect(editor.logicalCursor.col).toBe(3)
 
       currentMockInput.pressArrow("right") // Move past B
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
     })
   })
 
@@ -2149,22 +2149,22 @@ describe("TextareaRenderable", () => {
 
       // Move to start of line 2 (DEF)
       editor.gotoLine(1)
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
       expect(editor.plainText).toBe("ABC\nDEF")
 
       // Backspace to join lines - this creates a chunk boundary at position 3
       // Chunks: [chunk 0: "ABC" (mem_id 0), chunk 1: "DEF" (mem_id 0)]
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(3) // After "ABC"
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(3) // After "ABC"
 
       // Insert a character at the chunk boundary
       // Chunks: [chunk 0: "ABC", chunk 1: "X" (new mem_id), chunk 2: "DEF"]
       currentMockInput.pressKey("X")
       expect(editor.plainText).toBe("ABCXDEF")
-      expect(editor.cursor.visualColumn).toBe(4) // After "ABCX"
+      expect(editor.logicalCursor.col).toBe(4) // After "ABCX"
 
       // Backspace to delete the just-inserted character
       // This removes chunk 1, so chunks become: [chunk 0: "ABC", chunk 1: "DEF"]
@@ -2172,7 +2172,7 @@ describe("TextareaRenderable", () => {
       // So cursor now points to position 1 in "DEF" instead of end of "ABC"
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.cursor.visualColumn).toBe(3) // Should be back to after "ABC"
+      expect(editor.logicalCursor.col).toBe(3) // Should be back to after "ABC"
     })
 
     it("BUG: typing after backspace inserts old characters", async () => {
@@ -2385,8 +2385,8 @@ describe("TextareaRenderable", () => {
       expect(vlineCount).toBeGreaterThan(10) // Should be more due to wrapping
 
       // Move to end of long line
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
 
       let viewport = editor.editorView.getViewport()
 
@@ -2471,7 +2471,7 @@ describe("TextareaRenderable", () => {
 
       // Should have scrolled
       expect(viewport.offsetY).toBeGreaterThan(0)
-      expect(editor.cursor.line).toBe(15)
+      expect(editor.logicalCursor.row).toBe(15)
     })
 
     it("should scroll viewport down when pressing Enter repeatedly", async () => {
@@ -2486,7 +2486,7 @@ describe("TextareaRenderable", () => {
 
       let viewport = editor.editorView.getViewport()
       expect(viewport.offsetY).toBe(0)
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       // Press Enter 8 times to create 8 new lines
       for (let i = 0; i < 8; i++) {
@@ -2494,14 +2494,14 @@ describe("TextareaRenderable", () => {
       }
 
       // After 8 Enters, we should have 9 lines total (0-8)
-      expect(editor.cursor.line).toBe(8)
+      expect(editor.logicalCursor.row).toBe(8)
 
       // Viewport should have scrolled to keep cursor visible
       viewport = editor.editorView.getViewport()
       expect(viewport.offsetY).toBeGreaterThan(0)
 
       // Cursor should be visible in viewport
-      const cursorLine = editor.cursor.line
+      const cursorLine = editor.logicalCursor.row
       expect(cursorLine).toBeGreaterThanOrEqual(viewport.offsetY)
       expect(cursorLine).toBeLessThan(viewport.offsetY + viewport.height)
     })
@@ -2517,8 +2517,8 @@ describe("TextareaRenderable", () => {
 
       // Start at line 10, move to end so we have characters to delete
       editor.gotoLine(10)
-      let cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
+      let cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
 
       let viewport = editor.editorView.getViewport()
       expect(viewport.offsetY).toBeGreaterThan(0)
@@ -2528,15 +2528,15 @@ describe("TextareaRenderable", () => {
       // Press Ctrl+A to go to start, then move to line 2, then backspace repeatedly
       editor.gotoLine(0) // Move to start
       editor.gotoLine(2)
-      cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
+      cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
 
       // Now we're at line 2, and viewport should have scrolled up
       viewport = editor.editorView.getViewport()
 
       // Viewport should have scrolled up from initial position
       expect(viewport.offsetY).toBeLessThan(initialOffset)
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
     })
 
     it("should scroll viewport when typing at end creates wrapped lines beyond viewport", async () => {
@@ -3115,8 +3115,8 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line // Move to end
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line // Move to end
 
       // Select backwards with shift+left
       for (let i = 0; i < 5; i++) {
@@ -3252,7 +3252,7 @@ describe("TextareaRenderable", () => {
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe(" World")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should delete selected text with delete key", async () => {
@@ -3266,8 +3266,8 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       // Select "World"
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999) // Move to end of line
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
       for (let i = 0; i < 5; i++) {
         currentMockInput.pressArrow("left", { shift: true })
       }
@@ -3280,7 +3280,7 @@ describe("TextareaRenderable", () => {
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Hello ")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
     })
 
     it("should delete multi-line selection with backspace", async () => {
@@ -3308,8 +3308,8 @@ describe("TextareaRenderable", () => {
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("e 2\nLine 3")
-      expect(editor.cursor.visualColumn).toBe(0)
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
     })
 
     it("should delete entire line when selected with delete", async () => {
@@ -3333,7 +3333,7 @@ describe("TextareaRenderable", () => {
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Line 1\nLine 3")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should replace selected text when typing", async () => {
@@ -3387,8 +3387,8 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe(" World")
 
       // Verify cursor is at start of deleted range
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       // Verify selection is cleared in EditorView
       expect(editor.editorView.hasSelection()).toBe(false)
@@ -3574,26 +3574,26 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999) // Move to end
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressEnter()
       currentMockInput.pressKey("L")
       currentMockInput.pressKey("i")
       expect(editor.plainText).toBe("Line 1\nLi")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(2)
 
       // Undo last character "i"
       editor.undo()
       expect(editor.plainText).toBe("Line 1\nL")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       // Undo "L"
       editor.undo()
       expect(editor.plainText).toBe("Line 1\n")
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should handle undo/redo chain", async () => {
@@ -4029,8 +4029,8 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       // Select "World"
-      const cursor = editor.cursor
-      editor.editBuffer.setCursorToLineCol(cursor.line, 9999)
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999)
       for (let i = 0; i < 5; i++) {
         currentMockInput.pressArrow("left", { shift: true })
       }
@@ -4268,7 +4268,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(2) // Line with "BBBB"
 
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
       expect(editor.plainText).toBe("AAAA\n\nBBBB\n\nCCCC")
 
       // Select "BBBB" by pressing shift+right 4 times
@@ -4284,8 +4284,8 @@ describe("TextareaRenderable", () => {
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("AAAA\n\n\n\nCCCC")
-      expect(editor.cursor.line).toBe(2)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(2)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should delete selection on first line correctly (baseline test)", async () => {
@@ -4300,7 +4300,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(0) // First line with "AAAA"
 
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       // Select "AAAA"
       for (let i = 0; i < 4; i++) {
@@ -4328,7 +4328,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(4) // Last line with "CCCC"
 
-      expect(editor.cursor.line).toBe(4)
+      expect(editor.logicalCursor.row).toBe(4)
 
       // Select "CCCC"
       for (let i = 0; i < 4; i++) {
@@ -4360,13 +4360,13 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressKey("HOME")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("END")
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
     })
 
     it("should allow custom keybindings to override defaults", async () => {
@@ -4379,10 +4379,10 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999)
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
 
       currentMockInput.pressKey("j")
-      expect(editor.cursor.visualColumn).toBe(10)
+      expect(editor.logicalCursor.col).toBe(10)
     })
 
     it("should map multiple custom keys to the same action", async () => {
@@ -4401,16 +4401,16 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("l")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressKey("l")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressKey("h")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressKey("h")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should support custom keybindings with ctrl modifier", async () => {
@@ -4423,11 +4423,11 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999)
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
 
       currentMockInput.pressKey("CTRL_G")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should support custom keybindings with shift modifier", async () => {
@@ -4461,8 +4461,8 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(2)
 
       currentMockInput.pressKey("CTRL_B")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should support keybindings with multiple modifiers", async () => {
@@ -4539,13 +4539,13 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.moveCursorRight()
       editor.moveCursorRight()
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressKey("a")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("e")
-      expect(editor.cursor.visualColumn).toBe(11)
+      expect(editor.logicalCursor.col).toBe(11)
     })
 
     it("should override default shift+home and shift+end keybindings", async () => {
@@ -4564,17 +4564,17 @@ describe("TextareaRenderable", () => {
       for (let i = 0; i < 6; i++) {
         editor.moveCursorRight()
       }
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("HOME", { shift: true })
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       editor.moveCursorRight()
       currentMockInput.pressKey("END", { shift: true })
       expect(editor.hasSelection()).toBe(false)
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
     })
 
     it("should map undo and redo actions to custom keys", async () => {
@@ -4646,14 +4646,14 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
       editor.gotoLine(9999)
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
 
       currentMockInput.pressKey("g")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("b")
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
     })
 
     it("should map select-up and select-down to custom keys", async () => {
@@ -4688,10 +4688,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressKey("HOME")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should allow remapping default keys to different actions", async () => {
@@ -4706,8 +4706,8 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(2)
 
       currentMockInput.pressArrow("up")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should handle complex keybinding scenario with multiple custom mappings", async () => {
@@ -4728,23 +4728,23 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("i")
-      expect(editor.cursor.line).toBe(0)
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("a")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("h")
-      expect(editor.cursor.visualColumn).toBe(5)
+      expect(editor.logicalCursor.col).toBe(5)
 
       currentMockInput.pressKey("j")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       currentMockInput.pressKey("k")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       currentMockInput.pressKey("l")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
     })
 
     it("should not insert text when key is bound to action", async () => {
@@ -4840,11 +4840,11 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressKey("j")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       editor.gotoLine(0)
       currentMockInput.pressKey("CTRL_J")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
     })
 
     it("should handle all action types via custom keybindings", async () => {
@@ -4882,32 +4882,32 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(1)
       editor.moveCursorRight()
       editor.moveCursorRight()
-      expect(editor.cursor.line).toBe(1)
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressKey("1")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressKey("2")
-      expect(editor.cursor.visualColumn).toBe(2)
+      expect(editor.logicalCursor.col).toBe(2)
 
       currentMockInput.pressKey("3")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       currentMockInput.pressKey("4")
-      expect(editor.cursor.line).toBe(1)
+      expect(editor.logicalCursor.row).toBe(1)
 
       currentMockInput.pressKey("a")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
 
       currentMockInput.pressKey("b")
-      expect(editor.cursor.visualColumn).toBe(6)
+      expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("e")
-      expect(editor.cursor.line).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
 
       currentMockInput.pressKey("f")
-      expect(editor.cursor.line).toBe(2)
+      expect(editor.logicalCursor.row).toBe(2)
     })
 
     it("should not break when empty keyBindings array is provided", async () => {
@@ -4921,10 +4921,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
 
       currentMockInput.pressArrow("right")
-      expect(editor.cursor.visualColumn).toBe(1)
+      expect(editor.logicalCursor.col).toBe(1)
 
       currentMockInput.pressKey("HOME")
-      expect(editor.cursor.visualColumn).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should document limitation: bound character keys cannot be typed", async () => {
@@ -4975,7 +4975,7 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("hello")
 
       currentMockInput.pressKey("CTRL_H")
-      expect(editor.cursor.visualColumn).toBe(4)
+      expect(editor.logicalCursor.col).toBe(4)
     })
   })
 
@@ -5165,7 +5165,7 @@ describe("TextareaRenderable", () => {
         editor.focus()
 
         editor.moveCursorRight()
-        expect(editor.cursor.visualColumn).toBe(1)
+        expect(editor.logicalCursor.col).toBe(1)
       })
     })
 
@@ -6901,7 +6901,7 @@ describe("TextareaRenderable", () => {
         await renderOnce()
 
         expect(editor.plainText).toBe("Line 1\nLine 2\nLine 3")
-        expect(editor.cursor.line).toBe(2)
+        expect(editor.logicalCursor.row).toBe(2)
       })
     })
 
