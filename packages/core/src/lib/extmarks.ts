@@ -1,6 +1,7 @@
 import type { EditBuffer } from "../edit-buffer"
 import type { EditorView } from "../editor-view"
 import { EventEmitter } from "events"
+import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history"
 
 export interface Extmark {
   id: number
@@ -37,6 +38,7 @@ export class ExtmarksController extends EventEmitter {
   private extmarks = new Map<number, Extmark>()
   private nextId = 1
   private destroyed = false
+  private history = new ExtmarksHistory()
 
   private originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
   private originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
@@ -53,6 +55,8 @@ export class ExtmarksController extends EventEmitter {
   private originalNewLine: typeof EditBuffer.prototype.newLine
   private originalDeleteLine: typeof EditBuffer.prototype.deleteLine
   private originalEditorViewDeleteSelectedText: typeof EditorView.prototype.deleteSelectedText
+  private originalUndo: typeof EditBuffer.prototype.undo
+  private originalRedo: typeof EditBuffer.prototype.redo
 
   constructor(editBuffer: EditBuffer, editorView: EditorView) {
     super()
@@ -74,11 +78,14 @@ export class ExtmarksController extends EventEmitter {
     this.originalNewLine = editBuffer.newLine.bind(editBuffer)
     this.originalDeleteLine = editBuffer.deleteLine.bind(editBuffer)
     this.originalEditorViewDeleteSelectedText = editorView.deleteSelectedText.bind(editorView)
+    this.originalUndo = editBuffer.undo.bind(editBuffer)
+    this.originalRedo = editBuffer.redo.bind(editBuffer)
 
     this.wrapCursorMovement()
     this.wrapDeletion()
     this.wrapInsertion()
     this.wrapEditorViewDeleteSelectedText()
+    this.wrapUndoRedo()
     this.setupContentChangeListener()
   }
 
@@ -245,6 +252,8 @@ export class ExtmarksController extends EventEmitter {
         return
       }
 
+      this.saveSnapshot()
+
       const currentOffset = this.editorView.getVisualCursor().offset
       const hadSelection = this.editorView.hasSelection()
 
@@ -291,6 +300,8 @@ export class ExtmarksController extends EventEmitter {
         this.originalDeleteChar()
         return
       }
+
+      this.saveSnapshot()
 
       const currentOffset = this.editorView.getVisualCursor().offset
       const textLength = this.editBuffer.getText().length
@@ -340,6 +351,8 @@ export class ExtmarksController extends EventEmitter {
         return
       }
 
+      this.saveSnapshot()
+
       const startOffset = this.positionToOffset(startLine, startCol)
       const endOffset = this.positionToOffset(endLine, endCol)
       const length = endOffset - startOffset
@@ -353,6 +366,8 @@ export class ExtmarksController extends EventEmitter {
         this.originalDeleteLine()
         return
       }
+
+      this.saveSnapshot()
 
       const text = this.editBuffer.getText()
       const currentOffset = this.editorView.getVisualCursor().offset
@@ -387,6 +402,8 @@ export class ExtmarksController extends EventEmitter {
         return
       }
 
+      this.saveSnapshot()
+
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertText(text)
       this.adjustExtmarksAfterInsertion(currentOffset, text.length)
@@ -397,6 +414,8 @@ export class ExtmarksController extends EventEmitter {
         this.originalInsertChar(char)
         return
       }
+
+      this.saveSnapshot()
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertChar(char)
@@ -409,6 +428,10 @@ export class ExtmarksController extends EventEmitter {
         return
       }
 
+      if (opts?.history !== false) {
+        this.saveSnapshot()
+      }
+
       this.clear()
       this.originalSetText(text, opts)
     }
@@ -419,6 +442,8 @@ export class ExtmarksController extends EventEmitter {
         return
       }
 
+      this.saveSnapshot()
+
       this.clear()
       this.originalClear()
     }
@@ -428,6 +453,8 @@ export class ExtmarksController extends EventEmitter {
         this.originalNewLine()
         return
       }
+
+      this.saveSnapshot()
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalNewLine()
@@ -441,6 +468,8 @@ export class ExtmarksController extends EventEmitter {
         this.originalEditorViewDeleteSelectedText()
         return
       }
+
+      this.saveSnapshot()
 
       const selection = this.editorView.getSelection()
       if (!selection) {
@@ -713,6 +742,60 @@ export class ExtmarksController extends EventEmitter {
     this.updateHighlights()
   }
 
+  private saveSnapshot(): void {
+    this.history.saveSnapshot(this.extmarks, this.nextId)
+  }
+
+  private restoreSnapshot(snapshot: ExtmarksSnapshot): void {
+    this.extmarks = new Map(Array.from(snapshot.extmarks.entries()).map(([id, extmark]) => [id, { ...extmark }]))
+    this.nextId = snapshot.nextId
+    this.updateHighlights()
+  }
+
+  private wrapUndoRedo(): void {
+    this.editBuffer.undo = (): string | null => {
+      if (this.destroyed) {
+        return this.originalUndo()
+      }
+
+      if (!this.history.canUndo()) {
+        return this.originalUndo()
+      }
+
+      const currentSnapshot: ExtmarksSnapshot = {
+        extmarks: new Map(Array.from(this.extmarks.entries()).map(([id, extmark]) => [id, { ...extmark }])),
+        nextId: this.nextId,
+      }
+      this.history.pushRedo(currentSnapshot)
+
+      const snapshot = this.history.undo()!
+      this.restoreSnapshot(snapshot)
+
+      return this.originalUndo()
+    }
+
+    this.editBuffer.redo = (): string | null => {
+      if (this.destroyed) {
+        return this.originalRedo()
+      }
+
+      if (!this.history.canRedo()) {
+        return this.originalRedo()
+      }
+
+      const currentSnapshot: ExtmarksSnapshot = {
+        extmarks: new Map(Array.from(this.extmarks.entries()).map(([id, extmark]) => [id, { ...extmark }])),
+        nextId: this.nextId,
+      }
+      this.history.pushUndo(currentSnapshot)
+
+      const snapshot = this.history.redo()!
+      this.restoreSnapshot(snapshot)
+
+      return this.originalRedo()
+    }
+  }
+
   public destroy(): void {
     if (this.destroyed) return
 
@@ -731,8 +814,11 @@ export class ExtmarksController extends EventEmitter {
     this.editBuffer.newLine = this.originalNewLine
     this.editBuffer.deleteLine = this.originalDeleteLine
     this.editorView.deleteSelectedText = this.originalEditorViewDeleteSelectedText
+    this.editBuffer.undo = this.originalUndo
+    this.editBuffer.redo = this.originalRedo
 
     this.extmarks.clear()
+    this.history.clear()
     this.destroyed = true
     this.removeAllListeners()
   }
