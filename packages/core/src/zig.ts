@@ -80,6 +80,30 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "bool"],
       returns: "void",
     },
+    setWriteTarget: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    renderIntoWriteBuffer: {
+      args: ["ptr", "bool"],
+      returns: "usize",
+    },
+    getWriteBufferLength: {
+      args: ["ptr"],
+      returns: "usize",
+    },
+    copyWriteBuffer: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "usize",
+    },
+    setupTerminalToBuffer: {
+      args: ["ptr", "bool"],
+      returns: "usize",
+    },
+    teardownTerminalToBuffer: {
+      args: ["ptr"],
+      returns: "usize",
+    },
     getNextBuffer: {
       args: ["ptr"],
       returns: "ptr",
@@ -939,9 +963,15 @@ export interface RenderLib {
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
   setRenderOffset: (renderer: Pointer, offset: number) => void
+  setWriteTarget: (renderer: Pointer, target: number) => void
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   render: (renderer: Pointer, force: boolean) => void
+  renderIntoWriteBuffer: (renderer: Pointer, force: boolean) => number
+  getWriteBufferLength: (renderer: Pointer) => number
+  copyWriteBuffer: (renderer: Pointer, target: Uint8Array) => number
+  setupTerminalToBuffer: (renderer: Pointer, useAlternateScreen: boolean) => number
+  teardownTerminalToBuffer: (renderer: Pointer) => number
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   createOptimizedBuffer: (
@@ -1364,6 +1394,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setRenderOffset(renderer, offset)
   }
 
+  public setWriteTarget(renderer: Pointer, target: number) {
+    this.opentui.symbols.setWriteTarget(renderer, target)
+  }
+
   public updateStats(renderer: Pointer, time: number, fps: number, frameCallbackTime: number) {
     this.opentui.symbols.updateStats(renderer, time, fps, frameCallbackTime)
   }
@@ -1619,6 +1653,29 @@ class FFIRenderLib implements RenderLib {
 
   public render(renderer: Pointer, force: boolean) {
     this.opentui.symbols.render(renderer, force)
+  }
+
+  public renderIntoWriteBuffer(renderer: Pointer, force: boolean): number {
+    return Number(this.opentui.symbols.renderIntoWriteBuffer(renderer, force))
+  }
+
+  public getWriteBufferLength(renderer: Pointer): number {
+    return Number(this.opentui.symbols.getWriteBufferLength(renderer))
+  }
+
+  public copyWriteBuffer(renderer: Pointer, target: Uint8Array): number {
+    if (target.byteLength === 0) {
+      return 0
+    }
+    return Number(this.opentui.symbols.copyWriteBuffer(renderer, ptr(target), target.byteLength))
+  }
+
+  public setupTerminalToBuffer(renderer: Pointer, useAlternateScreen: boolean): number {
+    return Number(this.opentui.symbols.setupTerminalToBuffer(renderer, useAlternateScreen))
+  }
+
+  public teardownTerminalToBuffer(renderer: Pointer): number {
+    return Number(this.opentui.symbols.teardownTerminalToBuffer(renderer))
   }
 
   public createOptimizedBuffer(
