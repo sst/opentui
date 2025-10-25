@@ -1,4 +1,5 @@
 import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
+import { type TestRenderer } from "@opentui/core/testing"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
@@ -82,7 +83,15 @@ export const hostConfig: HostConfig<
 
   // Reset after commit
   resetAfterCommit(containerInfo: Container) {
-    // Trigger a render update if needed
+    if ("resolveReady" in containerInfo.ctx && "ready" in containerInfo.ctx) {
+      const testRenderer = containerInfo.ctx as TestRenderer
+      if (testRenderer.resolveReady) {
+        testRenderer.resolveReady()
+        const { promise, resolve } = Promise.withResolvers<void>()
+        testRenderer.ready = promise
+        testRenderer.resolveReady = resolve
+      }
+    }
     containerInfo.requestRender()
   },
 
