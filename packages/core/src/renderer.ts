@@ -67,6 +67,7 @@ export interface CliRendererConfig {
   useConsole?: boolean
   experimental_splitHeight?: number
   useKittyKeyboard?: boolean
+  backgroundColor?: ColorInput
 }
 
 export type PixelResolution = {
@@ -230,7 +231,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private frameTimes: number[] = []
   private maxStatSamples: number = 300
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
-  private backgroundColor: RGBA = RGBA.fromHex("#000000")
+  private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
   private waitingForPixelResolution: boolean = false
 
   private rendering: boolean = false
@@ -1030,7 +1031,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderOffset = height - this._splitHeight
       this.width = width
       this.height = this._splitHeight
-      this.currentRenderBuffer.clear(RGBA.fromHex("#000000"))
+      this.currentRenderBuffer.clear(this.backgroundColor)
       this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
     } else {
       this.width = width
