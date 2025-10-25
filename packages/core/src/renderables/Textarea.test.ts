@@ -1192,6 +1192,61 @@ describe("TextareaRenderable", () => {
     })
   })
 
+  describe("Undo/Redo", () => {
+    it("should delete multiple selected ranges and restore with undo", async () => {
+      const initialText = "Hello World Test"
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: initialText,
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      editor.editBuffer.setCursor(0, 0)
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe(" World Test")
+      expect(editor.hasSelection()).toBe(false)
+
+      editor.editBuffer.setCursor(0, 0)
+      for (let i = 0; i < 6; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe(" World")
+
+      currentMockInput.pressKey("DELETE")
+      expect(editor.plainText).toBe(" Test")
+      expect(editor.hasSelection()).toBe(false)
+
+      editor.editBuffer.setCursor(0, 0)
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe(" Test")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("")
+      expect(editor.hasSelection()).toBe(false)
+
+      currentMockInput.pressKey("CTRL_Z")
+      expect(editor.plainText).toBe(" Test")
+
+      currentMockInput.pressKey("CTRL_Z")
+      expect(editor.plainText).toBe(" World Test")
+
+      currentMockInput.pressKey("CTRL_Z")
+      expect(editor.plainText).toBe(initialText)
+    })
+  })
+
   describe("Keyboard Input - Meta Key Bindings", () => {
     it("should bind custom action to meta key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
