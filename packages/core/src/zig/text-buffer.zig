@@ -672,6 +672,19 @@ pub const UnifiedTextBuffer = struct {
                 _ = active.remove(event.hl_idx);
             }
         }
+
+        // Emit final span after last event if there were any highlights
+        // This ensures the line returns to default styling after the last highlight ends
+        if (events.items.len > 0 and active.count() == 0) {
+            const line_width = iter_mod.lineWidthAt(&self.rope, @intCast(line_idx));
+            if (current_col < line_width) {
+                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
+                    .col = current_col,
+                    .style_id = 0, // No style (default)
+                    .next_col = line_width,
+                });
+            }
+        }
     }
 
     /// Add highlight by row/col coordinates

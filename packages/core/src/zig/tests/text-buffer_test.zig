@@ -1817,3 +1817,125 @@ test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduc
     const max_expected_growth = 50000;
     try std.testing.expect(arena_growth < max_expected_growth);
 }
+
+test "addHighlightByCharRange - single line highlight should not extend to EOL" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Try moving your cursor through the [VIRTUAL] markers below:";
+    try tb.setText(text);
+
+    try tb.addHighlightByCharRange(35, 44, 1, 1, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 35), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 44), highlights[0].col_end);
+
+    try std.testing.expect(highlights[0].col_end < 59);
+    try std.testing.expect(highlights[0].col_end == 44);
+}
+
+test "addHighlightByCharRange - multiple highlights on same line should have correct bounds" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Text [MARK1] and [MARK2] here";
+    try tb.setText(text);
+
+    try tb.addHighlightByCharRange(5, 12, 1, 1, 0);
+    try tb.addHighlightByCharRange(17, 24, 1, 2, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), highlights.len);
+
+    try std.testing.expectEqual(@as(u32, 5), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 12), highlights[0].col_end);
+
+    try std.testing.expectEqual(@as(u32, 17), highlights[1].col_start);
+    try std.testing.expectEqual(@as(u32, 24), highlights[1].col_end);
+}
+
+test "addHighlightByCharRange - highlight after newline should not span to EOL" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Line1\nLine2 with [MARK] text\nLine3";
+    try tb.setText(text);
+
+    const line1_char_offset: u32 = 5;
+    const mark_start = line1_char_offset + 11;
+    const mark_end = line1_char_offset + 17;
+
+    try tb.addHighlightByCharRange(mark_start, mark_end, 1, 1, 0);
+
+    const hl0 = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), hl0.len);
+
+    const hl1 = tb.getLineHighlights(1);
+    try std.testing.expectEqual(@as(usize, 1), hl1.len);
+
+    try std.testing.expectEqual(@as(u32, 11), hl1[0].col_start);
+    try std.testing.expectEqual(@as(u32, 17), hl1[0].col_end);
+
+    const line1_text = "Line2 with [MARK] text";
+    try std.testing.expect(hl1[0].col_end < line1_text.len);
+}
+
+test "addHighlightByCharRange - extmarks demo scenario reproduction" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const full_text =
+        \\Welcome to the Extmarks Demo!
+        \\
+        \\This demo showcases virtual extmarks - text ranges that the cursor jumps over.
+        \\
+        \\Try moving your cursor through the [VIRTUAL] markers below:
+        \\- Use arrow keys to navigate
+    ;
+    try tb.setText(full_text);
+
+    const line4_char_offset: u32 = 107;
+    const virtual_start = line4_char_offset + 35;
+    const virtual_end = line4_char_offset + 44;
+
+    try tb.addHighlightByCharRange(virtual_start, virtual_end, 1, 1, 0);
+
+    const line4_highlights = tb.getLineHighlights(4);
+    try std.testing.expectEqual(@as(usize, 1), line4_highlights.len);
+    try std.testing.expectEqual(@as(u32, 35), line4_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 44), line4_highlights[0].col_end);
+
+    const line4_text = "Try moving your cursor through the [VIRTUAL] markers below:";
+    try std.testing.expect(line4_highlights[0].col_end == 44);
+    try std.testing.expect(line4_highlights[0].col_end < line4_text.len);
+}
