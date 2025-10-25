@@ -937,6 +937,12 @@ export interface VisualCursor {
   offset: number // Global display-width offset from buffer start
 }
 
+export interface LogicalCursor {
+  row: number
+  col: number
+  offset: number
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
@@ -1136,7 +1142,7 @@ export interface RenderLib {
   editBufferSetCursor: (buffer: Pointer, line: number, col: number) => void
   editBufferSetCursorToLineCol: (buffer: Pointer, line: number, col: number) => void
   editBufferSetCursorByOffset: (buffer: Pointer, offset: number) => void
-  editBufferGetCursorPosition: (buffer: Pointer) => { line: number; visualColumn: number; offset: number }
+  editBufferGetCursorPosition: (buffer: Pointer) => LogicalCursor
   editBufferGetId: (buffer: Pointer) => number
   editBufferGetTextBuffer: (buffer: Pointer) => Pointer
   editBufferDebugLogRope: (buffer: Pointer) => void
@@ -2229,14 +2235,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferSetCursorByOffset(buffer, offset)
   }
 
-  public editBufferGetCursorPosition(buffer: Pointer): { line: number; visualColumn: number; offset: number } {
+  public editBufferGetCursorPosition(buffer: Pointer): LogicalCursor {
     const line = new Uint32Array(1)
     const visualColumn = new Uint32Array(1)
     const offset = new Uint32Array(1)
     this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(visualColumn), ptr(offset))
     return {
-      line: line[0],
-      visualColumn: visualColumn[0],
+      row: line[0],
+      col: visualColumn[0],
       offset: offset[0],
     }
   }
@@ -2302,19 +2308,19 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferClear(buffer)
   }
 
-  public editBufferGetNextWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
+  public editBufferGetNextWordBoundary(buffer: Pointer): LogicalCursor {
     const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
     this.opentui.symbols.editBufferGetNextWordBoundary(buffer, ptr(cursorBuffer))
     return LogicalCursorStruct.unpack(cursorBuffer)
   }
 
-  public editBufferGetPrevWordBoundary(buffer: Pointer): { row: number; col: number; offset: number } {
+  public editBufferGetPrevWordBoundary(buffer: Pointer): LogicalCursor {
     const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
     this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, ptr(cursorBuffer))
     return LogicalCursorStruct.unpack(cursorBuffer)
   }
 
-  public editBufferGetEOL(buffer: Pointer): { row: number; col: number; offset: number } {
+  public editBufferGetEOL(buffer: Pointer): LogicalCursor {
     const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
     this.opentui.symbols.editBufferGetEOL(buffer, ptr(cursorBuffer))
     return LogicalCursorStruct.unpack(cursorBuffer)

@@ -1,6 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { EditBuffer, type CursorPosition } from "../edit-buffer"
+import { EditBuffer, type LogicalCursor } from "../edit-buffer"
 import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext, type Highlight } from "../types"
@@ -107,8 +107,8 @@ export abstract class EditBufferRenderable extends Renderable {
       if (this._cursorChangeListener) {
         const cursor = this.editBuffer.getCursorPosition()
         this._cursorChangeListener({
-          line: cursor.line,
-          visualColumn: cursor.visualColumn,
+          line: cursor.row,
+          visualColumn: cursor.col,
         })
       }
     })
@@ -126,7 +126,7 @@ export abstract class EditBufferRenderable extends Renderable {
     return this.editBuffer.getText()
   }
 
-  get cursor(): CursorPosition {
+  get logicalCursor(): LogicalCursor {
     return this.editBuffer.getCursorPosition()
   }
 

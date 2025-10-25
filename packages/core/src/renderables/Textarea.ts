@@ -356,7 +356,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const select = options?.select ?? false
     this.handleShiftSelection(select, true)
     const eol = this.editBuffer.getEOL()
-    this.editBuffer.setCursor(eol.line, eol.visualColumn)
+    this.editBuffer.setCursor(eol.row, eol.col)
     this.handleShiftSelection(select, false)
     this.requestRender()
     return true
@@ -378,8 +378,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     const cursor = this.editorView.getCursor()
     const eol = this.editBuffer.getEOL()
 
-    if (eol.visualColumn > cursor.col) {
-      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.line, eol.visualColumn)
+    if (eol.col > cursor.col) {
+      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.row, eol.col)
     }
 
     this.requestRender()
@@ -430,7 +430,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const nextWord = this.editBuffer.getNextWordBoundary()
 
     if (nextWord.offset > currentCursor.offset) {
-      this.editBuffer.deleteRange(currentCursor.line, currentCursor.visualColumn, nextWord.line, nextWord.visualColumn)
+      this.editBuffer.deleteRange(currentCursor.row, currentCursor.col, nextWord.row, nextWord.col)
     }
 
     this._ctx.clearSelection()
@@ -448,7 +448,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const prevWord = this.editBuffer.getPrevWordBoundary()
 
     if (prevWord.offset < currentCursor.offset) {
-      this.editBuffer.deleteRange(prevWord.line, prevWord.visualColumn, currentCursor.line, currentCursor.visualColumn)
+      this.editBuffer.deleteRange(prevWord.row, prevWord.col, currentCursor.row, currentCursor.col)
     }
 
     this._ctx.clearSelection()
