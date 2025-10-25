@@ -5,6 +5,8 @@ import { RGBA } from "./lib/RGBA"
 import { EventEmitter } from "events"
 import type { SyntaxStyle } from "./syntax-style"
 
+export type { LogicalCursor }
+
 /**
  * EditBuffer provides a text editing buffer with cursor management,
  * incremental editing, and grapheme-aware operations.
