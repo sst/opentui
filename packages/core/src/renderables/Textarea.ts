@@ -578,10 +578,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public get extmarks(): any {
-    if (!this.editBuffer.extmarksController) {
-      const { createExtmarksController } = require("../lib/extmarks")
-      this.editBuffer.extmarksController = createExtmarksController(this.editBuffer, this.editorView)
-    }
-    return this.editBuffer.extmarksController
+    return this.editorView.extmarks
   }
 }
