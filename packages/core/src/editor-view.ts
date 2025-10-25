@@ -2,6 +2,7 @@ import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig"
 import { type Pointer } from "bun:ffi"
 import type { EditBuffer } from "./edit-buffer"
+import { createExtmarksController } from "./lib"
 
 export interface Viewport {
   offsetY: number
@@ -17,6 +18,7 @@ export class EditorView {
   private viewPtr: Pointer
   private editBuffer: EditBuffer
   private _destroyed: boolean = false
+  private _extmarksController?: any
 
   constructor(lib: RenderLib, ptr: Pointer, editBuffer: EditBuffer) {
     this.lib = lib
@@ -190,8 +192,21 @@ export class EditorView {
     return this.lib.textBufferViewGetLogicalLineInfo(textBufferViewPtr)
   }
 
+  public get extmarks(): any {
+    if (!this._extmarksController) {
+      this._extmarksController = createExtmarksController(this.editBuffer, this)
+    }
+    return this._extmarksController
+  }
+
   public destroy(): void {
     if (this._destroyed) return
+
+    if (this._extmarksController) {
+      this._extmarksController.destroy()
+      this._extmarksController = undefined
+    }
+
     this._destroyed = true
     this.lib.destroyEditorView(this.viewPtr)
   }
