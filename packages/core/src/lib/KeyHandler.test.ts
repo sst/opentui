@@ -420,3 +420,30 @@ test("InternalKeyHandler - paste preventDefault prevents internal handlers", () 
 
   handler.destroy()
 })
+
+test("KeyHandler - filters out mouse events", () => {
+  const handler = createKeyHandler()
+
+  let keypressCount = 0
+  handler.on("keypress", () => {
+    keypressCount++
+  })
+
+  if (!renderer) {
+    throw new Error("Renderer not initialized")
+  }
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[<0;10;5M"))
+  expect(keypressCount).toBe(0)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[<0;10;5m"))
+  expect(keypressCount).toBe(0)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[M abc"))
+  expect(keypressCount).toBe(0)
+
+  renderer.stdin.emit("data", Buffer.from("a"))
+  expect(keypressCount).toBe(1)
+
+  handler.destroy()
+})
