@@ -5,7 +5,6 @@ import {
   BoxRenderable,
   TextRenderable,
   KeyEvent,
-  createExtmarksController,
   type ExtmarksController,
   type ExtmarkDeletedEvent,
 } from "../index"
@@ -84,7 +83,10 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   editorBox.add(editor)
 
-  extmarksController = createExtmarksController(editor)
+  extmarksController = editor.extmarks
+  if (!extmarksController) {
+    throw new Error("Failed to create extmarks controller")
+  }
 
   findAndMarkVirtualRanges()
 

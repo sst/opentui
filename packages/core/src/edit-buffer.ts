@@ -24,6 +24,7 @@ export class EditBuffer extends EventEmitter {
   private _singleTextBytes: Uint8Array | null = null
   private _singleTextMemId: number | null = null
   private _syntaxStyle?: SyntaxStyle
+  private _extmarksController?: any
 
   constructor(lib: RenderLib, ptr: Pointer) {
     super()
@@ -339,5 +340,13 @@ export class EditBuffer extends EventEmitter {
     this._destroyed = true
     EditBuffer.registry.delete(this.id)
     this.lib.destroyEditBuffer(this.bufferPtr)
+  }
+
+  public get extmarksController(): any {
+    return this._extmarksController
+  }
+
+  public set extmarksController(controller: any) {
+    this._extmarksController = controller
   }
 }
