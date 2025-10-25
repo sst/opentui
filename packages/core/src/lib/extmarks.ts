@@ -41,6 +41,8 @@ export class ExtmarksController extends EventEmitter {
   private originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
   private originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
   private originalSetCursorByOffset: typeof EditBuffer.prototype.setCursorByOffset
+  private originalMoveUpVisual: typeof EditorView.prototype.moveUpVisual
+  private originalMoveDownVisual: typeof EditorView.prototype.moveDownVisual
   private originalDeleteCharBackward: typeof EditBuffer.prototype.deleteCharBackward
   private originalDeleteChar: typeof EditBuffer.prototype.deleteChar
   private originalInsertText: typeof EditBuffer.prototype.insertText
@@ -60,6 +62,8 @@ export class ExtmarksController extends EventEmitter {
     this.originalMoveCursorLeft = editBuffer.moveCursorLeft.bind(editBuffer)
     this.originalMoveCursorRight = editBuffer.moveCursorRight.bind(editBuffer)
     this.originalSetCursorByOffset = editBuffer.setCursorByOffset.bind(editBuffer)
+    this.originalMoveUpVisual = editorView.moveUpVisual.bind(editorView)
+    this.originalMoveDownVisual = editorView.moveDownVisual.bind(editorView)
     this.originalDeleteCharBackward = editBuffer.deleteCharBackward.bind(editBuffer)
     this.originalDeleteChar = editBuffer.deleteChar.bind(editBuffer)
     this.originalInsertText = editBuffer.insertText.bind(editBuffer)
@@ -137,6 +141,66 @@ export class ExtmarksController extends EventEmitter {
       }
 
       this.originalMoveCursorRight()
+    }
+
+    this.editorView.moveUpVisual = (): void => {
+      if (this.destroyed) {
+        this.originalMoveUpVisual()
+        return
+      }
+
+      const hasSelection = this.editorView.hasSelection()
+
+      if (hasSelection) {
+        this.originalMoveUpVisual()
+        return
+      }
+
+      const currentOffset = this.editorView.getVisualCursor().offset
+      this.originalMoveUpVisual()
+      const newOffset = this.editorView.getVisualCursor().offset
+
+      const virtualExtmark = this.findVirtualExtmarkContaining(newOffset)
+      if (virtualExtmark) {
+        const distanceToStart = newOffset - virtualExtmark.start
+        const distanceToEnd = virtualExtmark.end - newOffset
+
+        if (distanceToStart < distanceToEnd) {
+          this.editorView.setCursorByOffset(virtualExtmark.start - 1)
+        } else {
+          this.editorView.setCursorByOffset(virtualExtmark.end)
+        }
+      }
+    }
+
+    this.editorView.moveDownVisual = (): void => {
+      if (this.destroyed) {
+        this.originalMoveDownVisual()
+        return
+      }
+
+      const hasSelection = this.editorView.hasSelection()
+
+      if (hasSelection) {
+        this.originalMoveDownVisual()
+        return
+      }
+
+      const currentOffset = this.editorView.getVisualCursor().offset
+      this.originalMoveDownVisual()
+      const newOffset = this.editorView.getVisualCursor().offset
+
+      const virtualExtmark = this.findVirtualExtmarkContaining(newOffset)
+      if (virtualExtmark) {
+        const distanceToStart = newOffset - virtualExtmark.start
+        const distanceToEnd = virtualExtmark.end - newOffset
+
+        if (distanceToStart < distanceToEnd) {
+          this.editorView.setCursorByOffset(virtualExtmark.start - 1)
+        } else {
+          this.editorView.setCursorByOffset(virtualExtmark.end)
+        }
+      }
     }
 
     this.editBuffer.setCursorByOffset = (offset: number): void => {
@@ -655,6 +719,8 @@ export class ExtmarksController extends EventEmitter {
     this.editBuffer.moveCursorLeft = this.originalMoveCursorLeft
     this.editBuffer.moveCursorRight = this.originalMoveCursorRight
     this.editBuffer.setCursorByOffset = this.originalSetCursorByOffset
+    this.editorView.moveUpVisual = this.originalMoveUpVisual
+    this.editorView.moveDownVisual = this.originalMoveDownVisual
     this.editBuffer.deleteCharBackward = this.originalDeleteCharBackward
     this.editBuffer.deleteChar = this.originalDeleteChar
     this.editBuffer.insertText = this.originalInsertText
