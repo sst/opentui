@@ -2048,4 +2048,345 @@ Press ESC to return to main menu.`
       expect(isInsideExtmark).toBe(false)
     })
   })
+
+  describe("Undo/Redo with Extmarks", () => {
+    it("should restore extmark after undo of text insertion", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        styleId: 1,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 3
+      currentMockInput.pressKey("X")
+
+      const extmarkAfterInsert = extmarks.get(id)
+      expect(extmarkAfterInsert?.start).toBe(0)
+      expect(extmarkAfterInsert?.end).toBe(6)
+
+      textarea.undo()
+
+      const extmarkAfterUndo = extmarks.get(id)
+      expect(extmarkAfterUndo?.start).toBe(0)
+      expect(extmarkAfterUndo?.end).toBe(5)
+    })
+
+    it("should restore extmark after undo of text deletion", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+        styleId: 1,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("DELETE")
+
+      const extmarkAfterDelete = extmarks.get(id)
+      expect(extmarkAfterDelete?.start).toBe(5)
+      expect(extmarkAfterDelete?.end).toBe(10)
+
+      textarea.undo()
+
+      const extmarkAfterUndo = extmarks.get(id)
+      expect(extmarkAfterUndo?.start).toBe(6)
+      expect(extmarkAfterUndo?.end).toBe(11)
+    })
+
+    it("should restore extmark after redo", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        styleId: 1,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 3
+      currentMockInput.pressKey("X")
+
+      const extmarkAfterInsert = extmarks.get(id)
+      expect(extmarkAfterInsert?.start).toBe(0)
+      expect(extmarkAfterInsert?.end).toBe(6)
+
+      textarea.undo()
+
+      const extmarkAfterUndo = extmarks.get(id)
+      expect(extmarkAfterUndo?.start).toBe(0)
+      expect(extmarkAfterUndo?.end).toBe(5)
+
+      textarea.redo()
+
+      const extmarkAfterRedo = extmarks.get(id)
+      expect(extmarkAfterRedo?.start).toBe(0)
+      expect(extmarkAfterRedo?.end).toBe(6)
+    })
+
+    it("should restore deleted virtual extmark after undo", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+      })
+
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe("abcdef")
+      expect(extmarks.get(id)).toBeNull()
+
+      textarea.undo()
+
+      const extmarkAfterUndo = extmarks.get(id)
+      expect(extmarkAfterUndo).not.toBeNull()
+      expect(extmarkAfterUndo?.start).toBe(3)
+      expect(extmarkAfterUndo?.end).toBe(9)
+      expect(extmarkAfterUndo?.virtual).toBe(true)
+      expect(textarea.plainText).toBe("abc[LINK]def")
+    })
+
+    it("should handle multiple undo/redo operations", async () => {
+      await setup("Test")
+
+      const id = extmarks.create({
+        start: 0,
+        end: 4,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      currentMockInput.pressKey("1")
+      expect(extmarks.get(id)?.end).toBe(5)
+
+      currentMockInput.pressKey("2")
+      expect(extmarks.get(id)?.end).toBe(6)
+
+      currentMockInput.pressKey("3")
+      expect(extmarks.get(id)?.end).toBe(7)
+
+      textarea.undo()
+      expect(extmarks.get(id)?.end).toBe(6)
+
+      textarea.undo()
+      expect(extmarks.get(id)?.end).toBe(5)
+
+      textarea.undo()
+      expect(extmarks.get(id)?.end).toBe(4)
+
+      textarea.redo()
+      expect(extmarks.get(id)?.end).toBe(5)
+
+      textarea.redo()
+      expect(extmarks.get(id)?.end).toBe(6)
+
+      textarea.redo()
+      expect(extmarks.get(id)?.end).toBe(7)
+    })
+
+    it("should restore multiple extmarks after undo", async () => {
+      await setup("Hello World Test")
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+      })
+
+      const id2 = extmarks.create({
+        start: 6,
+        end: 11,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("X")
+
+      expect(extmarks.get(id1)?.start).toBe(1)
+      expect(extmarks.get(id1)?.end).toBe(6)
+      expect(extmarks.get(id2)?.start).toBe(7)
+      expect(extmarks.get(id2)?.end).toBe(12)
+
+      textarea.undo()
+
+      expect(extmarks.get(id1)?.start).toBe(0)
+      expect(extmarks.get(id1)?.end).toBe(5)
+      expect(extmarks.get(id2)?.start).toBe(6)
+      expect(extmarks.get(id2)?.end).toBe(11)
+    })
+
+    it("should handle undo after backspace that deleted virtual extmark", async () => {
+      await setup("text[VIRTUAL]more")
+
+      textarea.focus()
+      textarea.cursorOffset = 13
+
+      const id = extmarks.create({
+        start: 4,
+        end: 13,
+        virtual: true,
+      })
+
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe("textmore")
+      expect(extmarks.get(id)).toBeNull()
+
+      textarea.undo()
+
+      const restoredExtmark = extmarks.get(id)
+      expect(restoredExtmark).not.toBeNull()
+      expect(restoredExtmark?.start).toBe(4)
+      expect(restoredExtmark?.end).toBe(13)
+      expect(restoredExtmark?.virtual).toBe(true)
+    })
+
+    it("should restore extmark IDs correctly after undo", async () => {
+      await setup("Test")
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 2,
+      })
+
+      const id2 = extmarks.create({
+        start: 2,
+        end: 4,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("X")
+
+      textarea.undo()
+
+      expect(extmarks.get(id1)).not.toBeNull()
+      expect(extmarks.get(id2)).not.toBeNull()
+      expect(extmarks.get(id1)?.id).toBe(id1)
+      expect(extmarks.get(id2)?.id).toBe(id2)
+    })
+
+    it("should preserve extmark data after undo/redo", async () => {
+      await setup("Hello")
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        data: { type: "link", url: "https://example.com" },
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 5
+      currentMockInput.pressKey("X")
+
+      textarea.undo()
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.data).toEqual({ type: "link", url: "https://example.com" })
+
+      textarea.redo()
+
+      const extmarkAfterRedo = extmarks.get(id)
+      expect(extmarkAfterRedo?.data).toEqual({ type: "link", url: "https://example.com" })
+    })
+
+    it("should handle undo/redo with multiline extmarks", async () => {
+      await setup("Line1\nLine2\nLine3")
+
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("X")
+
+      expect(extmarks.get(id)?.start).toBe(7)
+      expect(extmarks.get(id)?.end).toBe(12)
+
+      textarea.undo()
+
+      expect(extmarks.get(id)?.start).toBe(6)
+      expect(extmarks.get(id)?.end).toBe(11)
+
+      textarea.redo()
+
+      expect(extmarks.get(id)?.start).toBe(7)
+      expect(extmarks.get(id)?.end).toBe(12)
+    })
+
+    it("should handle undo after deleteRange", async () => {
+      await setup("Hello World Test")
+
+      const id = extmarks.create({
+        start: 12,
+        end: 16,
+      })
+
+      textarea.focus()
+      textarea.deleteRange(0, 0, 0, 6)
+
+      expect(extmarks.get(id)?.start).toBe(6)
+      expect(extmarks.get(id)?.end).toBe(10)
+
+      textarea.undo()
+
+      expect(extmarks.get(id)?.start).toBe(12)
+      expect(extmarks.get(id)?.end).toBe(16)
+    })
+
+    it("should maintain correct nextId after undo/redo", async () => {
+      await setup("Test")
+
+      extmarks.create({ start: 0, end: 2 })
+
+      textarea.focus()
+      textarea.cursorOffset = 4
+      currentMockInput.pressKey("X")
+
+      textarea.undo()
+
+      const newId = extmarks.create({ start: 2, end: 4 })
+
+      expect(newId).toBe(2)
+    })
+
+    it("should handle undo/redo of selection deletion", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe(" World")
+      expect(extmarks.get(id)?.start).toBe(1)
+      expect(extmarks.get(id)?.end).toBe(6)
+
+      textarea.undo()
+
+      expect(textarea.plainText).toBe("Hello World")
+      expect(extmarks.get(id)?.start).toBe(6)
+      expect(extmarks.get(id)?.end).toBe(11)
+    })
+  })
 })
