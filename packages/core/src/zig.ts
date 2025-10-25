@@ -575,7 +575,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferGetCursorPosition: {
-      args: ["ptr", "ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     editBufferGetId: {
@@ -2236,15 +2236,9 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferGetCursorPosition(buffer: Pointer): LogicalCursor {
-    const line = new Uint32Array(1)
-    const visualColumn = new Uint32Array(1)
-    const offset = new Uint32Array(1)
-    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(line), ptr(visualColumn), ptr(offset))
-    return {
-      row: line[0],
-      col: visualColumn[0],
-      offset: offset[0],
-    }
+    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(cursorBuffer))
+    return LogicalCursorStruct.unpack(cursorBuffer)
   }
 
   public editBufferGetId(buffer: Pointer): number {
