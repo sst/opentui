@@ -41,8 +41,8 @@ describe("EditBuffer", () => {
       buffer.setText("Hello World")
       const cursor = buffer.getCursorPosition()
 
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(0)
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
     })
 
     it("should track cursor position after movements", () => {
@@ -50,11 +50,11 @@ describe("EditBuffer", () => {
 
       buffer.moveCursorRight()
       let cursor = buffer.getCursorPosition()
-      expect(cursor.visualColumn).toBe(1)
+      expect(cursor.col).toBe(1)
 
       buffer.moveCursorRight()
       cursor = buffer.getCursorPosition()
-      expect(cursor.visualColumn).toBe(2)
+      expect(cursor.col).toBe(2)
     })
 
     it("should handle multi-line cursor positions", () => {
@@ -62,11 +62,11 @@ describe("EditBuffer", () => {
 
       buffer.moveCursorDown()
       let cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(1)
+      expect(cursor.row).toBe(1)
 
       buffer.moveCursorDown()
       cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(2)
+      expect(cursor.row).toBe(2)
     })
   })
 
@@ -75,62 +75,62 @@ describe("EditBuffer", () => {
       buffer.setText("ABCDE")
 
       buffer.setCursorToLineCol(0, 5) // Move to end
-      expect(buffer.getCursorPosition().visualColumn).toBe(5)
+      expect(buffer.getCursorPosition().col).toBe(5)
 
       buffer.moveCursorLeft()
-      expect(buffer.getCursorPosition().visualColumn).toBe(4)
+      expect(buffer.getCursorPosition().col).toBe(4)
 
       buffer.moveCursorLeft()
-      expect(buffer.getCursorPosition().visualColumn).toBe(3)
+      expect(buffer.getCursorPosition().col).toBe(3)
     })
 
     it("should move cursor up and down", () => {
       buffer.setText("Line 1\nLine 2\nLine 3")
 
       buffer.moveCursorDown()
-      expect(buffer.getCursorPosition().line).toBe(1)
+      expect(buffer.getCursorPosition().row).toBe(1)
 
       buffer.moveCursorDown()
-      expect(buffer.getCursorPosition().line).toBe(2)
+      expect(buffer.getCursorPosition().row).toBe(2)
 
       buffer.moveCursorUp()
-      expect(buffer.getCursorPosition().line).toBe(1)
+      expect(buffer.getCursorPosition().row).toBe(1)
     })
 
     it("should move to line start and end", () => {
       buffer.setText("Hello World")
 
       buffer.setCursorToLineCol(0, 11) // Move to end
-      expect(buffer.getCursorPosition().visualColumn).toBe(11)
+      expect(buffer.getCursorPosition().col).toBe(11)
 
       const cursor = buffer.getCursorPosition()
-      buffer.setCursor(cursor.line, 0)
-      expect(buffer.getCursorPosition().visualColumn).toBe(0)
+      buffer.setCursor(cursor.row, 0)
+      expect(buffer.getCursorPosition().col).toBe(0)
     })
 
     it("should goto specific line", () => {
       buffer.setText("Line 1\nLine 2\nLine 3")
 
       buffer.gotoLine(1)
-      expect(buffer.getCursorPosition().line).toBe(1)
+      expect(buffer.getCursorPosition().row).toBe(1)
 
       buffer.gotoLine(2)
-      expect(buffer.getCursorPosition().line).toBe(2)
+      expect(buffer.getCursorPosition().row).toBe(2)
     })
 
     it("should handle Unicode grapheme movement correctly", () => {
       buffer.setText("A🌟B")
 
-      expect(buffer.getCursorPosition().visualColumn).toBe(0)
+      expect(buffer.getCursorPosition().col).toBe(0)
 
       buffer.moveCursorRight() // Move to emoji
-      expect(buffer.getCursorPosition().visualColumn).toBe(1)
+      expect(buffer.getCursorPosition().col).toBe(1)
 
       buffer.moveCursorRight() // Move past emoji (2 cells wide)
-      expect(buffer.getCursorPosition().visualColumn).toBe(3)
+      expect(buffer.getCursorPosition().col).toBe(3)
 
       buffer.moveCursorRight() // Move to B
-      expect(buffer.getCursorPosition().visualColumn).toBe(4)
+      expect(buffer.getCursorPosition().col).toBe(4)
     })
   })
 
@@ -347,7 +347,7 @@ describe("EditBuffer", () => {
 
       buffer.setCursor(0, 6)
       const cursor = buffer.getCursorPosition()
-      expect(cursor.visualColumn).toBe(6)
+      expect(cursor.col).toBe(6)
     })
 
     it("should set cursor by line and column", () => {
@@ -355,7 +355,7 @@ describe("EditBuffer", () => {
 
       buffer.setCursorToLineCol(0, 5)
       const cursor = buffer.getCursorPosition()
-      expect(cursor.visualColumn).toBe(5)
+      expect(cursor.col).toBe(5)
     })
 
     it("should handle multi-line setCursorToLineCol", () => {
@@ -363,8 +363,8 @@ describe("EditBuffer", () => {
 
       buffer.setCursorToLineCol(1, 3)
       const cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(1)
-      expect(cursor.visualColumn).toBe(3)
+      expect(cursor.row).toBe(1)
+      expect(cursor.col).toBe(3)
     })
   })
 
@@ -374,7 +374,7 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 0)
 
       const nextBoundary = buffer.getNextWordBoundary()
-      expect(nextBoundary.visualColumn).toBeGreaterThan(0)
+      expect(nextBoundary.col).toBeGreaterThan(0)
     })
 
     it("should get previous word boundary", () => {
@@ -382,7 +382,7 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 15)
 
       const prevBoundary = buffer.getPrevWordBoundary()
-      expect(prevBoundary.visualColumn).toBeLessThan(15)
+      expect(prevBoundary.col).toBeLessThan(15)
     })
 
     it("should handle word boundary at start", () => {
@@ -390,8 +390,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 0)
 
       const prevBoundary = buffer.getPrevWordBoundary()
-      expect(prevBoundary.line).toBe(0)
-      expect(prevBoundary.visualColumn).toBe(0)
+      expect(prevBoundary.row).toBe(0)
+      expect(prevBoundary.col).toBe(0)
     })
 
     it("should handle word boundary at end", () => {
@@ -399,7 +399,7 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 11)
 
       const nextBoundary = buffer.getNextWordBoundary()
-      expect(nextBoundary.visualColumn).toBe(11)
+      expect(nextBoundary.col).toBe(11)
     })
 
     it("should navigate across lines", () => {
@@ -407,7 +407,7 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 5)
 
       const nextBoundary = buffer.getNextWordBoundary()
-      expect(nextBoundary.line).toBeGreaterThanOrEqual(0)
+      expect(nextBoundary.row).toBeGreaterThanOrEqual(0)
     })
 
     it("should handle punctuation boundaries", () => {
@@ -415,7 +415,72 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 0)
 
       const next1 = buffer.getNextWordBoundary()
-      expect(next1.visualColumn).toBeGreaterThan(0)
+      expect(next1.col).toBeGreaterThan(0)
+    })
+  })
+
+  describe("native coordinate conversion methods", () => {
+    it("should convert offset to position", () => {
+      buffer.setText("Hello\nWorld")
+
+      const pos0 = buffer.offsetToPosition(0)
+      expect(pos0).toEqual({ row: 0, col: 0 })
+
+      const pos5 = buffer.offsetToPosition(5)
+      expect(pos5).toEqual({ row: 0, col: 5 })
+
+      const pos6 = buffer.offsetToPosition(6)
+      expect(pos6).toEqual({ row: 1, col: 0 })
+
+      const pos11 = buffer.offsetToPosition(11)
+      expect(pos11).toEqual({ row: 1, col: 5 })
+    })
+
+    it("should convert position to offset", () => {
+      buffer.setText("Hello\nWorld")
+
+      expect(buffer.positionToOffset(0, 0)).toBe(0)
+      expect(buffer.positionToOffset(0, 5)).toBe(5)
+      expect(buffer.positionToOffset(1, 0)).toBe(6)
+      expect(buffer.positionToOffset(1, 5)).toBe(11)
+    })
+
+    it("should get line start offset", () => {
+      buffer.setText("Line1\nLine2\nLine3")
+
+      expect(buffer.getLineStartOffset(0)).toBe(0)
+      expect(buffer.getLineStartOffset(1)).toBe(6)
+      expect(buffer.getLineStartOffset(2)).toBe(12)
+    })
+
+    it("should handle multiline text with varying lengths", () => {
+      buffer.setText("AAA\nBB\nCCCC")
+
+      expect(buffer.offsetToPosition(0)).toEqual({ row: 0, col: 0 })
+      expect(buffer.offsetToPosition(3)).toEqual({ row: 0, col: 3 })
+      expect(buffer.offsetToPosition(4)).toEqual({ row: 1, col: 0 })
+      expect(buffer.offsetToPosition(6)).toEqual({ row: 1, col: 2 })
+      expect(buffer.offsetToPosition(7)).toEqual({ row: 2, col: 0 })
+
+      expect(buffer.positionToOffset(0, 0)).toBe(0)
+      expect(buffer.positionToOffset(1, 0)).toBe(4)
+      expect(buffer.positionToOffset(2, 0)).toBe(7)
+    })
+
+    it("should return null for invalid offset", () => {
+      buffer.setText("Hello")
+      const result = buffer.offsetToPosition(1000)
+      expect(result).toBeNull()
+    })
+
+    it("should handle empty text", () => {
+      buffer.setText("")
+
+      const pos = buffer.offsetToPosition(0)
+      expect(pos).toEqual({ row: 0, col: 0 })
+
+      expect(buffer.positionToOffset(0, 0)).toBe(0)
+      expect(buffer.getLineStartOffset(0)).toBe(0)
     })
   })
 
@@ -425,8 +490,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 0)
 
       const eol = buffer.getEOL()
-      expect(eol.line).toBe(0)
-      expect(eol.visualColumn).toBe(11)
+      expect(eol.row).toBe(0)
+      expect(eol.col).toBe(11)
     })
 
     it("should get end of line from middle", () => {
@@ -434,8 +499,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 5)
 
       const eol = buffer.getEOL()
-      expect(eol.line).toBe(0)
-      expect(eol.visualColumn).toBe(11)
+      expect(eol.row).toBe(0)
+      expect(eol.col).toBe(11)
     })
 
     it("should stay at end of line when already there", () => {
@@ -443,8 +508,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 5)
 
       const eol = buffer.getEOL()
-      expect(eol.line).toBe(0)
-      expect(eol.visualColumn).toBe(5)
+      expect(eol.row).toBe(0)
+      expect(eol.col).toBe(5)
     })
 
     it("should handle multi-line text", () => {
@@ -452,8 +517,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(1, 0)
 
       const eol = buffer.getEOL()
-      expect(eol.line).toBe(1)
-      expect(eol.visualColumn).toBe(5)
+      expect(eol.row).toBe(1)
+      expect(eol.col).toBe(5)
     })
 
     it("should handle empty lines", () => {
@@ -461,8 +526,8 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(1, 0)
 
       const eol = buffer.getEOL()
-      expect(eol.line).toBe(1)
-      expect(eol.visualColumn).toBe(0)
+      expect(eol.row).toBe(1)
+      expect(eol.col).toBe(0)
     })
 
     it("should work on different lines", () => {
@@ -470,18 +535,18 @@ describe("EditBuffer", () => {
 
       buffer.setCursorToLineCol(0, 0)
       const eol0 = buffer.getEOL()
-      expect(eol0.line).toBe(0)
-      expect(eol0.visualColumn).toBe(6)
+      expect(eol0.row).toBe(0)
+      expect(eol0.col).toBe(6)
 
       buffer.setCursorToLineCol(1, 0)
       const eol1 = buffer.getEOL()
-      expect(eol1.line).toBe(1)
-      expect(eol1.visualColumn).toBe(6)
+      expect(eol1.row).toBe(1)
+      expect(eol1.col).toBe(6)
 
       buffer.setCursorToLineCol(2, 0)
       const eol2 = buffer.getEOL()
-      expect(eol2.line).toBe(2)
-      expect(eol2.visualColumn).toBe(6)
+      expect(eol2.row).toBe(2)
+      expect(eol2.col).toBe(6)
     })
   })
 
@@ -503,8 +568,8 @@ describe("EditBuffer", () => {
       buffer.deleteCharBackward()
       expect(buffer.getText()).toBe("Line 1Line 2")
       const cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(6)
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(6)
     })
 
     it("should merge lines when deleting at EOL", () => {
@@ -513,8 +578,8 @@ describe("EditBuffer", () => {
       buffer.deleteChar()
       expect(buffer.getText()).toBe("Line 1Line 2")
       const cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(0)
-      expect(cursor.visualColumn).toBe(6)
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(6)
     })
 
     it("should handle newline insertion at BOL", () => {
@@ -523,8 +588,8 @@ describe("EditBuffer", () => {
       buffer.newLine()
       expect(buffer.getText()).toBe("\nHello")
       const cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(1)
-      expect(cursor.visualColumn).toBe(0)
+      expect(cursor.row).toBe(1)
+      expect(cursor.col).toBe(0)
     })
 
     it("should handle newline insertion at EOL", () => {
@@ -533,8 +598,8 @@ describe("EditBuffer", () => {
       buffer.newLine()
       expect(buffer.getText()).toBe("Hello\n")
       const cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(1)
-      expect(cursor.visualColumn).toBe(0)
+      expect(cursor.row).toBe(1)
+      expect(cursor.col).toBe(0)
     })
 
     it("should handle CRLF in text", () => {
@@ -584,7 +649,7 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 0)
       buffer.moveCursorRight()
       const cursor = buffer.getCursorPosition()
-      expect(cursor.visualColumn).toBe(2) // Emoji is 2 columns wide
+      expect(cursor.col).toBe(2) // Emoji is 2 columns wide
     })
 
     it("should handle mixed width text correctly", () => {
@@ -592,7 +657,7 @@ describe("EditBuffer", () => {
       buffer.setCursorToLineCol(0, 1) // After A
       buffer.moveCursorRight()
       const cursor = buffer.getCursorPosition()
-      expect(cursor.visualColumn).toBe(3) // A(1) + 世(2)
+      expect(cursor.col).toBe(3) // A(1) + 世(2)
     })
   })
 
@@ -603,8 +668,8 @@ describe("EditBuffer", () => {
       buffer.insertText("\nMiddle\nEnd")
       expect(buffer.getText()).toBe("Start\nMiddle\nEnd")
       const cursor = buffer.getCursorPosition()
-      expect(cursor.line).toBe(2)
-      expect(cursor.visualColumn).toBe(3)
+      expect(cursor.row).toBe(2)
+      expect(cursor.col).toBe(3)
     })
 
     it("should insert multi-line text in middle", () => {
@@ -1419,6 +1484,317 @@ describe("EditBuffer History Management", () => {
       await Bun.sleep(10)
 
       expect(eventCount).toBeGreaterThan(0)
+    })
+  })
+})
+
+describe("EditBuffer Clear Method", () => {
+  let buffer: EditBuffer
+
+  beforeEach(() => {
+    buffer = EditBuffer.create("wcwidth")
+  })
+
+  afterEach(() => {
+    buffer.destroy()
+  })
+
+  describe("basic clear functionality", () => {
+    it("should clear text content", () => {
+      buffer.setText("Hello World")
+      expect(buffer.getText()).toBe("Hello World")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should reset cursor to 0,0", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+      expect(buffer.getCursorPosition().col).toBe(5)
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+      expect(cursor.offset).toBe(0)
+    })
+
+    it("should clear multi-line text", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      expect(buffer.getText()).toBe("Line 1\nLine 2\nLine 3")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear Unicode text", () => {
+      buffer.setText("Hello 世界 🌟")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clearing already empty buffer", () => {
+      buffer.setText("")
+      expect(buffer.getText()).toBe("")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+    })
+
+    it("should handle clearing after multiple edits", () => {
+      buffer.setText("Hello")
+      buffer.setCursorToLineCol(0, 5) // Move to end
+      buffer.insertText(" World")
+      buffer.insertText("!")
+      expect(buffer.getText()).toBe("Hello World!")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+  })
+
+  describe("clear with cursor positions", () => {
+    it("should reset cursor from end of text", () => {
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 11) // End of text
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+    })
+
+    it("should reset cursor from middle of multi-line text", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      buffer.setCursorToLineCol(1, 3) // Middle of line 2
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+    })
+
+    it("should reset cursor from last line", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      buffer.gotoLine(2) // Last line
+
+      buffer.clear()
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+    })
+  })
+
+  describe("clear with placeholder", () => {
+    it("should restore placeholder after clear", () => {
+      buffer.setPlaceholder("Enter text here...")
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Hello")
+      expect(buffer.getText()).toBe("Hello")
+
+      buffer.clear()
+      // Placeholder should be active again
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clear without placeholder", () => {
+      buffer.setText("Hello World")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clear with multi-line placeholder", () => {
+      buffer.setPlaceholder("Line 1\nLine 2")
+
+      buffer.insertText("Test")
+      expect(buffer.getText()).toBe("Test")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear and restore placeholder multiple times", () => {
+      buffer.setPlaceholder("Placeholder")
+
+      buffer.insertText("Text 1")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Text 2")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.insertText("Text 3")
+      expect(buffer.getText()).toBe("Text 3")
+    })
+  })
+
+  describe("clear with events", () => {
+    it("should emit content-changed event on clear", async () => {
+      let eventCount = 0
+      buffer.on("content-changed", () => {
+        eventCount++
+      })
+
+      buffer.setText("Hello World")
+      await Bun.sleep(10)
+      const countAfterSetText = eventCount
+
+      buffer.clear()
+      await Bun.sleep(10)
+
+      expect(eventCount).toBeGreaterThan(countAfterSetText)
+    })
+
+    it("should emit cursor-changed event on clear", async () => {
+      let eventCount = 0
+      buffer.on("cursor-changed", () => {
+        eventCount++
+      })
+
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+      await Bun.sleep(10)
+      const countBeforeClear = eventCount
+
+      buffer.clear()
+      await Bun.sleep(10)
+
+      // Should emit cursor-changed when resetting cursor to 0,0
+      expect(eventCount).toBeGreaterThan(countBeforeClear)
+    })
+
+    it("should emit both events on clear", async () => {
+      let contentChangedCount = 0
+      let cursorChangedCount = 0
+
+      buffer.on("content-changed", () => {
+        contentChangedCount++
+      })
+      buffer.on("cursor-changed", () => {
+        cursorChangedCount++
+      })
+
+      buffer.setText("Hello World")
+      buffer.setCursorToLineCol(0, 5)
+      await Bun.sleep(10)
+
+      const contentCountBefore = contentChangedCount
+      const cursorCountBefore = cursorChangedCount
+
+      buffer.clear()
+      await Bun.sleep(10)
+
+      expect(contentChangedCount).toBeGreaterThan(contentCountBefore)
+      expect(cursorChangedCount).toBeGreaterThan(cursorCountBefore)
+    })
+  })
+
+  describe("clear and subsequent operations", () => {
+    it("should allow inserting text after clear", () => {
+      buffer.setText("Hello")
+      buffer.clear()
+
+      buffer.insertText("World")
+      expect(buffer.getText()).toBe("World")
+    })
+
+    it("should allow setText after clear", () => {
+      buffer.setText("Hello")
+      buffer.clear()
+
+      buffer.setText("New Text")
+      expect(buffer.getText()).toBe("New Text")
+    })
+
+    it("should maintain correct cursor after clear and insert", () => {
+      buffer.setText("Hello World")
+      buffer.clear()
+
+      buffer.insertText("Test")
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(4)
+    })
+
+    it("should allow multiple clear operations", () => {
+      buffer.setText("Text 1")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.setText("Text 2")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      buffer.setText("Text 3")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+  })
+
+  describe("clear with complex scenarios", () => {
+    it("should clear after edit session", () => {
+      buffer.setText("Hello")
+      buffer.setCursorToLineCol(0, 5) // Move to end
+      buffer.insertText(" World")
+      buffer.insertText("!")
+      buffer.setCursorToLineCol(0, 0) // Move to start
+      buffer.insertText(">> ")
+
+      expect(buffer.getText()).toBe(">> Hello World!")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+    })
+
+    it("should clear after line operations", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+      buffer.gotoLine(1)
+      buffer.deleteLine()
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should clear after range deletion", () => {
+      buffer.setText("Hello World Test")
+      buffer.deleteRange(0, 6, 0, 11)
+      expect(buffer.getText()).toBe("Hello  Test")
+
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+    })
+
+    it("should handle clear with wide characters", () => {
+      buffer.setText("A世🌟B")
+      buffer.clear()
+      expect(buffer.getText()).toBe("")
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.row).toBe(0)
+      expect(cursor.col).toBe(0)
+    })
+  })
+
+  describe("error handling", () => {
+    it("should throw error when clearing destroyed buffer", () => {
+      buffer.setText("Test")
+      buffer.destroy()
+
+      expect(() => buffer.clear()).toThrow("EditBuffer is destroyed")
     })
   })
 })

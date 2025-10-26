@@ -600,5 +600,23 @@ describe("SolidJS Renderer Integration Tests", () => {
       expect(inputSpy.calls[0]?.[0]).toBe("y")
       expect(inputSpy.calls[1]?.[0]).toBe("yz")
     })
+
+    it("should handle textarea onSubmit events", async () => {
+      const onSubmitSpy = createSpy()
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <textarea focused initialValue="test content" onSubmit={() => onSubmitSpy()} />
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      testSetup.mockInput.pressKey("ALT_ENTER")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(onSubmitSpy.callCount()).toBe(1)
+    })
   })
 })

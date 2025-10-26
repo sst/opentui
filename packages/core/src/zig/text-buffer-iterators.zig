@@ -166,6 +166,7 @@ pub fn coordsToOffset(rope: *UnifiedRope, row: u32, col: u32) ?u32 {
 /// Optimized O(log n) implementation using binary search on linestart markers
 /// Note: Rope weight includes newlines, so valid offsets are 0..totalWeight() inclusive
 /// Takes mutable rope for lazy marker cache rebuilding
+/// TODO: Should clamp to min/max offset and always return valid coords
 pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
     const linestart_count = rope.markerCount(.linestart);
     if (linestart_count == 0) return null;

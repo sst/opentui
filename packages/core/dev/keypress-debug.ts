@@ -20,16 +20,16 @@ process.stdin.on("data", (data: Buffer) => {
   const parsed = parseKeypress(data)
 
   console.log("Input data:", JSON.stringify(data.toString()))
-  console.log("Raw:", JSON.stringify(parsed.raw))
+  console.log("Raw:", JSON.stringify(parsed?.raw))
   console.log("Parsed:", {
-    name: parsed.name,
-    ctrl: parsed.ctrl,
-    meta: parsed.meta,
-    shift: parsed.shift,
-    option: parsed.option,
-    number: parsed.number,
-    sequence: JSON.stringify(parsed.sequence),
-    code: parsed.code,
+    name: parsed?.name,
+    ctrl: parsed?.ctrl,
+    meta: parsed?.meta,
+    shift: parsed?.shift,
+    option: parsed?.option,
+    number: parsed?.number,
+    sequence: JSON.stringify(parsed?.sequence),
+    code: parsed?.code,
   })
   console.log("---")
 })

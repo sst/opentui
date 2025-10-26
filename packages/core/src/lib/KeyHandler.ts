@@ -101,6 +101,10 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
       }
       const parsedKey = parseKeypress(key, { useKittyKeyboard: this.useKittyKeyboard })
 
+      if (!parsedKey) {
+        return
+      }
+
       switch (parsedKey.eventType) {
         case "press":
           this.emit("keypress", new KeyEvent(parsedKey))

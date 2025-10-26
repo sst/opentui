@@ -1713,44 +1713,20 @@ test "TextBuffer setText - validate rope structure is correct" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    const rope_text = try tb.rope.toText(std.testing.allocator);
-    defer std.testing.allocator.free(rope_text);
-    std.debug.print("\nRope structure: {s}\n", .{rope_text});
-
     const line_count = tb.lineCount();
-    std.debug.print("Line count: {}\n", .{line_count});
     try std.testing.expectEqual(@as(u32, 3), line_count);
 
     const break_count = tb.rope.markerCount(.brk);
-    std.debug.print("Break marker count: {}\n", .{break_count});
     try std.testing.expectEqual(@as(u32, 2), break_count);
 
     const linestart_count = tb.rope.markerCount(.linestart);
-    std.debug.print("Linestart marker count: {}\n", .{linestart_count});
     try std.testing.expectEqual(@as(u32, 3), linestart_count);
-
-    var i: u32 = 0;
-    while (i < break_count) : (i += 1) {
-        const marker = tb.rope.getMarker(.brk, i);
-        std.debug.print("Break marker {}: {any}\n", .{ i, marker });
-    }
-
-    i = 0;
-    while (i < linestart_count) : (i += 1) {
-        const marker = tb.rope.getMarker(.linestart, i);
-        std.debug.print("Linestart marker {}: {any}\n", .{ i, marker });
-    }
-
-    std.debug.print("Line 0 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 0)});
-    std.debug.print("Line 1 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 1)});
-    std.debug.print("Line 2 width: {}\n", .{iter_mod.lineWidthAt(&tb.rope, 2)});
 
     try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 0));
     try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
     try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 2));
 
     const total_weight = tb.rope.totalWeight();
-    std.debug.print("Total weight: {}\n", .{total_weight});
     try std.testing.expectEqual(@as(u32, 20), total_weight);
 }
 
@@ -1768,42 +1744,8 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
 
     try eb.setText("Line 1\nLine 2\nLine 3", false);
 
-    std.debug.print("\n=== After setText ===\n", .{});
-    {
-        const rope_text_init = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-        defer std.testing.allocator.free(rope_text_init);
-        std.debug.print("Rope: {s}\n", .{rope_text_init});
-        std.debug.print("Line count: {}, Break count: {}, Total weight: {}\n", .{ eb.getTextBuffer().lineCount(), eb.getTextBuffer().rope.markerCount(.brk), eb.getTextBuffer().rope.totalWeight() });
-    }
-
-    // Line 3 starts at row 2, col 0 and ends at row 2, col 6
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
 
-    std.debug.print("\n=== After deleting 'Line 3' ===\n", .{});
-    {
-        const rope_text_after = try eb.getTextBuffer().rope.toText(std.testing.allocator);
-        defer std.testing.allocator.free(rope_text_after);
-        std.debug.print("Rope: {s}\n", .{rope_text_after});
-        std.debug.print("Line count: {}, Break count: {}, Total weight: {}\n", .{ eb.getTextBuffer().lineCount(), eb.getTextBuffer().rope.markerCount(.brk), eb.getTextBuffer().rope.totalWeight() });
-    }
-    const break_count = eb.getTextBuffer().rope.markerCount(.brk);
-    var i: u32 = 0;
-    while (i < break_count) : (i += 1) {
-        const marker = eb.getTextBuffer().rope.getMarker(.brk, i);
-        std.debug.print("Break marker {}: {any}\n", .{ i, marker });
-    }
-
-    const linestart_count = eb.getTextBuffer().rope.markerCount(.linestart);
-    i = 0;
-    while (i < linestart_count) : (i += 1) {
-        const marker = eb.getTextBuffer().rope.getMarker(.linestart, i);
-        std.debug.print("Linestart marker {}: {any}\n", .{ i, marker });
-    }
-
-    // After deleting "Line 3" with EditBuffer.deleteRange, we should have:
-    // - 2 lines remaining
-    // - 2 break markers (after Line 1 and after Line 2 - document ends with newline)
-    // - 2 linestart markers
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.brk));
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.linestart));
@@ -1874,4 +1816,126 @@ test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduc
     // Max 50KB growth is reasonable for rope structure
     const max_expected_growth = 50000;
     try std.testing.expect(arena_growth < max_expected_growth);
+}
+
+test "addHighlightByCharRange - single line highlight should not extend to EOL" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Try moving your cursor through the [VIRTUAL] markers below:";
+    try tb.setText(text);
+
+    try tb.addHighlightByCharRange(35, 44, 1, 1, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 35), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 44), highlights[0].col_end);
+
+    try std.testing.expect(highlights[0].col_end < 59);
+    try std.testing.expect(highlights[0].col_end == 44);
+}
+
+test "addHighlightByCharRange - multiple highlights on same line should have correct bounds" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Text [MARK1] and [MARK2] here";
+    try tb.setText(text);
+
+    try tb.addHighlightByCharRange(5, 12, 1, 1, 0);
+    try tb.addHighlightByCharRange(17, 24, 1, 2, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), highlights.len);
+
+    try std.testing.expectEqual(@as(u32, 5), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 12), highlights[0].col_end);
+
+    try std.testing.expectEqual(@as(u32, 17), highlights[1].col_start);
+    try std.testing.expectEqual(@as(u32, 24), highlights[1].col_end);
+}
+
+test "addHighlightByCharRange - highlight after newline should not span to EOL" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Line1\nLine2 with [MARK] text\nLine3";
+    try tb.setText(text);
+
+    const line1_char_offset: u32 = 5;
+    const mark_start = line1_char_offset + 11;
+    const mark_end = line1_char_offset + 17;
+
+    try tb.addHighlightByCharRange(mark_start, mark_end, 1, 1, 0);
+
+    const hl0 = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 0), hl0.len);
+
+    const hl1 = tb.getLineHighlights(1);
+    try std.testing.expectEqual(@as(usize, 1), hl1.len);
+
+    try std.testing.expectEqual(@as(u32, 11), hl1[0].col_start);
+    try std.testing.expectEqual(@as(u32, 17), hl1[0].col_end);
+
+    const line1_text = "Line2 with [MARK] text";
+    try std.testing.expect(hl1[0].col_end < line1_text.len);
+}
+
+test "addHighlightByCharRange - extmarks demo scenario reproduction" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const full_text =
+        \\Welcome to the Extmarks Demo!
+        \\
+        \\This demo showcases virtual extmarks - text ranges that the cursor jumps over.
+        \\
+        \\Try moving your cursor through the [VIRTUAL] markers below:
+        \\- Use arrow keys to navigate
+    ;
+    try tb.setText(full_text);
+
+    const line4_char_offset: u32 = 107;
+    const virtual_start = line4_char_offset + 35;
+    const virtual_end = line4_char_offset + 44;
+
+    try tb.addHighlightByCharRange(virtual_start, virtual_end, 1, 1, 0);
+
+    const line4_highlights = tb.getLineHighlights(4);
+    try std.testing.expectEqual(@as(usize, 1), line4_highlights.len);
+    try std.testing.expectEqual(@as(u32, 35), line4_highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 44), line4_highlights[0].col_end);
+
+    const line4_text = "Try moving your cursor through the [VIRTUAL] markers below:";
+    try std.testing.expect(line4_highlights[0].col_end == 44);
+    try std.testing.expect(line4_highlights[0].col_end < line4_text.len);
 }

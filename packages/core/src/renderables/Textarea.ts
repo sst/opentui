@@ -37,6 +37,7 @@ export type TextareaAction =
   | "select-word-backward"
   | "delete-word-forward"
   | "delete-word-backward"
+  | "submit"
 
 export type KeyBinding = BaseKeyBinding<TextareaAction>
 
@@ -61,6 +62,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "delete", action: "delete" },
   { name: "return", action: "newline" },
   { name: "enter", action: "newline" },
+  { name: "return", meta: true, action: "submit" },
+  { name: "enter", meta: true, action: "submit" },
   { name: "z", ctrl: true, action: "undo" },
   { name: "Z", ctrl: true, shift: true, action: "redo" },
   { name: "y", ctrl: true, action: "redo" },
@@ -77,8 +80,10 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "w", ctrl: true, action: "delete-word-backward" },
 ]
 
+export interface SubmitEvent {}
+
 export interface TextareaOptions extends EditBufferOptions {
-  value?: string
+  initialValue?: string
   backgroundColor?: ColorInput
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
@@ -86,6 +91,7 @@ export interface TextareaOptions extends EditBufferOptions {
   placeholder?: string | null
   placeholderColor?: ColorInput
   keyBindings?: KeyBinding[]
+  onSubmit?: (event: SubmitEvent) => void
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
@@ -97,9 +103,10 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _placeholderColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
   private _actionHandlers: Map<TextareaAction, () => boolean>
+  private _initialValueSet: boolean = false
+  private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
 
   private static readonly defaults = {
-    value: "",
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
     focusedBackgroundColor: "transparent",
@@ -132,8 +139,12 @@ export class TextareaRenderable extends EditBufferRenderable {
     const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
     this._actionHandlers = this.buildActionHandlers()
+    this._submitListener = options.onSubmit
 
-    this.updateValue(options.value ?? defaults.value)
+    if (options.initialValue) {
+      this.setText(options.initialValue)
+      this._initialValueSet = true
+    }
     this.updateColors()
 
     this.editBuffer.setPlaceholder(this._placeholder)
@@ -169,6 +180,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["select-word-backward", () => this.moveWordBackward({ select: true })],
       ["delete-word-forward", () => this.deleteWordForward()],
       ["delete-word-backward", () => this.deleteWordBackward()],
+      ["submit", () => this.submit()],
     ])
   }
 
@@ -216,20 +228,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
 
     return false
-  }
-
-  get value(): string {
-    return this.editBuffer.getText()
-  }
-
-  set value(value: string) {
-    this.updateValue(value)
-  }
-
-  private updateValue(value: string): void {
-    this.editBuffer.setText(value, { history: false })
-    this.yogaNode.markDirty()
-    this.requestRender()
   }
 
   private updateColors(): void {
@@ -358,7 +356,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const select = options?.select ?? false
     this.handleShiftSelection(select, true)
     const eol = this.editBuffer.getEOL()
-    this.editBuffer.setCursor(eol.line, eol.visualColumn)
+    this.editBuffer.setCursor(eol.row, eol.col)
     this.handleShiftSelection(select, false)
     this.requestRender()
     return true
@@ -380,8 +378,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     const cursor = this.editorView.getCursor()
     const eol = this.editBuffer.getEOL()
 
-    if (eol.visualColumn > cursor.col) {
-      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.line, eol.visualColumn)
+    if (eol.col > cursor.col) {
+      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.row, eol.col)
     }
 
     this.requestRender()
@@ -432,7 +430,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const nextWord = this.editBuffer.getNextWordBoundary()
 
     if (nextWord.offset > currentCursor.offset) {
-      this.editBuffer.deleteRange(currentCursor.line, currentCursor.visualColumn, nextWord.line, nextWord.visualColumn)
+      this.editBuffer.deleteRange(currentCursor.row, currentCursor.col, nextWord.row, nextWord.col)
     }
 
     this._ctx.clearSelection()
@@ -450,7 +448,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const prevWord = this.editBuffer.getPrevWordBoundary()
 
     if (prevWord.offset < currentCursor.offset) {
-      this.editBuffer.deleteRange(prevWord.line, prevWord.visualColumn, currentCursor.line, currentCursor.visualColumn)
+      this.editBuffer.deleteRange(prevWord.row, prevWord.col, currentCursor.row, currentCursor.col)
     }
 
     this._ctx.clearSelection()
@@ -550,5 +548,36 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.editBuffer.setPlaceholderColor(newColor)
       this.requestRender()
     }
+  }
+
+  set initialValue(value: string) {
+    if (!this._initialValueSet) {
+      this.setText(value)
+      this._initialValueSet = true
+    }
+  }
+
+  public submit(): boolean {
+    if (this._submitListener) {
+      this._submitListener({})
+    }
+    return true
+  }
+
+  public set onSubmit(handler: ((event: SubmitEvent) => void) | undefined) {
+    this._submitListener = handler
+  }
+
+  public get onSubmit(): ((event: SubmitEvent) => void) | undefined {
+    return this._submitListener
+  }
+
+  public set keyBindings(bindings: KeyBinding[]) {
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, bindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
+  }
+
+  public get extmarks(): any {
+    return this.editorView.extmarks
   }
 }
