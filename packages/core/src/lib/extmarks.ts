@@ -571,6 +571,7 @@ export class ExtmarksController extends EventEmitter {
     this.updateHighlights()
   }
 
+  // TODO: use native transform method
   private offsetToPosition(offset: number): { row: number; col: number } {
     const text = this.editBuffer.getText()
     let currentOffset = 0
@@ -590,6 +591,7 @@ export class ExtmarksController extends EventEmitter {
     return { row, col }
   }
 
+  // TODO: use native transform method
   private positionToOffset(row: number, col: number): number {
     const text = this.editBuffer.getText()
     let currentRow = 0
@@ -608,6 +610,7 @@ export class ExtmarksController extends EventEmitter {
     return offset
   }
 
+  // TODO: Use a lineDetails method from native
   private getLineStartOffset(targetRow: number): number {
     const text = this.editBuffer.getText()
     let row = 0
