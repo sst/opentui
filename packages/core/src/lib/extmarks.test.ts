@@ -2049,6 +2049,300 @@ Press ESC to return to main menu.`
     })
   })
 
+  describe("TypeId Operations", () => {
+    it("should create extmark with default typeId 0", async () => {
+      await setup()
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+      })
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.typeId).toBe(0)
+    })
+
+    it("should create extmark with custom typeId", async () => {
+      await setup()
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        typeId: 42,
+      })
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.typeId).toBe(42)
+    })
+
+    it("should retrieve all extmarks for a specific typeId", async () => {
+      await setup()
+
+      const id1 = extmarks.create({ start: 0, end: 5, typeId: 1 })
+      const id2 = extmarks.create({ start: 6, end: 11, typeId: 1 })
+      const id3 = extmarks.create({ start: 12, end: 15, typeId: 2 })
+
+      const type1Marks = extmarks.getAllForTypeId(1)
+      expect(type1Marks.length).toBe(2)
+      expect(type1Marks.map((e) => e.id).sort()).toEqual([id1, id2])
+
+      const type2Marks = extmarks.getAllForTypeId(2)
+      expect(type2Marks.length).toBe(1)
+      expect(type2Marks[0].id).toBe(id3)
+    })
+
+    it("should return empty array for non-existent typeId", async () => {
+      await setup()
+
+      extmarks.create({ start: 0, end: 5, typeId: 1 })
+
+      const noMarks = extmarks.getAllForTypeId(999)
+      expect(noMarks.length).toBe(0)
+    })
+
+    it("should handle multiple extmarks with same typeId", async () => {
+      await setup()
+
+      const ids = []
+      for (let i = 0; i < 10; i++) {
+        ids.push(extmarks.create({ start: i, end: i + 1, typeId: 5 }))
+      }
+
+      const type5Marks = extmarks.getAllForTypeId(5)
+      expect(type5Marks.length).toBe(10)
+      expect(type5Marks.map((e) => e.id).sort()).toEqual(ids.sort())
+    })
+
+    it("should remove extmark from typeId index when deleted", async () => {
+      await setup()
+
+      const id = extmarks.create({ start: 0, end: 5, typeId: 3 })
+
+      let type3Marks = extmarks.getAllForTypeId(3)
+      expect(type3Marks.length).toBe(1)
+
+      extmarks.delete(id)
+
+      type3Marks = extmarks.getAllForTypeId(3)
+      expect(type3Marks.length).toBe(0)
+    })
+
+    it("should update typeId index when extmark typeId is changed", async () => {
+      await setup()
+
+      const id = extmarks.create({ start: 0, end: 5, typeId: 1 })
+
+      let type1Marks = extmarks.getAllForTypeId(1)
+      expect(type1Marks.length).toBe(1)
+
+      extmarks.update(id, { typeId: 2 })
+
+      type1Marks = extmarks.getAllForTypeId(1)
+      expect(type1Marks.length).toBe(0)
+
+      const type2Marks = extmarks.getAllForTypeId(2)
+      expect(type2Marks.length).toBe(1)
+      expect(type2Marks[0].id).toBe(id)
+      expect(type2Marks[0].typeId).toBe(2)
+    })
+
+    it("should clear all typeId indexes when clear is called", async () => {
+      await setup()
+
+      extmarks.create({ start: 0, end: 5, typeId: 1 })
+      extmarks.create({ start: 6, end: 11, typeId: 2 })
+      extmarks.create({ start: 12, end: 15, typeId: 3 })
+
+      extmarks.clear()
+
+      expect(extmarks.getAllForTypeId(1).length).toBe(0)
+      expect(extmarks.getAllForTypeId(2).length).toBe(0)
+      expect(extmarks.getAllForTypeId(3).length).toBe(0)
+    })
+
+    it("should maintain typeId through text operations", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+        typeId: 7,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("X")
+      currentMockInput.pressKey("X")
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.typeId).toBe(7)
+
+      const type7Marks = extmarks.getAllForTypeId(7)
+      expect(type7Marks.length).toBe(1)
+      expect(type7Marks[0].id).toBe(id)
+    })
+
+    it("should group virtual and non-virtual extmarks by typeId", async () => {
+      await setup()
+
+      const id1 = extmarks.create({ start: 0, end: 5, typeId: 10, virtual: false })
+      const id2 = extmarks.create({ start: 6, end: 11, typeId: 10, virtual: true })
+      const id3 = extmarks.create({ start: 12, end: 15, typeId: 10, virtual: false })
+
+      const type10Marks = extmarks.getAllForTypeId(10)
+      expect(type10Marks.length).toBe(3)
+
+      const virtualMarks = type10Marks.filter((e) => e.virtual)
+      const nonVirtualMarks = type10Marks.filter((e) => !e.virtual)
+
+      expect(virtualMarks.length).toBe(1)
+      expect(nonVirtualMarks.length).toBe(2)
+    })
+
+    it("should handle typeId 0 as default", async () => {
+      await setup()
+
+      const id1 = extmarks.create({ start: 0, end: 5 })
+      const id2 = extmarks.create({ start: 6, end: 11, typeId: 0 })
+      const id3 = extmarks.create({ start: 12, end: 15 })
+
+      const type0Marks = extmarks.getAllForTypeId(0)
+      expect(type0Marks.length).toBe(3)
+      expect(type0Marks.map((e) => e.id).sort()).toEqual([id1, id2, id3])
+    })
+
+    it("should remove extmark from typeId index on deletion during backspace", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        typeId: 15,
+      })
+
+      let type15Marks = extmarks.getAllForTypeId(15)
+      expect(type15Marks.length).toBe(1)
+
+      currentMockInput.pressBackspace()
+
+      expect(extmarks.get(id)).toBeNull()
+
+      type15Marks = extmarks.getAllForTypeId(15)
+      expect(type15Marks.length).toBe(0)
+    })
+
+    it("should remove extmark from typeId index on deletion during delete key", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 3
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        typeId: 20,
+      })
+
+      let type20Marks = extmarks.getAllForTypeId(20)
+      expect(type20Marks.length).toBe(1)
+
+      currentMockInput.pressKey("DELETE")
+
+      expect(extmarks.get(id)).toBeNull()
+
+      type20Marks = extmarks.getAllForTypeId(20)
+      expect(type20Marks.length).toBe(0)
+    })
+
+    it("should handle getAllForTypeId on destroyed controller", async () => {
+      await setup()
+
+      extmarks.create({ start: 0, end: 5, typeId: 1 })
+
+      extmarks.destroy()
+
+      const type1Marks = extmarks.getAllForTypeId(1)
+      expect(type1Marks.length).toBe(0)
+    })
+
+    it("should support multiple different typeIds simultaneously", async () => {
+      await setup("The quick brown fox jumps over the lazy dog")
+
+      const linkId1 = extmarks.create({ start: 0, end: 3, typeId: 1 })
+      const linkId2 = extmarks.create({ start: 10, end: 15, typeId: 1 })
+
+      const tagId1 = extmarks.create({ start: 4, end: 9, typeId: 2 })
+      const tagId2 = extmarks.create({ start: 16, end: 19, typeId: 2 })
+
+      const markerId = extmarks.create({ start: 20, end: 25, typeId: 3 })
+
+      const links = extmarks.getAllForTypeId(1)
+      expect(links.length).toBe(2)
+      expect(links.map((e) => e.id).sort()).toEqual([linkId1, linkId2])
+
+      const tags = extmarks.getAllForTypeId(2)
+      expect(tags.length).toBe(2)
+      expect(tags.map((e) => e.id).sort()).toEqual([tagId1, tagId2])
+
+      const markers = extmarks.getAllForTypeId(3)
+      expect(markers.length).toBe(1)
+      expect(markers[0].id).toBe(markerId)
+
+      const allExtmarks = extmarks.getAll()
+      expect(allExtmarks.length).toBe(5)
+    })
+
+    it("should preserve typeId when extmark is adjusted after insertion", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+        typeId: 50,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("Z")
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.typeId).toBe(50)
+      expect(extmark?.start).toBe(7)
+      expect(extmark?.end).toBe(12)
+
+      const type50Marks = extmarks.getAllForTypeId(50)
+      expect(type50Marks.length).toBe(1)
+    })
+
+    it("should preserve typeId when extmark is adjusted after deletion", async () => {
+      await setup("XXHello World")
+
+      const id = extmarks.create({
+        start: 8,
+        end: 13,
+        typeId: 60,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+      currentMockInput.pressBackspace()
+      currentMockInput.pressBackspace()
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.typeId).toBe(60)
+      expect(extmark?.start).toBe(6)
+      expect(extmark?.end).toBe(11)
+
+      const type60Marks = extmarks.getAllForTypeId(60)
+      expect(type60Marks.length).toBe(1)
+    })
+  })
+
   describe("Undo/Redo with Extmarks", () => {
     it("should restore extmark after undo of text insertion", async () => {
       await setup("Hello World")

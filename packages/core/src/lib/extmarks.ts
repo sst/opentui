@@ -11,6 +11,7 @@ export interface Extmark {
   styleId?: number
   priority?: number
   data?: any
+  typeId: number
 }
 
 export interface ExtmarkDeletedEvent {
@@ -25,6 +26,7 @@ export interface ExtmarkOptions {
   styleId?: number
   priority?: number
   data?: any
+  typeId?: number
 }
 
 export interface ExtmarksControllerEvents {
@@ -36,6 +38,7 @@ export class ExtmarksController extends EventEmitter {
   private editBuffer: EditBuffer
   private editorView: EditorView
   private extmarks = new Map<number, Extmark>()
+  private extmarksByTypeId = new Map<number, Set<number>>()
   private nextId = 1
   private destroyed = false
   private history = new ExtmarksHistory()
@@ -277,6 +280,7 @@ export class ExtmarksController extends EventEmitter {
         const deleteLength = virtualExtmark.end - virtualExtmark.start
 
         this.extmarks.delete(virtualExtmark.id)
+        this.extmarksByTypeId.get(virtualExtmark.typeId)?.delete(virtualExtmark.id)
 
         this.originalDeleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
@@ -327,6 +331,7 @@ export class ExtmarksController extends EventEmitter {
         const deleteLength = virtualExtmark.end - virtualExtmark.start
 
         this.extmarks.delete(virtualExtmark.id)
+        this.extmarksByTypeId.get(virtualExtmark.typeId)?.delete(virtualExtmark.id)
 
         this.originalDeleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
@@ -550,6 +555,7 @@ export class ExtmarksController extends EventEmitter {
       const extmark = this.extmarks.get(id)
       if (extmark) {
         this.extmarks.delete(id)
+        this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
         this.emit("extmark-deleted", {
           extmark,
           trigger: "manual",
@@ -653,6 +659,7 @@ export class ExtmarksController extends EventEmitter {
     }
 
     const id = this.nextId++
+    const typeId = options.typeId ?? 0
     const extmark: Extmark = {
       id,
       start: options.start,
@@ -661,9 +668,16 @@ export class ExtmarksController extends EventEmitter {
       styleId: options.styleId,
       priority: options.priority,
       data: options.data,
+      typeId,
     }
 
     this.extmarks.set(id, extmark)
+
+    if (!this.extmarksByTypeId.has(typeId)) {
+      this.extmarksByTypeId.set(typeId, new Set())
+    }
+    this.extmarksByTypeId.get(typeId)!.add(id)
+
     this.updateHighlights()
 
     return id
@@ -676,6 +690,15 @@ export class ExtmarksController extends EventEmitter {
 
     const extmark = this.extmarks.get(id)
     if (!extmark) return false
+
+    if (options.typeId !== undefined && options.typeId !== extmark.typeId) {
+      this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
+      if (!this.extmarksByTypeId.has(options.typeId)) {
+        this.extmarksByTypeId.set(options.typeId, new Set())
+      }
+      this.extmarksByTypeId.get(options.typeId)!.add(id)
+      extmark.typeId = options.typeId
+    }
 
     if (options.start !== undefined) extmark.start = options.start
     if (options.end !== undefined) extmark.end = options.end
@@ -699,6 +722,7 @@ export class ExtmarksController extends EventEmitter {
     if (!extmark) return false
 
     this.extmarks.delete(id)
+    this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
     this.emit("extmark-deleted", {
       extmark,
       trigger: "manual",
@@ -728,6 +752,15 @@ export class ExtmarksController extends EventEmitter {
     return Array.from(this.extmarks.values()).filter((e) => offset >= e.start && offset < e.end)
   }
 
+  public getAllForTypeId(typeId: number): Extmark[] {
+    if (this.destroyed) return []
+    const ids = this.extmarksByTypeId.get(typeId)
+    if (!ids) return []
+    return Array.from(ids)
+      .map((id) => this.extmarks.get(id))
+      .filter((e): e is Extmark => e !== undefined)
+  }
+
   public clear(): void {
     if (this.destroyed) return
 
@@ -739,6 +772,7 @@ export class ExtmarksController extends EventEmitter {
     }
 
     this.extmarks.clear()
+    this.extmarksByTypeId.clear()
     this.updateHighlights()
   }
 
@@ -818,6 +852,7 @@ export class ExtmarksController extends EventEmitter {
     this.editBuffer.redo = this.originalRedo
 
     this.extmarks.clear()
+    this.extmarksByTypeId.clear()
     this.history.clear()
     this.destroyed = true
     this.removeAllListeners()
