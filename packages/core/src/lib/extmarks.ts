@@ -574,62 +574,20 @@ export class ExtmarksController extends EventEmitter {
     this.updateHighlights()
   }
 
-  // TODO: use native transform method
   private offsetToPosition(offset: number): { row: number; col: number } {
-    const text = this.editBuffer.getText()
-    let currentOffset = 0
-    let row = 0
-    let col = 0
-
-    for (let i = 0; i < text.length && currentOffset < offset; i++) {
-      if (text[i] === "\n") {
-        row++
-        col = 0
-      } else {
-        col++
-      }
-      currentOffset++
+    const result = this.editBuffer.offsetToPosition(offset)
+    if (!result) {
+      return { row: 0, col: 0 }
     }
-
-    return { row, col }
+    return result
   }
 
-  // TODO: use native transform method
   private positionToOffset(row: number, col: number): number {
-    const text = this.editBuffer.getText()
-    let currentRow = 0
-    let offset = 0
-
-    for (let i = 0; i < text.length; i++) {
-      if (currentRow === row && offset - this.getLineStartOffset(row) === col) {
-        return offset
-      }
-      if (text[i] === "\n") {
-        currentRow++
-      }
-      offset++
-    }
-
-    return offset
+    return this.editBuffer.positionToOffset(row, col)
   }
 
-  // TODO: Use a lineDetails method from native
   private getLineStartOffset(targetRow: number): number {
-    const text = this.editBuffer.getText()
-    let row = 0
-    let offset = 0
-
-    for (let i = 0; i < text.length; i++) {
-      if (row === targetRow) {
-        return offset
-      }
-      if (text[i] === "\n") {
-        row++
-        offset = i + 1
-      }
-    }
-
-    return offset
+    return this.editBuffer.getLineStartOffset(targetRow)
   }
 
   private updateHighlights(): void {

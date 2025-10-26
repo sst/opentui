@@ -221,6 +221,23 @@ export class EditBuffer extends EventEmitter {
     }
   }
 
+  public offsetToPosition(offset: number): { row: number; col: number } | null {
+    this.guard()
+    const result = this.lib.editBufferOffsetToPosition(this.bufferPtr, offset)
+    if (!result) return null
+    return { row: result.row, col: result.col }
+  }
+
+  public positionToOffset(row: number, col: number): number {
+    this.guard()
+    return this.lib.editBufferPositionToOffset(this.bufferPtr, row, col)
+  }
+
+  public getLineStartOffset(row: number): number {
+    this.guard()
+    return this.lib.editBufferGetLineStartOffset(this.bufferPtr, row)
+  }
+
   public debugLogRope(): void {
     this.guard()
     this.lib.editBufferDebugLogRope(this.bufferPtr)

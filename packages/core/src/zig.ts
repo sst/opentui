@@ -634,6 +634,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    editBufferOffsetToPosition: {
+      args: ["ptr", "u32", "ptr"],
+      returns: "bool",
+    },
+    editBufferPositionToOffset: {
+      args: ["ptr", "u32", "u32"],
+      returns: "u32",
+    },
+    editBufferGetLineStartOffset: {
+      args: ["ptr", "u32"],
+      returns: "u32",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -1157,6 +1169,9 @@ export interface RenderLib {
   editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetEOL: (buffer: Pointer) => { row: number; col: number; offset: number }
+  editBufferOffsetToPosition: (buffer: Pointer, offset: number) => { row: number; col: number; offset: number } | null
+  editBufferPositionToOffset: (buffer: Pointer, row: number, col: number) => number
+  editBufferGetLineStartOffset: (buffer: Pointer, row: number) => number
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -2318,6 +2333,21 @@ class FFIRenderLib implements RenderLib {
     const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
     this.opentui.symbols.editBufferGetEOL(buffer, ptr(cursorBuffer))
     return LogicalCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editBufferOffsetToPosition(buffer: Pointer, offset: number): LogicalCursor | null {
+    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
+    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, ptr(cursorBuffer))
+    if (!success) return null
+    return LogicalCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editBufferPositionToOffset(buffer: Pointer, row: number, col: number): number {
+    return this.opentui.symbols.editBufferPositionToOffset(buffer, row, col)
+  }
+
+  public editBufferGetLineStartOffset(buffer: Pointer, row: number): number {
+    return this.opentui.symbols.editBufferGetLineStartOffset(buffer, row)
   }
 
   // EditorView selection and editing implementations

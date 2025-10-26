@@ -419,6 +419,71 @@ describe("EditBuffer", () => {
     })
   })
 
+  describe("native coordinate conversion methods", () => {
+    it("should convert offset to position", () => {
+      buffer.setText("Hello\nWorld")
+
+      const pos0 = buffer.offsetToPosition(0)
+      expect(pos0).toEqual({ row: 0, col: 0 })
+
+      const pos5 = buffer.offsetToPosition(5)
+      expect(pos5).toEqual({ row: 0, col: 5 })
+
+      const pos6 = buffer.offsetToPosition(6)
+      expect(pos6).toEqual({ row: 1, col: 0 })
+
+      const pos11 = buffer.offsetToPosition(11)
+      expect(pos11).toEqual({ row: 1, col: 5 })
+    })
+
+    it("should convert position to offset", () => {
+      buffer.setText("Hello\nWorld")
+
+      expect(buffer.positionToOffset(0, 0)).toBe(0)
+      expect(buffer.positionToOffset(0, 5)).toBe(5)
+      expect(buffer.positionToOffset(1, 0)).toBe(6)
+      expect(buffer.positionToOffset(1, 5)).toBe(11)
+    })
+
+    it("should get line start offset", () => {
+      buffer.setText("Line1\nLine2\nLine3")
+
+      expect(buffer.getLineStartOffset(0)).toBe(0)
+      expect(buffer.getLineStartOffset(1)).toBe(6)
+      expect(buffer.getLineStartOffset(2)).toBe(12)
+    })
+
+    it("should handle multiline text with varying lengths", () => {
+      buffer.setText("AAA\nBB\nCCCC")
+
+      expect(buffer.offsetToPosition(0)).toEqual({ row: 0, col: 0 })
+      expect(buffer.offsetToPosition(3)).toEqual({ row: 0, col: 3 })
+      expect(buffer.offsetToPosition(4)).toEqual({ row: 1, col: 0 })
+      expect(buffer.offsetToPosition(6)).toEqual({ row: 1, col: 2 })
+      expect(buffer.offsetToPosition(7)).toEqual({ row: 2, col: 0 })
+
+      expect(buffer.positionToOffset(0, 0)).toBe(0)
+      expect(buffer.positionToOffset(1, 0)).toBe(4)
+      expect(buffer.positionToOffset(2, 0)).toBe(7)
+    })
+
+    it("should return null for invalid offset", () => {
+      buffer.setText("Hello")
+      const result = buffer.offsetToPosition(1000)
+      expect(result).toBeNull()
+    })
+
+    it("should handle empty text", () => {
+      buffer.setText("")
+
+      const pos = buffer.offsetToPosition(0)
+      expect(pos).toEqual({ row: 0, col: 0 })
+
+      expect(buffer.positionToOffset(0, 0)).toBe(0)
+      expect(buffer.getLineStartOffset(0)).toBe(0)
+    })
+  })
+
   describe("getEOL navigation", () => {
     it("should get end of line from start", () => {
       buffer.setText("Hello World")
