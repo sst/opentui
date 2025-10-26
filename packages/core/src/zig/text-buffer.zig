@@ -42,9 +42,6 @@ pub const UnifiedTextBuffer = struct {
     const Self = @This();
 
     mem_registry: MemRegistry,
-    // TODO: char_count is probably totally off, as it does not consider edit operations,
-    // should get total width from rope metrics instead
-    char_count: u32,
     default_fg: ?RGBA,
     default_bg: ?RGBA,
     default_attributes: ?u8,
@@ -111,7 +108,6 @@ pub const UnifiedTextBuffer = struct {
 
         self.* = .{
             .mem_registry = mem_registry,
-            .char_count = 0,
             .default_fg = null,
             .default_bg = null,
             .default_attributes = null,
@@ -218,7 +214,8 @@ pub const UnifiedTextBuffer = struct {
 
     // Basic queries using unified rope
     pub fn getLength(self: *const Self) u32 {
-        return self.char_count;
+        const metrics = self.rope.root.metrics();
+        return metrics.custom.total_width;
     }
 
     pub fn getByteSize(self: *const Self) u32 {
@@ -241,7 +238,6 @@ pub const UnifiedTextBuffer = struct {
     /// Preserves highlights, memory buffers, and arena allocations.
     /// Use this for frequent text updates where undo/redo history should be preserved.
     pub fn clear(self: *Self) void {
-        self.char_count = 0;
         self.rope.clear();
         self.markAllViewsDirty();
     }
@@ -270,7 +266,6 @@ pub const UnifiedTextBuffer = struct {
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.mem_registry.clear();
-        self.char_count = 0;
 
         self.rope = UnifiedRope.init(self.allocator) catch return;
 
@@ -338,8 +333,6 @@ pub const UnifiedTextBuffer = struct {
 
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, true);
         defer result.segments.deinit();
-
-        self.char_count += result.total_width;
 
         try self.rope.setSegments(result.segments.items);
 
@@ -463,7 +456,6 @@ pub const UnifiedTextBuffer = struct {
         }
 
         try self.rope.append(Segment{ .text = chunk });
-        self.char_count += chunk.width;
 
         self.markAllViewsDirty();
     }
@@ -678,6 +670,19 @@ pub const UnifiedTextBuffer = struct {
                 try active.put(event.hl_idx, {});
             } else {
                 _ = active.remove(event.hl_idx);
+            }
+        }
+
+        // Emit final span after last event if there were any highlights
+        // This ensures the line returns to default styling after the last highlight ends
+        if (events.items.len > 0 and active.count() == 0) {
+            const line_width = iter_mod.lineWidthAt(&self.rope, @intCast(line_idx));
+            if (current_col < line_width) {
+                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
+                    .col = current_col,
+                    .style_id = 0, // No style (default)
+                    .next_col = line_width,
+                });
             }
         }
     }
@@ -932,7 +937,7 @@ pub const UnifiedTextBuffer = struct {
 
         logger.debug("=== TextBuffer Rope Debug ===", .{});
         logger.debug("Line count: {}", .{self.getLineCount()});
-        logger.debug("Char count: {}", .{self.char_count});
+        logger.debug("Char count: {}", .{self.getLength()});
         logger.debug("Byte size: {}", .{self.getByteSize()});
 
         const rope_text = self.rope.toText(self.allocator) catch {

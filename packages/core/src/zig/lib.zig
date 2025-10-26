@@ -657,6 +657,27 @@ export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *Ex
     };
 }
 
+export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32, outPtr: *ExternalLogicalCursor) bool {
+    const iter_mod = @import("text-buffer-iterators.zig");
+    const coords = iter_mod.offsetToCoords(&edit_buffer.tb.rope, offset) orelse return false;
+    outPtr.* = .{
+        .row = coords.row,
+        .col = coords.col,
+        .offset = offset,
+    };
+    return true;
+}
+
+export fn editBufferPositionToOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) u32 {
+    const iter_mod = @import("text-buffer-iterators.zig");
+    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, col) orelse 0;
+}
+
+export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32) u32 {
+    const iter_mod = @import("text-buffer-iterators.zig");
+    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, 0) orelse 0;
+}
+
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text, retain_history) catch {};
@@ -688,11 +709,13 @@ export fn editBufferGotoLine(edit_buffer: *edit_buffer_mod.EditBuffer, line: u32
     edit_buffer.gotoLine(line) catch {};
 }
 
-export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outLine: *u32, outVisualCol: *u32, outOffset: *u32) void {
+export fn editBufferGetCursorPosition(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *ExternalLogicalCursor) void {
     const pos = edit_buffer.getCursorPosition();
-    outLine.* = pos.line;
-    outVisualCol.* = pos.visual_col;
-    outOffset.* = pos.offset;
+    outPtr.* = .{
+        .row = pos.line,
+        .col = pos.visual_col,
+        .offset = pos.offset,
+    };
 }
 
 export fn editBufferGetId(edit_buffer: *edit_buffer_mod.EditBuffer) u16 {
@@ -736,6 +759,10 @@ export fn editBufferSetPlaceholder(edit_buffer: *edit_buffer_mod.EditBuffer, tex
 
 export fn editBufferSetPlaceholderColor(edit_buffer: *edit_buffer_mod.EditBuffer, color: [*]const f32) void {
     edit_buffer.setPlaceholderColor(utils.f32PtrToRGBA(color)) catch {};
+}
+
+export fn editBufferClear(edit_buffer: *edit_buffer_mod.EditBuffer) void {
+    edit_buffer.clear() catch {};
 }
 
 // ===== EditorView Exports =====
