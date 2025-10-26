@@ -279,8 +279,7 @@ export class ExtmarksController extends EventEmitter {
         const deleteOffset = virtualExtmark.start
         const deleteLength = virtualExtmark.end - virtualExtmark.start
 
-        this.extmarks.delete(virtualExtmark.id)
-        this.extmarksByTypeId.get(virtualExtmark.typeId)?.delete(virtualExtmark.id)
+        this.deleteExtmarkById(virtualExtmark.id)
 
         this.originalDeleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
@@ -330,8 +329,7 @@ export class ExtmarksController extends EventEmitter {
         const deleteOffset = virtualExtmark.start
         const deleteLength = virtualExtmark.end - virtualExtmark.start
 
-        this.extmarks.delete(virtualExtmark.id)
-        this.extmarksByTypeId.get(virtualExtmark.typeId)?.delete(virtualExtmark.id)
+        this.deleteExtmarkById(virtualExtmark.id)
 
         this.originalDeleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
@@ -500,6 +498,14 @@ export class ExtmarksController extends EventEmitter {
     })
   }
 
+  private deleteExtmarkById(id: number): void {
+    const extmark = this.extmarks.get(id)
+    if (extmark) {
+      this.extmarks.delete(id)
+      this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
+    }
+  }
+
   private findVirtualExtmarkContaining(offset: number): Extmark | null {
     for (const extmark of this.extmarks.values()) {
       if (extmark.virtual && offset >= extmark.start && offset < extmark.end) {
@@ -554,8 +560,7 @@ export class ExtmarksController extends EventEmitter {
     for (const id of toDelete) {
       const extmark = this.extmarks.get(id)
       if (extmark) {
-        this.extmarks.delete(id)
-        this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
+        this.deleteExtmarkById(id)
         this.emit("extmark-deleted", {
           extmark,
           trigger: "manual",
@@ -721,8 +726,7 @@ export class ExtmarksController extends EventEmitter {
     const extmark = this.extmarks.get(id)
     if (!extmark) return false
 
-    this.extmarks.delete(id)
-    this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
+    this.deleteExtmarkById(id)
     this.emit("extmark-deleted", {
       extmark,
       trigger: "manual",
