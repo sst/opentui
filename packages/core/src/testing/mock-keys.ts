@@ -153,18 +153,38 @@ export function createMockKeys(renderer: CliRenderer) {
           const ending = keyCode.slice(-1)
           keyCode = `\x1b[1;${modifier}${ending}`
         }
-      } else if (keyCode.length === 1 && !modifiers.ctrl) {
-        // For regular characters with modifiers
+      } else if (keyCode.length === 1) {
+        // For regular characters and single-char control codes with modifiers
         let char = keyCode
-        if (modifiers.shift && char >= "a" && char <= "z") {
-          char = char.toUpperCase()
-        }
-        if (modifiers.meta) {
-          // For meta+character, prefix with escape
-          keyCode = `\x1b${char}`
+
+        // Handle ctrl modifier for characters
+        if (modifiers.ctrl) {
+          // Ctrl+letter produces control codes (0x01-0x1a for a-z)
+          if (char >= "a" && char <= "z") {
+            keyCode = String.fromCharCode(char.charCodeAt(0) - 96)
+          } else if (char >= "A" && char <= "Z") {
+            keyCode = String.fromCharCode(char.charCodeAt(0) - 64)
+          }
+          // If meta is also pressed, prefix with escape
+          if (modifiers.meta) {
+            keyCode = `\x1b${keyCode}`
+          }
         } else {
-          keyCode = char
+          // Handle shift+meta or just meta
+          if (modifiers.shift && char >= "a" && char <= "z") {
+            char = char.toUpperCase()
+          }
+          if (modifiers.meta) {
+            // For meta+character (including control codes), prefix with escape
+            keyCode = `\x1b${char}`
+          } else {
+            keyCode = char
+          }
         }
+      } else if (modifiers.meta && !keyCode.startsWith("\x1b")) {
+        // For multi-char sequences that aren't escape sequences (like simple control codes)
+        // just prefix with escape for meta
+        keyCode = `\x1b${keyCode}`
       }
     }
 
@@ -176,20 +196,20 @@ export function createMockKeys(renderer: CliRenderer) {
     await pressKeys(keys, delayMs)
   }
 
-  const pressEnter = (): void => {
-    pressKey(KeyCodes.ENTER)
+  const pressEnter = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+    pressKey(KeyCodes.ENTER, modifiers)
   }
 
-  const pressEscape = (): void => {
-    pressKey(KeyCodes.ESCAPE)
+  const pressEscape = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+    pressKey(KeyCodes.ESCAPE, modifiers)
   }
 
-  const pressTab = (): void => {
-    pressKey(KeyCodes.TAB)
+  const pressTab = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+    pressKey(KeyCodes.TAB, modifiers)
   }
 
-  const pressBackspace = (): void => {
-    pressKey(KeyCodes.BACKSPACE)
+  const pressBackspace = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+    pressKey(KeyCodes.BACKSPACE, modifiers)
   }
 
   const pressArrow = (
@@ -206,7 +226,7 @@ export function createMockKeys(renderer: CliRenderer) {
   }
 
   const pressCtrlC = (): void => {
-    pressKey(KeyCodes.CTRL_C)
+    pressKey("c", { ctrl: true })
   }
 
   const pasteBracketedText = (text: string): Promise<void> => {

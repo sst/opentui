@@ -335,4 +335,129 @@ describe("mock-keys", () => {
     // ALT_A and ALT_Z should produce escape sequences
     expect(mockRenderer.getEmittedData()).toBe("\x1ba\x1bz")
   })
+
+  test("pressEnter with modifiers", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressEnter({ meta: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x1b\r")
+  })
+
+  test("pressTab with shift modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressTab({ shift: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\t")
+  })
+
+  test("pressEscape with ctrl modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressEscape({ ctrl: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x1b")
+  })
+
+  test("pressBackspace with meta modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressBackspace({ meta: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x1b\b")
+  })
+
+  test("pressKey with ctrl on letter produces control code", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("a", { ctrl: true })
+    mockKeys.pressKey("z", { ctrl: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x01\x1a")
+  })
+
+  test("pressKey with ctrl on uppercase letter", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("A", { ctrl: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x01")
+  })
+
+  test("pressKey with ctrl+meta combination", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("a", { ctrl: true, meta: true })
+
+    expect(mockRenderer.getEmittedData()).toBe("\x1b\x01")
+  })
+
+  test("CTRL_* keycodes can be replaced with ctrl modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("a", { ctrl: true })
+    mockKeys.pressKey("c", { ctrl: true })
+    mockKeys.pressKey("d", { ctrl: true })
+
+    expect(mockRenderer.getEmittedData()).toBe(`${KeyCodes.CTRL_A}${KeyCodes.CTRL_C}${KeyCodes.CTRL_D}`)
+  })
+
+  test("ALT_* keycodes can be replaced with meta modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey("a", { meta: true })
+    mockKeys.pressKey("z", { meta: true })
+
+    expect(mockRenderer.getEmittedData()).toBe(`${KeyCodes.ALT_A}${KeyCodes.ALT_Z}`)
+  })
+
+  test("all CTRL_* letters produce correct control codes", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    const letters = "abcdefghijklmnopqrstuvwxyz"
+    for (const letter of letters) {
+      mockKeys.pressKey(letter, { ctrl: true })
+    }
+
+    const expected = letters
+      .split("")
+      .map((c) => String.fromCharCode(c.charCodeAt(0) - 96))
+      .join("")
+    expect(mockRenderer.getEmittedData()).toBe(expected)
+  })
+
+  test("pressKey with ctrl modifier matches CTRL_C keycode", () => {
+    const mockRenderer1 = new MockRenderer()
+    const mockKeys1 = createMockKeys(mockRenderer1 as any)
+    mockKeys1.pressKey("c", { ctrl: true })
+
+    const mockRenderer2 = new MockRenderer()
+    const mockKeys2 = createMockKeys(mockRenderer2 as any)
+    mockKeys2.pressKey(KeyCodes.CTRL_C)
+
+    expect(mockRenderer1.getEmittedData()).toBe(mockRenderer2.getEmittedData())
+  })
+
+  test("pressKey with meta modifier on letters matches ALT_* keycodes", () => {
+    const mockRenderer1 = new MockRenderer()
+    const mockKeys1 = createMockKeys(mockRenderer1 as any)
+    mockKeys1.pressKey("x", { meta: true })
+
+    const mockRenderer2 = new MockRenderer()
+    const mockKeys2 = createMockKeys(mockRenderer2 as any)
+    mockKeys2.pressKey(KeyCodes.ALT_X)
+
+    expect(mockRenderer1.getEmittedData()).toBe(mockRenderer2.getEmittedData())
+  })
 })
