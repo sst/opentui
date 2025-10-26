@@ -1,6 +1,5 @@
 import type { EditBuffer } from "../edit-buffer"
 import type { EditorView } from "../editor-view"
-import { EventEmitter } from "events"
 import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history"
 
 export interface Extmark {
@@ -14,11 +13,6 @@ export interface Extmark {
   typeId: number
 }
 
-export interface ExtmarkDeletedEvent {
-  extmark: Extmark
-  trigger: "backspace" | "delete" | "manual"
-}
-
 export interface ExtmarkOptions {
   start: number
   end: number
@@ -29,12 +23,7 @@ export interface ExtmarkOptions {
   typeId?: number
 }
 
-export interface ExtmarksControllerEvents {
-  "extmark-deleted": (event: ExtmarkDeletedEvent) => void
-  "extmark-updated": (extmark: Extmark) => void
-}
-
-export class ExtmarksController extends EventEmitter {
+export class ExtmarksController {
   private editBuffer: EditBuffer
   private editorView: EditorView
   private extmarks = new Map<number, Extmark>()
@@ -65,7 +54,6 @@ export class ExtmarksController extends EventEmitter {
   private originalRedo: typeof EditBuffer.prototype.redo
 
   constructor(editBuffer: EditBuffer, editorView: EditorView) {
-    super()
     this.editBuffer = editBuffer
     this.editorView = editorView
 
@@ -287,11 +275,6 @@ export class ExtmarksController extends EventEmitter {
         this.originalDeleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
 
-        this.emit("extmark-deleted", {
-          extmark: virtualExtmark,
-          trigger: "backspace",
-        } as ExtmarkDeletedEvent)
-
         this.updateHighlights()
 
         return
@@ -336,11 +319,6 @@ export class ExtmarksController extends EventEmitter {
 
         this.originalDeleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
-
-        this.emit("extmark-deleted", {
-          extmark: virtualExtmark,
-          trigger: "delete",
-        } as ExtmarkDeletedEvent)
 
         this.updateHighlights()
 
@@ -523,10 +501,8 @@ export class ExtmarksController extends EventEmitter {
       if (extmark.start >= insertOffset) {
         extmark.start += length
         extmark.end += length
-        this.emit("extmark-updated", extmark)
       } else if (extmark.end > insertOffset) {
         extmark.end += length
-        this.emit("extmark-updated", extmark)
       }
     }
     this.updateHighlights()
@@ -543,32 +519,21 @@ export class ExtmarksController extends EventEmitter {
       if (extmark.start >= deleteOffset + length) {
         extmark.start -= length
         extmark.end -= length
-        this.emit("extmark-updated", extmark)
       } else if (extmark.start >= deleteOffset && extmark.end <= deleteOffset + length) {
         toDelete.push(extmark.id)
       } else if (extmark.start < deleteOffset && extmark.end > deleteOffset + length) {
         extmark.end -= length
-        this.emit("extmark-updated", extmark)
       } else if (extmark.start < deleteOffset && extmark.end > deleteOffset) {
         extmark.end -= Math.min(extmark.end, deleteOffset + length) - deleteOffset
-        this.emit("extmark-updated", extmark)
       } else if (extmark.start < deleteOffset + length && extmark.end > deleteOffset + length) {
         const overlap = deleteOffset + length - extmark.start
         extmark.start = deleteOffset
         extmark.end -= length
-        this.emit("extmark-updated", extmark)
       }
     }
 
     for (const id of toDelete) {
-      const extmark = this.extmarks.get(id)
-      if (extmark) {
-        this.deleteExtmarkById(id)
-        this.emit("extmark-deleted", {
-          extmark,
-          trigger: "manual",
-        } as ExtmarkDeletedEvent)
-      }
+      this.deleteExtmarkById(id)
     }
 
     this.updateHighlights()
@@ -584,10 +549,6 @@ export class ExtmarksController extends EventEmitter {
 
   private positionToOffset(row: number, col: number): number {
     return this.editBuffer.positionToOffset(row, col)
-  }
-
-  private getLineStartOffset(targetRow: number): number {
-    return this.editBuffer.getLineStartOffset(targetRow)
   }
 
   private updateHighlights(): void {
@@ -661,10 +622,6 @@ export class ExtmarksController extends EventEmitter {
     if (!extmark) return false
 
     this.deleteExtmarkById(id)
-    this.emit("extmark-deleted", {
-      extmark,
-      trigger: "manual",
-    } as ExtmarkDeletedEvent)
     this.updateHighlights()
 
     return true
@@ -701,13 +658,6 @@ export class ExtmarksController extends EventEmitter {
 
   public clear(): void {
     if (this.destroyed) return
-
-    for (const extmark of this.extmarks.values()) {
-      this.emit("extmark-deleted", {
-        extmark,
-        trigger: "manual",
-      } as ExtmarkDeletedEvent)
-    }
 
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
@@ -821,7 +771,6 @@ export class ExtmarksController extends EventEmitter {
     this.typeIdToName.clear()
     this.history.clear()
     this.destroyed = true
-    this.removeAllListeners()
   }
 }
 

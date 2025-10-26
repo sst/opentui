@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from "bun:test"
 import { TextareaRenderable } from "../renderables/Textarea"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../testing/test-renderer"
-import { type ExtmarksController, type ExtmarkDeletedEvent } from "./extmarks"
+import { type ExtmarksController } from "./extmarks"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "./RGBA"
 
@@ -112,18 +112,12 @@ describe("ExtmarksController", () => {
       expect(result).toBe(false)
     })
 
-    it("should emit extmark-deleted event", async () => {
+    it("should delete extmark without emitting events", async () => {
       await setup()
 
       const id = extmarks.create({ start: 0, end: 5 })
-      let deleteEventFired = false
-
-      extmarks.on("extmark-deleted", () => {
-        deleteEventFired = true
-      })
-
       extmarks.delete(id)
-      expect(deleteEventFired).toBe(true)
+      expect(extmarks.get(id)).toBeNull()
     })
 
     it("should clear all extmarks", async () => {
@@ -353,17 +347,11 @@ describe("ExtmarksController", () => {
         virtual: true,
       })
 
-      let eventFired = false
-      extmarks.on("extmark-deleted", () => {
-        eventFired = true
-      })
-
       currentMockInput.pressBackspace()
 
       expect(textarea.plainText).toBe("abcdef")
       expect(textarea.cursorOffset).toBe(3)
       expect(extmarks.get(id)).toBeNull()
-      expect(eventFired).toBe(true)
     })
 
     it("should not delete virtual extmark on backspace outside range", async () => {
@@ -415,17 +403,11 @@ describe("ExtmarksController", () => {
         virtual: true,
       })
 
-      let eventFired = false
-      extmarks.on("extmark-deleted", () => {
-        eventFired = true
-      })
-
       currentMockInput.pressKey("DELETE")
 
       expect(textarea.plainText).toBe("abcdef")
       expect(textarea.cursorOffset).toBe(3)
       expect(extmarks.get(id)).toBeNull()
-      expect(eventFired).toBe(true)
     })
   })
 
@@ -1174,21 +1156,17 @@ Press ESC to return to main menu.`
       expect(extmarks.get(id2)).toBeNull()
     })
 
-    it("should emit extmark-deleted events for all extmarks on setText", async () => {
+    it("should clear all extmarks on setText", async () => {
       await setup("Hello World")
 
       extmarks.create({ start: 0, end: 5 })
       extmarks.create({ start: 6, end: 11 })
 
-      const deletedEvents: ExtmarkDeletedEvent[] = []
-      extmarks.on("extmark-deleted", (event) => {
-        deletedEvents.push(event)
-      })
+      expect(extmarks.getAll().length).toBe(2)
 
       textarea.setText("New Text")
 
-      expect(deletedEvents.length).toBe(2)
-      expect(deletedEvents.every((e) => e.trigger === "manual")).toBe(true)
+      expect(extmarks.getAll().length).toBe(0)
     })
 
     it("should allow new extmarks after setText", async () => {
@@ -1506,21 +1484,17 @@ Press ESC to return to main menu.`
       expect(textarea.plainText).toBe("")
     })
 
-    it("should emit extmark-deleted events for all extmarks on clear", async () => {
+    it("should clear all extmarks on clear", async () => {
       await setup("Hello World")
 
       extmarks.create({ start: 0, end: 5 })
       extmarks.create({ start: 6, end: 11 })
 
-      const deletedEvents: ExtmarkDeletedEvent[] = []
-      extmarks.on("extmark-deleted", (event) => {
-        deletedEvents.push(event)
-      })
+      expect(extmarks.getAll().length).toBe(2)
 
       textarea.clear()
 
-      expect(deletedEvents.length).toBe(2)
-      expect(deletedEvents.every((e) => e.trigger === "manual")).toBe(true)
+      expect(extmarks.getAll().length).toBe(0)
     })
 
     it("should allow new extmarks after clear", async () => {
