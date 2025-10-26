@@ -23,6 +23,11 @@ export interface ExtmarkOptions {
   typeId?: number
 }
 
+/**
+ * WARNING: This is simulating extmarks in the edit buffer
+ * and will move to a real native implementation in the future.
+ * Use with caution.
+ */
 export class ExtmarksController {
   private editBuffer: EditBuffer
   private editorView: EditorView
