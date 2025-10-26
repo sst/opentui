@@ -23,14 +23,14 @@ class CollectingStream extends PassThrough {
   }
 }
 
-describe("jsFlush mode", () => {
+describe("outputMode: 'javascript'", () => {
   test("setup and render flush native buffers", async () => {
     const stdout = new CollectingStream()
     const stdin = new PassThrough()
     ;(stdin as any).isTTY = true
 
     const { renderer, renderOnce } = await createTestRenderer({
-      jsFlush: true,
+      outputMode: 'javascript',
       stdout: stdout as unknown as NodeJS.WriteStream,
       stdin: stdin as unknown as NodeJS.ReadStream,
       useAlternateScreen: false,
@@ -58,7 +58,7 @@ describe("jsFlush mode", () => {
     ;(stdin as any).isTTY = true
 
     const { renderer, renderOnce } = await createTestRenderer({
-      jsFlush: true,
+      outputMode: 'javascript',
       stdout: stdout as unknown as NodeJS.WriteStream,
       stdin: stdin as unknown as NodeJS.ReadStream,
       useAlternateScreen: false,
@@ -74,13 +74,13 @@ describe("jsFlush mode", () => {
       await renderOnce()
 
       expect(stdout.writes.length).toBeGreaterThan(0)
-      expect((renderer as any).awaitingDrain).toBe(true)
+      expect((renderer as any).outputStrategy.canRender()).toBe(false)
 
       stdout.forcedBackpressure = false
       stdout.emit("drain")
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      expect((renderer as any).awaitingDrain).toBe(false)
+      expect((renderer as any).outputStrategy.canRender()).toBe(true)
     } finally {
       renderer.destroy()
       stdout.destroy()

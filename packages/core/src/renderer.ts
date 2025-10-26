@@ -20,6 +20,7 @@ import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
+import { createOutputStrategy, type OutputStrategy, type OutputMode } from "./output-strategy"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -52,7 +53,7 @@ registerEnvVar({
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
-  jsFlush?: boolean
+  outputMode?: OutputMode
   exitOnCtrlC?: boolean
   debounceDelay?: number
   targetFps?: number
@@ -69,11 +70,6 @@ export interface CliRendererConfig {
   experimental_splitHeight?: number
   useKittyKeyboard?: boolean
   backgroundColor?: ColorInput
-}
-
-enum NativeWriteTarget {
-  TTY = 0,
-  BUFFER = 1,
 }
 
 export type PixelResolution = {
@@ -180,7 +176,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
-  if (config.jsFlush) {
+  if (config.outputMode === 'javascript') {
     config.useThread = false
   }
 
@@ -298,11 +294,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _splitHeight: number = 0
   private renderOffset: number = 0
-  private jsFlush: boolean = false
-  private nativeWriteBuffer: Uint8Array = new Uint8Array(0)
-  private awaitingDrain: boolean = false
-  private pendingImmediateRerender: boolean = false
-  private drainListener: (() => void) | null = null
+  private outputStrategy!: OutputStrategy
 
   private _terminalWidth: number = 0
   private _terminalHeight: number = 0
@@ -402,15 +394,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin = stdin
     this.stdout = stdout
-    this.jsFlush = Boolean(config.jsFlush)
     this.realStdoutWrite = stdout.write
     this.lib = lib
     this._terminalWidth = stdout.columns
     this._terminalHeight = stdout.rows
     this.width = width
     this.height = height
+
+    const outputMode = config.outputMode ?? 'native'
     const requestedUseThread = config.useThread === undefined ? false : config.useThread
-    this._useThread = this.jsFlush ? false : requestedUseThread
+    this._useThread = outputMode === 'javascript' ? false : requestedUseThread
     this._splitHeight = config.experimental_splitHeight || 0
 
     if (this._splitHeight > 0) {
@@ -435,9 +428,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
 
-    if (this.jsFlush) {
-      this.lib.setWriteTarget(this.rendererPtr, NativeWriteTarget.BUFFER)
-    }
+    this.outputStrategy = createOutputStrategy(outputMode, {
+      stdout,
+      stdin,
+      lib,
+      rendererPtr,
+      emitFlush: (event) => this.emit("flush", event),
+      onDrain: () => {
+        if (!this._isDestroyed && (this._isRunning || this.immediateRerenderRequested)) {
+          this.immediateRerenderRequested = false
+          this.loop()
+        }
+      },
+    })
 
     this.root = new RootRenderable(this)
 
@@ -445,7 +448,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.startMemorySnapshotTimer()
     }
 
-    if (!this.jsFlush && env.OTUI_OVERRIDE_STDOUT) {
+    if (outputMode === 'native' && env.OTUI_OVERRIDE_STDOUT) {
       this.stdout.write = this.interceptStdoutWrite.bind(this)
     }
 
@@ -723,73 +726,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return true
   }
 
-  private ensureNativeWriteBufferSize(size: number): void {
-    if (this.nativeWriteBuffer.length >= size) {
-      return
-    }
-    const nextSize = Math.max(size, this.nativeWriteBuffer.length > 0 ? this.nativeWriteBuffer.length * 2 : 4096)
-    this.nativeWriteBuffer = new Uint8Array(nextSize)
-  }
-
-  private readNativeBuffer(): Buffer | null {
-    if (!this.jsFlush) {
-      return null
-    }
-    const length = this.lib.getWriteBufferLength(this.rendererPtr)
-    if (!length) {
-      return null
-    }
-    this.ensureNativeWriteBufferSize(length)
-    const copied = this.lib.copyWriteBuffer(this.rendererPtr, this.nativeWriteBuffer)
-    if (!copied) {
-      return null
-    }
-    const chunk = this.nativeWriteBuffer.subarray(0, copied)
-    return Buffer.from(chunk)
-  }
-
-  private flushNativeOutput(reason: string = "frame"): number {
-    if (!this.jsFlush) {
-      return 0
-    }
-    const chunk = this.readNativeBuffer()
-    if (!chunk || chunk.length === 0) {
-      return 0
-    }
-    const wrote = this.stdout.write(chunk)
-    this.emit("flush", { bytes: chunk.length, reason })
-    if (!wrote) {
-      this.scheduleDrain()
-    }
-    return chunk.length
-  }
-
-  private scheduleDrain(): void {
-    if (this.awaitingDrain || typeof this.stdout.once !== "function") {
-      return
-    }
-    this.awaitingDrain = true
-    this.pendingImmediateRerender = this.pendingImmediateRerender || this.immediateRerenderRequested
-    this.drainListener = this.handleDrain
-    this.stdout.once("drain", this.handleDrain)
-  }
-
-  private handleDrain = (): void => {
-    this.awaitingDrain = false
-    if (this.drainListener) {
-      this.drainListener = null
-    }
-    const shouldLoop = this._isRunning || this.pendingImmediateRerender
-    this.pendingImmediateRerender = false
-    if (!this._isDestroyed && shouldLoop) {
-      this.loop()
-    }
-  }
-
   private enableMouse(): void {
     this._useMouse = true
     this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement)
-    this.flushNativeOutput("enable-mouse")
+    this.outputStrategy.flush("enable-mouse")
   }
 
   private disableMouse(): void {
@@ -797,23 +737,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.capturedRenderable = undefined
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
-    this.flushNativeOutput("disable-mouse")
+    this.outputStrategy.flush("disable-mouse")
   }
 
   public enableKittyKeyboard(flags: number = 0b00001): void {
     this.lib.enableKittyKeyboard(this.rendererPtr, flags)
-    this.flushNativeOutput("enable-kitty")
+    this.outputStrategy.flush("enable-kitty")
   }
 
   public disableKittyKeyboard(): void {
     this.lib.disableKittyKeyboard(this.rendererPtr)
-    this.flushNativeOutput("disable-kitty")
+    this.outputStrategy.flush("disable-kitty")
   }
 
   public set useThread(useThread: boolean) {
-    if (this.jsFlush && useThread) {
-      throw new Error("jsFlush mode requires useThread=false")
-    }
     this._useThread = useThread
     this.lib.setUseThread(this.rendererPtr, useThread)
   }
@@ -824,25 +761,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }, 100)
-      const capListener = (str: string) => {
-        clearTimeout(timeout)
-        this.lib.processCapabilityResponse(this.rendererPtr, str)
-        this.flushNativeOutput("capabilities")
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }
-      this.stdin.on("data", capListener)
-      if (this.jsFlush) {
-        this.lib.setupTerminalToBuffer(this.rendererPtr, this._useAlternateScreen)
-        this.flushNativeOutput("setup")
-      } else {
-        this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
-      }
+    await this.outputStrategy.setup(this._useAlternateScreen, (str: string) => {
+      this.lib.processCapabilityResponse(this.rendererPtr, str)
     })
 
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
@@ -1105,7 +1025,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private queryPixelResolution() {
     this.waitingForPixelResolution = true
     this.lib.queryPixelResolution(this.rendererPtr)
-    this.flushNativeOutput("pixel-resolution")
+    this.outputStrategy.flush("pixel-resolution")
   }
 
   private processResize(width: number, height: number): void {
@@ -1182,7 +1102,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public setTerminalTitle(title: string): void {
     this.lib.setTerminalTitle(this.rendererPtr, title)
-    this.flushNativeOutput("title")
+    this.outputStrategy.flush("title")
   }
 
   public dumpHitGrid(): void {
@@ -1200,7 +1120,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public static setCursorPosition(renderer: CliRenderer, x: number, y: number, visible: boolean = true): void {
     const lib = resolveRenderLib()
     lib.setCursorPosition(renderer.rendererPtr, x, y, visible)
-    renderer.flushNativeOutput("cursor-position")
+    renderer.outputStrategy.flush("cursor-position")
   }
 
   public static setCursorStyle(
@@ -1214,18 +1134,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (color) {
       lib.setCursorColor(renderer.rendererPtr, color)
     }
-    renderer.flushNativeOutput("cursor-style")
+    renderer.outputStrategy.flush("cursor-style")
   }
 
   public static setCursorColor(renderer: CliRenderer, color: RGBA): void {
     const lib = resolveRenderLib()
     lib.setCursorColor(renderer.rendererPtr, color)
-    renderer.flushNativeOutput("cursor-color")
+    renderer.outputStrategy.flush("cursor-color")
   }
 
   public setCursorPosition(x: number, y: number, visible: boolean = true): void {
     this.lib.setCursorPosition(this.rendererPtr, x, y, visible)
-    this.flushNativeOutput("cursor-position")
+    this.outputStrategy.flush("cursor-position")
   }
 
   public setCursorStyle(style: CursorStyle, blinking: boolean = false, color?: RGBA): void {
@@ -1233,7 +1153,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (color) {
       this.lib.setCursorColor(this.rendererPtr, color)
     }
-    this.flushNativeOutput("cursor-style")
+    this.outputStrategy.flush("cursor-style")
   }
 
   public setCursorColor(color: RGBA): void {
@@ -1407,21 +1327,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.flushStdoutCache(this._splitHeight, true)
     }
 
-    if (this.awaitingDrain && this.drainListener && typeof this.stdout.off === "function") {
-      this.stdout.off("drain", this.drainListener)
-      this.drainListener = null
-      this.awaitingDrain = false
-    }
+    this.outputStrategy.destroy()
 
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
     this.stdin.removeListener("data", this.stdinListener)
 
-    if (this.jsFlush) {
-      this.lib.teardownTerminalToBuffer(this.rendererPtr)
-      this.flushNativeOutput("teardown")
-    }
+    this.outputStrategy.teardown()
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
@@ -1440,11 +1353,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private async loop(): Promise<void> {
-    if (this.rendering || this._isDestroyed || this.awaitingDrain) {
-      if (this.awaitingDrain && this.immediateRerenderRequested) {
-        this.pendingImmediateRerender = true
-        this.immediateRerenderRequested = false
-      }
+    if (this.rendering || this._isDestroyed || !this.outputStrategy.canRender()) {
       return
     }
     this.rendering = true
@@ -1511,21 +1420,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.collectStatSample(overallFrameTime)
       }
 
-      if (this._isRunning && !this.awaitingDrain) {
+      if (this._isRunning && this.outputStrategy.canRender()) {
         const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
         this.renderTimeout = setTimeout(() => this.loop(), delay)
-      } else if (this.awaitingDrain) {
-        this.pendingImmediateRerender = this.pendingImmediateRerender || this.immediateRerenderRequested
       }
     }
     this.rendering = false
     if (this.immediateRerenderRequested) {
       this.immediateRerenderRequested = false
-      if (this.awaitingDrain) {
-        this.pendingImmediateRerender = true
-      } else {
-        this.loop()
-      }
+      this.loop()
     }
   }
 
@@ -1548,12 +1451,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.renderingNative = true
-    if (this.jsFlush) {
-      this.lib.renderIntoWriteBuffer(this.rendererPtr, force)
-      this.flushNativeOutput("frame")
-    } else {
-      this.lib.render(this.rendererPtr, force)
-    }
+    this.outputStrategy.render(force)
     // this.dumpStdoutBuffer(Date.now())
     this.renderingNative = false
   }
