@@ -318,7 +318,7 @@ pub const CliRenderer = struct {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
 
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         const writer = ctx.writer;
 
@@ -338,7 +338,7 @@ pub const CliRenderer = struct {
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         const writer = ctx.writer;
 
@@ -476,7 +476,7 @@ pub const CliRenderer = struct {
     }
 
     pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         self.terminal.setTerminalTitle(ctx.writer, title);
     }
@@ -833,7 +833,7 @@ pub const CliRenderer = struct {
     }
 
     pub fn clearTerminal(self: *CliRenderer) void {
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         ctx.writer.writeAll(ansi.ANSI.clearAndHome) catch {};
     }
@@ -972,31 +972,31 @@ pub const CliRenderer = struct {
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         _ = enableMovement; // TODO: Use this to control motion tracking levels
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         self.terminal.setMouseMode(ctx.writer, true) catch {};
     }
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         ctx.writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         self.terminal.setMouseMode(ctx.writer, false) catch {};
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         self.terminal.setKittyKeyboard(ctx.writer, true, flags) catch {};
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         self.terminal.setKittyKeyboard(ctx.writer, false, 0) catch {};
     }
@@ -1007,7 +1007,7 @@ pub const CliRenderer = struct {
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
-        var ctx = self.beginTerminalWrite();
+        const ctx = self.beginTerminalWrite();
         defer self.endTerminalWrite(ctx);
         self.terminal.enableDetectedFeatures(ctx.writer) catch {};
     }

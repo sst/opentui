@@ -1,36 +1,17 @@
 import { describe, test, expect } from "bun:test"
 import { PassThrough } from "stream"
+
+import { CollectingStdout } from "./stdout-mocks"
 import { createTestRenderer } from "./test-renderer"
-
-class CollectingStream extends PassThrough {
-  public writes: Buffer[] = []
-  public forcedBackpressure = false
-  public columns = 80
-  public rows = 24
-  public isTTY = true
-
-  write(chunk: any, encoding?: any, callback?: any): boolean {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding)
-    this.writes.push(Buffer.from(buffer))
-    if (typeof callback === "function") {
-      callback()
-    }
-    return !this.forcedBackpressure
-  }
-
-  clearWrites(): void {
-    this.writes = []
-  }
-}
 
 describe("outputMode: 'javascript'", () => {
   test("setup and render flush native buffers", async () => {
-    const stdout = new CollectingStream()
+    const stdout = new CollectingStdout()
     const stdin = new PassThrough()
     ;(stdin as any).isTTY = true
 
     const { renderer, renderOnce } = await createTestRenderer({
-      outputMode: 'javascript',
+      outputMode: "javascript",
       stdout: stdout as unknown as NodeJS.WriteStream,
       stdin: stdin as unknown as NodeJS.ReadStream,
       useAlternateScreen: false,
@@ -53,12 +34,12 @@ describe("outputMode: 'javascript'", () => {
   })
 
   test("backpressure pauses rendering until drain", async () => {
-    const stdout = new CollectingStream()
+    const stdout = new CollectingStdout()
     const stdin = new PassThrough()
     ;(stdin as any).isTTY = true
 
     const { renderer, renderOnce } = await createTestRenderer({
-      outputMode: 'javascript',
+      outputMode: "javascript",
       stdout: stdout as unknown as NodeJS.WriteStream,
       stdin: stdin as unknown as NodeJS.ReadStream,
       useAlternateScreen: false,

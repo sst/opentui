@@ -20,7 +20,12 @@ import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
-import { createOutputStrategy, type OutputStrategy, type OutputMode } from "./output-strategy"
+import {
+  createOutputStrategy,
+  type OutputStrategy,
+  type OutputMode,
+  type StdoutWrite,
+} from "./output-strategy"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -176,17 +181,13 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
-  if (config.outputMode === 'javascript') {
-    config.useThread = false
-  }
-
   if (config.useThread === undefined) {
     config.useThread = true
   }
 
   // Disable threading on linux because there currently is currently an issue
   // might be just a missing dependency for the build or something, but threads crash on linux
-  if (process.platform === "linux") {
+  if (config.outputMode === "javascript" || process.platform === "linux") {
     config.useThread = false
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
@@ -295,12 +296,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _splitHeight: number = 0
   private renderOffset: number = 0
   private outputStrategy!: OutputStrategy
+  private outputMode: OutputMode = "native"
 
   private _terminalWidth: number = 0
   private _terminalHeight: number = 0
   private _terminalIsSetup: boolean = false
 
-  private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
+  private realStdoutWrite: StdoutWrite
+  private writeOut: StdoutWrite
   private captureCallback: () => void = () => {
     if (this._splitHeight > 0) {
       this.requestRender()
@@ -395,15 +398,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin = stdin
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
+    this.writeOut = (chunk, encoding, callback) => this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
     this.lib = lib
     this._terminalWidth = stdout.columns
     this._terminalHeight = stdout.rows
     this.width = width
     this.height = height
 
-    const outputMode = config.outputMode ?? 'native'
+    const outputMode = config.outputMode ?? "native"
+    this.outputMode = outputMode
     const requestedUseThread = config.useThread === undefined ? false : config.useThread
-    this._useThread = outputMode === 'javascript' ? false : requestedUseThread
+    this._useThread = outputMode === "javascript" ? false : requestedUseThread
     this._splitHeight = config.experimental_splitHeight || 0
 
     if (this._splitHeight > 0) {
@@ -433,6 +438,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       stdin,
       lib,
       rendererPtr,
+      writeToTerminal: this.writeOut,
       emitFlush: (event) => this.emit("flush", event),
       onDrain: () => {
         if (!this._isDestroyed && (this._isRunning || this.immediateRerenderRequested)) {
@@ -448,7 +454,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.startMemorySnapshotTimer()
     }
 
-    if (outputMode === 'native' && env.OTUI_OVERRIDE_STDOUT) {
+    if (env.OTUI_OVERRIDE_STDOUT) {
       this.stdout.write = this.interceptStdoutWrite.bind(this)
     }
 
@@ -533,10 +539,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public get widthMethod(): WidthMethod {
     const caps = this.capabilities
     return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
-  }
-
-  private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
-    return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
   public requestRender() {
@@ -751,8 +753,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public set useThread(useThread: boolean) {
-    this._useThread = useThread
-    this.lib.setUseThread(this.rendererPtr, useThread)
+    if (this.outputMode === "javascript" && useThread) {
+      console.warn("CliRenderer: threaded rendering is not supported while outputMode === 'javascript'")
+    }
+    const nextValue = this.outputMode === "javascript" ? false : useThread
+    if (this._useThread === nextValue) {
+      return
+    }
+    this._useThread = nextValue
+    this.lib.setUseThread(this.rendererPtr, nextValue)
   }
 
   // TODO:All input management may move to native when zig finally has async io support again,
@@ -1158,6 +1167,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public setCursorColor(color: RGBA): void {
     this.lib.setCursorColor(this.rendererPtr, color)
+    this.outputStrategy.flush("cursor-color")
   }
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
