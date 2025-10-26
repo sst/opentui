@@ -94,52 +94,6 @@ describe("ExtmarksController", () => {
     })
   })
 
-  describe("Update Operations", () => {
-    it("should update extmark position", async () => {
-      await setup()
-
-      const id = extmarks.create({ start: 0, end: 5 })
-      extmarks.update(id, { start: 1, end: 6 })
-
-      const extmark = extmarks.get(id)
-      expect(extmark?.start).toBe(1)
-      expect(extmark?.end).toBe(6)
-    })
-
-    it("should update extmark virtual flag", async () => {
-      await setup()
-
-      const id = extmarks.create({ start: 0, end: 5, virtual: false })
-      extmarks.update(id, { virtual: true })
-
-      const extmark = extmarks.get(id)
-      expect(extmark?.virtual).toBe(true)
-    })
-
-    it("should return false when updating non-existent extmark", async () => {
-      await setup()
-
-      const result = extmarks.update(999, { start: 0 })
-      expect(result).toBe(false)
-    })
-
-    it("should emit extmark-updated event", async () => {
-      await setup()
-
-      const id = extmarks.create({ start: 0, end: 5 })
-      let updateEventFired = false
-
-      extmarks.on("extmark-updated", (extmark) => {
-        if (extmark.id === id) {
-          updateEventFired = true
-        }
-      })
-
-      extmarks.update(id, { start: 1 })
-      expect(updateEventFired).toBe(true)
-    })
-  })
-
   describe("Delete Operations", () => {
     it("should delete extmark", async () => {
       await setup()
@@ -2125,25 +2079,6 @@ Press ESC to return to main menu.`
 
       type3Marks = extmarks.getAllForTypeId(3)
       expect(type3Marks.length).toBe(0)
-    })
-
-    it("should update typeId index when extmark typeId is changed", async () => {
-      await setup()
-
-      const id = extmarks.create({ start: 0, end: 5, typeId: 1 })
-
-      let type1Marks = extmarks.getAllForTypeId(1)
-      expect(type1Marks.length).toBe(1)
-
-      extmarks.update(id, { typeId: 2 })
-
-      type1Marks = extmarks.getAllForTypeId(1)
-      expect(type1Marks.length).toBe(0)
-
-      const type2Marks = extmarks.getAllForTypeId(2)
-      expect(type2Marks.length).toBe(1)
-      expect(type2Marks[0].id).toBe(id)
-      expect(type2Marks[0].typeId).toBe(2)
     })
 
     it("should clear all typeId indexes when clear is called", async () => {

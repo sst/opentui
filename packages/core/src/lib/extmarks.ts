@@ -688,36 +688,6 @@ export class ExtmarksController extends EventEmitter {
     return id
   }
 
-  public update(id: number, options: Partial<ExtmarkOptions>): boolean {
-    if (this.destroyed) {
-      throw new Error("ExtmarksController is destroyed")
-    }
-
-    const extmark = this.extmarks.get(id)
-    if (!extmark) return false
-
-    if (options.typeId !== undefined && options.typeId !== extmark.typeId) {
-      this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
-      if (!this.extmarksByTypeId.has(options.typeId)) {
-        this.extmarksByTypeId.set(options.typeId, new Set())
-      }
-      this.extmarksByTypeId.get(options.typeId)!.add(id)
-      extmark.typeId = options.typeId
-    }
-
-    if (options.start !== undefined) extmark.start = options.start
-    if (options.end !== undefined) extmark.end = options.end
-    if (options.virtual !== undefined) extmark.virtual = options.virtual
-    if (options.styleId !== undefined) extmark.styleId = options.styleId
-    if (options.priority !== undefined) extmark.priority = options.priority
-    if (options.data !== undefined) extmark.data = options.data
-
-    this.emit("extmark-updated", extmark)
-    this.updateHighlights()
-
-    return true
-  }
-
   public delete(id: number): boolean {
     if (this.destroyed) {
       throw new Error("ExtmarksController is destroyed")
