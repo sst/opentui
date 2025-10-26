@@ -2618,4 +2618,274 @@ Press ESC to return to main menu.`
       expect(extmarks.get(id)?.end).toBe(11)
     })
   })
+
+  describe("Type Registry", () => {
+    it("should register a type name and return a unique typeId", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      expect(linkTypeId).toBe(1)
+
+      const tagTypeId = extmarks.registerType("tag")
+      expect(tagTypeId).toBe(2)
+
+      expect(linkTypeId).not.toBe(tagTypeId)
+    })
+
+    it("should return the same typeId for duplicate type name registration", async () => {
+      await setup()
+
+      const firstId = extmarks.registerType("link")
+      const secondId = extmarks.registerType("link")
+
+      expect(firstId).toBe(secondId)
+    })
+
+    it("should resolve typeName to typeId", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      const resolvedId = extmarks.getTypeId("link")
+
+      expect(resolvedId).toBe(linkTypeId)
+    })
+
+    it("should return null for unregistered typeName", async () => {
+      await setup()
+
+      const resolvedId = extmarks.getTypeId("nonexistent")
+      expect(resolvedId).toBeNull()
+    })
+
+    it("should resolve typeId to typeName", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      const resolvedName = extmarks.getTypeName(linkTypeId)
+
+      expect(resolvedName).toBe("link")
+    })
+
+    it("should return null for unregistered typeId", async () => {
+      await setup()
+
+      const resolvedName = extmarks.getTypeName(999)
+      expect(resolvedName).toBeNull()
+    })
+
+    it("should create extmark with registered type", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      const extmarkId = extmarks.create({
+        start: 0,
+        end: 5,
+        typeId: linkTypeId,
+      })
+
+      const extmark = extmarks.get(extmarkId)
+      expect(extmark?.typeId).toBe(linkTypeId)
+    })
+
+    it("should retrieve extmarks by registered type name", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      const tagTypeId = extmarks.registerType("tag")
+
+      const linkId1 = extmarks.create({ start: 0, end: 5, typeId: linkTypeId })
+      const linkId2 = extmarks.create({ start: 6, end: 11, typeId: linkTypeId })
+      const tagId = extmarks.create({ start: 12, end: 15, typeId: tagTypeId })
+
+      const linkExtmarks = extmarks.getAllForTypeId(linkTypeId)
+      expect(linkExtmarks.length).toBe(2)
+      expect(linkExtmarks.map((e) => e.id).sort()).toEqual([linkId1, linkId2])
+
+      const tagExtmarks = extmarks.getAllForTypeId(tagTypeId)
+      expect(tagExtmarks.length).toBe(1)
+      expect(tagExtmarks[0].id).toBe(tagId)
+    })
+
+    it("should handle multiple type registrations", async () => {
+      await setup()
+
+      const types = ["link", "tag", "marker", "highlight", "error"]
+      const typeIds = types.map((type) => extmarks.registerType(type))
+
+      expect(new Set(typeIds).size).toBe(types.length)
+
+      for (let i = 0; i < types.length; i++) {
+        expect(extmarks.getTypeId(types[i])).toBe(typeIds[i])
+        expect(extmarks.getTypeName(typeIds[i])).toBe(types[i])
+      }
+    })
+
+    it("should preserve type registry across text operations", async () => {
+      await setup("Hello World")
+
+      const linkTypeId = extmarks.registerType("link")
+      const extmarkId = extmarks.create({
+        start: 0,
+        end: 5,
+        typeId: linkTypeId,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("X")
+
+      expect(extmarks.getTypeId("link")).toBe(linkTypeId)
+      expect(extmarks.getTypeName(linkTypeId)).toBe("link")
+
+      const extmark = extmarks.get(extmarkId)
+      expect(extmark?.typeId).toBe(linkTypeId)
+    })
+
+    it("should clear type registry on destroy", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      extmarks.registerType("tag")
+
+      extmarks.destroy()
+
+      expect(extmarks.getTypeId("link")).toBeNull()
+      expect(extmarks.getTypeName(linkTypeId)).toBeNull()
+    })
+
+    it("should throw error when registering type on destroyed controller", async () => {
+      await setup()
+
+      extmarks.destroy()
+
+      expect(() => {
+        extmarks.registerType("link")
+      }).toThrow("ExtmarksController is destroyed")
+    })
+
+    it("should support workflow of register then create extmarks", async () => {
+      await setup("The quick brown fox")
+
+      const linkTypeId = extmarks.registerType("link")
+      const emphasisTypeId = extmarks.registerType("emphasis")
+
+      const link1 = extmarks.create({ start: 0, end: 3, typeId: linkTypeId, virtual: true })
+      const link2 = extmarks.create({ start: 10, end: 15, typeId: linkTypeId, virtual: true })
+      const emphasis1 = extmarks.create({ start: 4, end: 9, typeId: emphasisTypeId })
+
+      const links = extmarks.getAllForTypeId(linkTypeId)
+      expect(links.length).toBe(2)
+      expect(links.map((e) => e.id).sort()).toEqual([link1, link2])
+
+      const emphases = extmarks.getAllForTypeId(emphasisTypeId)
+      expect(emphases.length).toBe(1)
+      expect(emphases[0].id).toBe(emphasis1)
+
+      expect(extmarks.getTypeName(linkTypeId)).toBe("link")
+      expect(extmarks.getTypeName(emphasisTypeId)).toBe("emphasis")
+    })
+
+    it("should handle type names with special characters", async () => {
+      await setup()
+
+      const typeId1 = extmarks.registerType("my-type")
+      const typeId2 = extmarks.registerType("my_type")
+      const typeId3 = extmarks.registerType("my.type")
+      const typeId4 = extmarks.registerType("my:type")
+
+      expect(extmarks.getTypeId("my-type")).toBe(typeId1)
+      expect(extmarks.getTypeId("my_type")).toBe(typeId2)
+      expect(extmarks.getTypeId("my.type")).toBe(typeId3)
+      expect(extmarks.getTypeId("my:type")).toBe(typeId4)
+
+      expect(typeId1).not.toBe(typeId2)
+      expect(typeId2).not.toBe(typeId3)
+      expect(typeId3).not.toBe(typeId4)
+    })
+
+    it("should handle empty string as type name", async () => {
+      await setup()
+
+      const typeId = extmarks.registerType("")
+      expect(typeId).toBe(1)
+      expect(extmarks.getTypeId("")).toBe(typeId)
+      expect(extmarks.getTypeName(typeId)).toBe("")
+    })
+
+    it("should return null for getTypeId and getTypeName on destroyed controller", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+      extmarks.destroy()
+
+      expect(extmarks.getTypeId("link")).toBeNull()
+      expect(extmarks.getTypeName(linkTypeId)).toBeNull()
+    })
+
+    it("should allow re-registration after clear", async () => {
+      await setup()
+
+      const firstLinkId = extmarks.registerType("link")
+      extmarks.create({ start: 0, end: 5, typeId: firstLinkId })
+
+      extmarks.clear()
+
+      expect(extmarks.getTypeId("link")).toBe(firstLinkId)
+
+      const newExtmarkId = extmarks.create({ start: 0, end: 3, typeId: firstLinkId })
+      expect(extmarks.get(newExtmarkId)?.typeId).toBe(firstLinkId)
+    })
+
+    it("should support case-sensitive type names", async () => {
+      await setup()
+
+      const lowerId = extmarks.registerType("link")
+      const upperId = extmarks.registerType("Link")
+      const upperCaseId = extmarks.registerType("LINK")
+
+      expect(lowerId).not.toBe(upperId)
+      expect(upperId).not.toBe(upperCaseId)
+      expect(lowerId).not.toBe(upperCaseId)
+
+      expect(extmarks.getTypeId("link")).toBe(lowerId)
+      expect(extmarks.getTypeId("Link")).toBe(upperId)
+      expect(extmarks.getTypeId("LINK")).toBe(upperCaseId)
+    })
+
+    it("should maintain typeId sequence independent of extmark IDs", async () => {
+      await setup()
+
+      const extmarkId1 = extmarks.create({ start: 0, end: 1 })
+      const extmarkId2 = extmarks.create({ start: 1, end: 2 })
+
+      const linkTypeId = extmarks.registerType("link")
+      const tagTypeId = extmarks.registerType("tag")
+
+      expect(linkTypeId).toBe(1)
+      expect(tagTypeId).toBe(2)
+      expect(extmarkId1).toBeGreaterThanOrEqual(1)
+      expect(extmarkId2).toBeGreaterThanOrEqual(2)
+    })
+
+    it("should handle numeric-like string type names", async () => {
+      await setup()
+
+      const typeId1 = extmarks.registerType("123")
+      const typeId2 = extmarks.registerType("456")
+
+      expect(extmarks.getTypeId("123")).toBe(typeId1)
+      expect(extmarks.getTypeId("456")).toBe(typeId2)
+      expect(typeId1).not.toBe(typeId2)
+    })
+
+    it("should support long type names", async () => {
+      await setup()
+
+      const longName = "a".repeat(1000)
+      const typeId = extmarks.registerType(longName)
+
+      expect(extmarks.getTypeId(longName)).toBe(typeId)
+      expect(extmarks.getTypeName(typeId)).toBe(longName)
+    })
+  })
 })

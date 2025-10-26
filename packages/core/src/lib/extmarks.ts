@@ -42,6 +42,9 @@ export class ExtmarksController extends EventEmitter {
   private nextId = 1
   private destroyed = false
   private history = new ExtmarksHistory()
+  private typeNameToId = new Map<string, number>()
+  private typeIdToName = new Map<number, string>()
+  private nextTypeId = 1
 
   private originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
   private originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
@@ -807,6 +810,32 @@ export class ExtmarksController extends EventEmitter {
     }
   }
 
+  public registerType(typeName: string): number {
+    if (this.destroyed) {
+      throw new Error("ExtmarksController is destroyed")
+    }
+
+    const existing = this.typeNameToId.get(typeName)
+    if (existing !== undefined) {
+      return existing
+    }
+
+    const typeId = this.nextTypeId++
+    this.typeNameToId.set(typeName, typeId)
+    this.typeIdToName.set(typeId, typeName)
+    return typeId
+  }
+
+  public getTypeId(typeName: string): number | null {
+    if (this.destroyed) return null
+    return this.typeNameToId.get(typeName) ?? null
+  }
+
+  public getTypeName(typeId: number): string | null {
+    if (this.destroyed) return null
+    return this.typeIdToName.get(typeId) ?? null
+  }
+
   public destroy(): void {
     if (this.destroyed) return
 
@@ -830,6 +859,8 @@ export class ExtmarksController extends EventEmitter {
 
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
+    this.typeNameToId.clear()
+    this.typeIdToName.clear()
     this.history.clear()
     this.destroyed = true
     this.removeAllListeners()
