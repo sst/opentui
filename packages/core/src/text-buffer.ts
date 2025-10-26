@@ -71,7 +71,7 @@ export class TextBuffer {
 
   public setStyledText(text: StyledText): void {
     this.guard()
-    
+
     // TODO: This should not be necessary anymore, the struct packing should take care of this
     const chunks = text.chunks.map((chunk) => ({
       text: chunk.text,
