@@ -2862,4 +2862,489 @@ Press ESC to return to main menu.`
       expect(extmarks.getTypeName(typeId)).toBe(longName)
     })
   })
+
+  describe("Metadata Operations", () => {
+    it("should store and retrieve metadata for extmark", async () => {
+      await setup()
+
+      const metadata = { url: "https://example.com", title: "Example" }
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(retrieved).toEqual(metadata)
+    })
+
+    it("should return undefined for extmark without metadata", async () => {
+      await setup()
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(retrieved).toBeUndefined()
+    })
+
+    it("should return undefined for non-existent extmark", async () => {
+      await setup()
+
+      const retrieved = extmarks.getMetadataFor(999)
+      expect(retrieved).toBeUndefined()
+    })
+
+    it("should handle different metadata types", async () => {
+      await setup()
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { type: "object", value: 42 },
+      })
+
+      const id2 = extmarks.create({
+        start: 6,
+        end: 11,
+        metadata: "string metadata",
+      })
+
+      const id3 = extmarks.create({
+        start: 12,
+        end: 15,
+        metadata: 123,
+      })
+
+      const id4 = extmarks.create({
+        start: 16,
+        end: 20,
+        metadata: true,
+      })
+
+      const id5 = extmarks.create({
+        start: 21,
+        end: 25,
+        metadata: ["array", "metadata"],
+      })
+
+      expect(extmarks.getMetadataFor(id1)).toEqual({ type: "object", value: 42 })
+      expect(extmarks.getMetadataFor(id2)).toBe("string metadata")
+      expect(extmarks.getMetadataFor(id3)).toBe(123)
+      expect(extmarks.getMetadataFor(id4)).toBe(true)
+      expect(extmarks.getMetadataFor(id5)).toEqual(["array", "metadata"])
+    })
+
+    it("should handle null metadata", async () => {
+      await setup()
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: null,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(retrieved).toBeNull()
+    })
+
+    it("should preserve metadata when extmark is adjusted", async () => {
+      await setup("Hello World")
+
+      const metadata = { label: "important" }
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+        metadata,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+      currentMockInput.pressKey("X")
+      currentMockInput.pressKey("X")
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.start).toBe(8)
+      expect(extmark?.end).toBe(13)
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(retrieved).toEqual(metadata)
+    })
+
+    it("should remove metadata when extmark is deleted", async () => {
+      await setup()
+
+      const metadata = { data: "test" }
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata,
+      })
+
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+
+      extmarks.delete(id)
+
+      expect(extmarks.getMetadataFor(id)).toBeUndefined()
+    })
+
+    it("should clear all metadata when clear is called", async () => {
+      await setup()
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { key: "value1" },
+      })
+
+      const id2 = extmarks.create({
+        start: 6,
+        end: 11,
+        metadata: { key: "value2" },
+      })
+
+      extmarks.clear()
+
+      expect(extmarks.getMetadataFor(id1)).toBeUndefined()
+      expect(extmarks.getMetadataFor(id2)).toBeUndefined()
+    })
+
+    it("should remove metadata when virtual extmark is deleted via backspace", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      const metadata = { url: "https://test.com" }
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        metadata,
+      })
+
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+
+      currentMockInput.pressBackspace()
+
+      expect(extmarks.get(id)).toBeNull()
+      expect(extmarks.getMetadataFor(id)).toBeUndefined()
+    })
+
+    it("should handle metadata with nested objects", async () => {
+      await setup()
+
+      const metadata = {
+        user: {
+          id: 123,
+          name: "John Doe",
+          settings: {
+            theme: "dark",
+            notifications: true,
+          },
+        },
+        timestamp: Date.now(),
+      }
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(retrieved).toEqual(metadata)
+    })
+
+    it("should store independent metadata for multiple extmarks", async () => {
+      await setup()
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { id: 1, color: "red" },
+      })
+
+      const id2 = extmarks.create({
+        start: 6,
+        end: 11,
+        metadata: { id: 2, color: "blue" },
+      })
+
+      const id3 = extmarks.create({
+        start: 12,
+        end: 15,
+        metadata: { id: 3, color: "green" },
+      })
+
+      expect(extmarks.getMetadataFor(id1)).toEqual({ id: 1, color: "red" })
+      expect(extmarks.getMetadataFor(id2)).toEqual({ id: 2, color: "blue" })
+      expect(extmarks.getMetadataFor(id3)).toEqual({ id: 3, color: "green" })
+    })
+
+    it("should handle metadata with both metadata and data fields", async () => {
+      await setup()
+
+      const data = { oldField: "data" }
+      const metadata = { newField: "metadata" }
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        data,
+        metadata,
+      })
+
+      const extmark = extmarks.get(id)
+      expect(extmark?.data).toEqual(data)
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+    })
+
+    it("should return undefined when getting metadata on destroyed controller", async () => {
+      await setup()
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { test: "data" },
+      })
+
+      extmarks.destroy()
+
+      expect(extmarks.getMetadataFor(id)).toBeUndefined()
+    })
+
+    it("should handle metadata with special values", async () => {
+      await setup()
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: undefined,
+      })
+
+      const id2 = extmarks.create({
+        start: 6,
+        end: 11,
+        metadata: 0,
+      })
+
+      const id3 = extmarks.create({
+        start: 12,
+        end: 15,
+        metadata: "",
+      })
+
+      const id4 = extmarks.create({
+        start: 16,
+        end: 20,
+        metadata: false,
+      })
+
+      expect(extmarks.getMetadataFor(id1)).toBeUndefined()
+      expect(extmarks.getMetadataFor(id2)).toBe(0)
+      expect(extmarks.getMetadataFor(id3)).toBe("")
+      expect(extmarks.getMetadataFor(id4)).toBe(false)
+    })
+
+    it("should handle metadata for extmarks with same range", async () => {
+      await setup()
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { layer: 1 },
+      })
+
+      const id2 = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { layer: 2 },
+      })
+
+      expect(extmarks.getMetadataFor(id1)).toEqual({ layer: 1 })
+      expect(extmarks.getMetadataFor(id2)).toEqual({ layer: 2 })
+    })
+
+    it("should preserve metadata through text insertion", async () => {
+      await setup("Hello World")
+
+      const metadata = { type: "highlight", priority: 10 }
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+      currentMockInput.pressKey("Z")
+
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+    })
+
+    it("should preserve metadata through text deletion", async () => {
+      await setup("XXHello World")
+
+      const metadata = { category: "text" }
+      const id = extmarks.create({
+        start: 8,
+        end: 13,
+        metadata,
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+      currentMockInput.pressBackspace()
+      currentMockInput.pressBackspace()
+
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+    })
+
+    it("should remove metadata when extmark range is deleted", async () => {
+      await setup("Hello World")
+
+      const metadata = { info: "will be deleted" }
+      const id = extmarks.create({
+        start: 6,
+        end: 11,
+        metadata,
+      })
+
+      textarea.deleteRange(0, 6, 0, 11)
+
+      expect(extmarks.get(id)).toBeNull()
+      expect(extmarks.getMetadataFor(id)).toBeUndefined()
+    })
+
+    it("should handle metadata for virtual extmarks", async () => {
+      await setup("abcdefgh")
+
+      const metadata = { virtual: true, link: "https://example.com" }
+      const id = extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        metadata,
+      })
+
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+      currentMockInput.pressArrow("right")
+
+      expect(textarea.cursorOffset).toBe(6)
+      expect(extmarks.getMetadataFor(id)).toEqual(metadata)
+    })
+
+    it("should handle large metadata objects", async () => {
+      await setup()
+
+      const largeMetadata = {
+        items: Array.from({ length: 1000 }, (_, i) => ({ id: i, value: `item-${i}` })),
+        description: "A".repeat(10000),
+      }
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: largeMetadata,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(retrieved).toEqual(largeMetadata)
+      expect(retrieved.items.length).toBe(1000)
+      expect(retrieved.description.length).toBe(10000)
+    })
+
+    it("should handle metadata with functions", async () => {
+      await setup()
+
+      const metadata = {
+        onClick: () => "clicked",
+        onHover: (x: number) => x * 2,
+      }
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      expect(typeof retrieved.onClick).toBe("function")
+      expect(typeof retrieved.onHover).toBe("function")
+      expect(retrieved.onClick()).toBe("clicked")
+      expect(retrieved.onHover(5)).toBe(10)
+    })
+
+    it("should store metadata by reference", async () => {
+      await setup()
+
+      const original = { value: 1, nested: { count: 0 } }
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: original,
+      })
+
+      const retrieved = extmarks.getMetadataFor(id)
+      retrieved.value = 999
+      retrieved.nested.count = 100
+
+      expect(original.value).toBe(999)
+      expect(original.nested.count).toBe(100)
+      expect(extmarks.getMetadataFor(id).value).toBe(999)
+    })
+
+    it("should handle metadata for extmarks with typeId", async () => {
+      await setup()
+
+      const linkTypeId = extmarks.registerType("link")
+
+      const id1 = extmarks.create({
+        start: 0,
+        end: 5,
+        typeId: linkTypeId,
+        metadata: { url: "https://first.com" },
+      })
+
+      const id2 = extmarks.create({
+        start: 6,
+        end: 11,
+        typeId: linkTypeId,
+        metadata: { url: "https://second.com" },
+      })
+
+      expect(extmarks.getMetadataFor(id1)).toEqual({ url: "https://first.com" })
+      expect(extmarks.getMetadataFor(id2)).toEqual({ url: "https://second.com" })
+
+      const links = extmarks.getAllForTypeId(linkTypeId)
+      expect(links.length).toBe(2)
+
+      for (const link of links) {
+        const meta = extmarks.getMetadataFor(link.id)
+        expect(meta).toHaveProperty("url")
+        expect(meta.url).toMatch(/^https:\/\//)
+      }
+    })
+
+    it("should preserve metadata after setText clears extmarks", async () => {
+      await setup("Hello World")
+
+      const id = extmarks.create({
+        start: 0,
+        end: 5,
+        metadata: { persisted: false },
+      })
+
+      textarea.setText("New Text")
+
+      expect(extmarks.get(id)).toBeNull()
+      expect(extmarks.getMetadataFor(id)).toBeUndefined()
+    })
+  })
 })

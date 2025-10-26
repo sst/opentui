@@ -21,6 +21,7 @@ export interface ExtmarkOptions {
   priority?: number
   data?: any
   typeId?: number
+  metadata?: any
 }
 
 /**
@@ -33,6 +34,7 @@ export class ExtmarksController {
   private editorView: EditorView
   private extmarks = new Map<number, Extmark>()
   private extmarksByTypeId = new Map<number, Set<number>>()
+  private metadata = new Map<number, any>()
   private nextId = 1
   private destroyed = false
   private history = new ExtmarksHistory()
@@ -192,7 +194,6 @@ export class ExtmarksController {
         return
       }
 
-      const currentOffset = this.editorView.getVisualCursor().offset
       this.originalMoveDownVisual()
       const newOffset = this.editorView.getVisualCursor().offset
 
@@ -489,6 +490,7 @@ export class ExtmarksController {
     if (extmark) {
       this.extmarks.delete(id)
       this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
+      this.metadata.delete(id)
     }
   }
 
@@ -613,6 +615,10 @@ export class ExtmarksController {
     }
     this.extmarksByTypeId.get(typeId)!.add(id)
 
+    if (options.metadata !== undefined) {
+      this.metadata.set(id, options.metadata)
+    }
+
     this.updateHighlights()
 
     return id
@@ -666,6 +672,7 @@ export class ExtmarksController {
 
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
+    this.metadata.clear()
     this.updateHighlights()
   }
 
@@ -749,6 +756,11 @@ export class ExtmarksController {
     return this.typeIdToName.get(typeId) ?? null
   }
 
+  public getMetadataFor(extmarkId: number): any {
+    if (this.destroyed) return undefined
+    return this.metadata.get(extmarkId)
+  }
+
   public destroy(): void {
     if (this.destroyed) return
 
@@ -772,6 +784,7 @@ export class ExtmarksController {
 
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
+    this.metadata.clear()
     this.typeNameToId.clear()
     this.typeIdToName.clear()
     this.history.clear()
