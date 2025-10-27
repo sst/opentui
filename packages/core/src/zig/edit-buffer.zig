@@ -693,59 +693,6 @@ pub const EditBuffer = struct {
         }
     }
 
-    pub fn setPlaceholder(self: *EditBuffer, text: []const u8) !void {
-        // Store the placeholder text (allocate in EditBuffer's allocator)
-        if (self.placeholder_bytes) |old| {
-            self.allocator.free(old);
-        }
-
-        // Clear existing highlights
-        self.placeholder_highlights.clearRetainingCapacity();
-
-        if (text.len == 0) {
-            self.placeholder_bytes = null;
-            // If placeholder was active, remove it
-            if (self.placeholder_active) {
-                try self.removePlaceholder();
-            }
-            return;
-        }
-
-        const new_bytes = try self.allocator.alloc(u8, text.len);
-        @memcpy(new_bytes, text);
-        self.placeholder_bytes = new_bytes;
-
-        // Create a default styled highlight for the entire text (gray color)
-        const default_color = tb.RGBA{ 0.4, 0.4, 0.4, 1.0 };
-        const text_len = self.tb.measureText(text);
-
-        if (text_len > 0 and self.placeholder_style_ptr == null) {
-            const style = try tb.SyntaxStyle.init(self.allocator);
-            self.placeholder_style_ptr = style;
-        }
-
-        if (self.placeholder_style_ptr) |style| {
-            const style_id = try style.registerStyle("__placeholder_default__", default_color, null, 0);
-            try self.placeholder_highlights.append(self.allocator, .{
-                .col_start = 0,
-                .col_end = text_len,
-                .style_id = style_id,
-                .priority = 255,
-                .hl_ref = self.placeholder_hl_ref,
-            });
-        }
-
-        // If content is empty, activate placeholder
-        const is_empty = self.tb.getLength() == 0;
-        if (is_empty and !self.placeholder_active) {
-            try self.insertPlaceholder();
-        } else if (self.placeholder_active) {
-            // Placeholder is active, update it
-            try self.removePlaceholder();
-            try self.insertPlaceholder();
-        }
-    }
-
     pub fn setPlaceholderStyledText(self: *EditBuffer, chunks: []const tb.StyledChunk) !void {
         // Free existing placeholder bytes
         if (self.placeholder_bytes) |old| {

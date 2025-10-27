@@ -752,11 +752,6 @@ export fn editBufferClearHistory(edit_buffer: *edit_buffer_mod.EditBuffer) void 
     edit_buffer.clearHistory();
 }
 
-export fn editBufferSetPlaceholder(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: ?[*]const u8, textLen: usize) void {
-    const text = if (textPtr) |ptr| ptr[0..textLen] else "";
-    edit_buffer.setPlaceholder(text) catch {};
-}
-
 export fn editBufferSetPlaceholderStyledText(
     edit_buffer: *edit_buffer_mod.EditBuffer,
     chunksPtr: [*]const text_buffer.StyledChunk,

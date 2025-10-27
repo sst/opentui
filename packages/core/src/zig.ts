@@ -610,10 +610,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editBufferSetPlaceholder: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "void",
-    },
     editBufferSetPlaceholderStyledText: {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
@@ -1163,7 +1159,6 @@ export interface RenderLib {
   editBufferCanUndo: (buffer: Pointer) => boolean
   editBufferCanRedo: (buffer: Pointer) => boolean
   editBufferClearHistory: (buffer: Pointer) => void
-  editBufferSetPlaceholder: (buffer: Pointer, text: string | null) => void
   editBufferSetPlaceholderStyledText: (
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
@@ -2303,22 +2298,13 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferClearHistory(buffer)
   }
 
-  public editBufferSetPlaceholder(buffer: Pointer, text: string | null): void {
-    if (text === null) {
-      this.opentui.symbols.editBufferSetPlaceholder(buffer, null, 0)
-    } else {
-      const textBytes = this.encoder.encode(text)
-      this.opentui.symbols.editBufferSetPlaceholder(buffer, textBytes, textBytes.length)
-    }
-  }
-
   public editBufferSetPlaceholderStyledText(
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ): void {
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
     if (nonEmptyChunks.length === 0) {
-      this.opentui.symbols.editBufferSetPlaceholder(buffer, null, 0)
+      this.opentui.symbols.editBufferSetPlaceholderStyledText(buffer, null, 0)
       return
     }
 

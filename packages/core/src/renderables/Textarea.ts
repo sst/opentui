@@ -149,7 +149,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   private applyPlaceholder(placeholder: StyledText | string | null): void {
     if (placeholder === null) {
-      this.editBuffer.setPlaceholder(null)
+      this.editBuffer.setPlaceholderStyledText([])
       return
     }
 

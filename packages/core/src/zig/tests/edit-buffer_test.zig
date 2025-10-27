@@ -38,8 +38,17 @@ test "EditBuffer - placeholder shows when empty" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Set placeholder
-    try eb.setPlaceholder("Enter text here...");
+    // Set placeholder with styled text
+    const text = "Enter text here...";
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try eb.setPlaceholderStyledText(&chunks);
 
     // getText should return empty (placeholder is display-only)
     var out_buffer: [100]u8 = undefined;
@@ -62,8 +71,17 @@ test "EditBuffer - inserting removes placeholder" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Set placeholder
-    try eb.setPlaceholder("Placeholder");
+    // Set placeholder with styled text
+    const text = "Placeholder";
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try eb.setPlaceholderStyledText(&chunks);
 
     var out_buffer: [100]u8 = undefined;
 
@@ -94,8 +112,17 @@ test "EditBuffer - deleting to empty reactivates placeholder" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Set placeholder
-    try eb.setPlaceholder("Type something...");
+    // Set placeholder with styled text
+    const text = "Type something...";
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try eb.setPlaceholderStyledText(&chunks);
 
     // Insert text to remove placeholder
     try eb.insertText("Hi");
@@ -173,8 +200,17 @@ test "EditBuffer - backspace to empty reactivates placeholder" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Set placeholder
-    try eb.setPlaceholder("Empty...");
+    // Set placeholder with styled text
+    const text = "Empty...";
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try eb.setPlaceholderStyledText(&chunks);
 
     // Insert text
     try eb.insertText("A");
