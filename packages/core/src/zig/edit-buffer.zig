@@ -90,14 +90,6 @@ pub const EditBuffer = struct {
     events: event_emitter.EventEmitter(EditBufferEvent),
     segment_splitter: UnifiedRope.Node.LeafSplitFn,
 
-    // Placeholder support
-    placeholder_bytes: ?[]const u8,
-    placeholder_active: bool,
-    placeholder_style_ptr: ?*tb.SyntaxStyle,
-    saved_style_ptr: ?*const tb.SyntaxStyle,
-    placeholder_highlights: std.ArrayListUnmanaged(tb.Highlight),
-    placeholder_hl_ref: u16,
-
     pub fn init(
         allocator: Allocator,
         pool: *gp.GraphemePool,
@@ -130,27 +122,12 @@ pub const EditBuffer = struct {
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
             .segment_splitter = .{ .ctx = self, .splitFn = splitSegmentCallback },
-            .placeholder_bytes = null,
-            .placeholder_active = false,
-            .placeholder_style_ptr = null,
-            .saved_style_ptr = null,
-            .placeholder_highlights = .{},
-            .placeholder_hl_ref = 0xFFFF,
         };
 
         return self;
     }
 
     pub fn deinit(self: *EditBuffer) void {
-        // Clean up placeholder resources
-        if (self.placeholder_bytes) |bytes| {
-            self.allocator.free(bytes);
-        }
-        if (self.placeholder_style_ptr) |style| {
-            style.deinit();
-        }
-        self.placeholder_highlights.deinit(self.allocator);
-
         // Registry owns all AddBuffer memory, don't free it manually
         self.events.deinit();
         self.tb.deinit();
@@ -282,13 +259,6 @@ pub const EditBuffer = struct {
         if (bytes.len == 0) return;
         if (self.cursors.items.len == 0) return;
 
-        // Remove placeholder if active
-        if (self.placeholder_active) {
-            try self.removePlaceholder();
-            // Reset cursor to start after removing placeholder
-            try self.setCursor(0, 0);
-        }
-
         try self.autoStoreUndo();
 
         const cursor = self.cursors.items[0];
@@ -383,11 +353,6 @@ pub const EditBuffer = struct {
         self.events.emit(.cursorChanged);
         self.emitNativeEvent("cursor-changed");
         self.emitNativeEvent("content-changed");
-
-        // Insert placeholder if buffer became empty
-        if (self.shouldInsertPlaceholder()) {
-            try self.insertPlaceholder();
-        }
     }
 
     pub fn backspace(self: *EditBuffer) !void {
@@ -536,11 +501,6 @@ pub const EditBuffer = struct {
     }
 
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8, retain_history: bool) !void {
-        if (self.placeholder_active) {
-            self.placeholder_active = false;
-            self.saved_style_ptr = null;
-        }
-
         if (retain_history) {
             try self.autoStoreUndo();
         }
@@ -555,19 +515,9 @@ pub const EditBuffer = struct {
 
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
-
-        // Get text length to check if empty
-        const text_len = self.tb.getLength();
-        if (text_len == 0 and self.placeholder_bytes != null) {
-            try self.insertPlaceholder();
-        }
     }
 
     pub fn getText(self: *EditBuffer, out_buffer: []u8) usize {
-        // Return empty if placeholder is active (display-only)
-        if (self.placeholder_active) {
-            return 0;
-        }
         return self.tb.getPlainTextIntoBuffer(out_buffer);
     }
 
@@ -679,157 +629,9 @@ pub const EditBuffer = struct {
     }
 
     pub fn clear(self: *EditBuffer) !void {
-        if (self.placeholder_active) {
-            self.placeholder_active = false;
-            self.saved_style_ptr = null;
-        }
-
         self.tb.clear();
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");
-
-        if (self.placeholder_bytes != null) {
-            try self.insertPlaceholder();
-        }
-    }
-
-    pub fn setPlaceholderStyledText(self: *EditBuffer, chunks: []const tb.StyledChunk) !void {
-        // Free existing placeholder bytes
-        if (self.placeholder_bytes) |old| {
-            self.allocator.free(old);
-        }
-
-        // Clear existing highlights
-        self.placeholder_highlights.clearRetainingCapacity();
-
-        if (chunks.len == 0) {
-            self.placeholder_bytes = null;
-            if (self.placeholder_active) {
-                try self.removePlaceholder();
-            }
-            return;
-        }
-
-        // Calculate total text length
-        var total_len: usize = 0;
-        for (chunks) |chunk| {
-            total_len += chunk.text_len;
-        }
-
-        if (total_len == 0) {
-            self.placeholder_bytes = null;
-            if (self.placeholder_active) {
-                try self.removePlaceholder();
-            }
-            return;
-        }
-
-        // Allocate and copy all text
-        const full_text = try self.allocator.alloc(u8, total_len);
-        var offset: usize = 0;
-        for (chunks) |chunk| {
-            if (chunk.text_len > 0) {
-                const chunk_text = chunk.text_ptr[0..chunk.text_len];
-                @memcpy(full_text[offset .. offset + chunk.text_len], chunk_text);
-                offset += chunk.text_len;
-            }
-        }
-        self.placeholder_bytes = full_text;
-
-        // Create or reuse style
-        if (self.placeholder_style_ptr == null) {
-            const style = try tb.SyntaxStyle.init(self.allocator);
-            self.placeholder_style_ptr = style;
-        }
-
-        const style = self.placeholder_style_ptr.?;
-
-        // Build highlights from chunks
-        var char_pos: u32 = 0;
-        for (chunks, 0..) |chunk, i| {
-            const chunk_text = chunk.text_ptr[0..chunk.text_len];
-            const chunk_len = self.tb.measureText(chunk_text);
-
-            if (chunk_len > 0) {
-                const fg = if (chunk.fg_ptr) |fgPtr| @as(*const tb.RGBA, @ptrCast(@alignCast(fgPtr))).* else null;
-                const bg = if (chunk.bg_ptr) |bgPtr| @as(*const tb.RGBA, @ptrCast(@alignCast(bgPtr))).* else null;
-
-                var style_name_buf: [64]u8 = undefined;
-                const style_name = std.fmt.bufPrint(&style_name_buf, "__ph_chunk{d}__", .{i}) catch continue;
-                const style_id = style.registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
-
-                try self.placeholder_highlights.append(self.allocator, .{
-                    .col_start = char_pos,
-                    .col_end = char_pos + chunk_len,
-                    .style_id = style_id,
-                    .priority = 255,
-                    .hl_ref = self.placeholder_hl_ref,
-                });
-            }
-
-            char_pos += chunk_len;
-        }
-
-        // If content is empty, activate placeholder
-        const is_empty = self.tb.getLength() == 0;
-        if (is_empty and !self.placeholder_active) {
-            try self.insertPlaceholder();
-        } else if (self.placeholder_active) {
-            // Placeholder is active, update it
-            try self.removePlaceholder();
-            try self.insertPlaceholder();
-        }
-    }
-
-    fn insertPlaceholder(self: *EditBuffer) !void {
-        const placeholder_text = self.placeholder_bytes orelse return;
-        if (placeholder_text.len == 0) return;
-
-        self.saved_style_ptr = self.tb.getSyntaxStyle();
-
-        // Set the placeholder style
-        if (self.placeholder_style_ptr) |style| {
-            self.tb.setSyntaxStyle(style);
-        }
-
-        try self.ensureAddCapacity(placeholder_text.len);
-        const insert_offset: u32 = 0;
-
-        const chunk_ref = self.add_buffer.append(placeholder_text);
-        const base_mem_id = chunk_ref.mem_id;
-        const base_start = chunk_ref.start;
-
-        var result = try self.tb.textToSegments(self.allocator, placeholder_text, base_mem_id, base_start, false);
-        defer result.segments.deinit();
-
-        if (result.segments.items.len > 0) {
-            try self.tb.rope.insertSliceByWeight(insert_offset, result.segments.items, &self.segment_splitter);
-        }
-
-        // Apply all stored highlights
-        for (self.placeholder_highlights.items) |hl| {
-            try self.tb.addHighlightByCharRange(hl.col_start, hl.col_end, hl.style_id, hl.priority, hl.hl_ref);
-        }
-
-        self.placeholder_active = true;
-        self.tb.markViewsDirty();
-
-        try self.setCursor(0, 0);
-    }
-
-    fn removePlaceholder(self: *EditBuffer) !void {
-        if (!self.placeholder_active) return;
-
-        self.tb.removeHighlightsByRef(self.placeholder_hl_ref);
-        self.tb.rope.clear();
-        self.tb.setSyntaxStyle(self.saved_style_ptr);
-        self.saved_style_ptr = null;
-        self.placeholder_active = false;
-        self.tb.markViewsDirty();
-    }
-
-    fn shouldInsertPlaceholder(self: *const EditBuffer) bool {
-        return self.tb.getLength() == 0 and self.placeholder_bytes != null and !self.placeholder_active;
     }
 
     pub fn getNextWordBoundary(self: *EditBuffer) Cursor {
@@ -870,8 +672,6 @@ pub const EditBuffer = struct {
                         }
                     }
                 }
-
-                cols_before = next_cols;
             }
         }
 

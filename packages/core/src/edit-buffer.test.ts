@@ -703,117 +703,6 @@ describe("EditBuffer Placeholder", () => {
   afterEach(() => {
     buffer.destroy()
   })
-
-  describe("placeholder text", () => {
-    const { RGBA } = require("./lib/RGBA")
-    const gray = RGBA.fromValues(0.4, 0.4, 0.4, 1)
-
-    it("should set placeholder and return empty from getText", () => {
-      buffer.setPlaceholderStyledText([{ text: "Enter text here...", fg: gray, attributes: 0 }])
-
-      // getText should return empty (placeholder is display-only)
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should remove placeholder when inserting text", () => {
-      buffer.setPlaceholderStyledText([{ text: "Placeholder text", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.insertText("Hello")
-      expect(buffer.getText()).toBe("Hello")
-    })
-
-    it("should reactivate placeholder when all text is deleted", () => {
-      buffer.setPlaceholderStyledText([{ text: "Type something...", fg: gray, attributes: 0 }])
-
-      // Insert text
-      buffer.insertText("Hi")
-      expect(buffer.getText()).toBe("Hi")
-
-      // Delete all text
-      buffer.setCursor(0, 0)
-      buffer.deleteChar()
-      buffer.deleteChar()
-
-      // Placeholder should be active again
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should reactivate placeholder when backspacing to empty", () => {
-      buffer.setPlaceholderStyledText([{ text: "Empty...", fg: gray, attributes: 0 }])
-
-      buffer.insertText("A")
-      expect(buffer.getText()).toBe("A")
-
-      buffer.deleteCharBackward()
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should update placeholder text dynamically", () => {
-      buffer.setPlaceholderStyledText([{ text: "First placeholder", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.setPlaceholderStyledText([{ text: "Second placeholder", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should clear placeholder when set to empty array", () => {
-      buffer.setPlaceholderStyledText([{ text: "Placeholder", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.setPlaceholderStyledText([])
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should clear placeholder when set to empty chunks", () => {
-      buffer.setPlaceholderStyledText([{ text: "Placeholder", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.setPlaceholderStyledText([])
-      expect(buffer.getText()).toBe("")
-
-      // After clearing, inserting text should work normally
-      buffer.insertText("Hello")
-      expect(buffer.getText()).toBe("Hello")
-    })
-
-    it("should handle placeholder with multi-line text", () => {
-      buffer.setPlaceholderStyledText([{ text: "Line 1\nLine 2\nLine 3", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.insertText("Actual content")
-      expect(buffer.getText()).toBe("Actual content")
-    })
-
-    it("should handle placeholder with Unicode characters", () => {
-      buffer.setPlaceholderStyledText([{ text: "Enter 世界 🌟 here", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.insertText("Test")
-      expect(buffer.getText()).toBe("Test")
-    })
-  })
-
-  describe("placeholder styled text", () => {
-    it("should set placeholder with styled text without crashing", () => {
-      const { RGBA } = require("./lib/RGBA")
-
-      buffer.setPlaceholderStyledText([{ text: "Placeholder", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 0 }])
-
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should update placeholder styled text while placeholder is active", () => {
-      const { RGBA } = require("./lib/RGBA")
-
-      buffer.setPlaceholderStyledText([
-        { text: "Test ", fg: RGBA.fromValues(0.5, 0.5, 0.5, 1), attributes: 0 },
-        { text: "placeholder", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 0 },
-      ])
-
-      expect(buffer.getText()).toBe("")
-    })
-  })
 })
 
 describe("EditBuffer Events", () => {
@@ -1595,52 +1484,12 @@ describe("EditBuffer Clear Method", () => {
     })
   })
 
-  describe("clear with placeholder", () => {
-    const { RGBA } = require("./lib/RGBA")
-    const gray = RGBA.fromValues(0.4, 0.4, 0.4, 1)
-
-    it("should restore placeholder after clear", () => {
-      buffer.setPlaceholderStyledText([{ text: "Enter text here...", fg: gray, attributes: 0 }])
-      expect(buffer.getText()).toBe("")
-
-      buffer.insertText("Hello")
-      expect(buffer.getText()).toBe("Hello")
-
-      buffer.clear()
-      // Placeholder should be active again
-      expect(buffer.getText()).toBe("")
-    })
-
+  describe("clear without placeholder", () => {
     it("should handle clear without placeholder", () => {
       buffer.setText("Hello World")
 
       buffer.clear()
       expect(buffer.getText()).toBe("")
-    })
-
-    it("should handle clear with multi-line placeholder", () => {
-      buffer.setPlaceholderStyledText([{ text: "Line 1\nLine 2", fg: gray, attributes: 0 }])
-
-      buffer.insertText("Test")
-      expect(buffer.getText()).toBe("Test")
-
-      buffer.clear()
-      expect(buffer.getText()).toBe("")
-    })
-
-    it("should clear and restore placeholder multiple times", () => {
-      buffer.setPlaceholderStyledText([{ text: "Placeholder", fg: gray, attributes: 0 }])
-
-      buffer.insertText("Text 1")
-      buffer.clear()
-      expect(buffer.getText()).toBe("")
-
-      buffer.insertText("Text 2")
-      buffer.clear()
-      expect(buffer.getText()).toBe("")
-
-      buffer.insertText("Text 3")
-      expect(buffer.getText()).toBe("Text 3")
     })
   })
 

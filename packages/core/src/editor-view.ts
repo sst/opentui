@@ -199,6 +199,11 @@ export class EditorView {
     return this._extmarksController
   }
 
+  public setPlaceholderStyledText(chunks: { text: string; fg?: RGBA; bg?: RGBA; attributes?: number }[]): void {
+    this.guard()
+    this.lib.editorViewSetPlaceholderStyledText(this.viewPtr, chunks)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
 

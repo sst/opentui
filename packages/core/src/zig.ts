@@ -610,10 +610,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editBufferSetPlaceholderStyledText: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "void",
-    },
     editBufferClear: {
       args: ["ptr"],
       returns: "void",
@@ -709,6 +705,10 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewGetEOL: {
       args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewSetPlaceholderStyledText: {
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
 
@@ -1159,10 +1159,6 @@ export interface RenderLib {
   editBufferCanUndo: (buffer: Pointer) => boolean
   editBufferCanRedo: (buffer: Pointer) => boolean
   editBufferClearHistory: (buffer: Pointer) => void
-  editBufferSetPlaceholderStyledText: (
-    buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
-  ) => void
   editBufferClear: (buffer: Pointer) => void
   editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
@@ -1211,6 +1207,10 @@ export interface RenderLib {
   editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetEOL: (view: Pointer) => VisualCursor
+  editorViewSetPlaceholderStyledText: (
+    view: Pointer,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+  ) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2298,20 +2298,6 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editBufferClearHistory(buffer)
   }
 
-  public editBufferSetPlaceholderStyledText(
-    buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
-  ): void {
-    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
-    if (nonEmptyChunks.length === 0) {
-      this.opentui.symbols.editBufferSetPlaceholderStyledText(buffer, null, 0)
-      return
-    }
-
-    const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
-    this.opentui.symbols.editBufferSetPlaceholderStyledText(buffer, ptr(chunksBuffer), nonEmptyChunks.length)
-  }
-
   public editBufferClear(buffer: Pointer): void {
     this.opentui.symbols.editBufferClear(buffer)
   }
@@ -2532,6 +2518,20 @@ class FFIRenderLib implements RenderLib {
   public syntaxStyleGetStyleCount(style: Pointer): number {
     const result = this.opentui.symbols.syntaxStyleGetStyleCount(style)
     return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public editorViewSetPlaceholderStyledText(
+    view: Pointer,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+  ): void {
+    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
+    if (nonEmptyChunks.length === 0) {
+      this.opentui.symbols.editorViewSetPlaceholderStyledText(view, null, 0)
+      return
+    }
+
+    const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
+    this.opentui.symbols.editorViewSetPlaceholderStyledText(view, ptr(chunksBuffer), nonEmptyChunks.length)
   }
 
   public onNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {

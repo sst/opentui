@@ -149,16 +149,16 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   private applyPlaceholder(placeholder: StyledText | string | null): void {
     if (placeholder === null) {
-      this.editBuffer.setPlaceholderStyledText([])
+      this.editorView.setPlaceholderStyledText([])
       return
     }
 
     if (typeof placeholder === "string") {
       const defaultGray = fg("#666666")
       const chunks = [defaultGray(placeholder)]
-      this.editBuffer.setPlaceholderStyledText(chunks)
+      this.editorView.setPlaceholderStyledText(chunks)
     } else {
-      this.editBuffer.setPlaceholderStyledText(placeholder.chunks)
+      this.editorView.setPlaceholderStyledText(placeholder.chunks)
     }
   }
 

@@ -2551,3 +2551,114 @@ test "EditorView - logicalToVisualCursor clamps col beyond line width" {
     try std.testing.expectEqual(@as(u32, 5), vcursor.logical_col);
     try std.testing.expectEqual(@as(u32, 5), vcursor.visual_col);
 }
+
+// ============================================================================
+// Placeholder Tests - Visual-only placeholder in EditorView
+// ============================================================================
+
+test "EditorView - placeholder shows when empty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    const text = "Enter text here...";
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try ev.setPlaceholderStyledText(&chunks);
+
+    var out_buffer: [100]u8 = undefined;
+    const text_len = eb.getText(&out_buffer);
+    try std.testing.expectEqual(@as(usize, 0), text_len);
+
+    try ev.updatePlaceholderVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), ev.placeholder_vlines.items.len);
+}
+
+test "EditorView - placeholder cleared when set to empty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    const text = "Placeholder";
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = text.ptr,
+        .text_len = text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try ev.setPlaceholderStyledText(&chunks);
+
+    try std.testing.expectEqual(@as(usize, 1), ev.placeholder_chunks.items.len);
+
+    const empty_chunks = [_]text_buffer.StyledChunk{};
+    try ev.setPlaceholderStyledText(&empty_chunks);
+
+    try std.testing.expectEqual(@as(usize, 0), ev.placeholder_chunks.items.len);
+}
+
+test "EditorView - placeholder with styled text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    const text1 = "Hello ";
+    const text2 = "World";
+    const red_color = text_buffer.RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const blue_color = text_buffer.RGBA{ 0.0, 0.0, 1.0, 1.0 };
+
+    const chunks = [_]text_buffer.StyledChunk{
+        .{
+            .text_ptr = text1.ptr,
+            .text_len = text1.len,
+            .fg_ptr = @ptrCast(&red_color),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+        .{
+            .text_ptr = text2.ptr,
+            .text_len = text2.len,
+            .fg_ptr = @ptrCast(&blue_color),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+    };
+
+    try ev.setPlaceholderStyledText(&chunks);
+
+    try std.testing.expectEqual(@as(usize, 2), ev.placeholder_chunks.items.len);
+}

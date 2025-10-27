@@ -752,16 +752,6 @@ export fn editBufferClearHistory(edit_buffer: *edit_buffer_mod.EditBuffer) void 
     edit_buffer.clearHistory();
 }
 
-export fn editBufferSetPlaceholderStyledText(
-    edit_buffer: *edit_buffer_mod.EditBuffer,
-    chunksPtr: [*]const text_buffer.StyledChunk,
-    chunkCount: usize,
-) void {
-    if (chunkCount == 0) return;
-    const chunks = chunksPtr[0..chunkCount];
-    edit_buffer.setPlaceholderStyledText(chunks) catch {};
-}
-
 export fn editBufferClear(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     edit_buffer.clear() catch {};
 }
@@ -945,6 +935,19 @@ export fn editorViewGetEOL(view: *editor_view.EditorView, outPtr: *ExternalVisua
         .logical_col = vcursor.logical_col,
         .offset = vcursor.offset,
     };
+}
+
+export fn editorViewSetPlaceholderStyledText(
+    view: *editor_view.EditorView,
+    chunksPtr: [*]const text_buffer.StyledChunk,
+    chunkCount: usize,
+) void {
+    if (chunkCount == 0) {
+        view.setPlaceholderStyledText(&[_]text_buffer.StyledChunk{}) catch {};
+        return;
+    }
+    const chunks = chunksPtr[0..chunkCount];
+    view.setPlaceholderStyledText(chunks) catch {};
 }
 
 export fn bufferDrawEditorView(

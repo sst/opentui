@@ -40,6 +40,10 @@ pub const EditorView = struct {
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
+    placeholder_chunks: std.ArrayListUnmanaged(tb.StyledChunk),
+    placeholder_vlines: std.ArrayListUnmanaged(VirtualLine),
+    placeholder_vlines_dirty: bool,
+
     // Memory management
     global_allocator: Allocator,
 
@@ -66,6 +70,9 @@ pub const EditorView = struct {
                 .ctx = undefined, // Will be set below
                 .handle = onCursorChanged,
             },
+            .placeholder_chunks = .{},
+            .placeholder_vlines = .{},
+            .placeholder_vlines_dirty = true,
             .global_allocator = global_allocator,
         };
 
@@ -88,6 +95,19 @@ pub const EditorView = struct {
 
     pub fn deinit(self: *EditorView) void {
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
+
+        for (self.placeholder_chunks.items) |chunk| {
+            if (chunk.text_len > 0) {
+                self.global_allocator.free(chunk.text_ptr[0..chunk.text_len]);
+            }
+        }
+        self.placeholder_chunks.deinit(self.global_allocator);
+
+        for (self.placeholder_vlines.items) |*vline| {
+            vline.deinit(self.global_allocator);
+        }
+        self.placeholder_vlines.deinit(self.global_allocator);
+
         self.text_buffer_view.deinit();
         self.global_allocator.destroy(self);
     }
@@ -443,5 +463,92 @@ pub const EditorView = struct {
     pub fn getEOL(self: *EditorView) VisualCursor {
         const logical_cursor = self.edit_buffer.getEOL();
         return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
+    }
+
+    // ============================================================================
+    // Placeholder - Visual Only
+    // ============================================================================
+
+    pub fn setPlaceholderStyledText(self: *EditorView, chunks: []const tb.StyledChunk) !void {
+        // Free existing chunks
+        for (self.placeholder_chunks.items) |chunk| {
+            if (chunk.text_len > 0) {
+                self.global_allocator.free(chunk.text_ptr[0..chunk.text_len]);
+            }
+        }
+        self.placeholder_chunks.clearRetainingCapacity();
+
+        if (chunks.len == 0) {
+            self.placeholder_vlines_dirty = true;
+            return;
+        }
+
+        // Deep copy chunks
+        for (chunks) |chunk| {
+            if (chunk.text_len > 0) {
+                const text_copy = try self.global_allocator.dupe(u8, chunk.text_ptr[0..chunk.text_len]);
+                try self.placeholder_chunks.append(self.global_allocator, .{
+                    .text_ptr = text_copy.ptr,
+                    .text_len = text_copy.len,
+                    .fg_ptr = chunk.fg_ptr,
+                    .bg_ptr = chunk.bg_ptr,
+                    .attributes = chunk.attributes,
+                });
+            }
+        }
+
+        self.placeholder_vlines_dirty = true;
+    }
+
+    pub fn updatePlaceholderVirtualLines(self: *EditorView) !void {
+        if (!self.placeholder_vlines_dirty) return;
+
+        // Clear old virtual lines
+        for (self.placeholder_vlines.items) |*vline| {
+            vline.deinit(self.global_allocator);
+        }
+        self.placeholder_vlines.clearRetainingCapacity();
+
+        if (self.placeholder_chunks.items.len == 0) {
+            self.placeholder_vlines_dirty = false;
+            return;
+        }
+
+        // For simplicity, create a single virtual line from the placeholder text
+        // TODO: Wrap the placeholder text
+        var vline = VirtualLine.init();
+        errdefer vline.deinit(self.global_allocator);
+
+        var total_width: u32 = 0;
+        for (self.placeholder_chunks.items) |chunk| {
+            const chunk_text = chunk.text_ptr[0..chunk.text_len];
+            const width = self.edit_buffer.tb.measureText(chunk_text);
+            total_width += width;
+        }
+
+        vline.width = total_width;
+        vline.char_offset = 0;
+        vline.source_line = 0;
+        vline.source_col_offset = 0;
+
+        try self.placeholder_vlines.append(self.global_allocator, vline);
+        self.placeholder_vlines_dirty = false;
+    }
+
+    fn shouldShowPlaceholder(self: *const EditorView) bool {
+        const rope_len = self.edit_buffer.tb.rope.totalWeight();
+        return rope_len == 0 and self.placeholder_chunks.items.len > 0;
+    }
+
+    /// Get virtual lines, returning placeholder if buffer is empty
+    pub fn getVirtualLinesOrPlaceholder(self: *EditorView) ![]const VirtualLine {
+        self.updateBeforeRender();
+
+        if (self.shouldShowPlaceholder()) {
+            try self.updatePlaceholderVirtualLines();
+            return self.placeholder_vlines.items;
+        }
+
+        return self.text_buffer_view.getVirtualLines();
     }
 };
