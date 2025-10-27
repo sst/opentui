@@ -1,5 +1,7 @@
 # OpenTUI
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sst/opentui)
+
 OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It is currently in
 development and is not ready for production use. It will be the foundational TUI framework for both
 [opencode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
