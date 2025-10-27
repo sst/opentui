@@ -614,8 +614,8 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
-    editBufferSetPlaceholderColor: {
-      args: ["ptr", "ptr"],
+    editBufferSetPlaceholderStyledText: {
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
     editBufferClear: {
@@ -1164,7 +1164,10 @@ export interface RenderLib {
   editBufferCanRedo: (buffer: Pointer) => boolean
   editBufferClearHistory: (buffer: Pointer) => void
   editBufferSetPlaceholder: (buffer: Pointer, text: string | null) => void
-  editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
+  editBufferSetPlaceholderStyledText: (
+    buffer: Pointer,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+  ) => void
   editBufferClear: (buffer: Pointer) => void
   editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
@@ -2309,8 +2312,18 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  public editBufferSetPlaceholderColor(buffer: Pointer, color: RGBA): void {
-    this.opentui.symbols.editBufferSetPlaceholderColor(buffer, color.buffer)
+  public editBufferSetPlaceholderStyledText(
+    buffer: Pointer,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+  ): void {
+    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
+    if (nonEmptyChunks.length === 0) {
+      this.opentui.symbols.editBufferSetPlaceholder(buffer, null, 0)
+      return
+    }
+
+    const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
+    this.opentui.symbols.editBufferSetPlaceholderStyledText(buffer, ptr(chunksBuffer), nonEmptyChunks.length)
   }
 
   public editBufferClear(buffer: Pointer): void {

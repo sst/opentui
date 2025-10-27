@@ -757,8 +757,14 @@ export fn editBufferSetPlaceholder(edit_buffer: *edit_buffer_mod.EditBuffer, tex
     edit_buffer.setPlaceholder(text) catch {};
 }
 
-export fn editBufferSetPlaceholderColor(edit_buffer: *edit_buffer_mod.EditBuffer, color: [*]const f32) void {
-    edit_buffer.setPlaceholderColor(utils.f32PtrToRGBA(color)) catch {};
+export fn editBufferSetPlaceholderStyledText(
+    edit_buffer: *edit_buffer_mod.EditBuffer,
+    chunksPtr: [*]const text_buffer.StyledChunk,
+    chunkCount: usize,
+) void {
+    if (chunkCount == 0) return;
+    const chunks = chunksPtr[0..chunkCount];
+    edit_buffer.setPlaceholderStyledText(chunks) catch {};
 }
 
 export fn editBufferClear(edit_buffer: *edit_buffer_mod.EditBuffer) void {

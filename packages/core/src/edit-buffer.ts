@@ -299,9 +299,9 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferSetPlaceholder(this.bufferPtr, text)
   }
 
-  public setPlaceholderColor(color: RGBA): void {
+  public setPlaceholderStyledText(chunks: { text: string; fg?: RGBA; bg?: RGBA; attributes?: number }[]): void {
     this.guard()
-    this.lib.editBufferSetPlaceholderColor(this.bufferPtr, color)
+    this.lib.editBufferSetPlaceholderStyledText(this.bufferPtr, chunks)
   }
 
   public setSyntaxStyle(style: SyntaxStyle | null): void {

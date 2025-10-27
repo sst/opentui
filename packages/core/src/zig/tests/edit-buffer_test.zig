@@ -116,7 +116,7 @@ test "EditBuffer - deleting to empty reactivates placeholder" {
     try std.testing.expectEqualStrings("Type something...", out_buffer[0..tb_len]);
 }
 
-test "EditBuffer - placeholder color setter works" {
+test "EditBuffer - placeholder styled text works" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -127,17 +127,39 @@ test "EditBuffer - placeholder color setter works" {
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
     defer eb.deinit();
 
-    // Set placeholder
-    try eb.setPlaceholder("Placeholder");
+    // Create styled chunks
+    const text1 = "Hello ";
+    const text2 = "World";
+    const red_color = text_buffer.RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const blue_color = text_buffer.RGBA{ 0.0, 0.0, 1.0, 1.0 };
 
-    // Change color (should not crash)
-    const new_color = text_buffer.RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    try eb.setPlaceholderColor(new_color);
+    const chunks = [_]text_buffer.StyledChunk{
+        .{
+            .text_ptr = text1.ptr,
+            .text_len = text1.len,
+            .fg_ptr = @ptrCast(&red_color),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+        .{
+            .text_ptr = text2.ptr,
+            .text_len = text2.len,
+            .fg_ptr = @ptrCast(&blue_color),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+    };
 
-    // Verify placeholder is still active
+    // Set styled placeholder
+    try eb.setPlaceholderStyledText(&chunks);
+
+    // Verify placeholder is active (getText returns empty)
     var out_buffer: [100]u8 = undefined;
     const text_len = eb.getText(&out_buffer);
     try std.testing.expectEqual(@as(usize, 0), text_len);
+
+    // Verify we have 2 highlights stored
+    try std.testing.expectEqual(@as(usize, 2), eb.placeholder_highlights.items.len);
 }
 
 test "EditBuffer - backspace to empty reactivates placeholder" {

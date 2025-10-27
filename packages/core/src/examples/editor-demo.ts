@@ -1,4 +1,14 @@
-import { CliRenderer, createCliRenderer, TextareaRenderable, BoxRenderable, TextRenderable, KeyEvent } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  TextareaRenderable,
+  BoxRenderable,
+  TextRenderable,
+  KeyEvent,
+  t,
+  bold,
+  cyan,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
@@ -69,6 +79,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     wrapMode: "word",
     showCursor: true,
     cursorColor: "#4ECDC4",
+    placeholder: t`Enter ${cyan(bold("text"))} here...`,
   })
   editorBox.add(editor)
 

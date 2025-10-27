@@ -791,22 +791,22 @@ describe("EditBuffer Placeholder", () => {
     })
   })
 
-  describe("placeholder color", () => {
-    it("should set placeholder color without crashing", () => {
+  describe("placeholder styled text", () => {
+    it("should set placeholder with styled text without crashing", () => {
       const { RGBA } = require("./lib/RGBA")
 
-      buffer.setPlaceholder("Placeholder")
-      buffer.setPlaceholderColor(RGBA.fromValues(1, 0, 0, 1))
+      buffer.setPlaceholderStyledText([{ text: "Placeholder", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 0 }])
 
       expect(buffer.getText()).toBe("")
     })
 
-    it("should update placeholder color while placeholder is active", () => {
+    it("should update placeholder styled text while placeholder is active", () => {
       const { RGBA } = require("./lib/RGBA")
 
-      buffer.setPlaceholder("Test placeholder")
-      buffer.setPlaceholderColor(RGBA.fromValues(0.5, 0.5, 0.5, 1))
-      buffer.setPlaceholderColor(RGBA.fromValues(1, 0, 0, 1))
+      buffer.setPlaceholderStyledText([
+        { text: "Test ", fg: RGBA.fromValues(0.5, 0.5, 0.5, 1), attributes: 0 },
+        { text: "placeholder", fg: RGBA.fromValues(1, 0, 0, 1), attributes: 0 },
+      ])
 
       expect(buffer.getText()).toBe("")
     })

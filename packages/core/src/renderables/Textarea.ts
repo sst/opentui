@@ -8,6 +8,7 @@ import {
   getKeyBindingKey,
   buildKeyBindingsMap,
 } from "../lib/keymapping"
+import { type StyledText, fg } from "../lib/styled-text"
 
 export type TextareaAction =
   | "move-left"
@@ -88,19 +89,17 @@ export interface TextareaOptions extends EditBufferOptions {
   textColor?: ColorInput
   focusedBackgroundColor?: ColorInput
   focusedTextColor?: ColorInput
-  placeholder?: string | null
-  placeholderColor?: ColorInput
+  placeholder?: StyledText | string | null
   keyBindings?: KeyBinding[]
   onSubmit?: (event: SubmitEvent) => void
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
-  private _placeholder: string | null
+  private _placeholder: StyledText | string | null
   private _unfocusedBackgroundColor: RGBA
   private _unfocusedTextColor: RGBA
   private _focusedBackgroundColor: RGBA
   private _focusedTextColor: RGBA
-  private _placeholderColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
@@ -112,7 +111,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     focusedBackgroundColor: "transparent",
     focusedTextColor: "#FFFFFF",
     placeholder: null,
-    placeholderColor: "#666666",
   } satisfies Partial<TextareaOptions>
 
   constructor(ctx: RenderContext, options: TextareaOptions) {
@@ -134,7 +132,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     )
     this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
     this._placeholder = options.placeholder ?? defaults.placeholder
-    this._placeholderColor = parseColor(options.placeholderColor || defaults.placeholderColor)
 
     const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
@@ -147,8 +144,22 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
     this.updateColors()
 
-    this.editBuffer.setPlaceholder(this._placeholder)
-    this.editBuffer.setPlaceholderColor(this._placeholderColor)
+    this.applyPlaceholder(this._placeholder)
+  }
+
+  private applyPlaceholder(placeholder: StyledText | string | null): void {
+    if (placeholder === null) {
+      this.editBuffer.setPlaceholder(null)
+      return
+    }
+
+    if (typeof placeholder === "string") {
+      const defaultGray = fg("#666666")
+      const chunks = [defaultGray(placeholder)]
+      this.editBuffer.setPlaceholderStyledText(chunks)
+    } else {
+      this.editBuffer.setPlaceholderStyledText(placeholder.chunks)
+    }
   }
 
   private buildActionHandlers(): Map<TextareaAction, () => boolean> {
@@ -489,14 +500,14 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.updateColors()
   }
 
-  get placeholder(): string | null {
+  get placeholder(): StyledText | string | null {
     return this._placeholder
   }
 
-  set placeholder(value: string | null) {
+  set placeholder(value: StyledText | string | null) {
     if (this._placeholder !== value) {
       this._placeholder = value
-      this.editBuffer.setPlaceholder(value)
+      this.applyPlaceholder(value)
       this.requestRender()
     }
   }
@@ -538,15 +549,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     if (this._focusedTextColor !== newColor) {
       this._focusedTextColor = newColor
       this.updateColors()
-    }
-  }
-
-  set placeholderColor(value: ColorInput) {
-    const newColor = parseColor(value ?? TextareaRenderable.defaults.placeholderColor)
-    if (this._placeholderColor !== newColor) {
-      this._placeholderColor = newColor
-      this.editBuffer.setPlaceholderColor(newColor)
-      this.requestRender()
     }
   }
 
