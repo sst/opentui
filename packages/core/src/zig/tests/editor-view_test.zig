@@ -2585,8 +2585,9 @@ test "EditorView - placeholder shows when empty" {
     const text_len = eb.getText(&out_buffer);
     try std.testing.expectEqual(@as(usize, 0), text_len);
 
-    try ev.updatePlaceholderVirtualLines();
-    try std.testing.expectEqual(@as(usize, 1), ev.placeholder_vlines.items.len);
+    try std.testing.expect(ev.placeholder_buffer != null);
+    const placeholder = ev.placeholder_buffer.?;
+    try std.testing.expectEqual(@as(u32, 18), placeholder.getLength());
 }
 
 test "EditorView - placeholder cleared when set to empty" {
@@ -2614,12 +2615,12 @@ test "EditorView - placeholder cleared when set to empty" {
     }};
     try ev.setPlaceholderStyledText(&chunks);
 
-    try std.testing.expectEqual(@as(usize, 1), ev.placeholder_chunks.items.len);
+    try std.testing.expect(ev.placeholder_buffer != null);
 
     const empty_chunks = [_]text_buffer.StyledChunk{};
     try ev.setPlaceholderStyledText(&empty_chunks);
 
-    try std.testing.expectEqual(@as(usize, 0), ev.placeholder_chunks.items.len);
+    try std.testing.expect(ev.placeholder_buffer == null);
 }
 
 test "EditorView - placeholder with styled text" {
@@ -2660,5 +2661,7 @@ test "EditorView - placeholder with styled text" {
 
     try ev.setPlaceholderStyledText(&chunks);
 
-    try std.testing.expectEqual(@as(usize, 2), ev.placeholder_chunks.items.len);
+    try std.testing.expect(ev.placeholder_buffer != null);
+    const placeholder = ev.placeholder_buffer.?;
+    try std.testing.expectEqual(@as(u32, 11), placeholder.getLength());
 }

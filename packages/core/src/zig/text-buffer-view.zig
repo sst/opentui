@@ -90,6 +90,7 @@ pub const UnifiedTextBufferView = struct {
     const Self = @This();
 
     text_buffer: *UnifiedTextBuffer,
+    original_text_buffer: *UnifiedTextBuffer,
     view_id: u32,
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
@@ -117,6 +118,7 @@ pub const UnifiedTextBufferView = struct {
 
         self.* = .{
             .text_buffer = text_buffer,
+            .original_text_buffer = text_buffer,
             .view_id = view_id,
             .selection = null,
             .local_selection = null,
@@ -137,7 +139,7 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.text_buffer.unregisterView(self.view_id);
+        self.original_text_buffer.unregisterView(self.view_id);
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
         self.global_allocator.destroy(self);
@@ -630,6 +632,18 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getTextBuffer(self: *const Self) *UnifiedTextBuffer {
         return self.text_buffer;
+    }
+
+    pub fn switchToBuffer(self: *Self, buffer: *UnifiedTextBuffer) void {
+        self.text_buffer = buffer;
+        self.virtual_lines_dirty = true;
+    }
+
+    pub fn switchToOriginalBuffer(self: *Self) void {
+        if (self.text_buffer != self.original_text_buffer) {
+            self.text_buffer = self.original_text_buffer;
+            self.virtual_lines_dirty = true;
+        }
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
