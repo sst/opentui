@@ -899,7 +899,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999) // Move to end
 
-      currentMockInput.pressKey("CTRL_A")
+      currentMockInput.pressKey("a", { ctrl: true })
       const cursor = editor.logicalCursor
       expect(cursor.row).toBe(0)
       expect(cursor.col).toBe(0)
@@ -914,7 +914,7 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      currentMockInput.pressKey("CTRL_E")
+      currentMockInput.pressKey("e", { ctrl: true })
       const cursor = editor.logicalCursor
       expect(cursor.row).toBe(2)
     })
@@ -929,7 +929,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(1)
 
-      currentMockInput.pressKey("CTRL_D")
+      currentMockInput.pressKey("d", { ctrl: true })
       expect(editor.plainText).toBe("Line 1\nLine 3")
     })
 
@@ -945,7 +945,7 @@ describe("TextareaRenderable", () => {
         editor.moveCursorRight()
       }
 
-      currentMockInput.pressKey("CTRL_K")
+      currentMockInput.pressKey("k", { ctrl: true })
       expect(editor.plainText).toBe("Hello ")
     })
   })
@@ -961,13 +961,13 @@ describe("TextareaRenderable", () => {
       editor.focus()
       expect(editor.logicalCursor.col).toBe(0)
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.col).toBe(6)
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.col).toBe(12)
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.col).toBe(16)
     })
 
@@ -982,13 +982,13 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(9999)
       expect(editor.logicalCursor.col).toBe(19)
 
-      currentMockInput.pressKey("ALT_B")
+      currentMockInput.pressKey("b", { meta: true })
       expect(editor.logicalCursor.col).toBe(16)
 
-      currentMockInput.pressKey("ALT_B")
+      currentMockInput.pressKey("b", { meta: true })
       expect(editor.logicalCursor.col).toBe(12)
 
-      currentMockInput.pressKey("ALT_B")
+      currentMockInput.pressKey("b", { meta: true })
       expect(editor.logicalCursor.col).toBe(6)
     })
 
@@ -1035,10 +1035,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
       expect(editor.plainText).toBe("hello world foo")
 
-      currentMockInput.pressKey("ALT_D")
+      currentMockInput.pressKey("d", { meta: true })
       expect(editor.plainText).toBe("world foo")
 
-      currentMockInput.pressKey("ALT_D")
+      currentMockInput.pressKey("d", { meta: true })
       expect(editor.plainText).toBe("foo")
     })
 
@@ -1068,10 +1068,10 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressKey("CTRL_W")
+      currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("test string ")
 
-      currentMockInput.pressKey("CTRL_W")
+      currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("test ")
     })
 
@@ -1113,10 +1113,10 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.col).toBe(6)
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.row).toBe(1)
     })
 
@@ -1131,7 +1131,7 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(1)
       const initialLength = editor.plainText.length
 
-      currentMockInput.pressKey("ALT_D")
+      currentMockInput.pressKey("d", { meta: true })
       expect(editor.plainText.length).toBeLessThan(initialLength)
       expect(editor.plainText).toContain("hello")
     })
@@ -1146,7 +1146,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       const initialText = editor.plainText
 
-      currentMockInput.pressKey("ALT_D")
+      currentMockInput.pressKey("d", { meta: true })
       expect(editor.plainText.length).toBeLessThan(initialText.length)
       expect(editor.plainText).toContain("world")
     })
@@ -1160,7 +1160,7 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       const col1 = editor.logicalCursor.col
       expect(col1).toBeGreaterThan(0)
 
@@ -1168,7 +1168,7 @@ describe("TextareaRenderable", () => {
       const col2 = editor.logicalCursor.col
       expect(col2).toBe(col1 + 1)
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       const col3 = editor.logicalCursor.col
       expect(col3).toBeGreaterThan(col2)
     })
@@ -1187,7 +1187,7 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressArrow("right", { shift: true })
       expect(editor.hasSelection()).toBe(true)
 
-      currentMockInput.pressKey("ALT_D")
+      currentMockInput.pressKey("d", { meta: true })
       expect(editor.plainText).toBe("lo world foo")
     })
   })
@@ -1236,13 +1236,13 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("")
       expect(editor.hasSelection()).toBe(false)
 
-      currentMockInput.pressKey("CTRL_Z")
+      currentMockInput.pressKey("z", { ctrl: true })
       expect(editor.plainText).toBe(" Test")
 
-      currentMockInput.pressKey("CTRL_Z")
+      currentMockInput.pressKey("z", { ctrl: true })
       expect(editor.plainText).toBe(" World Test")
 
-      currentMockInput.pressKey("CTRL_Z")
+      currentMockInput.pressKey("z", { ctrl: true })
       expect(editor.plainText).toBe(initialText)
     })
   })
@@ -1259,7 +1259,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressKey("ALT_B")
+      currentMockInput.pressKey("b", { meta: true })
 
       const cursor = editor.logicalCursor
       expect(cursor.row).toBe(0)
@@ -1276,7 +1276,7 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
 
       const cursor = editor.logicalCursor
       expect(cursor.row).toBe(0)
@@ -1293,7 +1293,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       expect(editor.logicalCursor.row).toBe(0)
 
-      currentMockInput.pressKey("ALT_J")
+      currentMockInput.pressKey("j", { meta: true })
       expect(editor.logicalCursor.row).toBe(1)
     })
 
@@ -1367,7 +1367,7 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressKey("x")
       expect(editor.plainText).toBe("xTest")
 
-      currentMockInput.pressKey("ALT_X")
+      currentMockInput.pressKey("x", { meta: true })
       expect(editor.plainText).toBe("")
     })
 
@@ -1381,7 +1381,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressKey("ALT_B")
+      currentMockInput.pressKey("b", { meta: true })
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
 
@@ -1390,7 +1390,7 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(0)
       expect(editor.logicalCursor.row).toBe(0)
 
-      currentMockInput.pressKey("ALT_B")
+      currentMockInput.pressKey("b", { meta: true })
       expect(editor.logicalCursor.row).toBe(0)
     })
 
@@ -1411,7 +1411,7 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressArrow("right")
       expect(editor.logicalCursor.col).toBe(2)
 
-      currentMockInput.pressKey("ALT_X")
+      currentMockInput.pressKey("x", { meta: true })
       expect(editor.plainText).toBe("Line 2")
     })
 
@@ -1424,13 +1424,13 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.col).toBe(6)
 
       editor.keyBindings = [{ name: "f", meta: true, action: "buffer-end" }]
 
       editor.gotoLine(0)
-      currentMockInput.pressKey("ALT_F")
+      currentMockInput.pressKey("f", { meta: true })
       expect(editor.logicalCursor.row).toBe(0)
     })
 
@@ -1452,7 +1452,7 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("Line 1\n")
       expect(submitCalled).toBe(false)
 
-      currentMockInput.pressKey("ALT_RETURN")
+      currentMockInput.pressEnter({ meta: true })
       expect(submitCalled).toBe(true)
       submitCalled = false
 
@@ -1467,7 +1467,7 @@ describe("TextareaRenderable", () => {
       expect(submitCalled).toBe(true)
       submitCalled = false
 
-      currentMockInput.pressKey("ALT_RETURN")
+      currentMockInput.pressEnter({ meta: true })
       expect(editor.plainText).toBe("Line 1\n\n")
       expect(submitCalled).toBe(false)
     })
@@ -3538,7 +3538,7 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("Hi")
 
       // Ctrl+Z to undo
-      currentMockInput.pressKey("CTRL_Z")
+      currentMockInput.pressKey("z", { ctrl: true })
       expect(editor.plainText).toBe("H")
     })
 
@@ -3555,11 +3555,11 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("X")
 
       // Undo
-      currentMockInput.pressKey("CTRL_Z")
+      currentMockInput.pressKey("z", { ctrl: true })
       expect(editor.plainText).toBe("")
 
       // Ctrl+Y to redo
-      currentMockInput.pressKey("CTRL_Y")
+      currentMockInput.pressKey("y", { ctrl: true })
       expect(editor.plainText).toBe("X")
     })
 
@@ -3714,7 +3714,7 @@ describe("TextareaRenderable", () => {
       const beforeDelete = editor.plainText
 
       // Delete line 2
-      currentMockInput.pressKey("CTRL_D")
+      currentMockInput.pressKey("d", { ctrl: true })
       const afterDelete = editor.plainText
 
       // Verify delete happened
@@ -4480,7 +4480,7 @@ describe("TextareaRenderable", () => {
       editor.gotoLine(9999)
       expect(editor.logicalCursor.row).toBe(2)
 
-      currentMockInput.pressKey("CTRL_G")
+      currentMockInput.pressKey("g", { ctrl: true })
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
@@ -4515,7 +4515,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(2)
 
-      currentMockInput.pressKey("CTRL_B")
+      currentMockInput.pressKey("b", { ctrl: true })
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
@@ -4547,7 +4547,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressKey("CTRL_N")
+      currentMockInput.pressKey("n", { ctrl: true })
       expect(editor.plainText).toBe("Hello\n")
     })
 
@@ -4562,7 +4562,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressKey("CTRL_H")
+      currentMockInput.pressKey("h", { ctrl: true })
       expect(editor.plainText).toBe("Hell")
     })
 
@@ -4667,7 +4667,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(1)
 
-      currentMockInput.pressKey("CTRL_X")
+      currentMockInput.pressKey("x", { ctrl: true })
       expect(editor.plainText).toBe("Line 1\nLine 3")
     })
 
@@ -4898,7 +4898,7 @@ describe("TextareaRenderable", () => {
       expect(editor.logicalCursor.row).toBe(1)
 
       editor.gotoLine(0)
-      currentMockInput.pressKey("CTRL_J")
+      currentMockInput.pressKey("j", { ctrl: true })
       expect(editor.logicalCursor.row).toBe(1)
     })
 
@@ -5029,7 +5029,7 @@ describe("TextareaRenderable", () => {
 
       expect(editor.plainText).toBe("hello")
 
-      currentMockInput.pressKey("CTRL_H")
+      currentMockInput.pressKey("h", { ctrl: true })
       expect(editor.logicalCursor.col).toBe(4)
     })
   })
@@ -5502,7 +5502,7 @@ describe("TextareaRenderable", () => {
         editor.focus()
         const initialCount = submitCount
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
 
         expect(submitCount).toBe(initialCount + 1)
@@ -5523,7 +5523,7 @@ describe("TextareaRenderable", () => {
 
         editor.focus()
 
-        currentMockInput.pressKey("ALT_RETURN")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
 
         expect(submitCount).toBe(1)
@@ -5544,7 +5544,7 @@ describe("TextareaRenderable", () => {
         editor.focus()
         editor.gotoLine(9999)
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
 
         expect(submitCount).toBe(1)
@@ -5566,7 +5566,7 @@ describe("TextareaRenderable", () => {
 
         editor.focus()
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
         expect(firstHandlerCalled).toBe(true)
 
@@ -5574,7 +5574,7 @@ describe("TextareaRenderable", () => {
           secondHandlerCalled = true
         }
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
         expect(secondHandlerCalled).toBe(true)
       })
@@ -5589,7 +5589,7 @@ describe("TextareaRenderable", () => {
 
         editor.focus()
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         expect(editor.plainText).toBe("Test")
       })
 
@@ -5608,7 +5608,7 @@ describe("TextareaRenderable", () => {
 
         editor.focus()
 
-        currentMockInput.pressKey("CTRL_S")
+        currentMockInput.pressKey("s", { ctrl: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
 
         expect(submitCount).toBe(1)
@@ -5641,13 +5641,13 @@ describe("TextareaRenderable", () => {
 
         editor.focus()
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
         expect(submitCount).toBe(1)
 
         editor.onSubmit = undefined
 
-        currentMockInput.pressKey("ALT_ENTER")
+        currentMockInput.pressEnter({ meta: true })
         await new Promise((resolve) => setTimeout(resolve, 10))
         expect(submitCount).toBe(1)
       })
