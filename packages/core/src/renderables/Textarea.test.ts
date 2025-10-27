@@ -3,6 +3,10 @@ import { TextareaRenderable, type TextareaOptions } from "./Textarea"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer"
 import { RGBA } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
+import { PasteEvent } from "../lib"
+import { OptimizedBuffer } from "../buffer"
+import { BoxRenderable } from "./Box"
+import { TextRenderable } from "."
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -2057,7 +2061,6 @@ describe("TextareaRenderable", () => {
       editor.insertText("x")
 
       // Force actual rendering with a standalone buffer
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       // THIS IS THE CRITICAL PART - actually draw the editor view
@@ -2078,7 +2081,6 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       for (let i = 0; i < 5; i++) {
@@ -2102,7 +2104,6 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999) // Move to end
 
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       editor.newLine()
@@ -2124,7 +2125,6 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999) // Move to end
 
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       editor.deleteCharBackward()
@@ -2145,7 +2145,6 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       // Draw initial
@@ -2169,7 +2168,6 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       // Draw initial
@@ -2882,7 +2880,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("should render selection properly when drawing to buffer", async () => {
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
@@ -3020,7 +3017,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("RENDER TEST: selection highlighting appears at correct screen position with viewport scroll", async () => {
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
@@ -3073,7 +3069,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("RENDER TEST: selection rendering with empty lines between", async () => {
-      const { OptimizedBuffer } = await import("../buffer")
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
@@ -4068,7 +4063,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      editor.handlePaste(" Content")
+      editor.handlePaste(new PasteEvent(" Content"))
 
       expect(editor.plainText).toBe("Test Content")
     })
@@ -4093,10 +4088,73 @@ describe("TextareaRenderable", () => {
       expect(editor.getSelectedText()).toBe("World")
 
       // Use handlePaste directly
-      editor.handlePaste("Universe")
+      editor.handlePaste(new PasteEvent("Universe"))
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Hello Universe")
+    })
+
+    it("should support preventDefault on paste event", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        onPaste: (event) => {
+          event.preventDefault()
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" Prevented")
+
+      expect(editor.plainText).toBe("Test")
+    })
+
+    it("should pass full PasteEvent to onPaste handler", async () => {
+      let receivedEvent: any = null
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        onPaste: (event) => {
+          receivedEvent = event
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" Event")
+
+      expect(receivedEvent).not.toBeNull()
+      expect(receivedEvent.text).toBe(" Event")
+      expect(typeof receivedEvent.preventDefault).toBe("function")
+      expect(receivedEvent.defaultPrevented).toBe(false)
+      expect(editor.plainText).toBe("Test Event")
+    })
+
+    it("should allow conditional paste prevention", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        onPaste: (event) => {
+          if (event.text.includes("blocked")) {
+            event.preventDefault()
+          }
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" allowed")
+      expect(editor.plainText).toBe("Test allowed")
+
+      await currentMockInput.pasteBracketedText(" blocked content")
+      expect(editor.plainText).toBe("Test allowed")
     })
   })
 
@@ -5846,9 +5904,6 @@ describe("TextareaRenderable", () => {
 
   describe("Width/Height Setter Layout Tests", () => {
     it("should not shrink box when width is set via setter", async () => {
-      const { BoxRenderable } = await import("./Box")
-      const { TextRenderable } = await import("./Text")
-
       resize(40, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
@@ -5885,9 +5940,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("should not shrink box when height is set via setter in column layout with textarea", async () => {
-      const { BoxRenderable } = await import("./Box")
-      const { TextRenderable } = await import("./Text")
-
       resize(30, 15)
 
       const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
@@ -5930,9 +5982,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("should not shrink box when minWidth is set via setter", async () => {
-      const { BoxRenderable } = await import("./Box")
-      const { TextRenderable } = await import("./Text")
-
       resize(40, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
@@ -5965,9 +6014,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("should not shrink box when minHeight is set via setter in column layout with textarea", async () => {
-      const { BoxRenderable } = await import("./Box")
-      const { TextRenderable } = await import("./Text")
-
       resize(30, 15)
 
       const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
@@ -6010,9 +6056,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("should not shrink box when width is set from undefined via setter", async () => {
-      const { BoxRenderable } = await import("./Box")
-      const { TextRenderable } = await import("./Text")
-
       resize(40, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
@@ -6046,9 +6089,6 @@ describe("TextareaRenderable", () => {
     })
 
     it("should verify dimensions are actually respected under extreme pressure", async () => {
-      const { BoxRenderable } = await import("./Box")
-      const { TextRenderable } = await import("./Text")
-
       resize(30, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 20 })
@@ -6769,7 +6809,6 @@ describe("TextareaRenderable", () => {
 
     describe("Highlight Rendering Integration", () => {
       it("should render highlighted text without crashing", async () => {
-        const { OptimizedBuffer } = await import("../buffer")
         const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
         const style = SyntaxStyle.create()
@@ -6811,7 +6850,6 @@ describe("TextareaRenderable", () => {
         const highlights = editor.getLineHighlights(0)
         expect(highlights.length).toBe(2)
 
-        const { OptimizedBuffer } = await import("../buffer")
         const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
         // Should render without crashing

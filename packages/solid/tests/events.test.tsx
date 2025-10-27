@@ -393,7 +393,7 @@ describe("SolidJS Renderer Integration Tests", () => {
               focused
               onPaste={(val) => {
                 pasteSpy(val)
-                setPastedText(val)
+                setPastedText(val.text)
               }}
             />
           </box>

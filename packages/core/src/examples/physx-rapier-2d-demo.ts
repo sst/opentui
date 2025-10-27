@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, TextRenderable, FrameBufferRenderable, BoxRenderable } from "../index"
+import { CliRenderer, TextRenderable, FrameBufferRenderable, BoxRenderable, createCliRenderer } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -510,7 +510,6 @@ export function destroy(renderer: CliRenderer): void {
 }
 
 if (import.meta.main) {
-  const { createCliRenderer } = await import("../index")
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 60,

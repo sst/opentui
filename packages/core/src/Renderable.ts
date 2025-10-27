@@ -115,7 +115,7 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   onMouseOut?: (this: T, event: MouseEvent) => void
   onMouseScroll?: (this: T, event: MouseEvent) => void
 
-  onPaste?: (this: T, text: string) => void
+  onPaste?: (this: T, event: PasteEvent) => void
 
   onKeyDown?: (key: KeyEvent) => void
 
@@ -223,7 +223,7 @@ export abstract class Renderable extends BaseRenderable {
   private _sizeChangeListener: (() => void) | undefined = undefined
   private _mouseListener: ((event: MouseEvent) => void) | null = null
   private _mouseListeners: Partial<Record<MouseEventType, (event: MouseEvent) => void>> = {}
-  private _pasteListener: ((text: string) => void) | undefined = undefined
+  private _pasteListener: ((event: PasteEvent) => void) | undefined = undefined
   private _keyListeners: Partial<Record<"down", (key: KeyEvent) => void>> = {}
 
   protected yogaNode: YogaNode
@@ -369,9 +369,9 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this.pasteHandler = (event: PasteEvent) => {
-      this._pasteListener?.call(this, event.text)
+      this._pasteListener?.call(this, event)
       if (!event.defaultPrevented && this.handlePaste) {
-        this.handlePaste(event.text)
+        this.handlePaste(event)
       }
     }
 
@@ -428,7 +428,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public handleKeyPress?(key: KeyEvent | string): boolean
-  public handlePaste?(text: string): void
+  public handlePaste?(event: PasteEvent): void
 
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this._childrenInLayoutOrder) {
@@ -1466,10 +1466,10 @@ export abstract class Renderable extends BaseRenderable {
     else delete this._mouseListeners["scroll"]
   }
 
-  public set onPaste(handler: ((text: string) => void) | undefined) {
+  public set onPaste(handler: ((event: PasteEvent) => void) | undefined) {
     this._pasteListener = handler
   }
-  public get onPaste(): ((text: string) => void) | undefined {
+  public get onPaste(): ((event: PasteEvent) => void) | undefined {
     return this._pasteListener
   }
 

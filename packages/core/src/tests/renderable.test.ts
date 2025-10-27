@@ -7,7 +7,7 @@ import {
   type BaseRenderableOptions,
   type RenderableOptions,
 } from "../Renderable"
-import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer"
 import type { RenderContext } from "../types"
 import { TextNodeRenderable } from "../renderables/TextNode"
 import { TextRenderable } from "../renderables/Text"
@@ -59,10 +59,16 @@ class TestFocusableRenderable extends Renderable {
 
 let testRenderer: TestRenderer
 let testMockMouse: MockMouse
+let testMockInput: MockInput
 let renderOnce: () => Promise<void>
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer, mockMouse: testMockMouse, renderOnce } = await createTestRenderer({}))
+  ;({
+    renderer: testRenderer,
+    mockMouse: testMockMouse,
+    mockInput: testMockInput,
+    renderOnce,
+  } = await createTestRenderer({}))
 })
 
 afterEach(() => {
@@ -456,6 +462,66 @@ describe("Renderable - Focus", () => {
 
     renderable.blur()
     expect(blurred).toBe(true)
+  })
+
+  test("onPaste receives full paste event with preventDefault", async () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-paste" })
+    let receivedEvent: any = null
+    let handlePasteCalled = false
+
+    renderable.handlePaste = (event) => {
+      handlePasteCalled = true
+    }
+
+    renderable.onPaste = (event) => {
+      receivedEvent = event
+      event.preventDefault()
+    }
+
+    renderable.focus()
+    await testMockInput.pasteBracketedText("test text")
+
+    expect(receivedEvent).not.toBeNull()
+    expect(receivedEvent.text).toBe("test text")
+    expect(receivedEvent.defaultPrevented).toBe(true)
+    expect(handlePasteCalled).toBe(false)
+  })
+
+  test("handlePaste receives full paste event", async () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-paste-handler" })
+    let receivedEvent: any = null
+
+    renderable.handlePaste = (event) => {
+      receivedEvent = event
+    }
+
+    renderable.focus()
+    await testMockInput.pasteBracketedText("handler text")
+
+    expect(receivedEvent).not.toBeNull()
+    expect(receivedEvent.text).toBe("handler text")
+    expect(typeof receivedEvent.preventDefault).toBe("function")
+  })
+
+  test("preventDefault in onPaste prevents handlePaste", async () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-prevent" })
+    let onPasteCalled = false
+    let handlePasteCalled = false
+
+    renderable.onPaste = (event) => {
+      onPasteCalled = true
+      event.preventDefault()
+    }
+
+    renderable.handlePaste = () => {
+      handlePasteCalled = true
+    }
+
+    renderable.focus()
+    await testMockInput.pasteBracketedText("prevented")
+
+    expect(onPasteCalled).toBe(true)
+    expect(handlePasteCalled).toBe(false)
   })
 })
 
