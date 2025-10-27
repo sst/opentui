@@ -216,7 +216,7 @@ const ExampleSelector = () => {
                 value: i,
               }))}
               style={{
-                height: 30,
+                height: "100%",
                 backgroundColor: "transparent",
                 focusedBackgroundColor: "transparent",
                 selectedBackgroundColor: "#334455",
