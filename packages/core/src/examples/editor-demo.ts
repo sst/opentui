@@ -62,7 +62,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   // Create interactive editor
   editor = new TextareaRenderable(renderer, {
     id: "editor",
-    value: initialContent,
+    initialValue: initialContent,
     textColor: "#F0F6FC",
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
@@ -85,9 +85,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   rendererInstance.setFrameCallback(async () => {
     if (statusText && editor && !editor.isDestroyed) {
       try {
-        const cursor = editor.cursor
+        const cursor = editor.logicalCursor
         const wrap = editor.wrapMode !== "none" ? "ON" : "OFF"
-        statusText.content = `Line ${cursor.line + 1}, Col ${cursor.visualColumn + 1} | Wrap: ${wrap}`
+        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap}`
       } catch (error) {
         // Ignore errors during shutdown
       }

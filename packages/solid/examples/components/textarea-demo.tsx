@@ -43,9 +43,9 @@ export function TextareaDemo() {
     renderer.setFrameCallback(async () => {
       if (textareaRef && !textareaRef.isDestroyed) {
         try {
-          const cursor = textareaRef.cursor
+          const cursor = textareaRef.logicalCursor
           const wrap = wrapMode() !== "none" ? "ON" : "OFF"
-          setStatusText(`Line ${cursor.line + 1}, Col ${cursor.visualColumn + 1} | Wrap: ${wrap}`)
+          setStatusText(`Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap}`)
         } catch (error) {
           // Ignore errors during shutdown
         }

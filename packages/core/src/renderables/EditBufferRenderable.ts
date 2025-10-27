@@ -1,6 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { EditBuffer, type CursorPosition } from "../edit-buffer"
+import { EditBuffer, type LogicalCursor } from "../edit-buffer"
 import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext, type Highlight } from "../types"
@@ -51,8 +51,8 @@ export abstract class EditBufferRenderable extends Renderable {
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
 
-  public editBuffer: EditBuffer
-  public editorView: EditorView
+  public readonly editBuffer: EditBuffer
+  public readonly editorView: EditorView
 
   protected _defaultOptions = {
     textColor: RGBA.fromValues(1, 1, 1, 1),
@@ -107,8 +107,8 @@ export abstract class EditBufferRenderable extends Renderable {
       if (this._cursorChangeListener) {
         const cursor = this.editBuffer.getCursorPosition()
         this._cursorChangeListener({
-          line: cursor.line,
-          visualColumn: cursor.visualColumn,
+          line: cursor.row,
+          visualColumn: cursor.col,
         })
       }
     })
@@ -126,7 +126,7 @@ export abstract class EditBufferRenderable extends Renderable {
     return this.editBuffer.getText()
   }
 
-  get cursor(): CursorPosition {
+  get logicalCursor(): LogicalCursor {
     return this.editBuffer.getCursorPosition()
   }
 
@@ -449,5 +449,30 @@ export abstract class EditBufferRenderable extends Renderable {
 
   public getLineHighlights(lineIdx: number): Array<Highlight> {
     return this.editBuffer.getLineHighlights(lineIdx)
+  }
+
+  public setText(text: string, opts?: { history?: boolean }): void {
+    this.editBuffer.setText(text, opts)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  public clear(): void {
+    this.editBuffer.clear()
+    this.editBuffer.clearAllHighlights()
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  public deleteRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
+    this.editBuffer.deleteRange(startLine, startCol, endLine, endCol)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  public insertText(text: string): void {
+    this.editBuffer.insertText(text)
+    this.yogaNode.markDirty()
+    this.requestRender()
   }
 }

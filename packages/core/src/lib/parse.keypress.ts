@@ -130,7 +130,7 @@ export type ParseKeypressOptions = {
   useKittyKeyboard?: boolean
 }
 
-export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOptions = {}): ParsedKey => {
+export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOptions = {}): ParsedKey | null => {
   let parts
 
   if (Buffer.isBuffer(s)) {
@@ -144,6 +144,13 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     s = String(s)
   } else if (!s) {
     s = ""
+  }
+
+  if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
+  if (s.startsWith("\x1b[M") && s.length >= 6) {
+    return null
   }
 
   const key: ParsedKey = {
@@ -168,12 +175,14 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     }
   }
 
-  if (s === "\r") {
+  if (s === "\r" || s === "\x1b\r") {
     // carriage return
     key.name = "return"
-  } else if (s === "\n") {
+    key.meta = s.length === 2
+  } else if (s === "\n" || s === "\x1b\n") {
     // enter, should have been called linefeed
     key.name = "enter"
+    key.meta = s.length === 2
   } else if (s === "\t") {
     // tab
     key.name = "tab"

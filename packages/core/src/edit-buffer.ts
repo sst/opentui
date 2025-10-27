@@ -1,16 +1,11 @@
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { resolveRenderLib, type LogicalCursor, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod, type Highlight } from "./types"
 import { RGBA } from "./lib/RGBA"
 import { EventEmitter } from "events"
 import type { SyntaxStyle } from "./syntax-style"
 
-// TODO: make this row/col as anything else
-export interface CursorPosition {
-  line: number
-  visualColumn: number
-  offset: number
-}
+export type { LogicalCursor }
 
 /**
  * EditBuffer provides a text editing buffer with cursor management,
@@ -191,39 +186,56 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferSetCursorByOffset(this.bufferPtr, offset)
   }
 
-  public getCursorPosition(): CursorPosition {
+  public getCursorPosition(): LogicalCursor {
     this.guard()
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
   }
 
-  public getNextWordBoundary(): CursorPosition {
+  public getNextWordBoundary(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetNextWordBoundary(this.bufferPtr)
     return {
-      line: boundary.row,
-      visualColumn: boundary.col,
+      row: boundary.row,
+      col: boundary.col,
       offset: boundary.offset,
     }
   }
 
-  public getPrevWordBoundary(): CursorPosition {
+  public getPrevWordBoundary(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetPrevWordBoundary(this.bufferPtr)
     return {
-      line: boundary.row,
-      visualColumn: boundary.col,
+      row: boundary.row,
+      col: boundary.col,
       offset: boundary.offset,
     }
   }
 
-  public getEOL(): CursorPosition {
+  public getEOL(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetEOL(this.bufferPtr)
     return {
-      line: boundary.row,
-      visualColumn: boundary.col,
+      row: boundary.row,
+      col: boundary.col,
       offset: boundary.offset,
     }
+  }
+
+  public offsetToPosition(offset: number): { row: number; col: number } | null {
+    this.guard()
+    const result = this.lib.editBufferOffsetToPosition(this.bufferPtr, offset)
+    if (!result) return null
+    return { row: result.row, col: result.col }
+  }
+
+  public positionToOffset(row: number, col: number): number {
+    this.guard()
+    return this.lib.editBufferPositionToOffset(this.bufferPtr, row, col)
+  }
+
+  public getLineStartOffset(row: number): number {
+    this.guard()
+    return this.lib.editBufferGetLineStartOffset(this.bufferPtr, row)
   }
 
   public debugLogRope(): void {
@@ -331,6 +343,11 @@ export class EditBuffer extends EventEmitter {
   public getLineHighlights(lineIdx: number): Array<Highlight> {
     this.guard()
     return this.lib.textBufferGetLineHighlights(this.textBufferPtr, lineIdx)
+  }
+
+  public clear(): void {
+    this.guard()
+    this.lib.editBufferClear(this.bufferPtr)
   }
 
   public destroy(): void {

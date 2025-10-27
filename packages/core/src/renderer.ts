@@ -324,26 +324,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lifecyclePasses: Set<Renderable> = new Set()
 
   private handleError: (error: Error) => void = ((error: Error) => {
-    this.stop()
-    this.destroy()
+    console.error(error)
 
-    new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(true)
-      }, 100)
-    }).then(() => {
-      this.realStdoutWrite.call(this.stdout, "\n".repeat(this._terminalHeight))
-
-      this.realStdoutWrite.call(this.stdout, "\n=== FATAL ERROR OCCURRED ===\n")
-      this.dumpOutputCache()
-      this.realStdoutWrite.call(this.stdout, "\nError details:\n")
-      this.realStdoutWrite.call(this.stdout, error.message || "unknown error")
-      this.realStdoutWrite.call(this.stdout, "\n")
-      this.realStdoutWrite.call(this.stdout, error.stack || error.toString())
-      this.realStdoutWrite.call(this.stdout, "\n")
-
-      process.exit(1)
-    })
+    if (process.env.NODE_ENV !== "production") {
+      this.console.show()
+    }
   }).bind(this)
 
   private dumpOutputCache(optionalMessage: string = ""): void {
@@ -370,7 +355,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitHandler: () => void = (() => {
     this.destroy()
     if (env.OTUI_DUMP_CAPTURES) {
-      this.dumpOutputCache("=== CAPTURED OUTPUT ===\n")
+      Bun.sleep(100).then(() => {
+        this.dumpOutputCache("=== CAPTURED OUTPUT ===\n")
+      })
     }
   }).bind(this)
 

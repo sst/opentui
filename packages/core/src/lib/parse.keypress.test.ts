@@ -67,6 +67,30 @@ test("parseKeypress - special keys", () => {
     raw: "\n",
   })
 
+  expect(parseKeypress("\x1b\r")).toEqual({
+    eventType: "press",
+    name: "return",
+    ctrl: false,
+    meta: true,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x1b\r",
+    raw: "\x1b\r",
+  })
+
+  expect(parseKeypress("\x1b\n")).toEqual({
+    eventType: "press",
+    name: "enter",
+    ctrl: false,
+    meta: true,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x1b\n",
+    raw: "\x1b\n",
+  })
+
   expect(parseKeypress("\t")).toEqual({
     eventType: "press",
     name: "tab",
@@ -648,47 +672,6 @@ test("nonAlphanumericKeys export", () => {
   expect(nonAlphanumericKeys).toContain("right")
 })
 
-test("ParsedKey type structure", () => {
-  const key: ParsedKey = {
-    name: "test",
-    ctrl: false,
-    meta: false,
-    shift: false,
-    option: false,
-    sequence: "test",
-    raw: "test",
-    number: false,
-    eventType: "press",
-  }
-
-  expect(key).toHaveProperty("name")
-  expect(key).toHaveProperty("ctrl")
-  expect(key).toHaveProperty("meta")
-  expect(key).toHaveProperty("shift")
-  expect(key).toHaveProperty("option")
-  expect(key).toHaveProperty("sequence")
-  expect(key).toHaveProperty("raw")
-  expect(key).toHaveProperty("number")
-  // code is optional, so it may or may not be present
-
-  // Test that a key with code property works
-  const keyWithCode: ParsedKey = {
-    name: "up",
-    ctrl: false,
-    meta: false,
-    shift: false,
-    option: false,
-    sequence: "\x1b[A",
-    raw: "\x1b[A",
-    number: false,
-    code: "[A",
-    eventType: "press",
-  }
-
-  expect(keyWithCode).toHaveProperty("code")
-  expect(keyWithCode.code).toBe("[A")
-})
-
 // Tests for modifier bit calculations and meta/option relationship
 // Terminal modifier bits (ANSI standard): Shift=1, Alt/Option=2, Ctrl=4, Meta=8
 //
@@ -710,7 +693,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
   // Individual modifiers to establish the baseline
 
   // Shift modifier is bit 0 (value 1), so modifier value 2 = 1 + 1
-  const shiftOnly = parseKeypress("\x1b[1;2A")
+  const shiftOnly = parseKeypress("\x1b[1;2A")!
   expect(shiftOnly.name).toBe("up")
   expect(shiftOnly.shift).toBe(true)
   expect(shiftOnly.ctrl).toBe(false)
@@ -719,7 +702,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
 
   // Alt/Option modifier is bit 1 (value 2), so modifier value 3 = 2 + 1
   // IMPORTANT: Alt/Option (same key, different names) sets BOTH meta and option flags
-  const altOnly = parseKeypress("\x1b[1;3A")
+  const altOnly = parseKeypress("\x1b[1;3A")!
   expect(altOnly.name).toBe("up")
   expect(altOnly.meta).toBe(true) // Alt/Option sets meta flag
   expect(altOnly.option).toBe(true) // Alt/Option sets option flag
@@ -727,7 +710,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
   expect(altOnly.shift).toBe(false)
 
   // Ctrl modifier is bit 2 (value 4), so modifier value 5 = 4 + 1
-  const ctrlOnly = parseKeypress("\x1b[1;5A")
+  const ctrlOnly = parseKeypress("\x1b[1;5A")!
   expect(ctrlOnly.name).toBe("up")
   expect(ctrlOnly.ctrl).toBe(true)
   expect(ctrlOnly.meta).toBe(false)
@@ -738,7 +721,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
   // NOTE: This is THEORETICAL - Cmd/Win keys don't reach terminals in practice
   // This tests the ANSI standard's "Meta" bit which is distinct from Alt
   // If a terminal/emulator ever sends this, it means Meta without Alt
-  const metaOnly = parseKeypress("\x1b[1;9A")
+  const metaOnly = parseKeypress("\x1b[1;9A")!
   expect(metaOnly.name).toBe("up")
   expect(metaOnly.meta).toBe(true) // Meta bit sets meta flag
   expect(metaOnly.option).toBe(false) // Meta bit does NOT set option flag
@@ -749,7 +732,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
 
   // Ctrl+Meta = 4 + 8 = 12, so modifier value 13 = 12 + 1
   // NOTE: Theoretical - tests ANSI Meta bit without Alt bit
-  const ctrlMeta = parseKeypress("\x1b[1;13A")
+  const ctrlMeta = parseKeypress("\x1b[1;13A")!
   expect(ctrlMeta.name).toBe("up")
   expect(ctrlMeta.ctrl).toBe(true)
   expect(ctrlMeta.meta).toBe(true)
@@ -758,7 +741,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
 
   // Shift+Alt/Option = 1 + 2 = 3, so modifier value 4 = 3 + 1
   // Should have meta=true, option=true (Alt/Option key is pressed)
-  const shiftAlt = parseKeypress("\x1b[1;4A")
+  const shiftAlt = parseKeypress("\x1b[1;4A")!
   expect(shiftAlt.name).toBe("up")
   expect(shiftAlt.shift).toBe(true)
   expect(shiftAlt.option).toBe(true) // Alt/Option sets option
@@ -767,7 +750,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
 
   // Alt/Option+Meta/Cmd = 2 + 8 = 10, so modifier value 11 = 10 + 1
   // Both physical keys pressed: Alt/Option key AND Meta/Cmd key
-  const altMeta = parseKeypress("\x1b[1;11A")
+  const altMeta = parseKeypress("\x1b[1;11A")!
   expect(altMeta.name).toBe("up")
   expect(altMeta.meta).toBe(true) // Both Alt/Option and Meta/Cmd set meta flag
   expect(altMeta.option).toBe(true) // Alt/Option sets option flag
@@ -776,7 +759,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
 
   // Ctrl+Alt/Option = 4 + 2 = 6, so modifier value 7 = 6 + 1
   // Should have meta=true, option=true (Alt/Option key is pressed)
-  const ctrlAlt = parseKeypress("\x1b[1;7A")
+  const ctrlAlt = parseKeypress("\x1b[1;7A")!
   expect(ctrlAlt.name).toBe("up")
   expect(ctrlAlt.ctrl).toBe(true)
   expect(ctrlAlt.meta).toBe(true) // Alt/Option sets meta
@@ -784,7 +767,7 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
   expect(ctrlAlt.shift).toBe(false)
 
   // All modifiers: Shift(1) + Alt(2) + Ctrl(4) + Meta(8) = 15, so modifier value 16 = 15 + 1
-  const allMods = parseKeypress("\x1b[1;16A")
+  const allMods = parseKeypress("\x1b[1;16A")!
   expect(allMods.name).toBe("up")
   expect(allMods.shift).toBe(true)
   expect(allMods.option).toBe(true) // Alt is present
@@ -805,7 +788,7 @@ test("parseKeypress - distinguishing between Alt/Option and theoretical Meta mod
   // - Cmd+anything: NO EVENT (OS intercepts)
 
   // Alt/Option key with arrow (ANSI sequence with modifier bit 2)
-  const altArrow = parseKeypress("\x1b[1;3C") // Real: Alt/Option+Right
+  const altArrow = parseKeypress("\x1b[1;3C")! // Real: Alt/Option+Right
   expect(altArrow.name).toBe("right")
   expect(altArrow.meta).toBe(true)
   expect(altArrow.option).toBe(true)
@@ -814,7 +797,7 @@ test("parseKeypress - distinguishing between Alt/Option and theoretical Meta mod
 
   // Theoretical: ANSI Meta bit (bit 8) without Alt bit (bit 2)
   // This sequence is valid per ANSI standard but unlikely to occur in practice
-  const metaArrow = parseKeypress("\x1b[1;9C") // Theoretical: Meta bit only
+  const metaArrow = parseKeypress("\x1b[1;9C")! // Theoretical: Meta bit only
   expect(metaArrow.name).toBe("right")
   expect(metaArrow.meta).toBe(true)
   expect(metaArrow.option).toBe(false) // No Alt bit, so option is false
@@ -825,14 +808,14 @@ test("parseKeypress - distinguishing between Alt/Option and theoretical Meta mod
   expect(altArrow.option).toBe(true)
 
   // Theoretical: Both ANSI Alt bit and Meta bit set
-  const altMetaArrow = parseKeypress("\x1b[1;11C") // Theoretical: Alt+Meta bits
+  const altMetaArrow = parseKeypress("\x1b[1;11C")! // Theoretical: Alt+Meta bits
   expect(altMetaArrow.meta).toBe(true)
   expect(altMetaArrow.option).toBe(true)
 })
 
 test("parseKeypress - modifier combinations with function keys", () => {
   // Ctrl+F1 - may work depending on OS/terminal configuration
-  const ctrlF1 = parseKeypress("\x1b[11;5~")
+  const ctrlF1 = parseKeypress("\x1b[11;5~")!
   expect(ctrlF1.name).toBe("f1")
   expect(ctrlF1.ctrl).toBe(true)
   expect(ctrlF1.meta).toBe(false)
@@ -840,7 +823,7 @@ test("parseKeypress - modifier combinations with function keys", () => {
   expect(ctrlF1.eventType).toBe("press")
 
   // Alt/Option+F1 - real key combination that reaches terminal
-  const altF1 = parseKeypress("\x1b[11;3~")
+  const altF1 = parseKeypress("\x1b[11;3~")!
   expect(altF1.name).toBe("f1")
   expect(altF1.meta).toBe(true)
   expect(altF1.option).toBe(true)
@@ -848,7 +831,7 @@ test("parseKeypress - modifier combinations with function keys", () => {
   expect(altF1.eventType).toBe("press")
 
   // Theoretical: ANSI Meta bit (bit 8) - rarely/never occurs in practice
-  const metaF1 = parseKeypress("\x1b[11;9~")
+  const metaF1 = parseKeypress("\x1b[11;9~")!
   expect(metaF1.name).toBe("f1")
   expect(metaF1.meta).toBe(true)
   expect(metaF1.option).toBe(false)
@@ -856,7 +839,7 @@ test("parseKeypress - modifier combinations with function keys", () => {
   expect(metaF1.eventType).toBe("press")
 
   // Shift+Ctrl+F1 - may work depending on OS/terminal configuration
-  const shiftCtrlF1 = parseKeypress("\x1b[11;6~")
+  const shiftCtrlF1 = parseKeypress("\x1b[11;6~")!
   expect(shiftCtrlF1.name).toBe("f1")
   expect(shiftCtrlF1.shift).toBe(true)
   expect(shiftCtrlF1.ctrl).toBe(true)
@@ -886,13 +869,13 @@ test("parseKeypress - regular parsing always defaults to press event type", () =
   ]
 
   for (const keySeq of keys) {
-    const result = parseKeypress(keySeq)
+    const result = parseKeypress(keySeq)!
     expect(result.eventType).toBe("press")
   }
 
   // Test with Buffer input too
   const bufResult = parseKeypress(Buffer.from("x"))
-  expect(bufResult.eventType).toBe("press")
+  expect(bufResult?.eventType).toBe("press")
 })
 
 test("KeyEventType type validation", () => {
@@ -918,51 +901,70 @@ test("KeyEventType type validation", () => {
 
 test("parseKeypress - ctrl+option+letter combinations", () => {
   // This is ESC (\x1b) followed by \x15 (which is Ctrl+U)
-  const ctrlOptionU = parseKeypress("\u001b\u0015")
+  const ctrlOptionU = parseKeypress("\u001b\u0015")!
 
   // The sequence should be parsed as meta+ctrl+u
-  expect(ctrlOptionU.name).toBe("u")
-  expect(ctrlOptionU.ctrl).toBe(true)
-  expect(ctrlOptionU.meta).toBe(true) // ESC prefix indicates meta/alt/option
-  expect(ctrlOptionU.shift).toBe(false)
-  expect(ctrlOptionU.option).toBe(false) // Note: option flag is separate from meta
-  expect(ctrlOptionU.sequence).toBe("\u001b\u0015")
-  expect(ctrlOptionU.raw).toBe("\u001b\u0015")
-  expect(ctrlOptionU.eventType).toBe("press")
+  expect(ctrlOptionU?.name).toBe("u")
+  expect(ctrlOptionU?.ctrl).toBe(true)
+  expect(ctrlOptionU?.meta).toBe(true) // ESC prefix indicates meta/alt/option
+  expect(ctrlOptionU?.shift).toBe(false)
+  expect(ctrlOptionU?.option).toBe(false) // Note: option flag is separate from meta
+  expect(ctrlOptionU?.sequence).toBe("\u001b\u0015")
+  expect(ctrlOptionU?.raw).toBe("\u001b\u0015")
+  expect(ctrlOptionU?.eventType).toBe("press")
 
   // Test other meta+ctrl combinations
   const metaCtrlA = parseKeypress("\x1b\x01") // ESC + Ctrl+A
-  expect(metaCtrlA.name).toBe("a")
-  expect(metaCtrlA.ctrl).toBe(true)
-  expect(metaCtrlA.meta).toBe(true)
-  expect(metaCtrlA.shift).toBe(false)
-  expect(metaCtrlA.option).toBe(false)
+  expect(metaCtrlA?.name).toBe("a")
+  expect(metaCtrlA?.ctrl).toBe(true)
+  expect(metaCtrlA?.meta).toBe(true)
+  expect(metaCtrlA?.shift).toBe(false)
+  expect(metaCtrlA?.option).toBe(false)
 
   const metaCtrlZ = parseKeypress("\x1b\x1a") // ESC + Ctrl+Z
-  expect(metaCtrlZ.name).toBe("z")
-  expect(metaCtrlZ.ctrl).toBe(true)
-  expect(metaCtrlZ.meta).toBe(true)
-  expect(metaCtrlZ.shift).toBe(false)
-  expect(metaCtrlZ.option).toBe(false)
+  expect(metaCtrlZ?.name).toBe("z")
+  expect(metaCtrlZ?.ctrl).toBe(true)
+  expect(metaCtrlZ?.meta).toBe(true)
+  expect(metaCtrlZ?.shift).toBe(false)
+  expect(metaCtrlZ?.option).toBe(false)
 
   // Test option+shift+u for comparison (this reportedly works)
   // Option+Shift+U generates ESC + U (uppercase)
-  const optionShiftU = parseKeypress("\x1bU")
-  expect(optionShiftU.name).toBe("U")
-  expect(optionShiftU.meta).toBe(true)
-  expect(optionShiftU.shift).toBe(true)
-  expect(optionShiftU.ctrl).toBe(false)
-  expect(optionShiftU.option).toBe(false)
+  const optionShiftU = parseKeypress("\x1bU")!
+  expect(optionShiftU?.name).toBe("U")
+  expect(optionShiftU?.meta).toBe(true)
+  expect(optionShiftU?.shift).toBe(true)
+  expect(optionShiftU?.ctrl).toBe(false)
+  expect(optionShiftU?.option).toBe(false)
 
   // Edge case: ensure we don't match beyond \x1a (26, which is Ctrl+Z)
   const invalidCtrlSeq = parseKeypress("\x1b\x1b") // ESC + ESC (not a ctrl char)
-  expect(invalidCtrlSeq.name).toBe("escape")
-  expect(invalidCtrlSeq.meta).toBe(true)
-  expect(invalidCtrlSeq.ctrl).toBe(false)
+  expect(invalidCtrlSeq?.name).toBe("escape")
+  expect(invalidCtrlSeq?.meta).toBe(true)
+  expect(invalidCtrlSeq?.ctrl).toBe(false)
 
   // Edge case: test boundary at \x1a
   const metaCtrlAtBoundary = parseKeypress("\x1b\x1a") // ESC + Ctrl+Z
-  expect(metaCtrlAtBoundary.name).toBe("z")
-  expect(metaCtrlAtBoundary.ctrl).toBe(true)
-  expect(metaCtrlAtBoundary.meta).toBe(true)
+  expect(metaCtrlAtBoundary?.name).toBe("z")
+  expect(metaCtrlAtBoundary?.ctrl).toBe(true)
+  expect(metaCtrlAtBoundary?.meta).toBe(true)
+})
+
+test("parseKeypress - filters out SGR mouse events", () => {
+  const mouseDown = parseKeypress("\x1b[<0;10;5M")!
+  expect(mouseDown).toBeNull()
+
+  const mouseUp = parseKeypress("\x1b[<0;10;5m")!
+  expect(mouseUp).toBeNull()
+
+  const mouseDrag = parseKeypress("\x1b[<32;15;8M")!
+  expect(mouseDrag).toBeNull()
+
+  const mouseScroll = parseKeypress("\x1b[<64;20;10M")!
+  expect(mouseScroll).toBeNull()
+})
+
+test("parseKeypress - filters out basic mouse events", () => {
+  const basicMouse = parseKeypress("\x1b[M abc")!
+  expect(basicMouse).toBeNull()
 })
