@@ -5,6 +5,7 @@ const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
+const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
@@ -41,6 +42,7 @@ pub const EditorView = struct {
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
     placeholder_buffer: ?*UnifiedTextBuffer,
+    placeholder_syntax_style: ?*ss.SyntaxStyle,
     placeholder_active: bool,
 
     // Memory management
@@ -70,6 +72,7 @@ pub const EditorView = struct {
                 .handle = onCursorChanged,
             },
             .placeholder_buffer = null,
+            .placeholder_syntax_style = null,
             .placeholder_active = false,
             .global_allocator = global_allocator,
         };
@@ -93,6 +96,10 @@ pub const EditorView = struct {
 
     pub fn deinit(self: *EditorView) void {
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
+
+        if (self.placeholder_syntax_style) |style| {
+            style.deinit();
+        }
 
         if (self.placeholder_buffer) |placeholder| {
             placeholder.deinit();
@@ -462,6 +469,10 @@ pub const EditorView = struct {
 
     pub fn setPlaceholderStyledText(self: *EditorView, chunks: []const tb.StyledChunk) !void {
         if (chunks.len == 0) {
+            if (self.placeholder_syntax_style) |style| {
+                style.deinit();
+                self.placeholder_syntax_style = null;
+            }
             if (self.placeholder_buffer) |placeholder| {
                 placeholder.deinit();
                 self.placeholder_buffer = null;
@@ -481,9 +492,14 @@ pub const EditorView = struct {
                 &self.edit_buffer.tb.graphemes_data,
                 &self.edit_buffer.tb.display_width,
             );
+            const syntax_style = try ss.SyntaxStyle.init(self.global_allocator);
+            self.placeholder_syntax_style = syntax_style;
+            const placeholder = self.placeholder_buffer.?;
+            placeholder.setSyntaxStyle(syntax_style);
         }
 
         const placeholder = self.placeholder_buffer.?;
+
         try placeholder.setStyledText(chunks);
 
         self.updatePlaceholderVisibility();

@@ -1989,6 +1989,106 @@ test "EditorView - horizontal scroll: goto end of long line" {
     try std.testing.expect(cursor.col < vp.x + vp.width);
 }
 
+test "EditorView - placeholder with styled text renders with correct highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    const ss = @import("../syntax-style.zig");
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    eb.getTextBuffer().setSyntaxStyle(style);
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    const text_part1 = "Enter ";
+    const text_part2 = "something";
+    const text_part3 = " here";
+
+    const fg_gray = [4]f32{ 0.5, 0.5, 0.5, 1.0 };
+    const fg_blue = [4]f32{ 0.3, 0.5, 0.9, 1.0 };
+
+    const chunks = [_]text_buffer.StyledChunk{
+        .{
+            .text_ptr = text_part1.ptr,
+            .text_len = text_part1.len,
+            .fg_ptr = @ptrCast(&fg_gray),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+        .{
+            .text_ptr = text_part2.ptr,
+            .text_len = text_part2.len,
+            .fg_ptr = @ptrCast(&fg_blue),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+        .{
+            .text_ptr = text_part3.ptr,
+            .text_len = text_part3.len,
+            .fg_ptr = @ptrCast(&fg_gray),
+            .bg_ptr = null,
+            .attributes = 0,
+        },
+    };
+
+    try ev.setPlaceholderStyledText(&chunks);
+
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqual(@as(usize, 0), written);
+
+    ev.updateBeforeRender();
+
+    const tbv_ptr = ev.getTextBufferView();
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        24,
+        .{ .pool = pool, .width_method = .wcwidth },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(tbv_ptr, 0, 0);
+
+    const epsilon: f32 = 0.01;
+
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'E'), cell_0.char);
+
+    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_6.char);
+
+    const cell_15 = opt_buffer.get(15, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_15.char);
+
+    const fg_0 = opt_buffer.buffer.fg[0];
+    try std.testing.expect(@abs(fg_0[0] - fg_gray[0]) < epsilon);
+    try std.testing.expect(@abs(fg_0[1] - fg_gray[1]) < epsilon);
+    try std.testing.expect(@abs(fg_0[2] - fg_gray[2]) < epsilon);
+
+    const fg_6 = opt_buffer.buffer.fg[6];
+    try std.testing.expect(@abs(fg_6[0] - fg_blue[0]) < epsilon);
+    try std.testing.expect(@abs(fg_6[1] - fg_blue[1]) < epsilon);
+    try std.testing.expect(@abs(fg_6[2] - fg_blue[2]) < epsilon);
+
+    const fg_15 = opt_buffer.buffer.fg[15];
+    try std.testing.expect(@abs(fg_15[0] - fg_gray[0]) < epsilon);
+    try std.testing.expect(@abs(fg_15[1] - fg_gray[1]) < epsilon);
+    try std.testing.expect(@abs(fg_15[2] - fg_gray[2]) < epsilon);
+}
+
 test "EditorView - getNextWordBoundary returns VisualCursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
