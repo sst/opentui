@@ -4,6 +4,7 @@ import { TextNodeRenderable } from "./TextNode"
 import { RGBA } from "../lib/RGBA"
 import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
+import { BoxRenderable } from "./Box"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1609,8 +1610,6 @@ describe("TextRenderable Selection", () => {
 
   describe("Width/Height Setter Layout Tests", () => {
     it("should not shrink box when width is set via setter", async () => {
-      const { BoxRenderable } = await import("./Box")
-
       resize(40, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
@@ -1647,8 +1646,6 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should not shrink box when height is set via setter in column layout with text", async () => {
-      const { BoxRenderable } = await import("./Box")
-
       resize(30, 15)
 
       const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
@@ -1691,8 +1688,6 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should not shrink box when minWidth is set via setter", async () => {
-      const { BoxRenderable } = await import("./Box")
-
       resize(40, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
@@ -1726,8 +1721,6 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should not shrink box when minHeight is set via setter in column layout with text", async () => {
-      const { BoxRenderable } = await import("./Box")
-
       resize(30, 15)
 
       const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
@@ -1770,8 +1763,6 @@ describe("TextRenderable Selection", () => {
     })
 
     it("should not shrink box when width is set from undefined via setter", async () => {
-      const { BoxRenderable } = await import("./Box")
-
       resize(40, 10)
 
       const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
