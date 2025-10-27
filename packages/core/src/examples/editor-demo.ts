@@ -8,6 +8,7 @@ import {
   t,
   bold,
   cyan,
+  fg,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -79,7 +80,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     wrapMode: "word",
     showCursor: true,
     cursorColor: "#4ECDC4",
-    placeholder: t`Enter ${cyan(bold("text"))} here...`,
+    placeholder: t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333333")("here...")}`,
   })
   editorBox.add(editor)
 
