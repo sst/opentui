@@ -3,6 +3,8 @@ import { TreeSitterClient } from "./client"
 import { tmpdir } from "os"
 import { join } from "path"
 import { mkdir, writeFile } from "fs/promises"
+import { getDataPaths } from "../data-paths"
+import { getTreeSitterClient } from "."
 
 describe("TreeSitterClient", () => {
   let client: TreeSitterClient
@@ -426,9 +428,6 @@ describe("TreeSitterClient Edge Cases", () => {
   })
 
   test("should handle data path changes with reactive getTreeSitterClient", async () => {
-    const { getDataPaths } = await import("../data-paths")
-    const { getTreeSitterClient } = await import("./index")
-
     const dataPathsManager = getDataPaths()
     const originalAppName = dataPathsManager.appName
     let client: any

@@ -272,8 +272,8 @@ describe("InputRenderable", () => {
       const { input } = createInputRenderable({
         width: 20,
         height: 1,
-        onPaste: (text: string) => {
-          pasteText = text
+        onPaste: (event) => {
+          pasteText = event.text
           pasteCalled = true
         },
       })
