@@ -7,6 +7,7 @@ import { PasteEvent } from "../lib"
 import { OptimizedBuffer } from "../buffer"
 import { BoxRenderable } from "./Box"
 import { TextRenderable } from "."
+import { fg } from "../lib/styled-text"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -5853,6 +5854,34 @@ describe("TextareaRenderable", () => {
         left: 0,
         top: 0,
       })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render placeholder when creating textarea with placeholder directly", async () => {
+      await createTextareaRenderable(currentRenderer, {
+        placeholder: "Enter text here...",
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 5,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render placeholder when set programmatically after creation", async () => {
+      const { textarea } = await createTextareaRenderable(currentRenderer, {
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 5,
+      })
+
+      textarea.placeholder = "Type something..."
+      await renderOnce()
 
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
