@@ -3,6 +3,7 @@ const editor_view = @import("../editor-view.zig");
 const edit_buffer = @import("../edit-buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
+const opt_buffer_mod = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 
 const EditorView = editor_view.EditorView;
@@ -2664,4 +2665,64 @@ test "EditorView - placeholder with styled text" {
     try std.testing.expect(ev.placeholder_buffer != null);
     const placeholder = ev.placeholder_buffer.?;
     try std.testing.expectEqual(@as(u32, 11), placeholder.getLength());
+}
+
+test "EditorView - placeholder renders to buffer when empty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    const placeholder_text = "Type something...";
+    const gray_color = text_buffer.RGBA{ 0.5, 0.5, 0.5, 1.0 };
+    const placeholder_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = placeholder_text.ptr,
+        .text_len = placeholder_text.len,
+        .fg_ptr = @ptrCast(&gray_color),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    try ev.setPlaceholderStyledText(&placeholder_chunks);
+
+    try std.testing.expect(ev.placeholder_buffer != null);
+    try std.testing.expect(ev.placeholder_active);
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        10,
+        .{ .pool = pool, .width_method = .wcwidth },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+
+    var out_buffer: [1000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.mem.startsWith(u8, result, "Type something..."));
+
+    try eb.insertText("Hello");
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+    try std.testing.expect(!ev.placeholder_active);
+
+    const written2 = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result2 = out_buffer[0..written2];
+
+    try std.testing.expect(std.mem.startsWith(u8, result2, "Hello"));
+    try std.testing.expect(!std.mem.startsWith(u8, result2, "Type something..."));
 }
