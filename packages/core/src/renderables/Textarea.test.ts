@@ -4165,7 +4165,6 @@ describe("TextareaRenderable", () => {
         width: 40,
         height: 10,
         placeholder: "Enter text here...",
-        placeholderColor: "#666666",
       })
 
       // plainText should return empty (placeholder is display-only)
@@ -4226,19 +4225,19 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("")
     })
 
-    it("should update placeholder color dynamically", async () => {
+    it("should update placeholder with styled text dynamically", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "",
         width: 40,
         height: 10,
         placeholder: "Colored placeholder",
-        placeholderColor: "#999999",
       })
 
       expect(editor.plainText).toBe("")
 
-      // Update color
-      editor.placeholderColor = "#FF0000"
+      // Update placeholder with styled text
+      const { t, fg } = await import("../lib/styled-text")
+      editor.placeholder = t`${fg("#FF0000")("Red placeholder")}`
       expect(editor.plainText).toBe("")
     })
 
