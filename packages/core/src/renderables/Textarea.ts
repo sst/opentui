@@ -1,6 +1,6 @@
 import { type RenderContext, type Highlight } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
-import type { KeyEvent } from "../lib/KeyHandler"
+import type { KeyEvent, PasteEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import {
   type KeyBinding as BaseKeyBinding,
@@ -184,8 +184,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     ])
   }
 
-  public handlePaste(text: string): void {
-    this.insertText(text)
+  public handlePaste(event: PasteEvent): void {
+    this.insertText(event.text)
   }
 
   public handleKeyPress(key: KeyEvent | string): boolean {

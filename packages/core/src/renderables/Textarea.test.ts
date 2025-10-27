@@ -3,6 +3,7 @@ import { TextareaRenderable, type TextareaOptions } from "./Textarea"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer"
 import { RGBA } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
+import { PasteEvent } from "../lib"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -4068,7 +4069,7 @@ describe("TextareaRenderable", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      editor.handlePaste(" Content")
+      editor.handlePaste(new PasteEvent(" Content"))
 
       expect(editor.plainText).toBe("Test Content")
     })
@@ -4093,10 +4094,74 @@ describe("TextareaRenderable", () => {
       expect(editor.getSelectedText()).toBe("World")
 
       // Use handlePaste directly
-      editor.handlePaste("Universe")
+      const { PasteEvent } = await import("../lib/KeyHandler")
+      editor.handlePaste(new PasteEvent("Universe"))
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Hello Universe")
+    })
+
+    it("should support preventDefault on paste event", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        onPaste: (event) => {
+          event.preventDefault()
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" Prevented")
+
+      expect(editor.plainText).toBe("Test")
+    })
+
+    it("should pass full PasteEvent to onPaste handler", async () => {
+      let receivedEvent: any = null
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        onPaste: (event) => {
+          receivedEvent = event
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" Event")
+
+      expect(receivedEvent).not.toBeNull()
+      expect(receivedEvent.text).toBe(" Event")
+      expect(typeof receivedEvent.preventDefault).toBe("function")
+      expect(receivedEvent.defaultPrevented).toBe(false)
+      expect(editor.plainText).toBe("Test Event")
+    })
+
+    it("should allow conditional paste prevention", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        onPaste: (event) => {
+          if (event.text.includes("blocked")) {
+            event.preventDefault()
+          }
+        },
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      await currentMockInput.pasteBracketedText(" allowed")
+      expect(editor.plainText).toBe("Test allowed")
+
+      await currentMockInput.pasteBracketedText(" blocked content")
+      expect(editor.plainText).toBe("Test allowed")
     })
   })
 
