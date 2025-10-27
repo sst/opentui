@@ -804,7 +804,7 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("")
 
       // Control character should be ignored
-      mockInput.pressKey("CTRL_A")
+      mockInput.pressKey("a", { ctrl: true })
       expect(input.value).toBe("")
     })
 

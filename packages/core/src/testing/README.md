@@ -35,23 +35,39 @@ await mockInput.typeText("hello", 10) // 10ms delay between keys
 mockInput.pressKey("a")
 mockInput.pressKey(KeyCodes.ENTER)
 
+// Press keys with modifiers
+mockInput.pressKey("a", { ctrl: true })
+mockInput.pressKey("f", { meta: true })
+mockInput.pressKey("z", { ctrl: true, shift: true })
+mockInput.pressKey(KeyCodes.ARROW_LEFT, { meta: true })
+
 // Press multiple keys
 mockInput.pressKeys(["h", "e", "l", "l", "o"])
 await mockInput.pressKeys(["a", "b"], 10) // with delay
 
 // Convenience methods
 mockInput.pressEnter()
+mockInput.pressEnter({ meta: true })
 mockInput.pressEscape()
 mockInput.pressTab()
 mockInput.pressBackspace()
 mockInput.pressArrow("up" | "down" | "left" | "right")
+mockInput.pressArrow("left", { meta: true })
 mockInput.pressCtrlC()
 mockInput.pasteBracketedText("paste content")
 ```
 
 ### KeyCodes
 
-Special keycodes available: `ENTER`, `ARROW_UP`, `F1`, `CTRL_C`, `ALT_A`, etc.
+Special keycodes available: `ENTER`, `TAB`, `BACKSPACE`, `DELETE`, `HOME`, `END`, `ESCAPE`, `ARROW_UP`, `ARROW_DOWN`, `ARROW_LEFT`, `ARROW_RIGHT`, `F1`-`F12`
+
+### Modifiers
+
+All `pressKey()`, `pressEnter()`, `pressEscape()`, `pressTab()`, `pressBackspace()`, and `pressArrow()` methods support an optional modifiers object:
+
+```ts
+{ ctrl?: boolean; shift?: boolean; meta?: boolean }
+```
 
 ## Mock Mouse Input
 

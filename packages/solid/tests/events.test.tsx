@@ -613,7 +613,7 @@ describe("SolidJS Renderer Integration Tests", () => {
         { width: 20, height: 5 },
       )
 
-      testSetup.mockInput.pressKey("ALT_ENTER")
+      testSetup.mockInput.pressKey("ENTER", { meta: true })
       await new Promise((resolve) => setTimeout(resolve, 10))
 
       expect(onSubmitSpy.callCount()).toBe(1)
