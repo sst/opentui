@@ -40,6 +40,12 @@ pub const WrapInfo = struct {
     line_vline_counts: []const u32,
 };
 
+pub const VirtualLineSpanInfo = struct {
+    spans: []const StyleSpan,
+    source_line: usize,
+    col_offset: u32,
+};
+
 pub const VirtualChunk = struct {
     grapheme_start: u32,
     grapheme_count: u32,
@@ -622,6 +628,10 @@ pub const UnifiedTextBufferView = struct {
         return self.selection;
     }
 
+    pub fn getTextBuffer(self: *const Self) *UnifiedTextBuffer {
+        return self.text_buffer;
+    }
+
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         const new_local_sel = LocalSelection{
             .anchorX = anchorX,
@@ -860,19 +870,15 @@ pub const UnifiedTextBufferView = struct {
         return out_index;
     }
 
-    pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) struct {
-        spans: []const StyleSpan,
-        source_line: usize,
-        col_offset: u32,
-    } {
+    pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) VirtualLineSpanInfo {
         if (vline_idx >= self.virtual_lines.items.len) {
-            return .{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
+            return VirtualLineSpanInfo{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
         }
 
         const vline = &self.virtual_lines.items[vline_idx];
         const spans = self.text_buffer.getLineSpans(vline.source_line);
 
-        return .{
+        return VirtualLineSpanInfo{
             .spans = spans,
             .source_line = vline.source_line,
             .col_offset = vline.source_col_offset,

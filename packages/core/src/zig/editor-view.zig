@@ -203,6 +203,18 @@ pub const EditorView = struct {
         return self.text_buffer_view.getVirtualLineCount();
     }
 
+    pub fn getVirtualLineSpans(self: *const EditorView, vline_idx: usize) tbv.VirtualLineSpanInfo {
+        return self.text_buffer_view.getVirtualLineSpans(vline_idx);
+    }
+
+    pub fn getTextBuffer(self: *const EditorView) *UnifiedTextBuffer {
+        return self.text_buffer_view.text_buffer;
+    }
+
+    pub fn getSelection(self: *const EditorView) ?tb.TextSelection {
+        return self.text_buffer_view.selection;
+    }
+
     /// This is a convenience method that preserves existing offset
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
         self.text_buffer_view.setViewportSize(width, height);
