@@ -304,7 +304,7 @@ export class SelectRenderable extends Renderable {
         this.moveDown(isShift ? this._fastScrollStep : 1)
         return true
       case "return":
-      case "enter":
+      case "linefeed":
         this.selectCurrent()
         return true
     }

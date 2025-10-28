@@ -3,7 +3,8 @@ import { ANSI } from "../ansi"
 
 export const KeyCodes = {
   // Control keys
-  ENTER: "\r",
+  RETURN: "\r",
+  LINEFEED: "\n",
   TAB: "\t",
   BACKSPACE: "\b",
   // NOTE: This may depend on the platform and terminals
@@ -134,8 +135,8 @@ export function createMockKeys(renderer: CliRenderer) {
     await pressKeys(keys, delayMs)
   }
 
-  const pressEnter = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
-    pressKey(KeyCodes.ENTER, modifiers)
+  const pressReturn = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+    pressKey(KeyCodes.RETURN, modifiers)
   }
 
   const pressEscape = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
@@ -175,7 +176,7 @@ export function createMockKeys(renderer: CliRenderer) {
     pressKeys,
     pressKey,
     typeText,
-    pressEnter,
+    pressEnter: pressReturn,
     pressEscape,
     pressTab,
     pressBackspace,

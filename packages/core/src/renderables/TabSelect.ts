@@ -288,7 +288,7 @@ export class TabSelectRenderable extends Renderable {
         this.moveRight()
         return true
       case "return":
-      case "enter":
+      case "linefeed":
         this.selectCurrent()
         return true
     }

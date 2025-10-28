@@ -107,7 +107,7 @@ test("special keys via keyInput events", async () => {
   const resultEnter = await triggerInput("\n")
   expect(resultEnter).toMatchObject({
     eventType: "press",
-    name: "enter",
+    name: "linefeed",
     ctrl: false,
     meta: false,
     shift: false,

@@ -7,12 +7,12 @@ const kittyKeyMap: Record<number, string> = {
   // Standard keys
   27: "escape",
   9: "tab",
-  13: "enter",
+  13: "return",
   127: "backspace",
 
   // Arrow keys
   57344: "escape",
-  57345: "enter",
+  57345: "return",
   57346: "tab",
   57347: "backspace",
   57348: "insert",
