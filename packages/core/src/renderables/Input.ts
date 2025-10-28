@@ -253,7 +253,7 @@ export class InputRenderable extends Renderable {
         return true
 
       case "return":
-      case "enter":
+      case "linefeed":
         if (this._value !== this._lastCommittedValue) {
           this._lastCommittedValue = this._value
           this.emit(InputRenderableEvents.CHANGE, this._value)

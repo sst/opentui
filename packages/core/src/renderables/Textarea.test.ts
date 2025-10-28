@@ -1463,9 +1463,9 @@ describe("TextareaRenderable", () => {
 
       editor.keyBindings = [
         { name: "return", meta: true, action: "newline" },
-        { name: "enter", meta: true, action: "newline" },
+        { name: "linefeed", meta: true, action: "newline" },
         { name: "return", action: "submit" },
-        { name: "enter", action: "submit" },
+        { name: "linefeed", action: "submit" },
       ]
 
       currentMockInput.pressEnter()

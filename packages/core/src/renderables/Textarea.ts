@@ -62,9 +62,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "backspace", action: "backspace" },
   { name: "delete", action: "delete" },
   { name: "return", action: "newline" },
-  { name: "enter", action: "newline" },
+  { name: "linefeed", action: "newline" },
   { name: "return", meta: true, action: "submit" },
-  { name: "enter", meta: true, action: "submit" },
   { name: "z", ctrl: true, action: "undo" },
   { name: "Z", ctrl: true, shift: true, action: "redo" },
   { name: "y", ctrl: true, action: "redo" },
@@ -205,7 +204,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyCtrl = typeof key === "string" ? false : key.ctrl
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
-
+    console.log("handleKeyPress", key)
     const bindingKey = getKeyBindingKey({
       name: keyName,
       ctrl: keyCtrl,
@@ -217,6 +216,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
+      console.log("action", action)
       const handler = this._actionHandlers.get(action)
       if (handler) {
         return handler()

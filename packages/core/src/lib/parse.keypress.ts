@@ -180,8 +180,8 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     key.name = "return"
     key.meta = s.length === 2
   } else if (s === "\n" || s === "\x1b\n") {
-    // enter, should have been called linefeed
-    key.name = "enter"
+    // linefeed
+    key.name = "linefeed"
     key.meta = s.length === 2
   } else if (s === "\t") {
     // tab

@@ -33,7 +33,7 @@ describe("mock-keys", () => {
     const mockRenderer = new MockRenderer()
     const mockKeys = createMockKeys(mockRenderer as any)
 
-    mockKeys.pressKeys([KeyCodes.ENTER, KeyCodes.TAB])
+    mockKeys.pressKeys([KeyCodes.RETURN, KeyCodes.TAB])
 
     expect(mockRenderer.getEmittedData()).toBe("\r\t")
   })
@@ -113,7 +113,7 @@ describe("mock-keys", () => {
     const mockRenderer = new MockRenderer()
     const mockKeys = createMockKeys(mockRenderer as any)
 
-    mockKeys.pressKey(KeyCodes.ENTER)
+    mockKeys.pressKey(KeyCodes.RETURN)
     mockKeys.pressKey(KeyCodes.TAB)
     mockKeys.pressKey(KeyCodes.ESCAPE)
 
@@ -130,7 +130,7 @@ describe("mock-keys", () => {
     })
 
     mockKeys.pressKey("a")
-    mockKeys.pressKey(KeyCodes.ENTER)
+    mockKeys.pressKey(KeyCodes.RETURN)
 
     expect(receivedData).toHaveLength(2)
     expect(receivedData[0].toString()).toBe("a")
@@ -163,7 +163,7 @@ describe("mock-keys", () => {
 
     // Directly test the stream write method that mock-keys uses
     mockRenderer.stdin.write("test")
-    mockRenderer.stdin.write(KeyCodes.ENTER)
+    mockRenderer.stdin.write(KeyCodes.RETURN)
 
     expect(emittedChunks).toHaveLength(2)
     expect(emittedChunks[0].toString()).toBe("test")

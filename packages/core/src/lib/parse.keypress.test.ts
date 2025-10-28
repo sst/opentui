@@ -57,7 +57,7 @@ test("parseKeypress - special keys", () => {
 
   expect(parseKeypress("\n")).toEqual({
     eventType: "press",
-    name: "enter",
+    name: "linefeed",
     ctrl: false,
     meta: false,
     shift: false,
@@ -81,7 +81,7 @@ test("parseKeypress - special keys", () => {
 
   expect(parseKeypress("\x1b\n")).toEqual({
     eventType: "press",
-    name: "enter",
+    name: "linefeed",
     ctrl: false,
     meta: true,
     shift: false,
