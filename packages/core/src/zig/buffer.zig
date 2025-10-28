@@ -922,7 +922,7 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width) catch continue;
+                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width, text_buffer.tab_width) catch continue;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.grapheme_count;

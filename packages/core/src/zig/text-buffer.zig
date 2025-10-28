@@ -342,6 +342,35 @@ pub const UnifiedTextBuffer = struct {
         self.markAllViewsDirty();
     }
 
+    /// Calculate the display width of text, accounting for tabs
+    /// TODO: This sucks, use utf8 methods instead
+    fn calculateWidthWithTabs(self: *const Self, text: []const u8) u32 {
+        var width: u32 = 0;
+        var i: usize = 0;
+        while (i < text.len) {
+            if (text[i] == '\t') {
+                const tab_width_u32: u32 = @intCast(self.tab_width);
+                const tab_stop = tab_width_u32 - (width % tab_width_u32);
+                width += tab_stop;
+                i += 1;
+            } else if (text[i] < 128) {
+                width += 1;
+                i += 1;
+            } else {
+                const cp_len = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+                if (i + cp_len <= text.len) {
+                    const cp_bytes = text[i .. i + cp_len];
+                    width += gwidth.gwidth(cp_bytes, self.width_method, &self.display_width);
+                    i += cp_len;
+                } else {
+                    width += 1;
+                    i += 1;
+                }
+            }
+        }
+        return width;
+    }
+
     /// Create a TextChunk from a memory buffer range
     pub fn createChunk(
         self: *const Self,
@@ -351,7 +380,7 @@ pub const UnifiedTextBuffer = struct {
     ) TextChunk {
         const mem_buf = self.mem_registry.get(mem_id).?;
         const chunk_bytes = mem_buf[byte_start..byte_end];
-        const chunk_width: u16 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
+        const chunk_width: u16 = @intCast(@min(65535, self.calculateWidthWithTabs(chunk_bytes)));
 
         var flags: u8 = 0;
         if (chunk_bytes.len > 0 and utf8.isAsciiOnly(chunk_bytes)) {
