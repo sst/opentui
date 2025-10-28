@@ -1902,3 +1902,170 @@ test "getPrevGraphemeStart: consecutive wide chars" {
     try testing.expectEqual(@as(usize, 0), r3.?.start_offset);
     try testing.expectEqual(@as(u32, 2), r3.?.width);
 }
+
+// ============================================================================
+// CALCULATE TEXT WIDTH TESTS (static tab width)
+// ============================================================================
+
+test "calculateTextWidth: empty string" {
+    const result = utf8.calculateTextWidth("", 4, true);
+    try testing.expectEqual(@as(u32, 0), result);
+}
+
+test "calculateTextWidth: simple ASCII" {
+    const result = utf8.calculateTextWidth("hello", 4, true);
+    try testing.expectEqual(@as(u32, 5), result);
+}
+
+test "calculateTextWidth: single tab" {
+    const result = utf8.calculateTextWidth("\t", 4, true);
+    try testing.expectEqual(@as(u32, 4), result);
+}
+
+test "calculateTextWidth: tab with different widths" {
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, true));
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, true));
+    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, true));
+}
+
+test "calculateTextWidth: multiple tabs" {
+    const result = utf8.calculateTextWidth("\t\t\t", 4, true);
+    try testing.expectEqual(@as(u32, 12), result); // 3 tabs * 4 = 12
+}
+
+test "calculateTextWidth: text with tabs" {
+    const result = utf8.calculateTextWidth("a\tb", 4, true);
+    try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(4) + b(1) = 6
+}
+
+test "calculateTextWidth: multiple tabs between text" {
+    const result = utf8.calculateTextWidth("a\t\tb", 2, true);
+    try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(2) + tab(2) + b(1) = 6
+}
+
+test "calculateTextWidth: tab at start" {
+    const result = utf8.calculateTextWidth("\tabc", 4, true);
+    try testing.expectEqual(@as(u32, 7), result); // tab(4) + a(1) + b(1) + c(1) = 7
+}
+
+test "calculateTextWidth: tab at end" {
+    const result = utf8.calculateTextWidth("abc\t", 4, true);
+    try testing.expectEqual(@as(u32, 7), result); // a(1) + b(1) + c(1) + tab(4) = 7
+}
+
+test "calculateTextWidth: CJK with tabs" {
+    const result = utf8.calculateTextWidth("世\t界", 4, false);
+    try testing.expectEqual(@as(u32, 8), result); // 世(2) + tab(4) + 界(2) = 8
+}
+
+test "calculateTextWidth: emoji with tab" {
+    const result = utf8.calculateTextWidth("🌍\t", 4, false);
+    try testing.expectEqual(@as(u32, 6), result); // emoji(2) + tab(4) = 6
+}
+
+test "calculateTextWidth: mixed ASCII and Unicode with tabs" {
+    const result = utf8.calculateTextWidth("hello\t世界", 4, false);
+    try testing.expectEqual(@as(u32, 13), result); // hello(5) + tab(4) + 世(2) + 界(2) = 13
+}
+
+test "calculateTextWidth: realistic code with tabs" {
+    const text = "\tif (x > 5) {\n\t\treturn true;\n\t}";
+    const result = utf8.calculateTextWidth(text, 2, true);
+    // tab(2) + "if (x > 5) {" (12) + newline(0) + tab(2) + tab(2) + "return true;" (12) + newline(0) + tab(2) + "}" (1)
+    // = 2 + 12 + 2 + 2 + 12 + 2 + 1 = 33
+    try testing.expectEqual(@as(u32, 33), result);
+}
+
+test "calculateTextWidth: only spaces" {
+    const result = utf8.calculateTextWidth("     ", 4, true);
+    try testing.expectEqual(@as(u32, 5), result);
+}
+
+test "calculateTextWidth: tabs and spaces mixed" {
+    const result = utf8.calculateTextWidth("  \t  \t  ", 4, true);
+    try testing.expectEqual(@as(u32, 14), result); // 2 + 4 + 2 + 4 + 2 = 14
+}
+
+test "calculateTextWidth: control characters" {
+    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, true);
+    try testing.expectEqual(@as(u32, 3), result); // Only printable chars: a, b, c
+}
+
+test "calculateTextWidth: combining marks" {
+    const result = utf8.calculateTextWidth("cafe\u{0301}", 4, false);
+    try testing.expectEqual(@as(u32, 4), result); // c(1) + a(1) + f(1) + e(1) + combining(0) = 4
+}
+
+test "calculateTextWidth: emoji with skin tone" {
+    const result = utf8.calculateTextWidth("👋🏿", 4, false);
+    try testing.expectEqual(@as(u32, 4), result); // 👋(2) + 🏿(2) = 4
+}
+
+test "calculateTextWidth: emoji with ZWJ" {
+    const result = utf8.calculateTextWidth("👩‍🚀", 4, false);
+    try testing.expectEqual(@as(u32, 5), result); // woman(2) + ZWJ(1) + rocket(2) = 5
+}
+
+test "calculateTextWidth: flag emoji" {
+    const result = utf8.calculateTextWidth("🇺🇸", 4, false);
+    try testing.expectEqual(@as(u32, 2), result); // Regional indicators
+}
+
+test "calculateTextWidth: hiragana with tab" {
+    const result = utf8.calculateTextWidth("こん\tにちは", 4, false);
+    try testing.expectEqual(@as(u32, 14), result); // こ(2) + ん(2) + tab(4) + に(2) + ち(2) + は(2) = 14
+}
+
+test "calculateTextWidth: fullwidth forms with tab" {
+    const result = utf8.calculateTextWidth("ＡＢ\tＣ", 4, false);
+    try testing.expectEqual(@as(u32, 10), result); // Ａ(2) + Ｂ(2) + tab(4) + Ｃ(2) = 10
+}
+
+test "calculateTextWidth: ASCII fast path consistency" {
+    const text_ascii = "hello\tworld";
+    const result_fast = utf8.calculateTextWidth(text_ascii, 4, true);
+    const result_slow = utf8.calculateTextWidth(text_ascii, 4, false);
+    try testing.expectEqual(result_fast, result_slow);
+}
+
+test "calculateTextWidth: large text with many tabs" {
+    const size = 1000;
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    var expected: u32 = 0;
+    for (buf, 0..) |*b, i| {
+        if (i % 10 == 0) {
+            b.* = '\t';
+            expected += 4;
+        } else {
+            b.* = 'a';
+            expected += 1;
+        }
+    }
+
+    const result = utf8.calculateTextWidth(buf, 4, true);
+    try testing.expectEqual(expected, result);
+}
+
+test "calculateTextWidth: comparison with manual calculation" {
+    const test_cases = [_]struct {
+        text: []const u8,
+        tab_width: u8,
+        expected: u32,
+    }{
+        .{ .text = "\t", .tab_width = 2, .expected = 2 },
+        .{ .text = "\t\t", .tab_width = 2, .expected = 4 },
+        .{ .text = "a\t", .tab_width = 2, .expected = 3 },
+        .{ .text = "\ta", .tab_width = 2, .expected = 3 },
+        .{ .text = "a\tb", .tab_width = 2, .expected = 4 },
+        .{ .text = "ab\tcd", .tab_width = 4, .expected = 8 },
+        .{ .text = "\t\tx", .tab_width = 2, .expected = 5 },
+        .{ .text = "世\t界", .tab_width = 2, .expected = 6 },
+    };
+
+    for (test_cases) |tc| {
+        const result = utf8.calculateTextWidth(tc.text, tc.tab_width, false);
+        try testing.expectEqual(tc.expected, result);
+    }
+}

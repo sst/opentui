@@ -925,3 +925,47 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8)
         .width = width,
     };
 }
+
+/// Calculate the display width of text including tab characters with static tab_width
+/// This is a high-performance function for measuring text with tabs
+/// Tabs are always tab_width columns regardless of position
+pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u32 {
+    if (text.len == 0) return 0;
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        var width: u32 = 0;
+        for (text) |b| {
+            width += asciiCharWidth(b, tab_width);
+        }
+        return width;
+    }
+
+    // General case with Unicode support
+    var width: u32 = 0;
+    var pos: usize = 0;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        if (b0 == '\t') {
+            width += @as(u32, tab_width);
+            pos += 1;
+        } else if (b0 < 0x80) {
+            if (b0 >= 32 and b0 <= 126) {
+                width += 1;
+            }
+            pos += 1;
+        } else {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) {
+                width += 1;
+                pos += 1;
+            } else {
+                width += eastAsianWidth(dec.cp);
+                pos += dec.len;
+            }
+        }
+    }
+
+    return width;
+}
