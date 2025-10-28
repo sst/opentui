@@ -5,6 +5,7 @@ const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
+const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
@@ -40,6 +41,10 @@ pub const EditorView = struct {
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
+    placeholder_buffer: ?*UnifiedTextBuffer,
+    placeholder_syntax_style: ?*ss.SyntaxStyle,
+    placeholder_active: bool,
+
     // Memory management
     global_allocator: Allocator,
 
@@ -66,6 +71,9 @@ pub const EditorView = struct {
                 .ctx = undefined, // Will be set below
                 .handle = onCursorChanged,
             },
+            .placeholder_buffer = null,
+            .placeholder_syntax_style = null,
+            .placeholder_active = false,
             .global_allocator = global_allocator,
         };
 
@@ -88,6 +96,15 @@ pub const EditorView = struct {
 
     pub fn deinit(self: *EditorView) void {
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
+
+        if (self.placeholder_syntax_style) |style| {
+            style.deinit();
+        }
+
+        if (self.placeholder_buffer) |placeholder| {
+            placeholder.deinit();
+        }
+
         self.text_buffer_view.deinit();
         self.global_allocator.destroy(self);
     }
@@ -178,6 +195,7 @@ pub const EditorView = struct {
 
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
     pub fn updateBeforeRender(self: *EditorView) void {
+        self.updatePlaceholderVisibility();
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
         self.ensureCursorVisible(vcursor.visual_row);
@@ -195,12 +213,31 @@ pub const EditorView = struct {
         return self.text_buffer_view.getCachedLineInfo();
     }
 
+    pub fn getLogicalLineInfo(self: *EditorView) tbv.LineInfo {
+        self.updatePlaceholderVisibility();
+        self.text_buffer_view.virtual_lines_dirty = true;
+        const line_info = self.text_buffer_view.getLogicalLineInfo();
+        return line_info;
+    }
+
     pub fn getTextBufferView(self: *EditorView) *UnifiedTextBufferView {
         return self.text_buffer_view;
     }
 
     pub fn getTotalVirtualLineCount(self: *EditorView) u32 {
         return self.text_buffer_view.getVirtualLineCount();
+    }
+
+    pub fn getVirtualLineSpans(self: *const EditorView, vline_idx: usize) tbv.VirtualLineSpanInfo {
+        return self.text_buffer_view.getVirtualLineSpans(vline_idx);
+    }
+
+    pub fn getTextBuffer(self: *const EditorView) *UnifiedTextBuffer {
+        return self.text_buffer_view.text_buffer;
+    }
+
+    pub fn getSelection(self: *const EditorView) ?tb.TextSelection {
+        return self.text_buffer_view.selection;
     }
 
     /// This is a convenience method that preserves existing offset
@@ -431,5 +468,66 @@ pub const EditorView = struct {
     pub fn getEOL(self: *EditorView) VisualCursor {
         const logical_cursor = self.edit_buffer.getEOL();
         return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
+    }
+
+    // ============================================================================
+    // Placeholder - Visual Only
+    // ============================================================================
+
+    pub fn setPlaceholderStyledText(self: *EditorView, chunks: []const tb.StyledChunk) !void {
+        if (chunks.len == 0) {
+            if (self.placeholder_syntax_style) |style| {
+                style.deinit();
+                self.placeholder_syntax_style = null;
+            }
+            if (self.placeholder_buffer) |placeholder| {
+                placeholder.deinit();
+                self.placeholder_buffer = null;
+            }
+            if (self.placeholder_active) {
+                self.text_buffer_view.switchToOriginalBuffer();
+                self.placeholder_active = false;
+            }
+            return;
+        }
+
+        if (self.placeholder_buffer == null) {
+            self.placeholder_buffer = try UnifiedTextBuffer.init(
+                self.global_allocator,
+                self.edit_buffer.tb.pool,
+                self.edit_buffer.tb.width_method,
+                &self.edit_buffer.tb.graphemes_data,
+                &self.edit_buffer.tb.display_width,
+            );
+            const syntax_style = try ss.SyntaxStyle.init(self.global_allocator);
+            self.placeholder_syntax_style = syntax_style;
+            const placeholder = self.placeholder_buffer.?;
+            placeholder.setSyntaxStyle(syntax_style);
+        }
+
+        const placeholder = self.placeholder_buffer.?;
+
+        try placeholder.setStyledText(chunks);
+
+        self.updatePlaceholderVisibility();
+    }
+
+    fn shouldShowPlaceholder(self: *const EditorView) bool {
+        const rope_len = self.edit_buffer.tb.rope.totalWeight();
+        return rope_len == 0 and self.placeholder_buffer != null;
+    }
+
+    fn updatePlaceholderVisibility(self: *EditorView) void {
+        const should_show = self.shouldShowPlaceholder();
+
+        if (should_show and !self.placeholder_active) {
+            if (self.placeholder_buffer) |placeholder| {
+                self.text_buffer_view.switchToBuffer(placeholder);
+                self.placeholder_active = true;
+            }
+        } else if (!should_show and self.placeholder_active) {
+            self.text_buffer_view.switchToOriginalBuffer();
+            self.placeholder_active = false;
+        }
     }
 };

@@ -7,6 +7,7 @@ import { PasteEvent } from "../lib"
 import { OptimizedBuffer } from "../buffer"
 import { BoxRenderable } from "./Box"
 import { TextRenderable } from "."
+import { fg } from "../lib/styled-text"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -4165,7 +4166,6 @@ describe("TextareaRenderable", () => {
         width: 40,
         height: 10,
         placeholder: "Enter text here...",
-        placeholderColor: "#666666",
       })
 
       // plainText should return empty (placeholder is display-only)
@@ -4226,19 +4226,19 @@ describe("TextareaRenderable", () => {
       expect(editor.plainText).toBe("")
     })
 
-    it("should update placeholder color dynamically", async () => {
+    it("should update placeholder with styled text dynamically", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "",
         width: 40,
         height: 10,
         placeholder: "Colored placeholder",
-        placeholderColor: "#999999",
       })
 
       expect(editor.plainText).toBe("")
 
-      // Update color
-      editor.placeholderColor = "#FF0000"
+      // Update placeholder with styled text
+      const { t, fg } = await import("../lib/styled-text")
+      editor.placeholder = t`${fg("#FF0000")("Red placeholder")}`
       expect(editor.plainText).toBe("")
     })
 
@@ -5857,6 +5857,68 @@ describe("TextareaRenderable", () => {
 
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
+    })
+
+    it("should render placeholder when creating textarea with placeholder directly", async () => {
+      await createTextareaRenderable(currentRenderer, {
+        placeholder: "Enter text here...",
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 5,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render placeholder when set programmatically after creation", async () => {
+      const { textarea } = await createTextareaRenderable(currentRenderer, {
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 5,
+      })
+
+      textarea.placeholder = "Type something..."
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should resize correctly when typing return as first input with placeholder", async () => {
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, {
+        border: true,
+        left: 1,
+        top: 1,
+      })
+      currentRenderer.root.add(container)
+
+      const textarea = new TextareaRenderable(currentRenderer, {
+        placeholder: "Enter your message...",
+        width: 30,
+        minHeight: 1,
+        maxHeight: 3,
+      })
+      container.add(textarea)
+
+      textarea.focus()
+      await renderOnce()
+
+      const frameBeforeEnter = captureFrame()
+      expect(textarea.height).toBe(1)
+
+      currentMockInput.pressEnter()
+      await renderOnce()
+      await renderOnce()
+
+      const frameAfterEnter = captureFrame()
+      expect(frameAfterEnter).toMatchSnapshot()
+      expect(textarea.height).toBe(2)
+      expect(textarea.plainText).toBe("\n")
     })
   })
 

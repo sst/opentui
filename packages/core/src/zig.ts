@@ -516,6 +516,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    editorViewGetLineInfoDirect: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "u32",
+    },
+    editorViewGetLogicalLineInfoDirect: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "u32",
+    },
 
     // EditBuffer functions
     createEditBuffer: {
@@ -634,14 +642,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    editBufferSetPlaceholder: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "void",
-    },
-    editBufferSetPlaceholderColor: {
-      args: ["ptr", "ptr"],
-      returns: "void",
-    },
     editBufferClear: {
       args: ["ptr"],
       returns: "void",
@@ -737,6 +737,10 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewGetEOL: {
       args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewSetPlaceholderStyledText: {
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
 
@@ -1193,8 +1197,6 @@ export interface RenderLib {
   editBufferCanUndo: (buffer: Pointer) => boolean
   editBufferCanRedo: (buffer: Pointer) => boolean
   editBufferClearHistory: (buffer: Pointer) => void
-  editBufferSetPlaceholder: (buffer: Pointer, text: string | null) => void
-  editBufferSetPlaceholderColor: (buffer: Pointer, color: RGBA) => void
   editBufferClear: (buffer: Pointer) => void
   editBufferGetNextWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: Pointer) => { row: number; col: number; offset: number }
@@ -1243,6 +1245,12 @@ export interface RenderLib {
   editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetEOL: (view: Pointer) => VisualCursor
+  editorViewGetLineInfo: (view: Pointer) => LineInfo
+  editorViewGetLogicalLineInfo: (view: Pointer) => LineInfo
+  editorViewSetPlaceholderStyledText: (
+    view: Pointer,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+  ) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -2209,6 +2217,46 @@ class FFIRenderLib implements RenderLib {
     return result
   }
 
+  // TODO: use structs
+  public editorViewGetLineInfo(view: Pointer): LineInfo {
+    const lineCount = this.editorViewGetVirtualLineCount(view)
+
+    if (lineCount === 0) {
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+    }
+
+    const lineStarts = new Uint32Array(lineCount)
+    const lineWidths = new Uint32Array(lineCount)
+
+    const maxLineWidth = this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+
+    return {
+      maxLineWidth,
+      lineStarts: Array.from(lineStarts),
+      lineWidths: Array.from(lineWidths),
+    }
+  }
+
+  // TODO: use structs
+  public editorViewGetLogicalLineInfo(view: Pointer): LineInfo {
+    const lineCount = this.editorViewGetVirtualLineCount(view)
+
+    if (lineCount === 0) {
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+    }
+
+    const lineStarts = new Uint32Array(lineCount)
+    const lineWidths = new Uint32Array(lineCount)
+
+    const maxLineWidth = this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+
+    return {
+      maxLineWidth,
+      lineStarts: Array.from(lineStarts),
+      lineWidths: Array.from(lineWidths),
+    }
+  }
+
   // EditBuffer implementations
   public createEditBuffer(widthMethod: WidthMethod): Pointer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
@@ -2355,19 +2403,6 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferClearHistory(buffer: Pointer): void {
     this.opentui.symbols.editBufferClearHistory(buffer)
-  }
-
-  public editBufferSetPlaceholder(buffer: Pointer, text: string | null): void {
-    if (text === null) {
-      this.opentui.symbols.editBufferSetPlaceholder(buffer, null, 0)
-    } else {
-      const textBytes = this.encoder.encode(text)
-      this.opentui.symbols.editBufferSetPlaceholder(buffer, textBytes, textBytes.length)
-    }
-  }
-
-  public editBufferSetPlaceholderColor(buffer: Pointer, color: RGBA): void {
-    this.opentui.symbols.editBufferSetPlaceholderColor(buffer, color.buffer)
   }
 
   public editBufferClear(buffer: Pointer): void {
@@ -2590,6 +2625,20 @@ class FFIRenderLib implements RenderLib {
   public syntaxStyleGetStyleCount(style: Pointer): number {
     const result = this.opentui.symbols.syntaxStyleGetStyleCount(style)
     return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public editorViewSetPlaceholderStyledText(
+    view: Pointer,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+  ): void {
+    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
+    if (nonEmptyChunks.length === 0) {
+      this.opentui.symbols.editorViewSetPlaceholderStyledText(view, null, 0)
+      return
+    }
+
+    const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
+    this.opentui.symbols.editorViewSetPlaceholderStyledText(view, ptr(chunksBuffer), nonEmptyChunks.length)
   }
 
   public onNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {

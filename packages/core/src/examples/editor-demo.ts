@@ -1,4 +1,15 @@
-import { CliRenderer, createCliRenderer, TextareaRenderable, BoxRenderable, TextRenderable, KeyEvent } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  TextareaRenderable,
+  BoxRenderable,
+  TextRenderable,
+  KeyEvent,
+  t,
+  bold,
+  cyan,
+  fg,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
@@ -8,7 +19,15 @@ This is an interactive text editor powered by EditBuffer and EditorView.
 NAVIGATION:
   • Arrow keys to move cursor
   • Home/End for line navigation
-  • Ctrl+PageUp/PageDown for buffer start/end
+  • Ctrl+A/Ctrl+E for buffer start/end
+  • Alt+F/Alt+B for word forward/backward
+  • Alt+Left/Alt+Right for word forward/backward
+
+SELECTION:
+  • Shift+Arrow keys to select
+  • Shift+Home/End to select to line start/end
+  • Alt+Shift+F/B to select word forward/backward
+  • Alt+Shift+Left/Right to select word forward/backward
 
 EDITING:
   • Type any text to insert
@@ -16,6 +35,12 @@ EDITING:
   • Enter to create new lines
   • Ctrl+D to delete current line
   • Ctrl+K to delete to line end
+  • Alt+D to delete word forward
+  • Alt+Backspace or Ctrl+W to delete word backward
+
+UNDO/REDO:
+  • Ctrl+Z to undo
+  • Ctrl+Shift+Z or Ctrl+Y to redo
 
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
@@ -24,8 +49,10 @@ FEATURES:
   ✓ Grapheme-aware cursor movement
   ✓ Unicode (emoji 🌟 and CJK 世界)
   ✓ Incremental editing
-  ✓ Text wrapping
-  ✓ Viewport management
+  ✓ Text wrapping and viewport management
+  ✓ Undo/redo support
+  ✓ Word-based navigation and deletion
+  ✓ Text selection with shift keys
 
 Press ESC to return to main menu`
 
@@ -69,6 +96,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     wrapMode: "word",
     showCursor: true,
     cursorColor: "#4ECDC4",
+    placeholder: t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333333")("here...")}`,
   })
   editorBox.add(editor)
 

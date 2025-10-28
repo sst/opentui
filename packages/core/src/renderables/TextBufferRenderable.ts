@@ -237,8 +237,12 @@ export abstract class TextBufferRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      if (this._wrapMode !== "none" && this.width !== width) {
-        this.updateWrapWidth(width)
+      // Use a reasonable default for NaN/undefined height to allow measuring content
+      // This happens when Yoga calls measure with height/widthMode="Undefined" (0)
+      const effectiveWidth = isNaN(width) ? 1 : width
+
+      if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
+        this.updateWrapWidth(effectiveWidth)
       } else {
         this.updateLineInfo()
       }

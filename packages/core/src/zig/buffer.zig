@@ -832,14 +832,25 @@ pub const OptimizedBuffer = struct {
     }
 
     /// Draw a TextBufferView to this OptimizedBuffer with selection support and optional syntax highlighting
-    /// Accepts any TextBufferView type (Array or Rope-based)
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
-        text_buffer_view: anytype,
+        text_buffer_view: *TextBufferView,
         x: i32,
         y: i32,
     ) !void {
-        const virtual_lines = text_buffer_view.getVirtualLines();
+        try self.drawTextBufferInternal(TextBufferView, text_buffer_view, x, y);
+    }
+
+    /// Internal implementation that accepts either TextBufferView or EditorView
+    /// Both types must expose: getVirtualLines(), getViewport(), getCachedLineInfo(), getVirtualLineSpans(), getTextBuffer(), getSelection()
+    fn drawTextBufferInternal(
+        self: *OptimizedBuffer,
+        comptime ViewType: type,
+        view: *ViewType,
+        x: i32,
+        y: i32,
+    ) !void {
+        const virtual_lines = view.getVirtualLines();
         if (virtual_lines.len == 0) return;
 
         const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
@@ -852,16 +863,16 @@ pub const OptimizedBuffer = struct {
         if (firstVisibleLine >= virtual_lines.len or lastPossibleLine == 0) return;
         if (firstVisibleLine >= lastPossibleLine) return;
 
-        const viewport = text_buffer_view.getViewport();
+        const viewport = view.getViewport();
         const horizontal_offset: u32 = if (viewport) |vp| vp.x else 0;
         const viewport_width: u32 = if (viewport) |vp| vp.width else std.math.maxInt(u32);
 
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
-        const text_buffer = text_buffer_view.text_buffer;
+        const text_buffer = view.getTextBuffer();
         const total_line_count = text_buffer.getLineCount();
 
-        const line_info = text_buffer_view.getCachedLineInfo();
+        const line_info = view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
             line_info.starts[firstVisibleLine]
         else
@@ -878,7 +889,7 @@ pub const OptimizedBuffer = struct {
             // slice_idx is relative to the slice (0, 1, 2...), we need to add viewport offset + firstVisibleLine
             const viewport_offset: u32 = if (viewport) |vp| vp.y else 0;
             const vline_idx = viewport_offset + firstVisibleLine + slice_idx;
-            const vline_span_info = text_buffer_view.getVirtualLineSpans(vline_idx);
+            const vline_span_info = view.getVirtualLineSpans(vline_idx);
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
@@ -1023,7 +1034,7 @@ pub const OptimizedBuffer = struct {
 
                     var cell_idx: u32 = 0;
                     while (cell_idx < g_width) : (cell_idx += 1) {
-                        if (text_buffer_view.selection) |sel| {
+                        if (view.getSelection()) |sel| {
                             const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
                             if (isSelected) {
                                 if (sel.bgColor) |selBg| {
@@ -1096,7 +1107,7 @@ pub const OptimizedBuffer = struct {
     }
 
     /// Draw an EditorView to this OptimizedBuffer
-    /// EditorView wraps TextBufferView, so we just delegate to drawTextBuffer
+    /// EditorView wraps TextBufferView, so we just delegate to drawTextBufferInternal
     /// EditorView handles viewport management and returns only the visible lines
     pub fn drawEditorView(
         self: *OptimizedBuffer,
@@ -1104,11 +1115,7 @@ pub const OptimizedBuffer = struct {
         x: i32,
         y: i32,
     ) !void {
-        // TODO: Use event emitter from text buffer view to update the editor view
-        _ = editor_view.getVirtualLines();
-
-        const text_buffer_view = editor_view.getTextBufferView();
-        try self.drawTextBuffer(text_buffer_view, x, y);
+        try self.drawTextBufferInternal(EditorView, editor_view, x, y);
     }
 
     /// Draw a box with borders and optional fill

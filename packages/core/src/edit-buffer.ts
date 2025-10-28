@@ -294,16 +294,6 @@ export class EditBuffer extends EventEmitter {
     this.lib.textBufferResetDefaults(this.textBufferPtr)
   }
 
-  public setPlaceholder(text: string | null): void {
-    this.guard()
-    this.lib.editBufferSetPlaceholder(this.bufferPtr, text)
-  }
-
-  public setPlaceholderColor(color: RGBA): void {
-    this.guard()
-    this.lib.editBufferSetPlaceholderColor(this.bufferPtr, color)
-  }
-
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
     this._syntaxStyle = style ?? undefined

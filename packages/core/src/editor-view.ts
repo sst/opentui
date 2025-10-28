@@ -182,14 +182,12 @@ export class EditorView {
 
   public getLineInfo(): LineInfo {
     this.guard()
-    const textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
-    return this.lib.textBufferViewGetLineInfo(textBufferViewPtr)
+    return this.lib.editorViewGetLineInfo(this.viewPtr)
   }
 
   public getLogicalLineInfo(): LineInfo {
     this.guard()
-    const textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
-    return this.lib.textBufferViewGetLogicalLineInfo(textBufferViewPtr)
+    return this.lib.editorViewGetLogicalLineInfo(this.viewPtr)
   }
 
   public get extmarks(): any {
@@ -197,6 +195,11 @@ export class EditorView {
       this._extmarksController = createExtmarksController(this.editBuffer, this)
     }
     return this._extmarksController
+  }
+
+  public setPlaceholderStyledText(chunks: { text: string; fg?: RGBA; bg?: RGBA; attributes?: number }[]): void {
+    this.guard()
+    this.lib.editorViewSetPlaceholderStyledText(this.viewPtr, chunks)
   }
 
   public destroy(): void {
