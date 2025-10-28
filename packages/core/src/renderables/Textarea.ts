@@ -1,4 +1,4 @@
-import { type RenderContext, type Highlight } from "../types"
+import { type RenderContext } from "../types"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
 import type { KeyEvent, PasteEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
@@ -9,6 +9,7 @@ import {
   buildKeyBindingsMap,
 } from "../lib/keymapping"
 import { type StyledText, fg } from "../lib/styled-text"
+import type { ExtmarksController } from "../lib/extmarks"
 
 export type TextareaAction =
   | "move-left"
@@ -204,7 +205,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyCtrl = typeof key === "string" ? false : key.ctrl
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
-    console.log("handleKeyPress", key)
+
     const bindingKey = getKeyBindingKey({
       name: keyName,
       ctrl: keyCtrl,
@@ -216,7 +217,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
-      console.log("action", action)
       const handler = this._actionHandlers.get(action)
       if (handler) {
         return handler()
@@ -579,7 +579,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
   }
 
-  public get extmarks(): any {
+  public get extmarks(): ExtmarksController {
     return this.editorView.extmarks
   }
 }
