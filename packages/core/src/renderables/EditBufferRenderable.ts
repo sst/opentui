@@ -320,12 +320,17 @@ export abstract class EditBufferRenderable extends Renderable {
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
+      // Use a reasonable default for NaN/undefined height to allow measuring content
+      // This happens when Yoga calls measure with height/widthMode="Undefined" (0)
+      const effectiveHeight = isNaN(height) ? 1 : height
+      const effectiveWidth = isNaN(width) ? 1 : width
+
       // Update viewport size to match measured dimensions
       // When wrapping and width changes, this will trigger wrap recalculation
-      if (this._wrapMode !== "none" && this.width !== width) {
-        this.editorView.setViewportSize(width, height)
+      if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
+        this.editorView.setViewportSize(effectiveWidth, effectiveHeight)
       } else {
-        this.editorView.setViewportSize(width, height)
+        this.editorView.setViewportSize(effectiveWidth, effectiveHeight)
       }
 
       const lineInfo = this.editorView.getLogicalLineInfo()
