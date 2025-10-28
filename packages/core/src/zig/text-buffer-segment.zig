@@ -217,6 +217,7 @@ pub const TextChunk = struct {
 
         try utf8.findWrapBreaksSIMD16(chunk_bytes, &wrap_result);
 
+        // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
         const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);
         mut_self.wrap_offsets = wrap_offsets;
 

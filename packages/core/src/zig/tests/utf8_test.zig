@@ -307,6 +307,372 @@ test "line breaks: random small buffers" {
 }
 
 // ============================================================================
+// TAB STOP TESTS
+// ============================================================================
+
+const TabStopTestCase = struct {
+    name: []const u8,
+    input: []const u8,
+    expected: []const usize,
+};
+
+const tab_stop_golden_tests = [_]TabStopTestCase{
+    .{
+        .name = "empty string",
+        .input = "",
+        .expected = &[_]usize{},
+    },
+    .{
+        .name = "no tabs",
+        .input = "hello world",
+        .expected = &[_]usize{},
+    },
+    .{
+        .name = "single tab",
+        .input = "a\tb",
+        .expected = &[_]usize{1},
+    },
+    .{
+        .name = "multiple tabs",
+        .input = "a\tb\tc",
+        .expected = &[_]usize{ 1, 3 },
+    },
+    .{
+        .name = "tab at start",
+        .input = "\tabc",
+        .expected = &[_]usize{0},
+    },
+    .{
+        .name = "tab at end",
+        .input = "abc\t",
+        .expected = &[_]usize{3},
+    },
+    .{
+        .name = "consecutive tabs",
+        .input = "a\t\tb",
+        .expected = &[_]usize{ 1, 2 },
+    },
+    .{
+        .name = "only tabs",
+        .input = "\t\t\t",
+        .expected = &[_]usize{ 0, 1, 2 },
+    },
+    .{
+        .name = "tabs mixed with spaces",
+        .input = "a \tb \tc",
+        .expected = &[_]usize{ 2, 5 },
+    },
+    .{
+        .name = "tab with newline",
+        .input = "a\tb\nc\td",
+        .expected = &[_]usize{ 1, 5 },
+    },
+    .{
+        .name = "many tabs",
+        .input = "\ta\tb\tc\td\te\tf\t",
+        .expected = &[_]usize{ 0, 2, 4, 6, 8, 10, 12 },
+    },
+};
+
+fn testTabStops(test_case: TabStopTestCase, allocator: std.mem.Allocator) !void {
+    var result = utf8.TabStopResult.init(allocator);
+    defer result.deinit();
+
+    try utf8.findTabStopsSIMD16(test_case.input, &result);
+
+    try testing.expectEqual(test_case.expected.len, result.positions.items.len);
+
+    for (test_case.expected, 0..) |exp, i| {
+        try testing.expectEqual(exp, result.positions.items[i]);
+    }
+}
+
+test "tab stops: golden tests" {
+    for (tab_stop_golden_tests) |tc| {
+        try testTabStops(tc, testing.allocator);
+    }
+}
+
+test "tab stops: tab at SIMD16 edge (15)" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    buf[15] = '\t';
+    buf[16] = 'y';
+
+    const expected = [_]usize{15};
+
+    try testTabStops(.{
+        .name = "tab@15",
+        .input = &buf,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: tab at SIMD16 edge (16)" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    buf[16] = '\t';
+    buf[17] = 'y';
+
+    const expected = [_]usize{16};
+
+    try testTabStops(.{
+        .name = "tab@16",
+        .input = &buf,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: multiple tabs around SIMD16 boundary" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    buf[14] = '\t';
+    buf[15] = '\t';
+    buf[16] = '\t';
+    buf[17] = '\t';
+
+    const expected = [_]usize{ 14, 15, 16, 17 };
+
+    try testTabStops(.{
+        .name = "tabs@boundary",
+        .input = &buf,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: tabs in all SIMD lanes" {
+    var buf: [16]u8 = undefined;
+    for (&buf) |*b| {
+        b.* = '\t';
+    }
+
+    const expected = [_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+
+    try testTabStops(.{
+        .name = "all_tabs",
+        .input = &buf,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: multibyte adjacent to tab" {
+    const input = "é\ttest"; // é is 2 bytes: 0xC3 0xA9
+    const expected = [_]usize{2}; // Tab at index 2
+
+    try testTabStops(.{
+        .name = "é\\t",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: CJK adjacent to tab" {
+    const input = "漢\ttest"; // 漢 is 3 bytes: 0xE6 0xBC 0xA2
+    const expected = [_]usize{3}; // Tab at index 3
+
+    try testTabStops(.{
+        .name = "漢\\t",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: emoji adjacent to tab" {
+    const input = "👋\twave"; // 👋 is 4 bytes
+    const expected = [_]usize{4}; // Tab at index 4
+
+    try testTabStops(.{
+        .name = "emoji\\t",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: multibyte at SIMD boundary without tabs" {
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 0);
+
+    const text = "Test世界Test";
+    @memcpy(buf[0..text.len], text);
+
+    const expected = [_]usize{}; // No tabs
+
+    try testTabStops(.{
+        .name = "unicode@boundary",
+        .input = buf[0..text.len],
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: realistic code text" {
+    const sample_text =
+        "function test() {\n" ++
+        "\tconst x = 10;\n" ++
+        "\tif (x > 5) {\n" ++
+        "\t\treturn true;\n" ++
+        "\t}\n" ++
+        "\treturn false;\n" ++
+        "}\n";
+
+    var result = utf8.TabStopResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findTabStopsSIMD16(sample_text, &result);
+
+    // Should find 6 tabs (including double-tab for nested return)
+    try testing.expectEqual(@as(usize, 6), result.positions.items.len);
+}
+
+test "tab stops: TSV data" {
+    const tsv_line = "name\tage\tcity\tcountry";
+    const expected = [_]usize{ 4, 8, 13 };
+
+    try testTabStops(.{
+        .name = "tsv",
+        .input = tsv_line,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: random small buffers" {
+    var prng = std.Random.DefaultPrng.init(42);
+    const random = prng.random();
+
+    var i: usize = 0;
+    while (i < 50) : (i += 1) {
+        const size = 16 + random.uintLessThan(usize, 1024);
+        const buf = try testing.allocator.alloc(u8, size);
+        defer testing.allocator.free(buf);
+
+        for (buf) |*b| {
+            const r = random.uintLessThan(u8, 100);
+            if (r < 10) {
+                b.* = '\t';
+            } else {
+                b.* = 'a' + random.uintLessThan(u8, 26);
+            }
+        }
+
+        var result = utf8.TabStopResult.init(testing.allocator);
+        defer result.deinit();
+        try utf8.findTabStopsSIMD16(buf, &result);
+    }
+}
+
+test "tab stops: large buffer with periodic tabs" {
+    const size = 10000;
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    var expected_count: usize = 0;
+    for (buf, 0..) |*b, idx| {
+        if (idx % 50 == 0) {
+            b.* = '\t';
+            expected_count += 1;
+        } else {
+            b.* = 'a' + @as(u8, @intCast(idx % 26));
+        }
+    }
+
+    var result = utf8.TabStopResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findTabStopsSIMD16(buf, &result);
+
+    try testing.expectEqual(expected_count, result.positions.items.len);
+}
+
+test "tab stops: exactly 16 bytes with tab" {
+    const input = "0123456789abcd\tx"; // exactly 16 bytes with tab at pos 14
+    const expected = [_]usize{14};
+
+    try testTabStops(.{
+        .name = "16bytes_with_tab",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: exactly 16 bytes no tab" {
+    const input = "0123456789abcdef"; // exactly 16 bytes, no tab
+    const expected = [_]usize{};
+
+    try testTabStops(.{
+        .name = "16bytes_no_tab",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: 17 bytes with tab at 16" {
+    const input = "0123456789abcdef\t"; // tab at position 16
+    const expected = [_]usize{16};
+
+    try testTabStops(.{
+        .name = "tab@16",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: result reuse" {
+    var result = utf8.TabStopResult.init(testing.allocator);
+    defer result.deinit();
+
+    // First use
+    try utf8.findTabStopsSIMD16("a\tb\tc", &result);
+    try testing.expectEqual(@as(usize, 2), result.positions.items.len);
+
+    // Second use - should reset automatically
+    try utf8.findTabStopsSIMD16("x\ty", &result);
+    try testing.expectEqual(@as(usize, 1), result.positions.items.len);
+    try testing.expectEqual(@as(usize, 1), result.positions.items[0]);
+}
+
+test "tab stops: mixed with other whitespace" {
+    const input = "  \t  \t  ";
+    const expected = [_]usize{ 2, 5 };
+
+    try testTabStops(.{
+        .name = "mixed_whitespace",
+        .input = input,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+test "tab stops: makefile style" {
+    const makefile = "target:\n\t@echo Building\n\t@gcc -o out main.c\n";
+
+    var result = utf8.TabStopResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findTabStopsSIMD16(makefile, &result);
+
+    // Should find 2 tabs (one per command line)
+    try testing.expectEqual(@as(usize, 2), result.positions.items.len);
+}
+
+test "tab stops: tabs across multiple SIMD chunks" {
+    const size = 64; // 4 SIMD chunks
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    @memset(buf, 'x');
+    buf[0] = '\t';
+    buf[16] = '\t';
+    buf[32] = '\t';
+    buf[48] = '\t';
+    buf[63] = '\t';
+
+    const expected = [_]usize{ 0, 16, 32, 48, 63 };
+
+    try testTabStops(.{
+        .name = "multi_chunk",
+        .input = buf,
+        .expected = &expected,
+    }, testing.allocator);
+}
+
+// ============================================================================
 // WORD WRAP BREAK TESTS
 // ============================================================================
 
