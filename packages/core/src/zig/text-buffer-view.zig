@@ -40,6 +40,12 @@ pub const WrapInfo = struct {
     line_vline_counts: []const u32,
 };
 
+pub const VirtualLineSpanInfo = struct {
+    spans: []const StyleSpan,
+    source_line: usize,
+    col_offset: u32,
+};
+
 pub const VirtualChunk = struct {
     grapheme_start: u32,
     grapheme_count: u32,
@@ -84,6 +90,7 @@ pub const UnifiedTextBufferView = struct {
     const Self = @This();
 
     text_buffer: *UnifiedTextBuffer,
+    original_text_buffer: *UnifiedTextBuffer,
     view_id: u32,
     selection: ?TextSelection,
     local_selection: ?LocalSelection,
@@ -111,6 +118,7 @@ pub const UnifiedTextBufferView = struct {
 
         self.* = .{
             .text_buffer = text_buffer,
+            .original_text_buffer = text_buffer,
             .view_id = view_id,
             .selection = null,
             .local_selection = null,
@@ -131,7 +139,7 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.text_buffer.unregisterView(self.view_id);
+        self.original_text_buffer.unregisterView(self.view_id);
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
         self.global_allocator.destroy(self);
@@ -622,6 +630,22 @@ pub const UnifiedTextBufferView = struct {
         return self.selection;
     }
 
+    pub fn getTextBuffer(self: *const Self) *UnifiedTextBuffer {
+        return self.text_buffer;
+    }
+
+    pub fn switchToBuffer(self: *Self, buffer: *UnifiedTextBuffer) void {
+        self.text_buffer = buffer;
+        self.virtual_lines_dirty = true;
+    }
+
+    pub fn switchToOriginalBuffer(self: *Self) void {
+        if (self.text_buffer != self.original_text_buffer) {
+            self.text_buffer = self.original_text_buffer;
+            self.virtual_lines_dirty = true;
+        }
+    }
+
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         const new_local_sel = LocalSelection{
             .anchorX = anchorX,
@@ -860,19 +884,15 @@ pub const UnifiedTextBufferView = struct {
         return out_index;
     }
 
-    pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) struct {
-        spans: []const StyleSpan,
-        source_line: usize,
-        col_offset: u32,
-    } {
+    pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) VirtualLineSpanInfo {
         if (vline_idx >= self.virtual_lines.items.len) {
-            return .{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
+            return VirtualLineSpanInfo{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
         }
 
         const vline = &self.virtual_lines.items[vline_idx];
         const spans = self.text_buffer.getLineSpans(vline.source_line);
 
-        return .{
+        return VirtualLineSpanInfo{
             .spans = spans,
             .source_line = vline.source_line,
             .col_offset = vline.source_col_offset,

@@ -752,15 +752,6 @@ export fn editBufferClearHistory(edit_buffer: *edit_buffer_mod.EditBuffer) void 
     edit_buffer.clearHistory();
 }
 
-export fn editBufferSetPlaceholder(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: ?[*]const u8, textLen: usize) void {
-    const text = if (textPtr) |ptr| ptr[0..textLen] else "";
-    edit_buffer.setPlaceholder(text) catch {};
-}
-
-export fn editBufferSetPlaceholderColor(edit_buffer: *edit_buffer_mod.EditBuffer, color: [*]const f32) void {
-    edit_buffer.setPlaceholderColor(utils.f32PtrToRGBA(color)) catch {};
-}
-
 export fn editBufferClear(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     edit_buffer.clear() catch {};
 }
@@ -826,6 +817,13 @@ export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsP
 
 export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.UnifiedTextBufferView {
     return view.getTextBufferView();
+}
+
+export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getLogicalLineInfo();
+    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
+    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+    return line_info.max_width;
 }
 
 export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, height: u32) void {
@@ -944,6 +942,19 @@ export fn editorViewGetEOL(view: *editor_view.EditorView, outPtr: *ExternalVisua
         .logical_col = vcursor.logical_col,
         .offset = vcursor.offset,
     };
+}
+
+export fn editorViewSetPlaceholderStyledText(
+    view: *editor_view.EditorView,
+    chunksPtr: [*]const text_buffer.StyledChunk,
+    chunkCount: usize,
+) void {
+    if (chunkCount == 0) {
+        view.setPlaceholderStyledText(&[_]text_buffer.StyledChunk{}) catch {};
+        return;
+    }
+    const chunks = chunksPtr[0..chunkCount];
+    view.setPlaceholderStyledText(chunks) catch {};
 }
 
 export fn bufferDrawEditorView(

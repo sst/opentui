@@ -191,3 +191,73 @@ marks!
                                                                                 
 "
 `;
+
+exports[`TextareaRenderable Textarea Content Snapshots should render placeholder when creating textarea with placeholder directly 1`] = `
+"                                                                                
+ Enter text here...                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextareaRenderable Textarea Content Snapshots should render placeholder when set programmatically after creation 1`] = `
+"                                                                                
+ Type something...                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextareaRenderable Textarea Content Snapshots should resize correctly when typing return as first input with placeholder 1`] = `
+"                                        
+ ┌──────────────────────────────────────
+ │                                      
+ │                                      
+ └──────────────────────────────────────
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
