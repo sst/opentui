@@ -922,7 +922,9 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
+                std.debug.print("CHUNK: bytes={any}, width={}, isAsciiOnly={}\n", .{ chunk_bytes, chunk.width, chunk.isAsciiOnly() });
                 const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width) catch continue;
+                std.debug.print("CHUNK: specials.len={}\n", .{specials.len});
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.grapheme_count;
@@ -1062,28 +1064,48 @@ pub const OptimizedBuffer = struct {
                         drawBg = temp;
                     }
 
-                    var encoded_char: u32 = 0;
-                    if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
-                        encoded_char = @as(u32, grapheme_bytes[0]);
+                    if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+                        std.debug.print("TAB: currentX={}, g_width={}, grapheme_bytes={any}\n", .{ currentX, g_width, grapheme_bytes });
+                        var tab_col: u32 = 0;
+                        while (tab_col < g_width) : (tab_col += 1) {
+                            if (currentX + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(self.width))) break;
+                            std.debug.print("TAB: drawing space at x={}\n", .{currentX + @as(i32, @intCast(tab_col))});
+                            try self.setCellWithAlphaBlending(
+                                @intCast(currentX + @as(i32, @intCast(tab_col))),
+                                @intCast(currentY),
+                                DEFAULT_SPACE_CHAR,
+                                drawFg,
+                                drawBg,
+                                drawAttributes,
+                            );
+                        }
                     } else {
-                        const gid = self.pool.allocUnowned(grapheme_bytes) catch |err| {
-                            logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
-                            globalCharPos += g_width;
-                            currentX += @as(i32, @intCast(g_width));
-                            col += g_width;
-                            continue;
-                        };
-                        encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
-                    }
+                        if (grapheme_bytes.len == 1 and grapheme_bytes[0] < 128) {
+                            std.debug.print("CHAR: currentX={}, g_width={}, char='{}' ({})\n", .{ currentX, g_width, grapheme_bytes[0], grapheme_bytes[0] });
+                        }
+                        var encoded_char: u32 = 0;
+                        if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
+                            encoded_char = @as(u32, grapheme_bytes[0]);
+                        } else {
+                            const gid = self.pool.allocUnowned(grapheme_bytes) catch |err| {
+                                logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
+                                globalCharPos += g_width;
+                                currentX += @as(i32, @intCast(g_width));
+                                col += g_width;
+                                continue;
+                            };
+                            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+                        }
 
-                    try self.setCellWithAlphaBlending(
-                        @intCast(currentX),
-                        @intCast(currentY),
-                        encoded_char,
-                        drawFg,
-                        drawBg,
-                        drawAttributes,
-                    );
+                        try self.setCellWithAlphaBlending(
+                            @intCast(currentX),
+                            @intCast(currentY),
+                            encoded_char,
+                            drawFg,
+                            drawBg,
+                            drawAttributes,
+                        );
+                    }
 
                     globalCharPos += g_width;
                     currentX += @as(i32, @intCast(g_width));
