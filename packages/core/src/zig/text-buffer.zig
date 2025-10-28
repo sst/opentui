@@ -350,8 +350,7 @@ pub const UnifiedTextBuffer = struct {
         while (i < text.len) {
             if (text[i] == '\t') {
                 const tab_width_u32: u32 = @intCast(self.tab_width);
-                const tab_stop = tab_width_u32 - (width % tab_width_u32);
-                width += tab_stop;
+                width += tab_width_u32;
                 i += 1;
             } else if (text[i] < 128) {
                 width += 1;

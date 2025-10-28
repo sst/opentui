@@ -474,9 +474,9 @@ inline fn eastAsianWidth(cp: u21) u32 {
 
 /// Calculate the display width of a byte in columns
 /// Used for ASCII-only fast paths
-inline fn asciiCharWidth(byte: u8, tab_width: u8, current_column: u32) u32 {
+inline fn asciiCharWidth(byte: u8, tab_width: u8) u32 {
     if (byte == '\t') {
-        return tab_width - (current_column % tab_width);
+        return tab_width;
     } else if (byte >= 32 and byte <= 126) {
         return 1;
     }
@@ -484,9 +484,9 @@ inline fn asciiCharWidth(byte: u8, tab_width: u8, current_column: u32) u32 {
 }
 
 /// Calculate the display width of a character (byte or codepoint) in columns
-inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8, current_column: u32) u32 {
+inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     if (byte == '\t') {
-        return tab_width - (current_column % tab_width);
+        return tab_width;
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
@@ -597,7 +597,7 @@ pub fn findWrapPosByWidthSIMD16(
             var i: usize = 0;
             while (i < vector_len) : (i += 1) {
                 const b = text[pos + i];
-                const width = asciiCharWidth(b, tab_width, columns_used);
+                const width = asciiCharWidth(b, tab_width);
                 columns_used += width;
 
                 if (columns_used > max_columns) {
@@ -610,7 +610,7 @@ pub fn findWrapPosByWidthSIMD16(
         // Tail
         while (pos < text.len) {
             const b = text[pos];
-            const width = asciiCharWidth(b, tab_width, columns_used);
+            const width = asciiCharWidth(b, tab_width);
             columns_used += width;
 
             if (columns_used > max_columns) {
@@ -643,7 +643,7 @@ pub fn findWrapPosByWidthSIMD16(
                     return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
                 }
 
-                state.cluster_width += asciiCharWidth(b, tab_width, state.columns_used + state.cluster_width);
+                state.cluster_width += asciiCharWidth(b, tab_width);
                 state.prev_cp = curr_cp;
             }
             pos += vector_len;
@@ -665,7 +665,7 @@ pub fn findWrapPosByWidthSIMD16(
                 return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
             }
 
-            state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+            state.cluster_width += charWidth(b0, curr_cp, tab_width);
             state.prev_cp = curr_cp;
             i += cp_len;
         }
@@ -684,7 +684,7 @@ pub fn findWrapPosByWidthSIMD16(
             return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
 
-        state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+        state.cluster_width += charWidth(b0, curr_cp, tab_width);
         state.prev_cp = curr_cp;
         pos += cp_len;
     }
@@ -727,7 +727,7 @@ pub fn findPosByWidth(
                 const b = text[pos + i];
                 const prev_columns = columns_used;
 
-                columns_used += asciiCharWidth(b, tab_width, columns_used);
+                columns_used += asciiCharWidth(b, tab_width);
 
                 // Check if this character starts at or after max_columns
                 if (prev_columns >= max_columns) {
@@ -742,7 +742,7 @@ pub fn findPosByWidth(
             const b = text[pos];
             const prev_columns = columns_used;
 
-            columns_used += asciiCharWidth(b, tab_width, columns_used);
+            columns_used += asciiCharWidth(b, tab_width);
 
             if (prev_columns >= max_columns) {
                 return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
@@ -774,7 +774,7 @@ pub fn findPosByWidth(
                     return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
                 }
 
-                state.cluster_width += asciiCharWidth(b, tab_width, state.columns_used + state.cluster_width);
+                state.cluster_width += asciiCharWidth(b, tab_width);
                 state.prev_cp = curr_cp;
             }
             pos += vector_len;
@@ -796,7 +796,7 @@ pub fn findPosByWidth(
                 return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
             }
 
-            state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+            state.cluster_width += charWidth(b0, curr_cp, tab_width);
             state.prev_cp = curr_cp;
             i += cp_len;
         }
@@ -815,7 +815,7 @@ pub fn findPosByWidth(
             return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
 
-        state.cluster_width += charWidth(b0, curr_cp, tab_width, state.columns_used + state.cluster_width);
+        state.cluster_width += charWidth(b0, curr_cp, tab_width);
         state.prev_cp = curr_cp;
         pos += cp_len;
     }
@@ -834,7 +834,7 @@ pub fn findPosByWidth(
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
 
-pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, current_column: u32) u32 {
+pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
     if (byte_offset >= text.len) return 0;
 
     const b0 = text[byte_offset];
@@ -849,7 +849,7 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, current_c
 
     var break_state: uucode.grapheme.BreakState = .default;
     var prev_cp: ?u21 = first_cp;
-    var cluster_width: u32 = charWidth(b0, first_cp, tab_width, current_column);
+    var cluster_width: u32 = charWidth(b0, first_cp, tab_width);
 
     var pos = byte_offset + first_len;
 
@@ -863,7 +863,7 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, current_c
         const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
         if (is_break) break;
 
-        cluster_width += charWidth(b, curr_cp, tab_width, current_column + cluster_width);
+        cluster_width += charWidth(b, curr_cp, tab_width);
         prev_cp = curr_cp;
         pos += cp_len;
     }
@@ -876,7 +876,7 @@ pub const PrevGraphemeResult = struct {
     width: u32,
 };
 
-pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8, current_column: u32) ?PrevGraphemeResult {
+pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8) ?PrevGraphemeResult {
     if (byte_offset == 0 or text.len == 0) return null;
     if (byte_offset > text.len) return null;
 
@@ -918,9 +918,7 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8,
     }
 
     const start_offset = if (prev_grapheme_start < byte_offset) prev_grapheme_start else second_to_last_grapheme_start;
-    const byte_diff: u32 = @intCast(byte_offset - start_offset);
-    const grapheme_col = if (current_column >= byte_diff) current_column - byte_diff else 0;
-    const width = getWidthAt(text, start_offset, tab_width, grapheme_col);
+    const width = getWidthAt(text, start_offset, tab_width);
 
     return .{
         .start_offset = start_offset,
