@@ -421,6 +421,14 @@ export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.resetDefaults();
 }
 
+export fn textBufferGetTabWidth(tb: *text_buffer.UnifiedTextBuffer) u8 {
+    return tb.getTabWidth();
+}
+
+export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) void {
+    tb.setTabWidth(width);
+}
+
 export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
     const data = dataPtr[0..dataLen];
     const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;

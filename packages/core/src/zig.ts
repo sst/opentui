@@ -320,6 +320,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    textBufferGetTabWidth: {
+      args: ["ptr"],
+      returns: "u8",
+    },
+    textBufferSetTabWidth: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
     textBufferRegisterMemBuffer: {
       args: ["ptr", "ptr", "usize", "bool"],
       returns: "u16",
@@ -1099,6 +1107,8 @@ export interface RenderLib {
   textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
   textBufferResetDefaults: (buffer: Pointer) => void
+  textBufferGetTabWidth: (buffer: Pointer) => number
+  textBufferSetTabWidth: (buffer: Pointer, width: number) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   getPlainTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
 
@@ -1812,6 +1822,14 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferResetDefaults(buffer: Pointer): void {
     this.opentui.symbols.textBufferResetDefaults(buffer)
+  }
+
+  public textBufferGetTabWidth(buffer: Pointer): number {
+    return this.opentui.symbols.textBufferGetTabWidth(buffer)
+  }
+
+  public textBufferSetTabWidth(buffer: Pointer, width: number): void {
+    this.opentui.symbols.textBufferSetTabWidth(buffer, width)
   }
 
   public textBufferRegisterMemBuffer(buffer: Pointer, bytes: Uint8Array, owned: boolean = false): number {

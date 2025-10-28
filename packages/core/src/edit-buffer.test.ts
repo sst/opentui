@@ -624,8 +624,8 @@ describe("EditBuffer", () => {
   describe("wide character handling", () => {
     it("should handle tabs correctly in edits", () => {
       buffer.setText("A\tB")
-      // Tab has a display width of 8 columns (by default)
-      // So "A\tB" has positions: A at col 0-1, tab at col 1-9, B at col 9
+      // Tab has a display width of 2 columns (by default, rounded to multiple of 2)
+      // So "A\tB" has positions: A at col 0-1, tab at col 1-2, B at col 2
       // To insert after A, we use column 1
       buffer.setCursorToLineCol(0, 1) // After A, at the tab position
       // But since setCursorToLineCol might snap to grapheme boundaries,

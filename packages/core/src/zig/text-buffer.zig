@@ -73,6 +73,8 @@ pub const UnifiedTextBuffer = struct {
     styled_buffer: ?[]u8,
     styled_capacity: usize,
 
+    tab_width: u8,
+
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
@@ -130,6 +132,7 @@ pub const UnifiedTextBuffer = struct {
             .styled_text_mem_id = null,
             .styled_buffer = null,
             .styled_capacity = 0,
+            .tab_width = 2,
         };
 
         return self;
@@ -929,6 +932,16 @@ pub const UnifiedTextBuffer = struct {
         const mem_id = try self.mem_registry.register(text, false);
 
         try self.setTextInternal(mem_id, text);
+    }
+
+    pub fn getTabWidth(self: *const Self) u8 {
+        return self.tab_width;
+    }
+
+    /// Set tab width (will be rounded up to nearest multiple of 2)
+    pub fn setTabWidth(self: *Self, width: u8) void {
+        const clamped_width = @max(2, width);
+        self.tab_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
     }
 
     /// Debug log the rope structure using rope.toText

@@ -391,7 +391,7 @@ pub const UnifiedTextBufferView = struct {
                                     continue;
                                 }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
-                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, 8, is_ascii_only);
+                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, wctx.view.text_buffer.tab_width, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
                                     addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
                                     char_offset += force_result.columns_used;
@@ -406,7 +406,7 @@ pub const UnifiedTextBufferView = struct {
                             const wrap_result = utf8.findWrapPosByWidthSIMD16(
                                 remaining_bytes,
                                 remaining_width,
-                                8,
+                                wctx.view.text_buffer.tab_width,
                                 is_ascii_only,
                             );
 
@@ -415,7 +415,7 @@ pub const UnifiedTextBufferView = struct {
                                     commitVirtualLine(wctx);
                                     continue;
                                 }
-                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, 8, is_ascii_only);
+                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, wctx.view.text_buffer.tab_width, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
                                     addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
                                     char_offset += force_result.columns_used;
@@ -828,13 +828,13 @@ pub const UnifiedTextBufferView = struct {
 
                 if (local_start_col > 0) {
                     // For start: exclude graphemes that start before limit
-                    const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, 8, is_ascii_only, false);
+                    const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.view.text_buffer.tab_width, is_ascii_only, false);
                     byte_start = start_result.byte_offset;
                 }
 
                 if (local_end_col < chunk.width) {
                     // For end: include graphemes that start before limit
-                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, 8, is_ascii_only, true);
+                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.view.text_buffer.tab_width, is_ascii_only, true);
                     byte_end = end_result.byte_offset;
                 }
                 if (byte_start < byte_end and byte_start < chunk_bytes.len) {
