@@ -819,6 +819,13 @@ export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffe
     return view.getTextBufferView();
 }
 
+export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+    const line_info = view.getLogicalLineInfo();
+    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
+    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+    return line_info.max_width;
+}
+
 export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, height: u32) void {
     view.setViewportSize(width, height);
 }

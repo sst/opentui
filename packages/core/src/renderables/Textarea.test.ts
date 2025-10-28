@@ -5886,6 +5886,40 @@ describe("TextareaRenderable", () => {
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
     })
+
+    it("should resize correctly when typing return as first input with placeholder", async () => {
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, {
+        border: true,
+        left: 1,
+        top: 1,
+      })
+      currentRenderer.root.add(container)
+
+      const textarea = new TextareaRenderable(currentRenderer, {
+        placeholder: "Enter your message...",
+        width: 30,
+        minHeight: 1,
+        maxHeight: 3,
+      })
+      container.add(textarea)
+
+      textarea.focus()
+      await renderOnce()
+
+      const frameBeforeEnter = captureFrame()
+      expect(textarea.height).toBe(1)
+
+      currentMockInput.pressEnter()
+      await renderOnce()
+      await renderOnce()
+
+      const frameAfterEnter = captureFrame()
+      expect(frameAfterEnter).toMatchSnapshot()
+      expect(textarea.height).toBe(2)
+      expect(textarea.plainText).toBe("\n")
+    })
   })
 
   describe("Layout Reflow on Size Change", () => {

@@ -247,3 +247,17 @@ exports[`TextareaRenderable Textarea Content Snapshots should render placeholder
                                                                                 
 "
 `;
+
+exports[`TextareaRenderable Textarea Content Snapshots should resize correctly when typing return as first input with placeholder 1`] = `
+"                                        
+ ┌──────────────────────────────────────
+ │                                      
+ │                                      
+ └──────────────────────────────────────
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;

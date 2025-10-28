@@ -492,6 +492,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    editorViewGetLineInfoDirect: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "u32",
+    },
+    editorViewGetLogicalLineInfoDirect: {
+      args: ["ptr", "ptr", "ptr"],
+      returns: "u32",
+    },
 
     // EditBuffer functions
     createEditBuffer: {
@@ -1207,6 +1215,8 @@ export interface RenderLib {
   editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetEOL: (view: Pointer) => VisualCursor
+  editorViewGetLineInfo: (view: Pointer) => LineInfo
+  editorViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   editorViewSetPlaceholderStyledText: (
     view: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
@@ -2148,6 +2158,46 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to get TextBufferView from EditorView")
     }
     return result
+  }
+
+  // TODO: use structs
+  public editorViewGetLineInfo(view: Pointer): LineInfo {
+    const lineCount = this.editorViewGetVirtualLineCount(view)
+
+    if (lineCount === 0) {
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+    }
+
+    const lineStarts = new Uint32Array(lineCount)
+    const lineWidths = new Uint32Array(lineCount)
+
+    const maxLineWidth = this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+
+    return {
+      maxLineWidth,
+      lineStarts: Array.from(lineStarts),
+      lineWidths: Array.from(lineWidths),
+    }
+  }
+
+  // TODO: use structs
+  public editorViewGetLogicalLineInfo(view: Pointer): LineInfo {
+    const lineCount = this.editorViewGetVirtualLineCount(view)
+
+    if (lineCount === 0) {
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+    }
+
+    const lineStarts = new Uint32Array(lineCount)
+    const lineWidths = new Uint32Array(lineCount)
+
+    const maxLineWidth = this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+
+    return {
+      maxLineWidth,
+      lineStarts: Array.from(lineStarts),
+      lineWidths: Array.from(lineWidths),
+    }
   }
 
   // EditBuffer implementations
