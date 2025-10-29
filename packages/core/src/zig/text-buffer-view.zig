@@ -8,6 +8,7 @@ const gwidth = @import("gwidth.zig");
 const utf8 = @import("utf8.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
+const logger = @import("logger.zig");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const RGBA = tb.RGBA;
@@ -321,6 +322,10 @@ pub const UnifiedTextBufferView = struct {
                 current_line_first_vline_idx: u32 = 0,
                 current_line_vline_count: u32 = 0,
 
+                last_wrap_chunk_count: u32 = 0,
+                last_wrap_line_position: u32 = 0,
+                last_wrap_global_offset: u32 = 0,
+
                 fn commitVirtualLine(wctx: *@This()) void {
                     wctx.current_vline.width = wctx.line_position;
                     wctx.current_vline.source_line = wctx.line_idx;
@@ -335,6 +340,10 @@ pub const UnifiedTextBufferView = struct {
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.char_offset = wctx.global_char_offset;
                     wctx.line_position = 0;
+
+                    wctx.last_wrap_chunk_count = 0;
+                    wctx.last_wrap_line_position = 0;
+                    wctx.last_wrap_global_offset = 0;
                 }
 
                 fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, count: u32, width: u32) void {
@@ -354,30 +363,93 @@ pub const UnifiedTextBufferView = struct {
                     wctx.chunk_idx_in_line = chunk_idx_in_line;
 
                     if (wctx.view.wrap_mode == .word) {
-                        var char_offset: u32 = 0;
-                        while (char_offset < chunk.width) {
-                            const remaining_width = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
-                            const fit = wctx.view.calculateChunkFitWord(chunk, char_offset, remaining_width);
+                        const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
 
-                            if (fit.char_count == 0) {
-                                if (wctx.line_position > 0) {
+                        var char_offset: u32 = 0;
+                        var wrap_idx: usize = 0; // Track current position in wrap_offsets to avoid O(n²) scanning
+                        while (char_offset < chunk.width) {
+                            const remaining_in_chunk = chunk.width - char_offset;
+                            const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+
+                            // Find the last wrap boundary in the remaining part that fits on current line
+                            // Only scan forward from last position
+                            var last_wrap_that_fits: ?u32 = null;
+                            var saved_wrap_idx = wrap_idx;
+                            while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
+                                const wrap_break = wrap_offsets[wrap_idx];
+                                const offset = @as(u32, wrap_break.char_offset);
+                                if (offset < char_offset) continue;
+                                const width_to_boundary = offset - char_offset + 1;
+                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
+                                last_wrap_that_fits = width_to_boundary;
+                                saved_wrap_idx = wrap_idx + 1;
+                            }
+                            wrap_idx = saved_wrap_idx;
+
+                            var to_add: u32 = 0;
+                            var has_wrap_after: bool = false;
+
+                            if (last_wrap_that_fits) |wrap_width| {
+                                // Add up to the wrap boundary
+                                to_add = wrap_width;
+                                has_wrap_after = true;
+                            } else if (remaining_in_chunk <= remaining_on_line) {
+                                // Whole remaining chunk fits
+                                to_add = remaining_in_chunk;
+                            } else if (wctx.line_position == 0) {
+                                // Line is empty, force add something (fallback to char wrap)
+                                to_add = @min(remaining_on_line, remaining_in_chunk);
+                                if (to_add == 0) to_add = 1;
+                            } else if (wctx.last_wrap_chunk_count > 0) {
+                                // Doesn't fit and we have a previous wrap point, rollback and wrap
+                                // Get the chunks that need to move to the next line (they're already in order)
+                                const chunks_slice = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
+                                const chunks_to_move_count = chunks_slice.len;
+
+                                // Allocate space in arena for the chunks we need to preserve (single allocation in arena, no growing)
+                                const saved_chunks_result = wctx.virtual_allocator.alloc(VirtualChunk, chunks_to_move_count);
+                                if (saved_chunks_result) |saved_chunks| {
+                                    @memcpy(saved_chunks, chunks_slice);
+
+                                    wctx.line_position = wctx.last_wrap_line_position;
+                                    wctx.global_char_offset = wctx.last_wrap_global_offset;
+                                    wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
+
                                     commitVirtualLine(wctx);
-                                    continue;
+
+                                    for (saved_chunks) |vchunk| {
+                                        wctx.current_vline.chunks.append(wctx.virtual_allocator, vchunk) catch {};
+                                        wctx.global_char_offset += vchunk.width;
+                                        wctx.line_position += vchunk.width;
+                                    }
+                                } else |_| {
+                                    // Allocation failed, just wrap normally without rollback
+                                    logger.err("Failed to allocate space for saved chunks", .{});
+                                    commitVirtualLine(wctx);
                                 }
-                                if (char_offset < chunk.width) {
-                                    const forced = @min(1, chunk.width - char_offset);
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, forced, forced);
-                                    char_offset += forced;
-                                    continue;
-                                }
-                                break;
+
+                                continue;
+                            } else {
+                                // No wrap point, just wrap normally
+                                commitVirtualLine(wctx);
+                                continue;
                             }
 
-                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, fit.char_count, fit.width);
-                            char_offset += fit.char_count;
+                            if (to_add > 0) {
+                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add, to_add);
+                                char_offset += to_add;
 
-                            if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
-                                commitVirtualLine(wctx);
+                                if (has_wrap_after) {
+                                    wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
+                                    wctx.last_wrap_line_position = wctx.line_position;
+                                    wctx.last_wrap_global_offset = wctx.global_char_offset;
+                                }
+
+                                if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                    if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
+                                        commitVirtualLine(wctx);
+                                    }
+                                }
                             }
                         }
                     } else {
