@@ -467,6 +467,66 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
         (cp >= 0xFE00 and cp <= 0xFE0F) or // Variation Selectors
         (cp >= 0xFE20 and cp <= 0xFE2F) or // Combining Half Marks
+        // Indic script combining marks
+        (cp >= 0x0900 and cp <= 0x0903) or // Devanagari combining
+        (cp >= 0x093A and cp <= 0x093C) or // Devanagari combining
+        (cp >= 0x093E and cp <= 0x094F) or // Devanagari combining
+        (cp >= 0x0951 and cp <= 0x0957) or // Devanagari combining
+        (cp >= 0x0962 and cp <= 0x0963) or // Devanagari combining
+        (cp >= 0x0981 and cp <= 0x0983) or // Bengali combining
+        (cp >= 0x09BC and cp <= 0x09C4) or // Bengali combining
+        (cp >= 0x09C7 and cp <= 0x09C8) or // Bengali combining
+        (cp >= 0x09CB and cp <= 0x09CD) or // Bengali combining
+        cp == 0x09D7 or cp == 0x09E2 or cp == 0x09E3 or cp == 0x09FE or // Bengali combining
+        (cp >= 0x0A01 and cp <= 0x0A03) or // Gurmukhi combining
+        (cp >= 0x0A3C and cp <= 0x0A42) or // Gurmukhi combining
+        (cp >= 0x0A47 and cp <= 0x0A48) or // Gurmukhi combining
+        (cp >= 0x0A4B and cp <= 0x0A4D) or // Gurmukhi combining
+        cp == 0x0A51 or (cp >= 0x0A70 and cp <= 0x0A71) or cp == 0x0A75 or // Gurmukhi combining
+        (cp >= 0x0A81 and cp <= 0x0A83) or // Gujarati combining
+        (cp >= 0x0ABC and cp <= 0x0AC5) or // Gujarati combining
+        (cp >= 0x0AC7 and cp <= 0x0AC9) or // Gujarati combining
+        (cp >= 0x0ACB and cp <= 0x0ACD) or // Gujarati combining
+        (cp >= 0x0AE2 and cp <= 0x0AE3) or // Gujarati combining
+        (cp >= 0x0AFA and cp <= 0x0AFF) or // Gujarati combining
+        (cp >= 0x0B01 and cp <= 0x0B03) or // Oriya combining
+        (cp >= 0x0B3C and cp <= 0x0B44) or // Oriya combining
+        (cp >= 0x0B47 and cp <= 0x0B48) or // Oriya combining
+        (cp >= 0x0B4B and cp <= 0x0B4D) or // Oriya combining
+        (cp >= 0x0B55 and cp <= 0x0B57) or // Oriya combining
+        (cp >= 0x0B62 and cp <= 0x0B63) or // Oriya combining
+        cp == 0x0B82 or // Tamil combining
+        (cp >= 0x0BBE and cp <= 0x0BC2) or // Tamil combining
+        (cp >= 0x0BC6 and cp <= 0x0BC8) or // Tamil combining
+        (cp >= 0x0BCA and cp <= 0x0BCD) or // Tamil combining
+        cp == 0x0BD7 or // Tamil combining
+        (cp >= 0x0C00 and cp <= 0x0C04) or // Telugu combining
+        (cp >= 0x0C3C and cp <= 0x0C44) or // Telugu combining
+        (cp >= 0x0C46 and cp <= 0x0C48) or // Telugu combining
+        (cp >= 0x0C4A and cp <= 0x0C4D) or // Telugu combining
+        (cp >= 0x0C55 and cp <= 0x0C56) or // Telugu combining
+        (cp >= 0x0C62 and cp <= 0x0C63) or // Telugu combining
+        (cp >= 0x0C81 and cp <= 0x0C83) or // Kannada combining
+        (cp >= 0x0CBC and cp <= 0x0CC4) or // Kannada combining
+        (cp >= 0x0CC6 and cp <= 0x0CC8) or // Kannada combining
+        (cp >= 0x0CCA and cp <= 0x0CCD) or // Kannada combining
+        (cp >= 0x0CD5 and cp <= 0x0CD6) or // Kannada combining
+        (cp >= 0x0CE2 and cp <= 0x0CE3) or cp == 0x0CF3 or // Kannada combining
+        (cp >= 0x0D00 and cp <= 0x0D03) or // Malayalam combining
+        (cp >= 0x0D3B and cp <= 0x0D3C) or // Malayalam combining
+        (cp >= 0x0D3E and cp <= 0x0D44) or // Malayalam combining
+        (cp >= 0x0D46 and cp <= 0x0D48) or // Malayalam combining
+        (cp >= 0x0D4A and cp <= 0x0D4D) or // Malayalam combining
+        cp == 0x0D57 or (cp >= 0x0D62 and cp <= 0x0D63) or // Malayalam combining
+        (cp >= 0x0D81 and cp <= 0x0D83) or // Sinhala combining
+        cp == 0x0DCA or (cp >= 0x0DCF and cp <= 0x0DD4) or cp == 0x0DD6 or // Sinhala combining
+        (cp >= 0x0DD8 and cp <= 0x0DDF) or (cp >= 0x0DF2 and cp <= 0x0DF3) or // Sinhala combining
+        cp == 0x0E31 or (cp >= 0x0E34 and cp <= 0x0E3A) or (cp >= 0x0E47 and cp <= 0x0E4E) or // Thai combining
+        cp == 0x0EB1 or (cp >= 0x0EB4 and cp <= 0x0EBC) or (cp >= 0x0EC8 and cp <= 0x0ECE) or // Lao combining
+        (cp >= 0x0F18 and cp <= 0x0F19) or cp == 0x0F35 or cp == 0x0F37 or cp == 0x0F39 or // Tibetan combining
+        (cp >= 0x0F3E and cp <= 0x0F3F) or (cp >= 0x0F71 and cp <= 0x0F84) or // Tibetan combining
+        (cp >= 0x0F86 and cp <= 0x0F87) or (cp >= 0x0F8D and cp <= 0x0F97) or // Tibetan combining
+        (cp >= 0x0F99 and cp <= 0x0FBC) or cp == 0x0FC6 or // Tibetan combining
         // Format characters (Cf category) - zero width
         cp == 0x00AD or // Soft Hyphen
         (cp >= 0x0600 and cp <= 0x0605) or // Arabic format characters
@@ -614,6 +674,7 @@ const GraphemeWidthState = struct {
     width: u32 = 0,
     has_width: bool = false,
     is_regional_indicator_pair: bool = false,
+    has_vs16: bool = false,
 
     /// Initialize state with the first codepoint of a grapheme cluster
     inline fn init(first_cp: u21, first_width: u32) GraphemeWidthState {
@@ -621,12 +682,24 @@ const GraphemeWidthState = struct {
             .width = first_width,
             .has_width = (first_width > 0),
             .is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF),
+            .has_vs16 = false,
         };
     }
 
     /// Add a codepoint to the current grapheme cluster
     inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
+        const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
+
+        // Special case: VS16 changes presentation to emoji (width 2)
+        if (is_vs16) {
+            self.has_vs16 = true;
+            // If we have a narrow character (width 1), VS16 makes it emoji presentation (width 2)
+            if (self.has_width and self.width == 1) {
+                self.width = 2;
+            }
+            return;
+        }
 
         // Special case: Regional Indicator pairs (flag emojis)
         // Both RIs contribute to width (typically 1+1=2)
@@ -638,7 +711,7 @@ const GraphemeWidthState = struct {
             self.width = cp_width;
             self.has_width = true;
         }
-        // Otherwise, ignore width of modifiers, ZWJ, VS16, etc.
+        // Otherwise, ignore width of modifiers, ZWJ, etc.
     }
 };
 
