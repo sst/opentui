@@ -639,6 +639,219 @@ fn benchFindPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]Bench
     return try results.toOwnedSlice();
 }
 
+// Benchmark calculateTextWidth
+fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
+    var results = std.ArrayList(BenchResult).init(allocator);
+
+    // Small ASCII text (1KB)
+    {
+        const text = try generateAsciiText(allocator, 1024);
+        defer allocator.free(text);
+
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var timer = try std.time.Timer.start();
+            const result = utf8.calculateTextWidth(text, 4, true);
+            const elapsed = timer.read();
+            _ = result;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "calculateTextWidth: ASCII (1KB)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // Large ASCII text (100KB)
+    {
+        const text = try generateAsciiText(allocator, 100 * 1024);
+        defer allocator.free(text);
+
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var timer = try std.time.Timer.start();
+            const result = utf8.calculateTextWidth(text, 4, true);
+            const elapsed = timer.read();
+            _ = result;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "calculateTextWidth: ASCII (100KB)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // Very large ASCII text (1MB)
+    {
+        const text = try generateAsciiText(allocator, 1024 * 1024);
+        defer allocator.free(text);
+
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var timer = try std.time.Timer.start();
+            const result = utf8.calculateTextWidth(text, 4, true);
+            const elapsed = timer.read();
+            _ = result;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "calculateTextWidth: ASCII (1MB)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // ASCII with tabs
+    {
+        var text = std.ArrayList(u8).init(allocator);
+        defer text.deinit();
+        var i: usize = 0;
+        while (text.items.len < 10 * 1024) : (i += 1) {
+            if (i % 20 == 0) {
+                try text.append('\t');
+            } else {
+                try text.append(@as(u8, @intCast(32 + (i % 95))));
+            }
+        }
+
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var timer = try std.time.Timer.start();
+            const result = utf8.calculateTextWidth(text.items, 4, true);
+            const elapsed = timer.read();
+            _ = result;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "calculateTextWidth: ASCII with tabs (10KB)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // Mixed text
+    {
+        const text = try generateMixedText(allocator, 10 * 1024);
+        defer allocator.free(text);
+
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var timer = try std.time.Timer.start();
+            const result = utf8.calculateTextWidth(text, 4, false);
+            const elapsed = timer.read();
+            _ = result;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "calculateTextWidth: Mixed ASCII/Unicode (10KB)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    // Unicode heavy
+    {
+        const text = try generateUnicodeHeavyText(allocator, 10 * 1024);
+        defer allocator.free(text);
+
+        var min_ns: u64 = std.math.maxInt(u64);
+        var max_ns: u64 = 0;
+        var total_ns: u64 = 0;
+
+        var iter: usize = 0;
+        while (iter < iterations) : (iter += 1) {
+            var timer = try std.time.Timer.start();
+            const result = utf8.calculateTextWidth(text, 4, false);
+            const elapsed = timer.read();
+            _ = result;
+
+            min_ns = @min(min_ns, elapsed);
+            max_ns = @max(max_ns, elapsed);
+            total_ns += elapsed;
+        }
+
+        const name = try std.fmt.allocPrint(allocator, "calculateTextWidth: Unicode heavy (10KB)", .{});
+        try results.append(BenchResult{
+            .name = name,
+            .min_ns = min_ns,
+            .avg_ns = total_ns / iterations,
+            .max_ns = max_ns,
+            .total_ns = total_ns,
+            .iterations = iterations,
+            .mem_stats = null,
+        });
+    }
+
+    return try results.toOwnedSlice();
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
@@ -673,6 +886,11 @@ pub fn run(
     const pos_width_results = try benchFindPosByWidth(allocator, iterations);
     defer allocator.free(pos_width_results);
     try all_results.appendSlice(pos_width_results);
+
+    // calculateTextWidth benchmarks
+    const text_width_results = try benchCalculateTextWidth(allocator, iterations);
+    defer allocator.free(text_width_results);
+    try all_results.appendSlice(text_width_results);
 
     return try all_results.toOwnedSlice();
 }
