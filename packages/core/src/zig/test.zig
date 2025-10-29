@@ -20,6 +20,8 @@ const utf8_tests = @import("tests/utf8_test.zig");
 const event_emitter_tests = @import("tests/event-emitter_test.zig");
 const buffer_tests = @import("tests/buffer_test.zig");
 const segment_merge_tests = @import("tests/segment-merge.test.zig");
+const word_wrap_editing_tests = @import("tests/word-wrap-editing_test.zig");
+const word_wrap_debug_tests = @import("tests/word-wrap-debug_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -44,5 +46,7 @@ comptime {
     _ = event_emitter_tests;
     _ = buffer_tests;
     _ = segment_merge_tests;
+    _ = word_wrap_editing_tests;
+    _ = word_wrap_debug_tests;
     // _ = example_tests;
 }
