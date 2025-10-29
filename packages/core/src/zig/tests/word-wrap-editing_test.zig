@@ -488,3 +488,56 @@ test "Word wrap - debug virtual line contents" {
 
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
 }
+
+test "Word wrap - incremental character edits near boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(18);
+
+    try eb.setText("hello my good ", false);
+
+    var vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+
+    // Type "friend" one character at a time
+    try eb.setCursor(0, 14);
+    try eb.insertText("f");
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+
+    try eb.insertText("r");
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+
+    try eb.insertText("i");
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+
+    try eb.insertText("e");
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+
+    try eb.insertText("n");
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+
+    try eb.insertText("d");
+    vlines = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+
+    // Verify final wrapping
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+}
