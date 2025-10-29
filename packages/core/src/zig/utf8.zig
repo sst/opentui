@@ -457,19 +457,99 @@ pub const PosByWidthResult = struct {
     columns_used: u32,
 };
 
-// Simple East Asian Width detection
+// East Asian Width detection based on Unicode 15.1.0
+// Returns the display width in columns (0, 1, or 2)
 inline fn eastAsianWidth(cp: u21) u32 {
-    return switch (cp) {
-        0x4E00...0x9FFF => 2, // CJK Unified Ideographs
-        0xAC00...0xD7AF => 2, // Hangul Syllables
-        0x3040...0x309F => 2, // Hiragana
-        0x30A0...0x30FF => 2, // Katakana
-        0xFF01...0xFF60 => 2, // Fullwidth Forms
-        0xF900...0xFAFF => 2, // CJK Compatibility Ideographs
-        0x1F300...0x1F9FF => 2, // Emoji and symbols
-        0x0300...0x036F, 0x1AB0...0x1AFF, 0x1DC0...0x1DFF, 0x20D0...0x20FF, 0xFE20...0xFE2F => 0, // Combining marks
-        else => 1,
-    };
+    // Combining marks and zero-width characters
+    if ((cp >= 0x0300 and cp <= 0x036F) or // Combining Diacritical Marks
+        (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
+        (cp >= 0x1DC0 and cp <= 0x1DFF) or // Combining Diacritical Marks Supplement
+        (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
+        (cp >= 0xFE20 and cp <= 0xFE2F)) // Combining Half Marks
+    {
+        return 0;
+    }
+
+    // Wide and Fullwidth characters (width 2)
+    if ((cp >= 0x1100 and cp <= 0x115F) or // Hangul Jamo
+        (cp >= 0x231A and cp <= 0x231B) or // Watch, Hourglass
+        (cp >= 0x2329 and cp <= 0x232A) or // Left/Right-Pointing Angle Bracket
+        (cp >= 0x23E9 and cp <= 0x23EC) or // Fast Forward, etc
+        (cp >= 0x23F0 and cp <= 0x23F0) or // Alarm Clock
+        (cp >= 0x23F3 and cp <= 0x23F3) or // Hourglass
+        (cp >= 0x25FD and cp <= 0x25FE) or // White/Black Medium Small Square
+        (cp >= 0x2600 and cp <= 0x27BF) or // Miscellaneous Symbols, Dingbats (includes checkmark U+2705, heart U+2764, etc.)
+        (cp >= 0x2B1B and cp <= 0x2B1C) or // Black/White Large Square
+        (cp >= 0x2B50 and cp <= 0x2B50) or // White Medium Star
+        (cp >= 0x2B55 and cp <= 0x2B55) or // Heavy Large Circle
+        (cp >= 0x2E80 and cp <= 0x2EFF) or // CJK Radicals Supplement
+        (cp >= 0x2F00 and cp <= 0x2FDF) or // Kangxi Radicals
+        (cp >= 0x2FF0 and cp <= 0x2FFF) or // Ideographic Description Characters
+        (cp >= 0x3000 and cp <= 0x303E) or // CJK Symbols and Punctuation
+        (cp >= 0x3040 and cp <= 0x309F) or // Hiragana
+        (cp >= 0x30A0 and cp <= 0x30FF) or // Katakana
+        (cp >= 0x3100 and cp <= 0x312F) or // Bopomofo
+        (cp >= 0x3131 and cp <= 0x318E) or // Hangul Compatibility Jamo
+        (cp >= 0x3190 and cp <= 0x31BA) or // Kanbun, Bopomofo Extended
+        (cp >= 0x31C0 and cp <= 0x31E3) or // CJK Strokes
+        (cp >= 0x31F0 and cp <= 0x31FF) or // Katakana Phonetic Extensions
+        (cp >= 0x3200 and cp <= 0x32FF) or // Enclosed CJK Letters and Months
+        (cp >= 0x3300 and cp <= 0x33FF) or // CJK Compatibility
+        (cp >= 0x3400 and cp <= 0x4DBF) or // CJK Unified Ideographs Extension A
+        (cp >= 0x4DC0 and cp <= 0x4DFF) or // Yijing Hexagram Symbols
+        (cp >= 0x4E00 and cp <= 0x9FFF) or // CJK Unified Ideographs
+        (cp >= 0xA000 and cp <= 0xA48F) or // Yi Syllables
+        (cp >= 0xA490 and cp <= 0xA4CF) or // Yi Radicals
+        (cp >= 0xAC00 and cp <= 0xD7A3) or // Hangul Syllables
+        (cp >= 0xF900 and cp <= 0xFAFF) or // CJK Compatibility Ideographs
+        (cp >= 0xFE10 and cp <= 0xFE19) or // Vertical Forms
+        (cp >= 0xFE30 and cp <= 0xFE6F) or // CJK Compatibility Forms
+        (cp >= 0xFF01 and cp <= 0xFF60) or // Fullwidth Forms
+        (cp >= 0xFFE0 and cp <= 0xFFE6) or // Fullwidth symbols
+        (cp >= 0x1F000 and cp <= 0x1F02B) or // Mahjong Tiles, Domino Tiles
+        (cp >= 0x1F030 and cp <= 0x1F093) or // Domino Tiles
+        (cp >= 0x1F0A0 and cp <= 0x1F0AE) or // Playing Cards
+        (cp >= 0x1F0B1 and cp <= 0x1F0BF) or // Playing Cards
+        (cp >= 0x1F0C1 and cp <= 0x1F0CF) or // Playing Cards
+        (cp >= 0x1F0D1 and cp <= 0x1F0F5) or // Playing Cards
+        (cp >= 0x1F100 and cp <= 0x1F10C) or // Enclosed Alphanumeric Supplement
+        (cp >= 0x1F110 and cp <= 0x1F16C) or // Enclosed Alphanumeric Supplement
+        (cp >= 0x1F170 and cp <= 0x1F1AC) or // Enclosed Alphanumeric Supplement
+        // NOTE: Regional Indicators (0x1F1E6-0x1F1FF) are handled specially - width 1 each, but pairs = width 2
+        (cp >= 0x1F200 and cp <= 0x1F202) or // Enclosed Ideographic Supplement
+        (cp >= 0x1F210 and cp <= 0x1F23B) or // Enclosed Ideographic Supplement
+        (cp >= 0x1F240 and cp <= 0x1F248) or // Enclosed Ideographic Supplement
+        (cp >= 0x1F250 and cp <= 0x1F251) or // Enclosed Ideographic Supplement
+        (cp >= 0x1F260 and cp <= 0x1F265) or // Enclosed Ideographic Supplement
+        (cp >= 0x1F300 and cp <= 0x1F6FF) or // Miscellaneous Symbols and Pictographs, Transport and Map Symbols
+        (cp >= 0x1F700 and cp <= 0x1F773) or // Alchemical Symbols
+        (cp >= 0x1F780 and cp <= 0x1F7D8) or // Geometric Shapes Extended
+        (cp >= 0x1F7E0 and cp <= 0x1F7EB) or // Geometric Shapes Extended
+        (cp >= 0x1F800 and cp <= 0x1F80B) or // Supplemental Arrows-C
+        (cp >= 0x1F810 and cp <= 0x1F847) or // Supplemental Arrows-C
+        (cp >= 0x1F850 and cp <= 0x1F859) or // Supplemental Arrows-C
+        (cp >= 0x1F860 and cp <= 0x1F887) or // Supplemental Arrows-C
+        (cp >= 0x1F890 and cp <= 0x1F8AD) or // Supplemental Arrows-C
+        (cp >= 0x1F8B0 and cp <= 0x1F8B1) or // Supplemental Arrows-C
+        (cp >= 0x1F900 and cp <= 0x1FA53) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA60 and cp <= 0x1FA6D) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA70 and cp <= 0x1FA74) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA78 and cp <= 0x1FA7C) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA80 and cp <= 0x1FA86) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA90 and cp <= 0x1FAAC) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FAB0 and cp <= 0x1FABA) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FAC0 and cp <= 0x1FAC5) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FAD0 and cp <= 0x1FAD9) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FAE0 and cp <= 0x1FAE7) or // Supplemental Symbols and Pictographs
+        (cp >= 0x1FAF0 and cp <= 0x1FAF8) or // Supplemental Symbols and Pictographs
+        (cp >= 0x20000 and cp <= 0x2FFFD) or // CJK Unified Ideographs Extension B-F
+        (cp >= 0x30000 and cp <= 0x3FFFD)) // CJK Unified Ideographs Extension G
+    {
+        return 2;
+    }
+
+    // Default to width 1
+    return 1;
 }
 
 /// Calculate the display width of a byte in columns
@@ -929,6 +1009,8 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8)
 /// Calculate the display width of text including tab characters with static tab_width
 /// This is a high-performance function for measuring text with tabs
 /// Tabs are always tab_width columns regardless of position
+/// IMPORTANT: Properly handles grapheme clusters (e.g., emoji with modifiers, ZWJ sequences)
+/// For grapheme clusters, uses the width of the first non-zero-width codepoint
 pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u32 {
     if (text.len == 0) return 0;
 
@@ -941,31 +1023,68 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
         return width;
     }
 
-    // General case with Unicode support
-    var width: u32 = 0;
+    // General case with Unicode support and grapheme cluster handling
+    var total_width: u32 = 0;
     var pos: usize = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+    var cluster_width: u32 = 0; // Width of the current grapheme cluster
+    var cluster_has_width: bool = false; // Track if we've found a non-zero width codepoint
+    var is_regional_indicator_pair: bool = false; // Track if we're in an RI pair (flag emoji)
 
     while (pos < text.len) {
         const b0 = text[pos];
-        if (b0 == '\t') {
-            width += @as(u32, tab_width);
-            pos += 1;
-        } else if (b0 < 0x80) {
-            if (b0 >= 32 and b0 <= 126) {
-                width += 1;
-            }
-            pos += 1;
-        } else {
+
+        // Decode the codepoint
+        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
             const dec = decodeUtf8Unchecked(text, pos);
-            if (pos + dec.len > text.len) {
-                width += 1;
-                pos += 1;
-            } else {
-                width += eastAsianWidth(dec.cp);
-                pos += dec.len;
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        // Check if this is a Regional Indicator (flag emoji component)
+        const is_ri = (curr_cp >= 0x1F1E6 and curr_cp <= 0x1F1FF);
+
+        // Check if this is a grapheme break
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
+
+        if (is_break) {
+            // Commit the previous cluster's width
+            if (prev_cp != null) {
+                total_width += cluster_width;
             }
+            // Start a new cluster
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width = cp_width;
+            cluster_has_width = (cp_width > 0);
+            is_regional_indicator_pair = is_ri; // Track if first codepoint is RI
+        } else {
+            // Continuing a cluster
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+
+            // Special case: Regional Indicator pairs (flag emojis)
+            // Both RIs contribute to width (typically 1+1=2)
+            if (is_regional_indicator_pair and is_ri) {
+                cluster_width += cp_width;
+                cluster_has_width = true;
+            } else if (!cluster_has_width and cp_width > 0) {
+                // Normal case: use first non-zero width codepoint
+                cluster_width = cp_width;
+                cluster_has_width = true;
+            }
+            // Otherwise, ignore width of modifiers, ZWJ, etc.
         }
+
+        prev_cp = curr_cp;
+        pos += cp_len;
     }
 
-    return width;
+    // Don't forget the last cluster
+    if (prev_cp != null) {
+        total_width += cluster_width;
+    }
+
+    return total_width;
 }

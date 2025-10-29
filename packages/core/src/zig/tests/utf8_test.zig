@@ -1998,17 +1998,17 @@ test "calculateTextWidth: combining marks" {
 
 test "calculateTextWidth: emoji with skin tone" {
     const result = utf8.calculateTextWidth("👋🏿", 4, false);
-    try testing.expectEqual(@as(u32, 4), result); // 👋(2) + 🏿(2) = 4
+    try testing.expectEqual(@as(u32, 2), result); // 👋🏿 is a single grapheme with width 2
 }
 
 test "calculateTextWidth: emoji with ZWJ" {
     const result = utf8.calculateTextWidth("👩‍🚀", 4, false);
-    try testing.expectEqual(@as(u32, 5), result); // woman(2) + ZWJ(1) + rocket(2) = 5
+    try testing.expectEqual(@as(u32, 2), result); // 👩‍🚀 is a single grapheme with width 2
 }
 
 test "calculateTextWidth: flag emoji" {
     const result = utf8.calculateTextWidth("🇺🇸", 4, false);
-    try testing.expectEqual(@as(u32, 2), result); // Regional indicators
+    try testing.expectEqual(@as(u32, 2), result); // 🇺🇸 is a single grapheme with width 2
 }
 
 test "calculateTextWidth: hiragana with tab" {
