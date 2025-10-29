@@ -482,7 +482,7 @@ test "Word wrap - debug virtual line contents" {
             const chunk_bytes = vchunk.chunk.getBytes(&eb.getTextBuffer().mem_registry);
             const start = vchunk.grapheme_start;
             _ = start;
-            std.debug.print("  Chunk {}: start={}, count={}, width={}, total_chunk_width={}, bytes_len={}\n", .{ j, vchunk.grapheme_start, vchunk.grapheme_count, vchunk.width, vchunk.chunk.width, chunk_bytes.len });
+            std.debug.print("  Chunk {}: start={}, width={}, total_chunk_width={}, bytes_len={}\n", .{ j, vchunk.grapheme_start, vchunk.width, vchunk.chunk.width, chunk_bytes.len });
         }
     }
 

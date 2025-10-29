@@ -49,8 +49,7 @@ pub const VirtualLineSpanInfo = struct {
 
 pub const VirtualChunk = struct {
     grapheme_start: u32,
-    grapheme_count: u32,
-    width: u16,
+    width: u32,
     // Direct reference to source chunk for rendering
     chunk: *const TextChunk,
 };
@@ -268,7 +267,6 @@ pub const UnifiedTextBufferView = struct {
                     if (ctx.current_vline) |*vline| {
                         vline.chunks.append(ctx.virtual_allocator, VirtualChunk{
                             .grapheme_start = 0,
-                            .grapheme_count = chunk.width,
                             .width = chunk.width,
                             .chunk = chunk,
                         }) catch {};
@@ -346,11 +344,10 @@ pub const UnifiedTextBufferView = struct {
                     wctx.last_wrap_global_offset = 0;
                 }
 
-                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, count: u32, width: u32) void {
+                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, width: u32) void {
                     wctx.current_vline.chunks.append(wctx.virtual_allocator, VirtualChunk{
                         .grapheme_start = start,
-                        .grapheme_count = count,
-                        .width = @intCast(width),
+                        .width = width,
                         .chunk = chunk,
                     }) catch {};
                     wctx.global_char_offset += width;
@@ -436,7 +433,7 @@ pub const UnifiedTextBufferView = struct {
                             }
 
                             if (to_add > 0) {
-                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add, to_add);
+                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
                                 char_offset += to_add;
 
                                 if (has_wrap_after) {
@@ -469,7 +466,7 @@ pub const UnifiedTextBufferView = struct {
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, wctx.view.text_buffer.tab_width, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
                                     char_offset += force_result.columns_used;
                                     byte_offset += force_result.byte_offset;
                                 } else {
@@ -493,7 +490,7 @@ pub const UnifiedTextBufferView = struct {
                                 }
                                 const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, wctx.view.text_buffer.tab_width, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
                                     char_offset += force_result.columns_used;
                                     byte_offset += force_result.byte_offset;
                                     if (char_offset < chunk.width) {
@@ -503,7 +500,7 @@ pub const UnifiedTextBufferView = struct {
                                 break;
                             }
 
-                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.columns_used, wrap_result.columns_used);
+                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.columns_used);
                             char_offset += wrap_result.columns_used;
                             byte_offset += wrap_result.byte_offset;
 

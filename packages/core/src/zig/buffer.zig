@@ -925,11 +925,11 @@ pub const OptimizedBuffer = struct {
                 const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width, text_buffer.tab_width) catch continue;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
-                    globalCharPos += vchunk.grapheme_count;
-                    currentX += @intCast(vchunk.grapheme_count);
+                    globalCharPos += vchunk.width;
+                    currentX += @intCast(vchunk.width);
                     continue;
                 }
-                const col_end = vchunk.grapheme_start + vchunk.grapheme_count;
+                const col_end = vchunk.grapheme_start + vchunk.width;
                 var col = vchunk.grapheme_start;
                 var special_idx: usize = 0;
                 var byte_offset: u32 = 0;
