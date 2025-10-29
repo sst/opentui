@@ -73,6 +73,8 @@ pub const UnifiedTextBuffer = struct {
     styled_buffer: ?[]u8,
     styled_capacity: usize,
 
+    tab_width: u8,
+
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
@@ -130,6 +132,7 @@ pub const UnifiedTextBuffer = struct {
             .styled_text_mem_id = null,
             .styled_buffer = null,
             .styled_capacity = 0,
+            .tab_width = 2,
         };
 
         return self;
@@ -339,6 +342,12 @@ pub const UnifiedTextBuffer = struct {
         self.markAllViewsDirty();
     }
 
+    /// Calculate the display width of text, accounting for tabs with static tab width
+    fn calculateWidthWithTabs(self: *const Self, text: []const u8) u32 {
+        const is_ascii = utf8.isAsciiOnly(text);
+        return utf8.calculateTextWidth(text, self.tab_width, is_ascii);
+    }
+
     /// Create a TextChunk from a memory buffer range
     pub fn createChunk(
         self: *const Self,
@@ -348,7 +357,7 @@ pub const UnifiedTextBuffer = struct {
     ) TextChunk {
         const mem_buf = self.mem_registry.get(mem_id).?;
         const chunk_bytes = mem_buf[byte_start..byte_end];
-        const chunk_width: u16 = gwidth.gwidth(chunk_bytes, self.width_method, &self.display_width);
+        const chunk_width: u16 = @intCast(@min(65535, self.calculateWidthWithTabs(chunk_bytes)));
 
         var flags: u8 = 0;
         if (chunk_bytes.len > 0 and utf8.isAsciiOnly(chunk_bytes)) {
@@ -929,6 +938,16 @@ pub const UnifiedTextBuffer = struct {
         const mem_id = try self.mem_registry.register(text, false);
 
         try self.setTextInternal(mem_id, text);
+    }
+
+    pub fn getTabWidth(self: *const Self) u8 {
+        return self.tab_width;
+    }
+
+    /// Set tab width (will be rounded up to nearest multiple of 2)
+    pub fn setTabWidth(self: *Self, width: u8) void {
+        const clamped_width = @max(2, width);
+        self.tab_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
     }
 
     /// Debug log the rope structure using rope.toText

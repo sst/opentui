@@ -261,3 +261,31 @@ exports[`TextareaRenderable Textarea Content Snapshots should resize correctly w
                                         
 "
 `;
+
+exports[`TextareaRenderable Wrapping should render with tab indicator correctly 1`] = `
+"Line 1→ Tabbed                                                                  
+Line 2→ → Double tab                                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;

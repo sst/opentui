@@ -409,17 +409,17 @@ test "getGraphemeWidthAt - ASCII text" {
     try rope.append(Segment{ .text = chunk });
 
     // Test getting width at various positions
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0)); // 'H'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 1)); // 'e'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 2)); // 'l'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3)); // 'l'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 4)); // 'o'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0, 2)); // 'H'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 1, 2)); // 'e'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 2, 2)); // 'l'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3, 2)); // 'l'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 4, 2)); // 'o'
 
     // At end of line
-    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 5));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 5, 2));
 
     // Beyond end of line
-    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 10));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 10, 2));
 }
 
 test "getGraphemeWidthAt - emoji and wide characters" {
@@ -443,16 +443,16 @@ test "getGraphemeWidthAt - emoji and wide characters" {
     try rope.append(Segment{ .text = chunk });
 
     // 'a' at column 0
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0, 2));
 
     // emoji at column 1 (width 2)
-    try testing.expectEqual(@as(u32, 2), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 1));
+    try testing.expectEqual(@as(u32, 2), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 1, 2));
 
     // 'b' at column 3
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3, 2));
 
     // At end
-    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 4));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 4, 2));
 }
 
 test "getGraphemeWidthAt - multiple chunks" {
@@ -481,18 +481,18 @@ test "getGraphemeWidthAt - multiple chunks" {
     try rope.append(Segment{ .text = chunk3 });
 
     // Test in first chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0)); // 'H'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 4)); // 'o'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0, 2)); // 'H'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 4, 2)); // 'o'
 
     // Test in second chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 5)); // ' '
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 5, 2)); // ' '
 
     // Test in third chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 6)); // 'W'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 10)); // 'd'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 6, 2)); // 'W'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 10, 2)); // 'd'
 
     // At end
-    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 11));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 11, 2));
 }
 
 test "getGraphemeWidthAt - empty line" {
@@ -507,7 +507,7 @@ test "getGraphemeWidthAt - empty line" {
     try rope.append(Segment{ .linestart = {} });
 
     // Empty line - just linestart, no text
-    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0, 2));
 }
 
 test "getGraphemeWidthAt - at chunk boundary" {
@@ -534,7 +534,7 @@ test "getGraphemeWidthAt - at chunk boundary" {
     try rope.append(Segment{ .text = chunk2 });
 
     // At boundary: col 3 is first char of second chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3)); // 'd'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3, 2)); // 'd'
 }
 
 test "getGraphemeWidthAt - after break segment" {
@@ -562,11 +562,11 @@ test "getGraphemeWidthAt - after break segment" {
     try rope.append(Segment{ .text = chunk2 });
 
     // Test on line 0
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0)); // 'a'
-    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3)); // end of line
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 0, 2)); // 'a'
+    try testing.expectEqual(@as(u32, 0), iter_mod.getGraphemeWidthAt(&rope, &registry, 0, 3, 2)); // end of line
 
     // Test on line 1
-    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 1, 0)); // 'd'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getGraphemeWidthAt(&rope, &registry, 1, 0, 2)); // 'd'
 }
 
 test "getPrevGraphemeWidth - ASCII text" {
@@ -590,14 +590,14 @@ test "getPrevGraphemeWidth - ASCII text" {
     try rope.append(Segment{ .text = chunk });
 
     // At start - no previous grapheme
-    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0, 2));
 
     // Previous graphemes
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 1)); // before 'e'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 2)); // before first 'l'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3)); // before second 'l'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 4)); // before 'o'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 5)); // at end
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 1, 2)); // before 'e'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 2, 2)); // before first 'l'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3, 2)); // before second 'l'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 4, 2)); // before 'o'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 5, 2)); // at end
 }
 
 test "getPrevGraphemeWidth - emoji and wide characters" {
@@ -621,16 +621,16 @@ test "getPrevGraphemeWidth - emoji and wide characters" {
     try rope.append(Segment{ .text = chunk });
 
     // At start
-    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0, 2));
 
     // Before emoji (previous is 'a')
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 1));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 1, 2));
 
     // After emoji (previous is emoji, width 2)
-    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3));
+    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3, 2));
 
     // At end (previous is 'b')
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 4));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 4, 2));
 }
 
 test "getPrevGraphemeWidth - at chunk boundary" {
@@ -658,11 +658,11 @@ test "getPrevGraphemeWidth - at chunk boundary" {
 
     // At exact chunk boundary: col 3 (start of second chunk)
     // Previous grapheme should be 'c' from first chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3, 2));
 
     // Within second chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 4)); // before 'e'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 5)); // before 'f'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 4, 2)); // before 'e'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 5, 2)); // before 'f'
 }
 
 test "getPrevGraphemeWidth - emoji at chunk boundary" {
@@ -690,7 +690,7 @@ test "getPrevGraphemeWidth - emoji at chunk boundary" {
 
     // At exact chunk boundary: col 3 (start of second chunk)
     // Previous grapheme should be the emoji (width 2) from first chunk
-    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3));
+    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3, 2));
 }
 
 test "getPrevGraphemeWidth - multiple chunks" {
@@ -719,16 +719,16 @@ test "getPrevGraphemeWidth - multiple chunks" {
     try rope.append(Segment{ .text = chunk3 });
 
     // In first chunk
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 1)); // before 'e'
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 1, 2)); // before 'e'
 
     // At boundary between first and second
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 5)); // before ' '
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 5, 2)); // before ' '
 
     // At boundary between second and third
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 6)); // before emoji
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 6, 2)); // before emoji
 
     // At end (after emoji)
-    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 8)); // after emoji
+    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 8, 2)); // after emoji
 }
 
 test "getPrevGraphemeWidth - empty line" {
@@ -743,7 +743,7 @@ test "getPrevGraphemeWidth - empty line" {
     try rope.append(Segment{ .linestart = {} });
 
     // Empty line
-    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0));
+    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0, 2));
 }
 
 test "getPrevGraphemeWidth - col beyond line width" {
@@ -766,7 +766,7 @@ test "getPrevGraphemeWidth - col beyond line width" {
     try rope.append(Segment{ .text = chunk });
 
     // Request col 100, should clamp to line width (3) and return 'c'
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 100));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 100, 2));
 }
 
 test "getPrevGraphemeWidth - multiline" {
@@ -794,11 +794,11 @@ test "getPrevGraphemeWidth - multiline" {
     try rope.append(Segment{ .text = chunk2 });
 
     // Line 0
-    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0));
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3)); // after 'c'
+    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 0, 2));
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 0, 3, 2)); // after 'c'
 
     // Line 1
-    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 1, 0)); // start of line
-    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 1, 2)); // after emoji
-    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 1, 3)); // after 'x'
+    try testing.expectEqual(@as(u32, 0), iter_mod.getPrevGraphemeWidth(&rope, &registry, 1, 0, 2)); // start of line
+    try testing.expectEqual(@as(u32, 2), iter_mod.getPrevGraphemeWidth(&rope, &registry, 1, 2, 2)); // after emoji
+    try testing.expectEqual(@as(u32, 1), iter_mod.getPrevGraphemeWidth(&rope, &registry, 1, 3, 2)); // after 'x'
 }

@@ -421,6 +421,14 @@ export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.resetDefaults();
 }
 
+export fn textBufferGetTabWidth(tb: *text_buffer.UnifiedTextBuffer) u8 {
+    return tb.getTabWidth();
+}
+
+export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) void {
+    tb.setTabWidth(width);
+}
+
 export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
     const data = dataPtr[0..dataLen];
     const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;
@@ -550,6 +558,14 @@ export fn textBufferViewGetSelectedText(view: *text_buffer_view.UnifiedTextBuffe
 export fn textBufferViewGetPlainText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getPlainTextIntoBuffer(outBuffer);
+}
+
+export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBufferView, indicator: u32) void {
+    view.setTabIndicator(indicator);
+}
+
+export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const f32) void {
+    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
 // ===== EditBuffer Exports =====
@@ -955,6 +971,14 @@ export fn editorViewSetPlaceholderStyledText(
     }
     const chunks = chunksPtr[0..chunkCount];
     view.setPlaceholderStyledText(chunks) catch {};
+}
+
+export fn editorViewSetTabIndicator(view: *editor_view.EditorView, indicator: u32) void {
+    view.setTabIndicator(indicator);
+}
+
+export fn editorViewSetTabIndicatorColor(view: *editor_view.EditorView, color: [*]const f32) void {
+    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
 export fn bufferDrawEditorView(

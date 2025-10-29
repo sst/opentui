@@ -16,6 +16,9 @@ const initialContent = `Welcome to the TextareaRenderable Demo!
 
 This is an interactive text editor powered by EditBuffer and EditorView.
 
+\tThis is a tab
+\t\t\tMultiple tabs
+
 NAVIGATION:
   • Arrow keys to move cursor
   • Home/End for line navigation
@@ -97,6 +100,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     showCursor: true,
     cursorColor: "#4ECDC4",
     placeholder: t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333333")("here...")}`,
+    tabIndicator: "→",
+    tabIndicatorColor: "#30363D",
   })
   editorBox.add(editor)
 

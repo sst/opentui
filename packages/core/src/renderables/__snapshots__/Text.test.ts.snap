@@ -314,3 +314,12 @@ wrap to multiple
 lines               
 "
 `;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with tab indicator correctly 1`] = `
+"Line 1→ Tabbed      
+Line 2→ → Double tab
+                    
+                    
+                    
+"
+`;

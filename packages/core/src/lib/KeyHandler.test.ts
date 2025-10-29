@@ -421,6 +421,25 @@ test("InternalKeyHandler - paste preventDefault prevents internal handlers", () 
   handler.destroy()
 })
 
+test("KeyHandler - emits paste event even with empty content", () => {
+  const handler = createKeyHandler()
+
+  let pasteEventReceived = false
+  let receivedPaste = "not-empty"
+
+  handler.on("paste", (event) => {
+    pasteEventReceived = true
+    receivedPaste = event.text
+  })
+
+  mockInput.pasteBracketedText("")
+
+  expect(pasteEventReceived).toBe(true)
+  expect(receivedPaste).toBe("")
+
+  handler.destroy()
+})
+
 test("KeyHandler - filters out mouse events", () => {
   const handler = createKeyHandler()
 

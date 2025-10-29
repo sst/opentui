@@ -320,6 +320,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    textBufferGetTabWidth: {
+      args: ["ptr"],
+      returns: "u8",
+    },
+    textBufferSetTabWidth: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
     textBufferRegisterMemBuffer: {
       args: ["ptr", "ptr", "usize", "bool"],
       returns: "u16",
@@ -445,6 +453,14 @@ function getOpenTUILib(libPath?: string) {
     textBufferViewGetPlainText: {
       args: ["ptr", "ptr", "usize"],
       returns: "usize",
+    },
+    textBufferViewSetTabIndicator: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    textBufferViewSetTabIndicatorColor: {
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
     bufferDrawTextBufferView: {
       args: ["ptr", "ptr", "i32", "i32"],
@@ -717,6 +733,14 @@ function getOpenTUILib(libPath?: string) {
     },
     editorViewSetPlaceholderStyledText: {
       args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editorViewSetTabIndicator: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    editorViewSetTabIndicatorColor: {
+      args: ["ptr", "ptr"],
       returns: "void",
     },
 
@@ -1099,6 +1123,8 @@ export interface RenderLib {
   textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
   textBufferResetDefaults: (buffer: Pointer) => void
+  textBufferGetTabWidth: (buffer: Pointer) => number
+  textBufferSetTabWidth: (buffer: Pointer, width: number) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   getPlainTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
 
@@ -1131,6 +1157,8 @@ export interface RenderLib {
   textBufferViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   textBufferViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
+  textBufferViewSetTabIndicator: (view: Pointer, indicator: number) => void
+  textBufferViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -1221,6 +1249,8 @@ export interface RenderLib {
     view: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ) => void
+  editorViewSetTabIndicator: (view: Pointer, indicator: number) => void
+  editorViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
 
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
@@ -1814,6 +1844,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferResetDefaults(buffer)
   }
 
+  public textBufferGetTabWidth(buffer: Pointer): number {
+    return this.opentui.symbols.textBufferGetTabWidth(buffer)
+  }
+
+  public textBufferSetTabWidth(buffer: Pointer, width: number): void {
+    this.opentui.symbols.textBufferSetTabWidth(buffer, width)
+  }
+
   public textBufferRegisterMemBuffer(buffer: Pointer, bytes: Uint8Array, owned: boolean = false): number {
     const result = this.opentui.symbols.textBufferRegisterMemBuffer(buffer, bytes, bytes.length, owned)
     if (result === 0xffff) {
@@ -2045,6 +2083,14 @@ class FFIRenderLib implements RenderLib {
     }
 
     return outBuffer.slice(0, actualLen)
+  }
+
+  public textBufferViewSetTabIndicator(view: Pointer, indicator: number): void {
+    this.opentui.symbols.textBufferViewSetTabIndicator(view, indicator)
+  }
+
+  public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
+    this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, color.buffer)
   }
 
   public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {
@@ -2582,6 +2628,14 @@ class FFIRenderLib implements RenderLib {
 
     const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
     this.opentui.symbols.editorViewSetPlaceholderStyledText(view, ptr(chunksBuffer), nonEmptyChunks.length)
+  }
+
+  public editorViewSetTabIndicator(view: Pointer, indicator: number): void {
+    this.opentui.symbols.editorViewSetTabIndicator(view, indicator)
+  }
+
+  public editorViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
+    this.opentui.symbols.editorViewSetTabIndicatorColor(view, color.buffer)
   }
 
   public onNativeEvent(name: string, handler: (data: ArrayBuffer) => void): void {
