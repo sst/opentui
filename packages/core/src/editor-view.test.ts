@@ -342,4 +342,253 @@ describe("EditorView", () => {
       expect(view.getVirtualLineCount()).toBeGreaterThanOrEqual(1)
     })
   })
+
+  describe("cursor movement around multi-cell graphemes", () => {
+    // These tests verify that the cursor correctly handles multi-cell graphemes like emojis (🌟)
+    // and CJK characters (世界). Multi-cell graphemes occupy 2 visual columns but are treated
+    // as a single logical unit for cursor movement and deletion.
+    //
+    // Key behaviors:
+    // - moveCursorRight/Left skips over entire graphemes (no intermediate positions)
+    // - deleteCharBackward deletes the entire grapheme, not individual cells
+    // - Visual column positions reflect the actual display width (2 cells per wide grapheme)
+    // - Logical column positions mark grapheme boundaries (skipping intermediate cell positions)
+
+    it("should understand logical vs visual cursor positions", () => {
+      // This test documents how cursor positions work with multi-cell graphemes
+      // For "a🌟b": moving right skips intermediate positions in multi-cell graphemes
+      buffer.setText("a🌟b")
+
+      // Position 0: before 'a'
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      // Position 1: after 'a', before '🌟'
+      buffer.setCursorToLineCol(0, 1)
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      // Position 3: after '🌟' (position 2 would be inside the 2-cell emoji)
+      buffer.setCursorToLineCol(0, 3)
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      // Position 4: after 'b'
+      buffer.setCursorToLineCol(0, 4)
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      // Moving right skips over multi-cell graphemes in one jump
+      buffer.setCursorToLineCol(0, 0)
+      buffer.moveCursorRight() // 0 -> 1
+      expect(buffer.getCursorPosition().col).toBe(1)
+
+      buffer.moveCursorRight() // 1 -> 3 (skips 2, which is inside emoji)
+      expect(buffer.getCursorPosition().col).toBe(3)
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.moveCursorRight() // 3 -> 4
+      expect(buffer.getCursorPosition().col).toBe(4)
+    })
+
+    it("should move cursor correctly around emoji (🌟) with visual positions", () => {
+      // Setup: "a🌟b" where 🌟 takes 2 visual cells
+      // Cursor positions: 0 (before a), 1 (after a), 3 (after 🌟), 4 (after b)
+      buffer.setText("a🌟b")
+
+      // Start before emoji (after 'a')
+      buffer.setCursorToLineCol(0, 1)
+      let visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(1)
+
+      // Move right: cursor jumps over the emoji to position 3
+      buffer.moveCursorRight()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(3) // After 2-cell emoji
+
+      // Move right again: cursor moves to after 'b'
+      buffer.moveCursorRight()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(4)
+
+      // Move left: cursor jumps back over 'b'
+      buffer.moveCursorLeft()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(3)
+
+      // Move left again: cursor jumps back over emoji
+      buffer.moveCursorLeft()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(1)
+    })
+
+    it("should move cursor correctly around CJK characters (世界) with visual positions", () => {
+      // Setup: "a世界b" where each CJK char takes 2 visual cells
+      // Cursor positions: 0, 1 (after a), 3 (after 世), 5 (after 界), 6 (after b)
+      buffer.setText("a世界b")
+
+      // Start at beginning
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      // Move through each character
+      buffer.moveCursorRight() // after 'a'
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      buffer.moveCursorRight() // after '世'
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.moveCursorRight() // after '界'
+      expect(view.getVisualCursor().visualCol).toBe(5)
+
+      buffer.moveCursorRight() // after 'b'
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      // Move back
+      buffer.moveCursorLeft() // back to after '界'
+      expect(view.getVisualCursor().visualCol).toBe(5)
+
+      buffer.moveCursorLeft() // back to after '世'
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.moveCursorLeft() // back to after 'a'
+      expect(view.getVisualCursor().visualCol).toBe(1)
+    })
+
+    it("should handle backspace correctly after emoji", () => {
+      // Setup: "a🌟b" with cursor positions: 0, 1, 3, 4
+      buffer.setText("a🌟b")
+
+      // Position cursor right after emoji (position 3, before 'b')
+      buffer.setCursorToLineCol(0, 3)
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      // Backspace should delete the entire emoji grapheme
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("ab")
+      expect(view.getVisualCursor().visualCol).toBe(1)
+    })
+
+    it("should handle backspace correctly after CJK character", () => {
+      // Setup: "世界" with cursor positions: 0, 2 (after 世), 4 (after 界)
+      buffer.setText("世界")
+
+      // Position cursor at end (after '界', position 4)
+      buffer.setCursorToLineCol(0, 4)
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      // Backspace should delete '界' (the entire 2-cell character)
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("世")
+      expect(view.getVisualCursor().visualCol).toBe(2)
+
+      // Backspace again should delete '世'
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("")
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should treat multi-cell graphemes as single units for cursor movement", () => {
+      // "🌟世界🎉" = 2 + 2 + 2 + 2 = 8 visual cells total
+      // Cursor positions: 0, 2 (after 🌟), 4 (after 世), 6 (after 界), 8 (after 🎉)
+      buffer.setText("🌟世界🎉")
+
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      // Move through each grapheme - cursor jumps by 2 each time
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(2)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(8)
+
+      // Move back - cursor jumps by 2 each time
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(2)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should handle backspace through mixed multi-cell graphemes", () => {
+      // "a🌟b世c" with positions: 0, 1 (after a), 3 (after 🌟), 4 (after b), 6 (after 世), 7 (after c)
+      buffer.setText("a🌟b世c")
+
+      // Move to end (position 7)
+      buffer.setCursorToLineCol(0, 7)
+      expect(view.getVisualCursor().visualCol).toBe(7)
+
+      // Delete 'c'
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a🌟b世")
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      // Delete '世' (2-cell character)
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a🌟b")
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      // Delete 'b'
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a🌟")
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      // Delete '🌟' (2-cell emoji)
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a")
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      // Delete 'a'
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("")
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should handle delete key correctly before multi-cell graphemes", () => {
+      // "a🌟b" with positions: 0, 1 (after a), 3 (after 🌟), 4 (after b)
+      buffer.setText("a🌟b")
+
+      // Position after 'a', before emoji (position 1)
+      buffer.setCursorToLineCol(0, 1)
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      // Delete should remove the entire emoji
+      buffer.deleteChar()
+      expect(buffer.getText()).toBe("ab")
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      // Position at start
+      buffer.setCursorToLineCol(0, 0)
+
+      // Delete 'a'
+      buffer.deleteChar()
+      expect(buffer.getText()).toBe("b")
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should handle line start and end with multi-cell graphemes", () => {
+      // "🌟世界🎉" = 8 visual cells total
+      // Positions: 0, 2 (after 🌟), 4 (after 世), 6 (after 界), 8 (after 🎉)
+      buffer.setText("🌟世界🎉")
+
+      // Go to start of line
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      // Go to end of line using getEOL
+      const eol = view.getEOL()
+      buffer.setCursorToLineCol(eol.logicalRow, eol.logicalCol)
+      expect(view.getVisualCursor().visualCol).toBe(8)
+    })
+  })
 })
