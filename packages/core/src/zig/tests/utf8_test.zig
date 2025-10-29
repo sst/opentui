@@ -1996,6 +1996,11 @@ test "calculateTextWidth: combining marks" {
     try testing.expectEqual(@as(u32, 4), result); // c(1) + a(1) + f(1) + e(1) + combining(0) = 4
 }
 
+test "calculateTextWidth: checkmark symbol" {
+    const result = utf8.calculateTextWidth("✓", 4, false);
+    try testing.expectEqual(@as(u32, 1), result);
+}
+
 test "calculateTextWidth: emoji with skin tone" {
     const result = utf8.calculateTextWidth("👋🏿", 4, false);
     try testing.expectEqual(@as(u32, 2), result); // 👋🏿 is a single grapheme with width 2

@@ -557,7 +557,9 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x23F0 and cp <= 0x23F0) or // Alarm Clock
         (cp >= 0x23F3 and cp <= 0x23F3) or // Hourglass
         (cp >= 0x25FD and cp <= 0x25FE) or // White/Black Medium Small Square
-        (cp >= 0x2600 and cp <= 0x27BF) or // Miscellaneous Symbols, Dingbats (includes checkmark U+2705, heart U+2764, etc.)
+        (cp >= 0x2600 and cp <= 0x26FF) or // Miscellaneous Symbols (emoji)
+        (cp >= 0x2700 and cp <= 0x2712) or // Dingbats (before CHECK MARK)
+        (cp >= 0x2714 and cp <= 0x27BF) or // Dingbats (after CHECK MARK) - excludes U+2713
         (cp >= 0x2B1B and cp <= 0x2B1C) or // Black/White Large Square
         (cp >= 0x2B50 and cp <= 0x2B50) or // White Medium Star
         (cp >= 0x2B55 and cp <= 0x2B55) or // Heavy Large Circle
