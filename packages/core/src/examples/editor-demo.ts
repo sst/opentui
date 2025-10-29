@@ -100,6 +100,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     showCursor: true,
     cursorColor: "#4ECDC4",
     placeholder: t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333333")("here...")}`,
+    tabIndicator: "→",
+    tabIndicatorColor: "#30363D",
   })
   editorBox.add(editor)
 
