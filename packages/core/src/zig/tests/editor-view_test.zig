@@ -2826,3 +2826,78 @@ test "EditorView - placeholder renders to buffer when empty" {
     try std.testing.expect(std.mem.startsWith(u8, result2, "Hello"));
     try std.testing.expect(!std.mem.startsWith(u8, result2, "Type something..."));
 }
+
+test "EditorView - tab indicator set and get" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try std.testing.expect(ev.getTabIndicator() == null);
+    try std.testing.expect(ev.getTabIndicatorColor() == null);
+
+    ev.setTabIndicator('·');
+    ev.setTabIndicatorColor(.{ 0.5, 0.5, 0.5, 1.0 });
+
+    try std.testing.expectEqual(@as(u32, '·'), ev.getTabIndicator().?);
+    try std.testing.expectEqual(@as(f32, 0.5), ev.getTabIndicatorColor().?[0]);
+}
+
+test "EditorView - tab indicator renders in buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    eb.tb.setTabWidth(4);
+    try eb.insertText("A\tB");
+
+    ev.setTabIndicator('→');
+    ev.setTabIndicatorColor(.{ 0.3, 0.3, 0.3, 1.0 });
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        10,
+        .{ .pool = pool, .width_method = .wcwidth },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+
+    const cell_0 = opt_buffer.get(0, 0);
+    try std.testing.expect(cell_0 != null);
+    try std.testing.expectEqual(@as(u32, 'A'), cell_0.?.char);
+
+    const cell_1 = opt_buffer.get(1, 0);
+    try std.testing.expect(cell_1 != null);
+    try std.testing.expectEqual(@as(u32, '→'), cell_1.?.char);
+    try std.testing.expectEqual(@as(f32, 0.3), cell_1.?.fg[0]);
+
+    const cell_2 = opt_buffer.get(2, 0);
+    try std.testing.expect(cell_2 != null);
+    try std.testing.expectEqual(@as(u32, 32), cell_2.?.char);
+
+    const cell_4 = opt_buffer.get(4, 0);
+    try std.testing.expect(cell_4 != null);
+    try std.testing.expectEqual(@as(u32, 'B'), cell_4.?.char);
+}

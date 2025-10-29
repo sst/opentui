@@ -1415,6 +1415,19 @@ describe("TextRenderable Selection", () => {
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
     })
+
+    it("should render text with tab indicator correctly", async () => {
+      await createTextRenderable(currentRenderer, {
+        content: "Line 1\tTabbed\nLine 2\t\tDouble tab",
+        tabIndicator: "→",
+        tabIndicatorColor: RGBA.fromValues(0.5, 0.5, 0.5, 1),
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
   })
 
   describe("Text Node Dimension Updates", () => {

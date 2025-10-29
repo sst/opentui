@@ -149,6 +149,7 @@ pub const TextChunk = struct {
         graphemes_data: *const Graphemes,
         width_method: gwidth.WidthMethod,
         display_width: *const DisplayWidth,
+        tabwidth: u8,
     ) TextBufferError![]const GraphemeInfo {
         const mut_self = @constCast(self);
         if (self.graphemes) |cached| {
@@ -171,6 +172,23 @@ pub const TextChunk = struct {
 
         while (iter.next()) |gc| {
             const gbytes = gc.bytes(chunk_bytes);
+
+            if (gbytes.len == 1 and gbytes[0] == '\t') {
+                const tab_width_u32: u32 = @intCast(tabwidth);
+                const tab_stop = tab_width_u32 - (col % tab_width_u32);
+
+                try grapheme_list.append(GraphemeInfo{
+                    .byte_offset = byte_pos,
+                    .byte_len = 1,
+                    .width = @intCast(tab_stop),
+                    .col_offset = col,
+                });
+
+                byte_pos += 1;
+                col += tab_stop;
+                continue;
+            }
+
             const width_u16: u16 = gwidth.gwidth(gbytes, width_method, display_width);
 
             if (width_u16 == 0) {
@@ -217,6 +235,7 @@ pub const TextChunk = struct {
 
         try utf8.findWrapBreaksSIMD16(chunk_bytes, &wrap_result);
 
+        // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
         const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);
         mut_self.wrap_offsets = wrap_offsets;
 

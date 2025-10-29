@@ -182,6 +182,16 @@ export class TextBuffer {
     return this._syntaxStyle ?? null
   }
 
+  public setTabWidth(width: number): void {
+    this.guard()
+    this.lib.textBufferSetTabWidth(this.bufferPtr, width)
+  }
+
+  public getTabWidth(): number {
+    this.guard()
+    return this.lib.textBufferGetTabWidth(this.bufferPtr)
+  }
+
   public clear(): void {
     this.guard()
     this.lib.textBufferClear(this.bufferPtr)

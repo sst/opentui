@@ -3210,3 +3210,28 @@ test "TextBufferView automatic updates - multiple views with different wrap sett
     try std.testing.expectEqual(@as(u32, 3), view_wrap10.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 6), view_wrap5.getVirtualLineCount());
 }
+
+test "TextBufferView - tab indicator set and get" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try std.testing.expect(view.getTabIndicator() == null);
+    try std.testing.expect(view.getTabIndicatorColor() == null);
+
+    view.setTabIndicator(@as(u32, '·'));
+    view.setTabIndicatorColor(RGBA{ 0.4, 0.4, 0.4, 1.0 });
+
+    try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
+    try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);
+}
+

@@ -125,6 +125,17 @@ export class TextBufferView {
     return this.lib.decoder.decode(plainBytes)
   }
 
+  public setTabIndicator(indicator: string | number): void {
+    this.guard()
+    const codePoint = typeof indicator === "string" ? (indicator.codePointAt(0) ?? 0) : indicator
+    this.lib.textBufferViewSetTabIndicator(this.viewPtr, codePoint)
+  }
+
+  public setTabIndicatorColor(color: RGBA): void {
+    this.guard()
+    this.lib.textBufferViewSetTabIndicatorColor(this.viewPtr, color)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

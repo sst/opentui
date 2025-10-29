@@ -231,7 +231,7 @@ pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32) u32 {
+pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8) u32 {
     const line_width = lineWidthAt(rope, row);
     if (col >= line_width) return 0;
 
@@ -248,9 +248,9 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
                 const local_col: u32 = col - cols_before;
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                const pos = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
+                const pos = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
                 if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
-                return utf8.getWidthAt(bytes, pos.byte_offset, 8, cols_before);
+                return utf8.getWidthAt(bytes, pos.byte_offset, tab_width);
             }
             cols_before = next_cols;
         }
@@ -259,7 +259,7 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32) u32 {
+pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8) u32 {
     if (col == 0) return 0;
 
     const line_width = lineWidthAt(rope, row);
@@ -281,7 +281,7 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                     // Exactly at chunk boundary - get last grapheme from previous chunk
                     const pc = prev_chunk.?;
                     const bytes = pc.chunk.getBytes(mem_registry);
-                    const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, 8, pc.cols_before);
+                    const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, tab_width);
                     if (prev) |res| return res.width;
                     return 0;
                 }
@@ -289,8 +289,8 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;
-                const here = utf8.findPosByWidth(bytes, local_col, 8, is_ascii, false);
-                const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), 8, cols_before);
+                const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
+                const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
                 if (prev) |res| return res.width;
                 return 0;
             }

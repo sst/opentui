@@ -105,6 +105,8 @@ pub const UnifiedTextBufferView = struct {
     cached_line_vline_counts: std.ArrayListUnmanaged(u32),
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
+    tab_indicator: ?u32,
+    tab_indicator_color: ?RGBA,
 
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
@@ -133,6 +135,8 @@ pub const UnifiedTextBufferView = struct {
             .cached_line_vline_counts = .{},
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
+            .tab_indicator = null,
+            .tab_indicator_color = null,
         };
 
         return self;
@@ -391,7 +395,7 @@ pub const UnifiedTextBufferView = struct {
                                     continue;
                                 }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
-                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, 8, is_ascii_only);
+                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, wctx.view.text_buffer.tab_width, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
                                     addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
                                     char_offset += force_result.columns_used;
@@ -406,7 +410,7 @@ pub const UnifiedTextBufferView = struct {
                             const wrap_result = utf8.findWrapPosByWidthSIMD16(
                                 remaining_bytes,
                                 remaining_width,
-                                8,
+                                wctx.view.text_buffer.tab_width,
                                 is_ascii_only,
                             );
 
@@ -415,7 +419,7 @@ pub const UnifiedTextBufferView = struct {
                                     commitVirtualLine(wctx);
                                     continue;
                                 }
-                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, 8, is_ascii_only);
+                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, wctx.view.text_buffer.tab_width, is_ascii_only);
                                 if (force_result.grapheme_count > 0) {
                                     addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used, force_result.columns_used);
                                     char_offset += force_result.columns_used;
@@ -828,13 +832,13 @@ pub const UnifiedTextBufferView = struct {
 
                 if (local_start_col > 0) {
                     // For start: exclude graphemes that start before limit
-                    const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, 8, is_ascii_only, false);
+                    const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.view.text_buffer.tab_width, is_ascii_only, false);
                     byte_start = start_result.byte_offset;
                 }
 
                 if (local_end_col < chunk.width) {
                     // For end: include graphemes that start before limit
-                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, 8, is_ascii_only, true);
+                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.view.text_buffer.tab_width, is_ascii_only, true);
                     byte_end = end_result.byte_offset;
                 }
                 if (byte_start < byte_end and byte_start < chunk_bytes.len) {
@@ -897,5 +901,21 @@ pub const UnifiedTextBufferView = struct {
             .source_line = vline.source_line,
             .col_offset = vline.source_col_offset,
         };
+    }
+
+    pub fn setTabIndicator(self: *Self, indicator: ?u32) void {
+        self.tab_indicator = indicator;
+    }
+
+    pub fn getTabIndicator(self: *const Self) ?u32 {
+        return self.tab_indicator;
+    }
+
+    pub fn setTabIndicatorColor(self: *Self, color: ?RGBA) void {
+        self.tab_indicator_color = color;
+    }
+
+    pub fn getTabIndicatorColor(self: *const Self) ?RGBA {
+        return self.tab_indicator_color;
     }
 };

@@ -29,6 +29,8 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   showCursor?: boolean
   cursorColor?: string | RGBA
   syntaxStyle?: SyntaxStyle
+  tabIndicator?: string | number
+  tabIndicatorColor?: string | RGBA
   onCursorChange?: (event: CursorChangeEvent) => void
   onContentChange?: (event: ContentChangeEvent) => void
 }
@@ -47,6 +49,8 @@ export abstract class EditBufferRenderable extends Renderable {
   protected _showCursor: boolean = true
   protected _cursorColor: RGBA
   protected lastLocalSelection: LocalSelectionBounds | null = null
+  protected _tabIndicator?: string | number
+  protected _tabIndicatorColor?: RGBA
 
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
@@ -65,6 +69,8 @@ export abstract class EditBufferRenderable extends Renderable {
     scrollMargin: 0.2,
     showCursor: true,
     cursorColor: RGBA.fromValues(1, 1, 1, 1),
+    tabIndicator: undefined,
+    tabIndicatorColor: undefined,
   } satisfies Partial<EditBufferOptions>
 
   constructor(ctx: RenderContext, options: EditBufferOptions) {
@@ -80,6 +86,10 @@ export abstract class EditBufferRenderable extends Renderable {
     this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
     this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
     this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
+    this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
+    this._tabIndicatorColor = options.tabIndicatorColor
+      ? parseColor(options.tabIndicatorColor)
+      : this._defaultOptions.tabIndicatorColor
 
     this.editBuffer = EditBuffer.create(this._ctx.widthMethod)
     this.editorView = EditorView.create(this.editBuffer, this.width || 80, this.height || 24)
@@ -93,6 +103,13 @@ export abstract class EditBufferRenderable extends Renderable {
 
     if (options.syntaxStyle) {
       this.editBuffer.setSyntaxStyle(options.syntaxStyle)
+    }
+
+    if (this._tabIndicator !== undefined) {
+      this.editorView.setTabIndicator(this._tabIndicator)
+    }
+    if (this._tabIndicatorColor !== undefined) {
+      this.editorView.setTabIndicatorColor(this._tabIndicatorColor)
     }
 
     this.setupMeasureFunc()
@@ -243,6 +260,35 @@ export abstract class EditBufferRenderable extends Renderable {
     const newColor = parseColor(value)
     if (this._cursorColor !== newColor) {
       this._cursorColor = newColor
+      this.requestRender()
+    }
+  }
+
+  get tabIndicator(): string | number | undefined {
+    return this._tabIndicator
+  }
+
+  set tabIndicator(value: string | number | undefined) {
+    if (this._tabIndicator !== value) {
+      this._tabIndicator = value
+      if (value !== undefined) {
+        this.editorView.setTabIndicator(value)
+      }
+      this.requestRender()
+    }
+  }
+
+  get tabIndicatorColor(): RGBA | undefined {
+    return this._tabIndicatorColor
+  }
+
+  set tabIndicatorColor(value: RGBA | string | undefined) {
+    const newColor = value ? parseColor(value) : undefined
+    if (this._tabIndicatorColor !== newColor) {
+      this._tabIndicatorColor = newColor
+      if (newColor !== undefined) {
+        this.editorView.setTabIndicatorColor(newColor)
+      }
       this.requestRender()
     }
   }
