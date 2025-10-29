@@ -868,6 +868,22 @@ pub fn Rope(comptime T: type) type {
 
             const l_last = getLastLeafIn(left);
             const r_first = getFirstLeafIn(right);
+
+            if (@hasDecl(T, "canMerge") and @hasDecl(T, "merge")) {
+                if (l_last != null and r_first != null) {
+                    if (T.canMerge(l_last.?, r_first.?)) {
+                        const merged = T.merge(self.allocator, l_last.?, r_first.?);
+                        const merged_leaf = try Node.new_leaf(self.allocator, merged);
+
+                        const L = try dropLast(left, self.allocator, self.empty_leaf);
+                        const R = try dropFirst(right, self.allocator, self.empty_leaf);
+
+                        const left_with_merged = try Node.join_balanced(L, merged_leaf, self.allocator);
+                        return try Node.join_balanced(left_with_merged, R, self.allocator);
+                    }
+                }
+            }
+
             const action = try T.rewriteBoundary(self.allocator, l_last, r_first);
 
             var L = left;
