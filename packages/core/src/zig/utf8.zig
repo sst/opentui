@@ -609,6 +609,39 @@ inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grap
     return true;
 }
 
+/// State for accumulating grapheme cluster width
+const GraphemeWidthState = struct {
+    width: u32 = 0,
+    has_width: bool = false,
+    is_regional_indicator_pair: bool = false,
+
+    /// Initialize state with the first codepoint of a grapheme cluster
+    inline fn init(first_cp: u21, first_width: u32) GraphemeWidthState {
+        return .{
+            .width = first_width,
+            .has_width = (first_width > 0),
+            .is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF),
+        };
+    }
+
+    /// Add a codepoint to the current grapheme cluster
+    inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
+        const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
+
+        // Special case: Regional Indicator pairs (flag emojis)
+        // Both RIs contribute to width (typically 1+1=2)
+        if (self.is_regional_indicator_pair and is_ri) {
+            self.width += cp_width;
+            self.has_width = true;
+        } else if (!self.has_width and cp_width > 0) {
+            // Normal case: use first non-zero width codepoint
+            self.width = cp_width;
+            self.has_width = true;
+        }
+        // Otherwise, ignore width of modifiers, ZWJ, VS16, etc.
+    }
+};
+
 const ClusterState = struct {
     columns_used: u32,
     grapheme_count: u32,
@@ -949,11 +982,7 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
     var break_state: uucode.grapheme.BreakState = .default;
     var prev_cp: ?u21 = first_cp;
     const first_width = charWidth(b0, first_cp, tab_width);
-    var cluster_width: u32 = first_width;
-    var cluster_has_width: bool = (first_width > 0);
-
-    // Check if first codepoint is a Regional Indicator (for flag emoji handling)
-    const is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF);
+    var state = GraphemeWidthState.init(first_cp, first_width);
 
     var pos = byte_offset + first_len;
 
@@ -968,25 +997,13 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
         if (is_break) break;
 
         const cp_width = charWidth(b, curr_cp, tab_width);
-
-        // Special case: Regional Indicator pairs (flag emojis)
-        // Both RIs contribute to width (typically 1+1=2)
-        const is_ri = (curr_cp >= 0x1F1E6 and curr_cp <= 0x1F1FF);
-        if (is_regional_indicator_pair and is_ri) {
-            cluster_width += cp_width;
-            cluster_has_width = true;
-        } else if (!cluster_has_width and cp_width > 0) {
-            // Normal case: use first non-zero width codepoint
-            cluster_width = cp_width;
-            cluster_has_width = true;
-        }
-        // Otherwise, ignore width of modifiers, ZWJ, VS16, etc.
+        state.addCodepoint(curr_cp, cp_width);
 
         prev_cp = curr_cp;
         pos += cp_len;
     }
 
-    return cluster_width;
+    return state.width;
 }
 
 pub const PrevGraphemeResult = struct {
@@ -1066,9 +1083,7 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
     var pos: usize = 0;
     var prev_cp: ?u21 = null;
     var break_state: uucode.grapheme.BreakState = .default;
-    var cluster_width: u32 = 0; // Width of the current grapheme cluster
-    var cluster_has_width: bool = false; // Track if we've found a non-zero width codepoint
-    var is_regional_indicator_pair: bool = false; // Track if we're in an RI pair (flag emoji)
+    var state: GraphemeWidthState = undefined;
 
     while (pos < text.len) {
         const b0 = text[pos];
@@ -1082,37 +1097,21 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
 
         const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
 
-        // Check if this is a Regional Indicator (flag emoji component)
-        const is_ri = (curr_cp >= 0x1F1E6 and curr_cp <= 0x1F1FF);
-
         // Check if this is a grapheme break
         const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
 
         if (is_break) {
             // Commit the previous cluster's width
             if (prev_cp != null) {
-                total_width += cluster_width;
+                total_width += state.width;
             }
             // Start a new cluster
             const cp_width = charWidth(b0, curr_cp, tab_width);
-            cluster_width = cp_width;
-            cluster_has_width = (cp_width > 0);
-            is_regional_indicator_pair = is_ri; // Track if first codepoint is RI
+            state = GraphemeWidthState.init(curr_cp, cp_width);
         } else {
             // Continuing a cluster
             const cp_width = charWidth(b0, curr_cp, tab_width);
-
-            // Special case: Regional Indicator pairs (flag emojis)
-            // Both RIs contribute to width (typically 1+1=2)
-            if (is_regional_indicator_pair and is_ri) {
-                cluster_width += cp_width;
-                cluster_has_width = true;
-            } else if (!cluster_has_width and cp_width > 0) {
-                // Normal case: use first non-zero width codepoint
-                cluster_width = cp_width;
-                cluster_has_width = true;
-            }
-            // Otherwise, ignore width of modifiers, ZWJ, etc.
+            state.addCodepoint(curr_cp, cp_width);
         }
 
         prev_cp = curr_cp;
@@ -1121,7 +1120,7 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
 
     // Don't forget the last cluster
     if (prev_cp != null) {
-        total_width += cluster_width;
+        total_width += state.width;
     }
 
     return total_width;
