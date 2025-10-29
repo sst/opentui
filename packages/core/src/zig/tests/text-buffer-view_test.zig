@@ -837,6 +837,72 @@ test "TextBufferView word wrapping - single character at boundary" {
     try std.testing.expect(wrapped_count >= 3);
 }
 
+test "TextBufferView word wrapping - fragmented rope with word boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Create a fragmented rope: ["hello my good ","f","riend"]
+    // This simulates what can happen during edits
+    // Text: "hello my good friend"
+    // Wrap width: 18
+    // Expected: wrap before "friend", so "friend" goes to next line
+
+    // First, register the text in memory registry
+    const text = "hello my good friend";
+    const mem_id = try tb.mem_registry.register(text, false);
+
+    // Create segments manually:
+    // Segment 1: "hello my good " (0-14)
+    // Segment 2: "f" (14-15)
+    // Segment 3: "riend" (15-20)
+    const seg_mod = @import("../text-buffer-segment.zig");
+    const Segment = seg_mod.Segment;
+
+    const chunk1 = tb.createChunk(mem_id, 0, 14); // "hello my good "
+    const chunk2 = tb.createChunk(mem_id, 14, 15); // "f"
+    const chunk3 = tb.createChunk(mem_id, 15, 20); // "riend"
+
+    var segments = std.ArrayList(Segment).init(std.testing.allocator);
+    defer segments.deinit();
+
+    try segments.append(Segment{ .linestart = {} });
+    try segments.append(Segment{ .text = chunk1 });
+    try segments.append(Segment{ .text = chunk2 });
+    try segments.append(Segment{ .text = chunk3 });
+
+    try tb.rope.setSegments(segments.items);
+    // Mark views dirty manually by setting the flag
+    view.virtual_lines_dirty = true;
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(18);
+
+    const vlines = view.getVirtualLines();
+
+    // Expected behavior: 2 virtual lines
+    // Line 0: "hello my good " (14 chars)
+    // Line 1: "friend" (6 chars)
+    // The word "friend" should wrap as a whole at the word boundary, not split at segment boundary
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+
+    // Verify first line has "hello my good " (width 14)
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
+
+    // Verify second line has "friend" (width 6)
+    // With the fix, both "f" and "riend" chunks are on line 1
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+}
+
 test "TextBufferView wrapping - very narrow width (1 char)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -3234,4 +3300,3 @@ test "TextBufferView - tab indicator set and get" {
     try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
     try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);
 }
-

@@ -381,6 +381,42 @@ pub const Segment = union(enum) {
         };
     }
 
+    /// Two text chunks can be merged if they reference contiguous memory in the same buffer
+    pub fn canMerge(left: *const Segment, right: *const Segment) bool {
+        if (!left.isText() or !right.isText()) return false;
+
+        const left_chunk = left.asText() orelse return false;
+        const right_chunk = right.asText() orelse return false;
+
+        if (left_chunk.mem_id != right_chunk.mem_id) return false;
+        if (left_chunk.byte_end != right_chunk.byte_start) return false;
+        if (left_chunk.flags != right_chunk.flags) return false;
+
+        return true;
+    }
+
+    pub fn merge(allocator: Allocator, left: *const Segment, right: *const Segment) Segment {
+        _ = allocator;
+
+        const left_chunk = left.asText().?;
+        const right_chunk = right.asText().?;
+
+        // TODO: could clear the caches on the original chunks,
+        // as the original chunks are only kept for history purposes.
+
+        return Segment{
+            .text = TextChunk{
+                .mem_id = left_chunk.mem_id,
+                .byte_start = left_chunk.byte_start,
+                .byte_end = right_chunk.byte_end,
+                .width = left_chunk.width + right_chunk.width,
+                .flags = left_chunk.flags,
+                .graphemes = null,
+                .wrap_offsets = null,
+            },
+        };
+    }
+
     /// Boundary normalization action
     pub const BoundaryAction = struct {
         delete_left: bool = false,
