@@ -2069,3 +2069,82 @@ test "calculateTextWidth: comparison with manual calculation" {
         try testing.expectEqual(tc.expected, result);
     }
 }
+
+// ============================================================================
+// LINE WIDTH WITH GRAPHEMES TESTS
+// Testing that calculateTextWidth returns correct Unicode display widths
+// ============================================================================
+
+test "calculateTextWidth: checkmark grapheme ✅" {
+    // Test simple checkmark emoji
+    const checkmark = "✅";
+
+    // Calculate width using utf8.zig's calculateTextWidth
+    const width = utf8.calculateTextWidth(checkmark, 4, false);
+
+    // The checkmark ✅ (U+2705) should be width 2
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: checkmark in text" {
+    // Test checkmark in context
+    const text = "Done ✅";
+
+    // Calculate width using utf8.zig
+    const width = utf8.calculateTextWidth(text, 4, false);
+
+    // Should return: D(1) + o(1) + n(1) + e(1) + space(1) + ✅(2) = 7
+    try testing.expectEqual(@as(u32, 7), width);
+}
+
+test "calculateTextWidth: various emoji graphemes" {
+    const test_cases = [_]struct {
+        text: []const u8,
+        name: []const u8,
+        expected_width: u32,
+    }{
+        .{ .text = "✅", .name = "checkmark U+2705", .expected_width = 2 },
+        .{ .text = "❤️", .name = "red heart U+2764+FE0F", .expected_width = 2 },
+        .{ .text = "🎉", .name = "party popper U+1F389", .expected_width = 2 },
+        .{ .text = "🔥", .name = "fire U+1F525", .expected_width = 2 },
+        .{ .text = "💯", .name = "hundred points U+1F4AF", .expected_width = 2 },
+        .{ .text = "🚀", .name = "rocket U+1F680", .expected_width = 2 },
+        .{ .text = "⭐", .name = "star U+2B50", .expected_width = 2 },
+        .{ .text = "👍", .name = "thumbs up U+1F44D", .expected_width = 2 },
+    };
+
+    for (test_cases) |tc| {
+        const width = utf8.calculateTextWidth(tc.text, 4, false);
+        try testing.expectEqual(tc.expected_width, width);
+    }
+}
+
+test "calculateTextWidth: complex graphemes with ZWJ" {
+    // Woman astronaut: 👩‍🚀 (woman + ZWJ + rocket)
+    const woman_astronaut = "👩‍🚀";
+
+    const width = utf8.calculateTextWidth(woman_astronaut, 4, false);
+
+    // Should return 2 for the combined grapheme (not 5 for individual codepoints)
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: flag emoji grapheme" {
+    // US flag: 🇺🇸 (two regional indicator symbols)
+    const us_flag = "🇺🇸";
+
+    const width = utf8.calculateTextWidth(us_flag, 4, false);
+
+    // Should return 2 for the flag grapheme
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: skin tone modifier grapheme" {
+    // Waving hand with dark skin tone: 👋🏿
+    const wave_dark = "👋🏿";
+
+    const width = utf8.calculateTextWidth(wave_dark, 4, false);
+
+    // Should return 2 for the combined grapheme (not 4 for individual codepoints)
+    try testing.expectEqual(@as(u32, 2), width);
+}
