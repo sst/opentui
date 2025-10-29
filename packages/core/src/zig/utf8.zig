@@ -460,12 +460,30 @@ pub const PosByWidthResult = struct {
 // East Asian Width detection based on Unicode 15.1.0
 // Returns the display width in columns (0, 1, or 2)
 inline fn eastAsianWidth(cp: u21) u32 {
-    // Combining marks and zero-width characters
+    // Zero-width characters: combining marks and format characters
     if ((cp >= 0x0300 and cp <= 0x036F) or // Combining Diacritical Marks
         (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
         (cp >= 0x1DC0 and cp <= 0x1DFF) or // Combining Diacritical Marks Supplement
         (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
-        (cp >= 0xFE20 and cp <= 0xFE2F)) // Combining Half Marks
+        (cp >= 0xFE20 and cp <= 0xFE2F) or // Combining Half Marks
+        // Format characters (Cf category) - zero width
+        cp == 0x00AD or // Soft Hyphen
+        (cp >= 0x0600 and cp <= 0x0605) or // Arabic format characters
+        cp == 0x061C or // Arabic Letter Mark
+        cp == 0x06DD or // Arabic End of Ayah
+        cp == 0x070F or // Syriac Abbreviation Mark
+        cp == 0x180E or // Mongolian Vowel Separator
+        (cp >= 0x200B and cp <= 0x200F) or // ZWSP, ZWNJ, ZWJ, LRM, RLM
+        (cp >= 0x2028 and cp <= 0x202E) or // Line/Para separators, directional formatting
+        (cp >= 0x2060 and cp <= 0x2064) or // Word Joiner, invisible operators
+        (cp >= 0x2066 and cp <= 0x206F) or // Directional formatting
+        cp == 0xFEFF or // Zero Width No-Break Space (BOM)
+        (cp >= 0xFFF9 and cp <= 0xFFFB) or // Interlinear Annotation
+        cp == 0x110BD or // Kaithi Number Sign
+        (cp >= 0x1BCA0 and cp <= 0x1BCA3) or // Shorthand Format
+        (cp >= 0x1D173 and cp <= 0x1D17A) or // Musical formatting
+        cp == 0xE0001 or // Language Tag
+        (cp >= 0xE0020 and cp <= 0xE007F)) // Tag characters
     {
         return 0;
     }

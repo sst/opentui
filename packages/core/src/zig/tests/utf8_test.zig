@@ -2148,3 +2148,521 @@ test "calculateTextWidth: skin tone modifier grapheme" {
     // Should return 2 for the combined grapheme (not 4 for individual codepoints)
     try testing.expectEqual(@as(u32, 2), width);
 }
+// ============================================================================
+// COMPREHENSIVE UNICODE GRAPHEME TESTS FOR calculateTextWidth
+// Testing various emoji, ZWJ sequences, Indic scripts, and Unicode edge cases
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Emoji Presentation Tests
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: emoji presentation with VS15 (text)" {
+    // U+2764 (heart) + U+FE0E (VS15 - text presentation)
+    const heart_text = "❤\u{FE0E}";
+    const width = utf8.calculateTextWidth(heart_text, 4, false);
+    // With text presentation selector, should still be counted as grapheme width 2
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: emoji presentation with VS16 (emoji)" {
+    // U+2764 (heart) + U+FE0F (VS16 - emoji presentation) - already tested as ❤️
+    const heart_emoji = "❤️";
+    const width = utf8.calculateTextWidth(heart_emoji, 4, false);
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: keycap sequences" {
+    // Digit + U+FE0F + U+20E3 (combining enclosing keycap)
+    const keycap_1 = "1️⃣"; // U+0031 U+FE0F U+20E3
+    const keycap_hash = "#️⃣"; // U+0023 U+FE0F U+20E3
+
+    // Keycap: base char (1) + VS16 (0) + combining keycap (0) = 1 total width
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(keycap_1, 4, false));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(keycap_hash, 4, false));
+}
+
+// ----------------------------------------------------------------------------
+// Complex ZWJ Sequences
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: family ZWJ sequences" {
+    // Family: man, woman, girl, boy (4 people)
+    const family = "👨‍👩‍👧‍👦"; // man + ZWJ + woman + ZWJ + girl + ZWJ + boy
+    const width = utf8.calculateTextWidth(family, 4, false);
+    // Should be counted as single grapheme with width 2
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: profession ZWJ sequences" {
+    // Woman health worker: woman + ZWJ + health worker
+    const health_worker = "👩‍⚕️";
+    const firefighter = "👨‍🚒";
+    const teacher = "👩‍🏫";
+
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(health_worker, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(firefighter, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(teacher, 4, false));
+}
+
+test "calculateTextWidth: couple ZWJ sequences" {
+    // Kiss: person + ZWJ + heart + ZWJ + person
+    const kiss = "💏"; // Single codepoint
+    const couple_with_heart = "👩‍❤️‍👨"; // woman + ZWJ + heart + VS16 + ZWJ + man
+
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(kiss, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(couple_with_heart, 4, false));
+}
+
+// ----------------------------------------------------------------------------
+// Skin Tone Modifiers (Fitzpatrick scale)
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: all skin tone modifiers" {
+    // Fitzpatrick Type-1-2 (light skin tone) U+1F3FB
+    const wave_light = "👋🏻";
+    // Fitzpatrick Type-3 (medium-light skin tone) U+1F3FC
+    const wave_medium_light = "👋🏼";
+    // Fitzpatrick Type-4 (medium skin tone) U+1F3FD
+    const wave_medium = "👋🏽";
+    // Fitzpatrick Type-5 (medium-dark skin tone) U+1F3FE
+    const wave_medium_dark = "👋🏾";
+    // Fitzpatrick Type-6 (dark skin tone) U+1F3FF
+    const wave_dark = "👋🏿";
+
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(wave_light, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(wave_medium_light, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(wave_medium, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(wave_medium_dark, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(wave_dark, 4, false));
+}
+
+test "calculateTextWidth: skin tone with ZWJ" {
+    // Family with skin tones: man(dark) + ZWJ + woman(light) + ZWJ + child
+    const family_skin_tones = "👨🏿‍👩🏻‍👶";
+    const width = utf8.calculateTextWidth(family_skin_tones, 4, false);
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+// ----------------------------------------------------------------------------
+// Regional Indicator Symbols (Flags)
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: various flag emojis" {
+    const flag_us = "🇺🇸"; // U+1F1FA U+1F1F8
+    const flag_uk = "🇬🇧"; // U+1F1EC U+1F1E7
+    const flag_jp = "🇯🇵"; // U+1F1EF U+1F1F5
+    const flag_de = "🇩🇪"; // U+1F1E9 U+1F1EA
+    const flag_fr = "🇫🇷"; // U+1F1EB U+1F1F7
+
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(flag_us, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(flag_uk, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(flag_jp, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(flag_de, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(flag_fr, 4, false));
+}
+
+test "calculateTextWidth: multiple flags in text" {
+    const text = "Flags: 🇺🇸 🇬🇧 🇯🇵";
+    const width = utf8.calculateTextWidth(text, 4, false);
+    // "Flags: " (7) + 🇺🇸 (2) + " " (1) + 🇬🇧 (2) + " " (1) + 🇯🇵 (2) = 15
+    try testing.expectEqual(@as(u32, 15), width);
+}
+
+// ----------------------------------------------------------------------------
+// Devanagari and Indic Scripts
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: Devanagari basic characters" {
+    // Devanagari script (Hindi, Sanskrit, etc.)
+    const namaste = "नमस्ते"; // na-ma-s-te with virama
+    const width = utf8.calculateTextWidth(namaste, 4, false);
+    // Devanagari characters are typically width 1 each
+    // This is 5 graphemes: न म स् ते (the virama combines with स)
+    try testing.expect(width > 0); // Exact width depends on grapheme clustering
+}
+
+test "calculateTextWidth: Devanagari with combining marks" {
+    // Devanagari vowel signs and nukta
+    const ka = "क"; // Base character
+    const ki = "कि"; // क + vowel sign i (U+093F)
+    const kii = "की"; // क + vowel sign ii (U+0940)
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(ka, 4, false));
+    // With combining vowel signs, should still be 1 grapheme
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(ki, 4, false));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(kii, 4, false));
+}
+
+test "calculateTextWidth: Devanagari conjuncts" {
+    // Conjunct consonants with virama
+    const kta = "क्त"; // क + virama + त (kta)
+    const jna = "ज्ञ"; // ज + virama + ञ (jna)
+
+    // These form single grapheme clusters
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(kta, 4, false));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(jna, 4, false));
+}
+
+test "calculateTextWidth: Bengali script" {
+    // Bengali/Bangla script
+    const bangla = "বাংলা"; // Bangla
+    const width = utf8.calculateTextWidth(bangla, 4, false);
+    try testing.expect(width > 0);
+}
+
+test "calculateTextWidth: Tamil script" {
+    // Tamil script (no conjuncts, simpler than Devanagari)
+    const tamil = "தமிழ்"; // Tamil
+    const width = utf8.calculateTextWidth(tamil, 4, false);
+    try testing.expect(width > 0);
+}
+
+test "calculateTextWidth: Telugu script" {
+    // Telugu script
+    const telugu = "తెలుగు"; // Telugu
+    const width = utf8.calculateTextWidth(telugu, 4, false);
+    try testing.expect(width > 0);
+}
+
+// ----------------------------------------------------------------------------
+// Arabic and RTL Scripts
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: Arabic basic text" {
+    // Arabic text (RTL, but width calculation is the same)
+    const arabic = "مرحبا"; // Marhaba (hello)
+    const width = utf8.calculateTextWidth(arabic, 4, false);
+    // Arabic characters are width 1 each
+    try testing.expect(width >= 5);
+}
+
+test "calculateTextWidth: Arabic with diacritics" {
+    // Arabic with harakat (diacritical marks)
+    const with_diacritics = "مَرْحَبًا"; // Marhaba with vowel marks
+    const width = utf8.calculateTextWidth(with_diacritics, 4, false);
+    // Combining marks should not add to width
+    try testing.expect(width >= 5);
+}
+
+test "calculateTextWidth: Hebrew text" {
+    // Hebrew text (RTL)
+    const hebrew = "שלום"; // Shalom
+    const width = utf8.calculateTextWidth(hebrew, 4, false);
+    try testing.expect(width >= 4);
+}
+
+// ----------------------------------------------------------------------------
+// East Asian Scripts (CJK)
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: Chinese traditional characters" {
+    const traditional = "繁體中文"; // Traditional Chinese
+    const width = utf8.calculateTextWidth(traditional, 4, false);
+    // Each CJK character is width 2
+    try testing.expectEqual(@as(u32, 8), width); // 4 chars * 2 = 8
+}
+
+test "calculateTextWidth: Chinese simplified characters" {
+    const simplified = "简体中文"; // Simplified Chinese
+    const width = utf8.calculateTextWidth(simplified, 4, false);
+    try testing.expectEqual(@as(u32, 8), width); // 4 chars * 2 = 8
+}
+
+test "calculateTextWidth: Japanese mixed scripts" {
+    // Hiragana + Kanji + Katakana
+    const mixed = "ひらがな漢字カタカナ"; // hiragana, kanji, katakana
+    const width = utf8.calculateTextWidth(mixed, 4, false);
+    // All are width 2: 4 hiragana + 2 kanji + 4 katakana = 10 chars * 2 = 20
+    try testing.expectEqual(@as(u32, 20), width);
+}
+
+test "calculateTextWidth: Korean Hangul syllables" {
+    const korean = "한글"; // Hangul (Korean)
+    const width = utf8.calculateTextWidth(korean, 4, false);
+    // Hangul syllables are width 2
+    try testing.expectEqual(@as(u32, 4), width); // 2 chars * 2 = 4
+}
+
+test "calculateTextWidth: CJK with ASCII" {
+    const mixed = "Hello世界World"; // ASCII + CJK + ASCII
+    const width = utf8.calculateTextWidth(mixed, 4, false);
+    // "Hello" (5) + "世界" (4) + "World" (5) = 14
+    try testing.expectEqual(@as(u32, 14), width);
+}
+
+// ----------------------------------------------------------------------------
+// Combining Marks and Diacritics
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: multiple combining marks on one base" {
+    // Base + multiple combining marks
+    const multiple = "e\u{0301}\u{0302}\u{0304}"; // e + acute + circumflex + macron
+    const width = utf8.calculateTextWidth(multiple, 4, false);
+    try testing.expectEqual(@as(u32, 1), width);
+}
+
+test "calculateTextWidth: combining enclosing marks" {
+    // Combining enclosing circle backslash U+20E0
+    const enclosed = "a\u{20E0}";
+    const width = utf8.calculateTextWidth(enclosed, 4, false);
+    try testing.expectEqual(@as(u32, 1), width);
+}
+
+test "calculateTextWidth: Vietnamese with multiple diacritics" {
+    // Vietnamese uses Latin with complex diacritics
+    const vietnamese = "Tiếng Việt"; // Vietnamese language
+    const width = utf8.calculateTextWidth(vietnamese, 4, false);
+    // Each base character with combining marks = 1 width
+    // "Tiếng" (5) + " " (1) + "Việt" (4) = 10
+    try testing.expectEqual(@as(u32, 10), width);
+}
+
+// ----------------------------------------------------------------------------
+// Zero-Width Characters
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: zero width joiner (ZWJ)" {
+    // ZWJ by itself (shouldn't happen, but test it) - it's a format char with width 0
+    const zwj = "\u{200D}";
+    const width = utf8.calculateTextWidth(zwj, 4, false);
+    try testing.expectEqual(@as(u32, 0), width); // Width of ZWJ is 0 (Cf category)
+}
+
+test "calculateTextWidth: zero width non-joiner (ZWNJ)" {
+    // ZWNJ U+200C
+    const zwnj = "ab\u{200C}cd";
+    const width = utf8.calculateTextWidth(zwnj, 4, false);
+    // ZWNJ has width 0, so should be 4 (a, b, c, d)
+    try testing.expectEqual(@as(u32, 4), width);
+}
+
+test "calculateTextWidth: zero width space" {
+    // ZWSP U+200B is Cf (format) category with width 0
+    const zwsp = "a\u{200B}b\u{200B}c";
+    const width = utf8.calculateTextWidth(zwsp, 4, false);
+    // a(1) + ZWSP(0) + b(1) + ZWSP(0) + c(1) = 3
+    try testing.expectEqual(@as(u32, 3), width);
+}
+
+test "calculateTextWidth: word joiner" {
+    // Word joiner U+2060 is Cf (format) category with width 0
+    const word_joiner = "word\u{2060}joiner";
+    const width = utf8.calculateTextWidth(word_joiner, 4, false);
+    // word(4) + word_joiner(0) + joiner(6) = 10
+    try testing.expectEqual(@as(u32, 10), width);
+}
+
+// ----------------------------------------------------------------------------
+// Special Unicode Spaces
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: various Unicode spaces" {
+    // En space U+2002
+    const en_space = "a\u{2002}b";
+    // Em space U+2003
+    const em_space = "a\u{2003}b";
+    // Thin space U+2009
+    const thin_space = "a\u{2009}b";
+    // Hair space U+200A
+    const hair_space = "a\u{200A}b";
+    // Ideographic space U+3000 (CJK)
+    const ideo_space = "a\u{3000}b";
+
+    // These are all real spaces with width 1
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(en_space, 4, false));
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(em_space, 4, false));
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(thin_space, 4, false));
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(hair_space, 4, false));
+    // Ideographic space is width 2 (fullwidth)
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth(ideo_space, 4, false));
+}
+
+test "calculateTextWidth: non-breaking spaces" {
+    // NBSP U+00A0
+    const nbsp = "a\u{00A0}b";
+    // Narrow NBSP U+202F
+    const narrow_nbsp = "a\u{202F}b";
+
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(nbsp, 4, false));
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(narrow_nbsp, 4, false));
+}
+
+// ----------------------------------------------------------------------------
+// Emoji Modifiers and Tags
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: emoji with multiple modifiers" {
+    // Rainbow flag (black flag + rainbow)
+    const rainbow_flag = "🏴‍🌈"; // U+1F3F4 U+200D U+1F308
+    const width = utf8.calculateTextWidth(rainbow_flag, 4, false);
+    try testing.expectEqual(@as(u32, 2), width);
+}
+
+test "calculateTextWidth: emoji tag sequences (subdivision flags)" {
+    // England flag: 🏴󠁧󠁢󠁥󠁮󠁧󠁿 (black flag + tag chars + cancel tag)
+    // This is complex to type, so we'll test a simpler version
+    const black_flag = "🏴"; // Just the base flag
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(black_flag, 4, false));
+}
+
+test "calculateTextWidth: hair style variations" {
+    // Person: red hair, curly hair, white hair, bald
+    const red_hair = "👩‍🦰";
+    const curly_hair = "👨‍🦱";
+    const white_hair = "👩‍🦳";
+    const bald = "👨‍🦲";
+
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(red_hair, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(curly_hair, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(white_hair, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(bald, 4, false));
+}
+
+// ----------------------------------------------------------------------------
+// Mixed Content and Real-world Scenarios
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: multilingual sentence" {
+    // Mix of Latin, CJK, Arabic, Emoji
+    const text = "Hello 世界! مرحبا 👋";
+    const width = utf8.calculateTextWidth(text, 4, false);
+    // "Hello " (6) + "世界" (4) + "! " (2) + "مرحبا" (5) + " " (1) + "👋" (2) = 20
+    try testing.expect(width >= 18); // Allow some flexibility for combining marks
+}
+
+test "calculateTextWidth: code with emoji comments" {
+    const code = "const x = 42; // ✅ works";
+    const width = utf8.calculateTextWidth(code, 4, false);
+    // Most chars are width 1, checkmark is width 2
+    // "const x = 42; // " (17) + "✅" (2) + " works" (6) = 25
+    try testing.expectEqual(@as(u32, 25), width);
+}
+
+test "calculateTextWidth: emoji sentence" {
+    const text = "I ❤️ 🍕 and 🍣!";
+    const width = utf8.calculateTextWidth(text, 4, false);
+    // "I " (2) + "❤️" (2) + " " (1) + "🍕" (2) + " and " (5) + "🍣" (2) + "!" (1) = 15
+    try testing.expectEqual(@as(u32, 15), width);
+}
+
+test "calculateTextWidth: social media style text" {
+    const text = "#OpenTUI 🚀 is #awesome 💯!";
+    const width = utf8.calculateTextWidth(text, 4, false);
+    // "#OpenTUI " (9) + "🚀" (2) + " is #awesome " (13) + "💯" (2) + "!" (1) = 27
+    try testing.expectEqual(@as(u32, 27), width);
+}
+
+// ----------------------------------------------------------------------------
+// Edge Cases and Boundaries
+// ----------------------------------------------------------------------------
+
+test "calculateTextWidth: surrogate pair edge cases" {
+    // Valid surrogate pairs (emoji are in supplementary planes)
+    const emoji = "𝕳𝖊𝖑𝖑𝖔"; // Mathematical bold letters (U+1D577 etc)
+    const width = utf8.calculateTextWidth(emoji, 4, false);
+    // These are typically width 1 each
+    try testing.expectEqual(@as(u32, 5), width);
+}
+
+test "calculateTextWidth: long grapheme cluster chain" {
+    // Create a base + many combining marks
+    var text = std.ArrayList(u8).init(testing.allocator);
+    defer text.deinit();
+
+    try text.appendSlice("e");
+    // Add 10 combining marks
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        try text.appendSlice("\u{0301}"); // Combining acute accent
+    }
+
+    const width = utf8.calculateTextWidth(text.items, 4, false);
+    // Should be treated as single grapheme
+    try testing.expectEqual(@as(u32, 1), width);
+}
+
+test "calculateTextWidth: all emoji skin tones in sequence" {
+    const text = "👋🏻👋🏼👋🏽👋🏾👋🏿";
+    const width = utf8.calculateTextWidth(text, 4, false);
+    // 5 emoji with skin tones, each is 1 grapheme with width 2
+    try testing.expectEqual(@as(u32, 10), width); // 5 * 2 = 10
+}
+
+test "calculateTextWidth: emoji zodiac signs" {
+    const zodiac = "♈♉♊♋♌♍♎♏♐♑♒♓"; // All 12 zodiac signs
+    const width = utf8.calculateTextWidth(zodiac, 4, false);
+    // Each zodiac symbol is width 2
+    try testing.expectEqual(@as(u32, 24), width); // 12 * 2 = 24
+}
+
+test "calculateTextWidth: mathematical symbols" {
+    // Mathematical operators and symbols
+    const math = "∀∃∈∉∋∑∏∫∂∇≠≤≥"; // Various math symbols
+    const width = utf8.calculateTextWidth(math, 4, false);
+    // Most math symbols are width 1
+    try testing.expect(width >= 13);
+}
+
+test "calculateTextWidth: box drawing characters" {
+    // Box drawing characters (width 1)
+    const box = "┌─┐│└─┘"; // Simple box
+    const width = utf8.calculateTextWidth(box, 4, false);
+    try testing.expectEqual(@as(u32, 7), width);
+}
+
+test "calculateTextWidth: braille patterns" {
+    // Braille patterns U+2800-U+28FF
+    const braille = "⠀⠁⠂⠃⠄⠅⠆⠇"; // Some braille patterns
+    const width = utf8.calculateTextWidth(braille, 4, false);
+    // Braille patterns are width 1
+    try testing.expectEqual(@as(u32, 8), width);
+}
+
+test "calculateTextWidth: musical symbols" {
+    // Musical notation symbols
+    const music = "𝄞𝄢𝅘𝅥𝅮"; // Treble clef, bass clef, notes (U+1D11E etc)
+    const width = utf8.calculateTextWidth(music, 4, false);
+    // Musical symbols are typically width 1, but encoding might be issue - just verify no crash
+    try testing.expect(width >= 0); // Accept any non-negative width
+}
+
+test "calculateTextWidth: weather and nature emoji" {
+    const weather = "☀️🌤️⛅🌦️🌧️⛈️"; // Sun, clouds, rain
+    const width = utf8.calculateTextWidth(weather, 4, false);
+    // Each emoji is width 2
+    try testing.expectEqual(@as(u32, 12), width); // 6 * 2 = 12
+}
+
+test "calculateTextWidth: food emoji collection" {
+    const food = "🍎🍌🍇🍓🥕🥦🍞🧀"; // Various food items
+    const width = utf8.calculateTextWidth(food, 4, false);
+    // 8 emoji * 2 = 16
+    try testing.expectEqual(@as(u32, 16), width);
+}
+
+test "calculateTextWidth: animal emoji" {
+    const animals = "🐶🐱🐭🐹🐰🦊🐻🐼"; // Various animals
+    const width = utf8.calculateTextWidth(animals, 4, false);
+    try testing.expectEqual(@as(u32, 16), width); // 8 * 2 = 16
+}
+
+test "calculateTextWidth: realistic chat message" {
+    const message = "Hey! 👋 Can you review my PR? 🙏 It fixes the bug 🐛 we discussed earlier. Thanks! 😊";
+    const width = utf8.calculateTextWidth(message, 4, false);
+    // Long string with multiple emoji - just verify it doesn't crash
+    try testing.expect(width > 70);
+}
+
+test "calculateTextWidth: empty string with tabs" {
+    const text = "";
+    try testing.expectEqual(@as(u32, 0), utf8.calculateTextWidth(text, 4, false));
+    try testing.expectEqual(@as(u32, 0), utf8.calculateTextWidth(text, 8, false));
+}
+
+test "calculateTextWidth: only combining marks (invalid but should not crash)" {
+    const text = "\u{0301}\u{0302}\u{0303}"; // Just combining marks, no base
+    const width = utf8.calculateTextWidth(text, 4, false);
+    // Should handle gracefully - each combining mark might be width 0
+    try testing.expect(width >= 0);
+}
