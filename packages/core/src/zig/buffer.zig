@@ -1063,14 +1063,21 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+                        const tab_indicator = view.getTabIndicator();
+                        const tab_indicator_color = view.getTabIndicatorColor();
+
                         var tab_col: u32 = 0;
                         while (tab_col < g_width) : (tab_col += 1) {
                             if (currentX + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(self.width))) break;
+
+                            const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
+                            const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
+
                             try self.setCellWithAlphaBlending(
                                 @intCast(currentX + @as(i32, @intCast(tab_col))),
                                 @intCast(currentY),
-                                DEFAULT_SPACE_CHAR,
-                                drawFg,
+                                char,
+                                fg,
                                 drawBg,
                                 drawAttributes,
                             );

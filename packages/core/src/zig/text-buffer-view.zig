@@ -105,6 +105,8 @@ pub const UnifiedTextBufferView = struct {
     cached_line_vline_counts: std.ArrayListUnmanaged(u32),
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
+    tab_indicator: ?u32,
+    tab_indicator_color: ?RGBA,
 
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
@@ -133,6 +135,8 @@ pub const UnifiedTextBufferView = struct {
             .cached_line_vline_counts = .{},
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
+            .tab_indicator = null,
+            .tab_indicator_color = null,
         };
 
         return self;
@@ -897,5 +901,21 @@ pub const UnifiedTextBufferView = struct {
             .source_line = vline.source_line,
             .col_offset = vline.source_col_offset,
         };
+    }
+
+    pub fn setTabIndicator(self: *Self, indicator: ?u32) void {
+        self.tab_indicator = indicator;
+    }
+
+    pub fn getTabIndicator(self: *const Self) ?u32 {
+        return self.tab_indicator;
+    }
+
+    pub fn setTabIndicatorColor(self: *Self, color: ?RGBA) void {
+        self.tab_indicator_color = color;
+    }
+
+    pub fn getTabIndicatorColor(self: *const Self) ?RGBA {
+        return self.tab_indicator_color;
     }
 };

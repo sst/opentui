@@ -530,4 +530,20 @@ pub const EditorView = struct {
             self.placeholder_active = false;
         }
     }
+
+    pub fn setTabIndicator(self: *EditorView, indicator: ?u32) void {
+        self.text_buffer_view.setTabIndicator(indicator);
+    }
+
+    pub fn getTabIndicator(self: *const EditorView) ?u32 {
+        return self.text_buffer_view.getTabIndicator();
+    }
+
+    pub fn setTabIndicatorColor(self: *EditorView, color: ?tb.RGBA) void {
+        self.text_buffer_view.setTabIndicatorColor(color);
+    }
+
+    pub fn getTabIndicatorColor(self: *const EditorView) ?tb.RGBA {
+        return self.text_buffer_view.getTabIndicatorColor();
+    }
 };
