@@ -1784,7 +1784,6 @@ test "drawTextBuffer - tabs are rendered as spaces (empty cells)" {
     try std.testing.expectEqual(@as(u32, 'B'), cell_4.char);
 }
 
-
 test "drawTextBuffer - tab indicator renders with correct color" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1881,4 +1880,203 @@ test "drawTextBuffer - tab without indicator renders as spaces" {
 
     const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'B'), cell_4.char);
+}
+
+test "drawTextBuffer - mixed ASCII and Unicode with emoji renders completely" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("- ✅ All 881 native tests passs");
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        50,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '-'), cell_0.char);
+
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_1.char);
+
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expect(gp.isGraphemeChar(cell_2.char));
+    const width_2 = gp.encodedCharWidth(cell_2.char);
+    try std.testing.expectEqual(@as(u32, 2), width_2);
+
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expect(gp.isContinuationChar(cell_3.char));
+
+    const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_4.char);
+
+    const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'A'), cell_5.char);
+
+    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'l'), cell_6.char);
+
+    const cell_7 = opt_buffer.get(7, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'l'), cell_7.char);
+
+    const cell_8 = opt_buffer.get(8, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_8.char);
+
+    const cell_9 = opt_buffer.get(9, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '8'), cell_9.char);
+
+    const cell_10 = opt_buffer.get(10, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '8'), cell_10.char);
+
+    const cell_11 = opt_buffer.get(11, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '1'), cell_11.char);
+
+    const cell_12 = opt_buffer.get(12, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_12.char);
+
+    const cell_13 = opt_buffer.get(13, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'n'), cell_13.char);
+
+    const cell_14 = opt_buffer.get(14, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'a'), cell_14.char);
+
+    const cell_15 = opt_buffer.get(15, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 't'), cell_15.char);
+
+    const cell_16 = opt_buffer.get(16, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'i'), cell_16.char);
+
+    const cell_17 = opt_buffer.get(17, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'v'), cell_17.char);
+
+    const cell_18 = opt_buffer.get(18, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'e'), cell_18.char);
+
+    const cell_19 = opt_buffer.get(19, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_19.char);
+
+    const cell_20 = opt_buffer.get(20, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 't'), cell_20.char);
+
+    const cell_21 = opt_buffer.get(21, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'e'), cell_21.char);
+
+    const cell_22 = opt_buffer.get(22, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_22.char);
+
+    const cell_23 = opt_buffer.get(23, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 't'), cell_23.char);
+
+    const cell_24 = opt_buffer.get(24, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_24.char);
+
+    const cell_25 = opt_buffer.get(25, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_25.char);
+
+    const cell_26 = opt_buffer.get(26, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'p'), cell_26.char);
+
+    const cell_27 = opt_buffer.get(27, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'a'), cell_27.char);
+
+    const cell_28 = opt_buffer.get(28, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_28.char);
+
+    const cell_29 = opt_buffer.get(29, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_29.char);
+
+    const cell_30 = opt_buffer.get(30, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_30.char);
+
+    var out_buffer: [500]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "- ✅ All 881 native tests passs") != null);
+
+    const plain_text = tb.getPlainTextIntoBuffer(&out_buffer);
+    const plain_result = out_buffer[0..plain_text];
+    try std.testing.expectEqualStrings("- ✅ All 881 native tests passs", plain_result);
+}
+
+test "viewport width = 31 exactly - last character rendering" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("- ✅ All 881 native tests passs");
+
+    // Set viewport width to EXACTLY 31 (the display width needed)
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 31, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        50,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    std.debug.print("\n=== VIEWPORT WIDTH = 31 TEST ===\n", .{});
+
+    // Check critical cells
+    var i: u32 = 0;
+    while (i <= 30) : (i += 1) {
+        if (opt_buffer.get(i, 0)) |cell| {
+            std.debug.print("Cell {d:2}: ", .{i});
+            if (cell.char >= 32 and cell.char < 127) {
+                std.debug.print("'{c}'\n", .{@as(u8, @intCast(cell.char))});
+            } else if (gp.isGraphemeChar(cell.char)) {
+                std.debug.print("[GRAPHEME w={}]\n", .{gp.encodedCharWidth(cell.char)});
+            } else if (gp.isContinuationChar(cell.char)) {
+                std.debug.print("[CONTINUATION]\n", .{});
+            } else {
+                std.debug.print("SPACE\n", .{});
+            }
+        } else {
+            std.debug.print("Cell {d:2}: NULL\n", .{i});
+        }
+    }
+
+    // BUG CHECK: The last 's' at cell 30 should be present
+    const cell_30 = opt_buffer.get(30, 0);
+    if (cell_30) |c| {
+        std.debug.print("\n✓ Cell 30 exists: '{c}'\n", .{@as(u8, @intCast(c.char))});
+        try std.testing.expectEqual(@as(u32, 's'), c.char);
+    } else {
+        std.debug.print("\n✗ BUG REPRODUCED: Cell 30 is NULL!\n", .{});
+        return error.TestFailed;
+    }
 }

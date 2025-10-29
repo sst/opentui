@@ -465,6 +465,7 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
         (cp >= 0x1DC0 and cp <= 0x1DFF) or // Combining Diacritical Marks Supplement
         (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
+        (cp >= 0xFE00 and cp <= 0xFE0F) or // Variation Selectors
         (cp >= 0xFE20 and cp <= 0xFE2F) or // Combining Half Marks
         // Format characters (Cf category) - zero width
         cp == 0x00AD or // Soft Hyphen
@@ -947,7 +948,12 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
 
     var break_state: uucode.grapheme.BreakState = .default;
     var prev_cp: ?u21 = first_cp;
-    var cluster_width: u32 = charWidth(b0, first_cp, tab_width);
+    const first_width = charWidth(b0, first_cp, tab_width);
+    var cluster_width: u32 = first_width;
+    var cluster_has_width: bool = (first_width > 0);
+
+    // Check if first codepoint is a Regional Indicator (for flag emoji handling)
+    const is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF);
 
     var pos = byte_offset + first_len;
 
@@ -961,7 +967,21 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
         const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
         if (is_break) break;
 
-        cluster_width += charWidth(b, curr_cp, tab_width);
+        const cp_width = charWidth(b, curr_cp, tab_width);
+
+        // Special case: Regional Indicator pairs (flag emojis)
+        // Both RIs contribute to width (typically 1+1=2)
+        const is_ri = (curr_cp >= 0x1F1E6 and curr_cp <= 0x1F1FF);
+        if (is_regional_indicator_pair and is_ri) {
+            cluster_width += cp_width;
+            cluster_has_width = true;
+        } else if (!cluster_has_width and cp_width > 0) {
+            // Normal case: use first non-zero width codepoint
+            cluster_width = cp_width;
+            cluster_has_width = true;
+        }
+        // Otherwise, ignore width of modifiers, ZWJ, VS16, etc.
+
         prev_cp = curr_cp;
         pos += cp_len;
     }

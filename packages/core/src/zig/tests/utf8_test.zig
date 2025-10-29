@@ -1607,13 +1607,13 @@ test "getWidthAt: combining mark grapheme" {
 test "getWidthAt: emoji with skin tone" {
     const text = "👋🏿"; // Wave + dark skin tone modifier
     const width = utf8.getWidthAt(text, 0, 8);
-    try testing.expectEqual(@as(u32, 4), width); // Both emoji codepoints counted (2+2)
+    try testing.expectEqual(@as(u32, 2), width); // Single grapheme cluster, width 2
 }
 
 test "getWidthAt: emoji with ZWJ" {
     const text = "👩‍🚀"; // Woman astronaut (woman + ZWJ + rocket)
     const width = utf8.getWidthAt(text, 0, 8);
-    try testing.expectEqual(@as(u32, 5), width); // woman(2) + ZWJ(1) + rocket(2)
+    try testing.expectEqual(@as(u32, 2), width); // Single grapheme cluster, width 2
 }
 
 test "getWidthAt: flag emoji" {
@@ -1633,7 +1633,7 @@ test "getWidthAt: mixed ASCII and CJK" {
 test "getWidthAt: emoji with VS16 selector" {
     const text = "❤️"; // Heart + VS16 selector
     const width = utf8.getWidthAt(text, 0, 8);
-    try testing.expectEqual(@as(u32, 2), width); // Entire grapheme cluster
+    try testing.expectEqual(@as(u32, 2), width); // Single grapheme cluster, width 2
 }
 
 test "getWidthAt: hiragana" {
@@ -2004,6 +2004,11 @@ test "calculateTextWidth: emoji with skin tone" {
 test "calculateTextWidth: emoji with ZWJ" {
     const result = utf8.calculateTextWidth("👩‍🚀", 4, false);
     try testing.expectEqual(@as(u32, 2), result); // 👩‍🚀 is a single grapheme with width 2
+}
+
+test "calculateTextWidth: emoji with VS16 selector" {
+    const result = utf8.calculateTextWidth("❤️", 4, false);
+    try testing.expectEqual(@as(u32, 2), result); // ❤️ (heart + VS16) is a single grapheme with width 2
 }
 
 test "calculateTextWidth: flag emoji" {
