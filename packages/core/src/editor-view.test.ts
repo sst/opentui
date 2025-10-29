@@ -341,6 +341,89 @@ describe("EditorView", () => {
 
       expect(view.getVirtualLineCount()).toBeGreaterThanOrEqual(1)
     })
+
+    it("should navigate visual cursor correctly through emoji and CJK", () => {
+      buffer.setText("(emoji 🌟 and CJK 世界)")
+
+      // Initial cursor position: row 0, col 0, offset 0
+      let cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(0)
+      expect(cursor.visualCol).toBe(0)
+      expect(cursor.offset).toBe(0)
+
+      // Move right 6 times to reach BEFORE the star emoji
+      // "(emoji " = 7 chars, but offset is 0-based, so we're at position 6 (before space before emoji)
+      for (let i = 0; i < 6; i++) {
+        buffer.moveCursorRight()
+      }
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(6)
+
+      // Move right once more to reach ON the star emoji (first cell)
+      buffer.moveCursorRight()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(7)
+
+      // Move right once more - should skip over the second cell and land AFTER the emoji
+      // The cursor should NEVER land on the second cell of the wide character
+      buffer.moveCursorRight()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(9)
+
+      // Now move backwards with moveLeft() - should jump back to offset 7 (ON the emoji)
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(7)
+
+      // Move left again - should jump to offset 6 (BEFORE the emoji)
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(6)
+    })
+
+    it("should handle vertical navigation through emoji cells correctly", () => {
+      // Three lines with same visual length, middle line has wide emoji
+      buffer.setText("1234567890123456789\n(emoji 🌟 and CJK 世界)\n1234567890123456789")
+
+      // Position cursor at column 7 in the first line (above the first cell of the star emoji)
+      buffer.setCursorToLineCol(0, 7)
+      let cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(0)
+      expect(cursor.visualCol).toBe(7)
+
+      // Move down - should land at visualCol 7 (ON the first cell of the star emoji)
+      view.moveDownVisual()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(1)
+      expect(cursor.visualCol).toBe(7)
+
+      // Move right - should skip to visualCol 9 (AFTER the emoji)
+      buffer.moveCursorRight()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualCol).toBe(9)
+
+      // Move up - should land at visualCol 9 in the first line
+      view.moveUpVisual()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(0)
+      expect(cursor.visualCol).toBe(9)
+
+      // Move left - now at visualCol 8 in first line (above the SECOND cell of the emoji)
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualCol).toBe(8)
+
+      // Move down - should land at visualCol 8 in the second line (the second cell of the emoji)
+      view.moveDownVisual()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(1)
+      expect(cursor.visualCol).toBe(8)
+
+      // Move left - should jump to visualCol 6 (BEFORE the emoji, not ON the first cell)
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualCol).toBe(6)
+    })
   })
 
   describe("cursor movement around multi-cell graphemes", () => {
