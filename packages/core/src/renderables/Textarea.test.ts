@@ -1860,6 +1860,20 @@ describe("TextareaRenderable", () => {
       editor.wrapMode = "word"
       expect(editor.wrapMode).toBe("word")
     })
+
+    it("should render with tab indicator correctly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Line 1\tTabbed\nLine 2\t\tDouble tab",
+        tabIndicator: "→",
+        tabIndicatorColor: RGBA.fromValues(0.5, 0.5, 0.5, 1),
+        width: 40,
+        height: 10,
+      })
+
+      await renderOnce()
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
   })
 
   describe("Height and Width Measurement", () => {

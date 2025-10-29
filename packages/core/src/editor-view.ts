@@ -202,6 +202,17 @@ export class EditorView {
     this.lib.editorViewSetPlaceholderStyledText(this.viewPtr, chunks)
   }
 
+  public setTabIndicator(indicator: string | number): void {
+    this.guard()
+    const codePoint = typeof indicator === "string" ? (indicator.codePointAt(0) ?? 0) : indicator
+    this.lib.editorViewSetTabIndicator(this.viewPtr, codePoint)
+  }
+
+  public setTabIndicatorColor(color: RGBA): void {
+    this.guard()
+    this.lib.editorViewSetTabIndicatorColor(this.viewPtr, color)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
 

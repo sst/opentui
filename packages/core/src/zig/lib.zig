@@ -560,6 +560,14 @@ export fn textBufferViewGetPlainText(view: *text_buffer_view.UnifiedTextBufferVi
     return view.getPlainTextIntoBuffer(outBuffer);
 }
 
+export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBufferView, indicator: u32) void {
+    view.setTabIndicator(indicator);
+}
+
+export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const f32) void {
+    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
+}
+
 // ===== EditBuffer Exports =====
 
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
@@ -963,6 +971,14 @@ export fn editorViewSetPlaceholderStyledText(
     }
     const chunks = chunksPtr[0..chunkCount];
     view.setPlaceholderStyledText(chunks) catch {};
+}
+
+export fn editorViewSetTabIndicator(view: *editor_view.EditorView, indicator: u32) void {
+    view.setTabIndicator(indicator);
+}
+
+export fn editorViewSetTabIndicatorColor(view: *editor_view.EditorView, color: [*]const f32) void {
+    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
 export fn bufferDrawEditorView(

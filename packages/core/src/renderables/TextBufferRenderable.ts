@@ -17,6 +17,8 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   selectable?: boolean
   attributes?: number
   wrapMode?: "none" | "char" | "word"
+  tabIndicator?: string | number
+  tabIndicatorColor?: string | RGBA
 }
 
 export abstract class TextBufferRenderable extends Renderable {
@@ -29,6 +31,8 @@ export abstract class TextBufferRenderable extends Renderable {
   protected _selectionFg: RGBA | undefined
   protected _wrapMode: "none" | "char" | "word" = "word"
   protected lastLocalSelection: LocalSelectionBounds | null = null
+  protected _tabIndicator?: string | number
+  protected _tabIndicatorColor?: RGBA
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
@@ -42,6 +46,8 @@ export abstract class TextBufferRenderable extends Renderable {
     selectable: true,
     attributes: 0,
     wrapMode: "word" as "none" | "char" | "word",
+    tabIndicator: undefined,
+    tabIndicatorColor: undefined,
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -54,6 +60,10 @@ export abstract class TextBufferRenderable extends Renderable {
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+    this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
+    this._tabIndicatorColor = options.tabIndicatorColor
+      ? parseColor(options.tabIndicatorColor)
+      : this._defaultOptions.tabIndicatorColor
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
@@ -67,6 +77,13 @@ export abstract class TextBufferRenderable extends Renderable {
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
     this.textBuffer.setDefaultAttributes(this._defaultAttributes)
+
+    if (this._tabIndicator !== undefined) {
+      this.textBufferView.setTabIndicator(this._tabIndicator)
+    }
+    if (this._tabIndicatorColor !== undefined) {
+      this.textBufferView.setTabIndicatorColor(this._tabIndicatorColor)
+    }
 
     if (this._wrapMode !== "none" && this.width > 0) {
       this.updateWrapWidth(this.width)
@@ -167,6 +184,35 @@ export abstract class TextBufferRenderable extends Renderable {
       }
       // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
       this.yogaNode.markDirty()
+      this.requestRender()
+    }
+  }
+
+  get tabIndicator(): string | number | undefined {
+    return this._tabIndicator
+  }
+
+  set tabIndicator(value: string | number | undefined) {
+    if (this._tabIndicator !== value) {
+      this._tabIndicator = value
+      if (value !== undefined) {
+        this.textBufferView.setTabIndicator(value)
+      }
+      this.requestRender()
+    }
+  }
+
+  get tabIndicatorColor(): RGBA | undefined {
+    return this._tabIndicatorColor
+  }
+
+  set tabIndicatorColor(value: RGBA | string | undefined) {
+    const newColor = value ? parseColor(value) : undefined
+    if (this._tabIndicatorColor !== newColor) {
+      this._tabIndicatorColor = newColor
+      if (newColor !== undefined) {
+        this.textBufferView.setTabIndicatorColor(newColor)
+      }
       this.requestRender()
     }
   }
