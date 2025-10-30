@@ -2002,6 +2002,12 @@ test "calculateTextWidth: scroll book and writing emojis width 2" {
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("✍️", 4, false));
 }
 
+test "calculateTextWidth: Devanagari script" {
+    const result = utf8.calculateTextWidth("देवनागरी", 4, false);
+    try testing.expectEqual(@as(u32, 5), result);
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth("प्रथम", 4, false));
+}
+
 test "calculateTextWidth: checkmark symbol" {
     const result = utf8.calculateTextWidth("✓", 4, false);
     try testing.expectEqual(@as(u32, 1), result);

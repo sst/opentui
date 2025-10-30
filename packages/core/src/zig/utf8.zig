@@ -722,6 +722,7 @@ const GraphemeWidthState = struct {
     has_width: bool = false,
     is_regional_indicator_pair: bool = false,
     has_vs16: bool = false,
+    has_indic_virama: bool = false,
 
     /// Initialize state with the first codepoint of a grapheme cluster
     inline fn init(first_cp: u21, first_width: u32) GraphemeWidthState {
@@ -730,6 +731,7 @@ const GraphemeWidthState = struct {
             .has_width = (first_width > 0),
             .is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF),
             .has_vs16 = false,
+            .has_indic_virama = false,
         };
     }
 
@@ -738,9 +740,22 @@ const GraphemeWidthState = struct {
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
-        // Check if this is a Devanagari base consonant that should add to cluster width
-        // In Devanagari, conjuncts (consonant + virama + consonant) form one grapheme but have width = number of consonants
-        const is_devanagari_base = (cp >= 0x0905 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
+        // Check for Indic virama (halant) marks
+        const is_virama = (cp == 0x094D) or // Devanagari virama
+            (cp >= 0x09CD and cp <= 0x09CD) or // Bengali virama
+            (cp >= 0x0A4D and cp <= 0x0A4D) or // Gurmukhi virama
+            (cp >= 0x0ACD and cp <= 0x0ACD) or // Gujarati virama
+            (cp >= 0x0B4D and cp <= 0x0B4D) or // Oriya virama
+            (cp >= 0x0BCD and cp <= 0x0BCD) or // Tamil virama
+            (cp >= 0x0C4D and cp <= 0x0C4D) or // Telugu virama
+            (cp >= 0x0CCD and cp <= 0x0CCD) or // Kannada virama
+            (cp >= 0x0D4D and cp <= 0x0D4D); // Malayalam virama
+
+        // Check if this is RA (Devanagari) - which forms repha/subscript and doesn't add width
+        const is_devanagari_ra = (cp == 0x0930);
+
+        // Check if this is a Devanagari base consonant (for regular conjuncts)
+        const is_devanagari_base = (cp >= 0x0915 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
 
         // Special case: VS16 changes presentation to emoji (width 2)
         if (is_vs16) {
@@ -752,6 +767,12 @@ const GraphemeWidthState = struct {
             return;
         }
 
+        // Track virama
+        if (is_virama) {
+            self.has_indic_virama = true;
+            return; // Virama itself has width 0
+        }
+
         // Special case: Regional Indicator pairs (flag emojis)
         // Both RIs contribute to width (typically 1+1=2)
         if (self.is_regional_indicator_pair and is_ri) {
@@ -761,9 +782,14 @@ const GraphemeWidthState = struct {
             // Normal case: use first non-zero width codepoint
             self.width = cp_width;
             self.has_width = true;
-        } else if (self.has_width and is_devanagari_base and cp_width > 0) {
-            // Special case for Devanagari: each base consonant adds to width even in conjuncts
-            self.width += cp_width;
+        } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
+            // Devanagari conjunct: consonant + virama + consonant
+            // Special case: if the second consonant is RA, it forms repha (doesn't add width)
+            // Otherwise, both consonants contribute to width
+            if (!is_devanagari_ra) {
+                self.width += cp_width;
+            }
+            self.has_indic_virama = false; // Reset virama flag after processing
         }
         // Otherwise, ignore width of nonspacing modifiers, ZWJ, etc.
     }
