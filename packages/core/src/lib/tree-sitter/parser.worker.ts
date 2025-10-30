@@ -661,6 +661,9 @@ class ParserWorker {
       highlights.push([node.startIndex, node.endIndex, match.name])
     }
 
+    // Sort by start offset
+    highlights.sort((a, b) => a[0] - b[0])
+
     return highlights
   }
 

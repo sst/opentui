@@ -453,6 +453,112 @@ Some text here.`
       await client.destroy()
     }
   }, 10000)
+
+  test("should return correct offsets for injected code in markdown code blocks", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Create a markdown document with a TypeScript code block
+      // We need to know the exact byte offsets
+      const markdownCode = `# Title\n\n\`\`\`typescript\nconst x = 42;\n\`\`\``
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      // Find highlights for the injected TypeScript code
+      // "const" should be highlighted as a keyword
+      const constHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === "const" && hl[2] === "keyword"
+      })
+
+      expect(constHighlight).toBeDefined()
+      if (constHighlight) {
+        const [start, end, group] = constHighlight
+        const text = markdownCode.substring(start, end)
+
+        // Verify the text is actually "const"
+        expect(text).toBe("const")
+        expect(group).toBe("keyword")
+
+        // Verify the offsets are correct relative to the entire document
+        // "# Title\n\n```typescript\n" = 9 + 15 = 24 bytes before "const"
+        // Let's calculate: "# Title" (7) + "\n" (1) + "\n" (1) + "```typescript" (13) + "\n" (1) = 23
+        const expectedStart = 23
+        expect(start).toBe(expectedStart)
+        expect(end).toBe(expectedStart + 5) // "const".length = 5
+      }
+
+      // Find highlights for the number "42"
+      const numberHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === "42" && hl[2] === "number"
+      })
+
+      expect(numberHighlight).toBeDefined()
+      if (numberHighlight) {
+        const [start, end, group] = numberHighlight
+        const text = markdownCode.substring(start, end)
+
+        expect(text).toBe("42")
+        expect(group).toBe("number")
+
+        // "# Title\n\n```typescript\nconst x = " = 23 + "const x = ".length = 23 + 10 = 33
+        const expectedStart = 33
+        expect(start).toBe(expectedStart)
+        expect(end).toBe(expectedStart + 2) // "42".length = 2
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should return highlights sorted by start offset for injected code", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Create a more complex markdown document with multiple injections
+      const markdownCode = `# Documentation
+
+Some text with \`inline code\` here.
+
+\`\`\`typescript
+const first = 1;
+const second = 2;
+\`\`\`
+
+More text with \`another inline\` code.
+
+\`\`\`javascript
+function test() {
+  return 42;
+}
+\`\`\``
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      // Verify that all highlights are sorted by start offset
+      for (let i = 1; i < result.highlights!.length; i++) {
+        const prevStart = result.highlights![i - 1][0]
+        const currStart = result.highlights![i][0]
+
+        expect(currStart).toBeGreaterThanOrEqual(prevStart)
+      }
+
+      console.log("Highlights are properly sorted by start offset")
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
 })
 
 describe("TreeSitterClient Edge Cases", () => {
