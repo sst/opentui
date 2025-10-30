@@ -3511,70 +3511,64 @@ test "calculateTextWidth: complex text with emojis and multiple scripts" {
     try testing.expect(width >= 30 and width <= 50);
 }
 
-// ============================================================================
-// UNICODE WIDTH MAP VALIDATION
-// ============================================================================
-
 test "calculateTextWidth: validate against unicode-width-map.zon" {
-    const file = std.fs.cwd().openFile("tests/unicode-width-map.zon", .{}) catch {
-        @panic("unicode-width-map.zon not found");
+    const zon_content = @embedFile("unicode-width-map.zon");
+    const zon_with_null = try testing.allocator.dupeZ(u8, zon_content);
+    defer testing.allocator.free(zon_with_null);
+
+    const WidthEntry = struct {
+        codepoint: []const u8,
+        width: i32,
     };
-    defer file.close();
 
-    const file_content = try file.readToEndAlloc(testing.allocator, 10 * 1024 * 1024);
-    defer testing.allocator.free(file_content);
+    var status: std.zon.parse.Status = .{};
+    defer status.deinit(testing.allocator);
 
-    // Parse the .zon file line by line
-    var lines = std.mem.tokenizeScalar(u8, file_content, '\n');
+    const width_entries = std.zon.parse.fromSlice(
+        []const WidthEntry,
+        testing.allocator,
+        zon_with_null,
+        &status,
+        .{},
+    ) catch |err| {
+        std.debug.print("Failed to parse ZON: {}\n", .{err});
+        var iter = status.iterateErrors();
+        while (iter.next()) |parse_err| {
+            std.debug.print("Parse error: {}\n", .{parse_err});
+        }
+        return err;
+    };
+    defer {
+        for (width_entries) |entry| {
+            testing.allocator.free(entry.codepoint);
+        }
+        testing.allocator.free(width_entries);
+    }
 
     var successes: usize = 0;
     var failures: usize = 0;
 
-    // Iterate through each line
-    while (lines.next()) |line| {
-        // Look for lines like: .@"U+XXXX" = N,
-        const trimmed = std.mem.trim(u8, line, " \t");
+    for (width_entries) |entry| {
+        const codepoint_str = entry.codepoint;
+        const expected_width = entry.width;
 
-        // Skip non-entry lines
-        if (trimmed.len == 0 or trimmed[0] != '.' or !std.mem.startsWith(u8, trimmed, ".@\"U+")) {
+        // Parse "U+XXXX" from codepoint string
+        if (codepoint_str.len < 3 or !std.mem.startsWith(u8, codepoint_str, "U+")) {
             continue;
         }
-
-        // Find the code point: .@"U+XXXX" = N,
-        const start_quote = std.mem.indexOfScalar(u8, trimmed, '"') orelse continue;
-        const end_quote = std.mem.indexOfScalarPos(u8, trimmed, start_quote + 1, '"') orelse continue;
-        const code_point_str = trimmed[start_quote + 1 .. end_quote];
-
-        // Parse "U+XXXX"
-        if (code_point_str.len < 3 or !std.mem.startsWith(u8, code_point_str, "U+")) {
-            continue;
-        }
-        const hex_str = code_point_str[2..];
+        const hex_str = codepoint_str[2..];
         const code_point = std.fmt.parseInt(u21, hex_str, 16) catch continue;
 
-        // Find the width value: .@"U+XXXX" = N,
-        const eq_pos = std.mem.indexOfScalar(u8, trimmed, '=') orelse continue;
-        const after_eq = std.mem.trim(u8, trimmed[eq_pos + 1 ..], " \t");
-        const comma_pos = std.mem.indexOfScalar(u8, after_eq, ',') orelse after_eq.len;
-        const comment_pos = std.mem.indexOfScalar(u8, after_eq, '/') orelse after_eq.len;
-        const end_pos = @min(comma_pos, comment_pos);
-        const width_str = std.mem.trim(u8, after_eq[0..end_pos], " \t");
-        const expected_width = std.fmt.parseInt(i32, width_str, 10) catch continue;
-
-        // Convert code point to UTF-8
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(code_point, &buf) catch continue;
         const str = buf[0..len];
 
-        // Calculate width using calculateTextWidth
         const actual_width = utf8.calculateTextWidth(str, 4, false);
 
-        // Compare widths
         if (actual_width == expected_width) {
             successes += 1;
         } else {
             failures += 1;
-            // Print all failures for debugging
             std.debug.print("MISMATCH U+{X:0>4}: expected {d}, got {d}\n", .{ code_point, expected_width, actual_width });
         }
     }
