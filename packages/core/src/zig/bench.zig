@@ -44,6 +44,7 @@ const text_buffer_coords_bench = @import("bench/text-buffer-coords_bench.zig");
 const styled_text_bench = @import("bench/styled-text_bench.zig");
 const buffer_draw_text_buffer_bench = @import("bench/buffer-draw-text-buffer_bench.zig");
 const utf8_bench = @import("bench/utf8_bench.zig");
+const text_chunk_graphemes_bench = @import("bench/text-chunk-graphemes_bench.zig");
 
 const BenchModule = struct {
     name: []const u8,
@@ -94,6 +95,7 @@ pub fn main() !void {
         .{ .name = styled_text_bench.benchName, .run = styled_text_bench.run },
         .{ .name = buffer_draw_text_buffer_bench.benchName, .run = buffer_draw_text_buffer_bench.run },
         .{ .name = utf8_bench.benchName, .run = utf8_bench.run },
+        .{ .name = text_chunk_graphemes_bench.benchName, .run = text_chunk_graphemes_bench.run },
     };
 
     const args = try std.process.argsAlloc(allocator);

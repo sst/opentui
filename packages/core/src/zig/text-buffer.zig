@@ -342,12 +342,6 @@ pub const UnifiedTextBuffer = struct {
         self.markAllViewsDirty();
     }
 
-    /// Calculate the display width of text, accounting for tabs with static tab width
-    fn calculateWidthWithTabs(self: *const Self, text: []const u8) u32 {
-        const is_ascii = utf8.isAsciiOnly(text);
-        return utf8.calculateTextWidth(text, self.tab_width, is_ascii);
-    }
-
     /// Create a TextChunk from a memory buffer range
     pub fn createChunk(
         self: *const Self,
@@ -357,12 +351,14 @@ pub const UnifiedTextBuffer = struct {
     ) TextChunk {
         const mem_buf = self.mem_registry.get(mem_id).?;
         const chunk_bytes = mem_buf[byte_start..byte_end];
-        const chunk_width: u16 = @intCast(@min(65535, self.calculateWidthWithTabs(chunk_bytes)));
+        const is_ascii = utf8.isAsciiOnly(chunk_bytes);
 
         var flags: u8 = 0;
-        if (chunk_bytes.len > 0 and utf8.isAsciiOnly(chunk_bytes)) {
+        if (chunk_bytes.len > 0 and is_ascii) {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
+
+        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii)));
 
         return TextChunk{
             .mem_id = mem_id,
@@ -516,11 +512,6 @@ pub const UnifiedTextBuffer = struct {
         iter_mod.walkLinesAndSegments(&self.rope, &ctx, Context.segmentCallback, Context.lineEndCallback);
 
         return out_index;
-    }
-
-    /// Create a grapheme iterator for given bytes
-    pub fn getGraphemeIterator(self: *const Self, bytes: []const u8) Graphemes.Iterator {
-        return self.graphemes_data.iterator(bytes);
     }
 
     pub fn startHighlightsTransaction(self: *Self) void {
