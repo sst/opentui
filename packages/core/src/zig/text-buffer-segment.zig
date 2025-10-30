@@ -161,14 +161,12 @@ pub const TextChunk = struct {
 
         const chunk_bytes = self.getBytes(mem_registry);
 
-        // Use utf8.findGraphemeInfoSIMD16 for fast grapheme detection
-        // Note: utf8.GraphemeInfo and our GraphemeInfo have identical structure
         var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
         errdefer grapheme_list.deinit();
 
         try utf8.findGraphemeInfoSIMD16(chunk_bytes, tabwidth, self.isAsciiOnly(), &grapheme_list);
 
-        // Transfer ownership to our cache - no copy needed
+        // TODO: Calling this with an arena allocator will just double the memory usage?
         const graphemes = try grapheme_list.toOwnedSlice();
 
         mut_self.graphemes = graphemes;

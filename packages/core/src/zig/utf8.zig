@@ -1215,10 +1215,6 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8)
 }
 
 /// Calculate the display width of text including tab characters with static tab_width
-/// This is a high-performance function for measuring text with tabs
-/// Tabs are always tab_width columns regardless of position
-/// IMPORTANT: Properly handles grapheme clusters (e.g., emoji with modifiers, ZWJ sequences)
-/// For grapheme clusters, uses the width of the first non-zero-width codepoint
 pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u32 {
     if (text.len == 0) return 0;
 
@@ -1240,29 +1236,22 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
 
     while (pos < text.len) {
         const b0 = text[pos];
-
-        // Decode the codepoint
         const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
             const dec = decodeUtf8Unchecked(text, pos);
             if (pos + dec.len > text.len) break :blk 0xFFFD;
             break :blk dec.cp;
         };
-
         const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
-
-        // Check if this is a grapheme break
         const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
 
         if (is_break) {
-            // Commit the previous cluster's width
             if (prev_cp != null) {
                 total_width += state.width;
             }
-            // Start a new cluster
+
             const cp_width = charWidth(b0, curr_cp, tab_width);
             state = GraphemeWidthState.init(curr_cp, cp_width);
         } else {
-            // Continuing a cluster
             const cp_width = charWidth(b0, curr_cp, tab_width);
             state.addCodepoint(curr_cp, cp_width);
         }
@@ -1271,7 +1260,6 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
         pos += cp_len;
     }
 
-    // Don't forget the last cluster
     if (prev_cp != null) {
         total_width += state.width;
     }
@@ -1280,7 +1268,6 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
 }
 
 /// Grapheme cluster information for caching
-/// Only stored for multibyte (non-ASCII) graphemes and tabs
 pub const GraphemeInfo = struct {
     byte_offset: u32,
     byte_len: u8,
@@ -1307,17 +1294,12 @@ pub const GraphemeInfoResult = struct {
 };
 
 /// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs
-/// For ASCII-only chunks, returns empty list (no special graphemes to cache)
-/// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
-/// Tab width is calculated based on current column position (static tab stops)
-/// Appends directly to the provided ArrayList to avoid double allocation
 pub fn findGraphemeInfoSIMD16(
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
     result: *std.ArrayList(GraphemeInfo),
 ) !void {
-    // Fast path: ASCII-only text has no special graphemes to cache
     if (isASCIIOnly) {
         return;
     }

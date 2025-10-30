@@ -340,14 +340,6 @@ test "EditBuffer - moveRight between two tabs" {
     }
 }
 
-// FIXED: Tab width is now fixed instead of position-dependent
-// Tabs always have width equal to tab_width setting (default 2 in tests)
-//
-// Test behavior with fixed tab width:
-// - Tabs expand consistently regardless of position
-// - Cursor movement now works correctly around tabs
-// - No more stuck cursor issues
-
 test "EditBuffer - type and move around single tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

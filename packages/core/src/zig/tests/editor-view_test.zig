@@ -480,10 +480,6 @@ test "EditorView - rapid cursor movements maintain visibility" {
     try std.testing.expect(cursor.row < vp.y + vp.height);
 }
 
-// ============================================================================
-// VisualCursor Tests - Wrapping-aware cursor translation
-// ============================================================================
-
 test "EditorView - VisualCursor without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -838,8 +834,6 @@ test "EditorView - setViewportSize maintains cursor visibility" {
     const vp = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 80), vp.width);
     try std.testing.expectEqual(@as(u32, 5), vp.height);
-
-    // setViewportSize doesn't automatically adjust scroll position
 }
 
 test "EditorView - moveDownVisual across empty line preserves desired column" {
@@ -1428,7 +1422,6 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
         const vp = ev.getViewport().?;
         const vcursor = ev.getVisualCursor();
 
-        // visual_row is now viewport-relative, should be in range [0, vp.height)
         try std.testing.expect(vcursor.visual_row >= 0);
         try std.testing.expect(vcursor.visual_row < vp.height);
     }
@@ -1438,7 +1431,6 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
     const vp_middle = ev.getViewport().?;
     const vcursor_middle = ev.getVisualCursor();
-    // visual_row is now viewport-relative, should be in range [0, vp.height)
     try std.testing.expect(vcursor_middle.visual_row >= 0);
     try std.testing.expect(vcursor_middle.visual_row < vp_middle.height);
 
@@ -1450,7 +1442,6 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
         const vp = ev.getViewport().?;
         const vcursor = ev.getVisualCursor();
 
-        // visual_row is now viewport-relative, should be in range [0, vp.height)
         try std.testing.expect(vcursor.visual_row >= 0);
         try std.testing.expect(vcursor.visual_row < vp.height);
     }
@@ -1504,7 +1495,6 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
 
     vp = ev.getViewport().?;
     const vcursor_after_insert = ev.getVisualCursor();
-    // visual_row is now viewport-relative, should be in range [0, vp.height)
     try std.testing.expect(vcursor_after_insert.visual_row >= 0);
     try std.testing.expect(vcursor_after_insert.visual_row < vp.height);
 
@@ -2160,7 +2150,6 @@ test "EditorView - word boundary with wrapping" {
     try std.testing.expectEqual(@as(u32, 0), next_vcursor.logical_row);
     try std.testing.expectEqual(@as(u32, 5), next_vcursor.logical_col);
 
-    // Visual row might differ due to wrapping, but logical should be consistent
     try std.testing.expect(next_vcursor.visual_col <= 20);
 }
 
@@ -2653,10 +2642,6 @@ test "EditorView - logicalToVisualCursor clamps col beyond line width" {
     try std.testing.expectEqual(@as(u32, 5), vcursor.visual_col);
 }
 
-// ============================================================================
-// Placeholder Tests - Visual-only placeholder in EditorView
-// ============================================================================
-
 test "EditorView - placeholder shows when empty" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2905,7 +2890,6 @@ test "EditorView - tab indicator renders in buffer" {
     try std.testing.expect(cell_4 != null);
     try std.testing.expectEqual(@as(u32, 32), cell_4.?.char);
 
-    // With static tabs: A at col 0, tab takes 4 cols (1-4), B at col 5
     const cell_5 = opt_buffer.get(5, 0);
     try std.testing.expect(cell_5 != null);
     try std.testing.expectEqual(@as(u32, 'B'), cell_5.?.char);

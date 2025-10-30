@@ -127,7 +127,6 @@ test "TextBufferView selection - basic selection without wrap" {
     const packed_info = view.packSelectionInfo();
     try std.testing.expect(packed_info != 0xFFFFFFFF_FFFFFFFF);
 
-    // Selection should be from char 2 to 7
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 2), start);
@@ -160,7 +159,6 @@ test "TextBufferView selection - with wrapped lines" {
     const packed_info = view.packSelectionInfo();
     try std.testing.expect(packed_info != 0xFFFFFFFF_FFFFFFFF);
 
-    // Selection should span from char 5 to char 15 (5 chars into second virtual line)
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 5), start);
@@ -207,7 +205,6 @@ test "TextBufferView word wrapping - basic word wrap at space" {
     view.setWrapWidth(8);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should wrap at the space: "Hello " and "World"
     try std.testing.expectEqual(@as(u32, 2), wrapped_count);
 }
 
@@ -231,7 +228,6 @@ test "TextBufferView word wrapping - long word exceeds width" {
     view.setWrapWidth(10);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Since there's no word boundary, should fall back to character wrapping
     try std.testing.expectEqual(@as(u32, 3), wrapped_count);
 }
 
@@ -274,8 +270,7 @@ test "TextBufferView getSelectedTextIntoBuffer - with newlines" {
     defer view.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
-    // Rope offsets: "Line 1" (0-5) + newline (6) + "Line 2" (7-12) + newline (13) + "Line 3" (14-19)
-    // Selection [0, 9) = "Line 1" (0-5) + newline (6) + "Li" (7-8) = 9 chars
+
     view.setSelection(0, 9, null, null);
 
     var buffer: [100]u8 = undefined;
@@ -309,7 +304,6 @@ test "TextBufferView getCachedLineInfo - with wrapping" {
     try std.testing.expectEqual(@as(usize, line_count), line_info.starts.len);
     try std.testing.expectEqual(@as(usize, line_count), line_info.widths.len);
 
-    // Verify all widths are <= wrap width (except possibly the last line)
     for (line_info.widths, 0..) |width, i| {
         if (i < line_info.widths.len - 1) {
             try std.testing.expect(width <= 7);
@@ -343,15 +337,12 @@ test "TextBufferView virtual line spans - with highlights" {
     const vline0_info = view.getVirtualLineSpans(0);
     const vline1_info = view.getVirtualLineSpans(1);
 
-    // Both virtual lines should reference the same source line
     try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
     try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
 
-    // First virtual line has col_offset 0, second has col_offset 10
     try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
     try std.testing.expectEqual(@as(u32, 10), vline1_info.col_offset);
 
-    // Both should have access to the same spans (from the real line)
     try std.testing.expect(vline0_info.spans.len > 0);
     try std.testing.expect(vline1_info.spans.len > 0);
 }
@@ -481,14 +472,12 @@ test "TextBufferView wrapping - grapheme at exact boundary" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create text with emoji that takes 2 cells at position 9-10
     try tb.setText("12345678🌟");
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should fit exactly on one line (8 chars + 2-cell emoji = 10)
     try std.testing.expectEqual(@as(u32, 1), wrapped_count);
 }
 
@@ -506,14 +495,12 @@ test "TextBufferView wrapping - grapheme split across boundary" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create text where emoji would straddle the boundary
     try tb.setText("123456789🌟ABC");
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should wrap: line 1 has "123456789", line 2 has "🌟ABC"
     try std.testing.expectEqual(@as(u32, 2), wrapped_count);
 }
 
@@ -531,14 +518,12 @@ test "TextBufferView wrapping - CJK characters at boundaries" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // CJK characters typically take 2 cells each
     try tb.setText("测试文字处理");
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
     const wrapped_count = view.getVirtualLineCount();
 
-    // 6 CJK chars × 2 cells = 12 cells, should wrap to 2 lines
     try std.testing.expectEqual(@as(u32, 2), wrapped_count);
 }
 
@@ -556,14 +541,12 @@ test "TextBufferView wrapping - mixed width characters" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Mix of single-width and double-width characters
     try tb.setText("AB测试CD");
 
     view.setWrapMode(.char);
     view.setWrapWidth(6);
     const wrapped_count = view.getVirtualLineCount();
 
-    // "AB" (2) + "测试" (4) = 6 cells on first line, "CD" on second
     try std.testing.expectEqual(@as(u32, 2), wrapped_count);
 }
 
@@ -581,14 +564,12 @@ test "TextBufferView wrapping - single wide character exceeds width" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Emoji takes 2 cells but wrap width is 1
     try tb.setText("🌟");
 
     view.setWrapMode(.char);
     view.setWrapWidth(1);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Wide char that doesn't fit should still be on one line (can't split grapheme)
     try std.testing.expectEqual(@as(u32, 1), wrapped_count);
 }
 
@@ -606,14 +587,12 @@ test "TextBufferView wrapping - multiple consecutive wide characters" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Multiple emojis in a row
     try tb.setText("🌟🌟🌟🌟🌟");
 
     view.setWrapMode(.char);
     view.setWrapWidth(6);
     const wrapped_count = view.getVirtualLineCount();
 
-    // 5 emojis × 2 cells = 10 cells, with width 6 should be 2 lines
     try std.testing.expectEqual(@as(u32, 2), wrapped_count);
 }
 
@@ -631,14 +610,12 @@ test "TextBufferView wrapping - zero width characters" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Text with combining characters (zero-width)
     try tb.setText("e\u{0301}e\u{0301}e\u{0301}"); // é é é using combining acute
 
     view.setWrapMode(.char);
     view.setWrapWidth(2);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should consider the actual width after combining
     try std.testing.expect(wrapped_count >= 1);
 }
 
@@ -662,7 +639,6 @@ test "TextBufferView word wrapping - multiple words" {
     view.setWrapWidth(15);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should wrap intelligently at word boundaries
     try std.testing.expect(wrapped_count >= 2);
 }
 
@@ -686,7 +662,6 @@ test "TextBufferView word wrapping - hyphenated words" {
     view.setWrapWidth(12);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should break at hyphens
     try std.testing.expect(wrapped_count >= 2);
 }
 
@@ -710,7 +685,6 @@ test "TextBufferView word wrapping - punctuation boundaries" {
     view.setWrapWidth(8);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should break at punctuation
     try std.testing.expect(wrapped_count >= 2);
 }
 
@@ -761,7 +735,6 @@ test "TextBufferView word wrapping - empty lines preserved" {
     view.setWrapWidth(8);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should preserve empty lines
     try std.testing.expect(wrapped_count >= 3);
 }
 
@@ -785,7 +758,6 @@ test "TextBufferView word wrapping - slash as boundary" {
     view.setWrapWidth(8);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should break at slashes
     try std.testing.expect(wrapped_count >= 2);
 }
 
@@ -809,7 +781,6 @@ test "TextBufferView word wrapping - brackets as boundaries" {
     view.setWrapWidth(10);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should break at brackets
     try std.testing.expect(wrapped_count >= 2);
 }
 
@@ -833,7 +804,6 @@ test "TextBufferView word wrapping - single character at boundary" {
     view.setWrapWidth(4);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should handle single character words properly
     try std.testing.expect(wrapped_count >= 3);
 }
 
@@ -851,20 +821,9 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create a fragmented rope: ["hello my good ","f","riend"]
-    // This simulates what can happen during edits
-    // Text: "hello my good friend"
-    // Wrap width: 18
-    // Expected: wrap before "friend", so "friend" goes to next line
-
-    // First, register the text in memory registry
     const text = "hello my good friend";
     const mem_id = try tb.mem_registry.register(text, false);
 
-    // Create segments manually:
-    // Segment 1: "hello my good " (0-14)
-    // Segment 2: "f" (14-15)
-    // Segment 3: "riend" (15-20)
     const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
 
@@ -881,7 +840,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try segments.append(Segment{ .text = chunk3 });
 
     try tb.rope.setSegments(segments.items);
-    // Mark views dirty manually by setting the flag
+
     view.virtual_lines_dirty = true;
 
     view.setWrapMode(.word);
@@ -889,17 +848,10 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
 
     const vlines = view.getVirtualLines();
 
-    // Expected behavior: 2 virtual lines
-    // Line 0: "hello my good " (14 chars)
-    // Line 1: "friend" (6 chars)
-    // The word "friend" should wrap as a whole at the word boundary, not split at segment boundary
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
 
-    // Verify first line has "hello my good " (width 14)
     try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
 
-    // Verify second line has "friend" (width 6)
-    // With the fix, both "f" and "riend" chunks are on line 1
     try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
 }
 
@@ -923,7 +875,6 @@ test "TextBufferView wrapping - very narrow width (1 char)" {
     view.setWrapWidth(1);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Each character should be on its own line
     try std.testing.expectEqual(@as(u32, 5), wrapped_count);
 }
 
@@ -947,7 +898,6 @@ test "TextBufferView wrapping - very narrow width (2 chars)" {
     view.setWrapWidth(2);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should wrap to 3 lines
     try std.testing.expectEqual(@as(u32, 3), wrapped_count);
 }
 
@@ -1000,10 +950,6 @@ test "TextBufferView wrapping - multiple consecutive newlines with wrapping" {
     view.setWrapWidth(5);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should preserve all newlines: wrapped line 1, empty, empty, wrapped line 2
-    // Line 1: "ABCDEFGHIJ" wraps to 2 lines
-    // Line 2-3: empty lines
-    // Line 4: "KLMNOPQRST" wraps to 2 lines
     try std.testing.expect(wrapped_count >= 6);
 }
 
@@ -1027,7 +973,6 @@ test "TextBufferView wrapping - only spaces should not create extra lines" {
     view.setWrapWidth(5);
     const wrapped_count = view.getVirtualLineCount();
 
-    // 10 spaces should wrap to 2 lines
     try std.testing.expectEqual(@as(u32, 2), wrapped_count);
 }
 
@@ -1051,7 +996,6 @@ test "TextBufferView wrapping - mixed tabs and spaces" {
     view.setWrapWidth(5);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should handle tabs (tabs may be treated as single-width in the buffer)
     try std.testing.expect(wrapped_count >= 1);
 }
 
@@ -1069,14 +1013,12 @@ test "TextBufferView wrapping - unicode emoji with varying widths" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Mix of single-width ASCII and wide emoji
     try tb.setText("A🌟B🎨C🚀D");
 
     view.setWrapMode(.char);
     view.setWrapWidth(5);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should handle varying widths correctly
     try std.testing.expect(wrapped_count >= 2);
 }
 
@@ -1130,7 +1072,6 @@ test "TextBufferView selection - multi-line selection without wrap" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    // Select from middle of line 1 to middle of line 2
     _ = view.setLocalSelection(2, 0, 4, 1, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -1156,7 +1097,6 @@ test "TextBufferView selection - selection at wrap boundary" {
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
-    // Select exactly at the wrap boundary (chars 9-11, which spans the wrap)
     _ = view.setLocalSelection(9, 0, 1, 1, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -1182,14 +1122,12 @@ test "TextBufferView selection - spanning multiple wrapped lines" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create text that will wrap to 3 lines at width 10
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123");
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
     try std.testing.expectEqual(@as(u32, 3), view.getVirtualLineCount());
 
-    // Select from virtual line 0 to virtual line 2
     _ = view.setLocalSelection(2, 0, 8, 2, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -1198,7 +1136,7 @@ test "TextBufferView selection - spanning multiple wrapped lines" {
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 2), start);
-    try std.testing.expectEqual(@as(u32, 28), end); // 20 + 8
+    try std.testing.expectEqual(@as(u32, 28), end);
 }
 
 test "TextBufferView selection - changes when wrap width changes" {
@@ -1217,10 +1155,9 @@ test "TextBufferView selection - changes when wrap width changes" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    // Initial wrap at width 10 - 2 virtual lines
     view.setWrapMode(.char);
     view.setWrapWidth(10);
-    _ = view.setLocalSelection(5, 0, 5, 1, null, null); // Select from pos 5 on line 0 to pos 5 on line 1
+    _ = view.setLocalSelection(5, 0, 5, 1, null, null);
 
     var packed_info = view.packSelectionInfo();
     var start = @as(u32, @intCast(packed_info >> 32));
@@ -1228,7 +1165,6 @@ test "TextBufferView selection - changes when wrap width changes" {
     try std.testing.expectEqual(@as(u32, 5), start);
     try std.testing.expectEqual(@as(u32, 15), end);
 
-    // Change wrap width to 5 - 4 virtual lines, but selection coordinates stay the same
     view.setWrapMode(.char);
     view.setWrapWidth(5);
     _ = view.setLocalSelection(5, 0, 5, 1, null, null);
@@ -1237,9 +1173,6 @@ test "TextBufferView selection - changes when wrap width changes" {
     start = @as(u32, @intCast(packed_info >> 32));
     end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
 
-    // At width 5: line 0 = chars 0-4, line 1 = chars 5-9
-    // Selection from (5,0) is invalid (line 0 only has 5 chars), wraps to line 1 char 0
-    // So we expect different behavior
     try std.testing.expect(packed_info != 0xFFFFFFFF_FFFFFFFF);
 }
 
@@ -1262,11 +1195,10 @@ test "TextBufferView selection - empty selection with wrapping" {
     view.setWrapMode(.char);
     view.setWrapWidth(5);
 
-    // Select same position (empty selection)
     _ = view.setLocalSelection(2, 0, 2, 0, null, null);
 
     const packed_info = view.packSelectionInfo();
-    // Empty selection should return no selection
+
     try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info);
 }
 
@@ -1284,18 +1216,14 @@ test "TextBufferView selection - with newlines and wrapping" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Text with newlines that also needs wrapping
     try tb.setText("ABCDEFGHIJKLMNO\nPQRSTUVWXYZ");
 
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
-    // Without wrap: 2 real lines
-    // With wrap at 10: line 0 wraps to 2 virtual lines, line 1 wraps to 3 virtual lines
     const vline_count = view.getVirtualLineCount();
     try std.testing.expect(vline_count >= 3);
 
-    // Select across the newline boundary
     _ = view.setLocalSelection(5, 0, 5, 2, null, null);
 
     const packed_info = view.packSelectionInfo();
@@ -1322,7 +1250,6 @@ test "TextBufferView selection - reset clears selection" {
     var packed_info = view.packSelectionInfo();
     try std.testing.expect(packed_info != 0xFFFFFFFF_FFFFFFFF);
 
-    // Reset selection
     view.resetLocalSelection();
     packed_info = view.packSelectionInfo();
     try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info);
@@ -1343,8 +1270,7 @@ test "TextBufferView selection - spanning multiple lines" {
     defer view.deinit();
 
     try tb.setText("Red\nBlue");
-    // Rope offsets: "Red" (0-2) + newline (3) + "Blue" (4-7)
-    // Selection [2, 5) = "d" (2) + newline (3) + "B" (4) = 3 chars
+
     view.setSelection(2, 5, null, null);
 
     var buffer: [100]u8 = undefined;
@@ -1513,7 +1439,6 @@ test "TextBufferView line info - very long lines" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create a long text with 1000 'A' characters
     const longText = [_]u8{'A'} ** 1000;
     try tb.setText(&longText);
 
@@ -1613,7 +1538,6 @@ test "TextBufferView line info - extremely long single line" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create extremely long text with 10000 'A' characters
     const extremelyLongText = [_]u8{'A'} ** 10000;
     try tb.setText(&extremelyLongText);
 
@@ -1646,7 +1570,6 @@ test "TextBufferView line info - extremely long line with wrapping" {
     view.setWrapWidth(80);
     const wrapped_count = view.getVirtualLineCount();
 
-    // Should wrap to many lines
     try std.testing.expect(wrapped_count > 100);
 }
 
@@ -1763,7 +1686,7 @@ test "TextBufferView line info - text starting with newline" {
 
     const line_info = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(u32, 0), line_info.starts[0]);
-    // Line 1 starts after empty line 0 (width=0) + newline (1), so char_offset = 1
+
     try std.testing.expectEqual(@as(u32, 1), line_info.starts[1]);
 }
 
@@ -2144,7 +2067,6 @@ test "TextBufferView char range highlights - multi-line highlight" {
 
     try tb.setText("Hello\nWorld\nTest");
 
-    // Highlight from chars 3-9 (not counting newlines: char 3 in "Hello", char 9 at end of "World")
     try tb.addHighlightByCharRange(3, 9, 1, 1, 0);
 
     const line0_highlights = tb.getLineHighlights(0);
@@ -2667,14 +2589,11 @@ test "TextBufferView accessor methods - getVirtualLines and getLines" {
 
     try tb.setText("Line 1\nLine 2");
 
-    // Test getVirtualLines returns correct data
     const virtual_lines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), virtual_lines.len);
 
-    // Test lineCount returns correct data from buffer
     try std.testing.expectEqual(@as(u32, 2), tb.lineCount());
 
-    // Verify we can access chunks through virtual lines
     try std.testing.expect(virtual_lines[0].chunks.items.len > 0);
 }
 
@@ -2697,11 +2616,9 @@ test "TextBufferView accessor methods - with wrapping" {
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
-    // Get virtual lines - should be wrapped
     const virtual_lines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), virtual_lines.len);
 
-    // Get real line count - should be 1
     try std.testing.expectEqual(@as(u32, 1), tb.lineCount());
 }
 
@@ -2721,11 +2638,9 @@ test "TextBufferView virtual lines - match real lines when no wrap" {
 
     try tb.setText("Line 1\nLine 2\nLine 3");
 
-    // Check line count matches expected
     try std.testing.expectEqual(@as(u32, 3), view.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
 
-    // Verify line info is available
     const line_info = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(usize, 3), line_info.starts.len);
     try std.testing.expectEqual(@as(usize, 3), line_info.widths.len);
@@ -2747,7 +2662,6 @@ test "TextBufferView virtual lines - updated when wrap width set" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    // Initially no wrap
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
     view.setWrapMode(.char);
@@ -2775,13 +2689,10 @@ test "TextBufferView virtual lines - reset to match real lines when wrap removed
     view.setWrapWidth(10);
     try std.testing.expectEqual(@as(u32, 3), view.getVirtualLineCount());
 
-    // Remove wrap
     view.setWrapWidth(null);
 
-    // Should be back to 2 lines
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
 
-    // Verify line info is consistent
     const line_info = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(usize, 2), line_info.starts.len);
     try std.testing.expectEqual(@as(usize, 2), line_info.widths.len);
@@ -2803,10 +2714,8 @@ test "TextBufferView virtual lines - multi-line text without wrap" {
 
     try tb.setText("First line\n\nThird line with more text\n");
 
-    // Should have 4 lines (including empty line and trailing empty line)
     try std.testing.expectEqual(@as(u32, 4), view.getVirtualLineCount());
 
-    // Verify line info is available
     const line_info = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(usize, 4), line_info.starts.len);
     try std.testing.expectEqual(@as(usize, 4), line_info.widths.len);
@@ -2839,11 +2748,9 @@ test "TextBufferView line info - line starts and widths consistency" {
     const line_count = view.getVirtualLineCount();
     const line_info = view.getCachedLineInfo();
 
-    // Verify line starts and widths are consistent
     try std.testing.expectEqual(@as(usize, line_count), line_info.starts.len);
     try std.testing.expectEqual(@as(usize, line_count), line_info.widths.len);
 
-    // Verify all widths are <= wrap width (except possibly the last line)
     for (line_info.widths, 0..) |width, i| {
         if (i < line_info.widths.len - 1) {
             try std.testing.expect(width <= 7);
@@ -2882,7 +2789,6 @@ test "TextBufferView line info - line starts monotonically increasing" {
     const line_info = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(u32, 0), line_info.starts[0]);
 
-    // Check that line starts are monotonically increasing
     var line_idx: u32 = 1;
     while (line_idx < 100) : (line_idx += 1) {
         try std.testing.expect(line_info.starts[line_idx] >= line_info.starts[line_idx - 1]);
@@ -2910,7 +2816,6 @@ test "TextBufferView - highlights preserved after wrap width change" {
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
-    // Highlights should still be there (they're on real lines, not virtual lines)
     const highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 1), highlights.len);
 }
@@ -2931,7 +2836,6 @@ test "TextBufferView - get highlights from non-existent line" {
 
     try tb.setText("Line 1");
 
-    // Get highlights from line that doesn't have any
     const highlights = tb.getLineHighlights(10);
     try std.testing.expectEqual(@as(usize, 0), highlights.len);
 }
@@ -2952,7 +2856,6 @@ test "TextBufferView - char range highlights out of bounds" {
 
     try tb.setText("Hello");
 
-    // Range extends beyond text length - should handle gracefully
     try tb.addHighlightByCharRange(3, 100, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
@@ -2976,7 +2879,6 @@ test "TextBufferView - char range highlights invalid range" {
 
     try tb.setText("Hello World");
 
-    // Invalid range (start > end) should add no highlights
     try tb.addHighlightByCharRange(10, 5, 1, 1, 0);
 
     const highlights = tb.getLineHighlights(0);
@@ -2999,7 +2901,6 @@ test "TextBufferView - char range highlights exact line boundaries" {
 
     try tb.setText("AAAA\nBBBB\nCCCC");
 
-    // Highlight entire first line (chars 0-4, excluding newline)
     try tb.addHighlightByCharRange(0, 4, 1, 1, 0);
 
     const line0_highlights = tb.getLineHighlights(0);
@@ -3007,7 +2908,6 @@ test "TextBufferView - char range highlights exact line boundaries" {
     try std.testing.expectEqual(@as(u32, 0), line0_highlights[0].col_start);
     try std.testing.expectEqual(@as(u32, 4), line0_highlights[0].col_end);
 
-    // Line 1 should have no highlights
     const line1_highlights = tb.getLineHighlights(1);
     try std.testing.expectEqual(@as(usize, 0), line1_highlights.len);
 }
@@ -3028,7 +2928,6 @@ test "TextBufferView - char range highlights unicode text" {
 
     try tb.setText("Hello 世界 🌟");
 
-    // Highlight the entire text by character count
     const text_len = tb.getLength();
     try tb.addHighlightByCharRange(0, text_len, 1, 1, 0);
 
@@ -3050,7 +2949,6 @@ test "TextBufferView automatic updates - view reflects buffer changes immediatel
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set initial text
     try tb.setText("Hello");
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
@@ -3058,7 +2956,6 @@ test "TextBufferView automatic updates - view reflects buffer changes immediatel
     const len1 = view.getPlainTextIntoBuffer(&buffer);
     try std.testing.expectEqualStrings("Hello", buffer[0..len1]);
 
-    // Change buffer content - view should automatically update
     try tb.setText("Hello\nWorld");
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
 
@@ -3088,17 +2985,14 @@ test "TextBufferView automatic updates - multiple views update independently" {
     try std.testing.expectEqual(@as(u32, 1), view1.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 1), view2.getVirtualLineCount());
 
-    // Set different wrap widths on each view
     view1.setWrapMode(.char);
     view1.setWrapWidth(10);
     view2.setWrapMode(.char);
     view2.setWrapWidth(5);
 
-    // Views should have different virtual line counts
     try std.testing.expectEqual(@as(u32, 2), view1.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 4), view2.getVirtualLineCount());
 
-    // Change buffer - both should update automatically
     try tb.setText("Short");
 
     try std.testing.expectEqual(@as(u32, 1), view1.getVirtualLineCount());
@@ -3125,10 +3019,8 @@ test "TextBufferView automatic updates - view destroyed doesn't affect others" {
     try std.testing.expectEqual(@as(u32, 1), view1.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 1), view2.getVirtualLineCount());
 
-    // Destroy view2
     view2.deinit();
 
-    // view1 should still work and update
     try tb.setText("Hello\nWorld");
     try std.testing.expectEqual(@as(u32, 2), view1.getVirtualLineCount());
 }
@@ -3147,7 +3039,6 @@ test "TextBufferView automatic updates - with wrapping across buffer changes" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Set wrap width first
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
@@ -3157,14 +3048,12 @@ test "TextBufferView automatic updates - with wrapping across buffer changes" {
     const info1 = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(usize, 2), info1.starts.len);
 
-    // Change to shorter text - should update automatically
     try tb.setText("Short");
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
     const info2 = view.getCachedLineInfo();
     try std.testing.expectEqual(@as(usize, 1), info2.starts.len);
 
-    // Change to longer text - should update automatically
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
     const vline_count = view.getVirtualLineCount();
     try std.testing.expect(vline_count >= 3);
@@ -3193,7 +3082,6 @@ test "TextBufferView automatic updates - reset clears content and marks views di
     tb.reset();
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
-    // After setText with empty string, should have 1 empty line
     try tb.setText("");
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
@@ -3223,10 +3111,8 @@ test "TextBufferView automatic updates - view updates work with selection" {
     var len = view.getSelectedTextIntoBuffer(&buffer);
     try std.testing.expectEqualStrings("Hello", buffer[0..len]);
 
-    // Change text - selection still works (though may be out of bounds)
     try tb.setText("Hi");
 
-    // Get new plain text to verify update
     len = view.getPlainTextIntoBuffer(&buffer);
     try std.testing.expectEqualStrings("Hi", buffer[0..len]);
 }
@@ -3257,19 +3143,15 @@ test "TextBufferView automatic updates - multiple views with different wrap sett
 
     try tb.setText("ABCDEFGHIJKLMNOPQRST");
 
-    // Each view should reflect the text with their wrap settings
     try std.testing.expectEqual(@as(u32, 1), view_nowrap.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 2), view_wrap10.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 4), view_wrap5.getVirtualLineCount());
-
-    // Update text - all views should automatically update
     try tb.setText("Short");
 
     try std.testing.expectEqual(@as(u32, 1), view_nowrap.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 1), view_wrap10.getVirtualLineCount());
     try std.testing.expectEqual(@as(u32, 1), view_wrap5.getVirtualLineCount());
 
-    // Set longer text again
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
     try std.testing.expectEqual(@as(u32, 1), view_nowrap.getVirtualLineCount());

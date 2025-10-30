@@ -2947,209 +2947,175 @@ test "calculateTextWidth: only combining marks (invalid but should not crash)" {
     try testing.expect(width >= 0);
 }
 
-// ============================================================================
-// COMPREHENSIVE EMOJI AND UNICODE WIDTH TESTS
-// Tests for diverse Unicode characters from the provided text sample
-// ============================================================================
-
 test "calculateTextWidth: emoji collection - celestial and symbols" {
-    // 🌟🔮✨
     const celestial = "🌟🔮✨";
     const width = utf8.calculateTextWidth(celestial, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - religious and gestures" {
-    // 🙏 ॐ (Devanagari Om is a regular character, width 1)
     const religious = "🙏";
     const width = utf8.calculateTextWidth(religious, 4, false);
     try testing.expectEqual(@as(u32, 2), width); // 1 emoji * 2 = 2
 }
 
 test "calculateTextWidth: emoji collection - ZWJ sequences astronauts" {
-    // 🧑‍🚀👨‍🚀👩‍🚀 - Three ZWJ sequences for astronauts
     const astronauts = "🧑‍🚀👨‍🚀👩‍🚀";
     const width = utf8.calculateTextWidth(astronauts, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 graphemes * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - rainbow and magical creatures" {
-    // 🌈🦄🧚‍♀️
     const magical = "🌈🦄🧚‍♀️";
     const width = utf8.calculateTextWidth(magical, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 graphemes * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - books and writing" {
-    // 📜📖✍️
     const writing = "📜📖✍️";
     const width = utf8.calculateTextWidth(writing, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - Japanese culture" {
-    // 🏯🎋🌸
     const japanese = "🏯🎋🌸";
     const width = utf8.calculateTextWidth(japanese, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - traditional Japanese items" {
-    // 📯🎴🎎
     const traditional = "📯🎴🎎";
     const width = utf8.calculateTextWidth(traditional, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - hearts and peace" {
-    // 💝🕊️☮️
     const peace = "💝🕊️☮️";
     const width = utf8.calculateTextWidth(peace, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - meditation and nature" {
-    // 🧘‍♂️🌳
     const meditation = "🧘‍♂️🌳";
     const width = utf8.calculateTextWidth(meditation, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 graphemes * 2 = 4
 }
 
 test "calculateTextWidth: emoji collection - food and drink" {
-    // 🍵🥟
     const food = "🍵🥟";
     const width = utf8.calculateTextWidth(food, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 emoji * 2 = 4
 }
 
 test "calculateTextWidth: emoji collection - exotic animals" {
-    // 🦥🦦🦧🦨🦩🦚🦜🦝🦞🦟
     const animals = "🦥🦦🦧🦨🦩🦚🦜🦝🦞🦟";
     const width = utf8.calculateTextWidth(animals, 4, false);
     try testing.expectEqual(@as(u32, 20), width); // 10 emoji * 2 = 20
 }
 
 test "calculateTextWidth: emoji collection - communication" {
-    // 🤫🗣️💬
     const communication = "🤫🗣️💬";
     const width = utf8.calculateTextWidth(communication, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - water and nature" {
-    // 🌊📝🎭
     const nature = "🌊📝🎭";
     const width = utf8.calculateTextWidth(nature, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - landscape" {
-    // 🏞️🌊💧
     const landscape = "🏞️🌊💧";
     const width = utf8.calculateTextWidth(landscape, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - circus and art" {
-    // 🤹‍♂️🎪🎨
     const circus = "🤹‍♂️🎪🎨";
     const width = utf8.calculateTextWidth(circus, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 graphemes * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - shopping and food items" {
-    // 🏪🛒💰🌶️🧄🧅
     const shopping = "🏪🛒💰🌶️🧄🧅";
     const width = utf8.calculateTextWidth(shopping, 4, false);
     try testing.expectEqual(@as(u32, 12), width); // 6 emoji * 2 = 12
 }
 
 test "calculateTextWidth: emoji collection - textiles and art" {
-    // 🧵👘🎨🖼️
     const textiles = "🧵👘🎨🖼️";
     const width = utf8.calculateTextWidth(textiles, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 emoji * 2 = 8
 }
 
 test "calculateTextWidth: emoji collection - prehistoric creatures" {
-    // 🦖🦕🐉🐲
     const prehistoric = "🦖🦕🐉🐲";
     const width = utf8.calculateTextWidth(prehistoric, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 emoji * 2 = 8
 }
 
 test "calculateTextWidth: emoji collection - hand gestures" {
-    // 🤝🤲👐
     const hands = "🤝🤲👐";
     const width = utf8.calculateTextWidth(hands, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - lanterns and lights" {
-    // 🏮🎆🎇🕯️💡
     const lanterns = "🏮🎆🎇🕯️💡";
     const width = utf8.calculateTextWidth(lanterns, 4, false);
     try testing.expectEqual(@as(u32, 10), width); // 5 emoji * 2 = 10
 }
 
 test "calculateTextWidth: emoji collection - dancers" {
-    // 💃🕺🩰
     const dancers = "💃🕺🩰";
     const width = utf8.calculateTextWidth(dancers, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - musical instruments" {
-    // 🎻🎺🎷🎸🪕🪘
     const instruments = "🎻🎺🎷🎸🪕🪘";
     const width = utf8.calculateTextWidth(instruments, 4, false);
     try testing.expectEqual(@as(u32, 12), width); // 6 emoji * 2 = 12
 }
 
 test "calculateTextWidth: emoji collection - bells and shrine" {
-    // 🔔⛩️
     const bells = "🔔⛩️";
     const width = utf8.calculateTextWidth(bells, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 emoji * 2 = 4
 }
 
 test "calculateTextWidth: emoji collection - shocked and amazed" {
-    // 😵‍💫🤯✨
     const shocked = "😵‍💫🤯✨";
     const width = utf8.calculateTextWidth(shocked, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 graphemes * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - sweets and bubble tea" {
-    // 🧋🍬🍭🧁
     const sweets = "🧋🍬🍭🧁";
     const width = utf8.calculateTextWidth(sweets, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 emoji * 2 = 8
 }
 
 test "calculateTextWidth: emoji collection - machinery and robots" {
-    // ⚙️🤖🦾🦿
     const machinery = "⚙️🤖🦾🦿";
     const width = utf8.calculateTextWidth(machinery, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 emoji * 2 = 8
 }
 
 test "calculateTextWidth: emoji collection - vehicles" {
-    // 🚗🚕🚙🚌🚎
     const vehicles = "🚗🚕🚙🚌🚎";
     const width = utf8.calculateTextWidth(vehicles, 4, false);
     try testing.expectEqual(@as(u32, 10), width); // 5 emoji * 2 = 10
 }
 
 test "calculateTextWidth: emoji collection - space travel" {
-    // 🚀🛸🛰️
     const space = "🚀🛸🛰️";
     const width = utf8.calculateTextWidth(space, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - technology" {
-    // 🐍💻⌨️
     const tech = "🐍💻⌨️";
     const width = utf8.calculateTextWidth(tech, 4, false);
     // 🐍(2) + 💻(2) + ⌨️(2, VS16 makes it emoji presentation) = 6
@@ -3157,112 +3123,96 @@ test "calculateTextWidth: emoji collection - technology" {
 }
 
 test "calculateTextWidth: emoji collection - education and brain" {
-    // 🧠📚🎓
     const education = "🧠📚🎓";
     const width = utf8.calculateTextWidth(education, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - professional ZWJ sequences" {
-    // 👨‍💼👩‍💼👨‍🔬👩‍🔬
     const professionals = "👨‍💼👩‍💼👨‍🔬👩‍🔬";
     const width = utf8.calculateTextWidth(professionals, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 graphemes * 2 = 8
 }
 
 test "calculateTextWidth: emoji collection - earth globes" {
-    // 🌍🌎🌏
     const globes = "🌍🌎🌏";
     const width = utf8.calculateTextWidth(globes, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - family ZWJ sequence" {
-    // 👨‍👩‍👧‍👦
     const family = "👨‍👩‍👧‍👦";
     const width = utf8.calculateTextWidth(family, 4, false);
     try testing.expectEqual(@as(u32, 2), width); // 1 grapheme * 2 = 2
 }
 
 test "calculateTextWidth: emoji collection - elderly people" {
-    // 👴👵
     const elderly = "👴👵";
     const width = utf8.calculateTextWidth(elderly, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 emoji * 2 = 4
 }
 
 test "calculateTextWidth: emoji collection - sunrise and sunset" {
-    // 🌅🌄🌠
     const sunrise = "🌅🌄🌠";
     const width = utf8.calculateTextWidth(sunrise, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - mountains" {
-    // 🏔️⛰️🗻
     const mountains = "🏔️⛰️🗻";
     const width = utf8.calculateTextWidth(mountains, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - thoughts and dreams" {
-    // 💭💤🌌
     const dreams = "💭💤🌌";
     const width = utf8.calculateTextWidth(dreams, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - campfire" {
-    // 🔥🏕️
     const campfire = "🔥🏕️";
     const width = utf8.calculateTextWidth(campfire, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 emoji * 2 = 4
 }
 
 test "calculateTextWidth: emoji collection - cooking" {
-    // 🍛🍲🥘
     const cooking = "🍛🍲🥘";
     const width = utf8.calculateTextWidth(cooking, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - love hearts" {
-    // ❤️💕💖
     const hearts = "❤️💕💖";
     const width = utf8.calculateTextWidth(hearts, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - media" {
-    // 📸🎞️📹
     const media = "📸🎞️📹";
     const width = utf8.calculateTextWidth(media, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - global and handshake" {
-    // 🌐🤝🌈
     const global = "🌐🤝🌈";
     const width = utf8.calculateTextWidth(global, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - special symbols" {
-    // 🦩🧿🪬🫀🫁🧠
     const special = "🦩🧿🪬🫀🫁🧠";
     const width = utf8.calculateTextWidth(special, 4, false);
     try testing.expectEqual(@as(u32, 12), width); // 6 emoji * 2 = 12
 }
 
 test "calculateTextWidth: emoji collection - strength" {
-    // 💪✊🙌
     const strength = "💪✊🙌";
     const width = utf8.calculateTextWidth(strength, 4, false);
     try testing.expectEqual(@as(u32, 6), width); // 3 emoji * 2 = 6
 }
 
 test "calculateTextWidth: emoji collection - entertainment" {
-    // 🎬🎭🎪✨🌟⭐
     const entertainment = "🎬🎭🎪✨🌟⭐";
     const width = utf8.calculateTextWidth(entertainment, 4, false);
     try testing.expectEqual(@as(u32, 12), width); // 6 emoji * 2 = 12
@@ -3281,7 +3231,6 @@ test "calculateTextWidth: Devanagari - Sanskrit word" {
 }
 
 test "calculateTextWidth: Devanagari - namaste" {
-    // नमस्ते
     const namaste = "नमस्ते";
     const width = utf8.calculateTextWidth(namaste, 4, false);
     // 4 base consonants: NA, MA, SA, TA = width 4
@@ -3289,14 +3238,12 @@ test "calculateTextWidth: Devanagari - namaste" {
 }
 
 test "calculateTextWidth: Devanagari - Om symbol" {
-    // ॐ
     const om = "ॐ";
     const width = utf8.calculateTextWidth(om, 4, false);
     try testing.expectEqual(@as(u32, 1), width);
 }
 
 test "calculateTextWidth: Devanagari - mixed with ASCII" {
-    // "Hello नमस्ते World"
     const mixed = "Hello नमस्ते World";
     const width = utf8.calculateTextWidth(mixed, 4, false);
     // "Hello "(6) + नमस्ते(4 base consonants) + " World"(6) = 16
@@ -3308,35 +3255,30 @@ test "calculateTextWidth: Devanagari - mixed with ASCII" {
 // ============================================================================
 
 test "calculateTextWidth: Chinese characters - kanji" {
-    // 漢字
     const kanji = "漢字";
     const width = utf8.calculateTextWidth(kanji, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 chars * 2 = 4
 }
 
 test "calculateTextWidth: Hiragana" {
-    // ひらがな
     const hiragana = "ひらがな";
     const width = utf8.calculateTextWidth(hiragana, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 chars * 2 = 8
 }
 
 test "calculateTextWidth: Katakana" {
-    // カタカナ
     const katakana = "カタカナ";
     const width = utf8.calculateTextWidth(katakana, 4, false);
     try testing.expectEqual(@as(u32, 8), width); // 4 chars * 2 = 8
 }
 
 test "calculateTextWidth: Korean Hangul" {
-    // 한글
     const hangul = "한글";
     const width = utf8.calculateTextWidth(hangul, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 chars * 2 = 4
 }
 
 test "calculateTextWidth: Korean words - love and peace" {
-    // 사랑 평화
     const korean = "사랑 평화";
     const width = utf8.calculateTextWidth(korean, 4, false);
     // 사(2) + 랑(2) + space(1) + 평(2) + 화(2) = 9
@@ -3348,7 +3290,6 @@ test "calculateTextWidth: Korean words - love and peace" {
 // ============================================================================
 
 test "calculateTextWidth: Tibetan script" {
-    // རྒྱ་མཚོ
     const tibetan = "རྒྱ་མཚོ";
     const width = utf8.calculateTextWidth(tibetan, 4, false);
     // Tibetan has complex combining characters
@@ -3361,7 +3302,6 @@ test "calculateTextWidth: Tibetan script" {
 // ============================================================================
 
 test "calculateTextWidth: Gujarati script" {
-    // ગુજરાતી
     const gujarati = "ગુજરાતી";
     const width = utf8.calculateTextWidth(gujarati, 4, false);
     // ગ(1) + ુ(0) + જ(1) + ર(1) + ા(0) + ત(1) + ી(0) = 4
@@ -3369,7 +3309,6 @@ test "calculateTextWidth: Gujarati script" {
 }
 
 test "calculateTextWidth: Tamil script word" {
-    // தமிழ்
     const tamil = "தமிழ்";
     const width = utf8.calculateTextWidth(tamil, 4, false);
     // த(1) + ம(1) + ி(0) + ழ(1) + ்(0) = 3
@@ -3377,7 +3316,6 @@ test "calculateTextWidth: Tamil script word" {
 }
 
 test "calculateTextWidth: Punjabi script word" {
-    // ਪੰਜਾਬੀ
     const punjabi = "ਪੰਜਾਬੀ";
     const width = utf8.calculateTextWidth(punjabi, 4, false);
     // ਪ(1) + ੰ(0) + ਜ(1) + ਾ(0) + ਬ(1) + ੀ(0) = 3 base chars
@@ -3385,7 +3323,6 @@ test "calculateTextWidth: Punjabi script word" {
 }
 
 test "calculateTextWidth: Telugu script word" {
-    // తెలుగు
     const telugu = "తెలుగు";
     const width = utf8.calculateTextWidth(telugu, 4, false);
     // త(1) + ె(0) + ల(1) + ు(0) + గ(1) + ు(0) = 3
@@ -3393,7 +3330,6 @@ test "calculateTextWidth: Telugu script word" {
 }
 
 test "calculateTextWidth: Bengali script word" {
-    // বাংলা
     const bengali = "বাংলা";
     const width = utf8.calculateTextWidth(bengali, 4, false);
     // ব(1) + া(0) + ং(0) + ল(1) + া(0) = 2
@@ -3401,7 +3337,6 @@ test "calculateTextWidth: Bengali script word" {
 }
 
 test "calculateTextWidth: Kannada script" {
-    // ಕನ್ನಡ
     const kannada = "ಕನ್ನಡ";
     const width = utf8.calculateTextWidth(kannada, 4, false);
     // ಕ(1) + ನ(1) + ್(0) + ನ(1) + ಡ(1) = 4
@@ -3409,7 +3344,6 @@ test "calculateTextWidth: Kannada script" {
 }
 
 test "calculateTextWidth: Malayalam script" {
-    // മലയാളം
     const malayalam = "മലയാളം";
     const width = utf8.calculateTextWidth(malayalam, 4, false);
     // Each base letter is width 1, vowel signs width 0
@@ -3417,7 +3351,6 @@ test "calculateTextWidth: Malayalam script" {
 }
 
 test "calculateTextWidth: Oriya script" {
-    // ଓଡ଼ିଆ
     const oriya = "ଓଡ଼ିଆ";
     const width = utf8.calculateTextWidth(oriya, 4, false);
     // ଓ(1) + ଡ(1) + ଼(0) + ି(0) + ଆ(1) = 3
@@ -3429,7 +3362,6 @@ test "calculateTextWidth: Oriya script" {
 // ============================================================================
 
 test "calculateTextWidth: Thai script" {
-    // ภาษา
     const thai = "ภาษา";
     const width = utf8.calculateTextWidth(thai, 4, false);
     // Thai base chars width 1, combining vowels/tones width 0
@@ -3437,14 +3369,12 @@ test "calculateTextWidth: Thai script" {
 }
 
 test "calculateTextWidth: Thai numerals" {
-    // ๑๐๐
     const thai_num = "๑๐๐";
     const width = utf8.calculateTextWidth(thai_num, 4, false);
     try testing.expectEqual(@as(u32, 3), width); // 3 digits * 1 = 3
 }
 
 test "calculateTextWidth: Lao script" {
-    // ໂຫຍ່າກເຈົ້າ
     const lao = "ໂຫຍ່າກເຈົ້າ";
     const width = utf8.calculateTextWidth(lao, 4, false);
     // Lao has complex vowels and tone marks (width 0)
@@ -3456,14 +3386,12 @@ test "calculateTextWidth: Lao script" {
 // ============================================================================
 
 test "calculateTextWidth: Arabic character" {
-    // ا
     const arabic = "ا";
     const width = utf8.calculateTextWidth(arabic, 4, false);
     try testing.expectEqual(@as(u32, 1), width);
 }
 
 test "calculateTextWidth: Sinhala script" {
-    // ආහාර (food)
     const sinhala = "ආහාර";
     const width = utf8.calculateTextWidth(sinhala, 4, false);
     // Sinhala chars width 1, vowel signs width 0
@@ -3471,14 +3399,12 @@ test "calculateTextWidth: Sinhala script" {
 }
 
 test "calculateTextWidth: Chinese text" {
-    // 中文
     const chinese = "中文";
     const width = utf8.calculateTextWidth(chinese, 4, false);
     try testing.expectEqual(@as(u32, 4), width); // 2 chars * 2 = 4
 }
 
 test "calculateTextWidth: Hangul Jamo" {
-    // ㄱ
     const jamo = "ㄱ";
     const width = utf8.calculateTextWidth(jamo, 4, false);
     try testing.expectEqual(@as(u32, 2), width); // Hangul Jamo is width 2
@@ -3489,7 +3415,6 @@ test "calculateTextWidth: Hangul Jamo" {
 // ============================================================================
 
 test "calculateTextWidth: realistic multilingual sentence" {
-    // "Hello 世界! नमस्ते 🙏"
     const multilingual = "Hello 世界! नमस्ते 🙏";
     const width = utf8.calculateTextWidth(multilingual, 4, false);
     // "Hello "(6) + 世界(4) + "! "(2) + नमस्ते(4) + " "(1) + 🙏(2) = 19
@@ -3497,17 +3422,16 @@ test "calculateTextWidth: realistic multilingual sentence" {
 }
 
 test "calculateTextWidth: all ending words from text" {
-    // समाप्त. 끝. จบ. முடிவு. ముగింపు. সমাপ্তি. ഒടുക്കം. ಅಂತ್ಯ. અંત.
     const endings = "समाप्त끝จบముగింపుಅಂತ್ಯઅંત";
     const width = utf8.calculateTextWidth(endings, 4, false);
-    // This is a complex mix of scripts - just verify it doesn't crash
+    // TODO: Expect absolutely
     try testing.expect(width > 10);
 }
 
 test "calculateTextWidth: complex text with emojis and multiple scripts" {
     const complex = "The 🌟 journey: संस्कृति meets 漢字 🎋";
     const width = utf8.calculateTextWidth(complex, 4, false);
-    // A realistic complex text - verify reasonable output
+    // TODO: Expect absolutely
     try testing.expect(width >= 30 and width <= 50);
 }
 
