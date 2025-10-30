@@ -1998,6 +1998,271 @@ test "calculateTextWidth: combining marks" {
 
 test "calculateTextWidth: scroll book and writing emojis width 2" {
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("📜", 4, false));
+}
+
+// ============================================================================
+// GRAPHEME INFO TESTS (for caching multi-byte graphemes and tabs)
+// ============================================================================
+
+test "findGraphemeInfo: empty string" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findGraphemeInfoSIMD16("", 4, true, &result);
+    try testing.expectEqual(@as(usize, 0), result.graphemes.items.len);
+}
+
+test "findGraphemeInfo: ASCII-only returns empty" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findGraphemeInfoSIMD16("hello world", 4, true, &result);
+    try testing.expectEqual(@as(usize, 0), result.graphemes.items.len);
+}
+
+test "findGraphemeInfo: ASCII with tab" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findGraphemeInfoSIMD16("hello\tworld", 4, false, &result);
+
+    // Should have one entry for the tab
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+    try testing.expectEqual(@as(u32, 5), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 1), result.graphemes.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 4), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 5), result.graphemes.items[0].col_offset);
+}
+
+test "findGraphemeInfo: multiple tabs" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findGraphemeInfoSIMD16("a\tb\tc", 4, false, &result);
+
+    // Should have two entries for the tabs
+    try testing.expectEqual(@as(usize, 2), result.graphemes.items.len);
+
+    // First tab at byte 1, col 1
+    try testing.expectEqual(@as(u32, 1), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 1), result.graphemes.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 4), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.graphemes.items[0].col_offset);
+
+    // Second tab at byte 3, col 6 (1 + 4 + 1)
+    try testing.expectEqual(@as(u32, 3), result.graphemes.items[1].byte_offset);
+    try testing.expectEqual(@as(u8, 1), result.graphemes.items[1].byte_len);
+    try testing.expectEqual(@as(u8, 4), result.graphemes.items[1].width);
+    try testing.expectEqual(@as(u32, 6), result.graphemes.items[1].col_offset);
+}
+
+test "findGraphemeInfo: CJK characters" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "hello世界";
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have two entries for the CJK characters
+    try testing.expectEqual(@as(usize, 2), result.graphemes.items.len);
+
+    // 世 at byte 5
+    try testing.expectEqual(@as(u32, 5), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 3), result.graphemes.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 5), result.graphemes.items[0].col_offset);
+
+    // 界 at byte 8
+    try testing.expectEqual(@as(u32, 8), result.graphemes.items[1].byte_offset);
+    try testing.expectEqual(@as(u8, 3), result.graphemes.items[1].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[1].width);
+    try testing.expectEqual(@as(u32, 7), result.graphemes.items[1].col_offset);
+}
+
+test "findGraphemeInfo: emoji with skin tone" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "Hi👋🏿Bye"; // Hi + wave + dark skin tone + Bye
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have one entry for the emoji cluster
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 8), result.graphemes.items[0].byte_len); // 4 + 4 bytes
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].col_offset);
+}
+
+test "findGraphemeInfo: emoji with ZWJ" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "a👩‍🚀b"; // a + woman astronaut + b
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have one entry for the emoji cluster
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+
+    try testing.expectEqual(@as(u32, 1), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 1), result.graphemes.items[0].col_offset);
+}
+
+test "findGraphemeInfo: combining mark" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "cafe\u{0301}"; // café with combining acute
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have one entry for e + combining mark
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+
+    try testing.expectEqual(@as(u32, 3), result.graphemes.items[0].byte_offset); // 'e' position
+    try testing.expectEqual(@as(u8, 3), result.graphemes.items[0].byte_len); // e (1 byte) + combining (2 bytes)
+    try testing.expectEqual(@as(u8, 1), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 3), result.graphemes.items[0].col_offset);
+}
+
+test "findGraphemeInfo: flag emoji" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "US🇺🇸"; // US + flag
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have one entry for the flag (two regional indicators)
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 8), result.graphemes.items[0].byte_len); // Two 4-byte chars
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].col_offset);
+}
+
+test "findGraphemeInfo: mixed content" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "Hi\t世界!"; // Hi + tab + CJK + !
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have three entries: tab, 世, 界
+    try testing.expectEqual(@as(usize, 3), result.graphemes.items.len);
+
+    // Tab at byte 2, col 2
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 1), result.graphemes.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 4), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].col_offset);
+
+    // 世 at byte 3, col 6
+    try testing.expectEqual(@as(u32, 3), result.graphemes.items[1].byte_offset);
+    try testing.expectEqual(@as(u8, 3), result.graphemes.items[1].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[1].width);
+    try testing.expectEqual(@as(u32, 6), result.graphemes.items[1].col_offset);
+
+    // 界 at byte 6, col 8
+    try testing.expectEqual(@as(u32, 6), result.graphemes.items[2].byte_offset);
+    try testing.expectEqual(@as(u8, 3), result.graphemes.items[2].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[2].width);
+    try testing.expectEqual(@as(u32, 8), result.graphemes.items[2].col_offset);
+}
+
+test "findGraphemeInfo: result reuse" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    // First use
+    try utf8.findGraphemeInfoSIMD16("世界", 4, false, &result);
+    try testing.expectEqual(@as(usize, 2), result.graphemes.items.len);
+
+    // Second use - should reset automatically
+    try utf8.findGraphemeInfoSIMD16("a\tb", 4, false, &result);
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+    try testing.expectEqual(@as(u32, 1), result.graphemes.items[0].byte_offset);
+}
+
+test "findGraphemeInfo: only ASCII letters no cache" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findGraphemeInfoSIMD16("abcdefghij", 4, false, &result);
+
+    // No special characters, should be empty
+    try testing.expectEqual(@as(usize, 0), result.graphemes.items.len);
+}
+
+test "findGraphemeInfo: emoji with VS16" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "I ❤️ U"; // I + space + heart + VS16 + space + U
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have one entry for the emoji cluster
+    try testing.expectEqual(@as(usize, 1), result.graphemes.items.len);
+
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[0].width);
+    try testing.expectEqual(@as(u32, 2), result.graphemes.items[0].col_offset);
+}
+
+test "findGraphemeInfo: realistic text" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "function test() {\n\tconst 世界 = 10;\n}";
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have entries for: tab, 世, 界
+    try testing.expectEqual(@as(usize, 3), result.graphemes.items.len);
+}
+
+test "findGraphemeInfo: hiragana" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    const text = "こんにちは";
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+
+    // Should have 5 entries (each hiragana is 3 bytes, width 2)
+    try testing.expectEqual(@as(usize, 5), result.graphemes.items.len);
+
+    // Check first character
+    try testing.expectEqual(@as(u32, 0), result.graphemes.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 3), result.graphemes.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.graphemes.items[0].width);
+}
+
+test "findGraphemeInfo: at SIMD boundary" {
+    var result = utf8.GraphemeInfoResult.init(testing.allocator);
+    defer result.deinit();
+
+    // Create text with multibyte char near SIMD boundary (16 bytes)
+    var buf: [32]u8 = undefined;
+    @memset(&buf, 'x');
+    const cjk = "世";
+    @memcpy(buf[14..17], cjk); // Place CJK char at boundary
+
+    try utf8.findGraphemeInfoSIMD16(&buf, 4, false, &result);
+
+    // Should find the CJK character
+    var found = false;
+    for (result.graphemes.items) |g| {
+        if (g.byte_offset == 14) {
+            found = true;
+            try testing.expectEqual(@as(u8, 3), g.byte_len);
+            try testing.expectEqual(@as(u8, 2), g.width);
+            break;
+        }
+    }
+    try testing.expect(found);
+}
+
+test "calculateTextWidth: book and writing hand emojis width 2" {
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("📖", 4, false));
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("✍️", 4, false));
 }

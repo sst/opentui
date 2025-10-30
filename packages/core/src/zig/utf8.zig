@@ -1278,3 +1278,212 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u3
 
     return total_width;
 }
+
+/// Grapheme cluster information for caching
+/// Only stored for multibyte (non-ASCII) graphemes and tabs
+pub const GraphemeInfo = struct {
+    byte_offset: u32,
+    byte_len: u8,
+    width: u8,
+    col_offset: u32,
+};
+
+pub const GraphemeInfoResult = struct {
+    graphemes: std.ArrayList(GraphemeInfo),
+
+    pub fn init(allocator: std.mem.Allocator) GraphemeInfoResult {
+        return .{
+            .graphemes = std.ArrayList(GraphemeInfo).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *GraphemeInfoResult) void {
+        self.graphemes.deinit();
+    }
+
+    pub fn reset(self: *GraphemeInfoResult) void {
+        self.graphemes.clearRetainingCapacity();
+    }
+};
+
+/// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs
+/// For ASCII-only chunks, returns empty list (no special graphemes to cache)
+/// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
+/// Tab width is calculated based on current column position (dynamic tab stops)
+pub fn findGraphemeInfoSIMD16(
+    text: []const u8,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    result: *GraphemeInfoResult,
+) !void {
+    result.reset();
+
+    // Fast path: ASCII-only text has no special graphemes to cache
+    if (isASCIIOnly) {
+        return;
+    }
+
+    if (text.len == 0) {
+        return;
+    }
+
+    const vector_len = 16;
+    var pos: usize = 0;
+    var col: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+
+    // Track current grapheme cluster
+    var cluster_start: usize = 0;
+    var cluster_start_col: u32 = 0;
+    var cluster_width_state: GraphemeWidthState = undefined;
+    var cluster_is_multibyte: bool = false;
+    var cluster_is_tab: bool = false;
+
+    while (pos + vector_len <= text.len) {
+        const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
+        const ascii_threshold: @Vector(vector_len, u8) = @splat(0x80);
+        const is_non_ascii = chunk >= ascii_threshold;
+
+        // Fast path: all ASCII
+        if (!@reduce(.Or, is_non_ascii)) {
+            var i: usize = 0;
+            while (i < vector_len) : (i += 1) {
+                const b = text[pos + i];
+                const curr_cp: u21 = b;
+                const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
+
+                if (is_break) {
+                    // Commit previous cluster if it was special (tab or multibyte)
+                    if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
+                        const cluster_byte_len = (pos + i) - cluster_start;
+                        try result.graphemes.append(GraphemeInfo{
+                            .byte_offset = @intCast(cluster_start),
+                            .byte_len = @intCast(cluster_byte_len),
+                            .width = @intCast(cluster_width_state.width),
+                            .col_offset = cluster_start_col,
+                        });
+                    }
+
+                    // Start new cluster
+                    cluster_start = pos + i;
+                    cluster_start_col = col;
+                    cluster_is_tab = (b == '\t');
+                    cluster_is_multibyte = false; // ASCII is not multibyte
+
+                    const cp_width = asciiCharWidth(b, tab_width);
+                    cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
+                    col += cp_width;
+                } else {
+                    // Continuing cluster (shouldn't happen for ASCII, but handle it)
+                    const cp_width = asciiCharWidth(b, tab_width);
+                    cluster_width_state.addCodepoint(curr_cp, cp_width);
+                    col += cp_width;
+                }
+
+                prev_cp = curr_cp;
+            }
+            pos += vector_len;
+            continue;
+        }
+
+        // Slow path: mixed ASCII/non-ASCII
+        var i: usize = 0;
+        while (i < vector_len and pos + i < text.len) {
+            const b0 = text[pos + i];
+            const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos + i).cp;
+            const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos + i).len;
+
+            if (pos + i + cp_len > text.len) break;
+
+            const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
+
+            if (is_break) {
+                // Commit previous cluster if it was special (tab or multibyte)
+                if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
+                    const cluster_byte_len = (pos + i) - cluster_start;
+                    try result.graphemes.append(GraphemeInfo{
+                        .byte_offset = @intCast(cluster_start),
+                        .byte_len = @intCast(cluster_byte_len),
+                        .width = @intCast(cluster_width_state.width),
+                        .col_offset = cluster_start_col,
+                    });
+                }
+
+                // Start new cluster
+                cluster_start = pos + i;
+                cluster_start_col = col;
+                cluster_is_tab = (b0 == '\t');
+                cluster_is_multibyte = (cp_len != 1);
+
+                const cp_width = charWidth(b0, curr_cp, tab_width);
+                cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
+                col += cp_width;
+            } else {
+                // Continuing cluster
+                cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
+                const cp_width = charWidth(b0, curr_cp, tab_width);
+                cluster_width_state.addCodepoint(curr_cp, cp_width);
+                col += cp_width;
+            }
+
+            prev_cp = curr_cp;
+            i += cp_len;
+        }
+        pos += i;
+    }
+
+    // Tail processing
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else decodeUtf8Unchecked(text, pos).cp;
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (pos + cp_len > text.len) break;
+
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state);
+
+        if (is_break) {
+            // Commit previous cluster if it was special (tab or multibyte)
+            if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
+                const cluster_byte_len = pos - cluster_start;
+                try result.graphemes.append(GraphemeInfo{
+                    .byte_offset = @intCast(cluster_start),
+                    .byte_len = @intCast(cluster_byte_len),
+                    .width = @intCast(cluster_width_state.width),
+                    .col_offset = cluster_start_col,
+                });
+            }
+
+            // Start new cluster
+            cluster_start = pos;
+            cluster_start_col = col;
+            cluster_is_tab = (b0 == '\t');
+            cluster_is_multibyte = (cp_len != 1);
+
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
+            col += cp_width;
+        } else {
+            // Continuing cluster
+            cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width_state.addCodepoint(curr_cp, cp_width);
+            col += cp_width;
+        }
+
+        prev_cp = curr_cp;
+        pos += cp_len;
+    }
+
+    // Commit final cluster if it was special
+    if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
+        const cluster_byte_len = text.len - cluster_start;
+        try result.graphemes.append(GraphemeInfo{
+            .byte_offset = @intCast(cluster_start),
+            .byte_len = @intCast(cluster_byte_len),
+            .width = @intCast(cluster_width_state.width),
+            .col_offset = cluster_start_col,
+        });
+    }
+}
