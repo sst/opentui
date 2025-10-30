@@ -1,3 +1,4 @@
+; Query from: https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/injections.scm
 (fenced_code_block
   (info_string
     (language) @_lang)

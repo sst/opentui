@@ -14,6 +14,7 @@ interface GeneratedParser {
   filetype: string
   languagePath: string
   highlightsPath: string
+  injectionsPath?: string
 }
 
 export interface UpdateOptions {
@@ -62,9 +63,10 @@ async function downloadAndCombineQueries(
   queryUrls: string[],
   assetsDir: string,
   outputPath: string,
+  queryType: "highlights" | "injections",
 ): Promise<string> {
   const queriesDir = path.join(assetsDir, filetype)
-  const highlightsPath = path.join(queriesDir, "highlights.scm")
+  const queryPath = path.join(queriesDir, `${queryType}.scm`)
 
   const queryContents: string[] = []
 
@@ -92,29 +94,43 @@ async function downloadAndCombineQueries(
   }
 
   const combinedContent = queryContents.join("\n\n")
-  await writeFile(highlightsPath, combinedContent, "utf-8")
+  await writeFile(queryPath, combinedContent, "utf-8")
 
-  console.log(`  Combined ${queryContents.length} queries into ${highlightsPath}`)
+  console.log(`  Combined ${queryContents.length} queries into ${queryPath}`)
 
-  return "./" + path.relative(path.dirname(outputPath), highlightsPath)
+  return "./" + path.relative(path.dirname(outputPath), queryPath)
 }
 
 async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath: string): Promise<void> {
   const imports = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      return `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }
-import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`
+      const lines = [
+        `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }`,
+        `import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`,
+      ]
+      if (parser.injectionsPath) {
+        lines.push(`import ${safeFiletype}_injections from "${parser.injectionsPath}" with { type: "file" }`)
+      }
+      return lines.join("\n")
     })
     .join("\n")
 
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
+      const queriesLines = [
+        `          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],`,
+      ]
+      if (parser.injectionsPath) {
+        queriesLines.push(
+          `          injections: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_injections)],`,
+        )
+      }
       return `      {
         filetype: "${parser.filetype}",
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],
+${queriesLines.join("\n")}
         },
         wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),
       }`
@@ -176,12 +192,26 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
         parser.queries.highlights,
         opts.assetsDir,
         opts.outputPath,
+        "highlights",
       )
+
+      let injectionsPath: string | undefined
+      if (parser.queries.injections && parser.queries.injections.length > 0) {
+        console.log(`  Downloading ${parser.queries.injections.length} injection queries...`)
+        injectionsPath = await downloadAndCombineQueries(
+          parser.filetype,
+          parser.queries.injections,
+          opts.assetsDir,
+          opts.outputPath,
+          "injections",
+        )
+      }
 
       generatedParsers.push({
         filetype: parser.filetype,
         languagePath,
         highlightsPath,
+        injectionsPath,
       })
 
       console.log(`  ✓ Completed ${parser.filetype}`)
