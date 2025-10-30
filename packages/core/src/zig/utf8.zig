@@ -460,6 +460,11 @@ pub const PosByWidthResult = struct {
 // East Asian Width detection based on Unicode 15.1.0
 // Returns the display width in columns (0, 1, or 2)
 inline fn eastAsianWidth(cp: u21) u32 {
+    // C1 control characters (0x80-0x9F) - zero width
+    if (cp >= 0x0080 and cp <= 0x009F) {
+        return 0;
+    }
+
     // Zero-width characters: combining marks and format characters
     if ((cp >= 0x0300 and cp <= 0x036F) or // Combining Diacritical Marks
         (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
@@ -528,7 +533,7 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x0F86 and cp <= 0x0F87) or (cp >= 0x0F8D and cp <= 0x0F97) or // Tibetan combining
         (cp >= 0x0F99 and cp <= 0x0FBC) or cp == 0x0FC6 or // Tibetan combining
         // Format characters (Cf category) - zero width
-        cp == 0x00AD or // Soft Hyphen
+        // NOTE: U+00AD (Soft Hyphen) is NOT zero-width, it's width 1
         (cp >= 0x0600 and cp <= 0x0605) or // Arabic format characters
         cp == 0x061C or // Arabic Letter Mark
         cp == 0x06DD or // Arabic End of Ayah
@@ -557,9 +562,36 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x23F0 and cp <= 0x23F0) or // Alarm Clock
         (cp >= 0x23F3 and cp <= 0x23F3) or // Hourglass
         (cp >= 0x25FD and cp <= 0x25FE) or // White/Black Medium Small Square
-        (cp >= 0x2600 and cp <= 0x26FF) or // Miscellaneous Symbols (emoji)
-        (cp >= 0x2700 and cp <= 0x2712) or // Dingbats (before CHECK MARK)
-        (cp >= 0x2714 and cp <= 0x27BF) or // Dingbats (after CHECK MARK) - excludes U+2713
+        // Miscellaneous Symbols (U+2600-26FF) - only specific emoji are width 2
+        (cp >= 0x2614 and cp <= 0x2615) or // Umbrella symbols
+        (cp >= 0x2630 and cp <= 0x2637) or // Trigrams
+        (cp >= 0x2648 and cp <= 0x2653) or // Zodiac signs
+        cp == 0x267F or // Wheelchair symbol
+        (cp >= 0x268A and cp <= 0x268F) or // Monogram symbols
+        cp == 0x2693 or // Anchor
+        cp == 0x26A1 or // High voltage
+        (cp >= 0x26AA and cp <= 0x26AB) or // White/Black circles
+        (cp >= 0x26BD and cp <= 0x26BE) or // Soccer/Baseball
+        (cp >= 0x26C4 and cp <= 0x26C5) or // Snowman
+        cp == 0x26CE or // Ophiuchus
+        cp == 0x26D4 or // No Entry
+        cp == 0x26EA or // Church
+        cp == 0x26F2 or cp == 0x26F3 or // Fountain, Golf flag
+        cp == 0x26F5 or // Sailboat
+        cp == 0x26FA or // Tent
+        cp == 0x26FD or // Fuel pump
+        // Dingbats (U+2700-27BF) - only specific ones are width 2
+        cp == 0x2705 or // White Heavy Check Mark
+        (cp >= 0x270A and cp <= 0x270B) or // Raised fist/hand
+        cp == 0x2728 or // Sparkles
+        cp == 0x274C or // Cross Mark
+        cp == 0x274E or // Negative Squared Cross Mark
+        (cp >= 0x2753 and cp <= 0x2755) or // Question marks
+        cp == 0x2757 or // Exclamation Mark Symbol
+        (cp >= 0x2760 and cp <= 0x2767) or // Heart and ornament emoji
+        (cp >= 0x2795 and cp <= 0x2797) or // Plus/Minus/Division signs
+        cp == 0x27B0 or // Curly Loop
+        cp == 0x27BF or // Double Curly Loop
         (cp >= 0x2B1B and cp <= 0x2B1C) or // Black/White Large Square
         (cp >= 0x2B50 and cp <= 0x2B50) or // White Medium Star
         (cp >= 0x2B55 and cp <= 0x2B55) or // Heavy Large Circle
@@ -567,9 +599,10 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x2F00 and cp <= 0x2FDF) or // Kangxi Radicals
         (cp >= 0x2FF0 and cp <= 0x2FFF) or // Ideographic Description Characters
         (cp >= 0x3000 and cp <= 0x303E) or // CJK Symbols and Punctuation
-        (cp >= 0x3040 and cp <= 0x309F) or // Hiragana
+        (cp >= 0x3041 and cp <= 0x3096) or // Hiragana main (U+3040, U+3097-3098 are width 1)
+        (cp >= 0x309B and cp <= 0x309F) or // Hiragana combining marks and iteration marks
         (cp >= 0x30A0 and cp <= 0x30FF) or // Katakana
-        (cp >= 0x3100 and cp <= 0x312F) or // Bopomofo
+        (cp >= 0x3105 and cp <= 0x312F) or // Bopomofo (U+3100-3104 are width 1)
         (cp >= 0x3131 and cp <= 0x318E) or // Hangul Compatibility Jamo
         (cp >= 0x3190 and cp <= 0x31BA) or // Kanbun, Bopomofo Extended
         (cp >= 0x31C0 and cp <= 0x31E3) or // CJK Strokes
@@ -602,7 +635,18 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x1F240 and cp <= 0x1F248) or // Enclosed Ideographic Supplement
         (cp >= 0x1F250 and cp <= 0x1F251) or // Enclosed Ideographic Supplement
         (cp >= 0x1F260 and cp <= 0x1F265) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F300 and cp <= 0x1F6FF) or // Miscellaneous Symbols and Pictographs, Transport and Map Symbols
+        // Miscellaneous Symbols and Pictographs, Transport and Map Symbols (U+1F300-1F6FF)
+        // Many characters in this range are width 1, so we need to be selective
+        (cp >= 0x1F300 and cp <= 0x1F320) or (cp >= 0x1F32D and cp <= 0x1F335) or
+        (cp >= 0x1F337 and cp <= 0x1F37C) or (cp >= 0x1F37E and cp <= 0x1F393) or
+        (cp >= 0x1F3A0 and cp <= 0x1F3CA) or (cp >= 0x1F3CF and cp <= 0x1F3D3) or
+        (cp >= 0x1F3E0 and cp <= 0x1F3F0) or cp == 0x1F3F4 or // Exclude U+1F3F5-1F3F7
+        (cp >= 0x1F3F8 and cp <= 0x1F3FF) or
+        (cp >= 0x1F400 and cp <= 0x1F43E) or cp == 0x1F440 or // Exclude U+1F43F, U+1F441
+        (cp >= 0x1F442 and cp <= 0x1F4FC) or (cp >= 0x1F4FF and cp <= 0x1F6C5) or cp == 0x1F6CC or // Exclude U+1F4FD-1F4FE
+        (cp >= 0x1F6D0 and cp <= 0x1F6D2) or (cp >= 0x1F6D5 and cp <= 0x1F6D7) or
+        (cp >= 0x1F6DC and cp <= 0x1F6DF) or (cp >= 0x1F6EB and cp <= 0x1F6EC) or
+        (cp >= 0x1F6F4 and cp <= 0x1F6FC) or
         (cp >= 0x1F700 and cp <= 0x1F773) or // Alchemical Symbols
         (cp >= 0x1F780 and cp <= 0x1F7D8) or // Geometric Shapes Extended
         (cp >= 0x1F7E0 and cp <= 0x1F7EB) or // Geometric Shapes Extended
@@ -612,7 +656,9 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x1F860 and cp <= 0x1F887) or // Supplemental Arrows-C
         (cp >= 0x1F890 and cp <= 0x1F8AD) or // Supplemental Arrows-C
         (cp >= 0x1F8B0 and cp <= 0x1F8B1) or // Supplemental Arrows-C
-        (cp >= 0x1F900 and cp <= 0x1FA53) or // Supplemental Symbols and Pictographs
+        // Supplemental Symbols and Pictographs (U+1F900-1FAFF) - exclude width-1 ranges
+        (cp >= 0x1F90C and cp <= 0x1F93A) or (cp >= 0x1F93C and cp <= 0x1F945) or
+        (cp >= 0x1F947 and cp <= 0x1FA53) or // Rest of Supplemental Symbols and Pictographs
         (cp >= 0x1FA60 and cp <= 0x1FA6D) or // Supplemental Symbols and Pictographs
         (cp >= 0x1FA70 and cp <= 0x1FA74) or // Supplemental Symbols and Pictographs
         (cp >= 0x1FA78 and cp <= 0x1FA7C) or // Supplemental Symbols and Pictographs
