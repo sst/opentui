@@ -25,11 +25,14 @@
       "queries": {
         "highlights": [
           "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/highlights.scm"
+        ],
+        "injections": [
+          "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/injections.scm"
         ]
       }
     },
     {
-      "filetype": "markdown-inline",
+      "filetype": "markdown_inline",
       "wasm": "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown_inline.wasm",
       "queries": {
         "highlights": [

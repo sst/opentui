@@ -373,6 +373,88 @@ describe("TreeSitterClient", () => {
   })
 })
 
+describe("TreeSitterClient Injections", () => {
+  let dataPath: string
+
+  const injectionsDataPath = join(tmpdir(), "tree-sitter-injections-test-data")
+
+  beforeAll(async () => {
+    await mkdir(injectionsDataPath, { recursive: true })
+  })
+
+  beforeEach(async () => {
+    dataPath = injectionsDataPath
+  })
+
+  test("should highlight inline code in markdown using markdown_inline injection", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Hello World
+
+The \`CodeRenderable\` component provides syntax highlighting.
+
+You can use \`const x = 42\` in your code.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      // Check that we have highlights for the inline code
+      const groups = result.highlights!.map((hl) => hl[2])
+
+      // Should have markdown_inline highlights like markup.raw.inline for backtick code
+      const hasInlineCodeHighlights = groups.some((g) => g.includes("markup.raw"))
+
+      console.log("Highlight groups found:", [...new Set(groups)])
+      console.log("Full highlights:", result.highlights)
+
+      // This test documents the expected behavior - we expect inline code to be highlighted
+      expect(hasInlineCodeHighlights).toBe(true)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test.only("should highlight code blocks in markdown using language-specific injection", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Code Example
+
+\`\`\`typescript
+const hello: string = "world";
+function test() { return 42; }
+\`\`\`
+
+Some text here.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      // Check that we have TypeScript highlights from the code block
+      const groups = result.highlights!.map((hl) => hl[2])
+
+      console.log("Highlight groups found:", [...new Set(groups)])
+
+      // Should have typescript highlights like 'keyword', 'type', 'function'
+      const hasTypeScriptHighlights = groups.some((g) => g === "keyword" || g === "type" || g === "function")
+
+      // This test documents the expected behavior
+      expect(hasTypeScriptHighlights).toBe(true)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+})
+
 describe("TreeSitterClient Edge Cases", () => {
   let dataPath: string
 

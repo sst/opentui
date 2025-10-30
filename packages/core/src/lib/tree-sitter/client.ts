@@ -197,6 +197,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       wasm: this.resolvePath(filetypeParser.wasm),
       queries: {
         highlights: filetypeParser.queries.highlights.map((path) => this.resolvePath(path)),
+        injections: filetypeParser.queries.injections?.map((path) => this.resolvePath(path)),
       },
     }
     this.worker?.postMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: resolvedParser })
@@ -309,6 +310,15 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
 
     if (type === "UPDATE_DATA_PATH_RESPONSE") {
+      const callback = this.messageCallbacks.get(messageId)
+      if (callback) {
+        this.messageCallbacks.delete(messageId)
+        callback({ error })
+      }
+      return
+    }
+
+    if (type === "CLEAR_CACHE_RESPONSE") {
       const callback = this.messageCallbacks.get(messageId)
       if (callback) {
         this.messageCallbacks.delete(messageId)
@@ -576,5 +586,26 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         })
       })
     }
+  }
+
+  public async clearCache(): Promise<void> {
+    if (!this.initialized || !this.worker) {
+      throw new Error("Cannot clear cache: client is not initialized")
+    }
+
+    const messageId = `clear_cache_${this.messageIdCounter++}`
+    return new Promise<void>((resolve, reject) => {
+      this.messageCallbacks.set(messageId, (response: any) => {
+        if (response.error) {
+          reject(new Error(response.error))
+        } else {
+          resolve()
+        }
+      })
+      this.worker!.postMessage({
+        type: "CLEAR_CACHE",
+        messageId,
+      })
+    })
   }
 }

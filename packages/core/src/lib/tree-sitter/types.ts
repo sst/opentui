@@ -16,6 +16,7 @@ export interface FiletypeParserOptions {
   filetype: string
   queries: {
     highlights: string[] // Array of URLs or local file paths to fetch highlight queries from
+    injections?: string[] // Array of URLs or local file paths to fetch injection queries from
   }
   wasm: string // URL or local file path to the language parser WASM file
 }
