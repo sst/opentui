@@ -3579,9 +3579,70 @@ test "calculateTextWidth: validate against unicode-width-map.zon" {
         }
     }
 
-    // Print summary
-    std.debug.print("\n✓ Unicode width validation: {d} successes, {d} failures (out of {d} total)\n", .{ successes, failures, successes + failures });
-
-    // Fail if there are any mismatches
     try testing.expectEqual(@as(usize, 0), failures);
+}
+
+test "findGraphemeInfo: comprehensive multilingual text" {
+    const text =
+        \\# The Celestial Journey of संस्कृति 🌟🔮✨
+        \\In the beginning, there was नमस्ते 🙏 and the ancient wisdom of the ॐ symbol echoing through dimensions. The travelers 🧑‍🚀👨‍🚀👩‍🚀 embarked on their quest through the cosmos, guided by the mysterious རྒྱ་མཚོ and the luminous 🌈🦄🧚‍♀️ beings of light. They encountered the great देवनागरी scribes who wrote in flowing अक्षर characters, documenting everything in their sacred texts 📜📖✍️.
+        \\## Chapter प्रथम: The Eastern Gardens 🏯🎋🌸
+        \\The journey led them to the mystical lands where 漢字 (kanji) danced with ひらがな and カタカナ across ancient scrolls 📯🎴🎎. In the gardens of Seoul, they found 한글 inscriptions speaking of 사랑 (love) and 평화 (peace) 💝🕊️☮️. The monks meditated under the bodhi tree 🧘‍♂️🌳, contemplating the nature of धर्म while drinking matcha 🍵 and eating 餃子 dumplings 🥟.
+        \\Strange creatures emerged from the mist: 🦥🦦🦧🦨🦩🦚🦜🦝🦞🦟. They spoke in riddles about the प्राचीन (ancient) ways and the नवीन (new) paths forward. "भविष्य में क्या है?" they asked, while the ໂຫຍ່າກເຈົ້າ whispered secrets in Lao script 🤫🗣️💬.
+        \\## The संगम (Confluence) of Scripts 🌊📝🎭
+        \\At the great confluence, they witnessed the merger of བོད་ཡིག (Tibetan), ગુજરાતી (Gujarati), and தமிழ் (Tamil) scripts flowing together like rivers 🏞️🌊💧. The scholars debated about ਪੰਜਾਬੀ philosophy while juggling 🤹‍♂️🎪🎨 colorful orbs that represented different తెలుగు concepts.
+        \\The marketplace buzzed with activity 🏪🛒💰: merchants sold বাংলা spices 🌶️🧄🧅, ಕನ್ನಡ silks 🧵👘, and മലയാളം handicrafts 🎨🖼️. Children played with toys shaped like 🦖🦕🐉🐲 while their parents bargained using ancient ଓଡ଼ିଆ numerals and gestures 🤝🤲👐.
+        \\## The Festival of ๑๐๐ Lanterns 🏮🎆🎇
+        \\During the grand festival, they lit exactly ๑๐๐ (100 in Thai numerals) lanterns 🏮🕯️💡 that floated into the night sky like ascending ความหวัง (hopes). The celebration featured dancers 💃🕺🩰 performing classical moves from भरतनाट्यम tradition, their मुद्रा hand gestures telling stories of प्रेम and वीरता.
+        \\Musicians played unusual instruments: the 🎻🎺🎷🎸🪕🪘 ensemble created harmonies that resonated with the वेद chants and མཆོད་རྟེན bells 🔔⛩️. The audience sat mesmerized 😵‍💫🤯✨, some sipping on bubble tea 🧋 while others enjoyed मिठाई sweets 🍬🍭🧁.
+        \\## The འཕྲུལ་དེབ (Machine) Age Arrives ⚙️🤖🦾
+        \\As modernity crept in, the ancient འཁོར་ལོ (wheel) gave way to 🚗🚕🚙🚌🚎 vehicles and eventually to 🚀🛸🛰️ spacecraft. The યુવાન (youth) learned to code in Python 🐍💻⌨️, but still honored their గురువు (teachers) who taught them the old ways of ज्ञान acquisition 🧠📚🎓.
+        \\The সমাজ (society) transformed: robots 🤖🦾🦿 worked alongside humans 👨‍💼👩‍💼👨‍🔬👩‍🔬, and AI learned to read སྐད (languages) from across the planet 🌍🌎🌏. Yet somehow, the essence of मानवता remained intact, preserved in the கவிதை (poetry) and the ກາບແກ້ວ stories passed down through generations 👴👵👨‍👩‍👧‍👦.
+        \\## The Final ಅಧ್ಯಾಯ (Chapter) 🌅🌄🌠
+        \\As the sun set over the പർവ്വതങ്ങൾ (mountains) 🏔️⛰️🗻, our travelers realized that every script, every symbol—from ا to ㄱ to অ to अ—represented not just sounds, but entire civilizations' worth of विचार (thoughts) and ಕನಸು (dreams) 💭💤🌌.
+        \\They gathered around the final campfire 🔥🏕️, sharing stories in ภาษา (languages) both ancient and new. Someone brought out a guitar 🎸 and started singing in ગીત form, while others prepared ආහාර (food) 🍛🍲🥘 seasoned with love ❤️💕💖 and memories 📸🎞️📹.
+        \\And so they learned that whether written in দেবনাগরী, 中文, 한글, or ไทย, the human experience transcends boundaries 🌐🤝🌈. The weird emojis 🦩🧿🪬🫀🫁🧠 and complex scripts were all part of the same beautiful བསྟན་པ (teaching): that diversity is our greatest strength 💪✊🙌.
+        \\The end. समाप्त. 끝. จบ. முடிவு. ముగింపు. সমাপ্তি. ഒടുക്കം. ಅಂತ್ಯ. અંત. 🎬🎭🎪✨🌟⭐
+        \\
+    ;
+
+    const expected_width = utf8.calculateTextWidth(text, 4, false);
+
+    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try testing.expect(result.items.len > 0);
+
+    var prev_end_byte: usize = 0;
+
+    for (result.items, 0..) |g, idx| {
+        try testing.expect(g.byte_offset >= prev_end_byte);
+
+        const text_before = text[0..g.byte_offset];
+        const expected_col = utf8.calculateTextWidth(text_before, 4, false);
+
+        if (expected_col != g.col_offset) {
+            std.debug.print("\nMismatch at grapheme #{d}:\n", .{idx});
+            std.debug.print("  byte_offset: {d}\n", .{g.byte_offset});
+            std.debug.print("  byte_len: {d}\n", .{g.byte_len});
+            std.debug.print("  width: {d}\n", .{g.width});
+            std.debug.print("  expected col_offset (from calculateTextWidth): {d}\n", .{expected_col});
+            std.debug.print("  actual col_offset: {d}\n", .{g.col_offset});
+            if (g.byte_offset < text.len and g.byte_offset + g.byte_len <= text.len) {
+                const grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
+                std.debug.print("  grapheme bytes: ", .{});
+                for (grapheme_bytes) |b| {
+                    std.debug.print("{X:0>2} ", .{b});
+                }
+                std.debug.print("\n", .{});
+            }
+        }
+        try testing.expectEqual(expected_col, g.col_offset);
+
+        prev_end_byte = g.byte_offset + g.byte_len;
+    }
+
+    const final_computed_width = utf8.calculateTextWidth(text, 4, false);
+    try testing.expectEqual(expected_width, final_computed_width);
 }

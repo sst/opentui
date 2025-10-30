@@ -1362,6 +1362,11 @@ pub fn findGraphemeInfoSIMD16(
                             .width = @intCast(cluster_width_state.width),
                             .col_offset = cluster_start_col,
                         });
+                        // Advance col by the committed cluster's width
+                        col += cluster_width_state.width;
+                    } else if (prev_cp != null) {
+                        // ASCII single-byte character - still need to advance col
+                        col += cluster_width_state.width;
                     }
 
                     // Start new cluster
@@ -1372,12 +1377,10 @@ pub fn findGraphemeInfoSIMD16(
 
                     const cp_width = asciiCharWidth(b, tab_width);
                     cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
-                    col += cp_width;
                 } else {
                     // Continuing cluster (shouldn't happen for ASCII, but handle it)
                     const cp_width = asciiCharWidth(b, tab_width);
                     cluster_width_state.addCodepoint(curr_cp, cp_width);
-                    col += cp_width;
                 }
 
                 prev_cp = curr_cp;
@@ -1407,6 +1410,11 @@ pub fn findGraphemeInfoSIMD16(
                         .width = @intCast(cluster_width_state.width),
                         .col_offset = cluster_start_col,
                     });
+                    // Advance col by the committed cluster's width
+                    col += cluster_width_state.width;
+                } else if (prev_cp != null) {
+                    // ASCII single-byte character - still need to advance col
+                    col += cluster_width_state.width;
                 }
 
                 // Start new cluster
@@ -1417,13 +1425,11 @@ pub fn findGraphemeInfoSIMD16(
 
                 const cp_width = charWidth(b0, curr_cp, tab_width);
                 cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
-                col += cp_width;
             } else {
                 // Continuing cluster
                 cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
                 const cp_width = charWidth(b0, curr_cp, tab_width);
                 cluster_width_state.addCodepoint(curr_cp, cp_width);
-                col += cp_width;
             }
 
             prev_cp = curr_cp;
@@ -1452,6 +1458,11 @@ pub fn findGraphemeInfoSIMD16(
                     .width = @intCast(cluster_width_state.width),
                     .col_offset = cluster_start_col,
                 });
+                // Advance col by the committed cluster's width
+                col += cluster_width_state.width;
+            } else if (prev_cp != null) {
+                // ASCII single-byte character - still need to advance col
+                col += cluster_width_state.width;
             }
 
             // Start new cluster
@@ -1462,13 +1473,11 @@ pub fn findGraphemeInfoSIMD16(
 
             const cp_width = charWidth(b0, curr_cp, tab_width);
             cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
-            col += cp_width;
         } else {
             // Continuing cluster
             cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
             const cp_width = charWidth(b0, curr_cp, tab_width);
             cluster_width_state.addCodepoint(curr_cp, cp_width);
-            col += cp_width;
         }
 
         prev_cp = curr_cp;
