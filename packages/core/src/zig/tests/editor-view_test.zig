@@ -2897,7 +2897,16 @@ test "EditorView - tab indicator renders in buffer" {
     try std.testing.expect(cell_2 != null);
     try std.testing.expectEqual(@as(u32, 32), cell_2.?.char);
 
+    const cell_3 = opt_buffer.get(3, 0);
+    try std.testing.expect(cell_3 != null);
+    try std.testing.expectEqual(@as(u32, 32), cell_3.?.char);
+
     const cell_4 = opt_buffer.get(4, 0);
     try std.testing.expect(cell_4 != null);
-    try std.testing.expectEqual(@as(u32, 'B'), cell_4.?.char);
+    try std.testing.expectEqual(@as(u32, 32), cell_4.?.char);
+
+    // With static tabs: A at col 0, tab takes 4 cols (1-4), B at col 5
+    const cell_5 = opt_buffer.get(5, 0);
+    try std.testing.expect(cell_5 != null);
+    try std.testing.expectEqual(@as(u32, 'B'), cell_5.?.char);
 }

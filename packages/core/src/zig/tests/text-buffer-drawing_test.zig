@@ -1781,7 +1781,11 @@ test "drawTextBuffer - tabs are rendered as spaces (empty cells)" {
     try std.testing.expectEqual(@as(u32, 32), cell_3.char);
 
     const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, 'B'), cell_4.char);
+    try std.testing.expectEqual(@as(u32, 32), cell_4.char);
+
+    // With static tabs: A at col 0, tab takes 4 cols (1-4), B at col 5
+    const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_5.char);
 }
 
 test "drawTextBuffer - tab indicator renders with correct color" {
@@ -1833,7 +1837,11 @@ test "drawTextBuffer - tab indicator renders with correct color" {
     try std.testing.expectEqual(@as(u32, 32), cell_3.char);
 
     const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, 'B'), cell_4.char);
+    try std.testing.expectEqual(@as(u32, 32), cell_4.char);
+
+    // With static tabs: A at col 0, tab takes 4 cols (1-4), B at col 5
+    const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_5.char);
 }
 
 test "drawTextBuffer - tab without indicator renders as spaces" {
@@ -1879,7 +1887,11 @@ test "drawTextBuffer - tab without indicator renders as spaces" {
     try std.testing.expectEqual(@as(u32, 32), cell_3.char);
 
     const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, 'B'), cell_4.char);
+    try std.testing.expectEqual(@as(u32, 32), cell_4.char);
+
+    // With static tabs: A at col 0, tab takes 4 cols (1-4), B at col 5
+    const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_5.char);
 }
 
 test "drawTextBuffer - mixed ASCII and Unicode with emoji renders completely" {
