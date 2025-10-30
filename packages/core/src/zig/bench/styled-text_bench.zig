@@ -3,7 +3,6 @@ const bench_utils = @import("../bench-utils.zig");
 const text_buffer_mod = @import("../text-buffer.zig");
 const syntax_style_mod = @import("../syntax-style.zig");
 const gp = @import("../grapheme.zig");
-const gwidth = @import("../gwidth.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 

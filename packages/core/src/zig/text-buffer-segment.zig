@@ -30,14 +30,7 @@ pub const ChunkFitResult = struct {
     width: u32,
 };
 
-/// Cached grapheme cluster information
-/// Only stored for multibyte (non-ASCII) graphemes
-pub const GraphemeInfo = struct {
-    byte_offset: u32,
-    byte_len: u8,
-    width: u8,
-    col_offset: u32,
-};
+pub const GraphemeInfo = utf8.GraphemeInfo;
 
 /// Memory buffer reference in the registry
 pub const MemBuffer = struct {
@@ -141,7 +134,7 @@ pub const TextChunk = struct {
     /// Lazily compute and cache grapheme info for this chunk
     /// Returns a slice that is valid until the buffer is reset
     /// For ASCII-only chunks, returns an empty slice (sentinel)
-    /// For mixed chunks, returns only multibyte (non-ASCII) graphemes with their column offsets
+    /// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
     pub fn getGraphemes(
         self: *const TextChunk,
         mem_registry: *const MemRegistry,
@@ -151,6 +144,10 @@ pub const TextChunk = struct {
         display_width: *const DisplayWidth,
         tabwidth: u8,
     ) TextBufferError![]const GraphemeInfo {
+        _ = graphemes_data;
+        _ = width_method;
+        _ = display_width;
+
         const mut_self = @constCast(self);
         if (self.graphemes) |cached| {
             return cached;
@@ -163,57 +160,16 @@ pub const TextChunk = struct {
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
+
         var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
-        defer grapheme_list.deinit();
+        errdefer grapheme_list.deinit();
 
-        var iter = graphemes_data.iterator(chunk_bytes);
-        var byte_pos: u32 = 0;
-        var col: u32 = 0;
+        try utf8.findGraphemeInfoSIMD16(chunk_bytes, tabwidth, self.isAsciiOnly(), &grapheme_list);
 
-        while (iter.next()) |gc| {
-            const gbytes = gc.bytes(chunk_bytes);
+        // TODO: Calling this with an arena allocator will just double the memory usage?
+        const graphemes = try grapheme_list.toOwnedSlice();
 
-            if (gbytes.len == 1 and gbytes[0] == '\t') {
-                const tab_width_u32: u32 = @intCast(tabwidth);
-                const tab_stop = tab_width_u32 - (col % tab_width_u32);
-
-                try grapheme_list.append(GraphemeInfo{
-                    .byte_offset = byte_pos,
-                    .byte_len = 1,
-                    .width = @intCast(tab_stop),
-                    .col_offset = col,
-                });
-
-                byte_pos += 1;
-                col += tab_stop;
-                continue;
-            }
-
-            const width_u16: u16 = gwidth.gwidth(gbytes, width_method, display_width);
-
-            if (width_u16 == 0) {
-                byte_pos += @intCast(gbytes.len);
-                continue;
-            }
-
-            const width: u8 = @intCast(width_u16);
-
-            if (gbytes.len != 1) {
-                try grapheme_list.append(GraphemeInfo{
-                    .byte_offset = byte_pos,
-                    .byte_len = @intCast(gbytes.len),
-                    .width = width,
-                    .col_offset = col,
-                });
-            }
-
-            byte_pos += @intCast(gbytes.len);
-            col += width;
-        }
-
-        const graphemes = try allocator.dupe(GraphemeInfo, grapheme_list.items);
         mut_self.graphemes = graphemes;
-
         return graphemes;
     }
 

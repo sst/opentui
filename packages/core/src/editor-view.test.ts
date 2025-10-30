@@ -27,7 +27,6 @@ describe("EditorView", () => {
     })
 
     it("should start with wrap mode set to none", () => {
-      // Default wrap mode is 'none', no direct getter but we can test behavior
       expect(view.getVirtualLineCount()).toBeGreaterThanOrEqual(0)
     })
   })
@@ -41,7 +40,6 @@ describe("EditorView", () => {
     })
 
     it("should set scroll margin", () => {
-      // Should not throw
       view.setScrollMargin(0.2)
       expect(true).toBe(true)
     })
@@ -54,35 +52,28 @@ describe("EditorView", () => {
 
   describe("text wrapping", () => {
     it("should enable and disable wrapping via wrap mode", () => {
-      // Create text that will wrap at narrow viewport
       buffer.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRST")
 
-      // Initially no wrapping (mode is 'none')
       expect(view.getVirtualLineCount()).toBe(1)
 
-      // Enable wrapping (viewport is 40 columns)
       view.setWrapMode("char")
-      expect(view.getVirtualLineCount()).toBeGreaterThan(1) // Should wrap to multiple lines
+      expect(view.getVirtualLineCount()).toBeGreaterThan(1)
 
-      // Disable wrapping
       view.setWrapMode("none")
       expect(view.getVirtualLineCount()).toBe(1)
     })
 
     it("should wrap at viewport width", () => {
-      buffer.setText("ABCDEFGHIJKLMNOPQRST") // 20 chars
+      buffer.setText("ABCDEFGHIJKLMNOPQRST")
 
       view.setWrapMode("char")
-      view.setViewportSize(10, 10) // 10 columns wide
+      view.setViewportSize(10, 10)
 
-      // Should wrap to 2 lines at 10 columns
       expect(view.getVirtualLineCount()).toBe(2)
 
-      // Resize to 5 columns
       view.setViewportSize(5, 10)
       expect(view.getVirtualLineCount()).toBe(4)
 
-      // Resize to 20 columns
       view.setViewportSize(20, 10)
       expect(view.getVirtualLineCount()).toBe(1)
     })
@@ -92,17 +83,14 @@ describe("EditorView", () => {
 
       view.setViewportSize(10, 10)
 
-      // Test char mode
       view.setWrapMode("char")
       const charCount = view.getVirtualLineCount()
       expect(charCount).toBeGreaterThanOrEqual(2)
 
-      // Test word mode
       view.setWrapMode("word")
       const wordCount = view.getVirtualLineCount()
       expect(wordCount).toBeGreaterThanOrEqual(2)
 
-      // Test none mode
       view.setWrapMode("none")
       const noneCount = view.getVirtualLineCount()
       expect(noneCount).toBe(1)
@@ -114,7 +102,6 @@ describe("EditorView", () => {
       view.setWrapMode("char")
       view.setViewportSize(50, 10)
 
-      // Should still have 3 virtual lines (original newlines preserved)
       expect(view.getVirtualLineCount()).toBe(3)
     })
 
@@ -135,7 +122,7 @@ describe("EditorView", () => {
       buffer.setText("Line 1\nLine 2\nLine 3")
       expect(view.getVirtualLineCount()).toBe(3)
 
-      buffer.gotoLine(9999) // Go to end
+      buffer.gotoLine(9999)
       buffer.newLine()
       buffer.insertText("Line 4")
 
@@ -162,7 +149,7 @@ describe("EditorView", () => {
 
       expect(view.getVirtualLineCount()).toBe(1)
 
-      buffer.gotoLine(9999) // Go to end
+      buffer.gotoLine(9999)
       buffer.insertText(" that becomes very long and should wrap now")
 
       expect(view.getVirtualLineCount()).toBeGreaterThan(1)
@@ -188,12 +175,9 @@ describe("EditorView", () => {
     it("should set and reset selection", () => {
       buffer.setText("Hello World")
 
-      // Set selection
       view.setSelection(0, 5)
-      // Can't directly check selection, but should not throw
       expect(true).toBe(true)
 
-      // Reset selection
       view.resetSelection()
       expect(true).toBe(true)
     })
@@ -292,10 +276,9 @@ describe("EditorView", () => {
       const lines = Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n")
       buffer.setText(lines)
 
-      // Create view with viewport showing 5 lines
       const smallView = EditorView.create(buffer, 40, 5)
 
-      expect(smallView.getTotalVirtualLineCount()).toBe(20) // Total line count
+      expect(smallView.getTotalVirtualLineCount()).toBe(20)
 
       smallView.destroy()
     })
@@ -318,7 +301,6 @@ describe("EditorView", () => {
       view.setWrapMode("char")
       view.setViewportSize(10, 10)
 
-      // Each emoji takes 2 cells, so 10 emojis = 20 cells, should wrap
       expect(view.getVirtualLineCount()).toBeGreaterThan(1)
     })
 
@@ -328,7 +310,6 @@ describe("EditorView", () => {
       view.setWrapMode("char")
       view.setViewportSize(10, 10)
 
-      // CJK chars are 2 cells each
       const vlineCount = view.getVirtualLineCount()
       expect(vlineCount).toBeGreaterThanOrEqual(1)
     })
@@ -340,6 +321,276 @@ describe("EditorView", () => {
       view.setViewportSize(8, 10)
 
       expect(view.getVirtualLineCount()).toBeGreaterThanOrEqual(1)
+    })
+
+    it("should navigate visual cursor correctly through emoji and CJK", () => {
+      buffer.setText("(emoji 🌟 and CJK 世界)")
+
+      let cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(0)
+      expect(cursor.visualCol).toBe(0)
+      expect(cursor.offset).toBe(0)
+
+      for (let i = 0; i < 6; i++) {
+        buffer.moveCursorRight()
+      }
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(6)
+
+      buffer.moveCursorRight()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(7)
+
+      buffer.moveCursorRight()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(9)
+
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(7)
+
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.offset).toBe(6)
+    })
+
+    it("should handle vertical navigation through emoji cells correctly", () => {
+      buffer.setText("1234567890123456789\n(emoji 🌟 and CJK 世界)\n1234567890123456789")
+
+      buffer.setCursorToLineCol(0, 7)
+      let cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(0)
+      expect(cursor.visualCol).toBe(7)
+
+      view.moveDownVisual()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(1)
+      expect(cursor.visualCol).toBe(7)
+
+      buffer.moveCursorRight()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualCol).toBe(9)
+
+      view.moveUpVisual()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(0)
+      expect(cursor.visualCol).toBe(9)
+
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualCol).toBe(8)
+
+      view.moveDownVisual()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualRow).toBe(1)
+      expect(cursor.visualCol).toBe(8)
+
+      buffer.moveCursorLeft()
+      cursor = view.getVisualCursor()
+      expect(cursor.visualCol).toBe(6)
+    })
+  })
+
+  describe("cursor movement around multi-cell graphemes", () => {
+    // These tests verify that the cursor correctly handles multi-cell graphemes like emojis (🌟)
+    // and CJK characters (世界). Multi-cell graphemes occupy 2 visual columns but are treated
+    // as a single logical unit for cursor movement and deletion.
+    //
+    // Key behaviors:
+    // - moveCursorRight/Left skips over entire graphemes (no intermediate positions)
+    // - deleteCharBackward deletes the entire grapheme, not individual cells
+    // - Visual column positions reflect the actual display width (2 cells per wide grapheme)
+    // - Logical column positions mark grapheme boundaries (skipping intermediate cell positions)
+
+    it("should understand logical vs visual cursor positions", () => {
+      buffer.setText("a🌟b")
+
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      buffer.setCursorToLineCol(0, 1)
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      buffer.setCursorToLineCol(0, 3)
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.setCursorToLineCol(0, 4)
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.setCursorToLineCol(0, 0)
+      buffer.moveCursorRight()
+      expect(buffer.getCursorPosition().col).toBe(1)
+
+      buffer.moveCursorRight()
+      expect(buffer.getCursorPosition().col).toBe(3)
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.moveCursorRight()
+      expect(buffer.getCursorPosition().col).toBe(4)
+    })
+
+    it("should move cursor correctly around emoji (🌟) with visual positions", () => {
+      buffer.setText("a🌟b")
+
+      buffer.setCursorToLineCol(0, 1)
+      let visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(1)
+
+      buffer.moveCursorRight()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(3)
+
+      buffer.moveCursorRight()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(4)
+
+      buffer.moveCursorLeft()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(3)
+
+      buffer.moveCursorLeft()
+      visualCursor = view.getVisualCursor()
+      expect(visualCursor.visualCol).toBe(1)
+    })
+
+    it("should move cursor correctly around CJK characters (世界) with visual positions", () => {
+      buffer.setText("a世界b")
+
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(5)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(5)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(1)
+    })
+
+    it("should handle backspace correctly after emoji", () => {
+      buffer.setText("a🌟b")
+
+      buffer.setCursorToLineCol(0, 3)
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("ab")
+      expect(view.getVisualCursor().visualCol).toBe(1)
+    })
+
+    it("should handle backspace correctly after CJK character", () => {
+      buffer.setText("世界")
+
+      buffer.setCursorToLineCol(0, 4)
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("世")
+      expect(view.getVisualCursor().visualCol).toBe(2)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("")
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should treat multi-cell graphemes as single units for cursor movement", () => {
+      buffer.setText("🌟世界🎉")
+
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(2)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      buffer.moveCursorRight()
+      expect(view.getVisualCursor().visualCol).toBe(8)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(2)
+
+      buffer.moveCursorLeft()
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should handle backspace through mixed multi-cell graphemes", () => {
+      buffer.setText("a🌟b世c")
+
+      buffer.setCursorToLineCol(0, 7)
+      expect(view.getVisualCursor().visualCol).toBe(7)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a🌟b世")
+      expect(view.getVisualCursor().visualCol).toBe(6)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a🌟b")
+      expect(view.getVisualCursor().visualCol).toBe(4)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a🌟")
+      expect(view.getVisualCursor().visualCol).toBe(3)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("a")
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      buffer.deleteCharBackward()
+      expect(buffer.getText()).toBe("")
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should handle delete key correctly before multi-cell graphemes", () => {
+      buffer.setText("a🌟b")
+
+      buffer.setCursorToLineCol(0, 1)
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      buffer.deleteChar()
+      expect(buffer.getText()).toBe("ab")
+      expect(view.getVisualCursor().visualCol).toBe(1)
+
+      buffer.setCursorToLineCol(0, 0)
+
+      buffer.deleteChar()
+      expect(buffer.getText()).toBe("b")
+      expect(view.getVisualCursor().visualCol).toBe(0)
+    })
+
+    it("should handle line start and end with multi-cell graphemes", () => {
+      buffer.setText("🌟世界🎉")
+
+      buffer.setCursorToLineCol(0, 0)
+      expect(view.getVisualCursor().visualCol).toBe(0)
+
+      const eol = view.getEOL()
+      buffer.setCursorToLineCol(eol.logicalRow, eol.logicalCol)
+      expect(view.getVisualCursor().visualCol).toBe(8)
     })
   })
 })

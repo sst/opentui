@@ -340,14 +340,6 @@ test "EditBuffer - moveRight between two tabs" {
     }
 }
 
-// FIXED: Tab width is now fixed instead of position-dependent
-// Tabs always have width equal to tab_width setting (default 2 in tests)
-//
-// Test behavior with fixed tab width:
-// - Tabs expand consistently regardless of position
-// - Cursor movement now works correctly around tabs
-// - No more stuck cursor issues
-
 test "EditBuffer - type and move around single tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -364,26 +356,18 @@ test "EditBuffer - type and move around single tab" {
     try eb.insertText("a");
 
     var buffer: [100]u8 = undefined;
-    const len = eb.getText(&buffer);
-    std.debug.print("\nBuffer content: '{s}' (hex: ", .{buffer[0..len]});
-    for (buffer[0..len]) |byte| {
-        std.debug.print("{x} ", .{byte});
-    }
-    std.debug.print(")\n", .{});
+    _ = eb.getText(&buffer);
 
     const cursor1 = eb.getCursor(0).?;
     try std.testing.expectEqual(@as(u32, 0), cursor1.row);
-    const line_width1 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
-    std.debug.print("After insert 'a': col={}, line_width={}\n", .{ cursor1.col, line_width1 });
+    _ = iter_mod.lineWidthAt(&eb.tb.rope, 0);
 
-    const gw1 = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor1.col, eb.tb.tab_width);
-    std.debug.print("grapheme_width at col {}: {}\n", .{ cursor1.col, gw1 });
+    _ = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor1.col, eb.tb.tab_width);
 
     eb.moveRight();
     const cursor2 = eb.getCursor(0).?;
     const line_width2 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     const gw2 = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor2.col, eb.tb.tab_width);
-    std.debug.print("After moveRight 1: col={}, line_width={}, grapheme_width at col {}: {}\n", .{ cursor2.col, line_width2, cursor2.col, gw2 });
     try std.testing.expect(cursor2.col > cursor1.col);
 
     // After moving right once, we're at the end of the line (col=3, line_width=3)
@@ -532,17 +516,13 @@ test "EditBuffer - cursor stuck at tab in middle of line" {
     try eb.setCursor(0, 1);
 
     var buffer: [100]u8 = undefined;
-    const len = eb.getText(&buffer);
-    std.debug.print("\nBuffer: '{s}'\n", .{buffer[0..len]});
-    std.debug.print("Starting at col=1 (after 'a')\n", .{});
+    _ = eb.getText(&buffer);
 
     eb.moveRight();
     const p1 = eb.getCursor(0).?;
-    std.debug.print("After moveRight 1: col={}\n", .{p1.col});
 
     eb.moveRight();
     const p2 = eb.getCursor(0).?;
-    std.debug.print("After moveRight 2: col={} (should be > {})\n", .{ p2.col, p1.col });
     try std.testing.expect(p2.col > p1.col);
 }
 
@@ -589,17 +569,13 @@ test "EditBuffer - tabs only with cursor movement" {
     try eb.insertText("\t\t\t");
     try eb.setCursor(0, 0);
 
-    std.debug.print("\nBuffer: three tabs, line_width={}\n", .{iter_mod.lineWidthAt(&eb.tb.rope, 0)});
-
     var prev_col: u32 = 0;
     var i: u32 = 0;
     while (i < 5) : (i += 1) {
-        const line_width = iter_mod.lineWidthAt(&eb.tb.rope, 0);
-        const grapheme_width = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, prev_col, eb.tb.tab_width);
-        std.debug.print("At col={} (line_width={}), grapheme_width={}\n", .{ prev_col, line_width, grapheme_width });
+        _ = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+        _ = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, prev_col, eb.tb.tab_width);
         eb.moveRight();
         const cursor = eb.getCursor(0).?;
-        std.debug.print("moveRight {}: col={} (prev={})\n", .{ i + 1, cursor.col, prev_col });
         try std.testing.expect(cursor.col >= prev_col);
         prev_col = cursor.col;
     }
