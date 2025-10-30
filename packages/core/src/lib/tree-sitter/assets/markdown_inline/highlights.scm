@@ -1,4 +1,4 @@
-; Query from: https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown_inline/highlights.scm
+; Query from: https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/99ddf573531c4dbe53f743ecbc1595af5eb1d32f/queries/markdown_inline/highlights.scm
 ; From MDeiml/tree-sitter-markdown
 (code_span) @markup.raw @nospell
 
@@ -33,21 +33,6 @@
     ")"
   ] @markup.link
   (#set! conceal ""))
-
-[
-  (link_label)
-  (link_text)
-  (link_title)
-  (image_description)
-] @markup.link.label
-
-((inline_link
-  (link_destination) @_url) @_label
-  (#set! @_label url @_url))
-
-((image
-  (link_destination) @_url) @_label
-  (#set! @_label url @_url))
 
 ; Conceal image links
 (image
@@ -89,19 +74,19 @@
 [
   (link_destination)
   (uri_autolink)
-  (email_autolink)
 ] @markup.link.url @nospell
 
-((uri_autolink) @_url
-  (#offset! @_url 0 1 0 -1)
-  (#set! @_url url @_url))
-
-(entity_reference) @nospell
+[
+  (link_label)
+  (link_text)
+  (link_title)
+  (image_description)
+] @markup.link.label
 
 ; Replace common HTML entities.
 ((entity_reference) @character.special
   (#eq? @character.special "&nbsp;")
-  (#set! conceal " "))
+  (#set! conceal ""))
 
 ((entity_reference) @character.special
   (#eq? @character.special "&lt;")

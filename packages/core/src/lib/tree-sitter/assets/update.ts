@@ -5,6 +5,7 @@ import * as path from "path"
 import { DownloadUtils } from "../download-utils"
 import { parseArgs } from "util"
 import type { FiletypeParserOptions } from "../types"
+import { readdir } from "fs/promises"
 
 interface ParsersConfig {
   parsers: FiletypeParserOptions[]
@@ -28,15 +29,38 @@ export interface UpdateOptions {
 
 function getDefaultOptions(): UpdateOptions {
   return {
-    configPath: path.resolve(__dirname, "../parsers-config.json"),
+    configPath: path.resolve(__dirname, "../parsers-config"),
     assetsDir: path.resolve(__dirname),
     outputPath: path.resolve(__dirname, "../default-parsers.ts"),
   }
 }
 
 async function loadConfig(configPath: string): Promise<ParsersConfig> {
-  const configContent = await readFile(configPath, "utf-8")
-  return JSON.parse(configContent)
+  let ext = path.extname(configPath)
+  let resolvedConfigPath = configPath
+
+  if (ext === "") {
+    const files = await readdir(path.dirname(configPath))
+    const file = files.find(
+      (file) =>
+        file.startsWith(path.basename(configPath)) &&
+        (file.endsWith(".json") || file.endsWith(".ts") || file.endsWith(".js")),
+    )
+    if (!file) {
+      throw new Error(`No config file found for ${configPath}`)
+    }
+    resolvedConfigPath = path.join(path.dirname(configPath), file)
+    ext = path.extname(resolvedConfigPath)
+  }
+
+  if (ext === ".json") {
+    const configContent = await readFile(resolvedConfigPath, "utf-8")
+    return JSON.parse(configContent)
+  } else if (ext === ".ts" || ext === ".js") {
+    const { default: configContent } = await import(resolvedConfigPath)
+    return configContent
+  }
+  throw new Error(`Unsupported config file extension: ${ext}`)
 }
 
 async function downloadLanguage(
