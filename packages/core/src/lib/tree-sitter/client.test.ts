@@ -559,6 +559,122 @@ function test() {
       await client.destroy()
     }
   }, 10000)
+
+  test.only("should handle fast concurrent markdown highlighting requests with injections", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    const errors: string[] = []
+    client.on("error", (error) => {
+      console.log("ERROR EVENT:", error)
+      errors.push(error)
+    })
+
+    // Listen to worker logs to see actual errors
+    client.on("worker:log", (logType, message) => {
+      if (logType === "error") {
+        console.log("WORKER ERROR:", message)
+        errors.push(message)
+      }
+    })
+
+    try {
+      await client.initialize()
+
+      // Markdown code with injections (similar to the demo)
+      const markdownCode = `# OpenTUI Documentation
+
+## Getting Started
+
+OpenTUI is a modern terminal UI framework built on **tree-sitter** and WebGPU.
+
+### Installation
+
+\`\`\`bash
+bun install opentui
+\`\`\`
+
+### Quick Example
+
+\`\`\`typescript
+import { createCliRenderer, BoxRenderable } from 'opentui';
+
+const renderer = await createCliRenderer();
+const box = new BoxRenderable(renderer, {
+  border: true,
+  title: "Hello World"
+});
+renderer.root.add(box);
+\`\`\`
+
+The \`CodeRenderable\` component provides syntax highlighting.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| content | string | Code to display |
+| filetype | string | Language type |`
+
+      const jsCode = `function test() {
+  const hello = "world";
+  return hello;
+}`
+
+      const tsCode = `interface User {
+  name: string;
+  age: number;
+}
+
+const user: User = { name: "Alice", age: 25 };`
+
+      // Simulate rapid switching between examples like in the demo
+      // This should trigger concurrent highlighting requests with injections
+      console.log("Starting concurrent highlighting requests...")
+      const promises = []
+
+      // Rapid fire markdown requests - this triggers concurrent injection processing
+      // which causes "Out of bounds memory access" because the same parser instance
+      // is reused concurrently
+      for (let i = 0; i < 5; i++) {
+        promises.push(client.highlightOnce(markdownCode, "markdown"))
+      }
+
+      console.log(`Waiting for ${promises.length} concurrent markdown requests...`)
+      const results = await Promise.allSettled(promises)
+
+      console.log("All requests completed")
+
+      // Check that all requests succeeded without errors
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]
+        if (result.status === "fulfilled") {
+          if (result.value.error) {
+            console.log(`Result ${i} had error:`, result.value.error)
+          }
+          expect(result.value.error).toBeUndefined()
+          expect(result.value.highlights).toBeDefined()
+        } else {
+          console.log(`Result ${i} was rejected:`, result.reason)
+          throw new Error(`Request ${i} was rejected: ${result.reason}`)
+        }
+      }
+
+      // Wait a bit more to see if any delayed errors appear
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      console.log("Total errors captured:", errors.length)
+      if (errors.length > 0) {
+        console.log("Errors:", errors)
+      }
+
+      // The test should fail if we got "Out of bounds memory access" errors
+      const hasMemoryErrors = errors.some((err) => err.includes("Out of bounds memory access"))
+      if (hasMemoryErrors) {
+        console.log("ISSUE REPRODUCED: Out of bounds memory access errors detected")
+      }
+      expect(hasMemoryErrors).toBe(false)
+    } finally {
+      await client.destroy()
+    }
+  }, 15000)
 })
 
 describe("TreeSitterClient Edge Cases", () => {
