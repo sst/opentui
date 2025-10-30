@@ -12,6 +12,13 @@ export interface HighlightResponse {
 
 export type SimpleHighlight = [number, number, string]
 
+export interface InjectionMapping {
+  // Maps tree-sitter node types to target filetypes
+  nodeTypes?: { [nodeType: string]: string }
+  // Maps info string content (e.g., from code blocks) to target filetypes
+  infoStringMap?: { [infoString: string]: string }
+}
+
 export interface FiletypeParserOptions {
   filetype: string
   queries: {
@@ -19,6 +26,7 @@ export interface FiletypeParserOptions {
     injections?: string[] // Array of URLs or local file paths to fetch injection queries from
   }
   wasm: string // URL or local file path to the language parser WASM file
+  injectionMapping?: InjectionMapping // Optional mapping for injection handling
 }
 
 export interface BufferState {

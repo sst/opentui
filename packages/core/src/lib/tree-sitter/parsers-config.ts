@@ -30,6 +30,20 @@ export default {
           "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/injections.scm",
         ],
       },
+      injectionMapping: {
+        nodeTypes: {
+          inline: "markdown_inline",
+          pipe_table_cell: "markdown_inline",
+        },
+        infoStringMap: {
+          javascript: "javascript",
+          js: "javascript",
+          typescript: "typescript",
+          ts: "typescript",
+          markdown: "markdown",
+          md: "markdown",
+        },
+      },
     },
     {
       filetype: "markdown_inline",

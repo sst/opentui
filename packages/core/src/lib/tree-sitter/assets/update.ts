@@ -16,6 +16,7 @@ interface GeneratedParser {
   languagePath: string
   highlightsPath: string
   injectionsPath?: string
+  injectionMapping?: any
 }
 
 export interface UpdateOptions {
@@ -151,12 +152,17 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
           `          injections: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_injections)],`,
         )
       }
+
+      const injectionMappingLine = parser.injectionMapping
+        ? `        injectionMapping: ${JSON.stringify(parser.injectionMapping, null, 10)},`
+        : ""
+
       return `      {
         filetype: "${parser.filetype}",
         queries: {
 ${queriesLines.join("\n")}
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
       }`
     })
     .join(",\n")
@@ -236,6 +242,7 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
         languagePath,
         highlightsPath,
         injectionsPath,
+        injectionMapping: parser.injectionMapping,
       })
 
       console.log(`  ✓ Completed ${parser.filetype}`)

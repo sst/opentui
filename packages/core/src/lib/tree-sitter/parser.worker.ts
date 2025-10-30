@@ -8,6 +8,7 @@ import type {
   SimpleHighlight,
   FiletypeParserOptions,
   PerformanceStats,
+  InjectionMapping,
 } from "./types"
 import { DownloadUtils } from "./download-utils"
 import { isMainThread } from "worker_threads"
@@ -23,6 +24,7 @@ type ParserState = {
   }
   filetype: string
   content: string
+  injectionMapping?: InjectionMapping
 }
 
 interface FiletypeParser {
@@ -32,11 +34,16 @@ interface FiletypeParser {
     injections?: Query
   }
   language: Language
+  injectionMapping?: InjectionMapping
 }
 
 interface ReusableParserState {
   parser: Parser
   filetypeParser: FiletypeParser
+  queries: {
+    highlights: Query
+    injections?: Query
+  }
 }
 
 class ParserWorker {
@@ -266,6 +273,7 @@ class ParserWorker {
     const reusableState: ReusableParserState = {
       parser,
       filetypeParser,
+      queries: filetypeParser.queries,
     }
 
     return reusableState
@@ -311,6 +319,7 @@ class ParserWorker {
       queries: filetypeParser.queries,
       filetype,
       content,
+      injectionMapping: filetypeParser.injectionMapping,
     }
     this.bufferParsers.set(bufferId, parserState)
 
@@ -359,64 +368,66 @@ class ParserWorker {
 
     const content = parserState.content
     const injectionCaptures = parserState.queries.injections.captures(parserState.tree.rootNode)
-    const languageGroups = new Map<string, Array<{ node: any; name: string }>>() // Group captures by language
+    const languageGroups = new Map<string, Array<{ node: any; name: string }>>()
+
+    // Use the injection mapping stored in the parser state
+    const injectionMapping = parserState.injectionMapping
 
     for (const capture of injectionCaptures) {
       const captureName = capture.name
 
       if (captureName === "injection.content" || captureName.includes("injection")) {
-        // For markdown, check if this is an inline injection or code block injection
-        if (parserState.filetype === "markdown") {
-          const nodeType = capture.node.type
+        const nodeType = capture.node.type
+        let targetLanguage: string | undefined
 
-          if (nodeType === "inline" || nodeType === "pipe_table_cell") {
-            // Use markdown_inline for inline content
-            if (!languageGroups.has("markdown_inline")) {
-              languageGroups.set("markdown_inline", [])
-            }
-            languageGroups.get("markdown_inline")!.push({ node: capture.node, name: capture.name })
-          } else if (nodeType === "code_fence_content") {
-            // For code blocks, try to determine language from info_string
-            const parent = capture.node.parent
-            if (parent) {
-              const infoString = parent.children.find((child: any) => child.type === "info_string")
-              if (infoString) {
-                const languageNode = infoString.children.find((child: any) => child.type === "language")
-                if (languageNode) {
-                  const languageName = this.getNodeText(languageNode, content)
-                  if (!languageGroups.has(languageName)) {
-                    languageGroups.set(languageName, [])
-                  }
-                  languageGroups.get(languageName)!.push({ node: capture.node, name: capture.name })
+        // First, check if there's a direct node type mapping
+        if (injectionMapping?.nodeTypes && injectionMapping.nodeTypes[nodeType]) {
+          targetLanguage = injectionMapping.nodeTypes[nodeType]
+        } else if (nodeType === "code_fence_content") {
+          // For code fence content, try to extract language from info_string
+          const parent = capture.node.parent
+          if (parent) {
+            const infoString = parent.children.find((child: any) => child.type === "info_string")
+            if (infoString) {
+              const languageNode = infoString.children.find((child: any) => child.type === "language")
+              if (languageNode) {
+                const languageName = this.getNodeText(languageNode, content)
+
+                if (injectionMapping?.infoStringMap && injectionMapping.infoStringMap[languageName]) {
+                  targetLanguage = injectionMapping.infoStringMap[languageName]
+                } else {
+                  targetLanguage = languageName
                 }
               }
             }
           }
+        }
+
+        if (targetLanguage) {
+          if (!languageGroups.has(targetLanguage)) {
+            languageGroups.set(targetLanguage, [])
+          }
+          languageGroups.get(targetLanguage)!.push({ node: capture.node, name: capture.name })
         }
       }
     }
 
     // Process each language group
     for (const [language, captures] of languageGroups.entries()) {
-      const injectedParser = await this.resolveFiletypeParser(language)
+      const injectedParser = await this.getReusableParser(language)
 
       if (!injectedParser) {
         console.log(`No parser found for injection language: ${language}`)
         continue
       }
 
-      // Create a new parser instance for the injection
-      const parser = new Parser()
-      parser.setLanguage(injectedParser.language)
-
-      // Parse each injection range
+      const parser = injectedParser.parser
       for (const { node: injectionNode } of captures) {
         try {
           const injectionContent = this.getNodeText(injectionNode, content)
           const tree = parser.parse(injectionContent)
 
           if (tree) {
-            // Get highlights from the injected content
             const matches = injectedParser.queries.highlights.captures(tree.rootNode)
 
             // Create new QueryCapture objects with offset positions
@@ -732,6 +743,7 @@ class ParserWorker {
           queries: reusableState.filetypeParser.queries,
           filetype,
           content,
+          injectionMapping: reusableState.filetypeParser.injectionMapping,
         }
         const injectionMatches = await this.processInjections(parserState)
         console.log(`Got ${injectionMatches.length} injection matches`)
