@@ -24,7 +24,7 @@
       "wasm": "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm",
       "queries": {
         "highlights": [
-          "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-markdown/refs/heads/split_parser/tree-sitter-markdown/queries/highlights.scm"
+          "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/highlights.scm"
         ]
       }
     }

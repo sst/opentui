@@ -3,8 +3,12 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 
-// Example TypeScript code to highlight
-const exampleCode = `interface User {
+// Code examples to cycle through
+const examples = [
+  {
+    name: "TypeScript",
+    filetype: "typescript" as const,
+    code: `interface User {
   name: string;
   age: number;
   email?: string;
@@ -44,7 +48,118 @@ manager.addUser({ name: "Alice", age: 25, email: "alice@example.com" });
 manager.addUser({ name: "Bob", age: 17 });
 
 console.log(\`Total users: \${manager.getUserCount()}\`);
-console.log(\`Adults: \${manager.getAdults().length}\`);`
+console.log(\`Adults: \${manager.getAdults().length}\`);`,
+  },
+  {
+    name: "JavaScript",
+    filetype: "javascript" as const,
+    code: `// React Component Example
+import React, { useState, useEffect } from 'react';
+
+function TodoApp() {
+  const [todos, setTodos] = useState([]);
+  const [input, setInput] = useState('');
+
+  useEffect(() => {
+    // Load todos from localStorage
+    const saved = localStorage.getItem('todos');
+    if (saved) {
+      setTodos(JSON.parse(saved));
+    }
+  }, []);
+
+  const addTodo = () => {
+    if (input.trim()) {
+      const newTodo = {
+        id: Date.now(),
+        text: input,
+        completed: false
+      };
+      setTodos([...todos, newTodo]);
+      setInput('');
+    }
+  };
+
+  const toggleTodo = (id) => {
+    setTodos(todos.map(todo =>
+      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    ));
+  };
+
+  return (
+    <div className="todo-app">
+      <h1>My Todo List</h1>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+      />
+      <button onClick={addTodo}>Add</button>
+      <ul>
+        {todos.map(todo => (
+          <li key={todo.id} onClick={() => toggleTodo(todo.id)}>
+            {todo.completed ? '✓' : '○'} {todo.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}`,
+  },
+  {
+    name: "Markdown",
+    filetype: "markdown" as const,
+    code: `# OpenTUI Documentation
+
+## Getting Started
+
+OpenTUI is a modern terminal UI framework built on **tree-sitter** and WebGPU.
+
+### Features
+
+- 🚀 Fast rendering with WebGPU
+- 🎨 Syntax highlighting via tree-sitter
+- 📦 Component-based architecture
+- ⌨️ Rich keyboard input handling
+
+### Installation
+
+\`\`\`bash
+bun install opentui
+\`\`\`
+
+### Quick Example
+
+\`\`\`typescript
+import { createCliRenderer, BoxRenderable } from 'opentui';
+
+const renderer = await createCliRenderer();
+const box = new BoxRenderable(renderer, {
+  border: true,
+  title: "Hello World"
+});
+renderer.root.add(box);
+\`\`\`
+
+## API Reference
+
+### CodeRenderable
+
+The \`CodeRenderable\` component provides syntax highlighting:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| content | string | Code to display |
+| filetype | string | Language type |
+| syntaxStyle | SyntaxStyle | Styling rules |
+
+> **Note**: Tree-sitter parsers are loaded lazily for performance.
+
+---
+
+For more info, visit [github.com/opentui](https://github.com)`,
+  },
+]
 
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
@@ -52,7 +167,7 @@ let parentContainer: BoxRenderable | null = null
 let codeDisplay: CodeRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
-let currentFiletype: "typescript" | "javascript" = "typescript"
+let currentExampleIndex = 0
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -80,7 +195,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content: "ESC to return | T to toggle language | Demonstrating CodeRenderable with tree-sitter highlighting",
+    content: "ESC to return | ← → to switch examples | Demonstrating CodeRenderable with tree-sitter highlighting",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -90,7 +205,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "single",
     borderColor: "#6BCF7F",
     backgroundColor: "#0D1117",
-    title: "TypeScript Code (CodeRenderable)",
+    title: `${examples[currentExampleIndex].name} (CodeRenderable)`,
     titleAlignment: "left",
     paddingLeft: 1,
     border: true,
@@ -99,6 +214,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   // Create syntax style similar to GitHub Dark theme
   syntaxStyle = SyntaxStyle.fromStyles({
+    // JS/TS styles
     keyword: { fg: parseColor("#FF7B72"), bold: true }, // red keywords
     string: { fg: parseColor("#A5D6FF") }, // blue strings
     comment: { fg: parseColor("#8B949E"), italic: true }, // gray comments
@@ -110,14 +226,35 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     property: { fg: parseColor("#79C0FF") }, // light blue properties
     bracket: { fg: parseColor("#F0F6FC") }, // white brackets
     punctuation: { fg: parseColor("#F0F6FC") }, // white punctuation
+
+    // Markdown specific styles (matching tree-sitter capture names)
+    "markup.heading": { fg: parseColor("#79C0FF"), bold: true }, // blue headings
+    "markup.heading.1": { fg: parseColor("#79C0FF"), bold: true }, // H1
+    "markup.heading.2": { fg: parseColor("#A5D6FF"), bold: true }, // H2
+    "markup.heading.3": { fg: parseColor("#D2A8FF"), bold: true }, // H3
+    "markup.heading.4": { fg: parseColor("#FFA657"), bold: true }, // H4
+    "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true }, // H5
+    "markup.heading.6": { fg: parseColor("#8B949E"), bold: true }, // H6
+    "markup.bold": { fg: parseColor("#F0F6FC"), bold: true }, // white bold
+    "markup.italic": { fg: parseColor("#F0F6FC"), italic: true }, // white italic
+    "markup.list": { fg: parseColor("#FF7B72") }, // red list markers
+    "markup.quote": { fg: parseColor("#8B949E"), italic: true }, // gray quotes
+    "markup.raw.block": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue code blocks with dark bg
+    "markup.raw.inline": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue inline code
+    "markup.link": { fg: parseColor("#A5D6FF"), underline: true }, // blue links
+    "markup.link.url": { fg: parseColor("#A5D6FF") }, // blue URLs
+    label: { fg: parseColor("#7EE787") }, // green language labels in code blocks
+    spell: { fg: parseColor("#F0F6FC") }, // white normal text
+    "punctuation.special": { fg: parseColor("#8B949E") }, // gray special punctuation
+
     default: { fg: parseColor("#F0F6FC") }, // white default
   })
 
   // Create code display using CodeRenderable
   codeDisplay = new CodeRenderable(renderer, {
     id: "code-display",
-    content: exampleCode,
-    filetype: currentFiletype,
+    content: examples[currentExampleIndex].code,
+    filetype: examples[currentExampleIndex].filetype,
     syntaxStyle,
     bg: "#0D1117",
     selectable: true,
@@ -133,23 +270,25 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   parentContainer.add(timingText)
 
-  timingText.content = `Using CodeRenderable with ${currentFiletype.toUpperCase()} highlighting`
+  timingText.content = `Using CodeRenderable with ${examples[currentExampleIndex].name} highlighting (${currentExampleIndex + 1}/${examples.length})`
 
   keyboardHandler = (key: ParsedKey) => {
-    if (key.name === "t" || key.name === "T") {
-      // Toggle between TypeScript and JavaScript highlighting
-      if (currentFiletype === "typescript") {
-        currentFiletype = "javascript"
-        codeBox.title = "JavaScript Code (CodeRenderable)"
+    if (key.name === "right" || key.name === "left") {
+      // Navigate between examples
+      if (key.name === "right") {
+        currentExampleIndex = (currentExampleIndex + 1) % examples.length
       } else {
-        currentFiletype = "typescript"
-        codeBox.title = "TypeScript Code (CodeRenderable)"
+        currentExampleIndex = (currentExampleIndex - 1 + examples.length) % examples.length
       }
 
+      const example = examples[currentExampleIndex]
+      codeBox.title = `${example.name} (CodeRenderable)`
+
       if (codeDisplay) {
-        codeDisplay.filetype = currentFiletype
+        codeDisplay.content = example.code
+        codeDisplay.filetype = example.filetype
         if (timingText) {
-          timingText.content = `Using CodeRenderable with ${currentFiletype.toUpperCase()} highlighting`
+          timingText.content = `Using CodeRenderable with ${example.name} highlighting (${currentExampleIndex + 1}/${examples.length})`
         }
       }
     }
