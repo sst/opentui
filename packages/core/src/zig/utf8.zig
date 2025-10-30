@@ -1309,15 +1309,14 @@ pub const GraphemeInfoResult = struct {
 /// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs
 /// For ASCII-only chunks, returns empty list (no special graphemes to cache)
 /// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
-/// Tab width is calculated based on current column position (dynamic tab stops)
+/// Tab width is calculated based on current column position (static tab stops)
+/// Appends directly to the provided ArrayList to avoid double allocation
 pub fn findGraphemeInfoSIMD16(
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
-    result: *GraphemeInfoResult,
+    result: *std.ArrayList(GraphemeInfo),
 ) !void {
-    result.reset();
-
     // Fast path: ASCII-only text has no special graphemes to cache
     if (isASCIIOnly) {
         return;
@@ -1357,7 +1356,7 @@ pub fn findGraphemeInfoSIMD16(
                     // Commit previous cluster if it was special (tab or multibyte)
                     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
                         const cluster_byte_len = (pos + i) - cluster_start;
-                        try result.graphemes.append(GraphemeInfo{
+                        try result.append(GraphemeInfo{
                             .byte_offset = @intCast(cluster_start),
                             .byte_len = @intCast(cluster_byte_len),
                             .width = @intCast(cluster_width_state.width),
@@ -1402,7 +1401,7 @@ pub fn findGraphemeInfoSIMD16(
                 // Commit previous cluster if it was special (tab or multibyte)
                 if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
                     const cluster_byte_len = (pos + i) - cluster_start;
-                    try result.graphemes.append(GraphemeInfo{
+                    try result.append(GraphemeInfo{
                         .byte_offset = @intCast(cluster_start),
                         .byte_len = @intCast(cluster_byte_len),
                         .width = @intCast(cluster_width_state.width),
@@ -1447,7 +1446,7 @@ pub fn findGraphemeInfoSIMD16(
             // Commit previous cluster if it was special (tab or multibyte)
             if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
                 const cluster_byte_len = pos - cluster_start;
-                try result.graphemes.append(GraphemeInfo{
+                try result.append(GraphemeInfo{
                     .byte_offset = @intCast(cluster_start),
                     .byte_len = @intCast(cluster_byte_len),
                     .width = @intCast(cluster_width_state.width),
@@ -1479,7 +1478,7 @@ pub fn findGraphemeInfoSIMD16(
     // Commit final cluster if it was special
     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
         const cluster_byte_len = text.len - cluster_start;
-        try result.graphemes.append(GraphemeInfo{
+        try result.append(GraphemeInfo{
             .byte_offset = @intCast(cluster_start),
             .byte_len = @intCast(cluster_byte_len),
             .width = @intCast(cluster_width_state.width),

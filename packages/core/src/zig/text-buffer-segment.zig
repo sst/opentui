@@ -30,14 +30,7 @@ pub const ChunkFitResult = struct {
     width: u32,
 };
 
-/// Cached grapheme cluster information
-/// Only stored for multibyte (non-ASCII) graphemes
-pub const GraphemeInfo = struct {
-    byte_offset: u32,
-    byte_len: u8,
-    width: u8,
-    col_offset: u32,
-};
+pub const GraphemeInfo = utf8.GraphemeInfo;
 
 /// Memory buffer reference in the registry
 pub const MemBuffer = struct {
@@ -169,22 +162,14 @@ pub const TextChunk = struct {
         const chunk_bytes = self.getBytes(mem_registry);
 
         // Use utf8.findGraphemeInfoSIMD16 for fast grapheme detection
-        var result = utf8.GraphemeInfoResult.init(allocator);
-        defer result.deinit();
+        // Note: utf8.GraphemeInfo and our GraphemeInfo have identical structure
+        var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
+        errdefer grapheme_list.deinit();
 
-        try utf8.findGraphemeInfoSIMD16(chunk_bytes, tabwidth, self.isAsciiOnly(), &result);
+        try utf8.findGraphemeInfoSIMD16(chunk_bytes, tabwidth, self.isAsciiOnly(), &grapheme_list);
 
-        // Convert utf8.GraphemeInfo to our GraphemeInfo format
-        // They have the same structure, so we can directly copy
-        const graphemes = try allocator.alloc(GraphemeInfo, result.graphemes.items.len);
-        for (result.graphemes.items, 0..) |info, i| {
-            graphemes[i] = GraphemeInfo{
-                .byte_offset = info.byte_offset,
-                .byte_len = info.byte_len,
-                .width = info.width,
-                .col_offset = info.col_offset,
-            };
-        }
+        // Transfer ownership to our cache - no copy needed
+        const graphemes = try grapheme_list.toOwnedSlice();
 
         mut_self.graphemes = graphemes;
         return graphemes;
