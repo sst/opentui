@@ -358,12 +358,8 @@ class ParserWorker {
     }
 
     const content = parserState.content
-
-    // Get all injection captures
     const injectionCaptures = parserState.queries.injections.captures(parserState.tree.rootNode)
-
-    // Group captures by language
-    const languageGroups = new Map<string, Array<{ node: any; name: string }>>()
+    const languageGroups = new Map<string, Array<{ node: any; name: string }>>() // Group captures by language
 
     for (const capture of injectionCaptures) {
       const captureName = capture.name
@@ -700,7 +696,6 @@ class ParserWorker {
   }
 
   async handleOneShotHighlight(content: string, filetype: string, messageId: string): Promise<void> {
-    console.log(`handleOneShotHighlight called for filetype: ${filetype}`)
     const reusableState = await this.getReusableParser(filetype)
 
     if (!reusableState) {
@@ -712,8 +707,6 @@ class ParserWorker {
       })
       return
     }
-
-    console.log(`Reusable state has injections query: ${!!reusableState.filetypeParser.queries.injections}`)
 
     const tree = reusableState.parser.parse(content)
 
@@ -729,7 +722,6 @@ class ParserWorker {
 
     try {
       const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
-      console.log(`Got ${matches.length} highlight matches`)
 
       // Process injections
       if (reusableState.filetypeParser.queries.injections) {
