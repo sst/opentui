@@ -1,7 +1,6 @@
 const std = @import("std");
 const EditBuffer = @import("../edit-buffer.zig").EditBuffer;
 const gp = @import("../grapheme.zig");
-const gwidth = @import("../gwidth.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 

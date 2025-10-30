@@ -2,7 +2,6 @@ const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const edit_buffer = @import("../edit-buffer.zig");
 const gp = @import("../grapheme.zig");
-const gwidth = @import("../gwidth.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 

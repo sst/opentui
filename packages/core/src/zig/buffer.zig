@@ -12,6 +12,8 @@ const code_point = @import("code_point");
 const gp = @import("grapheme.zig");
 const gwidth = @import("gwidth.zig");
 const logger = @import("logger.zig");
+const utf8 = @import("utf8.zig");
+const uucode = @import("uucode");
 
 pub const RGBA = ansi.RGBA;
 pub const Vec3f = @Vector(3, f32);
@@ -671,14 +673,45 @@ pub const OptimizedBuffer = struct {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;
 
-        var iter = self.graphemes_data.iterator(text);
+        const is_ascii_only = utf8.isAsciiOnly(text);
+
+        var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(self.allocator);
+        defer grapheme_list.deinit();
+
+        const tab_width: u8 = 2;
+        try utf8.findGraphemeInfoSIMD16(text, tab_width, is_ascii_only, &grapheme_list);
+        const specials = grapheme_list.items;
+
         var advance_cells: u32 = 0;
-        while (iter.next()) |gc| {
+        var byte_offset: u32 = 0;
+        var col: u32 = 0;
+        var special_idx: usize = 0;
+
+        while (byte_offset < text.len) {
             const charX = x + advance_cells;
             if (charX >= self.width) break;
 
+            const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+
+            var grapheme_bytes: []const u8 = undefined;
+            var g_width: u8 = undefined;
+
+            if (at_special) {
+                const g = specials[special_idx];
+                grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
+                g_width = g.width;
+                byte_offset = g.byte_offset + g.byte_len;
+                special_idx += 1;
+            } else {
+                if (byte_offset >= text.len) break;
+                grapheme_bytes = text[byte_offset .. byte_offset + 1];
+                g_width = 1;
+                byte_offset += 1;
+            }
+
             if (!self.isPointInScissor(@intCast(charX), @intCast(y))) {
-                advance_cells += 1;
+                advance_cells += g_width;
+                col += g_width;
                 continue;
             }
 
@@ -691,19 +724,46 @@ pub const OptimizedBuffer = struct {
                 bgColor = .{ 0.0, 0.0, 0.0, 1.0 };
             }
 
-            const gbytes = gc.bytes(text);
-            const cell_width_u16: u16 = gwidth.gwidth(gbytes, self.width_method, &self.display_width);
-            if (cell_width_u16 == 0) {
-                // Zero-width or control cluster: skip rendering and do not advance visible cells
+            const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width);
+            if (cell_width == 0) {
+                col += g_width;
                 continue;
             }
-            const cell_width: u32 = @intCast(cell_width_u16);
+
+            if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+                var tab_col: u32 = 0;
+                while (tab_col < g_width) : (tab_col += 1) {
+                    const tab_x = charX + tab_col;
+                    if (tab_x >= self.width) break;
+
+                    if (isRGBAWithAlpha(bgColor)) {
+                        try self.setCellWithAlphaBlending(
+                            tab_x,
+                            y,
+                            DEFAULT_SPACE_CHAR,
+                            fg,
+                            bgColor,
+                            attributes,
+                        );
+                    } else {
+                        self.set(tab_x, y, Cell{
+                            .char = DEFAULT_SPACE_CHAR,
+                            .fg = fg,
+                            .bg = bgColor,
+                            .attributes = attributes,
+                        });
+                    }
+                }
+                advance_cells += g_width;
+                col += g_width;
+                continue;
+            }
 
             var encoded_char: u32 = 0;
-            if (gbytes.len == 1 and cell_width == 1 and gbytes[0] >= 32) {
-                encoded_char = @as(u32, gbytes[0]);
+            if (grapheme_bytes.len == 1 and cell_width == 1 and grapheme_bytes[0] >= 32) {
+                encoded_char = @as(u32, grapheme_bytes[0]);
             } else {
-                const gid = self.pool.alloc(gbytes) catch return BufferError.OutOfMemory;
+                const gid = self.pool.alloc(grapheme_bytes) catch return BufferError.OutOfMemory;
                 encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cell_width);
             }
 
@@ -719,6 +779,7 @@ pub const OptimizedBuffer = struct {
             }
 
             advance_cells += cell_width;
+            col += g_width;
         }
     }
 
@@ -1178,7 +1239,8 @@ pub const OptimizedBuffer = struct {
 
         if (title) |titleText| {
             if (titleText.len > 0 and borderSides.top and isAtActualTop) {
-                const titleLength = @as(i32, @intCast(gwidth.gwidth(titleText, self.width_method, &self.display_width)));
+                const is_ascii = utf8.isAsciiOnly(titleText);
+                const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(titleText, 2, is_ascii)));
                 const minTitleSpace = 4;
 
                 shouldDrawTitle = @as(i32, @intCast(width)) >= titleLength + minTitleSpace;
