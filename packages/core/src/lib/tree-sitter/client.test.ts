@@ -419,7 +419,7 @@ You can use \`const x = 42\` in your code.`
     }
   }, 10000)
 
-  test.only("should highlight code blocks in markdown using language-specific injection", async () => {
+  test("should highlight code blocks in markdown using language-specific injection", async () => {
     const client = new TreeSitterClient({ dataPath })
 
     try {
