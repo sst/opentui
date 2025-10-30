@@ -473,19 +473,6 @@ test "Word wrap - debug virtual line contents" {
 
     const vlines = view.getVirtualLines();
 
-    std.debug.print("\nNumber of virtual lines: {}\n", .{vlines.len});
-    for (vlines, 0..) |vline, i| {
-        std.debug.print("VLine {}: width={}, chunks={}, char_offset={}, source_col_offset={}\n", .{ i, vline.width, vline.chunks.items.len, vline.char_offset, vline.source_col_offset });
-
-        // Print each chunk in the virtual line
-        for (vline.chunks.items, 0..) |vchunk, j| {
-            const chunk_bytes = vchunk.chunk.getBytes(&eb.getTextBuffer().mem_registry);
-            const start = vchunk.grapheme_start;
-            _ = start;
-            std.debug.print("  Chunk {}: start={}, width={}, total_chunk_width={}, bytes_len={}\n", .{ j, vchunk.grapheme_start, vchunk.width, vchunk.chunk.width, chunk_bytes.len });
-        }
-    }
-
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
 }
 

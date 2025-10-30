@@ -3531,11 +3531,6 @@ test "calculateTextWidth: validate against unicode-width-map.zon" {
         &status,
         .{},
     ) catch |err| {
-        std.debug.print("Failed to parse ZON: {}\n", .{err});
-        var iter = status.iterateErrors();
-        while (iter.next()) |parse_err| {
-            std.debug.print("Parse error: {}\n", .{parse_err});
-        }
         return err;
     };
     defer {
@@ -3569,7 +3564,6 @@ test "calculateTextWidth: validate against unicode-width-map.zon" {
             successes += 1;
         } else {
             failures += 1;
-            std.debug.print("MISMATCH U+{X:0>4}: expected {d}, got {d}\n", .{ code_point, expected_width, actual_width });
         }
     }
 
@@ -3610,28 +3604,12 @@ test "findGraphemeInfo: comprehensive multilingual text" {
 
     var prev_end_byte: usize = 0;
 
-    for (result.items, 0..) |g, idx| {
+    for (result.items) |g| {
         try testing.expect(g.byte_offset >= prev_end_byte);
 
         const text_before = text[0..g.byte_offset];
         const expected_col = utf8.calculateTextWidth(text_before, 4, false);
 
-        if (expected_col != g.col_offset) {
-            std.debug.print("\nMismatch at grapheme #{d}:\n", .{idx});
-            std.debug.print("  byte_offset: {d}\n", .{g.byte_offset});
-            std.debug.print("  byte_len: {d}\n", .{g.byte_len});
-            std.debug.print("  width: {d}\n", .{g.width});
-            std.debug.print("  expected col_offset (from calculateTextWidth): {d}\n", .{expected_col});
-            std.debug.print("  actual col_offset: {d}\n", .{g.col_offset});
-            if (g.byte_offset < text.len and g.byte_offset + g.byte_len <= text.len) {
-                const grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
-                std.debug.print("  grapheme bytes: ", .{});
-                for (grapheme_bytes) |b| {
-                    std.debug.print("{X:0>2} ", .{b});
-                }
-                std.debug.print("\n", .{});
-            }
-        }
         try testing.expectEqual(expected_col, g.col_offset);
 
         prev_end_byte = g.byte_offset + g.byte_len;

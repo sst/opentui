@@ -2061,34 +2061,11 @@ test "viewport width = 31 exactly - last character rendering" {
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
-    std.debug.print("\n=== VIEWPORT WIDTH = 31 TEST ===\n", .{});
-
-    // Check critical cells
-    var i: u32 = 0;
-    while (i <= 30) : (i += 1) {
-        if (opt_buffer.get(i, 0)) |cell| {
-            std.debug.print("Cell {d:2}: ", .{i});
-            if (cell.char >= 32 and cell.char < 127) {
-                std.debug.print("'{c}'\n", .{@as(u8, @intCast(cell.char))});
-            } else if (gp.isGraphemeChar(cell.char)) {
-                std.debug.print("[GRAPHEME w={}]\n", .{gp.encodedCharWidth(cell.char)});
-            } else if (gp.isContinuationChar(cell.char)) {
-                std.debug.print("[CONTINUATION]\n", .{});
-            } else {
-                std.debug.print("SPACE\n", .{});
-            }
-        } else {
-            std.debug.print("Cell {d:2}: NULL\n", .{i});
-        }
-    }
-
     // BUG CHECK: The last 's' at cell 30 should be present
     const cell_30 = opt_buffer.get(30, 0);
     if (cell_30) |c| {
-        std.debug.print("\n✓ Cell 30 exists: '{c}'\n", .{@as(u8, @intCast(c.char))});
         try std.testing.expectEqual(@as(u32, 's'), c.char);
     } else {
-        std.debug.print("\n✗ BUG REPRODUCED: Cell 30 is NULL!\n", .{});
         return error.TestFailed;
     }
 }
