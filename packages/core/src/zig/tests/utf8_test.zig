@@ -2325,10 +2325,12 @@ test "calculateTextWidth: Devanagari conjuncts" {
     // Conjunct consonants with virama
     const kta = "क्त"; // क + virama + त (kta)
     const jna = "ज्ञ"; // ज + virama + ञ (jna)
+    const ksha = "क्‍ष"; // क + virama + ZWJ + ष (kṣa with explicit ZWJ)
 
     // These form single grapheme clusters but width = number of base consonants
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(kta, 4, false));
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(jna, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(ksha, 4, false));
 }
 
 test "calculateTextWidth: Bengali script" {
