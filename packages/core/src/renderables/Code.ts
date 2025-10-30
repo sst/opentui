@@ -19,6 +19,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _treeSitterClient: TreeSitterClient
   private _pendingRehighlight: boolean = false
   private _pendingUpdate: boolean = false
+  private _currentHighlightId: number = 0
 
   protected _contentDefaultOptions = {
     content: "",
@@ -79,19 +80,19 @@ export class CodeRenderable extends TextBufferRenderable {
 
   private async updateContent(content: string): Promise<void> {
     if (content.length === 0) return
-    if (this._isHighlighting) {
-      this._pendingRehighlight = true
-      return
-    }
 
     if (!this._filetype) {
       this.fallback(content)
       return
     }
 
+    this._currentHighlightId++
+    const highlightId = this._currentHighlightId
+
     this.fallback(content)
 
     this._isHighlighting = true
+    this._pendingRehighlight = false
 
     try {
       const styledText = await treeSitterToStyledText(
@@ -100,18 +101,24 @@ export class CodeRenderable extends TextBufferRenderable {
         this._syntaxStyle,
         this._treeSitterClient,
       )
+
+      if (highlightId !== this._currentHighlightId) {
+        // This response is stale, ignore it
+        return
+      }
+
       if (this.isDestroyed) return
       this.textBuffer.setStyledText(styledText)
       this.updateTextInfo()
     } catch (error) {
+      if (highlightId !== this._currentHighlightId) {
+        return
+      }
       console.warn("Code highlighting failed, falling back to plain text:", error)
       this.fallback(content)
     } finally {
-      this._isHighlighting = false
-
-      if (this._pendingRehighlight) {
-        this._pendingRehighlight = false
-        process.nextTick(() => this.updateContent(this._content))
+      if (highlightId === this._currentHighlightId) {
+        this._isHighlighting = false
       }
     }
   }

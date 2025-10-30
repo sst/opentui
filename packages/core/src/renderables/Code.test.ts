@@ -422,3 +422,81 @@ test("CodeRenderable - MUST only call highlightOnce ONCE when triple-updating in
   expect(highlightCalls[0]?.content).toBe("second content change")
   expect(highlightCalls[0]?.filetype).toBe("typescript")
 })
+
+test("CodeRenderable - handles when tree-sitter promise never resolves", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  let highlightCount = 0
+  const pendingPromises: Array<{ content: string; filetype: string; never: boolean }> = []
+
+  class HangingMockClient extends TreeSitterClient {
+    constructor() {
+      super({ dataPath: "/tmp/mock" })
+    }
+
+    async highlightOnce(
+      content: string,
+      filetype: string,
+    ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
+      highlightCount++
+
+      const shouldHang = highlightCount === 4 && filetype === "typescript"
+
+      pendingPromises.push({ content, filetype, never: shouldHang })
+
+      if (shouldHang) {
+        return new Promise(() => {})
+      }
+
+      return Promise.resolve({ highlights: [] })
+    }
+  }
+
+  const mockClient = new HangingMockClient()
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "interface User { name: string; }",
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  highlightCount = 0
+  pendingPromises.length = 0
+
+  codeRenderable.content = "const message = 'hello';"
+  codeRenderable.filetype = "javascript"
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  codeRenderable.content = "# Documentation"
+  codeRenderable.filetype = "markdown"
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  codeRenderable.content = "const message = 'world';"
+  codeRenderable.filetype = "javascript"
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  codeRenderable.content = "interface User { name: string; }"
+  codeRenderable.filetype = "typescript"
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  codeRenderable.content = "# New Documentation"
+  codeRenderable.filetype = "markdown"
+  await new Promise((resolve) => queueMicrotask(resolve))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  const markdownHighlightHappened = pendingPromises.some(
+    (p) => p.content === "# New Documentation" && p.filetype === "markdown",
+  )
+
+  expect(codeRenderable.content).toBe("# New Documentation")
+  expect(codeRenderable.filetype).toBe("markdown")
+  expect(markdownHighlightHappened).toBe(true)
+  expect(highlightCount).toBe(5)
+})
