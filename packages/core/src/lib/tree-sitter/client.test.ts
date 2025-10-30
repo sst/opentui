@@ -95,7 +95,6 @@ describe("TreeSitterClient", () => {
       receivedVersion = version
     })
 
-    // Wait a bit for initial highlighting to complete
     await new Promise((resolve) => setTimeout(resolve, 100))
 
     const newCode = 'const hello = "world";\nconst foo = 42;'
@@ -112,7 +111,6 @@ describe("TreeSitterClient", () => {
 
     await client.updateBuffer(1, edits, newCode, 2)
 
-    // Wait for highlighting to complete
     await new Promise((resolve) => setTimeout(resolve, 200))
 
     expect(highlightReceived).toBe(true)
@@ -185,7 +183,6 @@ describe("TreeSitterClient", () => {
       errorMessage = error
     })
 
-    // Try to reset a buffer that doesn't exist
     await client.resetBuffer(999, 1, "test")
 
     expect(errorReceived).toBe(true)
@@ -198,7 +195,6 @@ describe("TreeSitterClient", () => {
     const jsCode = 'const hello = "world";'
     await client.createBuffer(1, jsCode, "javascript")
 
-    // Try to create buffer with same ID
     await expect(client.createBuffer(1, "other code", "javascript")).rejects.toThrow("Buffer with id 1 already exists")
   })
 
@@ -218,7 +214,6 @@ describe("TreeSitterClient", () => {
 
     const promises = []
 
-    // Create multiple buffers concurrently
     for (let i = 0; i < 5; i++) {
       const code = `const var${i} = ${i};`
       promises.push(client.createBuffer(i, code, "javascript"))
@@ -261,7 +256,6 @@ describe("TreeSitterClient", () => {
     expect(typeof firstHighlight[1]).toBe("number")
     expect(typeof firstHighlight[2]).toBe("string")
 
-    // Should have some highlight groups
     const groups = result.highlights!.map((hl) => hl[2])
     expect(groups.length).toBeGreaterThan(0)
     expect(groups).toContain("keyword")
@@ -403,16 +397,9 @@ You can use \`const x = 42\` in your code.`
       expect(result.highlights).toBeDefined()
       expect(result.highlights!.length).toBeGreaterThan(0)
 
-      // Check that we have highlights for the inline code
       const groups = result.highlights!.map((hl) => hl[2])
-
-      // Should have markdown_inline highlights like markup.raw.inline for backtick code
       const hasInlineCodeHighlights = groups.some((g) => g.includes("markup.raw"))
 
-      console.log("Highlight groups found:", [...new Set(groups)])
-      console.log("Full highlights:", result.highlights)
-
-      // This test documents the expected behavior - we expect inline code to be highlighted
       expect(hasInlineCodeHighlights).toBe(true)
     } finally {
       await client.destroy()
@@ -439,15 +426,9 @@ Some text here.`
       expect(result.highlights).toBeDefined()
       expect(result.highlights!.length).toBeGreaterThan(0)
 
-      // Check that we have TypeScript highlights from the code block
       const groups = result.highlights!.map((hl) => hl[2])
-
-      console.log("Highlight groups found:", [...new Set(groups)])
-
-      // Should have typescript highlights like 'keyword', 'type', 'function'
       const hasTypeScriptHighlights = groups.some((g) => g === "keyword" || g === "type" || g === "function")
 
-      // This test documents the expected behavior
       expect(hasTypeScriptHighlights).toBe(true)
     } finally {
       await client.destroy()
@@ -460,8 +441,6 @@ Some text here.`
     try {
       await client.initialize()
 
-      // Create a markdown document with a TypeScript code block
-      // We need to know the exact byte offsets
       const markdownCode = `# Title\n\n\`\`\`typescript\nconst x = 42;\n\`\`\``
 
       const result = await client.highlightOnce(markdownCode, "markdown")
@@ -469,8 +448,6 @@ Some text here.`
       expect(result.highlights).toBeDefined()
       expect(result.highlights!.length).toBeGreaterThan(0)
 
-      // Find highlights for the injected TypeScript code
-      // "const" should be highlighted as a keyword
       const constHighlight = result.highlights!.find((hl) => {
         const text = markdownCode.substring(hl[0], hl[1])
         return text === "const" && hl[2] === "keyword"
@@ -481,19 +458,12 @@ Some text here.`
         const [start, end, group] = constHighlight
         const text = markdownCode.substring(start, end)
 
-        // Verify the text is actually "const"
         expect(text).toBe("const")
         expect(group).toBe("keyword")
-
-        // Verify the offsets are correct relative to the entire document
-        // "# Title\n\n```typescript\n" = 9 + 15 = 24 bytes before "const"
-        // Let's calculate: "# Title" (7) + "\n" (1) + "\n" (1) + "```typescript" (13) + "\n" (1) = 23
-        const expectedStart = 23
-        expect(start).toBe(expectedStart)
-        expect(end).toBe(expectedStart + 5) // "const".length = 5
+        expect(start).toBe(23)
+        expect(end).toBe(28)
       }
 
-      // Find highlights for the number "42"
       const numberHighlight = result.highlights!.find((hl) => {
         const text = markdownCode.substring(hl[0], hl[1])
         return text === "42" && hl[2] === "number"
@@ -506,11 +476,8 @@ Some text here.`
 
         expect(text).toBe("42")
         expect(group).toBe("number")
-
-        // "# Title\n\n```typescript\nconst x = " = 23 + "const x = ".length = 23 + 10 = 33
-        const expectedStart = 33
-        expect(start).toBe(expectedStart)
-        expect(end).toBe(expectedStart + 2) // "42".length = 2
+        expect(start).toBe(33)
+        expect(end).toBe(35)
       }
     } finally {
       await client.destroy()
@@ -523,7 +490,6 @@ Some text here.`
     try {
       await client.initialize()
 
-      // Create a more complex markdown document with multiple injections
       const markdownCode = `# Documentation
 
 Some text with \`inline code\` here.
@@ -546,15 +512,11 @@ function test() {
       expect(result.highlights).toBeDefined()
       expect(result.highlights!.length).toBeGreaterThan(0)
 
-      // Verify that all highlights are sorted by start offset
       for (let i = 1; i < result.highlights!.length; i++) {
         const prevStart = result.highlights![i - 1][0]
         const currStart = result.highlights![i][0]
-
         expect(currStart).toBeGreaterThanOrEqual(prevStart)
       }
-
-      console.log("Highlights are properly sorted by start offset")
     } finally {
       await client.destroy()
     }
@@ -565,14 +527,11 @@ function test() {
 
     const errors: string[] = []
     client.on("error", (error) => {
-      console.log("ERROR EVENT:", error)
       errors.push(error)
     })
 
-    // Listen to worker logs to see actual errors
     client.on("worker:log", (logType, message) => {
       if (logType === "error") {
-        console.log("WORKER ERROR:", message)
         errors.push(message)
       }
     })
@@ -580,7 +539,6 @@ function test() {
     try {
       await client.initialize()
 
-      // Markdown code with injections (similar to the demo)
       const markdownCode = `# OpenTUI Documentation
 
 ## Getting Started
@@ -625,51 +583,26 @@ The \`CodeRenderable\` component provides syntax highlighting.
 
 const user: User = { name: "Alice", age: 25 };`
 
-      // Simulate rapid switching between examples like in the demo
-      // This should trigger concurrent highlighting requests with injections
-      console.log("Starting concurrent highlighting requests...")
       const promises = []
-
-      // Rapid fire markdown requests - this triggers concurrent injection processing
-      // which causes "Out of bounds memory access" because the same parser instance
-      // is reused concurrently
       for (let i = 0; i < 5; i++) {
         promises.push(client.highlightOnce(markdownCode, "markdown"))
       }
 
-      console.log(`Waiting for ${promises.length} concurrent markdown requests...`)
       const results = await Promise.allSettled(promises)
 
-      console.log("All requests completed")
-
-      // Check that all requests succeeded without errors
       for (let i = 0; i < results.length; i++) {
         const result = results[i]
         if (result.status === "fulfilled") {
-          if (result.value.error) {
-            console.log(`Result ${i} had error:`, result.value.error)
-          }
           expect(result.value.error).toBeUndefined()
           expect(result.value.highlights).toBeDefined()
         } else {
-          console.log(`Result ${i} was rejected:`, result.reason)
           throw new Error(`Request ${i} was rejected: ${result.reason}`)
         }
       }
 
-      // Wait a bit more to see if any delayed errors appear
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      console.log("Total errors captured:", errors.length)
-      if (errors.length > 0) {
-        console.log("Errors:", errors)
-      }
-
-      // The test should fail if we got "Out of bounds memory access" errors
       const hasMemoryErrors = errors.some((err) => err.includes("Out of bounds memory access"))
-      if (hasMemoryErrors) {
-        console.log("ISSUE REPRODUCED: Out of bounds memory access errors detected")
-      }
       expect(hasMemoryErrors).toBe(false)
     } finally {
       await client.destroy()
@@ -691,14 +624,12 @@ describe("TreeSitterClient Edge Cases", () => {
   })
 
   test("should handle initialization timeout", async () => {
-    // Create client with invalid worker path and short timeout
     const client = new TreeSitterClient({
       dataPath,
       workerPath: "invalid-path",
       initTimeout: 500,
     })
 
-    // Should fail with either a worker error (Bun fails fast) or timeout
     await expect(client.initialize()).rejects.toThrow(/Worker error|Worker initialization timed out/)
 
     await client.destroy()
@@ -707,7 +638,6 @@ describe("TreeSitterClient Edge Cases", () => {
   test("should handle operations before initialization", async () => {
     const client = new TreeSitterClient({ dataPath })
 
-    // These operations should work even before initialization
     expect(client.isInitialized()).toBe(false)
     expect(client.getAllBuffers()).toHaveLength(0)
     expect(client.getBuffer(1)).toBeUndefined()
@@ -723,7 +653,6 @@ describe("TreeSitterClient Edge Cases", () => {
       errorReceived = true
     })
 
-    // Try to create buffer before initialization with autoInitialize disabled
     const hasParser = await client.createBuffer(1, "test", "javascript", 1, false)
     expect(hasParser).toBe(false)
     expect(errorReceived).toBe(true)
@@ -744,7 +673,6 @@ describe("TreeSitterClient Edge Cases", () => {
 
       dataPathsManager.appName = "test-app-changed"
 
-      // Wait for the event to propagate and client to reinitialize
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       const newDataPath = dataPathsManager.globalDataPath

@@ -111,7 +111,6 @@ class ParserWorker {
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions) {
-    console.log("Adding filetype parser", filetypeParser.filetype, filetypeParser.queries)
     this.filetypeParserOptions.set(filetypeParser.filetype, filetypeParser)
   }
 
@@ -126,8 +125,6 @@ class ParserWorker {
     | undefined
   > {
     try {
-      console.log("Creating queries for", filetypeParser.filetype, filetypeParser.queries)
-
       // Fetch all highlight queries from URLs/paths and concatenate them
       const highlightQueryContent = await this.fetchQueries(filetypeParser.queries.highlights, filetypeParser.filetype)
       if (!highlightQueryContent) {
@@ -136,23 +133,18 @@ class ParserWorker {
       }
 
       const highlightsQuery = new Query(language, highlightQueryContent)
-      // console.log("Highlights query", highlightsQuery)
       const result: { highlights: Query; injections?: Query } = {
         highlights: highlightsQuery,
       }
 
       // Load injections query if provided
       if (filetypeParser.queries.injections && filetypeParser.queries.injections.length > 0) {
-        console.log(`Loading injection queries for ${filetypeParser.filetype}`)
         const injectionQueryContent = await this.fetchQueries(
           filetypeParser.queries.injections,
           filetypeParser.filetype,
         )
         if (injectionQueryContent) {
-          console.log(`Loaded injection query for ${filetypeParser.filetype}, length: ${injectionQueryContent.length}`)
           result.injections = new Query(language, injectionQueryContent)
-        } else {
-          console.log(`Failed to load injection query for ${filetypeParser.filetype}`)
         }
       }
 
@@ -342,14 +334,9 @@ class ParserWorker {
     const query = parserState.queries.highlights
     const matches: QueryCapture[] = query.captures(parserState.tree.rootNode)
 
-    // Handle injections if present
     if (parserState.queries.injections) {
-      console.log(`Processing injections for ${parserState.filetype}`)
       const injectionMatches = await this.processInjections(parserState)
-      console.log(`Got ${injectionMatches.length} injection matches`)
       matches.push(...injectionMatches)
-    } else {
-      console.log(`No injection query for ${parserState.filetype}`)
     }
 
     return this.getHighlights(parserState, matches)
@@ -417,7 +404,7 @@ class ParserWorker {
       const injectedParser = await this.getReusableParser(language)
 
       if (!injectedParser) {
-        console.log(`No parser found for injection language: ${language}`)
+        console.warn(`No parser found for injection language: ${language}`)
         continue
       }
 
@@ -739,7 +726,6 @@ class ParserWorker {
 
       // Process injections
       if (reusableState.filetypeParser.queries.injections) {
-        console.log(`Processing injections for one-shot highlight`)
         const parserState: ParserState = {
           parser: reusableState.parser,
           tree,
@@ -749,10 +735,8 @@ class ParserWorker {
           injectionMapping: reusableState.filetypeParser.injectionMapping,
         }
         const injectionMatches = await this.processInjections(parserState)
-        console.log(`Got ${injectionMatches.length} injection matches`)
+
         matches.push(...injectionMatches)
-      } else {
-        console.log(`No injections query found for ${filetype}`)
       }
 
       const highlights = this.getSimpleHighlights(matches)
@@ -799,8 +783,6 @@ class ParserWorker {
       this.filetypeParserPromises.clear()
       this.reusableParsers.clear()
       this.reusableParserPromises.clear()
-
-      console.log("Cache cleared successfully")
     } catch (error) {
       throw new Error(`Failed to clear cache: ${error}`)
     }
