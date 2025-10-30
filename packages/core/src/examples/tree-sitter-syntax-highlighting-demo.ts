@@ -1,4 +1,12 @@
-import { CliRenderer, createCliRenderer, CodeRenderable, BoxRenderable, TextRenderable, type ParsedKey } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  CodeRenderable,
+  BoxRenderable,
+  TextRenderable,
+  type ParsedKey,
+  ScrollBoxRenderable,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
@@ -164,6 +172,7 @@ For more info, visit [github.com/opentui](https://github.com)`,
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
+let codeScrollBox: ScrollBoxRenderable | null = null
 let codeDisplay: CodeRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
@@ -200,17 +209,21 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   titleBox.add(instructionsText)
 
-  const codeBox = new BoxRenderable(renderer, {
-    id: "code-box",
+  codeScrollBox = new ScrollBoxRenderable(renderer, {
+    id: "code-scroll-box",
     borderStyle: "single",
     borderColor: "#6BCF7F",
     backgroundColor: "#0D1117",
     title: `${examples[currentExampleIndex].name} (CodeRenderable)`,
     titleAlignment: "left",
-    paddingLeft: 1,
     border: true,
+    scrollY: true,
+    scrollX: false,
+    contentOptions: {
+      paddingLeft: 1,
+    },
   })
-  parentContainer.add(codeBox)
+  parentContainer.add(codeScrollBox)
 
   // Create syntax style similar to GitHub Dark theme
   syntaxStyle = SyntaxStyle.fromStyles({
@@ -261,7 +274,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
   })
-  codeBox.add(codeDisplay)
+  codeScrollBox.add(codeDisplay)
 
   timingText = new TextRenderable(renderer, {
     id: "timing-display",
@@ -282,7 +295,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       }
 
       const example = examples[currentExampleIndex]
-      codeBox.title = `${example.name} (CodeRenderable)`
+      if (codeScrollBox) {
+        codeScrollBox.title = `${example.name} (CodeRenderable)`
+      }
 
       if (codeDisplay) {
         codeDisplay.content = example.code
@@ -305,6 +320,7 @@ export function destroy(rendererInstance: CliRenderer): void {
 
   parentContainer?.destroy()
   parentContainer = null
+  codeScrollBox = null
   codeDisplay = null
   timingText = null
   syntaxStyle = null
