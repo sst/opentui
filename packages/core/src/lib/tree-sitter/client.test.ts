@@ -560,7 +560,7 @@ function test() {
     }
   }, 10000)
 
-  test.only("should handle fast concurrent markdown highlighting requests with injections", async () => {
+  test("should handle fast concurrent markdown highlighting requests with injections", async () => {
     const client = new TreeSitterClient({ dataPath })
 
     const errors: string[] = []

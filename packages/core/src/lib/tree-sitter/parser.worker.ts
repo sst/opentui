@@ -467,7 +467,7 @@ class ParserWorker {
         }
       }
 
-      parser.delete()
+      // NOTE: Do NOT call parser.delete() here - this is a reusable parser!
     }
 
     return injectionMatches
