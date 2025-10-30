@@ -327,3 +327,98 @@ test("CodeRenderable - text renders immediately before highlighting completes", 
   const frameAfterHighlighting = captureFrame()
   expect(frameAfterHighlighting).toMatchSnapshot("text visible after highlighting completes")
 })
+
+test("CodeRenderable - MUST batch concurrent content and filetype updates (CURRENTLY FAILS)", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  let highlightCount = 0
+  const mockClient = new MockTreeSitterClient()
+  const originalHighlightOnce = mockClient.highlightOnce.bind(mockClient)
+
+  mockClient.highlightOnce = async (content: string, filetype: string) => {
+    highlightCount++
+    return originalHighlightOnce(content, filetype)
+  }
+
+  mockClient.setMockResult({
+    highlights: [[0, 3, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  mockClient.resolveHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  highlightCount = 0
+
+  codeRenderable.content = "let newMessage = 'world';"
+  codeRenderable.filetype = "typescript"
+
+  await new Promise((resolve) => queueMicrotask(resolve))
+
+  while (mockClient.isHighlighting()) {
+    mockClient.resolveHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+
+  expect(highlightCount).toBe(1)
+  expect(codeRenderable.content).toBe("let newMessage = 'world';")
+  expect(codeRenderable.filetype).toBe("typescript")
+})
+
+test("CodeRenderable - MUST only call highlightOnce ONCE when triple-updating in same tick (CURRENTLY FAILS)", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  let highlightCount = 0
+  const highlightCalls: Array<{ content: string; filetype: string }> = []
+  const mockClient = new MockTreeSitterClient()
+  const originalHighlightOnce = mockClient.highlightOnce.bind(mockClient)
+
+  mockClient.highlightOnce = async (content: string, filetype: string) => {
+    highlightCount++
+    highlightCalls.push({ content, filetype })
+    return originalHighlightOnce(content, filetype)
+  }
+
+  mockClient.setMockResult({ highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "initial",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+  })
+
+  mockClient.resolveHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  highlightCount = 0
+  highlightCalls.length = 0
+
+  codeRenderable.content = "first content change"
+  codeRenderable.filetype = "typescript"
+  codeRenderable.content = "second content change"
+
+  await new Promise((resolve) => queueMicrotask(resolve))
+
+  while (mockClient.isHighlighting()) {
+    mockClient.resolveHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+
+  expect(highlightCount).toBe(1)
+  expect(highlightCalls[0]?.content).toBe("second content change")
+  expect(highlightCalls[0]?.filetype).toBe("typescript")
+})

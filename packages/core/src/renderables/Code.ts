@@ -18,6 +18,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _isHighlighting: boolean = false
   private _treeSitterClient: TreeSitterClient
   private _pendingRehighlight: boolean = false
+  private _pendingUpdate: boolean = false
 
   protected _contentDefaultOptions = {
     content: "",
@@ -41,7 +42,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set content(value: string) {
     if (this._content !== value) {
       this._content = value
-      this.updateContent(value)
+      this.scheduleUpdate()
     }
   }
 
@@ -52,7 +53,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set filetype(value: string) {
     if (this._filetype !== value) {
       this._filetype = value
-      this.updateContent(this._content)
+      this.scheduleUpdate()
     }
   }
 
@@ -63,8 +64,17 @@ export class CodeRenderable extends TextBufferRenderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this.updateContent(this._content)
+      this.scheduleUpdate()
     }
+  }
+
+  private scheduleUpdate(): void {
+    if (this._pendingUpdate) return
+    this._pendingUpdate = true
+    queueMicrotask(() => {
+      this._pendingUpdate = false
+      this.updateContent(this._content)
+    })
   }
 
   private async updateContent(content: string): Promise<void> {
@@ -124,5 +134,9 @@ export class CodeRenderable extends TextBufferRenderable {
       },
     ]
     return new StyledText(chunks)
+  }
+
+  public getLineHighlights(lineIdx: number) {
+    return this.textBuffer.getLineHighlights(lineIdx)
   }
 }
