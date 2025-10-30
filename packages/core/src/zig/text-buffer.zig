@@ -518,11 +518,6 @@ pub const UnifiedTextBuffer = struct {
         return out_index;
     }
 
-    /// Create a grapheme iterator for given bytes
-    pub fn getGraphemeIterator(self: *const Self, bytes: []const u8) Graphemes.Iterator {
-        return self.graphemes_data.iterator(bytes);
-    }
-
     pub fn startHighlightsTransaction(self: *Self) void {
         self.highlight_batch_depth += 1;
     }

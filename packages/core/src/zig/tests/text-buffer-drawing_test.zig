@@ -2092,3 +2092,117 @@ test "viewport width = 31 exactly - last character rendering" {
         return error.TestFailed;
     }
 }
+
+test "drawTextBuffer - complex multilingual text with diverse scripts and emojis" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\# The Celestial Journey of संस्कृति 🌟🔮✨
+        \\In the beginning, there was नमस्ते 🙏 and the ancient wisdom of the ॐ symbol echoing through dimensions. The travelers 🧑‍🚀👨‍🚀👩‍🚀 embarked on their quest through the cosmos, guided by the mysterious རྒྱ་མཚོ and the luminous 🌈🦄🧚‍♀️ beings of light. They encountered the great देवनागरी scribes who wrote in flowing अक्षर characters, documenting everything in their sacred texts 📜📖✍️.
+        \\## Chapter प्रथम: The Eastern Gardens 🏯🎋🌸
+        \\The journey led them to the mystical lands where 漢字 (kanji) danced with ひらがな and カタカナ across ancient scrolls 📯🎴🎎. In the gardens of Seoul, they found 한글 inscriptions speaking of 사랑 (love) and 평화 (peace) 💝🕊️☮️. The monks meditated under the bodhi tree 🧘‍♂️🌳, contemplating the nature of धर्म while drinking matcha 🍵 and eating 餃子 dumplings 🥟.
+        \\Strange creatures emerged from the mist: 🦥🦦🦧🦨🦩🦚🦜🦝🦞🦟. They spoke in riddles about the प्राचीन (ancient) ways and the नवीन (new) paths forward. "भविष्य में क्या है?" they asked, while the ໂຫຍ່າກເຈົ້າ whispered secrets in Lao script 🤫🗣️💬.
+        \\## The संगम (Confluence) of Scripts 🌊📝🎭
+        \\At the great confluence, they witnessed the merger of བོད་ཡིག (Tibetan), ગુજરાતી (Gujarati), and தமிழ் (Tamil) scripts flowing together like rivers 🏞️🌊💧. The scholars debated about ਪੰਜਾਬੀ philosophy while juggling 🤹‍♂️🎪🎨 colorful orbs that represented different తెలుగు concepts.
+        \\The marketplace buzzed with activity 🏪🛒💰: merchants sold বাংলা spices 🌶️🧄🧅, ಕನ್ನಡ silks 🧵👘, and മലയാളം handicrafts 🎨🖼️. Children played with toys shaped like 🦖🦕🐉🐲 while their parents bargained using ancient ଓଡ଼ିଆ numerals and gestures 🤝🤲👐.
+        \\## The Festival of ๑๐๐ Lanterns 🏮🎆🎇
+        \\During the grand festival, they lit exactly ๑๐๐ (100 in Thai numerals) lanterns 🏮🕯️💡 that floated into the night sky like ascending ความหวัง (hopes). The celebration featured dancers 💃🕺🩰 performing classical moves from भरतनाट्यम tradition, their मुद्रा hand gestures telling stories of प्रेम and वीरता.
+        \\Musicians played unusual instruments: the 🎻🎺🎷🎸🪕🪘 ensemble created harmonies that resonated with the वेद chants and མཆོད་རྟེན bells 🔔⛩️. The audience sat mesmerized 😵‍💫🤯✨, some sipping on bubble tea 🧋 while others enjoyed मिठाई sweets 🍬🍭🧁.
+        \\## The འཕྲུལ་དེབ (Machine) Age Arrives ⚙️🤖🦾
+        \\As modernity crept in, the ancient འཁོར་ལོ (wheel) gave way to 🚗🚕🚙🚌🚎 vehicles and eventually to 🚀🛸🛰️ spacecraft. The યુવાન (youth) learned to code in Python 🐍💻⌨️, but still honored their గురువు (teachers) who taught them the old ways of ज्ञान acquisition 🧠📚🎓.
+        \\The সমাজ (society) transformed: robots 🤖🦾🦿 worked alongside humans 👨‍💼👩‍💼👨‍🔬👩‍🔬, and AI learned to read སྐད (languages) from across the planet 🌍🌎🌏. Yet somehow, the essence of मानवता remained intact, preserved in the கவிதை (poetry) and the ກາບແກ້ວ stories passed down through generations 👴👵👨‍👩‍👧‍👦.
+        \\## The Final ಅಧ್ಯಾಯ (Chapter) 🌅🌄🌠
+        \\As the sun set over the പർവ്വതങ്ങൾ (mountains) 🏔️⛰️🗻, our travelers realized that every script, every symbol—from ا to ㄱ to অ to अ—represented not just sounds, but entire civilizations' worth of विचार (thoughts) and ಕನಸು (dreams) 💭💤🌌.
+        \\They gathered around the final campfire 🔥🏕️, sharing stories in ภาษา (languages) both ancient and new. Someone brought out a guitar 🎸 and started singing in ગીત form, while others prepared ආහාර (food) 🍛🍲🥘 seasoned with love ❤️💕💖 and memories 📸🎞️📹.
+        \\And so they learned that whether written in দেবনাগরী, 中文, 한글, or ไทย, the human experience transcends boundaries 🌐🤝🌈. The weird emojis 🦩🧿🪬🫀🫁🧠 and complex scripts were all part of the same beautiful བསྟན་པ (teaching): that diversity is our greatest strength 💪✊🙌.
+        \\The end. समाप्त. 끝. จบ. முடிவு. ముగింపు. সমাপ্তি. ഒടുക്കം. ಅಂತ್ಯ. અંત. 🎬🎭🎪✨🌟⭐
+        \\
+    ;
+
+    try tb.setText(text);
+
+    // Test with word wrapping
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        100,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Verify the text buffer can handle complex multilingual content
+    const virtual_lines = view.getVirtualLines();
+    try std.testing.expect(virtual_lines.len > 0);
+
+    // Test that we can get the plain text back
+    var plain_buffer: [10000]u8 = undefined;
+    const plain_len = tb.getPlainTextIntoBuffer(&plain_buffer);
+    const plain_text = plain_buffer[0..plain_len];
+
+    // Verify some key multilingual content is present
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "संस्कृति") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "नमस्ते") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "漢字") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "한글") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "தமிழ்") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "বাংলা") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "ಕನ್ನಡ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "മലയാളം") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "🌟") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain_text, "🙏") != null);
+
+    // Test with no wrapping
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.updateVirtualLines();
+
+    const no_wrap_lines = view.getVirtualLines();
+    // Should have one line per actual newline in the text
+    try std.testing.expect(no_wrap_lines.len > 10);
+
+    // Test with character wrapping on narrow width
+    view.setWrapMode(.char);
+    view.setWrapWidth(40);
+    view.updateVirtualLines();
+
+    const char_wrap_lines = view.getVirtualLines();
+    // Should wrap into many more lines
+    try std.testing.expect(char_wrap_lines.len > virtual_lines.len);
+
+    // Test viewport scrolling through the content
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    view.setViewport(.{ .x = 0, .y = 10, .width = 80, .height = 20 });
+    view.updateVirtualLines();
+
+    const viewport_lines = view.getVirtualLines();
+    try std.testing.expect(viewport_lines.len <= 20);
+
+    // Verify rendering doesn't crash with complex emoji sequences
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Test that line count is reasonable
+    const line_count = tb.getLineCount();
+    try std.testing.expect(line_count > 15);
+}
