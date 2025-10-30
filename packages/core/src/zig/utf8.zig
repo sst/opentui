@@ -472,10 +472,9 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
         (cp >= 0xFE00 and cp <= 0xFE0F) or // Variation Selectors
         (cp >= 0xFE20 and cp <= 0xFE2F) or // Combining Half Marks
-        // Indic script combining marks
+        // Indic script combining marks (both Mn and Mc - all treated as zero-width for terminal display)
         (cp >= 0x0900 and cp <= 0x0903) or // Devanagari combining
-        (cp >= 0x093A and cp <= 0x093C) or // Devanagari combining
-        (cp >= 0x093E and cp <= 0x094F) or // Devanagari combining
+        (cp >= 0x093A and cp <= 0x094F) or // Devanagari combining (includes both Mn and Mc vowel signs)
         (cp >= 0x0951 and cp <= 0x0957) or // Devanagari combining
         (cp >= 0x0962 and cp <= 0x0963) or // Devanagari combining
         (cp >= 0x0981 and cp <= 0x0983) or // Bengali combining
@@ -739,6 +738,10 @@ const GraphemeWidthState = struct {
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
+        // Check if this is a Devanagari base consonant that should add to cluster width
+        // In Devanagari, conjuncts (consonant + virama + consonant) form one grapheme but have width = number of consonants
+        const is_devanagari_base = (cp >= 0x0905 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
+
         // Special case: VS16 changes presentation to emoji (width 2)
         if (is_vs16) {
             self.has_vs16 = true;
@@ -758,8 +761,11 @@ const GraphemeWidthState = struct {
             // Normal case: use first non-zero width codepoint
             self.width = cp_width;
             self.has_width = true;
+        } else if (self.has_width and is_devanagari_base and cp_width > 0) {
+            // Special case for Devanagari: each base consonant adds to width even in conjuncts
+            self.width += cp_width;
         }
-        // Otherwise, ignore width of modifiers, ZWJ, etc.
+        // Otherwise, ignore width of nonspacing modifiers, ZWJ, etc.
     }
 };
 

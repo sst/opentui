@@ -2096,6 +2096,11 @@ test "calculateTextWidth: checkmark grapheme ✅" {
     try testing.expectEqual(@as(u32, 2), width);
 }
 
+test "calculateTextWidth: Sanskrit text with combining marks" {
+    const result = utf8.calculateTextWidth("संस्कृति", 4, false);
+    try testing.expectEqual(@as(u32, 4), result);
+}
+
 test "calculateTextWidth: checkmark in text" {
     // Test checkmark in context
     const text = "Done ✅";
@@ -2309,9 +2314,9 @@ test "calculateTextWidth: Devanagari conjuncts" {
     const kta = "क्त"; // क + virama + त (kta)
     const jna = "ज्ञ"; // ज + virama + ञ (jna)
 
-    // These form single grapheme clusters
-    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(kta, 4, false));
-    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(jna, 4, false));
+    // These form single grapheme clusters but width = number of base consonants
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(kta, 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(jna, 4, false));
 }
 
 test "calculateTextWidth: Bengali script" {
@@ -3006,16 +3011,16 @@ test "calculateTextWidth: Devanagari - Sanskrit word" {
     // संस्कृति (culture/civilization)
     const sanskrit = "संस्कृति";
     const width = utf8.calculateTextWidth(sanskrit, 4, false);
-    // DisplayWidth says: 3 (grapheme cluster counting)
-    try testing.expectEqual(@as(u32, 3), width);
+    // 4 base consonants (SA, SA, KA, TA) with combining marks = width 4
+    try testing.expectEqual(@as(u32, 4), width);
 }
 
 test "calculateTextWidth: Devanagari - namaste" {
     // नमस्ते
     const namaste = "नमस्ते";
     const width = utf8.calculateTextWidth(namaste, 4, false);
-    // DisplayWidth says: 3 (grapheme cluster counting)
-    try testing.expectEqual(@as(u32, 3), width);
+    // 4 base consonants: NA, MA, SA, TA = width 4
+    try testing.expectEqual(@as(u32, 4), width);
 }
 
 test "calculateTextWidth: Devanagari - Om symbol" {
@@ -3029,8 +3034,8 @@ test "calculateTextWidth: Devanagari - mixed with ASCII" {
     // "Hello नमस्ते World"
     const mixed = "Hello नमस्ते World";
     const width = utf8.calculateTextWidth(mixed, 4, false);
-    // "Hello "(6) + नमस्ते(3) + " World"(6) = 15
-    try testing.expectEqual(@as(u32, 15), width);
+    // "Hello "(6) + नमस्ते(4 base consonants) + " World"(6) = 16
+    try testing.expectEqual(@as(u32, 16), width);
 }
 
 // ============================================================================
@@ -3222,8 +3227,8 @@ test "calculateTextWidth: realistic multilingual sentence" {
     // "Hello 世界! नमस्ते 🙏"
     const multilingual = "Hello 世界! नमस्ते 🙏";
     const width = utf8.calculateTextWidth(multilingual, 4, false);
-    // "Hello "(6) + 世界(4) + "! "(2) + नमस्ते(3) + " "(1) + 🙏(2) = 18
-    try testing.expectEqual(@as(u32, 18), width);
+    // "Hello "(6) + 世界(4) + "! "(2) + नमस्ते(4) + " "(1) + 🙏(2) = 19
+    try testing.expectEqual(@as(u32, 19), width);
 }
 
 test "calculateTextWidth: all ending words from text" {
