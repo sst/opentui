@@ -1996,6 +1996,12 @@ test "calculateTextWidth: combining marks" {
     try testing.expectEqual(@as(u32, 4), result); // c(1) + a(1) + f(1) + e(1) + combining(0) = 4
 }
 
+test "calculateTextWidth: scroll book and writing emojis width 2" {
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("📜", 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("📖", 4, false));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("✍️", 4, false));
+}
+
 test "calculateTextWidth: checkmark symbol" {
     const result = utf8.calculateTextWidth("✓", 4, false);
     try testing.expectEqual(@as(u32, 1), result);
