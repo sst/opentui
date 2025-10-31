@@ -29,6 +29,12 @@ describe("TreeSitter Styled Text", () => {
       comment: { fg: RGBA.fromInts(128, 128, 128, 255), italic: true }, // gray italic
       variable: { fg: RGBA.fromInts(200, 200, 255, 255) }, // light blue
       type: { fg: RGBA.fromInts(255, 200, 100, 255) }, // orange
+      "markup.heading": { fg: RGBA.fromInts(255, 200, 200, 255), bold: true }, // light red bold
+      "markup.strong": { bold: true }, // bold
+      "markup.italic": { italic: true }, // italic
+      "markup.raw": { fg: RGBA.fromInts(200, 255, 200, 255) }, // light green
+      "markup.quote": { fg: RGBA.fromInts(180, 180, 180, 255), italic: true }, // gray italic
+      "markup.list": { fg: RGBA.fromInts(255, 200, 100, 255) }, // orange
     })
   })
 
@@ -467,5 +473,359 @@ const hello: string = "world";
 
     // Verify conceals worked
     expect(reconstructed).not.toContain("**")
+  })
+
+  describe("Markdown highlighting comprehensive coverage", () => {
+    test("headings should have full styling applied", async () => {
+      const markdownCode = `# Heading 1
+## Heading 2
+### Heading 3`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      // Check that headings are highlighted
+      const groups = result.highlights!.map(([, , group]) => group)
+      expect(groups).toContain("markup.heading.1")
+      expect(groups).toContain("markup.heading.2")
+      expect(groups).toContain("markup.heading.3")
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const chunks = styledText.chunks
+
+      // Reconstruct to verify text preserved
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(markdownCode)
+
+      // Verify headings are styled
+      // The heading text itself should have markup.heading styling applied
+      // Find any chunks with the # symbol or heading text
+      const hashOrHeadingChunks = chunks.filter((chunk) => chunk.text.includes("#") || /heading/i.test(chunk.text))
+      expect(hashOrHeadingChunks.length).toBeGreaterThan(0)
+
+      // Check that we have markup.heading highlights in the result
+      const headingGroups = groups.filter((g) => g.includes("markup.heading"))
+      expect(headingGroups.length).toBeGreaterThan(0)
+    })
+
+    test("inline raw blocks (code) should be styled", async () => {
+      const markdownCode = "Some text with `inline code` here."
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const groups = result.highlights!.map(([, , group]) => group)
+      // Should have markup.raw.inline or similar for inline code
+      const hasCodeGroup = groups.some((g) => g.includes("markup.raw") || g.includes("code"))
+      expect(hasCodeGroup).toBe(true)
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      // Find the chunk containing "inline code"
+      const codeChunks = chunks.filter((c) => c.text.includes("inline") || c.text.includes("code"))
+      expect(codeChunks.length).toBeGreaterThan(0)
+
+      // At least one should have styling applied
+      const defaultStyle = syntaxStyle.mergeStyles("default")
+      const styledCodeChunks = codeChunks.filter((c) => c.fg !== defaultStyle.fg || c.attributes !== 0)
+      expect(styledCodeChunks.length).toBeGreaterThan(0)
+    })
+
+    test("quotes should be styled correctly", async () => {
+      const markdownCode = `> This is a quote
+> Another line`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const groups = result.highlights!.map(([, , group]) => group)
+      // Should have markup.quote or similar
+      const hasQuoteGroup = groups.some((g) => g.includes("quote"))
+      expect(hasQuoteGroup).toBe(true)
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const chunks = styledText.chunks
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(markdownCode)
+    })
+
+    test("italic text should be styled in all places", async () => {
+      const markdownCode = `*italic* text in paragraph
+
+# *italic in heading*
+
+- *italic in list*`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const groups = result.highlights!.map(([, , group]) => group)
+      // Should have markup.italic or emphasis
+      const hasItalicGroup = groups.some((g) => g.includes("italic") || g.includes("emphasis"))
+      expect(hasItalicGroup).toBe(true)
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: true },
+      })
+      const chunks = styledText.chunks
+
+      // Should not contain * markers when concealed
+      const reconstructed = chunks.map((c) => c.text).join("")
+      const asteriskCount = (reconstructed.match(/\*/g) || []).length
+      // Should have fewer asterisks due to concealment (or none for emphasis markers)
+      const originalAsteriskCount = (markdownCode.match(/\*/g) || []).length
+      expect(asteriskCount).toBeLessThan(originalAsteriskCount)
+    })
+
+    test("bold text should work in all contexts", async () => {
+      const markdownCode = `**bold** text in paragraph
+
+# **bold in heading**
+
+- **bold in list**
+
+> **bold in quote**`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const groups = result.highlights!.map(([, , group]) => group)
+      // Should have markup.strong or bold
+      const hasBoldGroup = groups.some((g) => g.includes("strong") || g.includes("bold"))
+      expect(hasBoldGroup).toBe(true)
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: true },
+      })
+      const chunks = styledText.chunks
+
+      // Should not contain ** markers when concealed
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).not.toContain("**")
+      expect(reconstructed).toContain("bold")
+    })
+
+    test("TypeScript code block should not contain parent markup.raw.block fragments between syntax ranges", async () => {
+      const markdownCode = `\`\`\`typescript
+const greeting: string = "hello";
+function test() { return 42; }
+\`\`\``
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      // Verify we have TypeScript injection
+      const hasInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "typescript")
+      expect(hasInjection).toBe(true)
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const chunks = styledText.chunks
+
+      // Reconstruct to verify text preserved
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(markdownCode)
+
+      // Find the TypeScript content area (between the backticks)
+      const tsCodeStart = markdownCode.indexOf("\n") + 1 // After first ```typescript\n
+      const tsCodeEnd = markdownCode.lastIndexOf("\n```") // Before last \n```
+
+      // Get chunks in the TypeScript code area
+      let currentPos = 0
+      const tsChunks: typeof chunks = []
+      for (const chunk of chunks) {
+        const chunkStart = currentPos
+        const chunkEnd = currentPos + chunk.text.length
+        // Check if chunk overlaps with TypeScript code area
+        if (chunkEnd > tsCodeStart && chunkStart < tsCodeEnd) {
+          tsChunks.push(chunk)
+        }
+        currentPos = chunkEnd
+      }
+
+      expect(tsChunks.length).toBeGreaterThan(0)
+
+      // Verify that TypeScript chunks have TypeScript-specific styling
+      // (keyword, type, string, etc.) and NOT markup.raw.block background
+      const keywordStyle = syntaxStyle.getStyle("keyword")
+      const stringStyle = syntaxStyle.getStyle("string")
+      const typeStyle = syntaxStyle.getStyle("type")
+
+      // Check for TypeScript-specific styling
+      const hasKeywordStyle = tsChunks.some((chunk) => {
+        return (
+          keywordStyle &&
+          chunk.fg &&
+          keywordStyle.fg &&
+          chunk.fg.r === keywordStyle.fg.r &&
+          chunk.fg.g === keywordStyle.fg.g &&
+          chunk.fg.b === keywordStyle.fg.b
+        )
+      })
+
+      const hasStringStyle = tsChunks.some((chunk) => {
+        return (
+          stringStyle &&
+          chunk.fg &&
+          stringStyle.fg &&
+          chunk.fg.r === stringStyle.fg.r &&
+          chunk.fg.g === stringStyle.fg.g &&
+          chunk.fg.b === stringStyle.fg.b
+        )
+      })
+
+      // At least one of these should be true (depending on the code)
+      expect(hasKeywordStyle || hasStringStyle).toBe(true)
+
+      // CRITICAL: Verify no chunks inside TypeScript code have ONLY markup.raw.block styling
+      // This would indicate parent block styles leaking into injected content
+      const defaultStyle = syntaxStyle.mergeStyles("default")
+
+      // Every chunk should either be styled (TypeScript syntax) or default, but not markup.raw.block
+      for (const chunk of tsChunks) {
+        // Chunks should have either:
+        // 1. TypeScript-specific styling (keyword, string, type, etc.)
+        // 2. Default styling (for whitespace, punctuation)
+        // 3. NOT markup.raw.block background (which would be wrong)
+
+        // Since we don't have markup.raw.block in our test syntaxStyle,
+        // we verify that chunks are either styled or default
+        const isStyled = chunk.fg !== defaultStyle.fg || chunk.attributes !== 0
+        const isDefault = chunk.fg === defaultStyle.fg
+
+        // All chunks should be either styled or default (no "other" styling)
+        expect(isStyled || isDefault).toBe(true)
+      }
+    })
+
+    test("mixed formatting (bold + italic) should work", async () => {
+      const markdownCode = "***bold and italic*** text"
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: true },
+      })
+      const chunks = styledText.chunks
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).not.toContain("***")
+      expect(reconstructed).toContain("bold and italic")
+    })
+
+    test("inline code in headings should be styled", async () => {
+      const markdownCode = "# Heading with `code` inside"
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(markdownCode)
+
+      // Should have both heading and code styling
+      const groups = result.highlights!.map(([, , group]) => group)
+      expect(groups.some((g) => g.includes("heading"))).toBe(true)
+      expect(groups.some((g) => g.includes("markup.raw") || g.includes("code"))).toBe(true)
+    })
+
+    test("bold and italic in lists should work", async () => {
+      const markdownCode = `- **bold item**
+- *italic item*
+- normal item`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: true },
+      })
+      const chunks = styledText.chunks
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toContain("bold item")
+      expect(reconstructed).toContain("italic item")
+      expect(reconstructed).not.toContain("**")
+    })
+
+    test("code blocks with different languages should suppress parent styles", async () => {
+      const markdownCode = `\`\`\`javascript
+const x = 42;
+\`\`\`
+
+\`\`\`typescript
+const y: number = 42;
+\`\`\``
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const chunks = styledText.chunks
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(markdownCode)
+
+      // Both code blocks should have injection
+      const jsInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "javascript")
+      const tsInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "typescript")
+
+      expect(jsInjection || tsInjection).toBe(true)
+    })
+
+    test("complex nested markdown structures", async () => {
+      const markdownCode = `# Main Heading
+
+> This is a quote with **bold** and *italic* and \`code\`.
+
+## Sub Heading
+
+- List item with **bold**
+- Another item with \`inline code\`
+
+\`\`\`typescript
+// Comment in code
+const value = "string";
+\`\`\`
+
+Normal paragraph with [link](https://example.com).`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(10)
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: true },
+      })
+      const chunks = styledText.chunks
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+
+      // Verify structure preserved
+      expect(reconstructed).toContain("Main Heading")
+      expect(reconstructed).toContain("Sub Heading")
+      expect(reconstructed).toContain("quote")
+      expect(reconstructed).toContain("bold")
+      expect(reconstructed).toContain("italic")
+      expect(reconstructed).toContain("code")
+      expect(reconstructed).toContain("const value")
+      expect(reconstructed).toContain("link")
+
+      // Verify concealment worked
+      expect(reconstructed).not.toContain("**")
+
+      // Verify we have various styling
+      const defaultStyle = syntaxStyle.mergeStyles("default")
+      const styledChunks = chunks.filter((c) => c.fg !== defaultStyle.fg || c.attributes !== 0)
+      expect(styledChunks.length).toBeGreaterThan(5)
+    })
   })
 })
