@@ -64,5 +64,7 @@ FROM THE `packages/core` DIRECTORY.
 
 ## Debugging
 
-Reproduce the issue in a test case. Do NOT start fixing without a reproducible test case.
-Use debug logs to see what is actually happening. DO NOT GUESS.
+- NOTE this is a terminal UI lib and when running examples or apps built with it,
+  you cannot currently see log output like console.log. Ask the user to run the example/app and provide the output.
+- Reproduce the issue in a test case. Do NOT start fixing without a reproducible test case.
+  Use debug logs to see what is actually happening. DO NOT GUESS.

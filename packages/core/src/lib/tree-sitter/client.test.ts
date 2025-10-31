@@ -95,7 +95,6 @@ describe("TreeSitterClient", () => {
       receivedVersion = version
     })
 
-    // Wait a bit for initial highlighting to complete
     await new Promise((resolve) => setTimeout(resolve, 100))
 
     const newCode = 'const hello = "world";\nconst foo = 42;'
@@ -112,7 +111,6 @@ describe("TreeSitterClient", () => {
 
     await client.updateBuffer(1, edits, newCode, 2)
 
-    // Wait for highlighting to complete
     await new Promise((resolve) => setTimeout(resolve, 200))
 
     expect(highlightReceived).toBe(true)
@@ -185,7 +183,6 @@ describe("TreeSitterClient", () => {
       errorMessage = error
     })
 
-    // Try to reset a buffer that doesn't exist
     await client.resetBuffer(999, 1, "test")
 
     expect(errorReceived).toBe(true)
@@ -198,7 +195,6 @@ describe("TreeSitterClient", () => {
     const jsCode = 'const hello = "world";'
     await client.createBuffer(1, jsCode, "javascript")
 
-    // Try to create buffer with same ID
     await expect(client.createBuffer(1, "other code", "javascript")).rejects.toThrow("Buffer with id 1 already exists")
   })
 
@@ -218,7 +214,6 @@ describe("TreeSitterClient", () => {
 
     const promises = []
 
-    // Create multiple buffers concurrently
     for (let i = 0; i < 5; i++) {
       const code = `const var${i} = ${i};`
       promises.push(client.createBuffer(i, code, "javascript"))
@@ -261,7 +256,6 @@ describe("TreeSitterClient", () => {
     expect(typeof firstHighlight[1]).toBe("number")
     expect(typeof firstHighlight[2]).toBe("string")
 
-    // Should have some highlight groups
     const groups = result.highlights!.map((hl) => hl[2])
     expect(groups.length).toBeGreaterThan(0)
     expect(groups).toContain("keyword")
@@ -373,6 +367,632 @@ describe("TreeSitterClient", () => {
   })
 })
 
+describe("TreeSitterClient Injections", () => {
+  let dataPath: string
+
+  const injectionsDataPath = join(tmpdir(), "tree-sitter-injections-test-data")
+
+  beforeAll(async () => {
+    await mkdir(injectionsDataPath, { recursive: true })
+  })
+
+  beforeEach(async () => {
+    dataPath = injectionsDataPath
+  })
+
+  test("should highlight inline code in markdown using markdown_inline injection", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Hello World
+
+The \`CodeRenderable\` component provides syntax highlighting.
+
+You can use \`const x = 42\` in your code.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      const groups = result.highlights!.map((hl) => hl[2])
+      const hasInlineCodeHighlights = groups.some((g) => g.includes("markup.raw"))
+
+      expect(hasInlineCodeHighlights).toBe(true)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should highlight code blocks in markdown using language-specific injection", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Code Example
+
+\`\`\`typescript
+const hello: string = "world";
+function test() { return 42; }
+\`\`\`
+
+Some text here.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      const groups = result.highlights!.map((hl) => hl[2])
+      const hasTypeScriptHighlights = groups.some((g) => g === "keyword" || g === "type" || g === "function")
+
+      expect(hasTypeScriptHighlights).toBe(true)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should return correct offsets for injected code in markdown code blocks", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Title\n\n\`\`\`typescript\nconst x = 42;\n\`\`\``
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      const constHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === "const" && hl[2] === "keyword"
+      })
+
+      expect(constHighlight).toBeDefined()
+      if (constHighlight) {
+        const [start, end, group] = constHighlight
+        const text = markdownCode.substring(start, end)
+
+        expect(text).toBe("const")
+        expect(group).toBe("keyword")
+        expect(start).toBe(23)
+        expect(end).toBe(28)
+      }
+
+      const numberHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === "42" && hl[2] === "number"
+      })
+
+      expect(numberHighlight).toBeDefined()
+      if (numberHighlight) {
+        const [start, end, group] = numberHighlight
+        const text = markdownCode.substring(start, end)
+
+        expect(text).toBe("42")
+        expect(group).toBe("number")
+        expect(start).toBe(33)
+        expect(end).toBe(35)
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should return highlights sorted by start offset for injected code", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Documentation
+
+Some text with \`inline code\` here.
+
+\`\`\`typescript
+const first = 1;
+const second = 2;
+\`\`\`
+
+More text with \`another inline\` code.
+
+\`\`\`javascript
+function test() {
+  return 42;
+}
+\`\`\``
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      for (let i = 1; i < result.highlights!.length; i++) {
+        const prevStart = result.highlights![i - 1][0]
+        const currStart = result.highlights![i][0]
+        expect(currStart).toBeGreaterThanOrEqual(prevStart)
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should inspect highlight metadata structure for markdown with injections", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Heading
+
+Some **bold** text with \`inline code\`.
+
+\`\`\`typescript
+const x: string = "hello";
+\`\`\`
+
+[Link text](https://example.com)`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      console.log("=== MARKDOWN HIGHLIGHT INSPECTION ===")
+      console.log("Total highlights:", result.highlights?.length)
+
+      expect(result.highlights).toBeDefined()
+
+      result.highlights?.forEach((hl, idx) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`[${idx}] [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`, meta ? `meta: ${JSON.stringify(meta)}` : "")
+      })
+
+      const overlaps: Array<[number, number]> = []
+      for (let i = 0; i < result.highlights!.length; i++) {
+        for (let j = i + 1; j < result.highlights!.length; j++) {
+          const [start1, end1] = result.highlights![i]
+          const [start2, end2] = result.highlights![j]
+
+          if (start2 < end1) {
+            overlaps.push([i, j])
+          }
+        }
+      }
+
+      console.log("Overlapping highlight pairs:", overlaps.length)
+      overlaps.slice(0, 10).forEach(([i, j]) => {
+        const hl1 = result.highlights![i]
+        const hl2 = result.highlights![j]
+        const text1 = markdownCode.substring(hl1[0], hl1[1])
+        const text2 = markdownCode.substring(hl2[0], hl2[1])
+        console.log(`  [${i}] "${text1}" (${hl1[2]}) overlaps [${j}] "${text2}" (${hl2[2]})`)
+      })
+
+      const injectionHighlights = result.highlights!.filter((hl) => hl[2].includes("injection"))
+      console.log("Injection-related highlights:", injectionHighlights.length)
+      injectionHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`)
+      })
+
+      const concealHighlights = result.highlights!.filter((hl) => hl[2] === "conceal")
+      console.log("Conceal highlights:", concealHighlights.length)
+      concealHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`)
+      })
+
+      const blockHighlights = result.highlights!.filter((hl) => hl[2] === "markup.raw.block")
+      console.log("Markup.raw.block highlights:", blockHighlights.length)
+      blockHighlights.slice(0, 5).forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text.substring(0, 20)}..." -> ${hl[2]}`)
+      })
+
+      console.log("=== END INSPECTION ===")
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should handle fast concurrent markdown highlighting requests with injections", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    const errors: string[] = []
+    client.on("error", (error) => {
+      errors.push(error)
+    })
+
+    client.on("worker:log", (logType, message) => {
+      if (logType === "error") {
+        errors.push(message)
+      }
+    })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# OpenTUI Documentation
+
+## Getting Started
+
+OpenTUI is a modern terminal UI framework built on **tree-sitter** and WebGPU.
+
+### Installation
+
+\`\`\`bash
+bun install opentui
+\`\`\`
+
+### Quick Example
+
+\`\`\`typescript
+import { createCliRenderer, BoxRenderable } from 'opentui';
+
+const renderer = await createCliRenderer();
+const box = new BoxRenderable(renderer, {
+  border: true,
+  title: "Hello World"
+});
+renderer.root.add(box);
+\`\`\`
+
+The \`CodeRenderable\` component provides syntax highlighting.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| content | string | Code to display |
+| filetype | string | Language type |`
+
+      const jsCode = `function test() {
+  const hello = "world";
+  return hello;
+}`
+
+      const tsCode = `interface User {
+  name: string;
+  age: number;
+}
+
+const user: User = { name: "Alice", age: 25 };`
+
+      const promises = []
+      for (let i = 0; i < 5; i++) {
+        promises.push(client.highlightOnce(markdownCode, "markdown"))
+      }
+
+      const results = await Promise.allSettled(promises)
+
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]
+        if (result.status === "fulfilled") {
+          expect(result.value.error).toBeUndefined()
+          expect(result.value.highlights).toBeDefined()
+        } else {
+          throw new Error(`Request ${i} was rejected: ${result.reason}`)
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      const hasMemoryErrors = errors.some((err) => err.includes("Out of bounds memory access"))
+      expect(hasMemoryErrors).toBe(false)
+    } finally {
+      await client.destroy()
+    }
+  }, 15000)
+})
+
+describe("TreeSitterClient Conceal Values", () => {
+  let dataPath: string
+
+  const concealDataPath = join(tmpdir(), "tree-sitter-conceal-test-data")
+
+  beforeAll(async () => {
+    await mkdir(concealDataPath, { recursive: true })
+  })
+
+  beforeEach(async () => {
+    dataPath = concealDataPath
+  })
+
+  test("should return conceal values from normal (non-injected) queries", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Markdown has conceal directives in its main highlights query
+      // For example, image syntax: ![alt](url) conceals the brackets and parentheses
+      const markdownCode = `![Image Alt Text](https://example.com/image.png)`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      expect(concealedHighlights.length).toBeGreaterThan(0)
+
+      console.log("\n=== NORMAL QUERY CONCEAL VALUES ===")
+      concealedHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+      })
+      console.log("=== END NORMAL QUERY CONCEAL VALUES ===\n")
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should return conceal values from injected queries (markdown_inline)", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Inline links in markdown use the markdown_inline parser (injected)
+      // The pattern should conceal the closing bracket with a space
+      const markdownCode = `Here is a [link](https://example.com) in text.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      expect(concealedHighlights.length).toBeGreaterThan(0)
+
+      console.log("\n=== INJECTED QUERY CONCEAL VALUES ===")
+      concealedHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(
+          `  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}", isInjection: ${meta.isInjection}`,
+        )
+      })
+      console.log("=== END INJECTED QUERY CONCEAL VALUES ===\n")
+
+      const closingBracketHighlight = concealedHighlights.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        return text === "]" && meta.conceal !== ""
+      })
+
+      if (closingBracketHighlight) {
+        const meta = (closingBracketHighlight as any)[3]
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should distinguish conceal values between normal and injected queries", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `Here is a [link](https://example.com) and ![image](https://example.com/img.png).`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      console.log("\n=== MIXED NORMAL + INJECTED CONCEAL VALUES ===")
+      console.log("Total highlights:", result.highlights!.length)
+      console.log("Concealed highlights:", concealedHighlights.length)
+
+      const normalConceal = concealedHighlights.filter((hl) => {
+        const meta = (hl as any)[3]
+        return !meta.isInjection
+      })
+
+      const injectedConceal = concealedHighlights.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta.isInjection
+      })
+
+      console.log("\nNormal query conceals:", normalConceal.length)
+      normalConceal.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+      })
+
+      console.log("\nInjected query conceals:", injectedConceal.length)
+      injectedConceal.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+      })
+
+      console.log("=== END MIXED CONCEAL VALUES ===\n")
+
+      expect(injectedConceal.length).toBeGreaterThan(0)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should handle pattern index lookups correctly for injections", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `A [link](url) here.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      // The bug was that pattern indices from injected queries were being looked up
+      // in the parent query's setProperties array. This test verifies the fix works.
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      console.log("\n=== PATTERN INDEX VERIFICATION ===")
+      console.log("All highlights:")
+      result.highlights!.forEach((hl, idx) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(
+          `  [${idx}] [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`,
+          meta ? `meta: ${JSON.stringify(meta)}` : "",
+        )
+      })
+
+      console.log("\nConcealed highlights detail:")
+      concealedHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  Text: "${text}", Group: ${hl[2]}, Conceal: "${meta.conceal}", IsInjection: ${meta.isInjection}`)
+      })
+      console.log("=== END PATTERN INDEX VERIFICATION ===\n")
+
+      // If the pattern index bug exists, we would get empty strings or wrong values
+      // After the fix, all conceal values should be correctly retrieved
+      concealedHighlights.forEach((hl) => {
+        const meta = (hl as any)[3]
+        expect(meta.conceal).toBeDefined()
+      })
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should handle multiple injected languages with different conceal patterns", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Title
+
+Inline \`code\` and a [link](url) here.
+
+\`\`\`typescript
+const x = 42;
+\`\`\`
+
+More text with ![image](img.png) and **bold**.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      console.log("\n=== MULTIPLE INJECTION CONCEAL TEST ===")
+      console.log("Total highlights:", result.highlights!.length)
+      console.log("Concealed highlights:", concealedHighlights.length)
+
+      const byLang = new Map<string, any[]>()
+      concealedHighlights.forEach((hl) => {
+        const meta = (hl as any)[3]
+        const lang = meta.isInjection ? meta.injectionLang || "injected" : "normal"
+        if (!byLang.has(lang)) {
+          byLang.set(lang, [])
+        }
+        byLang.get(lang)!.push(hl)
+      })
+
+      byLang.forEach((highlights, lang) => {
+        console.log(`\n${lang} conceals: ${highlights.length}`)
+        highlights.forEach((hl: any) => {
+          const text = markdownCode.substring(hl[0], hl[1])
+          const meta = hl[3]
+          console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+        })
+      })
+
+      console.log("=== END MULTIPLE INJECTION CONCEAL TEST ===\n")
+
+      expect(concealedHighlights.length).toBeGreaterThan(0)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should preserve non-empty conceal replacements like space character", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `Check [this link](https://example.com) out!`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      // Find the closing bracket conceal highlight (not the markup.link.bracket.close)
+      const closingBracket = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        return text === "]" && hl[2] === "conceal" && meta?.conceal !== undefined
+      })
+
+      console.log("\n=== SPACE REPLACEMENT TEST ===")
+      if (closingBracket) {
+        const meta = (closingBracket as any)[3]
+        const text = markdownCode.substring(closingBracket[0], closingBracket[1])
+        console.log(`Found closing bracket: [${closingBracket[0]}, ${closingBracket[1]}] "${text}"`)
+        console.log(`  Group: ${closingBracket[2]}`)
+        console.log(`  Meta:`, meta)
+        if (meta) {
+          console.log(`  Conceal value: "${meta.conceal}" (length: ${meta.conceal?.length})`)
+          console.log(`  Conceal charCode:`, meta.conceal ? meta.conceal.charCodeAt(0) : "undefined")
+        }
+      } else {
+        console.log("No closing bracket highlight found")
+      }
+      console.log("=== END SPACE REPLACEMENT TEST ===\n")
+
+      // This is the critical test case from the issue
+      // NOT an empty string which was the bug
+      if (closingBracket) {
+        const meta = (closingBracket as any)[3]
+        expect(meta).toBeDefined()
+        expect(meta.conceal).toBeDefined()
+        // Should be a space character, not empty
+        expect(meta.conceal).toBe(" ")
+        expect(meta.conceal.length).toBeGreaterThan(0)
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+})
+
 describe("TreeSitterClient Edge Cases", () => {
   let dataPath: string
 
@@ -387,14 +1007,12 @@ describe("TreeSitterClient Edge Cases", () => {
   })
 
   test("should handle initialization timeout", async () => {
-    // Create client with invalid worker path and short timeout
     const client = new TreeSitterClient({
       dataPath,
       workerPath: "invalid-path",
       initTimeout: 500,
     })
 
-    // Should fail with either a worker error (Bun fails fast) or timeout
     await expect(client.initialize()).rejects.toThrow(/Worker error|Worker initialization timed out/)
 
     await client.destroy()
@@ -403,7 +1021,6 @@ describe("TreeSitterClient Edge Cases", () => {
   test("should handle operations before initialization", async () => {
     const client = new TreeSitterClient({ dataPath })
 
-    // These operations should work even before initialization
     expect(client.isInitialized()).toBe(false)
     expect(client.getAllBuffers()).toHaveLength(0)
     expect(client.getBuffer(1)).toBeUndefined()
@@ -419,7 +1036,6 @@ describe("TreeSitterClient Edge Cases", () => {
       errorReceived = true
     })
 
-    // Try to create buffer before initialization with autoInitialize disabled
     const hasParser = await client.createBuffer(1, "test", "javascript", 1, false)
     expect(hasParser).toBe(false)
     expect(errorReceived).toBe(true)
@@ -440,7 +1056,6 @@ describe("TreeSitterClient Edge Cases", () => {
 
       dataPathsManager.appName = "test-app-changed"
 
-      // Wait for the event to propagate and client to reinitialize
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       const newDataPath = dataPathsManager.globalDataPath

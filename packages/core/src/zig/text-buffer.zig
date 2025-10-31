@@ -9,6 +9,7 @@ const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
+const logger = @import("logger.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
@@ -821,6 +822,15 @@ pub const UnifiedTextBuffer = struct {
         return &[_]Highlight{};
     }
 
+    /// Get total number of highlights across all lines
+    pub fn getHighlightCount(self: *const Self) u32 {
+        var count: u32 = 0;
+        for (self.line_highlights.items) |hl_list| {
+            count += @intCast(hl_list.items.len);
+        }
+        return count;
+    }
+
     /// Set styled text from chunks with individual styling
     /// Accepts StyledChunk array for FFI compatibility
     /// TODO: This is for backward compatibility, there should be a better way to do this.
@@ -943,8 +953,6 @@ pub const UnifiedTextBuffer = struct {
 
     /// Debug log the rope structure using rope.toText
     pub fn debugLogRope(self: *const Self) void {
-        const logger = @import("logger.zig");
-
         logger.debug("=== TextBuffer Rope Debug ===", .{});
         logger.debug("Line count: {}", .{self.getLineCount()});
         logger.debug("Char count: {}", .{self.getLength()});

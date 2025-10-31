@@ -8,6 +8,7 @@ import type {
   SimpleHighlight,
   FiletypeParserOptions,
   PerformanceStats,
+  InjectionMapping,
 } from "./types"
 import { DownloadUtils } from "./download-utils"
 import { isMainThread } from "worker_threads"
@@ -19,20 +20,30 @@ type ParserState = {
   tree: Tree
   queries: {
     highlights: Query
+    injections?: Query
   }
+  filetype: string
+  content: string
+  injectionMapping?: InjectionMapping
 }
 
 interface FiletypeParser {
   filetype: string
   queries: {
     highlights: Query
+    injections?: Query
   }
   language: Language
+  injectionMapping?: InjectionMapping
 }
 
 interface ReusableParserState {
   parser: Parser
   filetypeParser: FiletypeParser
+  queries: {
+    highlights: Query
+    injections?: Query
+  }
 }
 
 class ParserWorker {
@@ -45,6 +56,7 @@ class ParserWorker {
   private initializePromise: Promise<void> | undefined
   public performance: PerformanceStats
   private dataPath: string | undefined
+  private tsDataPath: string | undefined
   private initialized: boolean = false
 
   constructor() {
@@ -56,11 +68,11 @@ class ParserWorker {
     }
   }
 
-  private async fetchHighlightQueries(sources: string[], filetype: string): Promise<string> {
-    if (!this.dataPath) {
+  private async fetchQueries(sources: string[], filetype: string): Promise<string> {
+    if (!this.tsDataPath) {
       return ""
     }
-    return DownloadUtils.fetchHighlightQueries(sources, this.dataPath, filetype)
+    return DownloadUtils.fetchHighlightQueries(sources, this.tsDataPath, filetype)
   }
 
   async initialize({ dataPath }: { dataPath: string }) {
@@ -69,12 +81,13 @@ class ParserWorker {
     }
     this.initializePromise = new Promise(async (resolve, reject) => {
       this.dataPath = dataPath
+      this.tsDataPath = path.join(dataPath, "tree-sitter")
 
       try {
-        await mkdir(path.join(dataPath, "languages"), { recursive: true })
-        await mkdir(path.join(dataPath, "queries"), { recursive: true })
+        await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
+        await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
-        let { default: treeWasm } = await import("web-tree-sitter/web-tree-sitter.wasm" as string, {
+        let { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
           with: { type: "wasm" },
         })
 
@@ -107,36 +120,46 @@ class ParserWorker {
   ): Promise<
     | {
         highlights: Query
+        injections?: Query
       }
     | undefined
   > {
     try {
-      // Fetch all highlight queries from URLs/paths and concatenate them
-      const highlightQueryContent = await this.fetchHighlightQueries(
-        filetypeParser.queries.highlights,
-        filetypeParser.filetype,
-      )
+      const highlightQueryContent = await this.fetchQueries(filetypeParser.queries.highlights, filetypeParser.filetype)
       if (!highlightQueryContent) {
         console.error("Failed to fetch highlight queries for:", filetypeParser.filetype)
         return undefined
       }
 
-      const query = new Query(language, highlightQueryContent)
-      return {
-        highlights: query,
+      const highlightsQuery = new Query(language, highlightQueryContent)
+      const result: { highlights: Query; injections?: Query } = {
+        highlights: highlightsQuery,
       }
+
+      if (filetypeParser.queries.injections && filetypeParser.queries.injections.length > 0) {
+        const injectionQueryContent = await this.fetchQueries(
+          filetypeParser.queries.injections,
+          filetypeParser.filetype,
+        )
+        if (injectionQueryContent) {
+          result.injections = new Query(language, injectionQueryContent)
+        }
+      }
+
+      return result
     } catch (error) {
+      console.error("Error creating queries for", filetypeParser.filetype, filetypeParser.queries)
       console.error(error)
       return undefined
     }
   }
 
   private async loadLanguage(languageSource: string): Promise<Language | undefined> {
-    if (!this.initialized || !this.dataPath) {
+    if (!this.initialized || !this.tsDataPath) {
       return undefined
     }
 
-    const result = await DownloadUtils.downloadOrLoad(languageSource, this.dataPath, "languages", ".wasm", false)
+    const result = await DownloadUtils.downloadOrLoad(languageSource, this.tsDataPath, "languages", ".wasm", false)
 
     if (result.error) {
       console.error(`Error loading language ${languageSource}:`, result.error)
@@ -240,6 +263,7 @@ class ParserWorker {
     const reusableState: ReusableParserState = {
       parser,
       filetypeParser,
+      queries: filetypeParser.queries,
     }
 
     return reusableState
@@ -279,7 +303,14 @@ class ParserWorker {
       return
     }
 
-    const parserState = { parser, tree, queries: filetypeParser.queries }
+    const parserState: ParserState = {
+      parser,
+      tree,
+      queries: filetypeParser.queries,
+      filetype,
+      content,
+      injectionMapping: filetypeParser.injectionMapping,
+    }
     this.bufferParsers.set(bufferId, parserState)
 
     self.postMessage({
@@ -288,7 +319,7 @@ class ParserWorker {
       messageId,
       hasParser: true,
     })
-    const highlights = this.initialQuery(parserState)
+    const highlights = await this.initialQuery(parserState)
     self.postMessage({
       type: "HIGHLIGHT_RESPONSE",
       bufferId,
@@ -297,10 +328,152 @@ class ParserWorker {
     })
   }
 
-  private initialQuery(parserState: ParserState) {
+  private async initialQuery(parserState: ParserState) {
     const query = parserState.queries.highlights
     const matches: QueryCapture[] = query.captures(parserState.tree.rootNode)
-    return this.getHighlights(parserState, matches)
+    let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+
+    if (parserState.queries.injections) {
+      const injectionResult = await this.processInjections(parserState)
+      matches.push(...injectionResult.captures)
+      injectionRanges = injectionResult.injectionRanges
+    }
+
+    return this.getHighlights(parserState, matches, injectionRanges)
+  }
+
+  private getNodeText(node: any, content: string): string {
+    return content.substring(node.startIndex, node.endIndex)
+  }
+
+  private async processInjections(
+    parserState: ParserState,
+  ): Promise<{ captures: QueryCapture[]; injectionRanges: Map<string, Array<{ start: number; end: number }>> }> {
+    const injectionMatches: QueryCapture[] = []
+    const injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+
+    if (!parserState.queries.injections) {
+      return { captures: injectionMatches, injectionRanges }
+    }
+
+    const content = parserState.content
+    const injectionCaptures = parserState.queries.injections.captures(parserState.tree.rootNode)
+    const languageGroups = new Map<string, Array<{ node: any; name: string }>>()
+
+    // Use the injection mapping stored in the parser state
+    const injectionMapping = parserState.injectionMapping
+
+    for (const capture of injectionCaptures) {
+      const captureName = capture.name
+
+      if (captureName === "injection.content" || captureName.includes("injection")) {
+        const nodeType = capture.node.type
+        let targetLanguage: string | undefined
+
+        // First, check if there's a direct node type mapping
+        if (injectionMapping?.nodeTypes && injectionMapping.nodeTypes[nodeType]) {
+          targetLanguage = injectionMapping.nodeTypes[nodeType]
+        } else if (nodeType === "code_fence_content") {
+          // For code fence content, try to extract language from info_string
+          const parent = capture.node.parent
+          if (parent) {
+            const infoString = parent.children.find((child: any) => child.type === "info_string")
+            if (infoString) {
+              const languageNode = infoString.children.find((child: any) => child.type === "language")
+              if (languageNode) {
+                const languageName = this.getNodeText(languageNode, content)
+
+                if (injectionMapping?.infoStringMap && injectionMapping.infoStringMap[languageName]) {
+                  targetLanguage = injectionMapping.infoStringMap[languageName]
+                } else {
+                  targetLanguage = languageName
+                }
+              }
+            }
+          }
+        }
+
+        if (targetLanguage) {
+          if (!languageGroups.has(targetLanguage)) {
+            languageGroups.set(targetLanguage, [])
+          }
+          languageGroups.get(targetLanguage)!.push({ node: capture.node, name: capture.name })
+        }
+      }
+    }
+
+    // Process each language group
+    for (const [language, captures] of languageGroups.entries()) {
+      const injectedParser = await this.getReusableParser(language)
+
+      if (!injectedParser) {
+        console.warn(`No parser found for injection language: ${language}`)
+        continue
+      }
+
+      // Track injection ranges for this language
+      if (!injectionRanges.has(language)) {
+        injectionRanges.set(language, [])
+      }
+
+      const parser = injectedParser.parser
+      for (const { node: injectionNode } of captures) {
+        try {
+          // Record the injection range
+          injectionRanges.get(language)!.push({
+            start: injectionNode.startIndex,
+            end: injectionNode.endIndex,
+          })
+
+          const injectionContent = this.getNodeText(injectionNode, content)
+          const tree = parser.parse(injectionContent)
+
+          if (tree) {
+            const matches = injectedParser.queries.highlights.captures(tree.rootNode)
+
+            // Create new QueryCapture objects with offset positions
+            for (const match of matches) {
+              // Calculate offset positions by creating a new capture with adjusted node properties
+              // Store the injected query reference so we can look up properties correctly
+              const offsetCapture: QueryCapture & { _injectedQuery?: Query } = {
+                name: match.name,
+                patternIndex: match.patternIndex,
+                _injectedQuery: injectedParser.queries.highlights, // Store the correct query reference
+                node: {
+                  ...match.node,
+                  startPosition: {
+                    row: match.node.startPosition.row + injectionNode.startPosition.row,
+                    column:
+                      match.node.startPosition.row === 0
+                        ? match.node.startPosition.column + injectionNode.startPosition.column
+                        : match.node.startPosition.column,
+                  },
+                  endPosition: {
+                    row: match.node.endPosition.row + injectionNode.startPosition.row,
+                    column:
+                      match.node.endPosition.row === 0
+                        ? match.node.endPosition.column + injectionNode.startPosition.column
+                        : match.node.endPosition.column,
+                  },
+                  startIndex: match.node.startIndex + injectionNode.startIndex,
+                  endIndex: match.node.endIndex + injectionNode.startIndex,
+                } as any, // Cast to any since we're creating a pseudo-node
+              }
+
+              injectionMatches.push(offsetCapture)
+            }
+
+            tree.delete()
+          }
+        } catch (error) {
+          console.error(`Error processing injection for language ${language}:`, error)
+        }
+      }
+
+      // NOTE: Do NOT call parser.delete() here - this is a reusable parser!
+    }
+
+    return { captures: injectionMatches, injectionRanges }
   }
 
   private editToRange(edit: Edit): Range {
@@ -328,11 +501,12 @@ class ParserWorker {
       return { warning: "No parser state found for buffer" }
     }
 
+    parserState.content = content
+
     for (const edit of edits) {
       parserState.tree.edit(edit)
     }
 
-    // Parse the buffer
     const startParse = performance.now()
 
     const newTree = parserState.parser.parse(content, parserState.tree)
@@ -356,7 +530,6 @@ class ParserWorker {
     const startQuery = performance.now()
     const matches: QueryCapture[] = []
 
-    // If no changed ranges detected, use the edit ranges as fallback
     if (changedRanges.length === 0) {
       edits.forEach((edit) => {
         const range = this.editToRange(edit)
@@ -390,7 +563,6 @@ class ParserWorker {
         continue
       }
 
-      // For smaller nodes, walk up until we find a node that fully contains the range
       while (node && !this.nodeContainsRange(node, range)) {
         node = node.parent
       }
@@ -403,6 +575,15 @@ class ParserWorker {
       matches.push(...nodeCaptures)
     }
 
+    let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+    if (parserState.queries.injections) {
+      const injectionResult = await this.processInjections(parserState)
+      // Only add injection matches that are in the changed ranges
+      // This is a simplification - ideally we'd only process injections in changed ranges
+      matches.push(...injectionResult.captures)
+      injectionRanges = injectionResult.injectionRanges
+    }
+
     const endQuery = performance.now()
     const queryTime = endQuery - startQuery
     this.performance.queryTimes.push(queryTime)
@@ -412,7 +593,7 @@ class ParserWorker {
     this.performance.averageQueryTime =
       this.performance.queryTimes.reduce((acc, time) => acc + time, 0) / this.performance.queryTimes.length
 
-    return this.getHighlights(parserState, matches)
+    return this.getHighlights(parserState, matches, injectionRanges)
   }
 
   private nodeContainsRange(node: any, range: any): boolean {
@@ -424,7 +605,11 @@ class ParserWorker {
     )
   }
 
-  private getHighlights(parserState: ParserState, matches: QueryCapture[]): { highlights: HighlightResponse[] } {
+  private getHighlights(
+    parserState: ParserState,
+    matches: QueryCapture[],
+    injectionRanges?: Map<string, Array<{ start: number; end: number }>>,
+  ): { highlights: HighlightResponse[] } {
     const lineHighlights: Map<number, Map<number, HighlightRange>> = new Map()
     const droppedHighlights: Map<number, Map<number, HighlightRange>> = new Map()
 
@@ -472,13 +657,65 @@ class ParserWorker {
     }
   }
 
-  private getSimpleHighlights(matches: QueryCapture[]): SimpleHighlight[] {
+  private getSimpleHighlights(
+    matches: QueryCapture[],
+    injectionRanges: Map<string, Array<{ start: number; end: number }>>,
+  ): SimpleHighlight[] {
     const highlights: SimpleHighlight[] = []
+
+    const flatInjectionRanges: Array<{ start: number; end: number; lang: string }> = []
+    for (const [lang, ranges] of injectionRanges.entries()) {
+      for (const range of ranges) {
+        flatInjectionRanges.push({ ...range, lang })
+      }
+    }
 
     for (const match of matches) {
       const node = match.node
-      highlights.push([node.startIndex, node.endIndex, match.name])
+
+      let isInjection = false
+      let injectionLang: string | undefined
+      let containsInjection = false
+      for (const injRange of flatInjectionRanges) {
+        if (node.startIndex >= injRange.start && node.endIndex <= injRange.end) {
+          isInjection = true
+          injectionLang = injRange.lang
+          break
+        } else if (node.startIndex <= injRange.start && node.endIndex >= injRange.end) {
+          containsInjection = true
+          break
+        }
+      }
+
+      const matchQuery = (match as any)._injectedQuery
+      const patternProperties = matchQuery?.setProperties?.[match.patternIndex]
+
+      const concealValue = patternProperties?.conceal ?? match.setProperties?.conceal
+      const concealLines = patternProperties?.conceal_lines ?? match.setProperties?.conceal_lines
+
+      const meta: any = {}
+      if (isInjection && injectionLang) {
+        meta.isInjection = true
+        meta.injectionLang = injectionLang
+      }
+      if (containsInjection) {
+        meta.containsInjection = true
+      }
+      if (concealValue !== undefined) {
+        meta.conceal = concealValue
+      }
+      if (concealLines !== undefined) {
+        meta.concealLines = concealLines
+      }
+
+      if (Object.keys(meta).length > 0) {
+        highlights.push([node.startIndex, node.endIndex, match.name, meta])
+      } else {
+        highlights.push([node.startIndex, node.endIndex, match.name])
+      }
     }
+
+    highlights.sort((a, b) => a[0] - b[0])
 
     return highlights
   }
@@ -493,6 +730,8 @@ class ParserWorker {
       return { warning: "No parser state found for buffer" }
     }
 
+    parserState.content = content
+
     const newTree = parserState.parser.parse(content)
 
     if (!newTree) {
@@ -502,7 +741,14 @@ class ParserWorker {
     parserState.tree = newTree
     const matches = parserState.queries.highlights.captures(parserState.tree.rootNode)
 
-    return this.getHighlights(parserState, matches)
+    let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+    if (parserState.queries.injections) {
+      const injectionResult = await this.processInjections(parserState)
+      matches.push(...injectionResult.captures)
+      injectionRanges = injectionResult.injectionRanges
+    }
+
+    return this.getHighlights(parserState, matches, injectionRanges)
   }
 
   disposeBuffer(bufferId: number): void {
@@ -530,7 +776,11 @@ class ParserWorker {
       return
     }
 
-    const tree = reusableState.parser.parse(content)
+    // Markdown Parser BUG: For markdown, ensure content ends with newline so closing delimiters are parsed correctly
+    // The tree-sitter markdown parser only creates closing delimiter nodes when followed by newline
+    const parseContent = filetype === "markdown" && content.endsWith("```") ? content + "\n" : content
+
+    const tree = reusableState.parser.parse(parseContent)
 
     if (!tree) {
       self.postMessage({
@@ -544,7 +794,24 @@ class ParserWorker {
 
     try {
       const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
-      const highlights = this.getSimpleHighlights(matches)
+
+      let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+      if (reusableState.filetypeParser.queries.injections) {
+        const parserState: ParserState = {
+          parser: reusableState.parser,
+          tree,
+          queries: reusableState.filetypeParser.queries,
+          filetype,
+          content,
+          injectionMapping: reusableState.filetypeParser.injectionMapping,
+        }
+        const injectionResult = await this.processInjections(parserState)
+
+        matches.push(...injectionResult.captures)
+        injectionRanges = injectionResult.injectionRanges
+      }
+
+      const highlights = this.getSimpleHighlights(matches, injectionRanges)
 
       self.postMessage({
         type: "ONESHOT_HIGHLIGHT_RESPONSE",
@@ -559,19 +826,44 @@ class ParserWorker {
 
   async updateDataPath(dataPath: string): Promise<void> {
     this.dataPath = dataPath
+    this.tsDataPath = path.join(dataPath, "tree-sitter")
 
     try {
-      await mkdir(path.join(dataPath, "languages"), { recursive: true })
-      await mkdir(path.join(dataPath, "queries"), { recursive: true })
+      await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
+      await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
     } catch (error) {
       throw new Error(`Failed to update data path: ${error}`)
+    }
+  }
+
+  async clearCache(): Promise<void> {
+    if (!this.dataPath || !this.tsDataPath) {
+      throw new Error("No data path configured")
+    }
+
+    const { rm } = await import("fs/promises")
+
+    try {
+      const treeSitterPath = path.join(this.dataPath, "tree-sitter")
+
+      await rm(treeSitterPath, { recursive: true, force: true })
+
+      await mkdir(path.join(treeSitterPath, "languages"), { recursive: true })
+      await mkdir(path.join(treeSitterPath, "queries"), { recursive: true })
+
+      this.filetypeParsers.clear()
+      this.filetypeParserPromises.clear()
+      this.reusableParsers.clear()
+      this.reusableParserPromises.clear()
+    } catch (error) {
+      throw new Error(`Failed to clear cache: ${error}`)
     }
   }
 }
 if (!isMainThread) {
   const worker = new ParserWorker()
 
-  function logMessage(type: "log" | "error", ...args: any[]) {
+  function logMessage(type: "log" | "error" | "warn", ...args: any[]) {
     self.postMessage({
       type: "WORKER_LOG",
       logType: type,
@@ -580,6 +872,7 @@ if (!isMainThread) {
   }
   console.log = (...args) => logMessage("log", ...args)
   console.error = (...args) => logMessage("error", ...args)
+  console.warn = (...args) => logMessage("warn", ...args)
 
   // @ts-ignore - we'll fix this in the future for sure
   self.onmessage = async (e: MessageEvent) => {
@@ -654,6 +947,19 @@ if (!isMainThread) {
           } catch (error) {
             self.postMessage({
               type: "UPDATE_DATA_PATH_RESPONSE",
+              messageId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+          break
+
+        case "CLEAR_CACHE":
+          try {
+            await worker.clearCache()
+            self.postMessage({ type: "CLEAR_CACHE_RESPONSE", messageId })
+          } catch (error) {
+            self.postMessage({
+              type: "CLEAR_CACHE_RESPONSE",
               messageId,
               error: error instanceof Error ? error.message : String(error),
             })

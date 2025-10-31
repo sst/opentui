@@ -5,6 +5,7 @@ import * as path from "path"
 import { DownloadUtils } from "../download-utils"
 import { parseArgs } from "util"
 import type { FiletypeParserOptions } from "../types"
+import { readdir } from "fs/promises"
 
 interface ParsersConfig {
   parsers: FiletypeParserOptions[]
@@ -14,6 +15,8 @@ interface GeneratedParser {
   filetype: string
   languagePath: string
   highlightsPath: string
+  injectionsPath?: string
+  injectionMapping?: any
 }
 
 export interface UpdateOptions {
@@ -27,15 +30,38 @@ export interface UpdateOptions {
 
 function getDefaultOptions(): UpdateOptions {
   return {
-    configPath: path.resolve(__dirname, "../parsers-config.json"),
+    configPath: path.resolve(__dirname, "../parsers-config"),
     assetsDir: path.resolve(__dirname),
     outputPath: path.resolve(__dirname, "../default-parsers.ts"),
   }
 }
 
 async function loadConfig(configPath: string): Promise<ParsersConfig> {
-  const configContent = await readFile(configPath, "utf-8")
-  return JSON.parse(configContent)
+  let ext = path.extname(configPath)
+  let resolvedConfigPath = configPath
+
+  if (ext === "") {
+    const files = await readdir(path.dirname(configPath))
+    const file = files.find(
+      (file) =>
+        file.startsWith(path.basename(configPath)) &&
+        (file.endsWith(".json") || file.endsWith(".ts") || file.endsWith(".js")),
+    )
+    if (!file) {
+      throw new Error(`No config file found for ${configPath}`)
+    }
+    resolvedConfigPath = path.join(path.dirname(configPath), file)
+    ext = path.extname(resolvedConfigPath)
+  }
+
+  if (ext === ".json") {
+    const configContent = await readFile(resolvedConfigPath, "utf-8")
+    return JSON.parse(configContent)
+  } else if (ext === ".ts" || ext === ".js") {
+    const { default: configContent } = await import(resolvedConfigPath)
+    return configContent
+  }
+  throw new Error(`Unsupported config file extension: ${ext}`)
 }
 
 async function downloadLanguage(
@@ -62,61 +88,99 @@ async function downloadAndCombineQueries(
   queryUrls: string[],
   assetsDir: string,
   outputPath: string,
+  queryType: "highlights" | "injections",
+  configPath: string,
 ): Promise<string> {
   const queriesDir = path.join(assetsDir, filetype)
-  const highlightsPath = path.join(queriesDir, "highlights.scm")
+  const queryPath = path.join(queriesDir, `${queryType}.scm`)
 
   const queryContents: string[] = []
 
   for (let i = 0; i < queryUrls.length; i++) {
     const queryUrl = queryUrls[i]
-    console.log(`    Downloading query ${i + 1}/${queryUrls.length}: ${queryUrl}`)
 
-    // Download directly without caching to avoid conflicts between different queries
-    try {
-      const response = await fetch(queryUrl)
-      if (!response.ok) {
-        console.warn(`Failed to download query from ${queryUrl}: ${response.statusText}`)
+    if (queryUrl.startsWith("./")) {
+      console.log(`    Using local query ${i + 1}/${queryUrls.length}: ${queryUrl}`)
+
+      try {
+        const localPath = path.resolve(path.dirname(configPath), queryUrl)
+        const content = await readFile(localPath, "utf-8")
+
+        if (content.trim()) {
+          queryContents.push(content)
+          console.log(`    ✓ Loaded ${content.split("\n").length} lines from local file`)
+        }
+      } catch (error) {
+        console.warn(`Failed to read local query from ${queryUrl}: ${error}`)
         continue
       }
+    } else {
+      console.log(`    Downloading query ${i + 1}/${queryUrls.length}: ${queryUrl}`)
 
-      const content = await response.text()
-      if (content.trim()) {
-        queryContents.push(`; Query from: ${queryUrl}\n${content}`)
-        console.log(`    ✓ Downloaded ${content.split("\n").length} lines`)
+      try {
+        const response = await fetch(queryUrl)
+        if (!response.ok) {
+          console.warn(`Failed to download query from ${queryUrl}: ${response.statusText}`)
+          continue
+        }
+
+        const content = await response.text()
+        if (content.trim()) {
+          queryContents.push(`; Query from: ${queryUrl}\n${content}`)
+          console.log(`    ✓ Downloaded ${content.split("\n").length} lines`)
+        }
+      } catch (error) {
+        console.warn(`Failed to download query from ${queryUrl}: ${error}`)
+        continue
       }
-    } catch (error) {
-      console.warn(`Failed to download query from ${queryUrl}: ${error}`)
-      continue
     }
   }
 
   const combinedContent = queryContents.join("\n\n")
-  await writeFile(highlightsPath, combinedContent, "utf-8")
+  await writeFile(queryPath, combinedContent, "utf-8")
 
-  console.log(`  Combined ${queryContents.length} queries into ${highlightsPath}`)
+  console.log(`  Combined ${queryContents.length} queries into ${queryPath}`)
 
-  return "./" + path.relative(path.dirname(outputPath), highlightsPath)
+  return "./" + path.relative(path.dirname(outputPath), queryPath)
 }
 
 async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath: string): Promise<void> {
   const imports = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      return `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }
-import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`
+      const lines = [
+        `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }`,
+        `import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`,
+      ]
+      if (parser.injectionsPath) {
+        lines.push(`import ${safeFiletype}_injections from "${parser.injectionsPath}" with { type: "file" }`)
+      }
+      return lines.join("\n")
     })
     .join("\n")
 
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
+      const queriesLines = [
+        `          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],`,
+      ]
+      if (parser.injectionsPath) {
+        queriesLines.push(
+          `          injections: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_injections)],`,
+        )
+      }
+
+      const injectionMappingLine = parser.injectionMapping
+        ? `        injectionMapping: ${JSON.stringify(parser.injectionMapping, null, 10)},`
+        : ""
+
       return `      {
         filetype: "${parser.filetype}",
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],
+${queriesLines.join("\n")}
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
       }`
     })
     .join(",\n")
@@ -176,12 +240,29 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
         parser.queries.highlights,
         opts.assetsDir,
         opts.outputPath,
+        "highlights",
+        opts.configPath,
       )
+
+      let injectionsPath: string | undefined
+      if (parser.queries.injections && parser.queries.injections.length > 0) {
+        console.log(`  Downloading ${parser.queries.injections.length} injection queries...`)
+        injectionsPath = await downloadAndCombineQueries(
+          parser.filetype,
+          parser.queries.injections,
+          opts.assetsDir,
+          opts.outputPath,
+          "injections",
+          opts.configPath,
+        )
+      }
 
       generatedParsers.push({
         filetype: parser.filetype,
         languagePath,
         highlightsPath,
+        injectionsPath,
+        injectionMapping: parser.injectionMapping,
       })
 
       console.log(`  ✓ Completed ${parser.filetype}`)
