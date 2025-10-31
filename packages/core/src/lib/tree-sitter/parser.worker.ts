@@ -776,7 +776,11 @@ class ParserWorker {
       return
     }
 
-    const tree = reusableState.parser.parse(content)
+    // Markdown Parser BUG: For markdown, ensure content ends with newline so closing delimiters are parsed correctly
+    // The tree-sitter markdown parser only creates closing delimiter nodes when followed by newline
+    const parseContent = filetype === "markdown" && content.endsWith("```") ? content + "\n" : content
+
+    const tree = reusableState.parser.parse(parseContent)
 
     if (!tree) {
       self.postMessage({
