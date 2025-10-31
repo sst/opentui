@@ -386,6 +386,16 @@ const x: string = "hello";
   test("should conceal link syntax but keep text and URL", async () => {
     const markdownCode = "[Link text](https://example.com)"
 
+    // Check what conceal values we're getting
+    const result = await client.highlightOnce(markdownCode, "markdown")
+    console.log("\nConceal values:")
+    for (const [start, end, group, meta] of result.highlights!) {
+      if (meta?.conceal !== undefined) {
+        const text = markdownCode.slice(start, end)
+        console.log(`  [${start}, ${end}] "${text}" -> conceal: ${JSON.stringify(meta.conceal)}`)
+      }
+    }
+
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
       conceal: { enabled: true },
     })
@@ -393,14 +403,21 @@ const x: string = "hello";
 
     const reconstructed = chunks.map((c) => c.text).join("")
 
-    // Should not contain brackets or parentheses (they're marked with conceal)
-    // But tree-sitter marks them as markup.link, not conceal group
-    // So they won't be concealed - the queries use (#set! conceal "") on them
-    // but we're not reading that metadata yet
+    console.log("Reconstructed link:", JSON.stringify(reconstructed))
 
-    // For now, just verify the text is present
+    // Should conceal square brackets [ ] but keep parentheses ( ) with a space before (
+    // Result should be: "Link text (https://example.com)"
+    expect(reconstructed).not.toContain("[")
+    expect(reconstructed).not.toContain("]")
+    expect(reconstructed).toContain("(")
+    expect(reconstructed).toContain(")")
+
+    // Should keep label and url
     expect(reconstructed).toContain("Link text")
     expect(reconstructed).toContain("https://example.com")
+
+    // Check the exact format with space before (
+    expect(reconstructed).toBe("Link text (https://example.com)")
   })
 
   test("should conceal code block delimiters and language info", async () => {

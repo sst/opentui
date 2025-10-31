@@ -23,16 +23,23 @@
 ] @conceal
   (#set! conceal ""))
 
-; Conceal inline links
+; Inline links - style all parts
 (inline_link
-  [
-    "["
-    "]"
-    "("
-    (link_destination)
-    ")"
-  ] @markup.link
-  (#set! conceal ""))
+  ["[" "(" ")"] @markup.link)
+
+(inline_link
+  "]" @markup.link.bracket.close)
+
+(inline_link
+  (link_destination) @markup.link)
+
+; Conceal opening bracket
+(inline_link
+  "[" @conceal)
+
+; Conceal closing bracket (will be replaced with space in code)
+(inline_link
+  "]" @conceal.with.space)
 
 ; Conceal image links
 (image

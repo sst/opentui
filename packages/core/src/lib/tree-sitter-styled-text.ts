@@ -83,16 +83,44 @@ export function treeSitterToTextChunks(
       }
 
       // Check if any active highlight has a conceal property
-      // Priority: 1. Check meta.conceal first 2. Check group === "conceal"
+      // Priority: 1. Check meta.conceal first 2. Check group === "conceal" or starts with "conceal."
       const concealHighlight = concealEnabled
-        ? activeGroups.find((h) => h.meta?.conceal !== undefined || h.group === "conceal")
+        ? activeGroups.find(
+            (h) => h.meta?.conceal !== undefined || h.group === "conceal" || h.group.startsWith("conceal."),
+          )
         : undefined
 
       if (concealHighlight) {
-        // If conceal is set (even to empty string or null), drop the text for now
-        // In the future we might support replacement text (non-empty conceal values)
-        // Drop this text (conceal with empty replacement)
-        // Don't add any chunk
+        // Determine replacement text based on group name
+        let replacementText = ""
+
+        if (concealHighlight.meta?.conceal !== undefined) {
+          // If meta.conceal is set, use it (this would come from (#set! conceal "...") if supported)
+          replacementText = concealHighlight.meta.conceal
+        } else if (concealHighlight.group === "conceal.with.space") {
+          // Special group name means replace with space
+          replacementText = " "
+        }
+        // Otherwise use empty string (default concealment)
+
+        // Only add a chunk if there's replacement text
+        if (replacementText) {
+          chunks.push({
+            __isChunk: true,
+            text: replacementText,
+            fg: defaultStyle?.fg,
+            bg: defaultStyle?.bg,
+            attributes: defaultStyle
+              ? createTextAttributes({
+                  bold: defaultStyle.bold,
+                  italic: defaultStyle.italic,
+                  underline: defaultStyle.underline,
+                  dim: defaultStyle.dim,
+                })
+              : 0,
+          })
+        }
+        // Otherwise drop the text (conceal with empty replacement)
       } else {
         const insideInjectionContainer = injectionContainerRanges.some(
           (range) => currentOffset >= range.start && currentOffset < range.end,
