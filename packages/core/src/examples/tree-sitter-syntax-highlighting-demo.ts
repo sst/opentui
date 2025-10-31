@@ -255,9 +255,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
     // Markdown specific styles (matching tree-sitter capture names)
     "markup.heading": { fg: parseColor("#58A6FF"), bold: true },
-    "markup.heading.1": { fg: parseColor("#79C0FF"), bold: true },
-    "markup.heading.2": { fg: parseColor("#A5D6FF"), bold: true },
-    "markup.heading.3": { fg: parseColor("#D2A8FF"), bold: true },
+    "markup.heading.1": { fg: parseColor("#00FF88"), bold: true, underline: true },
+    "markup.heading.2": { fg: parseColor("#00D7FF"), bold: true },
+    "markup.heading.3": { fg: parseColor("#FF69B4") },
     "markup.heading.4": { fg: parseColor("#FFA657"), bold: true },
     "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true },
     "markup.heading.6": { fg: parseColor("#8B949E"), bold: true },
