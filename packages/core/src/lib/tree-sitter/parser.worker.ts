@@ -682,16 +682,22 @@ class ParserWorker {
       // Check if this highlight is within an injection range
       let isInjection = false
       let injectionLang: string | undefined
+      let containsInjection = false
       for (const injRange of flatInjectionRanges) {
         if (node.startIndex >= injRange.start && node.endIndex <= injRange.end) {
           isInjection = true
           injectionLang = injRange.lang
+          break
+        } else if (node.startIndex <= injRange.start && node.endIndex >= injRange.end) {
+          containsInjection = true
           break
         }
       }
 
       if (isInjection && injectionLang) {
         highlights.push([node.startIndex, node.endIndex, match.name, { isInjection: true, injectionLang }])
+      } else if (containsInjection) {
+        highlights.push([node.startIndex, node.endIndex, match.name, { containsInjection: true }])
       } else {
         highlights.push([node.startIndex, node.endIndex, match.name])
       }

@@ -13,6 +13,7 @@ export interface HighlightResponse {
 export interface HighlightMeta {
   isInjection?: boolean
   injectionLang?: string
+  containsInjection?: boolean
 }
 
 export type SimpleHighlight = [number, number, string, HighlightMeta?]
