@@ -228,55 +228,55 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   // Create syntax style similar to GitHub Dark theme
   syntaxStyle = SyntaxStyle.fromStyles({
     // JS/TS styles
-    keyword: { fg: parseColor("#FF7B72"), bold: true }, // red keywords
-    "keyword.import": { fg: parseColor("#FF7B72"), bold: true }, // red import/export
-    "keyword.coroutine": { fg: parseColor("#FF9492") }, // lighter red for async/await
-    "keyword.operator": { fg: parseColor("#FF7B72") }, // red operator keywords (new, typeof, etc)
-    string: { fg: parseColor("#A5D6FF") }, // blue strings
-    comment: { fg: parseColor("#8B949E"), italic: true }, // gray comments
-    number: { fg: parseColor("#79C0FF") }, // light blue numbers
-    boolean: { fg: parseColor("#79C0FF") }, // light blue booleans
-    constant: { fg: parseColor("#79C0FF") }, // light blue constants
-    function: { fg: parseColor("#D2A8FF") }, // purple functions
-    "function.call": { fg: parseColor("#D2A8FF") }, // purple function calls
-    "function.method.call": { fg: parseColor("#D2A8FF") }, // purple method calls
-    constructor: { fg: parseColor("#FFA657") }, // orange constructors
-    type: { fg: parseColor("#FFA657") }, // orange types
-    operator: { fg: parseColor("#FF7B72") }, // red operators
-    variable: { fg: parseColor("#E6EDF3") }, // light gray variables
-    "variable.member": { fg: parseColor("#79C0FF") }, // light blue properties/members
-    property: { fg: parseColor("#79C0FF") }, // light blue properties
-    bracket: { fg: parseColor("#F0F6FC") }, // white brackets
-    "punctuation.bracket": { fg: parseColor("#F0F6FC") }, // white brackets
-    "punctuation.delimiter": { fg: parseColor("#C9D1D9") }, // light gray delimiters (commas, semicolons)
-    punctuation: { fg: parseColor("#F0F6FC") }, // white punctuation
+    keyword: { fg: parseColor("#FF7B72"), bold: true },
+    "keyword.import": { fg: parseColor("#FF7B72"), bold: true },
+    "keyword.coroutine": { fg: parseColor("#FF9492") },
+    "keyword.operator": { fg: parseColor("#FF7B72") },
+    string: { fg: parseColor("#A5D6FF") },
+    comment: { fg: parseColor("#8B949E"), italic: true },
+    number: { fg: parseColor("#79C0FF") },
+    boolean: { fg: parseColor("#79C0FF") },
+    constant: { fg: parseColor("#79C0FF") },
+    function: { fg: parseColor("#D2A8FF") },
+    "function.call": { fg: parseColor("#D2A8FF") },
+    "function.method.call": { fg: parseColor("#D2A8FF") },
+    constructor: { fg: parseColor("#FFA657") },
+    type: { fg: parseColor("#FFA657") },
+    operator: { fg: parseColor("#FF7B72") },
+    variable: { fg: parseColor("#E6EDF3") },
+    "variable.member": { fg: parseColor("#79C0FF") },
+    property: { fg: parseColor("#79C0FF") },
+    bracket: { fg: parseColor("#F0F6FC") },
+    "punctuation.bracket": { fg: parseColor("#F0F6FC") },
+    "punctuation.delimiter": { fg: parseColor("#C9D1D9") },
+    punctuation: { fg: parseColor("#F0F6FC") },
 
     // Markdown specific styles (matching tree-sitter capture names)
-    "markup.heading": { fg: parseColor("#58A6FF"), bold: true }, // medium blue generic headings
-    "markup.heading.1": { fg: parseColor("#79C0FF"), bold: true }, // bright blue H1
-    "markup.heading.2": { fg: parseColor("#A5D6FF"), bold: true }, // light blue H2
-    "markup.heading.3": { fg: parseColor("#D2A8FF"), bold: true }, // purple H3
-    "markup.heading.4": { fg: parseColor("#FFA657"), bold: true }, // orange H4
-    "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true }, // red H5
-    "markup.heading.6": { fg: parseColor("#8B949E"), bold: true }, // gray H6
-    "markup.bold": { fg: parseColor("#F0F6FC"), bold: true }, // white bold
-    "markup.strong": { fg: parseColor("#F0F6FC"), bold: true }, // white strong (same as bold)
-    "markup.italic": { fg: parseColor("#F0F6FC"), italic: true }, // white italic
-    "markup.list": { fg: parseColor("#FF7B72") }, // red list markers
-    "markup.quote": { fg: parseColor("#8B949E"), italic: true }, // gray quotes
-    "markup.raw": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue inline code
-    "markup.raw.block": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue code blocks with dark bg
-    "markup.raw.inline": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue inline code
-    "markup.link": { fg: parseColor("#58A6FF"), underline: true }, // blue links
-    "markup.link.label": { fg: parseColor("#A5D6FF") }, // light blue link labels
-    "markup.link.url": { fg: parseColor("#58A6FF") }, // blue URLs
-    label: { fg: parseColor("#7EE787") }, // green language labels in code blocks
-    spell: { fg: parseColor("#E6EDF3") }, // light gray normal text
-    nospell: { fg: parseColor("#E6EDF3") }, // light gray nospell text
-    conceal: { fg: parseColor("#6E7681") }, // darker gray for concealed chars (markdown syntax)
-    "punctuation.special": { fg: parseColor("#8B949E") }, // gray special punctuation
+    "markup.heading": { fg: parseColor("#58A6FF"), bold: true },
+    "markup.heading.1": { fg: parseColor("#79C0FF"), bold: true },
+    "markup.heading.2": { fg: parseColor("#A5D6FF"), bold: true },
+    "markup.heading.3": { fg: parseColor("#D2A8FF"), bold: true },
+    "markup.heading.4": { fg: parseColor("#FFA657"), bold: true },
+    "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true },
+    "markup.heading.6": { fg: parseColor("#8B949E"), bold: true },
+    "markup.bold": { fg: parseColor("#F0F6FC"), bold: true },
+    "markup.strong": { fg: parseColor("#F0F6FC"), bold: true },
+    "markup.italic": { fg: parseColor("#F0F6FC"), italic: true },
+    "markup.list": { fg: parseColor("#FF7B72") },
+    "markup.quote": { fg: parseColor("#8B949E"), italic: true },
+    "markup.raw": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
+    "markup.raw.block": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
+    "markup.raw.inline": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
+    "markup.link": { fg: parseColor("#58A6FF"), underline: true },
+    "markup.link.label": { fg: parseColor("#A5D6FF") },
+    "markup.link.url": { fg: parseColor("#58A6FF") },
+    label: { fg: parseColor("#7EE787") },
+    spell: { fg: parseColor("#E6EDF3") },
+    nospell: { fg: parseColor("#E6EDF3") },
+    conceal: { fg: parseColor("#6E7681") },
+    "punctuation.special": { fg: parseColor("#8B949E") },
 
-    default: { fg: parseColor("#E6EDF3") }, // light gray default (distinct from white)
+    default: { fg: parseColor("#E6EDF3") },
   })
 
   // Create code display using CodeRenderable
