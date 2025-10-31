@@ -89,6 +89,7 @@ async function downloadAndCombineQueries(
   assetsDir: string,
   outputPath: string,
   queryType: "highlights" | "injections",
+  configPath: string,
 ): Promise<string> {
   const queriesDir = path.join(assetsDir, filetype)
   const queryPath = path.join(queriesDir, `${queryType}.scm`)
@@ -97,24 +98,41 @@ async function downloadAndCombineQueries(
 
   for (let i = 0; i < queryUrls.length; i++) {
     const queryUrl = queryUrls[i]
-    console.log(`    Downloading query ${i + 1}/${queryUrls.length}: ${queryUrl}`)
 
-    // Download directly without caching to avoid conflicts between different queries
-    try {
-      const response = await fetch(queryUrl)
-      if (!response.ok) {
-        console.warn(`Failed to download query from ${queryUrl}: ${response.statusText}`)
+    if (queryUrl.startsWith("./")) {
+      console.log(`    Using local query ${i + 1}/${queryUrls.length}: ${queryUrl}`)
+
+      try {
+        const localPath = path.resolve(path.dirname(configPath), queryUrl)
+        const content = await readFile(localPath, "utf-8")
+
+        if (content.trim()) {
+          queryContents.push(content)
+          console.log(`    ✓ Loaded ${content.split("\n").length} lines from local file`)
+        }
+      } catch (error) {
+        console.warn(`Failed to read local query from ${queryUrl}: ${error}`)
         continue
       }
+    } else {
+      console.log(`    Downloading query ${i + 1}/${queryUrls.length}: ${queryUrl}`)
 
-      const content = await response.text()
-      if (content.trim()) {
-        queryContents.push(`; Query from: ${queryUrl}\n${content}`)
-        console.log(`    ✓ Downloaded ${content.split("\n").length} lines`)
+      try {
+        const response = await fetch(queryUrl)
+        if (!response.ok) {
+          console.warn(`Failed to download query from ${queryUrl}: ${response.statusText}`)
+          continue
+        }
+
+        const content = await response.text()
+        if (content.trim()) {
+          queryContents.push(`; Query from: ${queryUrl}\n${content}`)
+          console.log(`    ✓ Downloaded ${content.split("\n").length} lines`)
+        }
+      } catch (error) {
+        console.warn(`Failed to download query from ${queryUrl}: ${error}`)
+        continue
       }
-    } catch (error) {
-      console.warn(`Failed to download query from ${queryUrl}: ${error}`)
-      continue
     }
   }
 
@@ -223,6 +241,7 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
         opts.assetsDir,
         opts.outputPath,
         "highlights",
+        opts.configPath,
       )
 
       let injectionsPath: string | undefined
@@ -234,6 +253,7 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
           opts.assetsDir,
           opts.outputPath,
           "injections",
+          opts.configPath,
         )
       }
 

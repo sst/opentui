@@ -29,7 +29,8 @@ export default {
       wasm: "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm",
       queries: {
         highlights: [
-          "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/highlights.scm",
+          // Using local file to preserve custom modifications
+          "./assets/markdown/highlights.scm",
         ],
         injections: [
           "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/injections.scm",
