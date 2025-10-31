@@ -15,6 +15,7 @@ export interface HighlightMeta {
   injectionLang?: string
   containsInjection?: boolean
   conceal?: string | null // Value from (#set! conceal "...") predicate
+  concealLines?: string | null // Value from (#set! conceal_lines "...") predicate - indicates the whole line should be concealed
 }
 
 export type SimpleHighlight = [number, number, string, HighlightMeta?]

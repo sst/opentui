@@ -695,6 +695,7 @@ class ParserWorker {
       }
 
       const concealValue = match.setProperties?.conceal
+      const concealLines = match.setProperties?.conceal_lines
 
       const meta: any = {}
       if (isInjection && injectionLang) {
@@ -706,6 +707,9 @@ class ParserWorker {
       }
       if (concealValue !== undefined) {
         meta.conceal = concealValue
+      }
+      if (concealLines !== undefined) {
+        meta.concealLines = concealLines
       }
 
       if (Object.keys(meta).length > 0) {

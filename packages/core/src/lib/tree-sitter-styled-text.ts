@@ -89,7 +89,6 @@ export function treeSitterToTextChunks(
         : undefined
 
       if (concealHighlight) {
-        const concealValue = concealHighlight.meta?.conceal
         // If conceal is set (even to empty string or null), drop the text for now
         // In the future we might support replacement text (non-empty conceal values)
         // Drop this text (conceal with empty replacement)
@@ -176,6 +175,16 @@ export function treeSitterToTextChunks(
       activeHighlights.add(boundary.highlightIndex)
     } else {
       activeHighlights.delete(boundary.highlightIndex)
+
+      if (concealEnabled) {
+        const [, , , meta] = highlights[boundary.highlightIndex]
+        if (meta?.concealLines !== undefined) {
+          if (boundary.offset < content.length && content[boundary.offset] === "\n") {
+            currentOffset = boundary.offset + 1
+            continue
+          }
+        }
+      }
     }
 
     currentOffset = boundary.offset

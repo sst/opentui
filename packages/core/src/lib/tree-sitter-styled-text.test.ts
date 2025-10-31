@@ -426,8 +426,12 @@ const x: string = "hello";
     // Opening delimiters and language annotation SHOULD be concealed
     expect(reconstructed).not.toContain("typescript")
 
-    // The reconstructed text should start with a newline (after the concealed ```typescript)
-    expect(reconstructed.startsWith("\n")).toBe(true)
+    // With concealLines, the newline after ```typescript should also be concealed
+    // So the text should start directly with the code content
+    expect(reconstructed.startsWith("const")).toBe(true)
+
+    // Verify no extraneous empty lines were created
+    expect(reconstructed.split("\n").filter((l) => l.trim() === "").length).toBeLessThanOrEqual(0)
 
     // NOTE: The closing ``` is currently being included because it's parsed as part of the TypeScript
     // injection (template string backticks). This is a separate bug with injection boundaries.
@@ -555,6 +559,35 @@ const hello: string = "world";
     // Note: The ## markers are not marked with (#set! conceal "") in the query,
     // so they will still be present. This is expected based on the current highlight queries.
     // If the query is updated to conceal heading markers, this test would need to change.
+  })
+
+  test("should not create empty lines when concealing code block delimiters", async () => {
+    const markdownCode = `\`\`\`typescript
+const x = 1;
+const y = 2;
+\`\`\``
+
+    const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+      conceal: { enabled: true },
+    })
+
+    const reconstructed = styledText.chunks.map((c) => c.text).join("")
+
+    // Original has 4 lines: ```typescript, const x, const y, ```
+    const originalLines = markdownCode.split("\n")
+    expect(originalLines.length).toBe(4)
+
+    // After concealing, we should have 3 lines: const x, const y, ```
+    // (The ```typescript line is completely removed including its newline)
+    const reconstructedLines = reconstructed.split("\n")
+    expect(reconstructedLines.length).toBe(3)
+
+    // First line should be the code, not an empty line
+    expect(reconstructedLines[0]).toBe("const x = 1;")
+
+    // No empty lines at the start
+    expect(reconstructed.startsWith("\n")).toBe(false)
+    expect(reconstructed.startsWith("const")).toBe(true)
   })
 
   describe("Markdown highlighting comprehensive coverage", () => {
