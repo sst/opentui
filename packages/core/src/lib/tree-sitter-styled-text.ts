@@ -20,11 +20,15 @@ function getSpecificity(group: string): number {
 }
 
 function shouldSuppressInInjection(group: string, meta: any): boolean {
-  // If we're inside an injection, suppress parent markup.raw.block highlights
   if (meta?.isInjection) {
-    return false // This is an injected highlight, don't suppress
+    return false
   }
+
   // Check if this is a parent block that should be suppressed
+  // TODO: This is language/highlight specific,
+  // not generic enough. Needs a more generic solution.
+  // The styles need to be more like a stack that gets merged
+  // and for a container with injections we just don't push that container style
   return group === "markup.raw.block"
 }
 
@@ -38,11 +42,15 @@ export function treeSitterToTextChunks(
   const defaultStyle = syntaxStyle.getStyle("default")
   const concealEnabled = options?.enabled ?? true
 
-  // Build boundaries for segmentation
+  const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
+
   for (let i = 0; i < highlights.length; i++) {
-    const [start, end] = highlights[i]
+    const [start, end, , meta] = highlights[i]
     if (start === end) continue // Skip zero-length ranges
+    if (meta?.containsInjection) {
+      injectionContainerRanges.push({ start, end })
+    }
     boundaries.push({ offset: start, type: "start", highlightIndex: i })
     boundaries.push({ offset: end, type: "end", highlightIndex: i })
   }
@@ -81,12 +89,16 @@ export function treeSitterToTextChunks(
         // Drop this text (conceal with empty replacement)
         // Don't add any chunk
       } else {
-        // Check for injection ranges
-        const hasInjectedHighlight = activeGroups.some((h) => h.meta?.isInjection)
+        const insideInjectionContainer = injectionContainerRanges.some(
+          (range) => currentOffset >= range.start && currentOffset < range.end,
+        )
 
         // Filter out highlights that should be suppressed
+        // Suppress highlights when we're inside an injection container
         const validGroups = activeGroups.filter((h) => {
-          if (hasInjectedHighlight && shouldSuppressInInjection(h.group, h.meta)) {
+          // If we're inside an injection container, suppress all markup.raw.block highlights
+          // This includes both the container itself and any nested markup.raw.block
+          if (insideInjectionContainer && shouldSuppressInInjection(h.group, h.meta)) {
             return false
           }
           return true
