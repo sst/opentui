@@ -213,17 +213,31 @@ export function treeSitterToTextChunks(
       activeHighlights.delete(boundary.highlightIndex)
 
       if (concealEnabled) {
-        const [, , , meta] = highlights[boundary.highlightIndex]
+        const [, , group, meta] = highlights[boundary.highlightIndex]
         if (meta?.concealLines !== undefined) {
           if (boundary.offset < content.length && content[boundary.offset] === "\n") {
             currentOffset = boundary.offset + 1
             continue
           }
         }
+
+        // TODO: This is also a query specific workaround, needs improvement
         if (meta?.conceal !== undefined) {
-          if (boundary.offset < content.length && content[boundary.offset] === " ") {
-            currentOffset = boundary.offset + 1
-            continue
+          // Skip the next space if we replaced with a space (prevents double spaces like "text] (url)")
+          if (meta.conceal === " ") {
+            if (boundary.offset < content.length && content[boundary.offset] === " ") {
+              currentOffset = boundary.offset + 1
+              continue
+            }
+          }
+          // For heading markers specifically, also skip the trailing space
+          // The group is just "conceal" for heading markers from the markdown query
+          // We need to check if this conceal is NOT from an injection (markdown_inline)
+          else if (meta.conceal === "" && group === "conceal" && !meta.isInjection) {
+            if (boundary.offset < content.length && content[boundary.offset] === " ") {
+              currentOffset = boundary.offset + 1
+              continue
+            }
           }
         }
       }

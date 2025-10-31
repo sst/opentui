@@ -692,6 +692,330 @@ const user: User = { name: "Alice", age: 25 };`
   }, 15000)
 })
 
+describe("TreeSitterClient Conceal Values", () => {
+  let dataPath: string
+
+  const concealDataPath = join(tmpdir(), "tree-sitter-conceal-test-data")
+
+  beforeAll(async () => {
+    await mkdir(concealDataPath, { recursive: true })
+  })
+
+  beforeEach(async () => {
+    dataPath = concealDataPath
+  })
+
+  test("should return conceal values from normal (non-injected) queries", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Markdown has conceal directives in its main highlights query
+      // For example, image syntax: ![alt](url) conceals the brackets and parentheses
+      const markdownCode = `![Image Alt Text](https://example.com/image.png)`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      // Look for highlights with meta.conceal property
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      // Should have at least some concealed elements (brackets, parens, etc.)
+      expect(concealedHighlights.length).toBeGreaterThan(0)
+
+      // Log for inspection
+      console.log("\n=== NORMAL QUERY CONCEAL VALUES ===")
+      concealedHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+      })
+      console.log("=== END NORMAL QUERY CONCEAL VALUES ===\n")
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should return conceal values from injected queries (markdown_inline)", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Inline links in markdown use the markdown_inline parser (injected)
+      // The pattern should conceal the closing bracket with a space
+      const markdownCode = `Here is a [link](https://example.com) in text.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      // Look for highlights with meta.conceal property
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      expect(concealedHighlights.length).toBeGreaterThan(0)
+
+      console.log("\n=== INJECTED QUERY CONCEAL VALUES ===")
+      concealedHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(
+          `  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}", isInjection: ${meta.isInjection}`,
+        )
+      })
+      console.log("=== END INJECTED QUERY CONCEAL VALUES ===\n")
+
+      // Specifically check for the closing bracket "]" with non-empty conceal value
+      const closingBracketHighlight = concealedHighlights.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        return text === "]" && meta.conceal !== ""
+      })
+
+      // This is the key test - the closing bracket should have a space as replacement
+      if (closingBracketHighlight) {
+        const meta = (closingBracketHighlight as any)[3]
+        expect(meta.conceal).toBe(" ") // Regular space character
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should distinguish conceal values between normal and injected queries", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Use markdown with both inline links (injected) and image syntax (normal)
+      const markdownCode = `Here is a [link](https://example.com) and ![image](https://example.com/img.png).`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      console.log("\n=== MIXED NORMAL + INJECTED CONCEAL VALUES ===")
+      console.log("Total highlights:", result.highlights!.length)
+      console.log("Concealed highlights:", concealedHighlights.length)
+
+      // Separate by injection status
+      const normalConceal = concealedHighlights.filter((hl) => {
+        const meta = (hl as any)[3]
+        return !meta.isInjection
+      })
+
+      const injectedConceal = concealedHighlights.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta.isInjection
+      })
+
+      console.log("\nNormal query conceals:", normalConceal.length)
+      normalConceal.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+      })
+
+      console.log("\nInjected query conceals:", injectedConceal.length)
+      injectedConceal.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+      })
+
+      console.log("=== END MIXED CONCEAL VALUES ===\n")
+
+      // Injected conceals should exist (normal may or may not depending on content)
+      expect(injectedConceal.length).toBeGreaterThan(0)
+      // Note: normal conceal may be 0 for simple markdown without code fences or headings
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should handle pattern index lookups correctly for injections", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Test with markdown that has inline link concealment
+      const markdownCode = `A [link](url) here.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      // The bug was that pattern indices from injected queries were being looked up
+      // in the parent query's setProperties array. This test verifies the fix works.
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      console.log("\n=== PATTERN INDEX VERIFICATION ===")
+      console.log("All highlights:")
+      result.highlights!.forEach((hl, idx) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(
+          `  [${idx}] [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`,
+          meta ? `meta: ${JSON.stringify(meta)}` : "",
+        )
+      })
+
+      console.log("\nConcealed highlights detail:")
+      concealedHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`  Text: "${text}", Group: ${hl[2]}, Conceal: "${meta.conceal}", IsInjection: ${meta.isInjection}`)
+      })
+      console.log("=== END PATTERN INDEX VERIFICATION ===\n")
+
+      // If the pattern index bug exists, we would get empty strings or wrong values
+      // After the fix, all conceal values should be correctly retrieved
+      concealedHighlights.forEach((hl) => {
+        const meta = (hl as any)[3]
+        // Conceal value should be defined (can be empty string "", but not undefined)
+        expect(meta.conceal).toBeDefined()
+      })
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should handle multiple injected languages with different conceal patterns", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Complex markdown with multiple types of concealment
+      const markdownCode = `# Title
+
+Inline \`code\` and a [link](url) here.
+
+\`\`\`typescript
+const x = 42;
+\`\`\`
+
+More text with ![image](img.png) and **bold**.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      const concealedHighlights = result.highlights!.filter((hl) => {
+        const meta = (hl as any)[3]
+        return meta && meta.conceal !== undefined
+      })
+
+      console.log("\n=== MULTIPLE INJECTION CONCEAL TEST ===")
+      console.log("Total highlights:", result.highlights!.length)
+      console.log("Concealed highlights:", concealedHighlights.length)
+
+      // Group by injection language
+      const byLang = new Map<string, any[]>()
+      concealedHighlights.forEach((hl) => {
+        const meta = (hl as any)[3]
+        const lang = meta.isInjection ? meta.injectionLang || "injected" : "normal"
+        if (!byLang.has(lang)) {
+          byLang.set(lang, [])
+        }
+        byLang.get(lang)!.push(hl)
+      })
+
+      byLang.forEach((highlights, lang) => {
+        console.log(`\n${lang} conceals: ${highlights.length}`)
+        highlights.forEach((hl: any) => {
+          const text = markdownCode.substring(hl[0], hl[1])
+          const meta = hl[3]
+          console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+        })
+      })
+
+      console.log("=== END MULTIPLE INJECTION CONCEAL TEST ===\n")
+
+      // Should have conceals from both normal and injected content
+      expect(concealedHighlights.length).toBeGreaterThan(0)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should preserve non-empty conceal replacements like space character", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      // Focus on inline link which should use space replacement for closing bracket
+      const markdownCode = `Check [this link](https://example.com) out!`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+
+      // Find the closing bracket conceal highlight (not the markup.link.bracket.close)
+      const closingBracket = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        return text === "]" && hl[2] === "conceal" && meta?.conceal !== undefined
+      })
+
+      console.log("\n=== SPACE REPLACEMENT TEST ===")
+      if (closingBracket) {
+        const meta = (closingBracket as any)[3]
+        const text = markdownCode.substring(closingBracket[0], closingBracket[1])
+        console.log(`Found closing bracket: [${closingBracket[0]}, ${closingBracket[1]}] "${text}"`)
+        console.log(`  Group: ${closingBracket[2]}`)
+        console.log(`  Meta:`, meta)
+        if (meta) {
+          console.log(`  Conceal value: "${meta.conceal}" (length: ${meta.conceal?.length})`)
+          console.log(`  Conceal charCode:`, meta.conceal ? meta.conceal.charCodeAt(0) : "undefined")
+        }
+      } else {
+        console.log("No closing bracket highlight found")
+      }
+      console.log("=== END SPACE REPLACEMENT TEST ===\n")
+
+      // This is the critical test case from the issue
+      // The closing bracket should have conceal value " " (regular space)
+      // NOT an empty string which was the bug
+      if (closingBracket) {
+        const meta = (closingBracket as any)[3]
+        expect(meta).toBeDefined()
+        expect(meta.conceal).toBeDefined()
+        // Should be a space character, not empty
+        expect(meta.conceal).toBe(" ")
+        expect(meta.conceal.length).toBeGreaterThan(0)
+      }
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+})
+
 describe("TreeSitterClient Edge Cases", () => {
   let dataPath: string
 

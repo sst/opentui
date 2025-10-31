@@ -436,9 +436,11 @@ class ParserWorker {
             // Create new QueryCapture objects with offset positions
             for (const match of matches) {
               // Calculate offset positions by creating a new capture with adjusted node properties
-              const offsetCapture: QueryCapture = {
+              // Store the injected query reference so we can look up properties correctly
+              const offsetCapture: QueryCapture & { _injectedQuery?: Query } = {
                 name: match.name,
                 patternIndex: match.patternIndex,
+                _injectedQuery: injectedParser.queries.highlights, // Store the correct query reference
                 node: {
                   ...match.node,
                   startPosition: {
@@ -694,8 +696,11 @@ class ParserWorker {
         }
       }
 
-      const concealValue = match.setProperties?.conceal
-      const concealLines = match.setProperties?.conceal_lines
+      const matchQuery = (match as any)._injectedQuery
+      const patternProperties = matchQuery?.setProperties?.[match.patternIndex]
+
+      const concealValue = patternProperties?.conceal ?? match.setProperties?.conceal
+      const concealLines = patternProperties?.conceal_lines ?? match.setProperties?.conceal_lines
 
       const meta: any = {}
       if (isInjection && injectionLang) {

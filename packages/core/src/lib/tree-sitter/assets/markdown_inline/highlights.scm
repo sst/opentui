@@ -30,16 +30,15 @@
 (inline_link
   "]" @markup.link.bracket.close)
 
-(inline_link
-  (link_destination) @markup.link)
-
 ; Conceal opening bracket
-(inline_link
+((inline_link
   "[" @conceal)
+  (#set! conceal ""))
 
-; Conceal closing bracket (will be replaced with space in code)
-(inline_link
-  "]" @conceal.with.space)
+; Conceal closing bracket with space replacement
+((inline_link
+  "]" @conceal)
+  (#set! conceal " "))
 
 ; Conceal image links
 (image
