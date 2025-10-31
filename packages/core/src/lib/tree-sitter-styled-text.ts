@@ -64,18 +64,15 @@ export function treeSitterToTextChunks(
     return 0
   })
 
-  // Track active highlights
   const activeHighlights = new Set<number>()
   let currentOffset = 0
 
   for (let i = 0; i < boundaries.length; i++) {
     const boundary = boundaries[i]
 
-    // Process segment before this boundary
     if (currentOffset < boundary.offset && activeHighlights.size > 0) {
       const segmentText = content.slice(currentOffset, boundary.offset)
 
-      // Collect active highlight groups
       const activeGroups: Array<{ group: string; meta: any; index: number }> = []
       for (const idx of activeHighlights) {
         const [, , group, meta] = highlights[idx]
@@ -91,7 +88,6 @@ export function treeSitterToTextChunks(
         : undefined
 
       if (concealHighlight) {
-        // Determine replacement text based on group name
         let replacementText = ""
 
         if (concealHighlight.meta?.conceal !== undefined) {
@@ -101,9 +97,7 @@ export function treeSitterToTextChunks(
           // Special group name means replace with space
           replacementText = " "
         }
-        // Otherwise use empty string (default concealment)
 
-        // Only add a chunk if there's replacement text
         if (replacementText) {
           chunks.push({
             __isChunk: true,
@@ -120,7 +114,6 @@ export function treeSitterToTextChunks(
               : 0,
           })
         }
-        // Otherwise drop the text (conceal with empty replacement)
       } else {
         const insideInjectionContainer = injectionContainerRanges.some(
           (range) => currentOffset >= range.start && currentOffset < range.end,
@@ -188,7 +181,6 @@ export function treeSitterToTextChunks(
         })
       }
     } else if (currentOffset < boundary.offset) {
-      // Gap with no active highlights - use default style
       const text = content.slice(currentOffset, boundary.offset)
       chunks.push({
         __isChunk: true,
@@ -206,7 +198,6 @@ export function treeSitterToTextChunks(
       })
     }
 
-    // Update active highlights
     if (boundary.type === "start") {
       activeHighlights.add(boundary.highlightIndex)
     } else {
@@ -246,7 +237,6 @@ export function treeSitterToTextChunks(
     currentOffset = boundary.offset
   }
 
-  // Process remaining text
   if (currentOffset < content.length) {
     const text = content.slice(currentOffset)
     chunks.push({
@@ -284,7 +274,6 @@ export async function treeSitterToStyledText(
     const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle, options?.conceal)
     return new StyledText(chunks)
   } else {
-    // No highlights available, return content with default styling
     const defaultStyle = syntaxStyle.mergeStyles("default")
     const chunks: TextChunk[] = [
       {

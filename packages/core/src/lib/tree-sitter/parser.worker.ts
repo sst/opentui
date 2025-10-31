@@ -125,7 +125,6 @@ class ParserWorker {
     | undefined
   > {
     try {
-      // Fetch all highlight queries from URLs/paths and concatenate them
       const highlightQueryContent = await this.fetchQueries(filetypeParser.queries.highlights, filetypeParser.filetype)
       if (!highlightQueryContent) {
         console.error("Failed to fetch highlight queries for:", filetypeParser.filetype)
@@ -137,7 +136,6 @@ class ParserWorker {
         highlights: highlightsQuery,
       }
 
-      // Load injections query if provided
       if (filetypeParser.queries.injections && filetypeParser.queries.injections.length > 0) {
         const injectionQueryContent = await this.fetchQueries(
           filetypeParser.queries.injections,
@@ -503,14 +501,12 @@ class ParserWorker {
       return { warning: "No parser state found for buffer" }
     }
 
-    // Update content
     parserState.content = content
 
     for (const edit of edits) {
       parserState.tree.edit(edit)
     }
 
-    // Parse the buffer
     const startParse = performance.now()
 
     const newTree = parserState.parser.parse(content, parserState.tree)
@@ -534,7 +530,6 @@ class ParserWorker {
     const startQuery = performance.now()
     const matches: QueryCapture[] = []
 
-    // If no changed ranges detected, use the edit ranges as fallback
     if (changedRanges.length === 0) {
       edits.forEach((edit) => {
         const range = this.editToRange(edit)
@@ -568,7 +563,6 @@ class ParserWorker {
         continue
       }
 
-      // For smaller nodes, walk up until we find a node that fully contains the range
       while (node && !this.nodeContainsRange(node, range)) {
         node = node.parent
       }
@@ -581,7 +575,6 @@ class ParserWorker {
       matches.push(...nodeCaptures)
     }
 
-    // Process injections for the changed content
     let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
     if (parserState.queries.injections) {
       const injectionResult = await this.processInjections(parserState)
@@ -670,7 +663,6 @@ class ParserWorker {
   ): SimpleHighlight[] {
     const highlights: SimpleHighlight[] = []
 
-    // Flatten injection ranges for quick lookup
     const flatInjectionRanges: Array<{ start: number; end: number; lang: string }> = []
     for (const [lang, ranges] of injectionRanges.entries()) {
       for (const range of ranges) {
@@ -681,7 +673,6 @@ class ParserWorker {
     for (const match of matches) {
       const node = match.node
 
-      // Check if this highlight is within an injection range
       let isInjection = false
       let injectionLang: string | undefined
       let containsInjection = false
@@ -724,7 +715,6 @@ class ParserWorker {
       }
     }
 
-    // Sort by start offset
     highlights.sort((a, b) => a[0] - b[0])
 
     return highlights
@@ -751,7 +741,6 @@ class ParserWorker {
     parserState.tree = newTree
     const matches = parserState.queries.highlights.captures(parserState.tree.rootNode)
 
-    // Process injections
     let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
     if (parserState.queries.injections) {
       const injectionResult = await this.processInjections(parserState)
@@ -802,7 +791,6 @@ class ParserWorker {
     try {
       const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
 
-      // Process injections
       let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
       if (reusableState.filetypeParser.queries.injections) {
         const parserState: ParserState = {
