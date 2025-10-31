@@ -145,6 +145,7 @@ export function treeSitterToTextChunks(
 
         for (const { group } of sortedGroups) {
           let styleForGroup = syntaxStyle.getStyle(group)
+
           if (!styleForGroup && group.includes(".")) {
             // Fallback to base scope
             const baseName = group.split(".")[0]
@@ -159,6 +160,15 @@ export function treeSitterToTextChunks(
             if (styleForGroup.italic !== undefined) mergedStyle.italic = styleForGroup.italic
             if (styleForGroup.underline !== undefined) mergedStyle.underline = styleForGroup.underline
             if (styleForGroup.dim !== undefined) mergedStyle.dim = styleForGroup.dim
+          } else {
+            if (group.includes(".")) {
+              const baseName = group.split(".")[0]
+              console.warn(
+                `Syntax style not found for group "${group}" or base scope "${baseName}", using default style`,
+              )
+            } else {
+              console.warn(`Syntax style not found for group "${group}", using default style`)
+            }
           }
         }
 

@@ -1090,6 +1090,10 @@ export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: u
     alloc.free(@constCast(ptr)[0..count]);
 }
 
+export fn textBufferGetHighlightCount(tb: *text_buffer.UnifiedTextBuffer) u32 {
+    return tb.getHighlightCount();
+}
+
 // SyntaxStyle functions
 export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
     return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {

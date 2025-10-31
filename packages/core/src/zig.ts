@@ -392,6 +392,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "usize"],
       returns: "void",
     },
+    textBufferGetHighlightCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
 
     // TextBufferView functions
     createTextBufferView: {
@@ -1262,6 +1266,7 @@ export interface RenderLib {
   textBufferClearAllHighlights: (buffer: Pointer) => void
   textBufferSetSyntaxStyle: (buffer: Pointer, style: Pointer | null) => void
   textBufferGetLineHighlights: (buffer: Pointer, lineIdx: number) => Array<Highlight>
+  textBufferGetHighlightCount: (buffer: Pointer) => number
 
   getArenaAllocatedBytes: () => number
 
@@ -2133,6 +2138,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferFreeLineHighlights(nativePtr, count)
 
     return results
+  }
+
+  public textBufferGetHighlightCount(buffer: Pointer): number {
+    return this.opentui.symbols.textBufferGetHighlightCount(buffer)
   }
 
   public getArenaAllocatedBytes(): number {
