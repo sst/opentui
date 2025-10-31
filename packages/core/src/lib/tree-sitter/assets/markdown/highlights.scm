@@ -8,23 +8,49 @@
   (paragraph) @markup.heading.2
   (setext_h2_underline) @markup.heading.2)
 
+; Capture the entire heading node first based on the marker it contains
+((atx_heading (atx_h1_marker)) @markup.heading.1
+  (#set! priority 90))
+
+((atx_heading (atx_h2_marker)) @markup.heading.2
+  (#set! priority 90))
+
+((atx_heading (atx_h3_marker)) @markup.heading.3
+  (#set! priority 90))
+
+((atx_heading (atx_h4_marker)) @markup.heading.4
+  (#set! priority 90))
+
+((atx_heading (atx_h5_marker)) @markup.heading.5
+  (#set! priority 90))
+
+((atx_heading (atx_h6_marker)) @markup.heading.6
+  (#set! priority 90))
+
+; Then capture and conceal just the markers (they don't need special styling)
 (atx_heading
-  (atx_h1_marker)) @markup.heading.1
+  (atx_h1_marker) @conceal
+  (#set! conceal ""))
 
 (atx_heading
-  (atx_h2_marker)) @markup.heading.2
+  (atx_h2_marker) @conceal
+  (#set! conceal ""))
 
 (atx_heading
-  (atx_h3_marker)) @markup.heading.3
+  (atx_h3_marker) @conceal
+  (#set! conceal ""))
 
 (atx_heading
-  (atx_h4_marker)) @markup.heading.4
+  (atx_h4_marker) @conceal
+  (#set! conceal ""))
 
 (atx_heading
-  (atx_h5_marker)) @markup.heading.5
+  (atx_h5_marker) @conceal
+  (#set! conceal ""))
 
 (atx_heading
-  (atx_h6_marker)) @markup.heading.6
+  (atx_h6_marker) @conceal
+  (#set! conceal ""))
 
 (info_string) @label
 

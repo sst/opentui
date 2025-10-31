@@ -538,13 +538,14 @@ const hello: string = "world";
     expect(reconstructed).toMatch(/Text with \w+ and \w+ markers\./)
   })
 
-  test("should conceal heading markers", async () => {
+  test("should conceal heading markers and preserve heading styling", async () => {
     const markdownCode = "## Heading 2"
 
     const result = await client.highlightOnce(markdownCode, "markdown")
 
     // Check if there are any conceal properties on the ## marker
     const hasAnyConceals = result.highlights!.some(([, , , meta]) => meta?.conceal !== undefined)
+    expect(hasAnyConceals).toBe(true) // Should have conceal on the ## marker
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
       conceal: { enabled: true },
@@ -556,9 +557,16 @@ const hello: string = "world";
     // Should have the heading text
     expect(reconstructed).toContain("Heading 2")
 
-    // Note: The ## markers are not marked with (#set! conceal "") in the query,
-    // so they will still be present. This is expected based on the current highlight queries.
-    // If the query is updated to conceal heading markers, this test would need to change.
+    // Should NOT have the ## markers
+    expect(reconstructed).not.toContain("##")
+    expect(reconstructed).not.toContain("#")
+
+    // The heading text should be present with just the space after the marker
+    expect(reconstructed).toBe(" Heading 2")
+
+    // Note: Heading styling depends on having the parent markup.heading style
+    // properly cascade to child text. In a real application with proper theme setup,
+    // the heading text will be styled correctly as shown in other tests.
   })
 
   test("should not create empty lines when concealing code block delimiters", async () => {
@@ -605,7 +613,9 @@ const y = 2;
       expect(groups).toContain("markup.heading.2")
       expect(groups).toContain("markup.heading.3")
 
-      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false }, // Disable concealing to test text preservation
+      })
       const chunks = styledText.chunks
 
       // Reconstruct to verify text preserved
