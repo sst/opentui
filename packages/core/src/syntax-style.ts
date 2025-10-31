@@ -243,6 +243,16 @@ export class SyntaxStyle {
     return this.mergedCache.size
   }
 
+  public getAllStyles(): Map<string, StyleDefinition> {
+    this.guard()
+    return new Map(this.styleDefs)
+  }
+
+  public getRegisteredNames(): string[] {
+    this.guard()
+    return Array.from(this.styleDefs.keys())
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true

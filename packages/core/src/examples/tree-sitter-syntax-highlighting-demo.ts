@@ -1,10 +1,22 @@
-import { CliRenderer, createCliRenderer, CodeRenderable, BoxRenderable, TextRenderable, type ParsedKey } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  CodeRenderable,
+  BoxRenderable,
+  TextRenderable,
+  type ParsedKey,
+  ScrollBoxRenderable,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 
-// Example TypeScript code to highlight
-const exampleCode = `interface User {
+// Code examples to cycle through
+const examples = [
+  {
+    name: "TypeScript",
+    filetype: "typescript" as const,
+    code: `interface User {
   name: string;
   age: number;
   email?: string;
@@ -44,15 +56,128 @@ manager.addUser({ name: "Alice", age: 25, email: "alice@example.com" });
 manager.addUser({ name: "Bob", age: 17 });
 
 console.log(\`Total users: \${manager.getUserCount()}\`);
-console.log(\`Adults: \${manager.getAdults().length}\`);`
+console.log(\`Adults: \${manager.getAdults().length}\`);`,
+  },
+  {
+    name: "JavaScript",
+    filetype: "javascript" as const,
+    code: `// React Component Example
+import React, { useState, useEffect } from 'react';
+
+function TodoApp() {
+  const [todos, setTodos] = useState([]);
+  const [input, setInput] = useState('');
+
+  useEffect(() => {
+    // Load todos from localStorage
+    const saved = localStorage.getItem('todos');
+    if (saved) {
+      setTodos(JSON.parse(saved));
+    }
+  }, []);
+
+  const addTodo = () => {
+    if (input.trim()) {
+      const newTodo = {
+        id: Date.now(),
+        text: input,
+        completed: false
+      };
+      setTodos([...todos, newTodo]);
+      setInput('');
+    }
+  };
+
+  const toggleTodo = (id) => {
+    setTodos(todos.map(todo =>
+      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    ));
+  };
+
+  return (
+    <div className="todo-app">
+      <h1>My Todo List</h1>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+      />
+      <button onClick={addTodo}>Add</button>
+      <ul>
+        {todos.map(todo => (
+          <li key={todo.id} onClick={() => toggleTodo(todo.id)}>
+            {todo.completed ? '✓' : '○'} {todo.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}`,
+  },
+  {
+    name: "Markdown",
+    filetype: "markdown" as const,
+    code: `# OpenTUI Documentation
+
+## Getting Started
+
+OpenTUI is a modern terminal UI framework built on **tree-sitter** and WebGPU.
+
+### Features
+
+- 🚀 Fast rendering with WebGPU
+- 🎨 Syntax highlighting via tree-sitter
+- 📦 Component-based architecture
+- ⌨️ Rich keyboard input handling
+
+### Installation
+
+\`\`\`bash
+bun install opentui
+\`\`\`
+
+### Quick Example
+
+\`\`\`typescript
+import { createCliRenderer, BoxRenderable } from 'opentui';
+
+const renderer = await createCliRenderer();
+const box = new BoxRenderable(renderer, {
+  border: true,
+  title: "Hello World"
+});
+renderer.root.add(box);
+\`\`\`
+
+## API Reference
+
+### CodeRenderable
+
+The \`CodeRenderable\` component provides syntax highlighting:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| content | string | Code to display |
+| filetype | string | Language type |
+| syntaxStyle | SyntaxStyle | Styling rules |
+
+> **Note**: Tree-sitter parsers are loaded lazily for performance.
+
+---
+
+For more info, visit [github.com/opentui](https://github.com)`,
+  },
+]
 
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
+let codeScrollBox: ScrollBoxRenderable | null = null
 let codeDisplay: CodeRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
-let currentFiletype: "typescript" | "javascript" = "typescript"
+let currentExampleIndex = 0
+let concealEnabled = true
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -80,51 +205,95 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content: "ESC to return | T to toggle language | Demonstrating CodeRenderable with tree-sitter highlighting",
+    content:
+      "ESC to return | ← → to switch examples | C to toggle conceal | Demonstrating CodeRenderable with tree-sitter highlighting",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
 
-  const codeBox = new BoxRenderable(renderer, {
-    id: "code-box",
+  codeScrollBox = new ScrollBoxRenderable(renderer, {
+    id: "code-scroll-box",
     borderStyle: "single",
     borderColor: "#6BCF7F",
     backgroundColor: "#0D1117",
-    title: "TypeScript Code (CodeRenderable)",
+    title: `${examples[currentExampleIndex].name} (CodeRenderable)`,
     titleAlignment: "left",
-    paddingLeft: 1,
     border: true,
+    scrollY: true,
+    scrollX: false,
+    contentOptions: {
+      paddingLeft: 1,
+    },
   })
-  parentContainer.add(codeBox)
+  parentContainer.add(codeScrollBox)
 
   // Create syntax style similar to GitHub Dark theme
   syntaxStyle = SyntaxStyle.fromStyles({
-    keyword: { fg: parseColor("#FF7B72"), bold: true }, // red keywords
-    string: { fg: parseColor("#A5D6FF") }, // blue strings
-    comment: { fg: parseColor("#8B949E"), italic: true }, // gray comments
-    number: { fg: parseColor("#79C0FF") }, // light blue numbers
-    function: { fg: parseColor("#D2A8FF") }, // purple functions
-    type: { fg: parseColor("#FFA657") }, // orange types
-    operator: { fg: parseColor("#FF7B72") }, // red operators
-    variable: { fg: parseColor("#FFA657") }, // orange variables
-    property: { fg: parseColor("#79C0FF") }, // light blue properties
-    bracket: { fg: parseColor("#F0F6FC") }, // white brackets
-    punctuation: { fg: parseColor("#F0F6FC") }, // white punctuation
-    default: { fg: parseColor("#F0F6FC") }, // white default
+    // JS/TS styles
+    keyword: { fg: parseColor("#FF7B72"), bold: true },
+    "keyword.import": { fg: parseColor("#FF7B72"), bold: true },
+    "keyword.coroutine": { fg: parseColor("#FF9492") },
+    "keyword.operator": { fg: parseColor("#FF7B72") },
+    string: { fg: parseColor("#A5D6FF") },
+    comment: { fg: parseColor("#8B949E"), italic: true },
+    number: { fg: parseColor("#79C0FF") },
+    boolean: { fg: parseColor("#79C0FF") },
+    constant: { fg: parseColor("#79C0FF") },
+    function: { fg: parseColor("#D2A8FF") },
+    "function.call": { fg: parseColor("#D2A8FF") },
+    "function.method.call": { fg: parseColor("#D2A8FF") },
+    constructor: { fg: parseColor("#FFA657") },
+    type: { fg: parseColor("#FFA657") },
+    operator: { fg: parseColor("#FF7B72") },
+    variable: { fg: parseColor("#E6EDF3") },
+    "variable.member": { fg: parseColor("#79C0FF") },
+    property: { fg: parseColor("#79C0FF") },
+    bracket: { fg: parseColor("#F0F6FC") },
+    "punctuation.bracket": { fg: parseColor("#F0F6FC") },
+    "punctuation.delimiter": { fg: parseColor("#C9D1D9") },
+    punctuation: { fg: parseColor("#F0F6FC") },
+
+    // Markdown specific styles (matching tree-sitter capture names)
+    "markup.heading": { fg: parseColor("#58A6FF"), bold: true },
+    "markup.heading.1": { fg: parseColor("#00FF88"), bold: true, underline: true },
+    "markup.heading.2": { fg: parseColor("#00D7FF"), bold: true },
+    "markup.heading.3": { fg: parseColor("#FF69B4") },
+    "markup.heading.4": { fg: parseColor("#FFA657"), bold: true },
+    "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true },
+    "markup.heading.6": { fg: parseColor("#8B949E"), bold: true },
+    "markup.bold": { fg: parseColor("#F0F6FC"), bold: true },
+    "markup.strong": { fg: parseColor("#F0F6FC"), bold: true },
+    "markup.italic": { fg: parseColor("#F0F6FC"), italic: true },
+    "markup.list": { fg: parseColor("#FF7B72") },
+    "markup.quote": { fg: parseColor("#8B949E"), italic: true },
+    "markup.raw": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
+    "markup.raw.block": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
+    "markup.raw.inline": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") },
+    "markup.link": { fg: parseColor("#58A6FF"), underline: true },
+    "markup.link.label": { fg: parseColor("#A5D6FF"), underline: true },
+    "markup.link.url": { fg: parseColor("#58A6FF"), underline: true },
+    label: { fg: parseColor("#7EE787") },
+    spell: { fg: parseColor("#E6EDF3") },
+    nospell: { fg: parseColor("#E6EDF3") },
+    conceal: { fg: parseColor("#6E7681") },
+    "punctuation.special": { fg: parseColor("#8B949E") },
+
+    default: { fg: parseColor("#E6EDF3") },
   })
 
   // Create code display using CodeRenderable
   codeDisplay = new CodeRenderable(renderer, {
     id: "code-display",
-    content: exampleCode,
-    filetype: currentFiletype,
+    content: examples[currentExampleIndex].code,
+    filetype: examples[currentExampleIndex].filetype,
     syntaxStyle,
     bg: "#0D1117",
     selectable: true,
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
+    conceal: concealEnabled,
   })
-  codeBox.add(codeDisplay)
+  codeScrollBox.add(codeDisplay)
 
   timingText = new TextRenderable(renderer, {
     id: "timing-display",
@@ -133,25 +302,40 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   parentContainer.add(timingText)
 
-  timingText.content = `Using CodeRenderable with ${currentFiletype.toUpperCase()} highlighting`
+  const updateTimingText = () => {
+    if (timingText) {
+      timingText.content = `Using CodeRenderable with ${examples[currentExampleIndex].name} highlighting (${currentExampleIndex + 1}/${examples.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"}`
+    }
+  }
+
+  updateTimingText()
 
   keyboardHandler = (key: ParsedKey) => {
-    if (key.name === "t" || key.name === "T") {
-      // Toggle between TypeScript and JavaScript highlighting
-      if (currentFiletype === "typescript") {
-        currentFiletype = "javascript"
-        codeBox.title = "JavaScript Code (CodeRenderable)"
+    if (key.name === "right" || key.name === "left") {
+      // Navigate between examples
+      if (key.name === "right") {
+        currentExampleIndex = (currentExampleIndex + 1) % examples.length
       } else {
-        currentFiletype = "typescript"
-        codeBox.title = "TypeScript Code (CodeRenderable)"
+        currentExampleIndex = (currentExampleIndex - 1 + examples.length) % examples.length
+      }
+
+      const example = examples[currentExampleIndex]
+      if (codeScrollBox) {
+        codeScrollBox.title = `${example.name} (CodeRenderable)`
       }
 
       if (codeDisplay) {
-        codeDisplay.filetype = currentFiletype
-        if (timingText) {
-          timingText.content = `Using CodeRenderable with ${currentFiletype.toUpperCase()} highlighting`
-        }
+        codeDisplay.content = example.code
+        codeDisplay.filetype = example.filetype
+        updateTimingText()
       }
+    } else if (key.name === "c" && !key.ctrl && !key.meta) {
+      // Toggle conceal
+      concealEnabled = !concealEnabled
+      if (codeDisplay) {
+        codeDisplay.conceal = concealEnabled
+      }
+      updateTimingText()
     }
   }
 
@@ -166,6 +350,7 @@ export function destroy(rendererInstance: CliRenderer): void {
 
   parentContainer?.destroy()
   parentContainer = null
+  codeScrollBox = null
   codeDisplay = null
   timingText = null
   syntaxStyle = null

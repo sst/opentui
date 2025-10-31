@@ -10,14 +10,31 @@ export interface HighlightResponse {
   droppedHighlights: HighlightRange[]
 }
 
-export type SimpleHighlight = [number, number, string]
+export interface HighlightMeta {
+  isInjection?: boolean
+  injectionLang?: string
+  containsInjection?: boolean
+  conceal?: string | null // Value from (#set! conceal "...") predicate
+  concealLines?: string | null // Value from (#set! conceal_lines "...") predicate - indicates the whole line should be concealed
+}
+
+export type SimpleHighlight = [number, number, string, HighlightMeta?]
+
+export interface InjectionMapping {
+  // Maps tree-sitter node types to target filetypes
+  nodeTypes?: { [nodeType: string]: string }
+  // Maps info string content (e.g., from code blocks) to target filetypes
+  infoStringMap?: { [infoString: string]: string }
+}
 
 export interface FiletypeParserOptions {
   filetype: string
   queries: {
     highlights: string[] // Array of URLs or local file paths to fetch highlight queries from
+    injections?: string[] // Array of URLs or local file paths to fetch injection queries from
   }
   wasm: string // URL or local file path to the language parser WASM file
+  injectionMapping?: InjectionMapping // Optional mapping for injection handling
 }
 
 export interface BufferState {

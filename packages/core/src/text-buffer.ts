@@ -171,6 +171,11 @@ export class TextBuffer {
     return this.lib.textBufferGetLineHighlights(this.bufferPtr, lineIdx)
   }
 
+  public getHighlightCount(): number {
+    this.guard()
+    return this.lib.textBufferGetHighlightCount(this.bufferPtr)
+  }
+
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
     this._syntaxStyle = style ?? undefined

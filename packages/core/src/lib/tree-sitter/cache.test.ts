@@ -38,8 +38,8 @@ describe("TreeSitterClient Caching", () => {
     const client = new TreeSitterClient({ dataPath })
     await client.initialize()
 
-    const languagesDir = join(dataPath, "languages")
-    const queriesDir = join(dataPath, "queries")
+    const languagesDir = join(dataPath, "tree-sitter", "languages")
+    const queriesDir = join(dataPath, "tree-sitter", "queries")
 
     const languagesStat = await stat(languagesDir)
     const queriesStat = await stat(queriesDir)
@@ -66,7 +66,7 @@ describe("TreeSitterClient Caching", () => {
     const hasParser = await client.preloadParser("javascript")
     expect(hasParser).toBe(true)
 
-    const languagesDir = join(dataPath, "languages")
+    const languagesDir = join(dataPath, "tree-sitter", "languages")
     const cachedFiles = await readdir(languagesDir)
 
     expect(cachedFiles).toContain("tree-sitter-javascript.wasm")
@@ -90,7 +90,7 @@ describe("TreeSitterClient Caching", () => {
     const hasParser = await client.preloadParser("javascript")
     expect(hasParser).toBe(true)
 
-    const queriesDir = join(dataPath, "queries")
+    const queriesDir = join(dataPath, "tree-sitter", "queries")
     const cachedQueries = await readdir(queriesDir)
 
     const scmFiles = cachedQueries.filter((file) => file.endsWith(".scm"))
@@ -165,13 +165,13 @@ describe("TreeSitterClient Caching", () => {
     expect(hasJS).toBe(true)
     expect(hasTS).toBe(true)
 
-    const languagesDir = join(dataPath, "languages")
+    const languagesDir = join(dataPath, "tree-sitter", "languages")
     const cachedFiles = await readdir(languagesDir)
 
     expect(cachedFiles).toContain("tree-sitter-javascript.wasm")
     expect(cachedFiles).toContain("tree-sitter-typescript.wasm")
 
-    const queriesDir = join(dataPath, "queries")
+    const queriesDir = join(dataPath, "tree-sitter", "queries")
     const cachedQueries = await readdir(queriesDir)
     const scmFiles = cachedQueries.filter((file) => file.endsWith(".scm"))
 
@@ -196,8 +196,8 @@ describe("TreeSitterClient Caching", () => {
     const hasParser = await client.preloadParser("javascript")
     expect(hasParser).toBe(true)
 
-    const languagesDir = join(dataPath, "languages")
-    const queriesDir = join(dataPath, "queries")
+    const languagesDir = join(dataPath, "tree-sitter", "languages")
+    const queriesDir = join(dataPath, "tree-sitter", "queries")
 
     const languagesStat = await stat(languagesDir)
     const queriesStat = await stat(queriesDir)
@@ -242,7 +242,7 @@ describe("TreeSitterClient Caching", () => {
     const hasParser1 = await client.preloadParser("javascript")
     expect(hasParser1).toBe(true)
 
-    const initialLanguagesDir = join(initialDataPath, "languages")
+    const initialLanguagesDir = join(initialDataPath, "tree-sitter", "languages")
     const initialFiles = await readdir(initialLanguagesDir)
     expect(initialFiles).toContain("tree-sitter-javascript.wasm")
 
@@ -260,7 +260,7 @@ describe("TreeSitterClient Caching", () => {
     const hasParser2 = await client.preloadParser("typescript")
     expect(hasParser2).toBe(true)
 
-    const newLanguagesDir = join(newDataPath, "languages")
+    const newLanguagesDir = join(newDataPath, "tree-sitter", "languages")
     const newFiles = await readdir(newLanguagesDir)
     expect(newFiles).toContain("tree-sitter-typescript.wasm")
 
