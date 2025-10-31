@@ -184,6 +184,12 @@ export function treeSitterToTextChunks(
             continue
           }
         }
+        if (meta?.conceal !== undefined) {
+          if (boundary.offset < content.length && content[boundary.offset] === " ") {
+            currentOffset = boundary.offset + 1
+            continue
+          }
+        }
       }
     }
 

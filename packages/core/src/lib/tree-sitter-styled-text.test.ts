@@ -561,8 +561,12 @@ const hello: string = "world";
     expect(reconstructed).not.toContain("##")
     expect(reconstructed).not.toContain("#")
 
-    // The heading text should be present with just the space after the marker
-    expect(reconstructed).toBe(" Heading 2")
+    // The heading text should be present without the marker or the space
+    expect(reconstructed).toBe("Heading 2")
+
+    // Should NOT start with a space
+    expect(reconstructed.startsWith(" ")).toBe(false)
+    expect(reconstructed.startsWith("Heading")).toBe(true)
 
     // Note: Heading styling depends on having the parent markup.heading style
     // properly cascade to child text. In a real application with proper theme setup,
