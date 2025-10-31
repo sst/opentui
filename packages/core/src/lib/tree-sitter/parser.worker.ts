@@ -844,7 +844,7 @@ class ParserWorker {
 if (!isMainThread) {
   const worker = new ParserWorker()
 
-  function logMessage(type: "log" | "error", ...args: any[]) {
+  function logMessage(type: "log" | "error" | "warn", ...args: any[]) {
     self.postMessage({
       type: "WORKER_LOG",
       logType: type,
@@ -853,6 +853,7 @@ if (!isMainThread) {
   }
   console.log = (...args) => logMessage("log", ...args)
   console.error = (...args) => logMessage("error", ...args)
+  console.warn = (...args) => logMessage("warn", ...args)
 
   // @ts-ignore - we'll fix this in the future for sure
   self.onmessage = async (e: MessageEvent) => {
