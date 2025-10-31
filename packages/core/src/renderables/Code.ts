@@ -10,6 +10,7 @@ export interface CodeOptions extends TextBufferOptions {
   syntaxStyle: SyntaxStyle
   treeSitterClient?: TreeSitterClient
   conceal?: boolean
+  drawUnstyledText?: boolean
 }
 
 export class CodeRenderable extends TextBufferRenderable {
@@ -22,10 +23,12 @@ export class CodeRenderable extends TextBufferRenderable {
   private _pendingUpdate: boolean = false
   private _currentHighlightId: number = 0
   private _conceal: boolean
+  private _drawUnstyledText: boolean
 
   protected _contentDefaultOptions = {
     content: "",
     conceal: true,
+    drawUnstyledText: true,
   } satisfies Partial<CodeOptions>
 
   constructor(ctx: RenderContext, options: CodeOptions) {
@@ -36,6 +39,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._syntaxStyle = options.syntaxStyle
     this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
+    this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
 
     this.updateContent(this._content)
   }
@@ -84,6 +88,17 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get drawUnstyledText(): boolean {
+    return this._drawUnstyledText
+  }
+
+  set drawUnstyledText(value: boolean) {
+    if (this._drawUnstyledText !== value) {
+      this._drawUnstyledText = value
+      this.scheduleUpdate()
+    }
+  }
+
   private scheduleUpdate(): void {
     if (this._pendingUpdate) return
     this._pendingUpdate = true
@@ -104,7 +119,9 @@ export class CodeRenderable extends TextBufferRenderable {
     this._currentHighlightId++
     const highlightId = this._currentHighlightId
 
-    this.fallback(content)
+    if (this._drawUnstyledText) {
+      this.fallback(content)
+    }
 
     this._isHighlighting = true
     this._pendingRehighlight = false
