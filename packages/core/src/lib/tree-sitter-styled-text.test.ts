@@ -961,4 +961,348 @@ Normal paragraph with [link](https://example.com).`
       expect(styledChunks.length).toBeGreaterThan(5)
     })
   })
+
+  describe("Style Inheritance", () => {
+    test("should merge styles from nested highlights with child overriding parent", () => {
+      // Mock highlights simulating a parent with underline and child with different color
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 20, "markup.link"], // Parent: entire link with underline
+        [1, 11, "markup.link.label"], // Child: label with different color
+        [13, 19, "markup.link.url"], // Child: url with different color
+      ]
+
+      // Create a syntax style with link styling
+      const testStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        "markup.link": { fg: RGBA.fromInts(100, 100, 255, 255), underline: true }, // Blue underlined
+        "markup.link.label": { fg: RGBA.fromInts(165, 214, 255, 255) }, // Light blue (no underline specified)
+        "markup.link.url": { fg: RGBA.fromInts(88, 166, 255, 255) }, // Different blue (no underline specified)
+      })
+
+      const content = "[Link text](url)"
+
+      // Get styles before destroying
+      const labelStyle = testStyle.getStyle("markup.link.label")!
+      const urlStyle = testStyle.getStyle("markup.link.url")!
+
+      const chunks = treeSitterToTextChunks(content, mockHighlights, testStyle)
+
+      testStyle.destroy()
+
+      // Should have chunks for: "[", "Link text", "](", "url", ")"
+      // The exact chunking depends on boundary processing, but we care about style inheritance
+      expect(chunks.length).toBeGreaterThan(0)
+
+      // Find chunks containing the label and url
+      let currentPos = 0
+      const labelChunks: typeof chunks = []
+      const urlChunks: typeof chunks = []
+
+      for (const chunk of chunks) {
+        const chunkStart = currentPos
+        const chunkEnd = currentPos + chunk.text.length
+
+        // Label is at [1, 11] - "Link text"
+        if (chunkStart >= 1 && chunkStart < 11 && chunk.text.length > 0) {
+          labelChunks.push(chunk)
+        }
+
+        // URL is at [13, 19] - "url"
+        if (chunkStart >= 13 && chunkStart < 19 && chunk.text.length > 0) {
+          urlChunks.push(chunk)
+        }
+
+        currentPos = chunkEnd
+      }
+
+      // Both should have at least one chunk
+      expect(labelChunks.length).toBeGreaterThan(0)
+      expect(urlChunks.length).toBeGreaterThan(0)
+
+      // All label and url chunks should inherit the underline from parent markup.link
+      const underlineAttr = createTextAttributes({ underline: true })
+      for (const chunk of [...labelChunks, ...urlChunks]) {
+        expect(chunk.attributes).toBe(underlineAttr)
+      }
+
+      for (const chunk of labelChunks) {
+        expect(chunk.fg?.r).toBeCloseTo(labelStyle.fg!.r, 2)
+        expect(chunk.fg?.g).toBeCloseTo(labelStyle.fg!.g, 2)
+        expect(chunk.fg?.b).toBeCloseTo(labelStyle.fg!.b, 2)
+      }
+
+      for (const chunk of urlChunks) {
+        expect(chunk.fg?.r).toBeCloseTo(urlStyle.fg!.r, 2)
+        expect(chunk.fg?.g).toBeCloseTo(urlStyle.fg!.g, 2)
+        expect(chunk.fg?.b).toBeCloseTo(urlStyle.fg!.b, 2)
+      }
+    })
+
+    test("should merge multiple overlapping styles with correct priority", () => {
+      // Test with three overlapping styles of different specificity
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 10, "text"], // Base style
+        [0, 10, "text.special"], // More specific: adds bold
+        [0, 10, "text.special.highlighted"], // Most specific: adds underline
+      ]
+
+      const testStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        text: { fg: RGBA.fromInts(200, 200, 200, 255) }, // Gray
+        "text.special": { bold: true }, // Add bold, no color change
+        "text.special.highlighted": { underline: true, fg: RGBA.fromInts(255, 255, 100, 255) }, // Add underline and yellow
+      })
+
+      const content = "test text "
+      const chunks = treeSitterToTextChunks(content, mockHighlights, testStyle)
+
+      testStyle.destroy()
+
+      // Should have at least one chunk for the highlighted text
+      expect(chunks.length).toBeGreaterThan(0)
+
+      const chunk = chunks[0]
+
+      // Should have the most specific color (yellow from text.special.highlighted)
+      // RGBA values are 0-1 floats, so 255 -> 1.0, 100 -> ~0.392
+      expect(chunk.fg?.r).toBeCloseTo(1.0, 2)
+      expect(chunk.fg?.g).toBeCloseTo(1.0, 2)
+      expect(chunk.fg?.b).toBeCloseTo(100 / 255, 2)
+
+      // Should have both bold and underline attributes merged
+      const expectedAttributes = createTextAttributes({ bold: true, underline: true })
+      expect(chunk.attributes).toBe(expectedAttributes)
+    })
+
+    test("should handle style inheritance when parent only sets attributes", () => {
+      // Parent sets underline, child only sets color
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 15, "container"], // Parent: only underline
+        [0, 5, "container.part1"], // Child: only color
+        [5, 10, "container.part2"], // Child: different color
+        [10, 15, "container.part3"], // Child: yet another color
+      ]
+
+      const testStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        container: { underline: true }, // Only underline, no color
+        "container.part1": { fg: RGBA.fromInts(255, 100, 100, 255) }, // Red
+        "container.part2": { fg: RGBA.fromInts(100, 255, 100, 255) }, // Green
+        "container.part3": { fg: RGBA.fromInts(100, 100, 255, 255) }, // Blue
+      })
+
+      const content = "part1part2part3"
+      const chunks = treeSitterToTextChunks(content, mockHighlights, testStyle)
+
+      testStyle.destroy()
+
+      // Should have 3 chunks
+      expect(chunks.length).toBe(3)
+
+      // All chunks should have underline (inherited from container)
+      const underlineAttr = createTextAttributes({ underline: true })
+      for (const chunk of chunks) {
+        expect(chunk.attributes).toBe(underlineAttr)
+      }
+
+      // Each chunk should have its own color (RGBA values are 0-1 floats)
+      expect(chunks[0].fg?.r).toBeCloseTo(1.0, 2) // 255 / 255
+      expect(chunks[0].fg?.g).toBeCloseTo(100 / 255, 2)
+      expect(chunks[0].fg?.b).toBeCloseTo(100 / 255, 2)
+
+      expect(chunks[1].fg?.r).toBeCloseTo(100 / 255, 2)
+      expect(chunks[1].fg?.g).toBeCloseTo(1.0, 2) // 255 / 255
+      expect(chunks[1].fg?.b).toBeCloseTo(100 / 255, 2)
+
+      expect(chunks[2].fg?.r).toBeCloseTo(100 / 255, 2)
+      expect(chunks[2].fg?.g).toBeCloseTo(100 / 255, 2)
+      expect(chunks[2].fg?.b).toBeCloseTo(1.0, 2) // 255 / 255
+    })
+
+    test("should handle markdown link with realistic tree-sitter output", async () => {
+      const markdownCode = "[Label](url)"
+
+      // Get actual tree-sitter highlights
+      const result = await client.highlightOnce(markdownCode, "markdown")
+      expect(result.highlights).toBeDefined()
+
+      // IMPORTANT: Tree-sitter markdown parser emits:
+      // - markup.link ONLY for brackets/parens: "[", "]", "(", ")"
+      // - markup.link.label ONLY for the label text: "Label" (not nested under markup.link!)
+      // - markup.link.url for the URL text: "url" (ALONG WITH markup.link as sibling)
+      //
+      // This means label does NOT inherit from markup.link because it's not a child range!
+      // Therefore, if you want label underlined, you must specify it explicitly.
+
+      // Verify the tree-sitter output structure
+      const labelHighlights = result.highlights!.filter(
+        ([start, end, group]) => group === "markup.link.label" && markdownCode.slice(start, end) === "Label",
+      )
+      expect(labelHighlights.length).toBe(1)
+
+      // Label should NOT also have markup.link at the same range
+      const labelStart = labelHighlights[0][0]
+      const labelEnd = labelHighlights[0][1]
+      const labelHasParentLink = result.highlights!.some(
+        ([start, end, group]) => group === "markup.link" && start === labelStart && end === labelEnd,
+      )
+      expect(labelHasParentLink).toBe(false) // Confirms label is NOT nested
+
+      // Create a realistic syntax style for links
+      // Must set underline on each part individually since they're not nested
+      const linkStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        "markup.link": { underline: true }, // Brackets and parens
+        "markup.link.label": { fg: RGBA.fromInts(165, 214, 255, 255), underline: true }, // Must set underline!
+        "markup.link.url": { fg: RGBA.fromInts(88, 166, 255, 255), underline: true }, // Must set underline!
+      })
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", linkStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      linkStyle.destroy()
+
+      // Reconstruct text
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(markdownCode)
+
+      // Find label and url chunks
+      const labelChunk = chunks.find((c) => c.text === "Label")
+      const urlChunk = chunks.find((c) => c.text === "url")
+
+      expect(labelChunk).toBeDefined()
+      expect(urlChunk).toBeDefined()
+
+      // Both should be underlined now
+      const underlineAttr = createTextAttributes({ underline: true })
+      expect(labelChunk!.attributes).toBe(underlineAttr)
+      expect(urlChunk!.attributes).toBe(underlineAttr)
+
+      // And have their respective colors
+      expect(labelChunk!.fg?.r).toBeCloseTo(165 / 255, 2)
+      expect(urlChunk!.fg?.r).toBeCloseTo(88 / 255, 2)
+    })
+
+    test("should preserve original behavior for non-overlapping highlights", () => {
+      // When highlights don't overlap, behavior should be unchanged
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 5, "keyword"], // "const"
+        [6, 11, "string"], // "'str'"
+        [12, 15, "number"], // "123"
+      ]
+
+      const testStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        keyword: { fg: RGBA.fromInts(255, 100, 100, 255), bold: true },
+        string: { fg: RGBA.fromInts(100, 255, 100, 255) },
+        number: { fg: RGBA.fromInts(100, 100, 255, 255) },
+      })
+
+      const content = "const 'str' 123"
+      const chunks = treeSitterToTextChunks(content, mockHighlights, testStyle)
+
+      testStyle.destroy()
+
+      // Should have 5 chunks: keyword, space, string, space, number
+      expect(chunks.length).toBe(5)
+
+      expect(chunks[0].text).toBe("const")
+      expect(chunks[0].fg?.r).toBeCloseTo(1.0, 2) // 255 / 255
+      expect(chunks[0].attributes).toBe(createTextAttributes({ bold: true }))
+
+      expect(chunks[1].text).toBe(" ")
+
+      expect(chunks[2].text).toBe("'str'")
+      expect(chunks[2].fg?.g).toBeCloseTo(1.0, 2) // 255 / 255
+
+      expect(chunks[3].text).toBe(" ")
+
+      expect(chunks[4].text).toBe("123")
+      expect(chunks[4].fg?.b).toBeCloseTo(1.0, 2) // 255 / 255
+    })
+
+    test("should demonstrate when inheritance works vs when it does not", () => {
+      // Case 1: TRUE NESTING - child inherits from parent
+      const nestedHighlights: SimpleHighlight[] = [
+        [0, 10, "parent"], // Parent covers entire range
+        [2, 8, "parent.child"], // Child is INSIDE parent
+      ]
+
+      const nestedStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        parent: { underline: true },
+        "parent.child": { fg: RGBA.fromInts(200, 100, 100, 255) }, // No underline specified
+      })
+
+      const nestedContent = "0123456789"
+      const nestedChunks = treeSitterToTextChunks(nestedContent, nestedHighlights, nestedStyle)
+
+      nestedStyle.destroy()
+
+      // The child chunk should inherit underline from parent
+      const childChunk = nestedChunks.find((c) => c.text.includes("234567"))
+      expect(childChunk).toBeDefined()
+      expect(childChunk!.attributes).toBe(createTextAttributes({ underline: true }))
+      expect(childChunk!.fg?.r).toBeCloseTo(200 / 255, 2)
+
+      // Case 2: SIBLING RANGES - no inheritance
+      const siblingHighlights: SimpleHighlight[] = [
+        [0, 5, "typeA"], // First range
+        [5, 10, "typeB"], // Second range (NOT nested)
+      ]
+
+      const siblingStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        typeA: { underline: true, fg: RGBA.fromInts(100, 100, 255, 255) },
+        typeB: { fg: RGBA.fromInts(255, 100, 100, 255) }, // No underline
+      })
+
+      const siblingContent = "0123456789"
+      const siblingChunks = treeSitterToTextChunks(siblingContent, siblingHighlights, siblingStyle)
+
+      siblingStyle.destroy()
+
+      expect(siblingChunks.length).toBe(2)
+
+      // First chunk has underline
+      expect(siblingChunks[0].attributes).toBe(createTextAttributes({ underline: true }))
+
+      // Second chunk does NOT inherit underline (they're siblings, not parent/child)
+      expect(siblingChunks[1].attributes).toBe(0) // No attributes
+      expect(siblingChunks[1].fg?.r).toBeCloseTo(255 / 255, 2)
+    })
+
+    test("should handle child style completely overriding parent attributes", () => {
+      // Child explicitly sets bold: false, should override parent's bold: true
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 10, "parent"],
+        [0, 10, "parent.child"],
+      ]
+
+      const testStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        parent: { bold: true, italic: true, underline: true },
+        "parent.child": { bold: false, fg: RGBA.fromInts(200, 200, 200, 255) }, // Override bold, set color
+      })
+
+      const content = "test text "
+      const chunks = treeSitterToTextChunks(content, mockHighlights, testStyle)
+
+      testStyle.destroy()
+
+      expect(chunks.length).toBeGreaterThan(0)
+
+      const chunk = chunks[0]
+
+      // Should have child's color (RGBA uses 0-1 floats)
+      expect(chunk.fg?.r).toBeCloseTo(200 / 255, 2)
+
+      // Should NOT have bold (child set it to false)
+      // But should have italic and underline from parent
+      const expectedAttributes = createTextAttributes({ bold: false, italic: true, underline: true })
+      expect(chunk.attributes).toBe(expectedAttributes)
+    })
+  })
 })

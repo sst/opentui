@@ -109,32 +109,40 @@ export function treeSitterToTextChunks(
           return true
         })
 
-        // Resolve winning style by specificity and order
-        let winningGroup: string | undefined
-        let maxSpecificity = -1
-        let winningIndex = -1
+        // Sort groups by specificity (least to most), then by index (earlier to later)
+        // This ensures we merge styles in the correct order: parent styles first, then child overrides
+        const sortedGroups = validGroups.sort((a, b) => {
+          const aSpec = getSpecificity(a.group)
+          const bSpec = getSpecificity(b.group)
+          if (aSpec !== bSpec) return aSpec - bSpec // Lower specificity first
+          return a.index - b.index // Earlier index first
+        })
 
-        for (const { group, index } of validGroups) {
-          const specificity = getSpecificity(group)
-          if (specificity > maxSpecificity || (specificity === maxSpecificity && index > winningIndex)) {
-            maxSpecificity = specificity
-            winningGroup = group
-            winningIndex = index
-          }
-        }
+        // Merge all active styles in order (like CSS cascade)
+        // Later/more specific styles override earlier/less specific ones
+        const mergedStyle: StyleDefinition = {}
 
-        // Get style for winning group
-        let styleToUse: StyleDefinition | undefined
-        if (winningGroup) {
-          styleToUse = syntaxStyle.getStyle(winningGroup)
-          if (!styleToUse && winningGroup.includes(".")) {
+        for (const { group } of sortedGroups) {
+          let styleForGroup = syntaxStyle.getStyle(group)
+          if (!styleForGroup && group.includes(".")) {
             // Fallback to base scope
-            const baseName = winningGroup.split(".")[0]
-            styleToUse = syntaxStyle.getStyle(baseName)
+            const baseName = group.split(".")[0]
+            styleForGroup = syntaxStyle.getStyle(baseName)
+          }
+
+          if (styleForGroup) {
+            // Merge properties - later styles override earlier ones
+            if (styleForGroup.fg !== undefined) mergedStyle.fg = styleForGroup.fg
+            if (styleForGroup.bg !== undefined) mergedStyle.bg = styleForGroup.bg
+            if (styleForGroup.bold !== undefined) mergedStyle.bold = styleForGroup.bold
+            if (styleForGroup.italic !== undefined) mergedStyle.italic = styleForGroup.italic
+            if (styleForGroup.underline !== undefined) mergedStyle.underline = styleForGroup.underline
+            if (styleForGroup.dim !== undefined) mergedStyle.dim = styleForGroup.dim
           }
         }
 
-        const finalStyle = styleToUse || defaultStyle
+        // Use merged style, falling back to default if nothing was merged
+        const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
 
         chunks.push({
           __isChunk: true,
@@ -230,7 +238,6 @@ export async function treeSitterToStyledText(
   options?: TreeSitterToStyledTextOptions,
 ): Promise<StyledText> {
   const result = await client.highlightOnce(content, filetype)
-
   if (result.highlights && result.highlights.length > 0) {
     const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle, options?.conceal)
     return new StyledText(chunks)
