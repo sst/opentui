@@ -44,19 +44,19 @@ export function getParsers(): FiletypeParserOptions[] {
         },
         wasm: resolve(dirname(fileURLToPath(import.meta.url)), markdown_language),
         injectionMapping: {
-          "nodeTypes": {
-                    "inline": "markdown_inline",
-                    "pipe_table_cell": "markdown_inline"
+          nodeTypes: {
+            inline: "markdown_inline",
+            pipe_table_cell: "markdown_inline",
           },
-          "infoStringMap": {
-                    "javascript": "javascript",
-                    "js": "javascript",
-                    "typescript": "typescript",
-                    "ts": "typescript",
-                    "markdown": "markdown",
-                    "md": "markdown"
-          }
-},
+          infoStringMap: {
+            javascript: "javascript",
+            js: "javascript",
+            typescript: "typescript",
+            ts: "typescript",
+            markdown: "markdown",
+            md: "markdown",
+          },
+        },
       },
       {
         filetype: "markdown_inline",
