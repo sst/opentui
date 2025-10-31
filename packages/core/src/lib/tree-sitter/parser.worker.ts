@@ -333,24 +333,29 @@ class ParserWorker {
   private async initialQuery(parserState: ParserState) {
     const query = parserState.queries.highlights
     const matches: QueryCapture[] = query.captures(parserState.tree.rootNode)
+    let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
 
     if (parserState.queries.injections) {
-      const injectionMatches = await this.processInjections(parserState)
-      matches.push(...injectionMatches)
+      const injectionResult = await this.processInjections(parserState)
+      matches.push(...injectionResult.captures)
+      injectionRanges = injectionResult.injectionRanges
     }
 
-    return this.getHighlights(parserState, matches)
+    return this.getHighlights(parserState, matches, injectionRanges)
   }
 
   private getNodeText(node: any, content: string): string {
     return content.substring(node.startIndex, node.endIndex)
   }
 
-  private async processInjections(parserState: ParserState): Promise<QueryCapture[]> {
+  private async processInjections(
+    parserState: ParserState,
+  ): Promise<{ captures: QueryCapture[]; injectionRanges: Map<string, Array<{ start: number; end: number }>> }> {
     const injectionMatches: QueryCapture[] = []
+    const injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
 
     if (!parserState.queries.injections) {
-      return injectionMatches
+      return { captures: injectionMatches, injectionRanges }
     }
 
     const content = parserState.content
@@ -408,9 +413,20 @@ class ParserWorker {
         continue
       }
 
+      // Track injection ranges for this language
+      if (!injectionRanges.has(language)) {
+        injectionRanges.set(language, [])
+      }
+
       const parser = injectedParser.parser
       for (const { node: injectionNode } of captures) {
         try {
+          // Record the injection range
+          injectionRanges.get(language)!.push({
+            start: injectionNode.startIndex,
+            end: injectionNode.endIndex,
+          })
+
           const injectionContent = this.getNodeText(injectionNode, content)
           const tree = parser.parse(injectionContent)
 
@@ -457,7 +473,7 @@ class ParserWorker {
       // NOTE: Do NOT call parser.delete() here - this is a reusable parser!
     }
 
-    return injectionMatches
+    return { captures: injectionMatches, injectionRanges }
   }
 
   private editToRange(edit: Edit): Range {
@@ -564,11 +580,13 @@ class ParserWorker {
     }
 
     // Process injections for the changed content
+    let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
     if (parserState.queries.injections) {
-      const injectionMatches = await this.processInjections(parserState)
+      const injectionResult = await this.processInjections(parserState)
       // Only add injection matches that are in the changed ranges
       // This is a simplification - ideally we'd only process injections in changed ranges
-      matches.push(...injectionMatches)
+      matches.push(...injectionResult.captures)
+      injectionRanges = injectionResult.injectionRanges
     }
 
     const endQuery = performance.now()
@@ -580,7 +598,7 @@ class ParserWorker {
     this.performance.averageQueryTime =
       this.performance.queryTimes.reduce((acc, time) => acc + time, 0) / this.performance.queryTimes.length
 
-    return this.getHighlights(parserState, matches)
+    return this.getHighlights(parserState, matches, injectionRanges)
   }
 
   private nodeContainsRange(node: any, range: any): boolean {
@@ -592,7 +610,11 @@ class ParserWorker {
     )
   }
 
-  private getHighlights(parserState: ParserState, matches: QueryCapture[]): { highlights: HighlightResponse[] } {
+  private getHighlights(
+    parserState: ParserState,
+    matches: QueryCapture[],
+    injectionRanges?: Map<string, Array<{ start: number; end: number }>>,
+  ): { highlights: HighlightResponse[] } {
     const lineHighlights: Map<number, Map<number, HighlightRange>> = new Map()
     const droppedHighlights: Map<number, Map<number, HighlightRange>> = new Map()
 
@@ -640,12 +662,39 @@ class ParserWorker {
     }
   }
 
-  private getSimpleHighlights(matches: QueryCapture[]): SimpleHighlight[] {
+  private getSimpleHighlights(
+    matches: QueryCapture[],
+    injectionRanges: Map<string, Array<{ start: number; end: number }>>,
+  ): SimpleHighlight[] {
     const highlights: SimpleHighlight[] = []
+
+    // Flatten injection ranges for quick lookup
+    const flatInjectionRanges: Array<{ start: number; end: number; lang: string }> = []
+    for (const [lang, ranges] of injectionRanges.entries()) {
+      for (const range of ranges) {
+        flatInjectionRanges.push({ ...range, lang })
+      }
+    }
 
     for (const match of matches) {
       const node = match.node
-      highlights.push([node.startIndex, node.endIndex, match.name])
+
+      // Check if this highlight is within an injection range
+      let isInjection = false
+      let injectionLang: string | undefined
+      for (const injRange of flatInjectionRanges) {
+        if (node.startIndex >= injRange.start && node.endIndex <= injRange.end) {
+          isInjection = true
+          injectionLang = injRange.lang
+          break
+        }
+      }
+
+      if (isInjection && injectionLang) {
+        highlights.push([node.startIndex, node.endIndex, match.name, { isInjection: true, injectionLang }])
+      } else {
+        highlights.push([node.startIndex, node.endIndex, match.name])
+      }
     }
 
     // Sort by start offset
@@ -676,12 +725,14 @@ class ParserWorker {
     const matches = parserState.queries.highlights.captures(parserState.tree.rootNode)
 
     // Process injections
+    let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
     if (parserState.queries.injections) {
-      const injectionMatches = await this.processInjections(parserState)
-      matches.push(...injectionMatches)
+      const injectionResult = await this.processInjections(parserState)
+      matches.push(...injectionResult.captures)
+      injectionRanges = injectionResult.injectionRanges
     }
 
-    return this.getHighlights(parserState, matches)
+    return this.getHighlights(parserState, matches, injectionRanges)
   }
 
   disposeBuffer(bufferId: number): void {
@@ -725,6 +776,7 @@ class ParserWorker {
       const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
 
       // Process injections
+      let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
       if (reusableState.filetypeParser.queries.injections) {
         const parserState: ParserState = {
           parser: reusableState.parser,
@@ -734,12 +786,13 @@ class ParserWorker {
           content,
           injectionMapping: reusableState.filetypeParser.injectionMapping,
         }
-        const injectionMatches = await this.processInjections(parserState)
+        const injectionResult = await this.processInjections(parserState)
 
-        matches.push(...injectionMatches)
+        matches.push(...injectionResult.captures)
+        injectionRanges = injectionResult.injectionRanges
       }
 
-      const highlights = this.getSimpleHighlights(matches)
+      const highlights = this.getSimpleHighlights(matches, injectionRanges)
 
       self.postMessage({
         type: "ONESHOT_HIGHLIGHT_RESPONSE",

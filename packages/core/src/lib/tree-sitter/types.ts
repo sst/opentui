@@ -10,7 +10,12 @@ export interface HighlightResponse {
   droppedHighlights: HighlightRange[]
 }
 
-export type SimpleHighlight = [number, number, string]
+export interface HighlightMeta {
+  isInjection?: boolean
+  injectionLang?: string
+}
+
+export type SimpleHighlight = [number, number, string, HighlightMeta?]
 
 export interface InjectionMapping {
   // Maps tree-sitter node types to target filetypes

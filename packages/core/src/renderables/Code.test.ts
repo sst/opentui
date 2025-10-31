@@ -423,6 +423,38 @@ test("CodeRenderable - MUST only call highlightOnce ONCE when triple-updating in
   expect(highlightCalls[0]?.filetype).toBe("typescript")
 })
 
+test("CodeRenderable - renders markdown with TypeScript injection correctly", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(1, 0, 0, 1) }, // Red
+    string: { fg: RGBA.fromValues(0, 1, 0, 1) }, // Green
+    "markup.heading.1": { fg: RGBA.fromValues(0, 0, 1, 1) }, // Blue
+  })
+
+  const markdownCode = `# Hello\n\n\`\`\`typescript\nconst msg: string = "hi";\n\`\`\``
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-markdown",
+    content: markdownCode,
+    filetype: "markdown",
+    syntaxStyle,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  // Wait for highlighting to complete
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  await renderOnce()
+
+  // Plain text should preserve structure
+  expect(codeRenderable.plainText).toContain("# Hello")
+  expect(codeRenderable.plainText).toContain("const msg")
+  expect(codeRenderable.plainText).toContain("typescript")
+})
+
 test("CodeRenderable - handles when tree-sitter promise never resolves", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },

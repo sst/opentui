@@ -522,6 +522,88 @@ function test() {
     }
   }, 10000)
 
+  test("should inspect highlight metadata structure for markdown with injections", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Heading
+
+Some **bold** text with \`inline code\`.
+
+\`\`\`typescript
+const x: string = "hello";
+\`\`\`
+
+[Link text](https://example.com)`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      console.log("=== MARKDOWN HIGHLIGHT INSPECTION ===")
+      console.log("Total highlights:", result.highlights?.length)
+
+      expect(result.highlights).toBeDefined()
+
+      // Log all highlights to understand structure
+      result.highlights?.forEach((hl, idx) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        const meta = (hl as any)[3]
+        console.log(`[${idx}] [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`, meta ? `meta: ${JSON.stringify(meta)}` : "")
+      })
+
+      // Check for overlapping highlights
+      const overlaps: Array<[number, number]> = []
+      for (let i = 0; i < result.highlights!.length; i++) {
+        for (let j = i + 1; j < result.highlights!.length; j++) {
+          const [start1, end1] = result.highlights![i]
+          const [start2, end2] = result.highlights![j]
+
+          if (start2 < end1) {
+            overlaps.push([i, j])
+          }
+        }
+      }
+
+      console.log("Overlapping highlight pairs:", overlaps.length)
+      overlaps.slice(0, 10).forEach(([i, j]) => {
+        const hl1 = result.highlights![i]
+        const hl2 = result.highlights![j]
+        const text1 = markdownCode.substring(hl1[0], hl1[1])
+        const text2 = markdownCode.substring(hl2[0], hl2[1])
+        console.log(`  [${i}] "${text1}" (${hl1[2]}) overlaps [${j}] "${text2}" (${hl2[2]})`)
+      })
+
+      // Check for injection.content highlights
+      const injectionHighlights = result.highlights!.filter((hl) => hl[2].includes("injection"))
+      console.log("Injection-related highlights:", injectionHighlights.length)
+      injectionHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`)
+      })
+
+      // Check for conceal highlights
+      const concealHighlights = result.highlights!.filter((hl) => hl[2] === "conceal")
+      console.log("Conceal highlights:", concealHighlights.length)
+      concealHighlights.forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`)
+      })
+
+      // Check for markup.raw.block (fenced code blocks)
+      const blockHighlights = result.highlights!.filter((hl) => hl[2] === "markup.raw.block")
+      console.log("Markup.raw.block highlights:", blockHighlights.length)
+      blockHighlights.slice(0, 5).forEach((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        console.log(`  [${hl[0]}, ${hl[1]}] "${text.substring(0, 20)}..." -> ${hl[2]}`)
+      })
+
+      console.log("=== END INSPECTION ===")
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
   test("should handle fast concurrent markdown highlighting requests with injections", async () => {
     const client = new TreeSitterClient({ dataPath })
 

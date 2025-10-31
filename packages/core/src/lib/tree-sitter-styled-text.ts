@@ -1,25 +1,142 @@
 import type { TextChunk } from "../text-buffer"
 import { StyledText } from "./styled-text"
-import { SyntaxStyle } from "../syntax-style"
+import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
 import { TreeSitterClient } from "./tree-sitter/client"
 import type { SimpleHighlight } from "./tree-sitter/types"
 import { createTextAttributes } from "../utils"
+
+interface ConcealOptions {
+  enabled: boolean
+}
+
+interface Boundary {
+  offset: number
+  type: "start" | "end"
+  highlightIndex: number
+}
+
+function getSpecificity(group: string): number {
+  return group.split(".").length
+}
+
+function shouldSuppressInInjection(group: string, meta: any): boolean {
+  // If we're inside an injection, suppress parent markup.raw.block highlights
+  if (meta?.isInjection) {
+    return false // This is an injected highlight, don't suppress
+  }
+  // Check if this is a parent block that should be suppressed
+  return group === "markup.raw.block"
+}
 
 export function treeSitterToTextChunks(
   content: string,
   highlights: SimpleHighlight[],
   syntaxStyle: SyntaxStyle,
+  options?: ConcealOptions,
 ): TextChunk[] {
   const chunks: TextChunk[] = []
   const defaultStyle = syntaxStyle.getStyle("default")
-  let currentIndex = 0
+  const concealEnabled = options?.enabled ?? true
 
+  // Build boundaries for segmentation
+  const boundaries: Boundary[] = []
   for (let i = 0; i < highlights.length; i++) {
-    const [startIndex, endIndex, group] = highlights[i]
+    const [start, end] = highlights[i]
+    if (start === end) continue // Skip zero-length ranges
+    boundaries.push({ offset: start, type: "start", highlightIndex: i })
+    boundaries.push({ offset: end, type: "end", highlightIndex: i })
+  }
 
-    if (startIndex < currentIndex) continue
-    if (currentIndex < startIndex) {
-      const text = content.slice(currentIndex, startIndex)
+  // Sort boundaries by offset, with ends before starts at same offset
+  // This ensures we close old ranges before opening new ones at the same position
+  boundaries.sort((a, b) => {
+    if (a.offset !== b.offset) return a.offset - b.offset
+    if (a.type === "end" && b.type === "start") return -1
+    if (a.type === "start" && b.type === "end") return 1
+    return 0
+  })
+
+  // Track active highlights
+  const activeHighlights = new Set<number>()
+  let currentOffset = 0
+
+  for (let i = 0; i < boundaries.length; i++) {
+    const boundary = boundaries[i]
+
+    // Process segment before this boundary
+    if (currentOffset < boundary.offset && activeHighlights.size > 0) {
+      const segmentText = content.slice(currentOffset, boundary.offset)
+
+      // Collect active highlight groups
+      const activeGroups: Array<{ group: string; meta: any; index: number }> = []
+      for (const idx of activeHighlights) {
+        const [, , group, meta] = highlights[idx]
+        activeGroups.push({ group, meta, index: idx })
+      }
+
+      // Check if any active highlight is a conceal with empty string
+      const concealHighlight = concealEnabled ? activeGroups.find((h) => h.group === "conceal") : undefined
+
+      if (concealHighlight) {
+        // Drop this text (conceal with empty replacement)
+        // Don't add any chunk
+      } else {
+        // Check for injection ranges
+        const hasInjectedHighlight = activeGroups.some((h) => h.meta?.isInjection)
+
+        // Filter out highlights that should be suppressed
+        const validGroups = activeGroups.filter((h) => {
+          if (hasInjectedHighlight && shouldSuppressInInjection(h.group, h.meta)) {
+            return false
+          }
+          return true
+        })
+
+        // Resolve winning style by specificity and order
+        let winningGroup: string | undefined
+        let maxSpecificity = -1
+        let winningIndex = -1
+
+        for (const { group, index } of validGroups) {
+          const specificity = getSpecificity(group)
+          if (specificity > maxSpecificity || (specificity === maxSpecificity && index > winningIndex)) {
+            maxSpecificity = specificity
+            winningGroup = group
+            winningIndex = index
+          }
+        }
+
+        // Get style for winning group
+        let styleToUse: StyleDefinition | undefined
+        if (winningGroup) {
+          styleToUse = syntaxStyle.getStyle(winningGroup)
+          if (!styleToUse && winningGroup.includes(".")) {
+            // Fallback to base scope
+            const baseName = winningGroup.split(".")[0]
+            styleToUse = syntaxStyle.getStyle(baseName)
+          }
+        }
+
+        const finalStyle = styleToUse || defaultStyle
+
+        chunks.push({
+          __isChunk: true,
+          text: segmentText,
+          fg: finalStyle?.fg,
+          bg: finalStyle?.bg,
+          attributes: finalStyle
+            ? createTextAttributes({
+                bold: finalStyle.bold,
+                italic: finalStyle.italic,
+                underline: finalStyle.underline,
+                dim: finalStyle.dim,
+              })
+            : 0,
+        })
+      }
+    } else if (currentOffset < boundary.offset) {
+      // Gap with no active highlights - use default style
+      const text = content.slice(currentOffset, boundary.offset)
       chunks.push({
         __isChunk: true,
         text,
@@ -34,42 +151,21 @@ export function treeSitterToTextChunks(
             })
           : 0,
       })
-      currentIndex = startIndex
     }
 
-    let resolvedStyle = syntaxStyle.getStyle(group)
-    let j = i + 1
-    while (j < highlights.length && highlights[j][0] === startIndex) {
-      const [, , nextGroup] = highlights[j]
-      const nextStyle = syntaxStyle.getStyle(nextGroup)
-      if (nextStyle) {
-        resolvedStyle = nextStyle
-      }
-      j++
+    // Update active highlights
+    if (boundary.type === "start") {
+      activeHighlights.add(boundary.highlightIndex)
+    } else {
+      activeHighlights.delete(boundary.highlightIndex)
     }
-    i = j - 1 // Skip the processed highlights
 
-    const text = content.slice(startIndex, endIndex)
-    const styleToUse = resolvedStyle || defaultStyle
-    chunks.push({
-      __isChunk: true,
-      text,
-      fg: styleToUse?.fg,
-      bg: styleToUse?.bg,
-      attributes: styleToUse
-        ? createTextAttributes({
-            bold: styleToUse.bold,
-            italic: styleToUse.italic,
-            underline: styleToUse.underline,
-            dim: styleToUse.dim,
-          })
-        : 0,
-    })
-    currentIndex = endIndex
+    currentOffset = boundary.offset
   }
 
-  if (currentIndex < content.length) {
-    const text = content.slice(currentIndex)
+  // Process remaining text
+  if (currentOffset < content.length) {
+    const text = content.slice(currentOffset)
     chunks.push({
       __isChunk: true,
       text,
@@ -89,16 +185,20 @@ export function treeSitterToTextChunks(
   return chunks
 }
 
+export interface TreeSitterToStyledTextOptions {
+  conceal?: ConcealOptions
+}
+
 export async function treeSitterToStyledText(
   content: string,
   filetype: string,
   syntaxStyle: SyntaxStyle,
   client: TreeSitterClient,
+  options?: TreeSitterToStyledTextOptions,
 ): Promise<StyledText> {
   const result = await client.highlightOnce(content, filetype)
-
   if (result.highlights && result.highlights.length > 0) {
-    const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle)
+    const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle, options?.conceal)
     return new StyledText(chunks)
   } else {
     // No highlights available, return content with default styling
