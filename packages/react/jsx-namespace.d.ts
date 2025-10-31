@@ -28,6 +28,8 @@ export namespace JSX {
     children: {}
   }
 
+  interface IntrinsicAttributes extends React.Attributes {}
+
   interface IntrinsicElements extends React.JSX.IntrinsicElements, ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps
     text: TextProps
