@@ -50,11 +50,9 @@ describe("TreeSitter Styled Text", () => {
 
     expect(styledText).toBeDefined()
 
-    // Get the chunks to verify styling
     const chunks = styledText.chunks
     expect(chunks.length).toBeGreaterThan(1) // Should have multiple styled chunks
 
-    // Should have different styles applied
     const chunksWithColor = chunks.filter((chunk) => chunk.fg)
     expect(chunksWithColor.length).toBeGreaterThan(0) // Some chunks should have colors
   })
@@ -69,7 +67,6 @@ describe("TreeSitter Styled Text", () => {
     const chunks = styledText.chunks
     expect(chunks.length).toBeGreaterThan(1)
 
-    // Verify some chunks have styling
     const styledChunks = chunks.filter((chunk) => chunk.fg)
     expect(styledChunks.length).toBeGreaterThan(0)
   })
@@ -81,12 +78,10 @@ describe("TreeSitter Styled Text", () => {
 
     expect(styledText).toBeDefined()
 
-    // Should return content with default styling
     const chunks = styledText.chunks
     expect(chunks).toHaveLength(1)
     expect(chunks[0].text).toBe(content)
 
-    // Should use default styling
     expect(chunks[0].fg).toBeDefined()
   })
 
@@ -125,7 +120,6 @@ function add(a, b) {
 
     const styledText = await treeSitterToStyledText(originalCode, "javascript", syntaxStyle, client)
 
-    // Reconstruct text from chunks
     const reconstructed = styledText.chunks.map((chunk) => chunk.text).join("")
     expect(reconstructed).toBe(originalCode)
   })
@@ -154,13 +148,10 @@ function add(a, b) {
     // Reconstruct the text from chunks to check for duplication
     const reconstructed = chunks.map((chunk) => chunk.text).join("")
 
-    // Should preserve original text without duplication
     expect(reconstructed).toBe(templateLiteralCode)
 
-    // Should have multiple chunks for different syntax elements
     expect(chunks.length).toBeGreaterThan(1)
 
-    // Should have some styled chunks
     const styledChunks = chunks.filter((chunk) => chunk.fg)
     expect(styledChunks.length).toBeGreaterThan(0)
   })
@@ -311,15 +302,12 @@ const x: string = "hello";
     })
     const chunks = styledText.chunks
 
-    // Reconstruct to verify text is preserved
     const reconstructed = chunks.map((c) => c.text).join("")
     expect(reconstructed).toBe(markdownCode)
 
-    // Find chunks inside the TypeScript code (between backticks)
     const tsStart = markdownCode.indexOf("const")
     const tsEnd = markdownCode.lastIndexOf(";") + 1
 
-    // Get chunks that are within the TypeScript code
     let currentPos = 0
     const tsChunks: typeof chunks = []
     for (const chunk of chunks) {
@@ -331,11 +319,9 @@ const x: string = "hello";
       currentPos = chunkEnd
     }
 
-    // Verify TypeScript chunks have syntax styles (keyword, type, string, etc.)
     // and NOT the parent markup.raw.block background
     expect(tsChunks.length).toBeGreaterThan(0)
 
-    // At least one chunk should have keyword styling (const)
     const hasKeywordStyle = tsChunks.some((chunk) => {
       const keywordStyle = syntaxStyle.getStyle("keyword")
       return (
@@ -358,7 +344,6 @@ const x: string = "hello";
     })
     const chunks = styledText.chunks
 
-    // Reconstruct text - should NOT include backticks
     const reconstructed = chunks.map((c) => c.text).join("")
     expect(reconstructed).not.toContain("`")
     expect(reconstructed).toContain("inline code")
@@ -374,7 +359,6 @@ const x: string = "hello";
     })
     const chunks = styledText.chunks
 
-    // Reconstruct text - should NOT include ** markers
     const reconstructed = chunks.map((c) => c.text).join("")
     expect(reconstructed).not.toContain("**")
     expect(reconstructed).not.toContain("*")
@@ -386,7 +370,6 @@ const x: string = "hello";
   test("should conceal link syntax but keep text and URL", async () => {
     const markdownCode = "[Link text](https://example.com)"
 
-    // Check what conceal values we're getting
     const result = await client.highlightOnce(markdownCode, "markdown")
     console.log("\nConceal values:")
     for (const [start, end, group, meta] of result.highlights!) {
@@ -405,18 +388,14 @@ const x: string = "hello";
 
     console.log("Reconstructed link:", JSON.stringify(reconstructed))
 
-    // Should conceal square brackets [ ] but keep parentheses ( ) with a space before (
-    // Result should be: "Link text (https://example.com)"
     expect(reconstructed).not.toContain("[")
     expect(reconstructed).not.toContain("]")
     expect(reconstructed).toContain("(")
     expect(reconstructed).toContain(")")
 
-    // Should keep label and url
     expect(reconstructed).toContain("Link text")
     expect(reconstructed).toContain("https://example.com")
 
-    // Check the exact format with space before (
     expect(reconstructed).toBe("Link text (https://example.com)")
   })
 
@@ -425,7 +404,6 @@ const x: string = "hello";
 const x: string = "hello";
 \`\`\``
 
-    // First, check what highlights are generated
     const result = await client.highlightOnce(markdownCode, "markdown")
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
@@ -433,21 +411,16 @@ const x: string = "hello";
     })
     const chunks = styledText.chunks
 
-    // Reconstruct text - should NOT include ``` or typescript
     const reconstructed = chunks.map((c) => c.text).join("")
 
-    // Should have the code content
     expect(reconstructed).toContain("const x")
     expect(reconstructed).toContain("hello")
 
-    // Opening delimiters and language annotation SHOULD be concealed
     expect(reconstructed).not.toContain("typescript")
 
-    // With concealLines, the newline after ```typescript should also be concealed
     // So the text should start directly with the code content
     expect(reconstructed.startsWith("const")).toBe(true)
 
-    // Verify no extraneous empty lines were created
     expect(reconstructed.split("\n").filter((l) => l.trim() === "").length).toBeLessThanOrEqual(0)
 
     // NOTE: The closing ``` is currently being included because it's parsed as part of the TypeScript
@@ -472,15 +445,12 @@ const x: string = "hello";
 
     expect(chunks.length).toBe(3) // "identifier", " ", "const"
 
-    // First segment should use variable.member -> variable style
     const variableStyle = syntaxStyle.getStyle("variable")!
     expect(chunks[0].text).toBe("identifier")
     expect(chunks[0].fg).toEqual(variableStyle.fg)
 
-    // Middle segment is unhighlighted space
     expect(chunks[1].text).toBe(" ")
 
-    // Last segment should use keyword style (keyword.coroutine falls back to keyword)
     const keywordStyle = syntaxStyle.getStyle("keyword")!
     expect(chunks[2].text).toBe("const")
     expect(chunks[2].fg).toEqual(keywordStyle.fg)
@@ -494,7 +464,6 @@ const x: string = "hello";
     })
     const chunks = styledText.chunks
 
-    // Reconstruct text - SHOULD include backticks
     const reconstructed = chunks.map((c) => c.text).join("")
     expect(reconstructed).toContain("`")
     expect(reconstructed).toBe(markdownCode)
@@ -518,19 +487,16 @@ const hello: string = "world";
 
     const reconstructed = chunks.map((c) => c.text).join("")
 
-    // Verify structure is preserved
     expect(reconstructed).toContain("Heading")
     expect(reconstructed).toContain("bold")
     expect(reconstructed).toContain("code")
     expect(reconstructed).toContain("const hello")
     expect(reconstructed).toContain("Link")
 
-    // Verify conceals worked
     expect(reconstructed).not.toContain("**")
   })
 
   test("should correctly handle ranges after concealed text", async () => {
-    // Test that text immediately after concealed markers is properly rendered
     const markdownCode = "Text with **bold** and *italic* markers."
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
@@ -540,18 +506,15 @@ const hello: string = "world";
 
     const reconstructed = chunks.map((c) => c.text).join("")
 
-    // Should have all the text content
     expect(reconstructed).toContain("Text with ")
     expect(reconstructed).toContain("bold")
     expect(reconstructed).toContain(" and ")
     expect(reconstructed).toContain("italic")
     expect(reconstructed).toContain(" markers.")
 
-    // Should not have markup
     expect(reconstructed).not.toContain("**")
     expect(reconstructed).not.toContain("*")
 
-    // Verify the text flows correctly
     expect(reconstructed).toMatch(/Text with \w+ and \w+ markers\./)
   })
 
@@ -560,7 +523,6 @@ const hello: string = "world";
 
     const result = await client.highlightOnce(markdownCode, "markdown")
 
-    // Check if there are any conceal properties on the ## marker
     const hasAnyConceals = result.highlights!.some(([, , , meta]) => meta?.conceal !== undefined)
     expect(hasAnyConceals).toBe(true) // Should have conceal on the ## marker
 
@@ -571,17 +533,13 @@ const hello: string = "world";
 
     const reconstructed = chunks.map((c) => c.text).join("")
 
-    // Should have the heading text
     expect(reconstructed).toContain("Heading 2")
 
-    // Should NOT have the ## markers
     expect(reconstructed).not.toContain("##")
     expect(reconstructed).not.toContain("#")
 
-    // The heading text should be present without the marker or the space
     expect(reconstructed).toBe("Heading 2")
 
-    // Should NOT start with a space
     expect(reconstructed.startsWith(" ")).toBe(false)
     expect(reconstructed.startsWith("Heading")).toBe(true)
 
@@ -602,19 +560,15 @@ const y = 2;
 
     const reconstructed = styledText.chunks.map((c) => c.text).join("")
 
-    // Original has 4 lines: ```typescript, const x, const y, ```
     const originalLines = markdownCode.split("\n")
     expect(originalLines.length).toBe(4)
 
-    // After concealing, we should have 3 lines: const x, const y, ```
     // (The ```typescript line is completely removed including its newline)
     const reconstructedLines = reconstructed.split("\n")
     expect(reconstructedLines.length).toBe(3)
 
-    // First line should be the code, not an empty line
     expect(reconstructedLines[0]).toBe("const x = 1;")
 
-    // No empty lines at the start
     expect(reconstructed.startsWith("\n")).toBe(false)
     expect(reconstructed.startsWith("const")).toBe(true)
   })
@@ -628,7 +582,6 @@ const y = 2;
       const result = await client.highlightOnce(markdownCode, "markdown")
       expect(result.highlights).toBeDefined()
 
-      // Check that headings are highlighted
       const groups = result.highlights!.map(([, , group]) => group)
       expect(groups).toContain("markup.heading.1")
       expect(groups).toContain("markup.heading.2")
@@ -639,17 +592,12 @@ const y = 2;
       })
       const chunks = styledText.chunks
 
-      // Reconstruct to verify text preserved
       const reconstructed = chunks.map((c) => c.text).join("")
       expect(reconstructed).toBe(markdownCode)
 
-      // Verify headings are styled
-      // The heading text itself should have markup.heading styling applied
-      // Find any chunks with the # symbol or heading text
       const hashOrHeadingChunks = chunks.filter((chunk) => chunk.text.includes("#") || /heading/i.test(chunk.text))
       expect(hashOrHeadingChunks.length).toBeGreaterThan(0)
 
-      // Check that we have markup.heading highlights in the result
       const headingGroups = groups.filter((g) => g.includes("markup.heading"))
       expect(headingGroups.length).toBeGreaterThan(0)
     })
@@ -661,7 +609,6 @@ const y = 2;
       expect(result.highlights).toBeDefined()
 
       const groups = result.highlights!.map(([, , group]) => group)
-      // Should have markup.raw.inline or similar for inline code
       const hasCodeGroup = groups.some((g) => g.includes("markup.raw") || g.includes("code"))
       expect(hasCodeGroup).toBe(true)
 
@@ -670,11 +617,9 @@ const y = 2;
       })
       const chunks = styledText.chunks
 
-      // Find the chunk containing "inline code"
       const codeChunks = chunks.filter((c) => c.text.includes("inline") || c.text.includes("code"))
       expect(codeChunks.length).toBeGreaterThan(0)
 
-      // At least one should have styling applied
       const defaultStyle = syntaxStyle.mergeStyles("default")
       const styledCodeChunks = codeChunks.filter((c) => c.fg !== defaultStyle.fg || c.attributes !== 0)
       expect(styledCodeChunks.length).toBeGreaterThan(0)
@@ -688,7 +633,6 @@ const y = 2;
       expect(result.highlights).toBeDefined()
 
       const groups = result.highlights!.map(([, , group]) => group)
-      // Should have markup.quote or similar
       const hasQuoteGroup = groups.some((g) => g.includes("quote"))
       expect(hasQuoteGroup).toBe(true)
 
@@ -710,7 +654,6 @@ const y = 2;
       expect(result.highlights).toBeDefined()
 
       const groups = result.highlights!.map(([, , group]) => group)
-      // Should have markup.italic or emphasis
       const hasItalicGroup = groups.some((g) => g.includes("italic") || g.includes("emphasis"))
       expect(hasItalicGroup).toBe(true)
 
@@ -719,10 +662,8 @@ const y = 2;
       })
       const chunks = styledText.chunks
 
-      // Should not contain * markers when concealed
       const reconstructed = chunks.map((c) => c.text).join("")
       const asteriskCount = (reconstructed.match(/\*/g) || []).length
-      // Should have fewer asterisks due to concealment (or none for emphasis markers)
       const originalAsteriskCount = (markdownCode.match(/\*/g) || []).length
       expect(asteriskCount).toBeLessThan(originalAsteriskCount)
     })
@@ -740,7 +681,6 @@ const y = 2;
       expect(result.highlights).toBeDefined()
 
       const groups = result.highlights!.map(([, , group]) => group)
-      // Should have markup.strong or bold
       const hasBoldGroup = groups.some((g) => g.includes("strong") || g.includes("bold"))
       expect(hasBoldGroup).toBe(true)
 
@@ -749,7 +689,6 @@ const y = 2;
       })
       const chunks = styledText.chunks
 
-      // Should not contain ** markers when concealed
       const reconstructed = chunks.map((c) => c.text).join("")
       expect(reconstructed).not.toContain("**")
       expect(reconstructed).toContain("bold")
@@ -764,7 +703,6 @@ function test() { return 42; }
       const result = await client.highlightOnce(markdownCode, "markdown")
       expect(result.highlights).toBeDefined()
 
-      // Verify we have TypeScript injection
       const hasInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "typescript")
       expect(hasInjection).toBe(true)
 
@@ -773,21 +711,17 @@ function test() { return 42; }
       })
       const chunks = styledText.chunks
 
-      // Reconstruct to verify text preserved
       const reconstructed = chunks.map((c) => c.text).join("")
       expect(reconstructed).toBe(markdownCode)
 
-      // Find the TypeScript content area (between the backticks)
       const tsCodeStart = markdownCode.indexOf("\n") + 1 // After first ```typescript\n
       const tsCodeEnd = markdownCode.lastIndexOf("\n```") // Before last \n```
 
-      // Get chunks in the TypeScript code area
       let currentPos = 0
       const tsChunks: typeof chunks = []
       for (const chunk of chunks) {
         const chunkStart = currentPos
         const chunkEnd = currentPos + chunk.text.length
-        // Check if chunk overlaps with TypeScript code area
         if (chunkEnd > tsCodeStart && chunkStart < tsCodeEnd) {
           tsChunks.push(chunk)
         }
@@ -796,13 +730,11 @@ function test() { return 42; }
 
       expect(tsChunks.length).toBeGreaterThan(0)
 
-      // Verify that TypeScript chunks have TypeScript-specific styling
       // (keyword, type, string, etc.) and NOT markup.raw.block background
       const keywordStyle = syntaxStyle.getStyle("keyword")
       const stringStyle = syntaxStyle.getStyle("string")
       const typeStyle = syntaxStyle.getStyle("type")
 
-      // Check for TypeScript-specific styling
       const hasKeywordStyle = tsChunks.some((chunk) => {
         return (
           keywordStyle &&
@@ -825,26 +757,19 @@ function test() { return 42; }
         )
       })
 
-      // At least one of these should be true (depending on the code)
       expect(hasKeywordStyle || hasStringStyle).toBe(true)
 
-      // CRITICAL: Verify no chunks inside TypeScript code have ONLY markup.raw.block styling
-      // This would indicate parent block styles leaking into injected content
       const defaultStyle = syntaxStyle.mergeStyles("default")
 
-      // Every chunk should either be styled (TypeScript syntax) or default, but not markup.raw.block
       for (const chunk of tsChunks) {
-        // Chunks should have either:
         // 1. TypeScript-specific styling (keyword, string, type, etc.)
         // 2. Default styling (for whitespace, punctuation)
         // 3. NOT markup.raw.block background (which would be wrong)
 
-        // Since we don't have markup.raw.block in our test syntaxStyle,
         // we verify that chunks are either styled or default
         const isStyled = chunk.fg !== defaultStyle.fg || chunk.attributes !== 0
         const isDefault = chunk.fg === defaultStyle.fg
 
-        // All chunks should be either styled or default (no "other" styling)
         expect(isStyled || isDefault).toBe(true)
       }
     })
@@ -879,7 +804,6 @@ function test() { return 42; }
       const reconstructed = chunks.map((c) => c.text).join("")
       expect(reconstructed).toBe(markdownCode)
 
-      // Should have both heading and code styling
       const groups = result.highlights!.map(([, , group]) => group)
       expect(groups.some((g) => g.includes("heading"))).toBe(true)
       expect(groups.some((g) => g.includes("markup.raw") || g.includes("code"))).toBe(true)
@@ -924,7 +848,6 @@ const y: number = 42;
       const reconstructed = chunks.map((c) => c.text).join("")
       expect(reconstructed).toBe(markdownCode)
 
-      // Both code blocks should have injection
       const jsInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "javascript")
       const tsInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "typescript")
 
@@ -959,7 +882,6 @@ Normal paragraph with [link](https://example.com).`
 
       const reconstructed = chunks.map((c) => c.text).join("")
 
-      // Verify structure preserved
       expect(reconstructed).toContain("Main Heading")
       expect(reconstructed).toContain("Sub Heading")
       expect(reconstructed).toContain("quote")
@@ -969,10 +891,8 @@ Normal paragraph with [link](https://example.com).`
       expect(reconstructed).toContain("const value")
       expect(reconstructed).toContain("link")
 
-      // Verify concealment worked
       expect(reconstructed).not.toContain("**")
 
-      // Verify we have various styling
       const defaultStyle = syntaxStyle.mergeStyles("default")
       const styledChunks = chunks.filter((c) => c.fg !== defaultStyle.fg || c.attributes !== 0)
       expect(styledChunks.length).toBeGreaterThan(5)
@@ -981,14 +901,12 @@ Normal paragraph with [link](https://example.com).`
 
   describe("Style Inheritance", () => {
     test("should merge styles from nested highlights with child overriding parent", () => {
-      // Mock highlights simulating a parent with underline and child with different color
       const mockHighlights: SimpleHighlight[] = [
         [0, 20, "markup.link"], // Parent: entire link with underline
         [1, 11, "markup.link.label"], // Child: label with different color
         [13, 19, "markup.link.url"], // Child: url with different color
       ]
 
-      // Create a syntax style with link styling
       const testStyle = SyntaxStyle.fromStyles({
         default: { fg: RGBA.fromInts(255, 255, 255, 255) },
         "markup.link": { fg: RGBA.fromInts(100, 100, 255, 255), underline: true }, // Blue underlined
@@ -998,7 +916,6 @@ Normal paragraph with [link](https://example.com).`
 
       const content = "[Link text](url)"
 
-      // Get styles before destroying
       const labelStyle = testStyle.getStyle("markup.link.label")!
       const urlStyle = testStyle.getStyle("markup.link.url")!
 
@@ -1006,11 +923,8 @@ Normal paragraph with [link](https://example.com).`
 
       testStyle.destroy()
 
-      // Should have chunks for: "[", "Link text", "](", "url", ")"
-      // The exact chunking depends on boundary processing, but we care about style inheritance
       expect(chunks.length).toBeGreaterThan(0)
 
-      // Find chunks containing the label and url
       let currentPos = 0
       const labelChunks: typeof chunks = []
       const urlChunks: typeof chunks = []
@@ -1032,11 +946,9 @@ Normal paragraph with [link](https://example.com).`
         currentPos = chunkEnd
       }
 
-      // Both should have at least one chunk
       expect(labelChunks.length).toBeGreaterThan(0)
       expect(urlChunks.length).toBeGreaterThan(0)
 
-      // All label and url chunks should inherit the underline from parent markup.link
       const underlineAttr = createTextAttributes({ underline: true })
       for (const chunk of [...labelChunks, ...urlChunks]) {
         expect(chunk.attributes).toBe(underlineAttr)
@@ -1056,7 +968,6 @@ Normal paragraph with [link](https://example.com).`
     })
 
     test("should merge multiple overlapping styles with correct priority", () => {
-      // Test with three overlapping styles of different specificity
       const mockHighlights: SimpleHighlight[] = [
         [0, 10, "text"], // Base style
         [0, 10, "text.special"], // More specific: adds bold
@@ -1075,24 +986,19 @@ Normal paragraph with [link](https://example.com).`
 
       testStyle.destroy()
 
-      // Should have at least one chunk for the highlighted text
       expect(chunks.length).toBeGreaterThan(0)
 
       const chunk = chunks[0]
 
-      // Should have the most specific color (yellow from text.special.highlighted)
-      // RGBA values are 0-1 floats, so 255 -> 1.0, 100 -> ~0.392
       expect(chunk.fg?.r).toBeCloseTo(1.0, 2)
       expect(chunk.fg?.g).toBeCloseTo(1.0, 2)
       expect(chunk.fg?.b).toBeCloseTo(100 / 255, 2)
 
-      // Should have both bold and underline attributes merged
       const expectedAttributes = createTextAttributes({ bold: true, underline: true })
       expect(chunk.attributes).toBe(expectedAttributes)
     })
 
     test("should handle style inheritance when parent only sets attributes", () => {
-      // Parent sets underline, child only sets color
       const mockHighlights: SimpleHighlight[] = [
         [0, 15, "container"], // Parent: only underline
         [0, 5, "container.part1"], // Child: only color
@@ -1113,16 +1019,13 @@ Normal paragraph with [link](https://example.com).`
 
       testStyle.destroy()
 
-      // Should have 3 chunks
       expect(chunks.length).toBe(3)
 
-      // All chunks should have underline (inherited from container)
       const underlineAttr = createTextAttributes({ underline: true })
       for (const chunk of chunks) {
         expect(chunk.attributes).toBe(underlineAttr)
       }
 
-      // Each chunk should have its own color (RGBA values are 0-1 floats)
       expect(chunks[0].fg?.r).toBeCloseTo(1.0, 2) // 255 / 255
       expect(chunks[0].fg?.g).toBeCloseTo(100 / 255, 2)
       expect(chunks[0].fg?.b).toBeCloseTo(100 / 255, 2)
@@ -1139,7 +1042,6 @@ Normal paragraph with [link](https://example.com).`
     test("should handle markdown link with realistic tree-sitter output", async () => {
       const markdownCode = "[Label](url)"
 
-      // Get actual tree-sitter highlights
       const result = await client.highlightOnce(markdownCode, "markdown")
       expect(result.highlights).toBeDefined()
 
@@ -1151,13 +1053,11 @@ Normal paragraph with [link](https://example.com).`
       // This means label does NOT inherit from markup.link because it's not a child range!
       // Therefore, if you want label underlined, you must specify it explicitly.
 
-      // Verify the tree-sitter output structure
       const labelHighlights = result.highlights!.filter(
         ([start, end, group]) => group === "markup.link.label" && markdownCode.slice(start, end) === "Label",
       )
       expect(labelHighlights.length).toBe(1)
 
-      // Label should NOT also have markup.link at the same range
       const labelStart = labelHighlights[0][0]
       const labelEnd = labelHighlights[0][1]
       const labelHasParentLink = result.highlights!.some(
@@ -1165,8 +1065,6 @@ Normal paragraph with [link](https://example.com).`
       )
       expect(labelHasParentLink).toBe(false) // Confirms label is NOT nested
 
-      // Create a realistic syntax style for links
-      // Must set underline on each part individually since they're not nested
       const linkStyle = SyntaxStyle.fromStyles({
         default: { fg: RGBA.fromInts(255, 255, 255, 255) },
         "markup.link": { underline: true }, // Brackets and parens
@@ -1181,29 +1079,24 @@ Normal paragraph with [link](https://example.com).`
 
       linkStyle.destroy()
 
-      // Reconstruct text
       const reconstructed = chunks.map((c) => c.text).join("")
       expect(reconstructed).toBe(markdownCode)
 
-      // Find label and url chunks
       const labelChunk = chunks.find((c) => c.text === "Label")
       const urlChunk = chunks.find((c) => c.text === "url")
 
       expect(labelChunk).toBeDefined()
       expect(urlChunk).toBeDefined()
 
-      // Both should be underlined now
       const underlineAttr = createTextAttributes({ underline: true })
       expect(labelChunk!.attributes).toBe(underlineAttr)
       expect(urlChunk!.attributes).toBe(underlineAttr)
 
-      // And have their respective colors
       expect(labelChunk!.fg?.r).toBeCloseTo(165 / 255, 2)
       expect(urlChunk!.fg?.r).toBeCloseTo(88 / 255, 2)
     })
 
     test("should preserve original behavior for non-overlapping highlights", () => {
-      // When highlights don't overlap, behavior should be unchanged
       const mockHighlights: SimpleHighlight[] = [
         [0, 5, "keyword"], // "const"
         [6, 11, "string"], // "'str'"
@@ -1222,7 +1115,6 @@ Normal paragraph with [link](https://example.com).`
 
       testStyle.destroy()
 
-      // Should have 5 chunks: keyword, space, string, space, number
       expect(chunks.length).toBe(5)
 
       expect(chunks[0].text).toBe("const")
@@ -1241,7 +1133,6 @@ Normal paragraph with [link](https://example.com).`
     })
 
     test("should demonstrate when inheritance works vs when it does not", () => {
-      // Case 1: TRUE NESTING - child inherits from parent
       const nestedHighlights: SimpleHighlight[] = [
         [0, 10, "parent"], // Parent covers entire range
         [2, 8, "parent.child"], // Child is INSIDE parent
@@ -1258,13 +1149,11 @@ Normal paragraph with [link](https://example.com).`
 
       nestedStyle.destroy()
 
-      // The child chunk should inherit underline from parent
       const childChunk = nestedChunks.find((c) => c.text.includes("234567"))
       expect(childChunk).toBeDefined()
       expect(childChunk!.attributes).toBe(createTextAttributes({ underline: true }))
       expect(childChunk!.fg?.r).toBeCloseTo(200 / 255, 2)
 
-      // Case 2: SIBLING RANGES - no inheritance
       const siblingHighlights: SimpleHighlight[] = [
         [0, 5, "typeA"], // First range
         [5, 10, "typeB"], // Second range (NOT nested)
@@ -1283,16 +1172,13 @@ Normal paragraph with [link](https://example.com).`
 
       expect(siblingChunks.length).toBe(2)
 
-      // First chunk has underline
       expect(siblingChunks[0].attributes).toBe(createTextAttributes({ underline: true }))
 
-      // Second chunk does NOT inherit underline (they're siblings, not parent/child)
       expect(siblingChunks[1].attributes).toBe(0) // No attributes
       expect(siblingChunks[1].fg?.r).toBeCloseTo(255 / 255, 2)
     })
 
     test("should handle child style completely overriding parent attributes", () => {
-      // Child explicitly sets bold: false, should override parent's bold: true
       const mockHighlights: SimpleHighlight[] = [
         [0, 10, "parent"],
         [0, 10, "parent.child"],
@@ -1313,11 +1199,8 @@ Normal paragraph with [link](https://example.com).`
 
       const chunk = chunks[0]
 
-      // Should have child's color (RGBA uses 0-1 floats)
       expect(chunk.fg?.r).toBeCloseTo(200 / 255, 2)
 
-      // Should NOT have bold (child set it to false)
-      // But should have italic and underline from parent
       const expectedAttributes = createTextAttributes({ bold: false, italic: true, underline: true })
       expect(chunk.attributes).toBe(expectedAttributes)
     })

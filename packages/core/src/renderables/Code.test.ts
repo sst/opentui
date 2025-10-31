@@ -208,7 +208,6 @@ test("CodeRenderable - fallback when no filetype provided", async () => {
     content: "const message = 'hello world';",
     syntaxStyle,
     conceal: false,
-    // No filetype provided - should trigger fallback
   })
 
   await renderOnce()
@@ -252,7 +251,7 @@ test("CodeRenderable - early return when content is empty", async () => {
 
   const codeRenderable = new CodeRenderable(currentRenderer, {
     id: "test-code",
-    content: "", // Empty content should trigger early return
+    content: "",
     filetype: "javascript",
     syntaxStyle,
     conceal: false,
@@ -338,7 +337,7 @@ test("CodeRenderable - text renders immediately before highlighting completes", 
   expect(frameAfterHighlighting).toMatchSnapshot("text visible after highlighting completes")
 })
 
-test("CodeRenderable - MUST batch concurrent content and filetype updates (CURRENTLY FAILS)", async () => {
+test("CodeRenderable - batch concurrent content and filetype updates", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -386,7 +385,7 @@ test("CodeRenderable - MUST batch concurrent content and filetype updates (CURRE
   expect(codeRenderable.filetype).toBe("typescript")
 })
 
-test("CodeRenderable - MUST only call highlightOnce ONCE when triple-updating in same tick (CURRENTLY FAILS)", async () => {
+test("CodeRenderable - only call highlightOnce once when triple-updating in same tick", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -458,11 +457,9 @@ test("CodeRenderable - renders markdown with TypeScript injection correctly", as
   currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
-  // Wait for highlighting to complete
   await new Promise((resolve) => setTimeout(resolve, 100))
   await renderOnce()
 
-  // Plain text should preserve structure
   expect(codeRenderable.plainText).toContain("# Hello")
   expect(codeRenderable.plainText).toContain("const msg")
   expect(codeRenderable.plainText).toContain("typescript")
@@ -608,8 +605,6 @@ test("CodeRenderable - concealment setting is passed to treeSitterToStyledText",
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // The test verifies that the CodeRenderable respects the conceal setting
-  // Actual concealment behavior is tested in the tree-sitter integration
   expect(codeRenderable.content).toBe("const message = 'hello';")
 })
 
@@ -638,12 +633,10 @@ test("CodeRenderable - conceal property can be updated dynamically", async () =>
   codeRenderable.conceal = false
   expect(codeRenderable.conceal).toBe(false)
 
-  // Wait for microtask to process the update
+  await new Promise((resolve) => queueMicrotask(resolve))
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  // Should trigger re-highlighting
   expect(mockClient.isHighlighting()).toBe(true)
-
   mockClient.resolveHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
 })
