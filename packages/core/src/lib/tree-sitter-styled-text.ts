@@ -4,6 +4,9 @@ import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
 import { TreeSitterClient } from "./tree-sitter/client"
 import type { SimpleHighlight } from "./tree-sitter/types"
 import { createTextAttributes } from "../utils"
+import { registerEnvVar, env } from "./env"
+
+registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enable warnings for missing syntax styles" })
 
 interface ConcealOptions {
   enabled: boolean
@@ -163,11 +166,15 @@ export function treeSitterToTextChunks(
           } else {
             if (group.includes(".")) {
               const baseName = group.split(".")[0]
-              console.warn(
-                `Syntax style not found for group "${group}" or base scope "${baseName}", using default style`,
-              )
+              if (env.OTUI_TS_STYLE_WARN) {
+                console.warn(
+                  `Syntax style not found for group "${group}" or base scope "${baseName}", using default style`,
+                )
+              }
             } else {
-              console.warn(`Syntax style not found for group "${group}", using default style`)
+              if (env.OTUI_TS_STYLE_WARN) {
+                console.warn(`Syntax style not found for group "${group}", using default style`)
+              }
             }
           }
         }

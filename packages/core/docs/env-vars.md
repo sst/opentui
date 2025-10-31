@@ -1,5 +1,19 @@
 # Environment Variables
 
+## OTUI_TS_STYLE_WARN
+
+Enable warnings for missing syntax styles
+
+**Type:** `string`  
+**Default:** `false`
+
+## OTUI_TREE_SITTER_WORKER_PATH
+
+Path to the TreeSitter worker
+
+**Type:** `string`  
+**Default:** `""`
+
 ## XDG_CONFIG_HOME
 
 Base directory for user-specific configuration files
