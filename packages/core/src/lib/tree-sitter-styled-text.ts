@@ -197,6 +197,7 @@ export async function treeSitterToStyledText(
   options?: TreeSitterToStyledTextOptions,
 ): Promise<StyledText> {
   const result = await client.highlightOnce(content, filetype)
+
   if (result.highlights && result.highlights.length > 0) {
     const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle, options?.conceal)
     return new StyledText(chunks)

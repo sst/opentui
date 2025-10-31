@@ -229,38 +229,54 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   syntaxStyle = SyntaxStyle.fromStyles({
     // JS/TS styles
     keyword: { fg: parseColor("#FF7B72"), bold: true }, // red keywords
+    "keyword.import": { fg: parseColor("#FF7B72"), bold: true }, // red import/export
+    "keyword.coroutine": { fg: parseColor("#FF9492") }, // lighter red for async/await
+    "keyword.operator": { fg: parseColor("#FF7B72") }, // red operator keywords (new, typeof, etc)
     string: { fg: parseColor("#A5D6FF") }, // blue strings
     comment: { fg: parseColor("#8B949E"), italic: true }, // gray comments
     number: { fg: parseColor("#79C0FF") }, // light blue numbers
+    boolean: { fg: parseColor("#79C0FF") }, // light blue booleans
+    constant: { fg: parseColor("#79C0FF") }, // light blue constants
     function: { fg: parseColor("#D2A8FF") }, // purple functions
+    "function.call": { fg: parseColor("#D2A8FF") }, // purple function calls
+    "function.method.call": { fg: parseColor("#D2A8FF") }, // purple method calls
+    constructor: { fg: parseColor("#FFA657") }, // orange constructors
     type: { fg: parseColor("#FFA657") }, // orange types
     operator: { fg: parseColor("#FF7B72") }, // red operators
-    variable: { fg: parseColor("#FFA657") }, // orange variables
+    variable: { fg: parseColor("#E6EDF3") }, // light gray variables
+    "variable.member": { fg: parseColor("#79C0FF") }, // light blue properties/members
     property: { fg: parseColor("#79C0FF") }, // light blue properties
     bracket: { fg: parseColor("#F0F6FC") }, // white brackets
+    "punctuation.bracket": { fg: parseColor("#F0F6FC") }, // white brackets
+    "punctuation.delimiter": { fg: parseColor("#C9D1D9") }, // light gray delimiters (commas, semicolons)
     punctuation: { fg: parseColor("#F0F6FC") }, // white punctuation
 
     // Markdown specific styles (matching tree-sitter capture names)
-    "markup.heading": { fg: parseColor("#79C0FF"), bold: true }, // blue headings
-    "markup.heading.1": { fg: parseColor("#79C0FF"), bold: true }, // H1
-    "markup.heading.2": { fg: parseColor("#A5D6FF"), bold: true }, // H2
-    "markup.heading.3": { fg: parseColor("#D2A8FF"), bold: true }, // H3
-    "markup.heading.4": { fg: parseColor("#FFA657"), bold: true }, // H4
-    "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true }, // H5
-    "markup.heading.6": { fg: parseColor("#8B949E"), bold: true }, // H6
+    "markup.heading": { fg: parseColor("#58A6FF"), bold: true }, // medium blue generic headings
+    "markup.heading.1": { fg: parseColor("#79C0FF"), bold: true }, // bright blue H1
+    "markup.heading.2": { fg: parseColor("#A5D6FF"), bold: true }, // light blue H2
+    "markup.heading.3": { fg: parseColor("#D2A8FF"), bold: true }, // purple H3
+    "markup.heading.4": { fg: parseColor("#FFA657"), bold: true }, // orange H4
+    "markup.heading.5": { fg: parseColor("#FF7B72"), bold: true }, // red H5
+    "markup.heading.6": { fg: parseColor("#8B949E"), bold: true }, // gray H6
     "markup.bold": { fg: parseColor("#F0F6FC"), bold: true }, // white bold
+    "markup.strong": { fg: parseColor("#F0F6FC"), bold: true }, // white strong (same as bold)
     "markup.italic": { fg: parseColor("#F0F6FC"), italic: true }, // white italic
     "markup.list": { fg: parseColor("#FF7B72") }, // red list markers
     "markup.quote": { fg: parseColor("#8B949E"), italic: true }, // gray quotes
+    "markup.raw": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue inline code
     "markup.raw.block": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue code blocks with dark bg
     "markup.raw.inline": { fg: parseColor("#A5D6FF"), bg: parseColor("#161B22") }, // blue inline code
-    "markup.link": { fg: parseColor("#A5D6FF"), underline: true }, // blue links
-    "markup.link.url": { fg: parseColor("#A5D6FF") }, // blue URLs
+    "markup.link": { fg: parseColor("#58A6FF"), underline: true }, // blue links
+    "markup.link.label": { fg: parseColor("#A5D6FF") }, // light blue link labels
+    "markup.link.url": { fg: parseColor("#58A6FF") }, // blue URLs
     label: { fg: parseColor("#7EE787") }, // green language labels in code blocks
-    spell: { fg: parseColor("#F0F6FC") }, // white normal text
+    spell: { fg: parseColor("#E6EDF3") }, // light gray normal text
+    nospell: { fg: parseColor("#E6EDF3") }, // light gray nospell text
+    conceal: { fg: parseColor("#6E7681") }, // darker gray for concealed chars (markdown syntax)
     "punctuation.special": { fg: parseColor("#8B949E") }, // gray special punctuation
 
-    default: { fg: parseColor("#F0F6FC") }, // white default
+    default: { fg: parseColor("#E6EDF3") }, // light gray default (distinct from white)
   })
 
   // Create code display using CodeRenderable
