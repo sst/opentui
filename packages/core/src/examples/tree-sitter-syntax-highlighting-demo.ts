@@ -177,6 +177,7 @@ let codeDisplay: CodeRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let currentExampleIndex = 0
+let concealEnabled = true
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -204,7 +205,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content: "ESC to return | ← → to switch examples | Demonstrating CodeRenderable with tree-sitter highlighting",
+    content:
+      "ESC to return | ← → to switch examples | C to toggle conceal | Demonstrating CodeRenderable with tree-sitter highlighting",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -289,6 +291,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     selectable: true,
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
+    conceal: concealEnabled,
   })
   codeScrollBox.add(codeDisplay)
 
@@ -299,7 +302,13 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   parentContainer.add(timingText)
 
-  timingText.content = `Using CodeRenderable with ${examples[currentExampleIndex].name} highlighting (${currentExampleIndex + 1}/${examples.length})`
+  const updateTimingText = () => {
+    if (timingText) {
+      timingText.content = `Using CodeRenderable with ${examples[currentExampleIndex].name} highlighting (${currentExampleIndex + 1}/${examples.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"}`
+    }
+  }
+
+  updateTimingText()
 
   keyboardHandler = (key: ParsedKey) => {
     if (key.name === "right" || key.name === "left") {
@@ -318,10 +327,15 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       if (codeDisplay) {
         codeDisplay.content = example.code
         codeDisplay.filetype = example.filetype
-        if (timingText) {
-          timingText.content = `Using CodeRenderable with ${example.name} highlighting (${currentExampleIndex + 1}/${examples.length})`
-        }
+        updateTimingText()
       }
+    } else if (key.name === "c" && !key.ctrl && !key.meta) {
+      // Toggle conceal
+      concealEnabled = !concealEnabled
+      if (codeDisplay) {
+        codeDisplay.conceal = concealEnabled
+      }
+      updateTimingText()
     }
   }
 

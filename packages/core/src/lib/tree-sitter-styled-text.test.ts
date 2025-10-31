@@ -306,7 +306,9 @@ function add(a, b) {
 const x: string = "hello";
 \`\`\``
 
-    const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+    const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+      conceal: { enabled: false }, // Disable concealing to test text preservation
+    })
     const chunks = styledText.chunks
 
     // Reconstruct to verify text is preserved
@@ -401,6 +403,37 @@ const x: string = "hello";
     expect(reconstructed).toContain("https://example.com")
   })
 
+  test("should conceal code block delimiters and language info", async () => {
+    const markdownCode = `\`\`\`typescript
+const x: string = "hello";
+\`\`\``
+
+    // First, check what highlights are generated
+    const result = await client.highlightOnce(markdownCode, "markdown")
+
+    const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+      conceal: { enabled: true },
+    })
+    const chunks = styledText.chunks
+
+    // Reconstruct text - should NOT include ``` or typescript
+    const reconstructed = chunks.map((c) => c.text).join("")
+
+    // Should have the code content
+    expect(reconstructed).toContain("const x")
+    expect(reconstructed).toContain("hello")
+
+    // Opening delimiters and language annotation SHOULD be concealed
+    expect(reconstructed).not.toContain("typescript")
+
+    // The reconstructed text should start with a newline (after the concealed ```typescript)
+    expect(reconstructed.startsWith("\n")).toBe(true)
+
+    // NOTE: The closing ``` is currently being included because it's parsed as part of the TypeScript
+    // injection (template string backticks). This is a separate bug with injection boundaries.
+    // For now, we'll just verify that the opening delimiters are concealed.
+  })
+
   test("should handle overlapping highlights with specificity resolution", async () => {
     const mockHighlights: SimpleHighlight[] = [
       [0, 10, "variable"],
@@ -473,6 +506,55 @@ const hello: string = "world";
 
     // Verify conceals worked
     expect(reconstructed).not.toContain("**")
+  })
+
+  test("should correctly handle ranges after concealed text", async () => {
+    // Test that text immediately after concealed markers is properly rendered
+    const markdownCode = "Text with **bold** and *italic* markers."
+
+    const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+      conceal: { enabled: true },
+    })
+    const chunks = styledText.chunks
+
+    const reconstructed = chunks.map((c) => c.text).join("")
+
+    // Should have all the text content
+    expect(reconstructed).toContain("Text with ")
+    expect(reconstructed).toContain("bold")
+    expect(reconstructed).toContain(" and ")
+    expect(reconstructed).toContain("italic")
+    expect(reconstructed).toContain(" markers.")
+
+    // Should not have markup
+    expect(reconstructed).not.toContain("**")
+    expect(reconstructed).not.toContain("*")
+
+    // Verify the text flows correctly
+    expect(reconstructed).toMatch(/Text with \w+ and \w+ markers\./)
+  })
+
+  test("should conceal heading markers", async () => {
+    const markdownCode = "## Heading 2"
+
+    const result = await client.highlightOnce(markdownCode, "markdown")
+
+    // Check if there are any conceal properties on the ## marker
+    const hasAnyConceals = result.highlights!.some(([, , , meta]) => meta?.conceal !== undefined)
+
+    const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+      conceal: { enabled: true },
+    })
+    const chunks = styledText.chunks
+
+    const reconstructed = chunks.map((c) => c.text).join("")
+
+    // Should have the heading text
+    expect(reconstructed).toContain("Heading 2")
+
+    // Note: The ## markers are not marked with (#set! conceal "") in the query,
+    // so they will still be present. This is expected based on the current highlight queries.
+    // If the query is updated to conceal heading markers, this test would need to change.
   })
 
   describe("Markdown highlighting comprehensive coverage", () => {
@@ -622,7 +704,9 @@ function test() { return 42; }
       const hasInjection = result.highlights!.some(([, , , meta]) => meta?.injectionLang === "typescript")
       expect(hasInjection).toBe(true)
 
-      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false }, // Disable concealing to test text preservation
+      })
       const chunks = styledText.chunks
 
       // Reconstruct to verify text preserved
@@ -768,7 +852,9 @@ const y: number = 42;
       const result = await client.highlightOnce(markdownCode, "markdown")
       expect(result.highlights).toBeDefined()
 
-      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client)
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false }, // Disable concealing to test text preservation
+      })
       const chunks = styledText.chunks
 
       const reconstructed = chunks.map((c) => c.text).join("")

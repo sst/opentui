@@ -82,10 +82,16 @@ export function treeSitterToTextChunks(
         activeGroups.push({ group, meta, index: idx })
       }
 
-      // Check if any active highlight is a conceal with empty string
-      const concealHighlight = concealEnabled ? activeGroups.find((h) => h.group === "conceal") : undefined
+      // Check if any active highlight has a conceal property
+      // Priority: 1. Check meta.conceal first 2. Check group === "conceal"
+      const concealHighlight = concealEnabled
+        ? activeGroups.find((h) => h.meta?.conceal !== undefined || h.group === "conceal")
+        : undefined
 
       if (concealHighlight) {
+        const concealValue = concealHighlight.meta?.conceal
+        // If conceal is set (even to empty string or null), drop the text for now
+        // In the future we might support replacement text (non-empty conceal values)
         // Drop this text (conceal with empty replacement)
         // Don't add any chunk
       } else {

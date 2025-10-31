@@ -694,10 +694,22 @@ class ParserWorker {
         }
       }
 
+      const concealValue = match.setProperties?.conceal
+
+      const meta: any = {}
       if (isInjection && injectionLang) {
-        highlights.push([node.startIndex, node.endIndex, match.name, { isInjection: true, injectionLang }])
-      } else if (containsInjection) {
-        highlights.push([node.startIndex, node.endIndex, match.name, { containsInjection: true }])
+        meta.isInjection = true
+        meta.injectionLang = injectionLang
+      }
+      if (containsInjection) {
+        meta.containsInjection = true
+      }
+      if (concealValue !== undefined) {
+        meta.conceal = concealValue
+      }
+
+      if (Object.keys(meta).length > 0) {
+        highlights.push([node.startIndex, node.endIndex, match.name, meta])
       } else {
         highlights.push([node.startIndex, node.endIndex, match.name])
       }

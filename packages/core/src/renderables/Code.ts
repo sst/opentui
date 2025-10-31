@@ -9,6 +9,7 @@ export interface CodeOptions extends TextBufferOptions {
   filetype?: string
   syntaxStyle: SyntaxStyle
   treeSitterClient?: TreeSitterClient
+  conceal?: boolean
 }
 
 export class CodeRenderable extends TextBufferRenderable {
@@ -20,9 +21,11 @@ export class CodeRenderable extends TextBufferRenderable {
   private _pendingRehighlight: boolean = false
   private _pendingUpdate: boolean = false
   private _currentHighlightId: number = 0
+  private _conceal: boolean
 
   protected _contentDefaultOptions = {
     content: "",
+    conceal: true,
   } satisfies Partial<CodeOptions>
 
   constructor(ctx: RenderContext, options: CodeOptions) {
@@ -32,6 +35,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
     this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
+    this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
 
     this.updateContent(this._content)
   }
@@ -69,6 +73,17 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get conceal(): boolean {
+    return this._conceal
+  }
+
+  set conceal(value: boolean) {
+    if (this._conceal !== value) {
+      this._conceal = value
+      this.scheduleUpdate()
+    }
+  }
+
   private scheduleUpdate(): void {
     if (this._pendingUpdate) return
     this._pendingUpdate = true
@@ -100,6 +115,9 @@ export class CodeRenderable extends TextBufferRenderable {
         this._filetype,
         this._syntaxStyle,
         this._treeSitterClient,
+        {
+          conceal: { enabled: this._conceal },
+        },
       )
 
       if (highlightId !== this._currentHighlightId) {

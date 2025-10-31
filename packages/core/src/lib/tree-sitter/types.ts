@@ -14,6 +14,7 @@ export interface HighlightMeta {
   isInjection?: boolean
   injectionLang?: string
   containsInjection?: boolean
+  conceal?: string | null // Value from (#set! conceal "...") predicate
 }
 
 export type SimpleHighlight = [number, number, string, HighlightMeta?]
