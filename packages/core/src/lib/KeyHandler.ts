@@ -1,6 +1,7 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
 import { ANSI } from "../ansi"
+import { StdinBuffer } from "./stdin-buffer"
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -78,53 +79,65 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   protected pasteMode: boolean = false
   protected pasteBuffer: string[] = []
   private suspended: boolean = false
+  private stdinBuffer: StdinBuffer
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
 
     this.stdin = stdin || process.stdin
     this.useKittyKeyboard = useKittyKeyboard
+    this.stdinBuffer = new StdinBuffer(10)
 
     this.listener = (key: Buffer) => {
-      let data = key.toString()
-      if (data.startsWith(ANSI.bracketedPasteStart)) {
-        this.pasteMode = true
-      }
-      if (this.pasteMode) {
-        this.pasteBuffer.push(Bun.stripANSI(data))
-        if (data.endsWith(ANSI.bracketedPasteEnd)) {
-          this.pasteMode = false
-          this.emit("paste", new PasteEvent(this.pasteBuffer.join("")))
-          this.pasteBuffer = []
-        }
-        return
-      }
-      const parsedKey = parseKeypress(key, { useKittyKeyboard: this.useKittyKeyboard })
+      // Buffer stdin data to handle partial escape sequences
+      const sequences = this.stdinBuffer.push(key)
 
-      if (!parsedKey) {
-        return
-      }
-
-      switch (parsedKey.eventType) {
-        case "press":
-          this.emit("keypress", new KeyEvent(parsedKey))
-          break
-        case "repeat":
-          this.emit("keyrepeat", new KeyEvent(parsedKey))
-          break
-        case "release":
-          this.emit("keyrelease", new KeyEvent(parsedKey))
-          break
-        default:
-          this.emit("keypress", new KeyEvent(parsedKey))
-          break
+      // Process each complete sequence
+      for (const sequence of sequences) {
+        this.processSequence(sequence)
       }
     }
     this.stdin.on("data", this.listener)
   }
 
+  private processSequence(data: string): void {
+    if (data.startsWith(ANSI.bracketedPasteStart)) {
+      this.pasteMode = true
+    }
+    if (this.pasteMode) {
+      this.pasteBuffer.push(Bun.stripANSI(data))
+      if (data.endsWith(ANSI.bracketedPasteEnd)) {
+        this.pasteMode = false
+        this.emit("paste", new PasteEvent(this.pasteBuffer.join("")))
+        this.pasteBuffer = []
+      }
+      return
+    }
+    const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
+
+    if (!parsedKey) {
+      return
+    }
+
+    switch (parsedKey.eventType) {
+      case "press":
+        this.emit("keypress", new KeyEvent(parsedKey))
+        break
+      case "repeat":
+        this.emit("keyrepeat", new KeyEvent(parsedKey))
+        break
+      case "release":
+        this.emit("keyrelease", new KeyEvent(parsedKey))
+        break
+      default:
+        this.emit("keypress", new KeyEvent(parsedKey))
+        break
+    }
+  }
+
   public destroy(): void {
     this.stdin.removeListener("data", this.listener)
+    this.stdinBuffer.destroy()
   }
 
   public suspend(): void {

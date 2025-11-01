@@ -458,11 +458,12 @@ test("KeyHandler - filters out mouse events", () => {
   renderer.stdin.emit("data", Buffer.from("\x1b[<0;10;5m"))
   expect(keypressCount).toBe(0)
 
+  // Old-style mouse: \x1b[M + 3 bytes = "\x1b[M ab", then "c" is a separate keypress
   renderer.stdin.emit("data", Buffer.from("\x1b[M abc"))
-  expect(keypressCount).toBe(0)
+  expect(keypressCount).toBe(1) // The "c" after the mouse event
 
   renderer.stdin.emit("data", Buffer.from("a"))
-  expect(keypressCount).toBe(1)
+  expect(keypressCount).toBe(2) // Now we have "c" and "a"
 
   handler.destroy()
 })
