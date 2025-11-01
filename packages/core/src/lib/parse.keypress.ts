@@ -198,6 +198,10 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   } else if (s === " " || s === "\x1b ") {
     key.name = "space"
     key.meta = s.length === 2
+  } else if (s === "\x00") {
+    // ctrl+space
+    key.name = "space"
+    key.ctrl = true
   } else if (s.length === 1 && s <= "\x1a") {
     // ctrl+letter
     key.name = String.fromCharCode(s.charCodeAt(0) + "a".charCodeAt(0) - 1)
