@@ -8,6 +8,8 @@ let currentRenderer: TestRenderer
 let kittyRenderer: TestRenderer
 
 beforeEach(async () => {
+  // Small delay to ensure any pending StdinBuffer timeouts from previous tests complete
+  await new Promise((resolve) => setTimeout(resolve, 15))
   ;({ renderer: currentRenderer } = await createTestRenderer({}))
   ;({ renderer: kittyRenderer } = await createTestRenderer({ useKittyKeyboard: true }))
 })
