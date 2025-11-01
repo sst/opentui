@@ -13,6 +13,7 @@ test("parseKeypress - basic letters", () => {
     sequence: "a",
     raw: "a",
     eventType: "press",
+    source: "raw",
   })
 
   expect(parseKeypress("A")).toEqual({
@@ -25,6 +26,7 @@ test("parseKeypress - basic letters", () => {
     number: false,
     sequence: "A",
     raw: "A",
+    source: "raw",
   })
 })
 
@@ -39,6 +41,7 @@ test("parseKeypress - numbers", () => {
     number: true,
     sequence: "1",
     raw: "1",
+    source: "raw",
   })
 })
 
@@ -53,6 +56,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: "\r",
     raw: "\r",
+    source: "raw",
   })
 
   expect(parseKeypress("\n")).toEqual({
@@ -65,6 +69,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: "\n",
     raw: "\n",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b\r")).toEqual({
@@ -77,6 +82,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: "\x1b\r",
     raw: "\x1b\r",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b\n")).toEqual({
@@ -89,6 +95,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: "\x1b\n",
     raw: "\x1b\n",
+    source: "raw",
   })
 
   expect(parseKeypress("\t")).toEqual({
@@ -101,6 +108,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: "\t",
     raw: "\t",
+    source: "raw",
   })
 
   expect(parseKeypress("\b")).toEqual({
@@ -113,6 +121,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: "\b",
     raw: "\b",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b")).toEqual({
@@ -125,6 +134,7 @@ test("parseKeypress - special keys", () => {
     sequence: "\x1b",
     raw: "\x1b",
     eventType: "press",
+    source: "raw",
   })
 
   expect(parseKeypress(" ")).toEqual({
@@ -137,6 +147,7 @@ test("parseKeypress - special keys", () => {
     number: false,
     sequence: " ",
     raw: " ",
+    source: "raw",
   })
 })
 
@@ -151,6 +162,7 @@ test("parseKeypress - ctrl+letter combinations", () => {
     number: false,
     sequence: "\x01",
     raw: "\x01",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1a")).toEqual({
@@ -163,6 +175,7 @@ test("parseKeypress - ctrl+letter combinations", () => {
     number: false,
     sequence: "\x1a",
     raw: "\x1a",
+    source: "raw",
   })
 })
 
@@ -178,6 +191,7 @@ test("parseKeypress - ctrl+space and alt+space", () => {
     number: false,
     sequence: "\x00",
     raw: "\x00",
+    source: "raw",
   })
 
   // Also test with unicode escape notation
@@ -191,6 +205,7 @@ test("parseKeypress - ctrl+space and alt+space", () => {
     number: false,
     sequence: "\u0000",
     raw: "\u0000",
+    source: "raw",
   })
 
   // Alt+Space / Option+Space sends ESC + space (\x1b or \u001b followed by space)
@@ -206,6 +221,7 @@ test("parseKeypress - ctrl+space and alt+space", () => {
     number: false,
     sequence: "\x1b ",
     raw: "\x1b ",
+    source: "raw",
   })
 
   // Test with \u001b notation as well
@@ -219,6 +235,7 @@ test("parseKeypress - ctrl+space and alt+space", () => {
     number: false,
     sequence: "\u001b ",
     raw: "\u001b ",
+    source: "raw",
   })
 })
 
@@ -237,6 +254,7 @@ test("parseKeypress - meta+character combinations", () => {
     number: false,
     sequence: "\x1ba",
     raw: "\x1ba",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1bA")).toEqual({
@@ -249,6 +267,7 @@ test("parseKeypress - meta+character combinations", () => {
     number: false,
     sequence: "\x1bA",
     raw: "\x1bA",
+    source: "raw",
   })
 })
 
@@ -264,6 +283,7 @@ test("parseKeypress - function keys", () => {
     sequence: "\x1bOP",
     raw: "\x1bOP",
     code: "OP",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[11~")).toEqual({
@@ -277,6 +297,7 @@ test("parseKeypress - function keys", () => {
     sequence: "\x1b[11~",
     raw: "\x1b[11~",
     code: "[11~",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[24~")).toEqual({
@@ -290,6 +311,7 @@ test("parseKeypress - function keys", () => {
     sequence: "\x1b[24~",
     raw: "\x1b[24~",
     code: "[24~",
+    source: "raw",
   })
 })
 
@@ -305,6 +327,7 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[A",
     raw: "\x1b[A",
     code: "[A",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[B")).toEqual({
@@ -318,6 +341,7 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[B",
     raw: "\x1b[B",
     code: "[B",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[C")).toEqual({
@@ -331,6 +355,7 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[C",
     raw: "\x1b[C",
     code: "[C",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[D")).toEqual({
@@ -344,6 +369,7 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[D",
     raw: "\x1b[D",
     code: "[D",
+    source: "raw",
   })
 })
 
@@ -359,6 +385,7 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[H",
     raw: "\x1b[H",
     code: "[H",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[F")).toEqual({
@@ -372,6 +399,7 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[F",
     raw: "\x1b[F",
     code: "[F",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[5~")).toEqual({
@@ -385,6 +413,7 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[5~",
     raw: "\x1b[5~",
     code: "[5~",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[6~")).toEqual({
@@ -398,6 +427,7 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[6~",
     raw: "\x1b[6~",
     code: "[6~",
+    source: "raw",
   })
 })
 
@@ -414,6 +444,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;2A",
     raw: "\x1b[1;2A",
     code: "[A",
+    source: "raw",
   })
 
   // Alt/Option key: modifier value 3 = bits 2 (0b0010)
@@ -429,6 +460,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;3A",
     raw: "\x1b[1;3A",
     code: "[A",
+    source: "raw",
   })
 
   // Shift+Alt/Option: modifier value 4 = bits 3 (0b0011 = Shift(1) + Alt/Option(2))
@@ -443,6 +475,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;4A",
     raw: "\x1b[1;4A",
     code: "[A",
+    source: "raw",
   })
 
   // Ctrl only: modifier value 5 = bits 4 (0b0100)
@@ -457,6 +490,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;5A",
     raw: "\x1b[1;5A",
     code: "[A",
+    source: "raw",
   })
 
   // Shift+Alt/Option+Ctrl: modifier value 8 = bits 7 (0b0111 = Shift(1) + Alt/Option(2) + Ctrl(4))
@@ -472,6 +506,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;8A",
     raw: "\x1b[1;8A",
     code: "[A",
+    source: "raw",
   })
 
   // Meta modifier bit only: modifier value 9 = bits 8 (0b1000)
@@ -488,6 +523,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;9A",
     raw: "\x1b[1;9A",
     code: "[A",
+    source: "raw",
   })
 
   // Shift+Meta: modifier value 10 = bits 9 (0b1001 = Shift(1) + Meta(8))
@@ -503,6 +539,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;10A",
     raw: "\x1b[1;10A",
     code: "[A",
+    source: "raw",
   })
 
   // Alt/Option+Meta: modifier value 11 = bits 10 (0b1010 = Alt/Option(2) + Meta(8))
@@ -519,6 +556,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;11A",
     raw: "\x1b[1;11A",
     code: "[A",
+    source: "raw",
   })
 
   // All ANSI modifier bits: modifier value 16 = bits 15 (0b1111 = Shift(1) + Alt(2) + Ctrl(4) + Meta(8))
@@ -534,6 +572,7 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;16A",
     raw: "\x1b[1;16A",
     code: "[A",
+    source: "raw",
   })
 })
 
@@ -549,6 +588,7 @@ test("parseKeypress - delete key", () => {
     sequence: "\x1b[3~",
     raw: "\x1b[3~",
     code: "[3~",
+    source: "raw",
   })
 })
 
@@ -564,6 +604,7 @@ test("parseKeypress - Buffer input", () => {
     number: false,
     sequence: "a",
     raw: "a",
+    source: "raw",
   })
 })
 
@@ -579,6 +620,7 @@ test("parseKeypress - high byte buffer handling", () => {
     number: false,
     sequence: "\x1b ",
     raw: "\x1b ",
+    source: "raw",
   })
 })
 
@@ -593,6 +635,7 @@ test("parseKeypress - empty input", () => {
     number: false,
     sequence: "",
     raw: "",
+    source: "raw",
   })
 
   expect(parseKeypress()).toEqual({
@@ -605,6 +648,7 @@ test("parseKeypress - empty input", () => {
     number: false,
     sequence: "",
     raw: "",
+    source: "raw",
   })
 })
 
@@ -619,6 +663,7 @@ test("parseKeypress - special characters", () => {
     number: false,
     sequence: "!",
     raw: "!",
+    source: "raw",
   })
 
   expect(parseKeypress("@")).toEqual({
@@ -631,6 +676,7 @@ test("parseKeypress - special characters", () => {
     number: false,
     sequence: "@",
     raw: "@",
+    source: "raw",
   })
 })
 
@@ -645,6 +691,7 @@ test("parseKeypress - meta space and escape combinations", () => {
     number: false,
     sequence: "\x1b ",
     raw: "\x1b ",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b\x1b")).toEqual({
@@ -657,6 +704,7 @@ test("parseKeypress - meta space and escape combinations", () => {
     number: false,
     sequence: "\x1b\x1b",
     raw: "\x1b\x1b",
+    source: "raw",
   })
 })
 
@@ -672,6 +720,7 @@ test("parseKeypress - rxvt style arrow keys with modifiers", () => {
     sequence: "\x1b[a",
     raw: "\x1b[a",
     code: "[a",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[2$")).toEqual({
@@ -685,6 +734,7 @@ test("parseKeypress - rxvt style arrow keys with modifiers", () => {
     sequence: "\x1b[2$",
     raw: "\x1b[2$",
     code: "[2$",
+    source: "raw",
   })
 })
 
@@ -700,6 +750,7 @@ test("parseKeypress - ctrl modifier keys", () => {
     sequence: "\x1bOa",
     raw: "\x1bOa",
     code: "Oa",
+    source: "raw",
   })
 
   expect(parseKeypress("\x1b[2^")).toEqual({
@@ -713,6 +764,7 @@ test("parseKeypress - ctrl modifier keys", () => {
     sequence: "\x1b[2^",
     raw: "\x1b[2^",
     code: "[2^",
+    source: "raw",
   })
 })
 
@@ -950,6 +1002,7 @@ test("KeyEventType type validation", () => {
       raw: "test",
       number: false,
       eventType: eventType,
+      source: "raw",
     }
     expect(mockKey.eventType).toBe(eventType)
   }

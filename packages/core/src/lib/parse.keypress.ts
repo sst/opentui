@@ -118,6 +118,7 @@ export interface ParsedKey {
   number: boolean
   raw: string
   eventType: KeyEventType
+  source: "raw" | "kitty"
   code?: string
   super?: boolean
   hyper?: boolean
@@ -163,6 +164,7 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     sequence: s,
     raw: s,
     eventType: "press",
+    source: "raw",
   }
 
   key.sequence = key.sequence || s || key.name
