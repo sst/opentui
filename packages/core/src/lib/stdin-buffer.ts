@@ -1,5 +1,5 @@
 /**
- * StdinBuffer accumulates stdin data and emits complete sequences.
+ * StdinBuffer wraps a stdin stream and emits complete sequences.
  *
  * This is necessary because stdin data events can arrive in partial chunks,
  * especially for escape sequences like mouse events. Without buffering,
@@ -13,18 +13,18 @@
  * The buffer accumulates these until a complete sequence is detected.
  */
 
+import { EventEmitter } from "events"
+
 const ESC = "\x1b"
 
 /**
  * Check if a string is a complete escape sequence or needs more data
  */
 function isCompleteSequence(data: string): "complete" | "incomplete" | "not-escape" {
-  // Not an escape sequence at all
   if (!data.startsWith(ESC)) {
     return "not-escape"
   }
 
-  // Just ESC by itself - might be meta key or start of sequence
   if (data.length === 1) {
     return "incomplete"
   }
@@ -99,15 +99,13 @@ function isCompleteCsiSequence(data: string): "complete" | "incomplete" {
           return "complete"
         }
       }
-      // Still building the mouse sequence
+
       return "incomplete"
     }
 
-    // Regular CSI sequence - complete
     return "complete"
   }
 
-  // Still accumulating the sequence
   return "incomplete"
 }
 
@@ -160,7 +158,6 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
         }
       }
 
-      // If we exhausted the buffer without finding a complete sequence
       if (seqEnd > remaining.length) {
         return { sequences, remainder: remaining }
       }
@@ -174,26 +171,42 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
   return { sequences, remainder: "" }
 }
 
-export class StdinBuffer {
+export type StdinBufferOptions = {
+  /**
+   * Maximum time to wait for sequence completion (default: 10ms)
+   * After this time, the buffer is flushed even if incomplete
+   */
+  timeout?: number
+}
+
+export type StdinBufferEventMap = {
+  data: [string]
+}
+
+/**
+ * Wraps a stdin stream and emits complete sequences via the 'data' event.
+ * Handles partial escape sequences that arrive across multiple chunks.
+ */
+export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   private buffer: string = ""
   private timeout: Timer | null = null
   private readonly timeoutMs: number
-  private onTimeoutCallback?: (sequences: string[]) => void
+  private readonly stdin: NodeJS.ReadStream
+  private readonly stdinListener: (data: Buffer) => void
 
-  /**
-   * @param timeoutMs - Maximum time to wait for sequence completion (default: 10ms)
-   *                    After this time, the buffer is flushed even if incomplete
-   * @param onTimeout - Optional callback to handle flushed sequences on timeout
-   */
-  constructor(timeoutMs: number = 10, onTimeout?: (sequences: string[]) => void) {
-    this.timeoutMs = timeoutMs
-    this.onTimeoutCallback = onTimeout
+  constructor(stdin: NodeJS.ReadStream, options: StdinBufferOptions = {}) {
+    super()
+    this.stdin = stdin
+    this.timeoutMs = options.timeout ?? 10
+
+    this.stdinListener = (data: Buffer) => {
+      this.handleData(data)
+    }
+
+    this.stdin.on("data", this.stdinListener)
   }
 
-  /**
-   * Add data to the buffer and return complete sequences
-   */
-  push(data: string | Buffer): string[] {
+  private handleData(data: string | Buffer): void {
     // Clear any pending timeout
     if (this.timeout) {
       clearTimeout(this.timeout)
@@ -202,6 +215,7 @@ export class StdinBuffer {
 
     // Handle high-byte conversion (for compatibility with parseKeypress)
     // If buffer has single byte > 127, convert to ESC + (byte - 128)
+    // TODO: This seems overheadish as parseKeypress should handle this.
     let str: string
     if (Buffer.isBuffer(data)) {
       if (data.length === 1 && data[0]! > 127) {
@@ -214,36 +228,31 @@ export class StdinBuffer {
       str = data
     }
 
-    // Handle empty string specially - pass it through
     if (str.length === 0 && this.buffer.length === 0) {
-      return [""]
+      this.emit("data", "")
+      return
     }
 
     this.buffer += str
 
-    // Extract complete sequences
     const result = extractCompleteSequences(this.buffer)
     this.buffer = result.remainder
 
-    // Set timeout to flush incomplete sequences
+    for (const sequence of result.sequences) {
+      this.emit("data", sequence)
+    }
+
     if (this.buffer.length > 0) {
       this.timeout = setTimeout(() => {
         const flushed = this.flush()
-        // Call the provided callback if any
-        if (this.onTimeoutCallback) {
-          this.onTimeoutCallback(flushed)
+
+        for (const sequence of flushed) {
+          this.emit("data", sequence)
         }
-        // Also call the overridable method for subclass compatibility
-        this.onTimeout(flushed)
       }, this.timeoutMs)
     }
-
-    return result.sequences
   }
 
-  /**
-   * Force flush any remaining buffer contents
-   */
   flush(): string[] {
     if (this.timeout) {
       clearTimeout(this.timeout)
@@ -259,17 +268,6 @@ export class StdinBuffer {
     return sequences
   }
 
-  /**
-   * Override this to handle timeout flushes
-   * By default, does nothing (sequences are just flushed)
-   */
-  protected onTimeout(_sequences: string[]): void {
-    // Override in subclass if needed
-  }
-
-  /**
-   * Clear the buffer without emitting
-   */
   clear(): void {
     if (this.timeout) {
       clearTimeout(this.timeout)
@@ -278,17 +276,12 @@ export class StdinBuffer {
     this.buffer = ""
   }
 
-  /**
-   * Get the current buffer content (for debugging)
-   */
   getBuffer(): string {
     return this.buffer
   }
 
-  /**
-   * Destroy the buffer and clear any pending timeouts
-   */
   destroy(): void {
+    this.stdin.removeListener("data", this.stdinListener)
     this.clear()
   }
 }

@@ -75,11 +75,11 @@ export type KeyHandlerEventMap = {
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   protected stdin: NodeJS.ReadStream
   protected useKittyKeyboard: boolean
-  protected listener: (key: Buffer) => void
   protected pasteMode: boolean = false
   protected pasteBuffer: string[] = []
   private suspended: boolean = false
   private stdinBuffer: StdinBuffer
+  private dataListener: (sequence: string) => void
 
   constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
     super()
@@ -87,24 +87,11 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.stdin = stdin || process.stdin
     this.useKittyKeyboard = useKittyKeyboard
 
-    // Create stdin buffer with timeout callback
-    this.stdinBuffer = new StdinBuffer(10, (sequences) => {
-      // Process sequences that were flushed due to timeout
-      for (const sequence of sequences) {
-        this.processSequence(sequence)
-      }
-    })
-
-    this.listener = (key: Buffer) => {
-      // Buffer stdin data to handle partial escape sequences
-      const sequences = this.stdinBuffer.push(key)
-
-      // Process each complete sequence
-      for (const sequence of sequences) {
-        this.processSequence(sequence)
-      }
+    this.stdinBuffer = new StdinBuffer(this.stdin, { timeout: 5 })
+    this.dataListener = (sequence: string) => {
+      this.processSequence(sequence)
     }
-    this.stdin.on("data", this.listener)
+    this.stdinBuffer.on("data", this.dataListener)
   }
 
   private processSequence(data: string): void {
@@ -143,21 +130,21 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   }
 
   public destroy(): void {
-    this.stdin.removeListener("data", this.listener)
+    this.stdinBuffer.removeListener("data", this.dataListener)
     this.stdinBuffer.destroy()
   }
 
   public suspend(): void {
     if (!this.suspended) {
       this.suspended = true
-      this.stdin.removeListener("data", this.listener)
+      this.stdinBuffer.removeListener("data", this.dataListener)
     }
   }
 
   public resume(): void {
     if (this.suspended) {
       this.suspended = false
-      this.stdin.on("data", this.listener)
+      this.stdinBuffer.on("data", this.dataListener)
     }
   }
 }
