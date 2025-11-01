@@ -175,7 +175,7 @@ describe("StdinBuffer", () => {
   describe("Edge Cases", () => {
     it("should handle empty input", () => {
       const result = buffer.push("")
-      expect(result).toEqual([])
+      expect(result).toEqual([""]) // Empty string is passed through for parseKeypress compatibility
     })
 
     it("should handle lone escape character", () => {

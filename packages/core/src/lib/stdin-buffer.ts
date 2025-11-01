@@ -178,13 +178,16 @@ export class StdinBuffer {
   private buffer: string = ""
   private timeout: Timer | null = null
   private readonly timeoutMs: number
+  private onTimeoutCallback?: (sequences: string[]) => void
 
   /**
    * @param timeoutMs - Maximum time to wait for sequence completion (default: 10ms)
    *                    After this time, the buffer is flushed even if incomplete
+   * @param onTimeout - Optional callback to handle flushed sequences on timeout
    */
-  constructor(timeoutMs: number = 10) {
+  constructor(timeoutMs: number = 10, onTimeout?: (sequences: string[]) => void) {
     this.timeoutMs = timeoutMs
+    this.onTimeoutCallback = onTimeout
   }
 
   /**
@@ -197,8 +200,25 @@ export class StdinBuffer {
       this.timeout = null
     }
 
-    // Convert buffer to string and add to accumulator
-    const str = Buffer.isBuffer(data) ? data.toString() : data
+    // Handle high-byte conversion (for compatibility with parseKeypress)
+    // If buffer has single byte > 127, convert to ESC + (byte - 128)
+    let str: string
+    if (Buffer.isBuffer(data)) {
+      if (data.length === 1 && data[0]! > 127) {
+        const byte = data[0]! - 128
+        str = "\x1b" + String.fromCharCode(byte)
+      } else {
+        str = data.toString()
+      }
+    } else {
+      str = data
+    }
+
+    // Handle empty string specially - pass it through
+    if (str.length === 0 && this.buffer.length === 0) {
+      return [""]
+    }
+
     this.buffer += str
 
     // Extract complete sequences
@@ -209,6 +229,11 @@ export class StdinBuffer {
     if (this.buffer.length > 0) {
       this.timeout = setTimeout(() => {
         const flushed = this.flush()
+        // Call the provided callback if any
+        if (this.onTimeoutCallback) {
+          this.onTimeoutCallback(flushed)
+        }
+        // Also call the overridable method for subclass compatibility
         this.onTimeout(flushed)
       }, this.timeoutMs)
     }

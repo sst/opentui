@@ -86,7 +86,14 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 
     this.stdin = stdin || process.stdin
     this.useKittyKeyboard = useKittyKeyboard
-    this.stdinBuffer = new StdinBuffer(10)
+
+    // Create stdin buffer with timeout callback
+    this.stdinBuffer = new StdinBuffer(10, (sequences) => {
+      // Process sequences that were flushed due to timeout
+      for (const sequence of sequences) {
+        this.processSequence(sequence)
+      }
+    })
 
     this.listener = (key: Buffer) => {
       // Buffer stdin data to handle partial escape sequences
