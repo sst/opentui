@@ -6,6 +6,7 @@ import { createMockMouse } from "./mock-mouse"
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
   height?: number
+  disableStdoutInterception?: boolean
 }
 export interface TestRenderer extends CliRenderer {}
 export type MockInput = ReturnType<typeof createMockKeys>
@@ -28,7 +29,9 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
     useConsole: false,
   })
 
-  renderer.disableStdoutInterception()
+  if (options.disableStdoutInterception ?? true) {
+    renderer.disableStdoutInterception()
+  }
 
   const mockInput = createMockKeys(renderer)
   const mockMouse = createMockMouse(renderer)
@@ -73,7 +76,7 @@ async function setupTestRenderer(config: TestRendererOptions) {
     config.useThread = true
   }
 
-  if (process.platform === "linux") {
+  if (config.outputMode === "javascript" || process.platform === "linux") {
     config.useThread = false
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
