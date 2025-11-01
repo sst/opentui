@@ -1077,3 +1077,78 @@ test("parseKeypress - filters out basic mouse events", () => {
   const basicMouse = parseKeypress("\x1b[M abc")!
   expect(basicMouse).toBeNull()
 })
+
+test("parseKeypress - source field is always 'raw' for non-Kitty parsing", () => {
+  // Test various key types to ensure they all have source: "raw"
+  const letter = parseKeypress("a")
+  expect(letter?.source).toBe("raw")
+
+  const shiftLetter = parseKeypress("A")
+  expect(shiftLetter?.source).toBe("raw")
+
+  const number = parseKeypress("5")
+  expect(number?.source).toBe("raw")
+
+  const ctrlKey = parseKeypress("\x01") // Ctrl+A
+  expect(ctrlKey?.source).toBe("raw")
+
+  const metaKey = parseKeypress("\x1ba") // Alt+A
+  expect(metaKey?.source).toBe("raw")
+
+  const arrowKey = parseKeypress("\x1b[A") // Up arrow
+  expect(arrowKey?.source).toBe("raw")
+
+  const functionKey = parseKeypress("\x1bOP") // F1
+  expect(functionKey?.source).toBe("raw")
+
+  const modifiedArrow = parseKeypress("\x1b[1;5A") // Ctrl+Up
+  expect(modifiedArrow?.source).toBe("raw")
+
+  const deleteKey = parseKeypress("\x1b[3~")
+  expect(deleteKey?.source).toBe("raw")
+
+  const returnKey = parseKeypress("\r")
+  expect(returnKey?.source).toBe("raw")
+
+  const tabKey = parseKeypress("\t")
+  expect(tabKey?.source).toBe("raw")
+
+  const escapeKey = parseKeypress("\x1b")
+  expect(escapeKey?.source).toBe("raw")
+})
+
+test("parseKeypress - source field is 'kitty' when Kitty keyboard protocol is used", () => {
+  // Test Kitty keyboard protocol sequences
+  const kittyA = parseKeypress("\x1b[97u", { useKittyKeyboard: true })
+  expect(kittyA?.source).toBe("kitty")
+  expect(kittyA?.name).toBe("a")
+
+  const kittyArrow = parseKeypress("\x1b[57352u", { useKittyKeyboard: true }) // Up arrow
+  expect(kittyArrow?.source).toBe("kitty")
+  expect(kittyArrow?.name).toBe("up")
+
+  const kittyF1 = parseKeypress("\x1b[57364u", { useKittyKeyboard: true }) // F1
+  expect(kittyF1?.source).toBe("kitty")
+  expect(kittyF1?.name).toBe("f1")
+
+  const kittyCtrlA = parseKeypress("\x1b[97;5u", { useKittyKeyboard: true }) // Ctrl+A
+  expect(kittyCtrlA?.source).toBe("kitty")
+  expect(kittyCtrlA?.name).toBe("a")
+  expect(kittyCtrlA?.ctrl).toBe(true)
+})
+
+test("parseKeypress - fallback to raw parsing when Kitty option is enabled but sequence is not Kitty", () => {
+  // Even with useKittyKeyboard enabled, non-Kitty sequences should use raw parsing
+  const normalArrow = parseKeypress("\x1b[A", { useKittyKeyboard: true })
+  expect(normalArrow?.source).toBe("raw")
+  expect(normalArrow?.name).toBe("up")
+
+  const normalLetter = parseKeypress("a", { useKittyKeyboard: true })
+  expect(normalLetter?.source).toBe("raw")
+  expect(normalLetter?.name).toBe("a")
+
+  const normalCtrl = parseKeypress("\x01", { useKittyKeyboard: true })
+  expect(normalCtrl?.source).toBe("raw")
+  expect(normalCtrl?.name).toBe("a")
+  expect(normalCtrl?.ctrl).toBe(true)
+})
