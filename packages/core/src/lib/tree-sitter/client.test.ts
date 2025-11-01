@@ -522,7 +522,7 @@ function test() {
     }
   }, 10000)
 
-  test("should inspect highlight metadata structure for markdown with injections", async () => {
+  test("should handle markdown with injections and return valid highlights", async () => {
     const client = new TreeSitterClient({ dataPath })
 
     try {
@@ -540,16 +540,8 @@ const x: string = "hello";
 
       const result = await client.highlightOnce(markdownCode, "markdown")
 
-      console.log("=== MARKDOWN HIGHLIGHT INSPECTION ===")
-      console.log("Total highlights:", result.highlights?.length)
-
       expect(result.highlights).toBeDefined()
-
-      result.highlights?.forEach((hl, idx) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        const meta = (hl as any)[3]
-        console.log(`[${idx}] [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`, meta ? `meta: ${JSON.stringify(meta)}` : "")
-      })
+      expect(result.highlights!.length).toBeGreaterThan(0)
 
       const overlaps: Array<[number, number]> = []
       for (let i = 0; i < result.highlights!.length; i++) {
@@ -563,37 +555,16 @@ const x: string = "hello";
         }
       }
 
-      console.log("Overlapping highlight pairs:", overlaps.length)
-      overlaps.slice(0, 10).forEach(([i, j]) => {
-        const hl1 = result.highlights![i]
-        const hl2 = result.highlights![j]
-        const text1 = markdownCode.substring(hl1[0], hl1[1])
-        const text2 = markdownCode.substring(hl2[0], hl2[1])
-        console.log(`  [${i}] "${text1}" (${hl1[2]}) overlaps [${j}] "${text2}" (${hl2[2]})`)
-      })
+      expect(overlaps.length).toBeGreaterThanOrEqual(0)
 
       const injectionHighlights = result.highlights!.filter((hl) => hl[2].includes("injection"))
-      console.log("Injection-related highlights:", injectionHighlights.length)
-      injectionHighlights.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`)
-      })
+      expect(injectionHighlights).toBeDefined()
 
       const concealHighlights = result.highlights!.filter((hl) => hl[2] === "conceal")
-      console.log("Conceal highlights:", concealHighlights.length)
-      concealHighlights.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`)
-      })
+      expect(concealHighlights).toBeDefined()
 
       const blockHighlights = result.highlights!.filter((hl) => hl[2] === "markup.raw.block")
-      console.log("Markup.raw.block highlights:", blockHighlights.length)
-      blockHighlights.slice(0, 5).forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        console.log(`  [${hl[0]}, ${hl[1]}] "${text.substring(0, 20)}..." -> ${hl[2]}`)
-      })
-
-      console.log("=== END INSPECTION ===")
+      expect(blockHighlights).toBeDefined()
     } finally {
       await client.destroy()
     }
@@ -706,8 +677,6 @@ describe("TreeSitterClient Conceal Values", () => {
     try {
       await client.initialize()
 
-      // Markdown has conceal directives in its main highlights query
-      // For example, image syntax: ![alt](url) conceals the brackets and parentheses
       const markdownCode = `![Image Alt Text](https://example.com/image.png)`
 
       const result = await client.highlightOnce(markdownCode, "markdown")
@@ -722,13 +691,10 @@ describe("TreeSitterClient Conceal Values", () => {
 
       expect(concealedHighlights.length).toBeGreaterThan(0)
 
-      console.log("\n=== NORMAL QUERY CONCEAL VALUES ===")
       concealedHighlights.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
         const meta = (hl as any)[3]
-        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+        expect(meta.conceal).toBeDefined()
       })
-      console.log("=== END NORMAL QUERY CONCEAL VALUES ===\n")
     } finally {
       await client.destroy()
     }
@@ -740,8 +706,6 @@ describe("TreeSitterClient Conceal Values", () => {
     try {
       await client.initialize()
 
-      // Inline links in markdown use the markdown_inline parser (injected)
-      // The pattern should conceal the closing bracket with a space
       const markdownCode = `Here is a [link](https://example.com) in text.`
 
       const result = await client.highlightOnce(markdownCode, "markdown")
@@ -756,15 +720,11 @@ describe("TreeSitterClient Conceal Values", () => {
 
       expect(concealedHighlights.length).toBeGreaterThan(0)
 
-      console.log("\n=== INJECTED QUERY CONCEAL VALUES ===")
       concealedHighlights.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
         const meta = (hl as any)[3]
-        console.log(
-          `  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}", isInjection: ${meta.isInjection}`,
-        )
+        expect(meta.conceal).toBeDefined()
+        expect(meta.isInjection).toBeDefined()
       })
-      console.log("=== END INJECTED QUERY CONCEAL VALUES ===\n")
 
       const closingBracketHighlight = concealedHighlights.find((hl) => {
         const text = markdownCode.substring(hl[0], hl[1])
@@ -774,6 +734,7 @@ describe("TreeSitterClient Conceal Values", () => {
 
       if (closingBracketHighlight) {
         const meta = (closingBracketHighlight as any)[3]
+        expect(meta.conceal).toBeDefined()
       }
     } finally {
       await client.destroy()
@@ -798,9 +759,7 @@ describe("TreeSitterClient Conceal Values", () => {
         return meta && meta.conceal !== undefined
       })
 
-      console.log("\n=== MIXED NORMAL + INJECTED CONCEAL VALUES ===")
-      console.log("Total highlights:", result.highlights!.length)
-      console.log("Concealed highlights:", concealedHighlights.length)
+      expect(concealedHighlights.length).toBeGreaterThan(0)
 
       const normalConceal = concealedHighlights.filter((hl) => {
         const meta = (hl as any)[3]
@@ -812,23 +771,19 @@ describe("TreeSitterClient Conceal Values", () => {
         return meta.isInjection
       })
 
-      console.log("\nNormal query conceals:", normalConceal.length)
-      normalConceal.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        const meta = (hl as any)[3]
-        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
-      })
-
-      console.log("\nInjected query conceals:", injectedConceal.length)
-      injectedConceal.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        const meta = (hl as any)[3]
-        console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
-      })
-
-      console.log("=== END MIXED CONCEAL VALUES ===\n")
-
       expect(injectedConceal.length).toBeGreaterThan(0)
+
+      injectedConceal.forEach((hl) => {
+        const meta = (hl as any)[3]
+        expect(meta.conceal).toBeDefined()
+        expect(meta.isInjection).toBe(true)
+      })
+
+      concealedHighlights.forEach((hl) => {
+        const meta = (hl as any)[3]
+        expect(meta.conceal).toBeDefined()
+        expect(typeof meta.isInjection).toBe("boolean")
+      })
     } finally {
       await client.destroy()
     }
@@ -847,34 +802,13 @@ describe("TreeSitterClient Conceal Values", () => {
       expect(result.highlights).toBeDefined()
       expect(result.error).toBeUndefined()
 
-      // The bug was that pattern indices from injected queries were being looked up
-      // in the parent query's setProperties array. This test verifies the fix works.
       const concealedHighlights = result.highlights!.filter((hl) => {
         const meta = (hl as any)[3]
         return meta && meta.conceal !== undefined
       })
 
-      console.log("\n=== PATTERN INDEX VERIFICATION ===")
-      console.log("All highlights:")
-      result.highlights!.forEach((hl, idx) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        const meta = (hl as any)[3]
-        console.log(
-          `  [${idx}] [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}`,
-          meta ? `meta: ${JSON.stringify(meta)}` : "",
-        )
-      })
+      expect(concealedHighlights.length).toBeGreaterThan(0)
 
-      console.log("\nConcealed highlights detail:")
-      concealedHighlights.forEach((hl) => {
-        const text = markdownCode.substring(hl[0], hl[1])
-        const meta = (hl as any)[3]
-        console.log(`  Text: "${text}", Group: ${hl[2]}, Conceal: "${meta.conceal}", IsInjection: ${meta.isInjection}`)
-      })
-      console.log("=== END PATTERN INDEX VERIFICATION ===\n")
-
-      // If the pattern index bug exists, we would get empty strings or wrong values
-      // After the fix, all conceal values should be correctly retrieved
       concealedHighlights.forEach((hl) => {
         const meta = (hl as any)[3]
         expect(meta.conceal).toBeDefined()
@@ -910,9 +844,7 @@ More text with ![image](img.png) and **bold**.`
         return meta && meta.conceal !== undefined
       })
 
-      console.log("\n=== MULTIPLE INJECTION CONCEAL TEST ===")
-      console.log("Total highlights:", result.highlights!.length)
-      console.log("Concealed highlights:", concealedHighlights.length)
+      expect(concealedHighlights.length).toBeGreaterThan(0)
 
       const byLang = new Map<string, any[]>()
       concealedHighlights.forEach((hl) => {
@@ -924,18 +856,15 @@ More text with ![image](img.png) and **bold**.`
         byLang.get(lang)!.push(hl)
       })
 
-      byLang.forEach((highlights, lang) => {
-        console.log(`\n${lang} conceals: ${highlights.length}`)
+      expect(byLang.size).toBeGreaterThan(0)
+
+      byLang.forEach((highlights) => {
+        expect(highlights.length).toBeGreaterThan(0)
         highlights.forEach((hl: any) => {
-          const text = markdownCode.substring(hl[0], hl[1])
           const meta = hl[3]
-          console.log(`  [${hl[0]}, ${hl[1]}] "${text}" -> ${hl[2]}, conceal: "${meta.conceal}"`)
+          expect(meta.conceal).toBeDefined()
         })
       })
-
-      console.log("=== END MULTIPLE INJECTION CONCEAL TEST ===\n")
-
-      expect(concealedHighlights.length).toBeGreaterThan(0)
     } finally {
       await client.destroy()
     }
@@ -954,36 +883,16 @@ More text with ![image](img.png) and **bold**.`
       expect(result.highlights).toBeDefined()
       expect(result.error).toBeUndefined()
 
-      // Find the closing bracket conceal highlight (not the markup.link.bracket.close)
       const closingBracket = result.highlights!.find((hl) => {
         const text = markdownCode.substring(hl[0], hl[1])
         const meta = (hl as any)[3]
         return text === "]" && hl[2] === "conceal" && meta?.conceal !== undefined
       })
 
-      console.log("\n=== SPACE REPLACEMENT TEST ===")
-      if (closingBracket) {
-        const meta = (closingBracket as any)[3]
-        const text = markdownCode.substring(closingBracket[0], closingBracket[1])
-        console.log(`Found closing bracket: [${closingBracket[0]}, ${closingBracket[1]}] "${text}"`)
-        console.log(`  Group: ${closingBracket[2]}`)
-        console.log(`  Meta:`, meta)
-        if (meta) {
-          console.log(`  Conceal value: "${meta.conceal}" (length: ${meta.conceal?.length})`)
-          console.log(`  Conceal charCode:`, meta.conceal ? meta.conceal.charCodeAt(0) : "undefined")
-        }
-      } else {
-        console.log("No closing bracket highlight found")
-      }
-      console.log("=== END SPACE REPLACEMENT TEST ===\n")
-
-      // This is the critical test case from the issue
-      // NOT an empty string which was the bug
       if (closingBracket) {
         const meta = (closingBracket as any)[3]
         expect(meta).toBeDefined()
         expect(meta.conceal).toBeDefined()
-        // Should be a space character, not empty
         expect(meta.conceal).toBe(" ")
         expect(meta.conceal.length).toBeGreaterThan(0)
       }

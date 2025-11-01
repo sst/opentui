@@ -371,13 +371,7 @@ const x: string = "hello";
     const markdownCode = "[Link text](https://example.com)"
 
     const result = await client.highlightOnce(markdownCode, "markdown")
-    console.log("\nConceal values:")
-    for (const [start, end, group, meta] of result.highlights!) {
-      if (meta?.conceal !== undefined) {
-        const text = markdownCode.slice(start, end)
-        console.log(`  [${start}, ${end}] "${text}" -> conceal: ${JSON.stringify(meta.conceal)}`)
-      }
-    }
+    expect(result.highlights).toBeDefined()
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
       conceal: { enabled: true },
@@ -385,8 +379,6 @@ const x: string = "hello";
     const chunks = styledText.chunks
 
     const reconstructed = chunks.map((c) => c.text).join("")
-
-    console.log("Reconstructed link:", JSON.stringify(reconstructed))
 
     expect(reconstructed).not.toContain("[")
     expect(reconstructed).not.toContain("]")
@@ -405,6 +397,7 @@ const x: string = "hello";
 \`\`\``
 
     const result = await client.highlightOnce(markdownCode, "markdown")
+    expect(result.highlights).toBeDefined()
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
       conceal: { enabled: true },
@@ -418,14 +411,9 @@ const x: string = "hello";
 
     expect(reconstructed).not.toContain("typescript")
 
-    // So the text should start directly with the code content
     expect(reconstructed.startsWith("const")).toBe(true)
 
     expect(reconstructed.split("\n").filter((l) => l.trim() === "").length).toBeLessThanOrEqual(1)
-
-    // NOTE: The closing ``` is currently being included because it's parsed as part of the TypeScript
-    // injection (template string backticks). This is a separate bug with injection boundaries.
-    // For now, we'll just verify that the opening delimiters are concealed.
   })
 
   test("should handle overlapping highlights with specificity resolution", async () => {
@@ -578,21 +566,15 @@ const y = 2;
 const msg = "hello";
 \`\`\``
 
-    console.log("\n=== Test: plain code block (no injection) ===")
-    console.log("Original markdown:", JSON.stringify(markdownCode))
-
     const result = await client.highlightOnce(markdownCode, "markdown")
-    console.log("\n--- Highlights from tree-sitter ---")
-    for (const [start, end, group, meta] of result.highlights!) {
-      const text = markdownCode.slice(start, end)
-      console.log(`[${start}, ${end}] "${text}" -> group: ${group}, meta:`, meta)
-    }
+    expect(result.highlights).toBeDefined()
 
     const closingBackticksHighlight = result.highlights!.find(([start, end, , meta]) => {
       const text = markdownCode.slice(start, end)
       return text === "```" && start > 10 && meta?.conceal !== undefined
     })
-    console.log("\n--- Closing backticks conceal highlight:", closingBackticksHighlight ? "FOUND" : "NOT FOUND")
+
+    expect(closingBackticksHighlight).toBeDefined()
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
       conceal: { enabled: true },
@@ -600,9 +582,7 @@ const msg = "hello";
     const chunks = styledText.chunks
 
     const reconstructed = chunks.map((c) => c.text).join("")
-    console.log("\nReconstructed:", JSON.stringify(reconstructed))
 
-    // The closing ``` SHOULD be concealed
     expect(reconstructed).not.toContain("```")
     expect(reconstructed).toContain("const msg")
   })
@@ -612,53 +592,28 @@ const msg = "hello";
 const msg = "hello";
 \`\`\``
 
-    console.log("\n=== Test: concealing closing triple backticks (TypeScript injection) ===")
-    console.log("Original markdown:", JSON.stringify(markdownCode))
-    console.log("Original length:", markdownCode.length)
-    console.log("Last 10 chars:", JSON.stringify(markdownCode.slice(-10)))
-
     const result = await client.highlightOnce(markdownCode, "markdown")
-    console.log("\n--- Highlights from tree-sitter ---")
-    for (const [start, end, group, meta] of result.highlights!) {
-      const text = markdownCode.slice(start, end)
-      console.log(`[${start}, ${end}] "${text}" -> group: ${group}, meta:`, meta)
-    }
+    expect(result.highlights).toBeDefined()
 
     const closingBackticksHighlights = result.highlights!.filter(([start, end]) => {
       const text = markdownCode.slice(start, end)
       return start > 30 && text.includes("`")
     })
-    console.log("\n--- Closing backticks highlights:")
-    for (const [start, end, group, meta] of closingBackticksHighlights) {
-      const text = markdownCode.slice(start, end)
-      console.log(`  [${start}, ${end}] "${text}" -> group: ${group}, meta.conceal: ${meta?.conceal}`)
-    }
 
     const hasClosingConceal = closingBackticksHighlights.some(([, , , meta]) => meta?.conceal !== undefined)
-    console.log("\n--- Has closing conceal metadata:", hasClosingConceal ? "YES" : "NO (BUG)")
+    expect(hasClosingConceal).toBe(true)
 
     const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
       conceal: { enabled: true },
     })
     const chunks = styledText.chunks
 
-    console.log("\n--- Generated chunks ---")
-    let pos = 0
-    for (const chunk of chunks) {
-      console.log(`[${pos}, ${pos + chunk.text.length}] "${chunk.text}"`)
-      pos += chunk.text.length
-    }
-
     const reconstructed = chunks.map((c) => c.text).join("")
-    console.log("\nReconstructed:", JSON.stringify(reconstructed))
-    console.log("Reconstructed length:", reconstructed.length)
 
-    // The closing ``` SHOULD be concealed
     expect(reconstructed).not.toContain("```")
     expect(reconstructed).toContain("const msg")
     expect(reconstructed).toContain("hello")
 
-    // Should not end with backticks
     expect(reconstructed.endsWith("```")).toBe(false)
     expect(reconstructed.endsWith("`")).toBe(false)
   })
