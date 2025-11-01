@@ -170,7 +170,7 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   key.sequence = key.sequence || s || key.name
 
   // Check for Kitty keyboard protocol if enabled
-  if (options.useKittyKeyboard && /^\x1b\[.*u$/.test(s)) {
+  if (options.useKittyKeyboard) {
     const kittyResult = parseKittyKeyboard(s)
     if (kittyResult) {
       return kittyResult
