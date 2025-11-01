@@ -172,6 +172,60 @@ describe("SolidJS Renderer Integration Tests", () => {
       const frame = testSetup.captureCharFrame()
       expect(frame).toMatchSnapshot()
     })
+
+    it("should auto-enable border when borderStyle is set", async () => {
+      testSetup = await testRender(
+        () => (
+          <box style={{ width: 20, height: 5 }} borderStyle="single">
+            <text>With Border</text>
+          </box>
+        ),
+        {
+          width: 25,
+          height: 8,
+        },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should auto-enable border when borderColor is set", async () => {
+      testSetup = await testRender(
+        () => (
+          <box style={{ width: 20, height: 5 }} borderColor="cyan">
+            <text>Colored Border</text>
+          </box>
+        ),
+        {
+          width: 25,
+          height: 8,
+        },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should auto-enable border when focusedBorderColor is set", async () => {
+      testSetup = await testRender(
+        () => (
+          <box style={{ width: 20, height: 5 }} focusedBorderColor="yellow">
+            <text>Focused Border</text>
+          </box>
+        ),
+        {
+          width: 25,
+          height: 8,
+        },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
   })
 
   describe("Reactive Updates", () => {

@@ -1,6 +1,5 @@
 import { Edge, Gutter } from "yoga-layout"
 import { type RenderableOptions, Renderable } from "../Renderable"
-import { isValidPercentage } from "../lib/renderable.validations"
 import type { OptimizedBuffer } from "../buffer"
 import {
   type BorderCharacters,
@@ -11,6 +10,7 @@ import {
   getBorderSides,
 } from "../lib"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
+import { isValidPercentage } from "../lib/renderable.validations"
 import type { RenderContext } from "../types"
 
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
@@ -91,6 +91,18 @@ export class BoxRenderable extends Renderable {
     }
   }
 
+  private initializeBorder(): void {
+    // https://github.com/sst/opentui/issues/186
+    // Solid-js reconciler does not pass props to constructor on init,
+    // so we need to initialize the border when supporting properties are set.
+    // borderStyle, borderColor, focusedBorderColor
+    if (this._border === false) {
+      this._border = true
+      this.borderSides = getBorderSides(this._border)
+      this.applyYogaBorders()
+    }
+  }
+
   public get customBorderChars(): BorderCharacters | undefined {
     return this._customBorderCharsObj
   }
@@ -132,9 +144,10 @@ export class BoxRenderable extends Renderable {
 
   public set borderStyle(value: BorderStyle) {
     let _value = value ?? this._defaultOptions.borderStyle
-    if (this._borderStyle !== _value) {
+    if (this._borderStyle !== _value || !this._border) {
       this._borderStyle = _value
       this._customBorderChars = undefined
+      this.initializeBorder()
       this.requestRender()
     }
   }
@@ -147,6 +160,7 @@ export class BoxRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.borderColor)
     if (this._borderColor !== newColor) {
       this._borderColor = newColor
+      this.initializeBorder()
       this.requestRender()
     }
   }
@@ -159,6 +173,7 @@ export class BoxRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.focusedBorderColor)
     if (this._focusedBorderColor !== newColor) {
       this._focusedBorderColor = newColor
+      this.initializeBorder()
       if (this._focused) {
         this.requestRender()
       }

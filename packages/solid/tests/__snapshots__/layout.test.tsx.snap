@@ -185,3 +185,40 @@ exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle v
      
 "
 `;
+
+exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when borderColor is set 1`] = `
+"┌──────────────────┐     
+│Colored Border    │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when focusedBorderColor is set 1`] = `
+"┌──────────────────┐     
+│Focused Border    │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+
+exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when borderStyle is set 1`] = `
+"┌──────────────────┐     
+│With Border       │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
