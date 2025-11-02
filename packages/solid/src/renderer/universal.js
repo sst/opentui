@@ -232,11 +232,20 @@ export function createRenderer({
     createComponent,
     use(fn, element, arg) {
       const result = untrack(() => fn(element, arg))
-      // Check if this might be a ref - store the function for cleanup
-      // The fn here is the ref callback that should be called with undefined on cleanup
-      if (typeof fn === "function" && arg === undefined) {
-        // This is likely a ref callback (refs are called with just the element, no arg)
-        element.__solidRefCallback = (value) => fn(value, arg)
+      // Solid compiles ref={callback} into use(callback, element, undefined)
+      // We store these callbacks so we can call them with undefined on cleanup
+      //
+      // To distinguish refs from custom directives with no args, we check:
+      // 1. arg === undefined (both refs and no-arg directives have this)
+      // 2. The function is called with exactly 1 argument during execution
+      //
+      // Refs are always: (el) => ... or (el: Type) => ...
+      // Custom directives are: (el, accessor) => ... where accessor is always passed
+      //
+      // Since untrack(() => fn(element, arg)) calls fn with 2 args (element, undefined),
+      // if fn.length === 1, it's likely a ref callback expecting only the element.
+      if (typeof fn === "function" && arg === undefined && fn.length <= 1) {
+        element.__solidRefCallback = (value) => fn(value)
       }
       return result
     },
