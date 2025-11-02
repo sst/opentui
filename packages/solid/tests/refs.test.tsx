@@ -28,7 +28,7 @@ describe("Refs Tests", () => {
           <box>
             {show() && (
               <textarea
-                ref={(el) => (textareaRef = el)}
+                ref={(el: TextareaRenderable | undefined) => (textareaRef = el)}
                 initialValue="Test content"
                 width={20}
                 height={5}
@@ -128,7 +128,14 @@ describe("Refs Tests", () => {
       testSetup = await testRender(
         () => (
           <box>
-            {show() && <textarea ref={(el) => (textareaRef = el)} initialValue="Test content" width={20} height={5} />}
+            {show() && (
+              <textarea
+                ref={(el: TextareaRenderable | undefined) => (textareaRef = el)}
+                initialValue="Test content"
+                width={20}
+                height={5}
+              />
+            )}
           </box>
         ),
         {
@@ -234,7 +241,7 @@ describe("Refs Tests", () => {
         () => (
           <box>
             <textarea
-              ref={(el) => (textareaRef = el)}
+              ref={(el: TextareaRenderable | undefined) => (textareaRef = el)}
               initialValue="Hello World"
               width={20}
               height={5}
