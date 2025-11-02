@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal } from "solid-js"
 import { createSpy } from "@opentui/core/testing"
-import { usePaste } from "../src/elements/hooks"
+import { usePaste, useKeyboard } from "../src/elements/hooks"
 import type { PasteEvent } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -617,6 +617,37 @@ describe("SolidJS Renderer Integration Tests", () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
 
       expect(onSubmitSpy.callCount()).toBe(1)
+    })
+
+    it("should not trigger textarea onSubmit when return is preventDefault in another component", async () => {
+      const textareaSubmitSpy = createSpy()
+      const globalReturnHandlerSpy = createSpy()
+
+      const GlobalReturnHandler = () => {
+        useKeyboard((event) => {
+          if (event.name === "return") {
+            globalReturnHandlerSpy()
+            event.preventDefault()
+          }
+        })
+        return null
+      }
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <GlobalReturnHandler />
+            <textarea focused initialValue="test content" onSubmit={() => textareaSubmitSpy()} />
+          </box>
+        ),
+        { width: 20, height: 5 },
+      )
+
+      testSetup.mockInput.pressEnter()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(globalReturnHandlerSpy.callCount()).toBe(1)
+      expect(textareaSubmitSpy.callCount()).toBe(0)
     })
   })
 })
