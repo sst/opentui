@@ -162,6 +162,7 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
     sequence,
     raw: sequence,
     eventType: "press",
+    source: "kitty",
     super: false,
     hyper: false,
     capsLock: false,

@@ -1297,6 +1297,7 @@ test("ParsedKey type structure validation", async () => {
     raw: "test",
     number: false,
     eventType: "press",
+    source: "raw",
   }
 
   expect(key).toHaveProperty("name")
@@ -1320,6 +1321,7 @@ test("ParsedKey type structure validation", async () => {
     number: false,
     code: "[A",
     eventType: "press",
+    source: "raw",
   }
 
   expect(keyWithCode).toHaveProperty("code")
@@ -1342,6 +1344,7 @@ test("KeyEventType type validation", async () => {
       raw: "test",
       number: false,
       eventType: eventType,
+      source: "raw",
     }
     expect(mockKey.eventType).toBe(eventType)
   }

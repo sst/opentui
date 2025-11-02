@@ -13,6 +13,7 @@ export class KeyEvent implements ParsedKey {
   number: boolean
   raw: string
   eventType: KeyEventType
+  source: "raw" | "kitty"
   code?: string
   super?: boolean
   hyper?: boolean
@@ -32,6 +33,7 @@ export class KeyEvent implements ParsedKey {
     this.number = key.number
     this.raw = key.raw
     this.eventType = key.eventType
+    this.source = key.source
     this.code = key.code
     this.super = key.super
     this.hyper = key.hyper

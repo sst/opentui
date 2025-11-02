@@ -331,6 +331,7 @@ test("InternalKeyHandler - emit returns true when there are listeners", () => {
       number: false,
       raw: "a",
       eventType: "press",
+      source: "raw",
     }),
   )
   expect(hasListeners).toBe(false)
@@ -349,6 +350,7 @@ test("InternalKeyHandler - emit returns true when there are listeners", () => {
       number: false,
       raw: "b",
       eventType: "press",
+      source: "raw",
     }),
   )
   expect(hasListeners).toBe(true)
@@ -368,6 +370,7 @@ test("InternalKeyHandler - emit returns true when there are listeners", () => {
       number: false,
       raw: "c",
       eventType: "press",
+      source: "raw",
     }),
   )
   expect(hasListeners).toBe(true)
@@ -464,6 +467,110 @@ test("KeyHandler - filters out mouse events", () => {
 
   renderer.stdin.emit("data", Buffer.from("a"))
   expect(keypressCount).toBe(2) // Now we have "c" and "a"
+
+  handler.destroy()
+})
+
+test("KeyHandler - KeyEvent has source field set to 'raw' by default", () => {
+  const handler = createKeyHandler(false)
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  mockInput.pressKey("a")
+
+  expect(receivedKey).toBeDefined()
+  expect(receivedKey?.source).toBe("raw")
+  expect(receivedKey?.name).toBe("a")
+
+  handler.destroy()
+})
+
+test("KeyHandler - KeyEvent has source field for different key types", () => {
+  const handler = createKeyHandler(false)
+
+  const receivedKeys: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKeys.push(key)
+  })
+
+  // Test various key types
+  mockInput.pressKey("a")
+  mockInput.pressKey("A")
+  mockInput.pressKey("\x1b[A") // Up arrow
+  mockInput.pressKey("\x01") // Ctrl+A
+
+  expect(receivedKeys).toHaveLength(4)
+  expect(receivedKeys[0]?.source).toBe("raw")
+  expect(receivedKeys[1]?.source).toBe("raw")
+  expect(receivedKeys[2]?.source).toBe("raw")
+  expect(receivedKeys[3]?.source).toBe("raw")
+
+  handler.destroy()
+})
+
+test("KeyHandler - KeyEvent source is 'kitty' when using Kitty keyboard protocol", () => {
+  const handler = createKeyHandler(true)
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  if (!renderer) {
+    throw new Error("Renderer not initialized")
+  }
+
+  // Send a Kitty keyboard protocol sequence for 'a' (codepoint 97)
+  renderer.stdin.emit("data", Buffer.from("\x1b[97u"))
+
+  expect(receivedKey).toBeDefined()
+  expect(receivedKey?.source).toBe("kitty")
+  expect(receivedKey?.name).toBe("a")
+
+  handler.destroy()
+})
+
+test("KeyHandler - KeyEvent source is 'raw' for non-Kitty sequences even with Kitty enabled", () => {
+  const handler = createKeyHandler(true)
+
+  const receivedKeys: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKeys.push(key)
+  })
+
+  // Send regular sequences that don't match Kitty protocol
+  mockInput.pressKey("a")
+  mockInput.pressKey("\x1b[A") // Up arrow (standard ANSI)
+
+  expect(receivedKeys).toHaveLength(2)
+  expect(receivedKeys[0]?.source).toBe("raw")
+  expect(receivedKeys[0]?.name).toBe("a")
+  expect(receivedKeys[1]?.source).toBe("raw")
+  expect(receivedKeys[1]?.name).toBe("up")
+
+  handler.destroy()
+})
+
+test("KeyHandler - source field persists through KeyEvent wrapper", () => {
+  const handler = createKeyHandler(false)
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  mockInput.pressKey("x")
+
+  expect(receivedKey).toBeInstanceOf(KeyEvent)
+  expect(receivedKey?.source).toBe("raw")
+  expect(receivedKey?.name).toBe("x")
+
+  // Verify it implements ParsedKey interface
+  const parsedKey: typeof receivedKey = receivedKey
+  expect(parsedKey?.source).toBe("raw")
 
   handler.destroy()
 })

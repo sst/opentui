@@ -427,6 +427,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.useConsole = config.useConsole ?? true
 
     this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? false)
+    this._keyHandler.on("keypress", (event) => {
+      if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
+        process.nextTick(() => {
+          this.destroy()
+        })
+        return
+      }
+    })
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
@@ -758,13 +766,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.waitingForPixelResolution = false
         return
       }
-    }
-
-    if (this.exitOnCtrlC && str === "\u0003") {
-      process.nextTick(() => {
-        this.destroy()
-      })
-      return
     }
 
     if (this._useMouse && this.handleMouseData(data)) {

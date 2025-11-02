@@ -118,6 +118,7 @@ export interface ParsedKey {
   number: boolean
   raw: string
   eventType: KeyEventType
+  source: "raw" | "kitty"
   code?: string
   super?: boolean
   hyper?: boolean
@@ -163,12 +164,13 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     sequence: s,
     raw: s,
     eventType: "press",
+    source: "raw",
   }
 
   key.sequence = key.sequence || s || key.name
 
   // Check for Kitty keyboard protocol if enabled
-  if (options.useKittyKeyboard && /^\x1b\[.*u$/.test(s)) {
+  if (options.useKittyKeyboard) {
     const kittyResult = parseKittyKeyboard(s)
     if (kittyResult) {
       return kittyResult
@@ -198,6 +200,10 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   } else if (s === " " || s === "\x1b ") {
     key.name = "space"
     key.meta = s.length === 2
+  } else if (s === "\x00") {
+    // ctrl+space
+    key.name = "space"
+    key.ctrl = true
   } else if (s.length === 1 && s <= "\x1a") {
     // ctrl+letter
     key.name = String.fromCharCode(s.charCodeAt(0) + "a".charCodeAt(0) - 1)
