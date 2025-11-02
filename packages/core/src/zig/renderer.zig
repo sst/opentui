@@ -140,7 +140,7 @@ pub const CliRenderer = struct {
         const stdoutWriter = if (testing) blk: {
             // In testing mode, use platform-specific null device to discard output
             const null_device = if (builtin.os.tag == .windows) "NUL" else "/dev/null";
-            const devnull = std.fs.openFileAbsolute(null_device, .{ .mode = .write_only }) catch {
+            const devnull = std.fs.cwd().openFile(null_device, .{ .mode = .write_only }) catch {
                 // Fallback to stdout if null device can't be opened
                 logger.warn("Failed to open {s}, falling back to stdout\n", .{null_device});
                 break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = std.io.getStdOut().writer() };
