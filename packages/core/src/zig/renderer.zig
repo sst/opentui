@@ -80,7 +80,7 @@ pub const CliRenderer = struct {
     lastRenderTime: i64,
     allocator: Allocator,
     renderThread: ?std.Thread = null,
-    stdoutWriter: std.io.BufferedWriter(4096, std.fs.File.Writer),
+    stdoutWriter: std.io.BufferedWriter(4096, std.io.AnyWriter),
     debugOverlay: struct {
         enabled: bool,
         corner: DebugOverlayCorner,
@@ -138,17 +138,11 @@ pub const CliRenderer = struct {
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" }, graphemes_data, display_width);
 
         const stdoutWriter = if (testing) blk: {
-            // In testing mode, use platform-specific null device to discard output
-            const null_device = if (builtin.os.tag == .windows) "NUL" else "/dev/null";
-            const devnull = std.fs.cwd().openFile(null_device, .{ .mode = .write_only }) catch {
-                // Fallback to stdout if null device can't be opened
-                logger.warn("Failed to open {s}, falling back to stdout\n", .{null_device});
-                break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = std.io.getStdOut().writer() };
-            };
-            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = devnull.writer() };
+            // In testing mode, use null_writer to discard output
+            break :blk std.io.BufferedWriter(4096, std.io.AnyWriter){ .unbuffered_writer = std.io.null_writer.any() };
         } else blk: {
             const stdout = std.io.getStdOut();
-            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };
+            break :blk std.io.BufferedWriter(4096, std.io.AnyWriter){ .unbuffered_writer = stdout.writer().any() };
         };
 
         // stat sample arrays
