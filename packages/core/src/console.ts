@@ -349,35 +349,35 @@ export class TerminalConsole extends EventEmitter {
     this.markNeedsRerender()
   }
 
-  private _updateConsoleDimensions(): void {
-    const termWidth = this.renderer.terminalWidth
-    const termHeight = this.renderer.terminalHeight
+  private _updateConsoleDimensions(termWidth?: number, termHeight?: number): void {
+    const width = termWidth ?? this.renderer.terminalWidth
+    const height = termHeight ?? this.renderer.terminalHeight
     const sizePercent = this.options.sizePercent / 100
 
     switch (this.options.position) {
       case ConsolePosition.TOP:
         this.consoleX = 0
         this.consoleY = 0
-        this.consoleWidth = termWidth
-        this.consoleHeight = Math.max(1, Math.floor(termHeight * sizePercent))
+        this.consoleWidth = width
+        this.consoleHeight = Math.max(1, Math.floor(height * sizePercent))
         break
       case ConsolePosition.BOTTOM:
-        this.consoleHeight = Math.max(1, Math.floor(termHeight * sizePercent))
-        this.consoleWidth = termWidth
+        this.consoleHeight = Math.max(1, Math.floor(height * sizePercent))
+        this.consoleWidth = width
         this.consoleX = 0
-        this.consoleY = termHeight - this.consoleHeight
+        this.consoleY = height - this.consoleHeight
         break
       case ConsolePosition.LEFT:
-        this.consoleWidth = Math.max(1, Math.floor(termWidth * sizePercent))
-        this.consoleHeight = termHeight
+        this.consoleWidth = Math.max(1, Math.floor(width * sizePercent))
+        this.consoleHeight = height
         this.consoleX = 0
         this.consoleY = 0
         break
       case ConsolePosition.RIGHT:
-        this.consoleWidth = Math.max(1, Math.floor(termWidth * sizePercent))
-        this.consoleHeight = termHeight
+        this.consoleWidth = Math.max(1, Math.floor(width * sizePercent))
+        this.consoleHeight = height
         this.consoleY = 0
-        this.consoleX = termWidth - this.consoleWidth
+        this.consoleX = width - this.consoleWidth
         break
     }
     this.currentLineIndex = Math.max(0, Math.min(this.currentLineIndex, this.consoleHeight - 1))
@@ -509,7 +509,7 @@ export class TerminalConsole extends EventEmitter {
   }
 
   public resize(width: number, height: number): void {
-    this._updateConsoleDimensions()
+    this._updateConsoleDimensions(width, height)
 
     if (this.frameBuffer) {
       this.frameBuffer.resize(this.consoleWidth, this.consoleHeight)
