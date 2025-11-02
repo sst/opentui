@@ -12,10 +12,9 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-import { resolve, isAbsolute } from "path"
+import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env"
-import { parse } from "path"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -94,9 +93,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     let worker_path: string | URL
 
     if (env.OTUI_TREE_SITTER_WORKER_PATH) {
-      worker_path = env.OTUI_TREE_SITTER_WORKER_PATH
+      worker_path = resolve(env.OTUI_TREE_SITTER_WORKER_PATH)
     } else if (typeof OTUI_TREE_SITTER_WORKER_PATH !== "undefined") {
-      worker_path = OTUI_TREE_SITTER_WORKER_PATH
+      worker_path = resolve(OTUI_TREE_SITTER_WORKER_PATH)
     } else if (this.options.workerPath) {
       worker_path = this.options.workerPath
     } else {
