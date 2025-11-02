@@ -232,6 +232,93 @@ describe("Refs Tests", () => {
 
       expect(refValue).toBeUndefined()
     })
+
+    it("should invalidate child refs when parent is removed", async () => {
+      let parentRef: BoxRenderable | undefined
+      let childRef1: BoxRenderable | undefined
+      let childRef2: BoxRenderable | undefined
+      const [show, setShow] = createSignal(true)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            {show() && (
+              <box ref={(el) => (parentRef = el)} border title="Parent" height={10}>
+                <box ref={(el) => (childRef1 = el)} border title="Child 1" height={3} />
+                <box ref={(el) => (childRef2 = el)} border title="Child 2" height={3} />
+              </box>
+            )}
+          </box>
+        ),
+        {
+          width: 30,
+          height: 15,
+        },
+      )
+
+      await testSetup.renderOnce()
+
+      expect(parentRef).toBeDefined()
+      expect(childRef1).toBeDefined()
+      expect(childRef2).toBeDefined()
+
+      setShow(false)
+      await testSetup.renderOnce()
+
+      await new Promise((resolve) => process.nextTick(resolve))
+
+      // Parent ref should be invalidated
+      expect(parentRef).toBeUndefined()
+      // Child refs should also be invalidated since parent is destroyed recursively
+      expect(childRef1).toBeUndefined()
+      expect(childRef2).toBeUndefined()
+    })
+
+    it("should invalidate deeply nested child refs when ancestor is removed", async () => {
+      let ancestorRef: BoxRenderable | undefined
+      let parentRef: BoxRenderable | undefined
+      let childRef: BoxRenderable | undefined
+      let grandchildRef: BoxRenderable | undefined
+      const [show, setShow] = createSignal(true)
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            {show() && (
+              <box ref={(el) => (ancestorRef = el)} border title="Ancestor">
+                <box ref={(el) => (parentRef = el)} border title="Parent">
+                  <box ref={(el) => (childRef = el)} border title="Child">
+                    <box ref={(el) => (grandchildRef = el)} border title="Grandchild" height={3} />
+                  </box>
+                </box>
+              </box>
+            )}
+          </box>
+        ),
+        {
+          width: 30,
+          height: 20,
+        },
+      )
+
+      await testSetup.renderOnce()
+
+      expect(ancestorRef).toBeDefined()
+      expect(parentRef).toBeDefined()
+      expect(childRef).toBeDefined()
+      expect(grandchildRef).toBeDefined()
+
+      setShow(false)
+      await testSetup.renderOnce()
+
+      await new Promise((resolve) => process.nextTick(resolve))
+
+      // All refs should be invalidated when ancestor is destroyed
+      expect(ancestorRef).toBeUndefined()
+      expect(parentRef).toBeUndefined()
+      expect(childRef).toBeUndefined()
+      expect(grandchildRef).toBeUndefined()
+    })
   })
 
   describe("Ref Assignment", () => {
