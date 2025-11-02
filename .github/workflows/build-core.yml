@@ -64,7 +64,7 @@ jobs:
             runner: ubuntu-latest
           - os: linux
             arch: arm64
-            runner: ubuntu-latest-arm64
+            runner: ubuntu-24.04-arm
           - os: windows
             arch: x64
             runner: windows-latest
