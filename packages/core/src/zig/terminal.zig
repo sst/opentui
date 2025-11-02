@@ -170,8 +170,9 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype) !void {
         else => {
             self.checkEnvironmentOverrides();
 
-            // NOTE: Not enabling kitty keyboard by default even when it is supported
-            // Higher levels do not support that yet and stdin handling may move to native
+            if (self.caps.kitty_keyboard) {
+                try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
+            }
 
             if (self.caps.unicode == .unicode and !self.caps.explicit_width) {
                 try tty.writeAll(ansi.ANSI.unicodeSet);
