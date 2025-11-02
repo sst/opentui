@@ -118,6 +118,12 @@ function _removeNode(parent: DomNode, node: DomNode): void {
 
   process.nextTick(() => {
     if (node instanceof BaseRenderable && !node.parent) {
+      const refCallback = (node as any).__solidRefCallback
+      if (typeof refCallback === "function") {
+        refCallback(undefined)
+        delete (node as any).__solidRefCallback
+      }
+
       node.destroyRecursively()
       return
     }

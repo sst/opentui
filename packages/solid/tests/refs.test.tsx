@@ -3,6 +3,16 @@ import { testRender } from "../index"
 import { createSignal } from "solid-js"
 import type { TextareaRenderable, BoxRenderable } from "@opentui/core"
 
+/**
+ * Tests for ref invalidation behavior in Solid.
+ *
+ * When an element with a ref is destroyed, the ref callback is called with undefined.
+ * This allows components to clean up any references.
+ *
+ * Note: Destroy operations happen in process.nextTick, so tests must await the next tick
+ * before checking if refs have been invalidated.
+ */
+
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
 describe("Refs Tests", () => {
@@ -46,15 +56,13 @@ describe("Refs Tests", () => {
 
       await testSetup.renderOnce()
 
-      // Ref should be set
       expect(textareaRef).toBeDefined()
       expect(textareaRef?.id).toBeDefined()
 
-      // Destroy the textarea by hiding it
       setShow(false)
       await testSetup.renderOnce()
+      await new Promise((resolve) => process.nextTick(resolve))
 
-      // TODO: This currently fails - ref should be undefined after destroy
       expect(textareaRef).toBeUndefined()
     })
 
@@ -72,15 +80,13 @@ describe("Refs Tests", () => {
 
       await testSetup.renderOnce()
 
-      // Ref should be set
       expect(boxRef).toBeDefined()
       expect(boxRef?.id).toBeDefined()
 
-      // Destroy the box by hiding it
       setShow(false)
       await testSetup.renderOnce()
+      await new Promise((resolve) => process.nextTick(resolve))
 
-      // TODO: This currently fails - ref should be undefined after destroy
       expect(boxRef).toBeUndefined()
     })
 
@@ -109,15 +115,14 @@ describe("Refs Tests", () => {
 
       await testSetup.renderOnce()
 
-      // Ref should be set to the second item
       expect(boxRef).toBeDefined()
       expect(boxRef?.id).toBeDefined()
 
-      // Remove the second item
       setItems(["item1", "item3"])
       await testSetup.renderOnce()
 
-      // TODO: This currently fails - ref should be undefined after destroy
+      await new Promise((resolve) => process.nextTick(resolve))
+
       expect(boxRef).toBeUndefined()
     })
 
@@ -149,15 +154,12 @@ describe("Refs Tests", () => {
       expect(textareaRef).toBeDefined()
       expect(textareaRef?.isDestroyed).toBe(false)
 
-      // Destroy the textarea
       setShow(false)
       await testSetup.renderOnce()
 
-      // The ref should be undefined after destroy, but currently it's still defined
-      // We can check that the element was actually destroyed using isDestroyed flag
-      // This test documents that even though ref is not invalidated, the object is destroyed
-      expect(textareaRef).toBeDefined() // Current behavior: ref not invalidated
-      expect(textareaRef?.isDestroyed).toBe(true) // But the object IS destroyed
+      await new Promise((resolve) => process.nextTick(resolve))
+
+      expect(textareaRef).toBeUndefined()
     })
 
     it("should handle ref callback being called on destroy", async () => {
@@ -187,15 +189,14 @@ describe("Refs Tests", () => {
 
       await testSetup.renderOnce()
 
-      // Ref callback should have been called once with the element
       expect(refCalls.length).toBe(1)
       expect(refCalls[0]?.element).toBeDefined()
 
-      // Destroy the textarea
       setShow(false)
       await testSetup.renderOnce()
 
-      // TODO: This currently fails - ref callback should be called again with undefined
+      await new Promise((resolve) => process.nextTick(resolve))
+
       expect(refCalls.length).toBe(2)
       expect(refCalls[1]?.element).toBeUndefined()
     })
@@ -224,11 +225,11 @@ describe("Refs Tests", () => {
 
       expect(refValue).toBeDefined()
 
-      // Switch to fallback
       setCondition(false)
       await testSetup.renderOnce()
 
-      // TODO: ref should be invalidated when switching away
+      await new Promise((resolve) => process.nextTick(resolve))
+
       expect(refValue).toBeUndefined()
     })
   })

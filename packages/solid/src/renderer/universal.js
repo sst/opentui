@@ -193,7 +193,6 @@ export function createRenderer({
     if (!skipChildren) {
       createRenderEffect(() => (prevProps.children = insertExpression(node, props.children, prevProps.children)))
     }
-    createRenderEffect(() => props.ref && props.ref(node))
     createRenderEffect(() => {
       for (const prop in props) {
         if (prop === "children" || prop === "ref") continue
@@ -232,7 +231,14 @@ export function createRenderer({
     memo,
     createComponent,
     use(fn, element, arg) {
-      return untrack(() => fn(element, arg))
+      const result = untrack(() => fn(element, arg))
+      // Check if this might be a ref - store the function for cleanup
+      // The fn here is the ref callback that should be called with undefined on cleanup
+      if (typeof fn === "function" && arg === undefined) {
+        // This is likely a ref callback (refs are called with just the element, no arg)
+        element.__solidRefCallback = (value) => fn(value, arg)
+      }
+      return result
     },
   }
 }
