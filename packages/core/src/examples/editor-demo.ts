@@ -50,7 +50,7 @@ VIEW:
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
-  ✓ Unicode (emoji 🌟 and CJK 世界)
+  ✓ Unicode (emoji 🌟 and CJK 世界, 你好世界, 中文, 한글)
   ✓ Incremental editing
   ✓ Text wrapping and viewport management
   ✓ Undo/redo support

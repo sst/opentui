@@ -96,6 +96,15 @@ export function run(renderer: CliRenderer): void {
   box1.add(text3)
   allTextRenderables.push(text3)
 
+  const text4 = new TextRenderable(renderer, {
+    id: "text4",
+    content: "世界, 你好世界, 中文, 한글",
+    zIndex: 21,
+    fg: "#f0f6fc",
+  })
+  box1.add(text4)
+  allTextRenderables.push(text4)
+
   const nestedBox = new BoxRenderable(renderer, {
     id: "nestedBox",
     left: 2,

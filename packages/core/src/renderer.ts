@@ -185,6 +185,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
+  const useKittyKeyboard = config.useKittyKeyboard ?? true
+  ziglib.setUseKittyKeyboard(rendererPtr, useKittyKeyboard)
+
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
   return renderer
@@ -426,7 +429,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
 
-    this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? false)
+    this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -599,6 +602,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get capabilities(): any | null {
     return this._capabilities
+  }
+
+  public get useKittyKeyboard(): boolean {
+    return this.lib.getUseKittyKeyboard(this.rendererPtr)
+  }
+
+  public set useKittyKeyboard(use: boolean) {
+    this.lib.setUseKittyKeyboard(this.rendererPtr, use)
   }
 
   public set experimental_splitHeight(splitHeight: number) {

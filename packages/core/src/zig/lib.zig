@@ -364,6 +364,14 @@ export fn disableKittyKeyboard(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableKittyKeyboard();
 }
 
+export fn setUseKittyKeyboard(rendererPtr: *renderer.CliRenderer, use: bool) void {
+    rendererPtr.setUseKittyKeyboard(use);
+}
+
+export fn getUseKittyKeyboard(rendererPtr: *renderer.CliRenderer) bool {
+    return rendererPtr.getUseKittyKeyboard();
+}
+
 export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool) void {
     rendererPtr.setupTerminal(useAlternateScreen);
 }
