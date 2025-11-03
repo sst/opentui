@@ -699,6 +699,11 @@ export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start
     return edit_buffer.getTextRange(start_offset, end_offset, outBuffer) catch 0;
 }
 
+export fn editBufferGetTextRangeByCoords(edit_buffer: *edit_buffer_mod.EditBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return edit_buffer.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
+}
+
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text, retain_history) catch {};
@@ -1102,6 +1107,11 @@ export fn textBufferGetHighlightCount(tb: *text_buffer.UnifiedTextBuffer) u32 {
 export fn textBufferGetTextRange(tb: *text_buffer.UnifiedTextBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return tb.getTextRange(start_offset, end_offset, outBuffer);
+}
+
+export fn textBufferGetTextRangeByCoords(tb: *text_buffer.UnifiedTextBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
 }
 
 // SyntaxStyle functions

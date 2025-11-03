@@ -755,4 +755,11 @@ pub const EditBuffer = struct {
     pub fn getTextRange(self: *EditBuffer, start_offset: u32, end_offset: u32, out_buffer: []u8) !usize {
         return self.tb.getTextRange(start_offset, end_offset, out_buffer);
     }
+
+    /// Get text within a range specified by row/col coordinates
+    /// Automatically snaps to grapheme boundaries:
+    /// Returns number of bytes written to out_buffer
+    pub fn getTextRangeByCoords(self: *EditBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32, out_buffer: []u8) usize {
+        return self.tb.getTextRangeByCoords(start_row, start_col, end_row, end_col, out_buffer);
+    }
 };

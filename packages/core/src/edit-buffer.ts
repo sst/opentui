@@ -254,6 +254,24 @@ export class EditBuffer extends EventEmitter {
     return this.lib.decoder.decode(textBytes)
   }
 
+  public getTextRangeByCoords(startRow: number, startCol: number, endRow: number, endCol: number): string {
+    this.guard()
+
+    const maxSize = 1024 * 1024 // 1MB max
+    const textBytes = this.lib.editBufferGetTextRangeByCoords(
+      this.bufferPtr,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      maxSize,
+    )
+
+    if (!textBytes) return ""
+
+    return this.lib.decoder.decode(textBytes)
+  }
+
   public debugLogRope(): void {
     this.guard()
     this.lib.editBufferDebugLogRope(this.bufferPtr)

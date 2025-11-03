@@ -990,4 +990,13 @@ pub const UnifiedTextBuffer = struct {
             out_buffer,
         );
     }
+
+    /// Get text within a range specified by row/col coordinates
+    /// Automatically snaps to grapheme boundaries:
+    /// Returns number of bytes written to out_buffer
+    pub fn getTextRangeByCoords(self: *Self, start_row: u32, start_col: u32, end_row: u32, end_col: u32, out_buffer: []u8) usize {
+        const start_offset = iter_mod.coordsToOffset(&self.rope, start_row, start_col) orelse return 0;
+        const end_offset = iter_mod.coordsToOffset(&self.rope, end_row, end_col) orelse return 0;
+        return self.getTextRange(start_offset, end_offset, out_buffer);
+    }
 };

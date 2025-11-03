@@ -400,6 +400,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32", "ptr", "usize"],
       returns: "usize",
     },
+    textBufferGetTextRangeByCoords: {
+      args: ["ptr", "u32", "u32", "u32", "u32", "ptr", "usize"],
+      returns: "usize",
+    },
 
     // TextBufferView functions
     createTextBufferView: {
@@ -672,6 +676,10 @@ function getOpenTUILib(libPath?: string) {
     },
     editBufferGetTextRange: {
       args: ["ptr", "u32", "u32", "ptr", "usize"],
+      returns: "usize",
+    },
+    editBufferGetTextRangeByCoords: {
+      args: ["ptr", "u32", "u32", "u32", "u32", "ptr", "usize"],
       returns: "usize",
     },
 
@@ -1145,6 +1153,14 @@ export interface RenderLib {
     endOffset: number,
     maxLength: number,
   ) => Uint8Array | null
+  textBufferGetTextRangeByCoords: (
+    buffer: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    maxLength: number,
+  ) => Uint8Array | null
 
   // TextBufferView methods
   createTextBufferView: (textBuffer: Pointer) => Pointer
@@ -1224,6 +1240,14 @@ export interface RenderLib {
     buffer: Pointer,
     startOffset: number,
     endOffset: number,
+    maxLength: number,
+  ) => Uint8Array | null
+  editBufferGetTextRangeByCoords: (
+    buffer: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
     maxLength: number,
   ) => Uint8Array | null
 
@@ -1969,6 +1993,35 @@ class FFIRenderLib implements RenderLib {
     return outBuffer.slice(0, len)
   }
 
+  public textBufferGetTextRangeByCoords(
+    buffer: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    maxLength: number,
+  ): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+
+    const actualLen = this.opentui.symbols.textBufferGetTextRangeByCoords(
+      buffer,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      ptr(outBuffer),
+      maxLength,
+    )
+
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+
+    if (len === 0) {
+      return null
+    }
+
+    return outBuffer.slice(0, len)
+  }
+
   // TextBufferView methods
   public createTextBufferView(textBuffer: Pointer): Pointer {
     const viewPtr = this.opentui.symbols.createTextBufferView(textBuffer)
@@ -2496,6 +2549,29 @@ class FFIRenderLib implements RenderLib {
       buffer,
       startOffset,
       endOffset,
+      ptr(outBuffer),
+      maxLength,
+    )
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
+  }
+
+  public editBufferGetTextRangeByCoords(
+    buffer: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    maxLength: number,
+  ): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editBufferGetTextRangeByCoords(
+      buffer,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
       ptr(outBuffer),
       maxLength,
     )

@@ -530,4 +530,8 @@ export abstract class EditBufferRenderable extends Renderable {
   public getTextRange(startOffset: number, endOffset: number): string {
     return this.editBuffer.getTextRange(startOffset, endOffset)
   }
+
+  public getTextRangeByCoords(startRow: number, startCol: number, endRow: number, endCol: number): string {
+    return this.editBuffer.getTextRangeByCoords(startRow, startCol, endRow, endCol)
+  }
 }
