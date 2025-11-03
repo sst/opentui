@@ -160,7 +160,7 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     );
 }
 
-pub fn enableDetectedFeatures(self: *Terminal, tty: anytype) !void {
+pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
     switch (builtin.os.tag) {
         .windows => {
             // Windows-specific defaults for ConPTY
@@ -170,7 +170,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype) !void {
         else => {
             self.checkEnvironmentOverrides();
 
-            if (self.caps.kitty_keyboard) {
+            if (self.caps.kitty_keyboard and use_kitty_keyboard) {
                 try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
             }
 

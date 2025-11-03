@@ -50,6 +50,7 @@ pub const CliRenderer = struct {
     terminal: Terminal,
     testing: bool = false,
     useAlternateScreen: bool = true,
+    useKittyKeyboard: bool = true,
     terminalSetup: bool = false,
 
     renderStats: struct {
@@ -895,7 +896,7 @@ pub const CliRenderer = struct {
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
         const writer = self.stdoutWriter.writer();
-        self.terminal.enableDetectedFeatures(writer) catch {};
+        self.terminal.enableDetectedFeatures(writer, self.useKittyKeyboard) catch {};
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
@@ -908,6 +909,14 @@ pub const CliRenderer = struct {
 
     pub fn setCursorColor(self: *CliRenderer, color: [4]f32) void {
         self.terminal.setCursorColor(color);
+    }
+
+    pub fn setUseKittyKeyboard(self: *CliRenderer, use: bool) void {
+        self.useKittyKeyboard = use;
+    }
+
+    pub fn getUseKittyKeyboard(self: *CliRenderer) bool {
+        return self.useKittyKeyboard;
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

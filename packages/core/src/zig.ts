@@ -273,6 +273,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    setUseKittyKeyboard: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    getUseKittyKeyboard: {
+      args: ["ptr"],
+      returns: "bool",
+    },
     setupTerminal: {
       args: ["ptr", "bool"],
       returns: "void",
@@ -1119,6 +1127,8 @@ export interface RenderLib {
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
   disableKittyKeyboard: (renderer: Pointer) => void
+  setUseKittyKeyboard: (renderer: Pointer, use: boolean) => void
+  getUseKittyKeyboard: (renderer: Pointer) => boolean
   setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
   queryPixelResolution: (renderer: Pointer) => void
 
@@ -1833,6 +1843,14 @@ class FFIRenderLib implements RenderLib {
 
   public disableKittyKeyboard(renderer: Pointer): void {
     this.opentui.symbols.disableKittyKeyboard(renderer)
+  }
+
+  public setUseKittyKeyboard(renderer: Pointer, use: boolean): void {
+    this.opentui.symbols.setUseKittyKeyboard(renderer, use)
+  }
+
+  public getUseKittyKeyboard(renderer: Pointer): boolean {
+    return this.opentui.symbols.getUseKittyKeyboard(renderer)
   }
 
   public setupTerminal(renderer: Pointer, useAlternateScreen: boolean): void {
