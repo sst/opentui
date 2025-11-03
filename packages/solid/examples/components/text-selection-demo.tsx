@@ -25,6 +25,7 @@ export default function TextSelectionDemo() {
   const section1TextStyle: TextProps["style"] = {
     fg: "#f0f6fc",
     zIndex: 21,
+    flexShrink: 0,
   }
 
   const updateSelectionTexts = (selectedText: string) => {
@@ -111,6 +112,7 @@ export default function TextSelectionDemo() {
             <text style={section1TextStyle}>This is a paragraph in the first box.</text>
             <text style={section1TextStyle}>dynamic: {selectedWordText()}</text>
             <text style={section1TextStyle}>it contains multiple lines of text</text>
+            <text style={section1TextStyle}>世界, 你好世界, 中文, 한글</text>
           </box>
           <box
             style={{
