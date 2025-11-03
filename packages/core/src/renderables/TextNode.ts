@@ -5,6 +5,9 @@ import { isStyledText, StyledText } from "../lib/styled-text"
 import { type TextChunk } from "../text-buffer"
 import type { RenderContext } from "../types"
 
+const defaultFg = RGBA.fromInts(255, 255, 255, 255)
+const defaultBg = RGBA.fromInts(0, 0, 0, 0)
+
 export interface TextNodeOptions extends BaseRenderableOptions {
   fg?: string | RGBA
   bg?: string | RGBA
@@ -205,7 +208,11 @@ export class TextNodeRenderable extends BaseRenderable {
   }
 
   public static fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNodeRenderable {
-    const node = new TextNodeRenderable(options)
+    const node = new TextNodeRenderable({
+      ...options,
+      fg: options.fg ?? defaultFg,
+      bg: options.bg ?? defaultBg,
+    })
     node.add(text)
     return node
   }
