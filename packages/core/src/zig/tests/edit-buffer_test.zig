@@ -714,7 +714,7 @@ test "EditBuffer - getTextRange Devanagari with combining marks" {
 
     var buffer: [100]u8 = undefined;
     // "Say " = 4 cols (0-3), "नमस्ते" = 5 cols (4-8), " " = col 9
-    const len = try eb.getTextRange(4, 9, &buffer);
+    const len = try eb.getTextRange(4, 8, &buffer);
     try std.testing.expectEqualStrings("नमस्ते", buffer[0..len]);
 }
 

@@ -2000,6 +2000,11 @@ test "calculateTextWidth: scroll book and writing emojis width 2" {
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("📜", 4, false));
 }
 
+test "calculateTextWidth: Devanagari नमस्ते width 4" {
+    const result = utf8.calculateTextWidth("नमस्ते", 4, false);
+    try testing.expectEqual(@as(u32, 4), result);
+}
+
 // ============================================================================
 // GRAPHEME INFO TESTS (for caching multi-byte graphemes and tabs)
 // ============================================================================
