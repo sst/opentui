@@ -2183,3 +2183,97 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     const line_count = tb.getLineCount();
     try std.testing.expect(line_count > 15);
 }
+
+test "setStyledText - highlight positioning with Unicode text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    // Text: "Say नमस्ते please."
+    // Layout: "Say " (4 cols) + "नमस्ते" (4 cols) + " " (1 col) + "please" (6 cols) + "." (1 col)
+    // We highlight "please" with a green background to verify correct positioning
+    const text_part1 = "Say ";
+    const text_part2 = "नमस्ते";
+    const text_part3 = " ";
+    const text_part4 = "please";
+    const text_part5 = ".";
+
+    const fg_normal = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const bg_highlight = [4]f32{ 0.0, 1.0, 0.0, 1.0 }; // Green background
+
+    const chunks = [_]StyledChunk{
+        .{ .text_ptr = text_part1.ptr, .text_len = text_part1.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = text_part2.ptr, .text_len = text_part2.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = text_part3.ptr, .text_len = text_part3.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = text_part4.ptr, .text_len = text_part4.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = @ptrCast(&bg_highlight), .attributes = 0 },
+        .{ .text_ptr = text_part5.ptr, .text_len = text_part5.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = null, .attributes = 0 },
+    };
+
+    try tb.setStyledText(&chunks);
+
+    // Verify the text content
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    const result = out_buffer[0..written];
+    try std.testing.expectEqualStrings("Say नमस्ते please.", result);
+
+    // Calculate expected positions using measureText
+    const part1_width = tb.measureText(text_part1);
+    const part2_width = tb.measureText(text_part2);
+    const part3_width = tb.measureText(text_part3);
+    const please_start_col = part1_width + part2_width + part3_width;
+
+    // Render to buffer and check colors
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        30,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Check that "please" (6 characters) all have the green background
+    const epsilon: f32 = 0.01;
+    var i: u32 = 0;
+    while (i < 6) : (i += 1) {
+        const cell_col = please_start_col + i;
+        const cell = opt_buffer.get(cell_col, 0) orelse return error.TestFailed;
+
+        // Verify green background (R=0, G=1, B=0)
+        try std.testing.expect(@abs(cell.bg[0] - 0.0) < epsilon);
+        try std.testing.expect(@abs(cell.bg[1] - 1.0) < epsilon);
+        try std.testing.expect(@abs(cell.bg[2] - 0.0) < epsilon);
+    }
+
+    // Check that text before "please" does NOT have green background
+    i = 0;
+    while (i < please_start_col) : (i += 1) {
+        const cell = opt_buffer.get(i, 0) orelse unreachable;
+        const has_green_bg = @abs(cell.bg[1] - 1.0) < epsilon and @abs(cell.bg[0] - 0.0) < epsilon;
+        try std.testing.expect(!has_green_bg);
+    }
+
+    // Check that "." after "please" does NOT have green background
+    const period_col = please_start_col + 6;
+    const period_cell = opt_buffer.get(period_col, 0) orelse unreachable;
+    const has_green_bg = @abs(period_cell.bg[1] - 1.0) < epsilon and @abs(period_cell.bg[0] - 0.0) < epsilon;
+    try std.testing.expect(!has_green_bg);
+}

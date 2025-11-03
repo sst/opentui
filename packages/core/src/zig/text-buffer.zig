@@ -235,7 +235,10 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn measureText(self: *const Self, text: []const u8) u32 {
-        return gwidth.gwidth(text, self.width_method, &self.display_width);
+        // For grapheme-accurate width calculation (used by highlighting system),
+        // use utf8.calculateTextWidth which properly handles grapheme clusters
+        const is_ascii = utf8.isAsciiOnly(text);
+        return utf8.calculateTextWidth(text, self.tab_width, is_ascii);
     }
 
     /// Clear the text content without resetting arena or memory registry.
