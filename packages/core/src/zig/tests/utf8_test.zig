@@ -1328,9 +1328,11 @@ test "wrap by width: CJK wide characters at boundary" {
 
 test "find pos by width: wide emoji at boundary - INCLUDES grapheme" {
     const input = "Hello 🌍 World";
+    // Layout: H(0) e(1) l(2) l(3) o(4) space(5) 🌍(6-7) space(8) W(9)...
 
+    // include_start_before=true (selection end): include graphemes that START before max_columns
     const result7 = utf8.findPosByWidth(input, 7, 8, false, true);
-    try testing.expectEqual(@as(u32, 10), result7.byte_offset);
+    try testing.expectEqual(@as(u32, 10), result7.byte_offset); // After emoji (snapped forward)
     try testing.expectEqual(@as(u32, 8), result7.columns_used);
 
     const result8 = utf8.findPosByWidth(input, 8, 8, false, true);
@@ -1341,9 +1343,39 @@ test "find pos by width: wide emoji at boundary - INCLUDES grapheme" {
     try testing.expectEqual(@as(u32, 6), result6.byte_offset);
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
 
+    // include_start_before=false (selection start): exclude graphemes that cross max_columns
     const start7 = utf8.findPosByWidth(input, 7, 8, false, false);
-    try testing.expectEqual(@as(u32, 10), start7.byte_offset);
-    try testing.expectEqual(@as(u32, 8), start7.columns_used);
+    try testing.expectEqual(@as(u32, 6), start7.byte_offset); // Before emoji (snapped backward)
+    try testing.expectEqual(@as(u32, 6), start7.columns_used);
+}
+
+test "find pos by width: start at second cell of width=2 grapheme snaps backward" {
+    const input = "AB🌍CD";
+    const result = utf8.findPosByWidth(input, 3, 8, false, false);
+    try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "AB", before emoji
+    try testing.expectEqual(@as(u32, 2), result.columns_used);
+}
+
+test "find pos by width: end at first cell of width=2 grapheme snaps forward" {
+    const input = "AB🌍CD";
+    const result = utf8.findPosByWidth(input, 2, 8, false, true);
+    try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "AB" (emoji starts at 2, which is NOT > 2, but hasn't been consumed yet)
+    try testing.expectEqual(@as(u32, 2), result.columns_used);
+
+    const result3 = utf8.findPosByWidth(input, 3, 8, false, true);
+    try testing.expectEqual(@as(u32, 6), result3.byte_offset); // After "AB🌍"
+    try testing.expectEqual(@as(u32, 4), result3.columns_used);
+}
+
+test "find pos by width: selection boundaries with multiple wide chars" {
+    const input = "A🌍B🌎C";
+    const start2 = utf8.findPosByWidth(input, 2, 8, false, false);
+    try testing.expectEqual(@as(u32, 1), start2.byte_offset); // After "A", before first emoji
+    try testing.expectEqual(@as(u32, 1), start2.columns_used);
+
+    const end5 = utf8.findPosByWidth(input, 5, 8, false, true);
+    try testing.expectEqual(@as(u32, 10), end5.byte_offset); // After "A🌍B🌎"
+    try testing.expectEqual(@as(u32, 6), end5.columns_used);
 }
 
 test "find pos by width: empty string" {
@@ -1452,10 +1484,9 @@ test "split at weight: wide char at boundary - exclude when starting after" {
     try testing.expectEqual(@as(u32, 2), result2.byte_offset); // After "AB"
     try testing.expectEqual(@as(u32, 2), result2.columns_used);
 
-    // Split at column 3 - emoji starts at col 2, ends at col 4, so exclude it
     const result3 = utf8.findPosByWidth(input, 3, 8, false, false);
-    try testing.expectEqual(@as(u32, 6), result3.byte_offset); // After "AB🌍" (emoji at cols 2-3)
-    try testing.expectEqual(@as(u32, 4), result3.columns_used);
+    try testing.expectEqual(@as(u32, 2), result3.byte_offset); // After "AB", before emoji
+    try testing.expectEqual(@as(u32, 2), result3.columns_used);
 }
 
 test "split at weight: CJK characters" {
@@ -1466,10 +1497,9 @@ test "split at weight: CJK characters" {
     try testing.expectEqual(@as(u32, 5), result5.byte_offset);
     try testing.expectEqual(@as(u32, 5), result5.columns_used);
 
-    // Split at column 6 - should exclude 世 which starts at col 5
     const result6 = utf8.findPosByWidth(input, 6, 8, false, false);
-    try testing.expectEqual(@as(u32, 8), result6.byte_offset); // After "hello世"
-    try testing.expectEqual(@as(u32, 7), result6.columns_used);
+    try testing.expectEqual(@as(u32, 5), result6.byte_offset); // After "hello", before 世
+    try testing.expectEqual(@as(u32, 5), result6.columns_used);
 
     // Split at column 9 - should include both CJK chars
     const result9 = utf8.findPosByWidth(input, 9, 8, false, false);
@@ -1531,13 +1561,11 @@ test "split at weight: tab character" {
 
 test "split at weight: complex mixed content" {
     const input = "A🌍B世C"; // A(1) 🌍(2) B(1) 世(2) C(1) = 7 columns total
-
-    // Split at various points
     const r1 = utf8.findPosByWidth(input, 1, 8, false, false);
     try testing.expectEqual(@as(u32, 1), r1.byte_offset); // After "A"
 
     const r2 = utf8.findPosByWidth(input, 2, 8, false, false);
-    try testing.expectEqual(@as(u32, 5), r2.byte_offset); // After "A🌍" (emoji starts at col 1)
+    try testing.expectEqual(@as(u32, 1), r2.byte_offset); // After "A"
 
     const r3 = utf8.findPosByWidth(input, 3, 8, false, false);
     try testing.expectEqual(@as(u32, 5), r3.byte_offset); // After "A🌍"
@@ -1546,7 +1574,7 @@ test "split at weight: complex mixed content" {
     try testing.expectEqual(@as(u32, 6), r4.byte_offset); // After "A🌍B"
 
     const r5 = utf8.findPosByWidth(input, 5, 8, false, false);
-    try testing.expectEqual(@as(u32, 9), r5.byte_offset); // After "A🌍B世" (世 starts at col 4)
+    try testing.expectEqual(@as(u32, 6), r5.byte_offset); // After "A🌍B"
 }
 
 // ============================================================================

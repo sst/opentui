@@ -250,7 +250,14 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const pos = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
                 if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
-                return utf8.getWidthAt(bytes, pos.byte_offset, tab_width);
+                const grapheme_start_col = pos.columns_used;
+                const width = utf8.getWidthAt(bytes, pos.byte_offset, tab_width);
+
+                // Calculate remaining width: if cursor is in the middle of a wide grapheme,
+                // return only the remaining columns to reach the end of the grapheme
+                const grapheme_end_col = grapheme_start_col + width;
+                const remaining_width = grapheme_end_col - local_col;
+                return remaining_width;
             }
             cols_before = next_cols;
         }
@@ -290,6 +297,21 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;
                 const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
+
+                const grapheme_start_col = here.columns_used;
+                const offset_into_grapheme = local_col - grapheme_start_col;
+
+                if (offset_into_grapheme > 0) {
+                    // We need to jump back: offset_into_grapheme + width of previous grapheme
+                    const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
+                    if (prev) |res| {
+                        const total_distance = offset_into_grapheme + res.width;
+                        return total_distance;
+                    }
+
+                    return offset_into_grapheme;
+                }
+
                 const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
                 if (prev) |res| return res.width;
                 return 0;

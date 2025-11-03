@@ -1979,6 +1979,135 @@ test "EditorView - horizontal scroll: goto end of long line" {
     try std.testing.expect(cursor.col < vp.x + vp.width);
 }
 
+test "EditorView - cursor at second cell of width=2 grapheme moveLeft should jump to before grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("(emoji 🌟 and CJK 世界)", false);
+
+    try eb.setCursor(0, 7);
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 7), cursor.col);
+
+    // Move right - should jump over emoji to col 9
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 9), cursor.col);
+
+    // Manually set cursor to col 8 (second cell of emoji at 7-8)
+    // TODO: setCursor should probably also snap to beginning of grapheme?
+    //       When the width/cell based cursor is visual only and EditBuffer/Rope cursor is byte based
+    try eb.setCursor(0, 8);
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    // Should jump to col 9 (after the emoji), not col 10
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 9), cursor.col);
+
+    try eb.setCursor(0, 8);
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+}
+
+test "EditorView - cursor should be able to land after closing paren on line with wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("(emoji 🌟 and CJK 世界)\nNext line", false);
+
+    try eb.setCursor(0, 0);
+    var cursor = eb.getPrimaryCursor();
+
+    var i: u32 = 0;
+    while (i < 30) : (i += 1) {
+        const prev_col = cursor.col;
+        const prev_row = cursor.row;
+        eb.moveRight();
+        cursor = eb.getPrimaryCursor();
+
+        // Should not jump to next line until we've reached the end of the current line
+        if (prev_row == 0 and cursor.row == 1) {
+            // We jumped to the next line - check that we were at the end
+            const iter_mod = @import("../text-buffer-iterators.zig");
+            const line_width = iter_mod.lineWidthAt(&eb.getTextBuffer().rope, 0);
+            try std.testing.expectEqual(line_width, prev_col);
+            break;
+        }
+
+        if (i > 25) {
+            break;
+        }
+    }
+
+    try std.testing.expectEqual(@as(u32, 1), cursor.row);
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditorView - visual cursor should stay on same line when moving to line end with wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    try eb.setText("(emoji 🌟 and CJK 世界)\nNext line", false);
+
+    try eb.setCursor(0, 0);
+
+    var i: u32 = 0;
+    while (i < 30) : (i += 1) {
+        eb.moveRight();
+        const cursor = eb.getPrimaryCursor();
+        const vcursor = ev.getVisualCursor();
+
+        // Visual cursor should stay on row 0 until we move past the line end
+        if (cursor.row == 0) {
+            try std.testing.expectEqual(@as(u32, 0), vcursor.visual_row);
+            try std.testing.expectEqual(cursor.col, vcursor.visual_col);
+        }
+
+        if (cursor.row == 1) {
+            try std.testing.expectEqual(@as(u32, 1), vcursor.visual_row);
+            break;
+        }
+
+        if (i > 25) break;
+    }
+}
+
 test "EditorView - placeholder with styled text renders with correct highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

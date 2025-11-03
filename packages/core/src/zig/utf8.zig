@@ -837,8 +837,16 @@ inline fn handleClusterForWrap(
     return false;
 }
 
-/// Handle grapheme cluster boundary when finding position (stops AT/AFTER limit)
-/// Returns true if we should stop (at or after limit)
+/// Handle grapheme cluster boundary when finding position (snaps to grapheme boundaries)
+/// Returns true if we should stop
+///
+/// Snapping behavior:
+/// - include_start_before=true (for selection end): Include graphemes that START at or before max_columns
+///   If max_columns=3 and grapheme occupies columns [2-3], include it (starts at 2 <= 3)
+///   This snaps forward to include the whole grapheme even if max_columns points to its middle
+/// - include_start_before=false (for selection start): Only include graphemes that END before max_columns
+///   If max_columns=3 and grapheme occupies columns [2-3], exclude it (ends at 4 > 3)
+///   This snaps backward to exclude wide graphemes that would cross max_columns
 inline fn handleClusterForPos(
     state: *ClusterState,
     is_break: bool,
@@ -848,12 +856,20 @@ inline fn handleClusterForPos(
 ) bool {
     if (is_break) {
         if (state.prev_cp != null) {
-            if (state.columns_used >= max_columns) {
-                return true; // Signal to stop
-            }
-            state.columns_used += state.cluster_width;
+            const cluster_start_col = state.columns_used;
+            const cluster_end_col = state.columns_used + state.cluster_width;
+
             if (include_start_before) {
+                if (cluster_start_col >= max_columns) {
+                    return true;
+                }
+                state.columns_used = cluster_end_col;
                 state.grapheme_count += 1;
+            } else {
+                if (cluster_end_col > max_columns) {
+                    return true; // Signal to stop (don't include this grapheme)
+                }
+                state.columns_used = cluster_end_col;
             }
         }
         state.cluster_width = 0;
@@ -987,8 +1003,10 @@ pub fn findWrapPosByWidthSIMD16(
 }
 
 /// Find position by column width, with control over boundary behavior
-/// - If include_start_before: include graphemes that START before max_columns (for selection end)
-/// - If !include_start_before: exclude graphemes that START before max_columns (for selection start)
+/// - If include_start_before: include graphemes that START before max_columns (snap forward for selection end)
+///   This ensures that if max_columns points to the middle of a width=2 grapheme, we include the whole grapheme
+/// - If !include_start_before: exclude graphemes that START at or after max_columns (snap backward for selection start)
+///   This ensures that if max_columns points to the middle of a width=2 grapheme, we snap back to exclude it
 pub fn findPosByWidth(
     text: []const u8,
     max_columns: u32,

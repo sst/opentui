@@ -899,13 +899,11 @@ pub const UnifiedTextBufferView = struct {
                 var byte_end: u32 = @intCast(chunk_bytes.len);
 
                 if (local_start_col > 0) {
-                    // For start: exclude graphemes that start before limit
                     const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.view.text_buffer.tab_width, is_ascii_only, false);
                     byte_start = start_result.byte_offset;
                 }
 
                 if (local_end_col < chunk.width) {
-                    // For end: include graphemes that start before limit
                     const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.view.text_buffer.tab_width, is_ascii_only, true);
                     byte_end = end_result.byte_offset;
                 }
