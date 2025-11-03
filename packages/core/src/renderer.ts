@@ -20,6 +20,12 @@ import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
+import {
+  createOutputStrategy,
+  type OutputStrategy,
+  type OutputMode,
+  type StdoutWrite,
+} from "./output-strategy"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -52,6 +58,7 @@ registerEnvVar({
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
+  outputMode?: OutputMode
   exitOnCtrlC?: boolean
   debounceDelay?: number
   targetFps?: number
@@ -180,7 +187,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   // Disable threading on linux because there currently is currently an issue
   // might be just a missing dependency for the build or something, but threads crash on linux
-  if (process.platform === "linux") {
+  if (config.outputMode === "javascript" || process.platform === "linux") {
     config.useThread = false
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
@@ -288,12 +295,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _splitHeight: number = 0
   private renderOffset: number = 0
+  private outputStrategy!: OutputStrategy
+  private outputMode: OutputMode = "native"
 
   private _terminalWidth: number = 0
   private _terminalHeight: number = 0
   private _terminalIsSetup: boolean = false
 
-  private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
+  private realStdoutWrite: StdoutWrite
+  private writeOut: StdoutWrite
   private captureCallback: () => void = () => {
     if (this._splitHeight > 0) {
       this.requestRender()
@@ -375,12 +385,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin = stdin
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
+    this.writeOut = (chunk, encoding, callback) => this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
     this.lib = lib
     this._terminalWidth = stdout.columns
     this._terminalHeight = stdout.rows
     this.width = width
     this.height = height
-    this._useThread = config.useThread === undefined ? false : config.useThread
+
+    const outputMode = config.outputMode ?? "native"
+    this.outputMode = outputMode
+    const requestedUseThread = config.useThread === undefined ? false : config.useThread
+    this._useThread = outputMode === "javascript" ? false : requestedUseThread
     this._splitHeight = config.experimental_splitHeight || 0
 
     if (this._splitHeight > 0) {
@@ -391,6 +406,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
+    this.lib.setUseThread(this.rendererPtr, this._useThread)
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
@@ -403,6 +419,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
+
+    this.outputStrategy = createOutputStrategy(outputMode, {
+      stdout,
+      stdin,
+      lib,
+      rendererPtr,
+      writeToTerminal: this.writeOut,
+      emitFlush: (event) => this.emit("flush", event),
+      onDrain: () => {
+        if (!this._isDestroyed && (this._isRunning || this.immediateRerenderRequested)) {
+          this.immediateRerenderRequested = false
+          this.loop()
+        }
+      },
+    })
 
     this.root = new RootRenderable(this)
 
@@ -503,10 +534,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public get widthMethod(): WidthMethod {
     const caps = this.capabilities
     return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
-  }
-
-  private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
-    return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
   public requestRender() {
@@ -699,6 +726,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private enableMouse(): void {
     this._useMouse = true
     this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement)
+    this.outputStrategy.flush("enable-mouse")
   }
 
   private disableMouse(): void {
@@ -706,19 +734,29 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.capturedRenderable = undefined
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
+    this.outputStrategy.flush("disable-mouse")
   }
 
   public enableKittyKeyboard(flags: number = 0b00001): void {
     this.lib.enableKittyKeyboard(this.rendererPtr, flags)
+    this.outputStrategy.flush("enable-kitty")
   }
 
   public disableKittyKeyboard(): void {
     this.lib.disableKittyKeyboard(this.rendererPtr)
+    this.outputStrategy.flush("disable-kitty")
   }
 
   public set useThread(useThread: boolean) {
-    this._useThread = useThread
-    this.lib.setUseThread(this.rendererPtr, useThread)
+    if (this.outputMode === "javascript" && useThread) {
+      console.warn("CliRenderer: threaded rendering is not supported while outputMode === 'javascript'")
+    }
+    const nextValue = this.outputMode === "javascript" ? false : useThread
+    if (this._useThread === nextValue) {
+      return
+    }
+    this._useThread = nextValue
+    this.lib.setUseThread(this.rendererPtr, nextValue)
   }
 
   // TODO:All input management may move to native when zig finally has async io support again,
@@ -727,19 +765,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }, 100)
-      const capListener = (str: string) => {
-        clearTimeout(timeout)
-        this.lib.processCapabilityResponse(this.rendererPtr, str)
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }
-      this.stdin.on("data", capListener)
-      this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
+    await this.outputStrategy.setup(this._useAlternateScreen, (str: string) => {
+      this.lib.processCapabilityResponse(this.rendererPtr, str)
     })
 
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
@@ -995,6 +1022,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private queryPixelResolution() {
     this.waitingForPixelResolution = true
     this.lib.queryPixelResolution(this.rendererPtr)
+    this.outputStrategy.flush("pixel-resolution")
   }
 
   private processResize(width: number, height: number): void {
@@ -1071,6 +1099,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public setTerminalTitle(title: string): void {
     this.lib.setTerminalTitle(this.rendererPtr, title)
+    this.outputStrategy.flush("title")
   }
 
   public dumpHitGrid(): void {
@@ -1088,6 +1117,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public static setCursorPosition(renderer: CliRenderer, x: number, y: number, visible: boolean = true): void {
     const lib = resolveRenderLib()
     lib.setCursorPosition(renderer.rendererPtr, x, y, visible)
+    renderer.outputStrategy.flush("cursor-position")
   }
 
   public static setCursorStyle(
@@ -1101,15 +1131,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (color) {
       lib.setCursorColor(renderer.rendererPtr, color)
     }
+    renderer.outputStrategy.flush("cursor-style")
   }
 
   public static setCursorColor(renderer: CliRenderer, color: RGBA): void {
     const lib = resolveRenderLib()
     lib.setCursorColor(renderer.rendererPtr, color)
+    renderer.outputStrategy.flush("cursor-color")
   }
 
   public setCursorPosition(x: number, y: number, visible: boolean = true): void {
     this.lib.setCursorPosition(this.rendererPtr, x, y, visible)
+    this.outputStrategy.flush("cursor-position")
   }
 
   public setCursorStyle(style: CursorStyle, blinking: boolean = false, color?: RGBA): void {
@@ -1117,10 +1150,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (color) {
       this.lib.setCursorColor(this.rendererPtr, color)
     }
+    this.outputStrategy.flush("cursor-style")
   }
 
   public setCursorColor(color: RGBA): void {
     this.lib.setCursorColor(this.rendererPtr, color)
+    this.outputStrategy.flush("cursor-color")
   }
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
@@ -1290,10 +1325,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.flushStdoutCache(this._splitHeight, true)
     }
 
+    this.outputStrategy.destroy()
+
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
     this.stdin.removeListener("data", this.stdinListener)
+
+    this.outputStrategy.teardown()
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
@@ -1312,7 +1351,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private async loop(): Promise<void> {
-    if (this.rendering || this._isDestroyed) return
+    if (this.rendering || this._isDestroyed || !this.outputStrategy.canRender()) {
+      return
+    }
     this.rendering = true
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1377,7 +1418,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.collectStatSample(overallFrameTime)
       }
 
-      if (this._isRunning) {
+      if (this._isRunning && this.outputStrategy.canRender()) {
         const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
         this.renderTimeout = setTimeout(() => this.loop(), delay)
       }
@@ -1408,7 +1449,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.renderingNative = true
-    this.lib.render(this.rendererPtr, force)
+    this.outputStrategy.render(force)
     // this.dumpStdoutBuffer(Date.now())
     this.renderingNative = false
   }
