@@ -238,6 +238,40 @@ export class EditBuffer extends EventEmitter {
     return this.lib.editBufferGetLineStartOffset(this.bufferPtr, row)
   }
 
+  public getTextRange(startOffset: number, endOffset: number): string {
+    this.guard()
+    if (startOffset >= endOffset) return ""
+
+    // TODO: Use actual expected size of the text
+    // like other methods native can just return a pointer and size
+    // and we immediately decode the text into a js string then the native stack
+    // can go out of scope
+    const maxSize = 1024 * 1024 // 1MB max
+    const textBytes = this.lib.editBufferGetTextRange(this.bufferPtr, startOffset, endOffset, maxSize)
+
+    if (!textBytes) return ""
+
+    return this.lib.decoder.decode(textBytes)
+  }
+
+  public getTextRangeByCoords(startRow: number, startCol: number, endRow: number, endCol: number): string {
+    this.guard()
+
+    const maxSize = 1024 * 1024 // 1MB max
+    const textBytes = this.lib.editBufferGetTextRangeByCoords(
+      this.bufferPtr,
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      maxSize,
+    )
+
+    if (!textBytes) return ""
+
+    return this.lib.decoder.decode(textBytes)
+  }
+
   public debugLogRope(): void {
     this.guard()
     this.lib.editBufferDebugLogRope(this.bufferPtr)

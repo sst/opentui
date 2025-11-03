@@ -526,4 +526,12 @@ export abstract class EditBufferRenderable extends Renderable {
     this.yogaNode.markDirty()
     this.requestRender()
   }
+
+  public getTextRange(startOffset: number, endOffset: number): string {
+    return this.editBuffer.getTextRange(startOffset, endOffset)
+  }
+
+  public getTextRangeByCoords(startRow: number, startCol: number, endRow: number, endCol: number): string {
+    return this.editBuffer.getTextRangeByCoords(startRow, startCol, endRow, endCol)
+  }
 }

@@ -856,104 +856,14 @@ pub const UnifiedTextBufferView = struct {
     /// Get selected text into buffer - using efficient single-pass API
     pub fn getSelectedTextIntoBuffer(self: *Self, out_buffer: []u8) usize {
         const selection = self.selection orelse return 0;
-        const start = selection.start;
-        const end = selection.end;
-
-        var out_index: usize = 0;
-        var char_offset: u32 = 0;
-        const line_count = self.text_buffer.getLineCount();
-
-        const Context = struct {
-            view: *Self,
-            out_buffer: []u8,
-            out_index: *usize,
-            char_offset: *u32,
-            start: u32,
-            end: u32,
-            line_count: u32,
-            line_had_selection: bool = false,
-
-            fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
-                _ = line_idx;
-                _ = chunk_idx_in_line;
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-
-                const chunk_start_offset = ctx.char_offset.*;
-                const chunk_end_offset = chunk_start_offset + chunk.width;
-
-                // Skip chunk if it's entirely outside selection
-                if (chunk_end_offset <= ctx.start or chunk_start_offset >= ctx.end) {
-                    ctx.char_offset.* = chunk_end_offset;
-                    return;
-                }
-
-                ctx.line_had_selection = true;
-
-                const chunk_bytes = chunk.getBytes(&ctx.view.text_buffer.mem_registry);
-                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-
-                const local_start_col: u32 = if (ctx.start > chunk_start_offset) ctx.start - chunk_start_offset else 0;
-                const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width);
-
-                var byte_start: u32 = 0;
-                var byte_end: u32 = @intCast(chunk_bytes.len);
-
-                if (local_start_col > 0) {
-                    // For start: exclude graphemes that start before limit
-                    const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.view.text_buffer.tab_width, is_ascii_only, false);
-                    byte_start = start_result.byte_offset;
-                }
-
-                if (local_end_col < chunk.width) {
-                    // For end: include graphemes that start before limit
-                    const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.view.text_buffer.tab_width, is_ascii_only, true);
-                    byte_end = end_result.byte_offset;
-                }
-                if (byte_start < byte_end and byte_start < chunk_bytes.len) {
-                    const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
-                    const selected_bytes = chunk_bytes[byte_start..actual_end];
-                    const copy_len = @min(selected_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
-
-                    if (copy_len > 0) {
-                        @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], selected_bytes[0..copy_len]);
-                        ctx.out_index.* += copy_len;
-                    }
-                }
-
-                ctx.char_offset.* = chunk_end_offset;
-            }
-
-            fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-
-                // Add newline between lines if we had selection and selection extends beyond this line's newline
-                // Only add newline if selection includes content from the next line (char_offset + 1 < end)
-                if (ctx.line_had_selection and line_info.line_idx < ctx.line_count - 1 and ctx.char_offset.* + 1 < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
-                    ctx.out_buffer[ctx.out_index.*] = '\n';
-                    ctx.out_index.* += 1;
-                }
-
-                // Account for newline in char_offset to match rope weight system
-                // Newlines have weight +1 in the rope, so we increment to stay in sync
-                ctx.char_offset.* += 1;
-
-                ctx.line_had_selection = false;
-            }
-        };
-
-        var ctx = Context{
-            .view = self,
-            .out_buffer = out_buffer,
-            .out_index = &out_index,
-            .char_offset = &char_offset,
-            .start = start,
-            .end = end,
-            .line_count = line_count,
-        };
-
-        iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
-
-        return out_index;
+        return iter_mod.extractTextBetweenOffsets(
+            &self.text_buffer.rope,
+            &self.text_buffer.mem_registry,
+            self.text_buffer.tab_width,
+            selection.start,
+            selection.end,
+            out_buffer,
+        );
     }
 
     pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) VirtualLineSpanInfo {

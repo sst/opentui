@@ -133,6 +133,18 @@ export class TextBuffer {
     return this.lib.decoder.decode(plainBytes)
   }
 
+  public getTextRange(startOffset: number, endOffset: number): string {
+    this.guard()
+    if (startOffset >= endOffset) return ""
+    if (this._byteSize === 0) return ""
+
+    const rangeBytes = this.lib.textBufferGetTextRange(this.bufferPtr, startOffset, endOffset, this._byteSize)
+
+    if (!rangeBytes) return ""
+
+    return this.lib.decoder.decode(rangeBytes)
+  }
+
   /**
    * Add a highlight using character offsets into the full text.
    * start/end in highlight represent absolute character positions.
