@@ -760,94 +760,14 @@ pub const EditBuffer = struct {
         if (start_offset >= total_weight) return 0;
 
         const clamped_end = @min(end_offset, total_weight);
-        const start_coords = iter_mod.offsetToCoords(&self.tb.rope, start_offset) orelse return 0;
-        const end_coords = iter_mod.offsetToCoords(&self.tb.rope, clamped_end) orelse return 0;
 
-        return try self.extractTextBetweenCoords(
-            .{ .row = start_coords.row, .col = start_coords.col },
-            .{ .row = end_coords.row, .col = end_coords.col },
+        return iter_mod.extractTextBetweenOffsets(
+            &self.tb.rope,
+            &self.tb.mem_registry,
+            self.tb.tab_width,
+            start_offset,
+            clamped_end,
             out_buffer,
         );
-    }
-
-    fn extractTextBetweenCoords(
-        self: *EditBuffer,
-        start: CursorCoords,
-        end: CursorCoords,
-        out_buffer: []u8,
-    ) !usize {
-        if (start.row > end.row or (start.row == end.row and start.col >= end.col)) {
-            return 0;
-        }
-
-        var bytes_written: usize = 0;
-        var current_row = start.row;
-
-        while (current_row <= end.row) : (current_row += 1) {
-            const linestart = self.tb.rope.getMarker(.linestart, current_row) orelse break;
-            const line_width = iter_mod.lineWidthAt(&self.tb.rope, current_row);
-
-            const start_col = if (current_row == start.row) start.col else 0;
-            const end_col = if (current_row == end.row) end.col else line_width;
-
-            if (start_col >= end_col) continue;
-
-            var seg_idx = linestart.leaf_index + 1;
-            var cols_before: u32 = 0;
-
-            while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
-                const seg = self.tb.rope.get(seg_idx) orelse break;
-                if (seg.isBreak()) {
-                    // Add newline if not on the last row
-                    if (current_row < end.row and bytes_written < out_buffer.len) {
-                        out_buffer[bytes_written] = '\n';
-                        bytes_written += 1;
-                    }
-                    break;
-                }
-                if (seg.isLineStart()) break;
-
-                if (seg.asText()) |chunk| {
-                    const next_cols = cols_before + chunk.width;
-
-                    if (next_cols > start_col and cols_before < end_col) {
-                        const bytes = chunk.getBytes(&self.tb.mem_registry);
-                        const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-
-                        var byte_start: usize = 0;
-                        var byte_end: usize = bytes.len;
-
-                        if (cols_before < start_col) {
-                            const local_start_col = start_col - cols_before;
-                            // For start: exclude graphemes that start before limit
-                            const pos = utf8.findPosByWidth(bytes, local_start_col, self.tb.tab_width, is_ascii, false);
-                            byte_start = pos.byte_offset;
-                        }
-
-                        if (next_cols > end_col) {
-                            const local_end_col = end_col - cols_before;
-                            // For end: include graphemes that start before limit
-                            const pos = utf8.findPosByWidth(bytes, local_end_col, self.tb.tab_width, is_ascii, true);
-                            byte_end = pos.byte_offset;
-                        }
-
-                        if (byte_start < byte_end) {
-                            const chunk_bytes = bytes[byte_start..byte_end];
-                            const space_left = out_buffer.len - bytes_written;
-                            const to_copy = @min(chunk_bytes.len, space_left);
-
-                            @memcpy(out_buffer[bytes_written .. bytes_written + to_copy], chunk_bytes[0..to_copy]);
-                            bytes_written += to_copy;
-
-                            if (bytes_written >= out_buffer.len) return bytes_written;
-                        }
-                    }
-
-                    cols_before = next_cols;
-                }
-            }
-        }
-
-        return bytes_written;
     }
 };
