@@ -694,6 +694,11 @@ export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer,
     return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, 0) orelse 0;
 }
 
+export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return edit_buffer.getTextRange(start_offset, end_offset, outBuffer) catch 0;
+}
+
 export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
     const text = textPtr[0..textLen];
     edit_buffer.setText(text, retain_history) catch {};

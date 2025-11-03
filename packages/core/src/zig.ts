@@ -666,6 +666,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32"],
       returns: "u32",
     },
+    editBufferGetTextRange: {
+      args: ["ptr", "u32", "u32", "ptr", "usize"],
+      returns: "usize",
+    },
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
@@ -1206,6 +1210,12 @@ export interface RenderLib {
   editBufferOffsetToPosition: (buffer: Pointer, offset: number) => { row: number; col: number; offset: number } | null
   editBufferPositionToOffset: (buffer: Pointer, row: number, col: number) => number
   editBufferGetLineStartOffset: (buffer: Pointer, row: number) => number
+  editBufferGetTextRange: (
+    buffer: Pointer,
+    startOffset: number,
+    endOffset: number,
+    maxLength: number,
+  ) => Uint8Array | null
 
   // EditorView methods
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
@@ -2438,6 +2448,25 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetLineStartOffset(buffer: Pointer, row: number): number {
     return this.opentui.symbols.editBufferGetLineStartOffset(buffer, row)
+  }
+
+  public editBufferGetTextRange(
+    buffer: Pointer,
+    startOffset: number,
+    endOffset: number,
+    maxLength: number,
+  ): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+    const actualLen = this.opentui.symbols.editBufferGetTextRange(
+      buffer,
+      startOffset,
+      endOffset,
+      ptr(outBuffer),
+      maxLength,
+    )
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return outBuffer.slice(0, len)
   }
 
   // EditorView selection and editing implementations

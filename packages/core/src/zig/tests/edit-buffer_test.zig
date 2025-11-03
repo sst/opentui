@@ -580,3 +580,410 @@ test "EditBuffer - tabs only with cursor movement" {
         prev_col = cursor.col;
     }
 }
+
+// ===== getTextRange Tests =====
+
+test "EditBuffer - getTextRange basic ASCII" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+
+    var buffer: [100]u8 = undefined;
+    const len = try eb.getTextRange(0, 5, &buffer);
+    try std.testing.expectEqualStrings("Hello", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange full text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+
+    var buffer: [100]u8 = undefined;
+    const len = try eb.getTextRange(0, 11, &buffer);
+    try std.testing.expectEqualStrings("Hello World", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange with emojis" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello 👋 World");
+
+    var buffer: [100]u8 = undefined;
+    // "Hello " = 6 cols, emoji = 2 cols, so emoji is at offset 6-8
+    const len = try eb.getTextRange(6, 8, &buffer);
+    try std.testing.expectEqualStrings("👋", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange emoji with skin tone" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Waving hand with medium skin tone
+    try eb.insertText("Hi 👋🏽 there");
+
+    var buffer: [100]u8 = undefined;
+    // "Hi " = 3 cols, emoji = 2 cols
+    const len = try eb.getTextRange(3, 5, &buffer);
+    try std.testing.expectEqualStrings("👋🏽", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange flag emoji" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // USA flag 🇺🇸 (regional indicator symbols)
+    try eb.insertText("Flag: 🇺🇸 here");
+
+    var buffer: [100]u8 = undefined;
+    // "Flag: " = 6 cols, flag = 2 cols
+    const len = try eb.getTextRange(6, 8, &buffer);
+    try std.testing.expectEqualStrings("🇺🇸", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange family emoji" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Family emoji (ZWJ sequence): 👨‍👩‍👧‍👦
+    try eb.insertText("Family: 👨‍👩‍👧‍👦 end");
+
+    var buffer: [100]u8 = undefined;
+    // "Family: " = 8 cols, family emoji should be 2 cols
+    const len = try eb.getTextRange(8, 10, &buffer);
+    try std.testing.expectEqualStrings("👨‍👩‍👧‍👦", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange Devanagari with combining marks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // "नमस्ते" (Namaste in Devanagari) - 5 display columns with zero-width combining marks
+    try eb.insertText("Say नमस्ते ok");
+
+    var buffer: [100]u8 = undefined;
+    // "Say " = 4 cols (0-3), "नमस्ते" = 5 cols (4-8), " " = col 9
+    const len = try eb.getTextRange(4, 9, &buffer);
+    try std.testing.expectEqualStrings("नमस्ते", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange CJK characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // "你好" (Hello in Chinese) - each character is 2 cols wide
+    try eb.insertText("Say 你好 end");
+
+    var buffer: [100]u8 = undefined;
+    // "Say " = 4 cols, 你 = 2 cols, 好 = 2 cols
+    const len = try eb.getTextRange(4, 8, &buffer);
+    try std.testing.expectEqualStrings("你好", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange single CJK character" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("A 日 B");
+
+    var buffer: [100]u8 = undefined;
+    // "A " = 2 cols, 日 = 2 cols at offset 2-4
+    const len = try eb.getTextRange(2, 4, &buffer);
+    try std.testing.expectEqualStrings("日", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange across lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\nWorld");
+
+    var buffer: [100]u8 = undefined;
+    // "Hello" = 5 cols, newline = 1 weight, "Wo" = 2 cols
+    const len = try eb.getTextRange(3, 8, &buffer);
+    try std.testing.expectEqualStrings("lo\nWo", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange with tabs" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("A\tB");
+
+    var buffer: [100]u8 = undefined;
+    // Should include the tab character
+    const len = try eb.getTextRange(0, 10, &buffer);
+    try std.testing.expectEqualStrings("A\tB", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange partial grapheme snap to start" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // CJK character is 2 cols wide
+    try eb.insertText("A 好 B");
+
+    var buffer: [100]u8 = undefined;
+    // Try to get range starting at middle of 好 (offset 3), should snap to start (offset 2)
+    const len = try eb.getTextRange(3, 5, &buffer);
+    try std.testing.expectEqualStrings("好 ", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange partial grapheme snap to end" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // CJK character is 2 cols wide
+    try eb.insertText("A 好 B");
+
+    var buffer: [100]u8 = undefined;
+    // Try to get range ending at middle of 好 (offset 3), should snap to end (offset 4)
+    const len = try eb.getTextRange(0, 3, &buffer);
+    try std.testing.expectEqualStrings("A 好", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange empty range" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+
+    var buffer: [100]u8 = undefined;
+    const len = try eb.getTextRange(5, 5, &buffer);
+    try std.testing.expectEqual(@as(usize, 0), len);
+}
+
+test "EditBuffer - getTextRange out of bounds" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello");
+
+    var buffer: [100]u8 = undefined;
+    const len = try eb.getTextRange(0, 1000, &buffer);
+    try std.testing.expectEqualStrings("Hello", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange mixed scripts" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    // Mix of ASCII, emoji, CJK, Devanagari
+    try eb.insertText("Hi 👋 世界 नमस्ते");
+
+    var buffer: [100]u8 = undefined;
+    // Get everything
+    const total_len = try eb.getTextRange(0, 100, &buffer);
+    try std.testing.expectEqualStrings("Hi 👋 世界 नमस्ते", buffer[0..total_len]);
+
+    // Get just the emoji
+    const emoji_len = try eb.getTextRange(3, 5, &buffer);
+    try std.testing.expectEqualStrings("👋", buffer[0..emoji_len]);
+
+    // Get the CJK part: "Hi " = 3, "👋 " = 3, "世界" = 4 (cols 6-10)
+    const cjk_len = try eb.getTextRange(6, 10, &buffer);
+    try std.testing.expectEqualStrings("世界", buffer[0..cjk_len]);
+}
+
+test "EditBuffer - getTextRange before cursor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 5);
+
+    const cursor = eb.getCursor(0).?;
+    var buffer: [100]u8 = undefined;
+
+    // Get text before cursor
+    const len = try eb.getTextRange(0, cursor.offset, &buffer);
+    try std.testing.expectEqualStrings("Hello", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange char before cursor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hello World");
+    try eb.setCursor(0, 5);
+
+    const cursor = eb.getCursor(0).?;
+    var buffer: [100]u8 = undefined;
+
+    // Get last char before cursor (if cursor > 0)
+    if (cursor.offset > 0) {
+        const prev_width = iter_mod.getPrevGraphemeWidth(&eb.tb.rope, &eb.tb.mem_registry, cursor.row, cursor.col, eb.tb.tab_width);
+        const len = try eb.getTextRange(cursor.offset - prev_width, cursor.offset, &buffer);
+        try std.testing.expectEqualStrings("o", buffer[0..len]);
+    }
+}
+
+test "EditBuffer - getTextRange emoji before cursor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Hi 👋");
+    try eb.setCursor(0, 5); // After emoji
+
+    const cursor = eb.getCursor(0).?;
+    var buffer: [100]u8 = undefined;
+
+    // Get emoji before cursor
+    const prev_width = iter_mod.getPrevGraphemeWidth(&eb.tb.rope, &eb.tb.mem_registry, cursor.row, cursor.col, eb.tb.tab_width);
+    const len = try eb.getTextRange(cursor.offset - prev_width, cursor.offset, &buffer);
+    try std.testing.expectEqualStrings("👋", buffer[0..len]);
+}
+
+test "EditBuffer - getTextRange multiline with emojis" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    try eb.insertText("Line1 👋\nLine2 🎉\nLine3");
+
+    var buffer: [100]u8 = undefined;
+    // Get across all lines
+    const len = try eb.getTextRange(0, 100, &buffer);
+    try std.testing.expectEqualStrings("Line1 👋\nLine2 🎉\nLine3", buffer[0..len]);
+}
