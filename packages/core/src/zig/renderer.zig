@@ -40,6 +40,32 @@ pub const DebugOverlayCorner = enum {
     bottomRight,
 };
 
+const StdoutWriter = union(enum) {
+    real: std.io.BufferedWriter(4096, std.fs.File.Writer),
+    null: void,
+
+    pub fn writer(self: *StdoutWriter) Writer {
+        return .{ .context = self };
+    }
+
+    pub fn flush(self: *StdoutWriter) !void {
+        switch (self.*) {
+            .real => |*w| try w.flush(),
+            .null => {},
+        }
+    }
+
+    const WriteError = std.fs.File.WriteError;
+    const Writer = std.io.Writer(*StdoutWriter, WriteError, write);
+
+    fn write(self: *StdoutWriter, data: []const u8) WriteError!usize {
+        switch (self.*) {
+            .real => |*w| return w.writer().write(data),
+            .null => return data.len,
+        }
+    }
+};
+
 pub const CliRenderer = struct {
     width: u32,
     height: u32,
@@ -80,7 +106,7 @@ pub const CliRenderer = struct {
     lastRenderTime: i64,
     allocator: Allocator,
     renderThread: ?std.Thread = null,
-    stdoutWriter: std.io.BufferedWriter(4096, std.io.AnyWriter),
+    stdoutWriter: StdoutWriter,
     debugOverlay: struct {
         enabled: bool,
         corner: DebugOverlayCorner,
@@ -137,12 +163,9 @@ pub const CliRenderer = struct {
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" }, graphemes_data, display_width);
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" }, graphemes_data, display_width);
 
-        const stdoutWriter = if (testing) blk: {
-            // In testing mode, use null_writer to discard output
-            break :blk std.io.BufferedWriter(4096, std.io.AnyWriter){ .unbuffered_writer = std.io.null_writer.any() };
-        } else blk: {
+        const stdoutWriter: StdoutWriter = if (testing) .{ .null = {} } else blk: {
             const stdout = std.io.getStdOut();
-            break :blk std.io.BufferedWriter(4096, std.io.AnyWriter){ .unbuffered_writer = stdout.writer().any() };
+            break :blk .{ .real = std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() } };
         };
 
         // stat sample arrays
