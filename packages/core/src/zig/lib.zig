@@ -1099,6 +1099,11 @@ export fn textBufferGetHighlightCount(tb: *text_buffer.UnifiedTextBuffer) u32 {
     return tb.getHighlightCount();
 }
 
+export fn textBufferGetTextRange(tb: *text_buffer.UnifiedTextBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const outBuffer = outPtr[0..maxLen];
+    return tb.getTextRange(start_offset, end_offset, outBuffer);
+}
+
 // SyntaxStyle functions
 export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
     return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {

@@ -753,21 +753,6 @@ pub const EditBuffer = struct {
     /// - end_offset includes graphemes that start before it
     /// Returns number of bytes written to out_buffer
     pub fn getTextRange(self: *EditBuffer, start_offset: u32, end_offset: u32, out_buffer: []u8) !usize {
-        if (start_offset >= end_offset) return 0;
-        if (out_buffer.len == 0) return 0;
-
-        const total_weight = self.tb.rope.totalWeight();
-        if (start_offset >= total_weight) return 0;
-
-        const clamped_end = @min(end_offset, total_weight);
-
-        return iter_mod.extractTextBetweenOffsets(
-            &self.tb.rope,
-            &self.tb.mem_registry,
-            self.tb.tab_width,
-            start_offset,
-            clamped_end,
-            out_buffer,
-        );
+        return self.tb.getTextRange(start_offset, end_offset, out_buffer);
     }
 };

@@ -396,6 +396,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "u32",
     },
+    textBufferGetTextRange: {
+      args: ["ptr", "u32", "u32", "ptr", "usize"],
+      returns: "usize",
+    },
 
     // TextBufferView functions
     createTextBufferView: {
@@ -1135,6 +1139,12 @@ export interface RenderLib {
   textBufferSetTabWidth: (buffer: Pointer, width: number) => void
   textBufferGetLineCount: (buffer: Pointer) => number
   getPlainTextBytes: (buffer: Pointer, maxLength: number) => Uint8Array | null
+  textBufferGetTextRange: (
+    buffer: Pointer,
+    startOffset: number,
+    endOffset: number,
+    maxLength: number,
+  ) => Uint8Array | null
 
   // TextBufferView methods
   createTextBufferView: (textBuffer: Pointer) => Pointer
@@ -1932,6 +1942,31 @@ class FFIRenderLib implements RenderLib {
     }
 
     return outBuffer.slice(0, actualLen)
+  }
+
+  public textBufferGetTextRange(
+    buffer: Pointer,
+    startOffset: number,
+    endOffset: number,
+    maxLength: number,
+  ): Uint8Array | null {
+    const outBuffer = new Uint8Array(maxLength)
+
+    const actualLen = this.opentui.symbols.textBufferGetTextRange(
+      buffer,
+      startOffset,
+      endOffset,
+      ptr(outBuffer),
+      maxLength,
+    )
+
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+
+    if (len === 0) {
+      return null
+    }
+
+    return outBuffer.slice(0, len)
   }
 
   // TextBufferView methods
