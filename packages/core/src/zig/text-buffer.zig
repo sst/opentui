@@ -235,7 +235,10 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn measureText(self: *const Self, text: []const u8) u32 {
-        return gwidth.gwidth(text, self.width_method, &self.display_width);
+        // For grapheme-accurate width calculation (used by highlighting system),
+        // use utf8.calculateTextWidth which properly handles grapheme clusters
+        const is_ascii = utf8.isAsciiOnly(text);
+        return utf8.calculateTextWidth(text, self.tab_width, is_ascii);
     }
 
     /// Clear the text content without resetting arena or memory registry.
@@ -964,5 +967,36 @@ pub const UnifiedTextBuffer = struct {
         };
         logger.debug("Rope structure: {s}", .{rope_text});
         logger.debug("=== End Rope Debug ===", .{});
+    }
+
+    /// Get text within a range of display-width offsets
+    /// Automatically snaps to grapheme boundaries:
+    /// Returns number of bytes written to out_buffer
+    pub fn getTextRange(self: *const Self, start_offset: u32, end_offset: u32, out_buffer: []u8) usize {
+        if (start_offset >= end_offset) return 0;
+        if (out_buffer.len == 0) return 0;
+
+        const total_weight = self.rope.totalWeight();
+        if (start_offset >= total_weight) return 0;
+
+        const clamped_end = @min(end_offset, total_weight);
+
+        return iter_mod.extractTextBetweenOffsets(
+            &self.rope,
+            &self.mem_registry,
+            self.tab_width,
+            start_offset,
+            clamped_end,
+            out_buffer,
+        );
+    }
+
+    /// Get text within a range specified by row/col coordinates
+    /// Automatically snaps to grapheme boundaries:
+    /// Returns number of bytes written to out_buffer
+    pub fn getTextRangeByCoords(self: *Self, start_row: u32, start_col: u32, end_row: u32, end_col: u32, out_buffer: []u8) usize {
+        const start_offset = iter_mod.coordsToOffset(&self.rope, start_row, start_col) orelse return 0;
+        const end_offset = iter_mod.coordsToOffset(&self.rope, end_row, end_col) orelse return 0;
+        return self.getTextRange(start_offset, end_offset, out_buffer);
     }
 };

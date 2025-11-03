@@ -250,7 +250,14 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const pos = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
                 if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
-                return utf8.getWidthAt(bytes, pos.byte_offset, tab_width);
+                const grapheme_start_col = pos.columns_used;
+                const width = utf8.getWidthAt(bytes, pos.byte_offset, tab_width);
+
+                // Calculate remaining width: if cursor is in the middle of a wide grapheme,
+                // return only the remaining columns to reach the end of the grapheme
+                const grapheme_end_col = grapheme_start_col + width;
+                const remaining_width = grapheme_end_col - local_col;
+                return remaining_width;
             }
             cols_before = next_cols;
         }
@@ -290,6 +297,21 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;
                 const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
+
+                const grapheme_start_col = here.columns_used;
+                const offset_into_grapheme = local_col - grapheme_start_col;
+
+                if (offset_into_grapheme > 0) {
+                    // We need to jump back: offset_into_grapheme + width of previous grapheme
+                    const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
+                    if (prev) |res| {
+                        const total_distance = offset_into_grapheme + res.width;
+                        return total_distance;
+                    }
+
+                    return offset_into_grapheme;
+                }
+
                 const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
                 if (prev) |res| return res.width;
                 return 0;
@@ -300,4 +322,119 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
         }
     }
     return 0;
+}
+
+/// Extract text between display-width offsets into a buffer
+/// Automatically snaps to grapheme boundaries:
+/// - start_offset excludes graphemes that start before it
+/// - end_offset includes graphemes that start before it
+/// Returns number of bytes written to out_buffer
+pub fn extractTextBetweenOffsets(
+    rope: *const UnifiedRope,
+    mem_registry: *const MemRegistry,
+    tab_width: u8,
+    start_offset: u32,
+    end_offset: u32,
+    out_buffer: []u8,
+) usize {
+    if (start_offset >= end_offset) return 0;
+    if (out_buffer.len == 0) return 0;
+
+    const line_count = rope.root.metrics().custom.linestart_count;
+
+    var out_index: usize = 0;
+    var char_offset: u32 = 0;
+
+    const Context = struct {
+        rope: *const UnifiedRope,
+        mem_registry: *const MemRegistry,
+        tab_width: u8,
+        out_buffer: []u8,
+        out_index: *usize,
+        char_offset: *u32,
+        start: u32,
+        end: u32,
+        line_count: u32,
+        line_had_content: bool = false,
+
+        fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
+            _ = line_idx;
+            _ = chunk_idx_in_line;
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+            const chunk_start_offset = ctx.char_offset.*;
+            const chunk_end_offset = chunk_start_offset + chunk.width;
+
+            // Skip chunk if it's entirely outside range
+            if (chunk_end_offset <= ctx.start or chunk_start_offset >= ctx.end) {
+                ctx.char_offset.* = chunk_end_offset;
+                return;
+            }
+
+            ctx.line_had_content = true;
+
+            const chunk_bytes = chunk.getBytes(ctx.mem_registry);
+            const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+
+            const local_start_col: u32 = if (ctx.start > chunk_start_offset) ctx.start - chunk_start_offset else 0;
+            const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width);
+
+            var byte_start: u32 = 0;
+            var byte_end: u32 = @intCast(chunk_bytes.len);
+
+            if (local_start_col > 0) {
+                const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false);
+                byte_start = start_result.byte_offset;
+            }
+
+            if (local_end_col < chunk.width) {
+                const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true);
+                byte_end = end_result.byte_offset;
+            }
+
+            if (byte_start < byte_end and byte_start < chunk_bytes.len) {
+                const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
+                const selected_bytes = chunk_bytes[byte_start..actual_end];
+                const copy_len = @min(selected_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
+
+                if (copy_len > 0) {
+                    @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], selected_bytes[0..copy_len]);
+                    ctx.out_index.* += copy_len;
+                }
+            }
+
+            ctx.char_offset.* = chunk_end_offset;
+        }
+
+        fn line_end_callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+            // Add newline if we had content and range extends beyond this line's newline
+            if (ctx.line_had_content and line_info.line_idx < ctx.line_count - 1 and ctx.char_offset.* + 1 < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
+                ctx.out_buffer[ctx.out_index.*] = '\n';
+                ctx.out_index.* += 1;
+            }
+
+            // Account for newline in char_offset
+            ctx.char_offset.* += 1;
+
+            ctx.line_had_content = false;
+        }
+    };
+
+    var ctx = Context{
+        .rope = rope,
+        .mem_registry = mem_registry,
+        .tab_width = tab_width,
+        .out_buffer = out_buffer,
+        .out_index = &out_index,
+        .char_offset = &char_offset,
+        .start = start_offset,
+        .end = end_offset,
+        .line_count = line_count,
+    };
+
+    walkLinesAndSegments(rope, &ctx, Context.segment_callback, Context.line_end_callback);
+
+    return out_index;
 }

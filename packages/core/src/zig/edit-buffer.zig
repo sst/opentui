@@ -35,6 +35,8 @@ pub const Cursor = struct {
     offset: u32 = 0, // Global display-width offset from buffer start
 };
 
+const CursorCoords = struct { row: u32, col: u32 };
+
 const AddBuffer = struct {
     mem_id: u8,
     ptr: [*]u8,
@@ -743,5 +745,21 @@ pub const EditBuffer = struct {
         const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, line_width) orelse cursor.offset;
 
         return .{ .row = cursor.row, .col = line_width, .desired_col = line_width, .offset = offset };
+    }
+
+    /// Get text within a range of display-width offsets
+    /// Automatically snaps to grapheme boundaries:
+    /// - start_offset excludes graphemes that start before it
+    /// - end_offset includes graphemes that start before it
+    /// Returns number of bytes written to out_buffer
+    pub fn getTextRange(self: *EditBuffer, start_offset: u32, end_offset: u32, out_buffer: []u8) !usize {
+        return self.tb.getTextRange(start_offset, end_offset, out_buffer);
+    }
+
+    /// Get text within a range specified by row/col coordinates
+    /// Automatically snaps to grapheme boundaries:
+    /// Returns number of bytes written to out_buffer
+    pub fn getTextRangeByCoords(self: *EditBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32, out_buffer: []u8) usize {
+        return self.tb.getTextRangeByCoords(start_row, start_col, end_row, end_col, out_buffer);
     }
 };

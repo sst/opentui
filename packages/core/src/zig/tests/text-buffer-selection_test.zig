@@ -649,8 +649,9 @@ test "Selection - wide emoji BEFORE selection start should be excluded" {
     try tb.setText("Hello 🌍 World");
 
     // Layout: H(0) e(1) l(2) l(3) o(4) space(5) 🌍(6-7) space(8) W(9) o(10) r(11) l(12) d(13)
-    // Select [7, 10) - should be " W" (space at col 8, W at col 9)
-    // Should NOT include emoji at cols 6-7 because it starts before col 7
+    // Select [7, 10) - starts at col 7 (second cell of emoji), ends at col 10
+    // When selection starts at second cell of width=2 grapheme, snap backward to include it
+    // So selection should include emoji (snaps to col 6), space, and W
     // Should NOT include 'o' at col 10 because selection is [7, 10) exclusive end
     view.setSelection(7, 10, null, null);
 
@@ -658,5 +659,80 @@ test "Selection - wide emoji BEFORE selection start should be excluded" {
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
 
-    try std.testing.expectEqualStrings(" W", text);
+    try std.testing.expectEqualStrings("🌍 W", text);
+}
+
+test "Selection - start at second cell of width=2 grapheme should snap backward to include it" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AB🌍CD");
+
+    view.setSelection(3, 5, null, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("🌍C", text);
+}
+
+test "Selection - end at first cell of width=2 grapheme should snap forward to include it" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AB🌍CD");
+
+    view.setSelection(1, 3, null, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("B🌍", text);
+}
+
+test "Selection - both boundaries at cells of width=2 graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("A🌍B🌎C");
+
+    view.setSelection(2, 5, null, null);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expectEqualStrings("🌍B🌎", text);
 }
