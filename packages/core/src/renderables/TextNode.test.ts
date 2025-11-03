@@ -589,6 +589,64 @@ describe("TextNodeRenderable", () => {
       expect(node.attributes).toBe(1)
     })
 
+    it("should apply default colors in fromString when not specified", () => {
+      const node = TextNodeRenderable.fromString("Test Text")
+
+      expect(node.children).toEqual(["Test Text"])
+      // Default fg: white (255, 255, 255, 255)
+      expect(node.fg?.r).toBe(1)
+      expect(node.fg?.g).toBe(1)
+      expect(node.fg?.b).toBe(1)
+      expect(node.fg?.a).toBe(1)
+      // Default bg: transparent black (0, 0, 0, 0)
+      expect(node.bg?.r).toBe(0)
+      expect(node.bg?.g).toBe(0)
+      expect(node.bg?.b).toBe(0)
+      expect(node.bg?.a).toBe(0)
+    })
+
+    it("should override default colors when explicitly provided in fromString", () => {
+      const node = TextNodeRenderable.fromString("Colored Text", {
+        fg: "#00ff00",
+        bg: "#0000ff",
+      })
+
+      expect(node.children).toEqual(["Colored Text"])
+      // Custom fg: green
+      expect(node.fg?.r).toBe(0)
+      expect(node.fg?.g).toBe(1)
+      expect(node.fg?.b).toBe(0)
+      // Custom bg: blue
+      expect(node.bg?.r).toBe(0)
+      expect(node.bg?.g).toBe(0)
+      expect(node.bg?.b).toBe(1)
+    })
+
+    it("should preserve CJK characters with default colors in fromString", () => {
+      const koreanText = "한글"
+      const chineseText = "中文"
+      const japaneseText = "テスト"
+
+      const koreanNode = TextNodeRenderable.fromString(koreanText)
+      const chineseNode = TextNodeRenderable.fromString(chineseText)
+      const japaneseNode = TextNodeRenderable.fromString(japaneseText)
+
+      // Verify text preserved
+      expect(koreanNode.children).toEqual([koreanText])
+      expect(chineseNode.children).toEqual([chineseText])
+      expect(japaneseNode.children).toEqual([japaneseText])
+
+      // Verify default colors applied (prevent CJK corruption)
+      expect(koreanNode.fg?.r).toBe(1) // white
+      expect(koreanNode.bg?.a).toBe(0) // transparent
+
+      expect(chineseNode.fg?.r).toBe(1) // white
+      expect(chineseNode.bg?.a).toBe(0) // transparent
+
+      expect(japaneseNode.fg?.r).toBe(1) // white
+      expect(japaneseNode.bg?.a).toBe(0) // transparent
+    })
+
     it("should create TextNode from nodes using fromNodes", () => {
       const child1 = new TextNodeRenderable({})
       const child2 = new TextNodeRenderable({})
