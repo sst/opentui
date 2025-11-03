@@ -299,6 +299,56 @@ describe("TreeSitterClient", () => {
     expect(client.getAllBuffers()).toHaveLength(0)
   })
 
+  test("should handle Devanagari characters and highlight ranges after them correctly", async () => {
+    await client.initialize()
+
+    const jsCode = 'const greeting = "नमस्ते";\nconst x = 42;'
+    const result = await client.highlightOnce(jsCode, "javascript")
+
+    expect(result.highlights).toBeDefined()
+    expect(result.highlights!.length).toBeGreaterThan(0)
+
+    const keywordHighlights = result.highlights!.filter((hl) => hl[2] === "keyword")
+    expect(keywordHighlights.length).toBeGreaterThanOrEqual(2)
+
+    const constHighlights = keywordHighlights.filter((hl) => {
+      const text = jsCode.substring(hl[0], hl[1])
+      return text === "const"
+    })
+
+    expect(constHighlights).toHaveLength(2)
+
+    const firstConst = constHighlights[0]
+    const secondConst = constHighlights[1]
+
+    expect(jsCode.substring(firstConst[0], firstConst[1])).toBe("const")
+    expect(jsCode.substring(secondConst[0], secondConst[1])).toBe("const")
+
+    expect(firstConst[0]).toBe(0)
+    expect(firstConst[1]).toBe(5)
+
+    expect(secondConst[0]).toBeGreaterThan(firstConst[1])
+    const textBetween = jsCode.substring(firstConst[1], secondConst[0])
+    expect(textBetween).toContain("नमस्ते")
+
+    const numberHighlight = result.highlights!.find((hl) => {
+      const text = jsCode.substring(hl[0], hl[1])
+      return text === "42" && hl[2] === "number"
+    })
+
+    expect(numberHighlight).toBeDefined()
+    if (numberHighlight) {
+      const [start, end] = numberHighlight
+      const actualText = jsCode.substring(start, end)
+      expect(actualText).toBe("42")
+
+      const secondLine = jsCode.split("\n")[1]
+      const secondLineStart = jsCode.indexOf(secondLine)
+      const expectedStart = secondLineStart + secondLine.indexOf("42")
+      expect(start).toBe(expectedStart)
+    }
+  })
+
   test("should support local file paths for parser configuration", async () => {
     const testQueryPath = join(dataPath, "test-highlights.scm")
     const simpleQuery = "(identifier) @variable"
