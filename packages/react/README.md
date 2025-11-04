@@ -379,7 +379,7 @@ const codeExample = `function hello() {
 
 function App() {
   return (
-    <box title="Interactive Editor" style={{ border: true, flexGrow: 1 }}>
+    <box style={{ border: true, flexGrow: 1 }}>
       <code content={codeExample} filetype="javascript" syntaxStyle={syntaxStyle} />
     </box>
   )
