@@ -68,6 +68,7 @@ export interface CliRendererConfig {
   experimental_splitHeight?: number
   useKittyKeyboard?: boolean
   backgroundColor?: ColorInput
+  openConsoleOnError?: boolean
 }
 
 export type PixelResolution = {
@@ -315,11 +316,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
+  private _openConsoleOnError: boolean = true
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
 
-    if (process.env.NODE_ENV !== "production") {
+    if (this._openConsoleOnError) {
       this.console.show()
     }
   }).bind(this)
@@ -428,6 +430,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
+    this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
 
     this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
