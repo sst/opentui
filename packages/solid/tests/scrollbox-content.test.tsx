@@ -271,16 +271,14 @@ world
     await testSetup.renderOnce()
 
     // Resolve highlighting for all code elements
-    for (let i = 0; i < 50; i++) {
-      mockTreeSitterClient.resolveHighlightOnce()
-    }
+    mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
     // Scroll to bottom
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
-      await testSetup.renderOnce()
     }
+    await testSetup.renderOnce()
 
     const frame = testSetup.captureCharFrame()
 

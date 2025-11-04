@@ -260,9 +260,7 @@ world
     }
 
     // Resolve highlighting for all code elements
-    for (let i = 0; i < 100; i++) {
-      mockTreeSitterClient.resolveHighlightOnce()
-    }
+    mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
     await renderOnce()
@@ -337,9 +335,7 @@ world
     }
 
     // Resolve highlighting for all code elements
-    for (let i = 0; i < 50; i++) {
-      mockTreeSitterClient.resolveHighlightOnce()
-    }
+    mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
     await renderOnce()

@@ -2,11 +2,10 @@ import { TreeSitterClient } from "../lib/tree-sitter"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
 
 export class MockTreeSitterClient extends TreeSitterClient {
-  private _highlightOnceResolver:
-    | ((result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void)
-    | null = null
-  private _highlightOncePromise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> | null =
-    null
+  private _highlightPromises: Array<{
+    promise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }>
+    resolve: (result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void
+  }> = []
   private _mockResult: { highlights?: SimpleHighlight[]; warning?: string; error?: string } = { highlights: [] }
 
   constructor() {
@@ -17,26 +16,36 @@ export class MockTreeSitterClient extends TreeSitterClient {
     content: string,
     filetype: string,
   ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
-    this._highlightOncePromise = new Promise((resolve) => {
-      this._highlightOnceResolver = resolve
-    })
+    const { promise, resolve } = Promise.withResolvers<{
+      highlights?: SimpleHighlight[]
+      warning?: string
+      error?: string
+    }>()
 
-    return this._highlightOncePromise
+    this._highlightPromises.push({ promise, resolve })
+
+    return promise
   }
 
   setMockResult(result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) {
     this._mockResult = result
   }
 
-  resolveHighlightOnce() {
-    if (this._highlightOnceResolver) {
-      this._highlightOnceResolver(this._mockResult)
-      this._highlightOnceResolver = null
-      this._highlightOncePromise = null
+  resolveHighlightOnce(index: number = 0) {
+    if (index >= 0 && index < this._highlightPromises.length) {
+      this._highlightPromises[index].resolve(this._mockResult)
+      this._highlightPromises.splice(index, 1)
     }
   }
 
+  resolveAllHighlightOnce() {
+    for (const { resolve } of this._highlightPromises) {
+      resolve(this._mockResult)
+    }
+    this._highlightPromises = []
+  }
+
   isHighlighting(): boolean {
-    return this._highlightOncePromise !== null
+    return this._highlightPromises.length > 0
   }
 }

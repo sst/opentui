@@ -101,6 +101,17 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get treeSitterClient(): TreeSitterClient {
+    return this._treeSitterClient
+  }
+
+  set treeSitterClient(value: TreeSitterClient) {
+    if (this._treeSitterClient !== value) {
+      this._treeSitterClient = value
+      this.scheduleUpdate()
+    }
+  }
+
   private scheduleUpdate(): void {
     if (this._pendingUpdate) return
     this._pendingUpdate = true

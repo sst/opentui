@@ -111,12 +111,12 @@ test("CodeRenderable - re-highlighting when content changes during active highli
   expect(codeRenderable.content).toBe("let newMessage = 'world';")
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
 
   expect(mockClient.isHighlighting()).toBe(false)
 })
@@ -147,13 +147,13 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
   expect(codeRenderable.content).toBe("final content")
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
 
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
 
   expect(mockClient.isHighlighting()).toBe(false)
 })
@@ -241,7 +241,7 @@ test("CodeRenderable - empty content does not trigger highlighting", async () =>
     conceal: false,
   })
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await renderOnce()
 
   await new Promise((resolve) => setTimeout(resolve, 10))
@@ -289,7 +289,7 @@ test("CodeRenderable - text renders immediately before highlighting completes", 
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting).toMatchSnapshot("text visible before highlighting completes")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -325,7 +325,7 @@ test("CodeRenderable - batch concurrent content and filetype updates", async () 
     conceal: false,
   })
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   highlightCount = 0
@@ -335,10 +335,8 @@ test("CodeRenderable - batch concurrent content and filetype updates", async () 
 
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  while (mockClient.isHighlighting()) {
-    mockClient.resolveHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(highlightCount).toBe(1)
   expect(codeRenderable.content).toBe("let newMessage = 'world';")
@@ -372,7 +370,7 @@ test("CodeRenderable - only call highlightOnce once when triple-updating in same
     conceal: false,
   })
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   highlightCount = 0
@@ -384,10 +382,8 @@ test("CodeRenderable - only call highlightOnce once when triple-updating in same
 
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  while (mockClient.isHighlighting()) {
-    mockClient.resolveHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(highlightCount).toBe(1)
   expect(highlightCalls[0]?.content).toBe("second content change")
@@ -561,7 +557,7 @@ test("CodeRenderable - concealment setting is passed to treeSitterToStyledText",
 
   expect(codeRenderable.conceal).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -587,7 +583,7 @@ test("CodeRenderable - conceal property can be updated dynamically", async () =>
 
   expect(codeRenderable.conceal).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   codeRenderable.conceal = false
@@ -597,7 +593,7 @@ test("CodeRenderable - conceal property can be updated dynamically", async () =>
   await new Promise((resolve) => queueMicrotask(resolve))
 
   expect(mockClient.isHighlighting()).toBe(true)
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 })
 
@@ -662,7 +658,7 @@ test("CodeRenderable - with drawUnstyledText=true, text renders before highlight
 
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -701,7 +697,7 @@ test("CodeRenderable - with drawUnstyledText=false, text does not render before 
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting.trim()).toBe("")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -736,7 +732,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
   await renderOnce()
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   codeRenderable.drawUnstyledText = true
@@ -747,7 +743,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
   // The update triggers another highlight
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -774,7 +770,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from true to 
 
   expect(codeRenderable.drawUnstyledText).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   codeRenderable.drawUnstyledText = false
@@ -784,7 +780,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from true to 
   await new Promise((resolve) => queueMicrotask(resolve))
 
   expect(mockClient.isHighlighting()).toBe(true)
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 })
 
@@ -881,7 +877,7 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   const frameAfterUpdate = captureFrame()
   expect(frameAfterUpdate.trim()).toBe("")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
