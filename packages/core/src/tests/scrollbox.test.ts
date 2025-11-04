@@ -185,21 +185,10 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
   })
 })
 
-/**
- * Tests for scrollbox content visibility bug with CodeRenderable.
- *
- * BUG DESCRIPTION:
- * When adding many CodeRenderable elements to a scrollbox and scrolling to the bottom,
- * the scrollbox content disappears (becomes blank) while surrounding content remains visible.
- *
- * The bug is specific to CodeRenderable - TextRenderable works fine (see control test).
- * This is a core-level issue, not specific to any framework (Solid/React/Vue).
- */
-describe("ScrollBoxRenderable - Content Visibility Bug", () => {
-  test("should show content after adding many Code elements and scrolling", async () => {
+describe("ScrollBoxRenderable - Content Visibility", () => {
+  test("maintains visibility when scrolling with many Code elements", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
 
-    // Create parent box with header, scrollbox, and footer
     const parent = new BoxRenderable(testRenderer, {
       flexDirection: "column",
       gap: 1,
@@ -222,13 +211,11 @@ describe("ScrollBoxRenderable - Content Visibility Bug", () => {
     parent.add(footer)
     testRenderer.root.add(parent)
 
-    // Initial render
     await renderOnce()
     const initialFrame = captureCharFrame()
     expect(initialFrame).toContain("Header Content")
     expect(initialFrame).toContain("Footer Content")
 
-    // Add many code elements
     const codeContent = `
 # HELLO
 
@@ -259,24 +246,19 @@ world
       scrollBox.add(wrapper)
     }
 
-    // Resolve highlighting for all code elements
     mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
     await renderOnce()
 
-    // Scroll to bottom
     scrollBox.scrollTo(scrollBox.scrollHeight)
     await renderOnce()
 
-    // Capture frame after scrolling
     const frameAfterScroll = captureCharFrame()
 
-    // BUG: Content should be visible but may disappear
     expect(frameAfterScroll).toContain("Header Content")
     expect(frameAfterScroll).toContain("Footer Content")
 
-    // Check if code content is visible
     const hasCodeContent =
       frameAfterScroll.includes("HELLO") ||
       frameAfterScroll.includes("world") ||
@@ -285,12 +267,11 @@ world
 
     expect(hasCodeContent).toBe(true)
 
-    // Frame should not be mostly blank
     const nonWhitespaceChars = frameAfterScroll.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(50)
   })
 
-  test("should show content after adding many simple Code elements (minimal repro)", async () => {
+  test("maintains visibility with simple Code elements", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
 
     const parent = new BoxRenderable(testRenderer, {
@@ -317,7 +298,6 @@ world
 
     await renderOnce()
 
-    // Add many code elements
     for (let i = 0; i < 50; i++) {
       const wrapper = new BoxRenderable(testRenderer, {
         marginTop: 1,
@@ -334,32 +314,27 @@ world
       scrollBox.add(wrapper)
     }
 
-    // Resolve highlighting for all code elements
     mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
     await renderOnce()
 
-    // Scroll to bottom
     scrollBox.scrollTo(scrollBox.scrollHeight)
     await renderOnce()
 
     const frame = captureCharFrame()
 
-    // Should have header and footer
     expect(frame).toContain("Header")
     expect(frame).toContain("Footer")
 
-    // BUG: Should have visible items in the scrollbox but they disappear
     const hasItems = /Item \d+/.test(frame)
     expect(hasItems).toBe(true)
 
-    // Should not be mostly blank
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(18)
   })
 
-  test("should show TextRenderable content (control test - should pass)", async () => {
+  test("maintains visibility with TextRenderable elements", async () => {
     const parent = new BoxRenderable(testRenderer, {
       flexDirection: "column",
       gap: 1,
@@ -384,7 +359,6 @@ world
 
     await renderOnce()
 
-    // Add many text elements (not Code elements)
     for (let i = 0; i < 50; i++) {
       const wrapper = new BoxRenderable(testRenderer, {
         marginTop: 1,
@@ -396,13 +370,11 @@ world
 
     await renderOnce()
 
-    // Scroll to bottom
     scrollBox.scrollTo(scrollBox.scrollHeight)
     await renderOnce()
 
     const frame = captureCharFrame()
 
-    // This should work fine with TextRenderable
     expect(frame).toContain("Header")
     expect(frame).toContain("Footer")
 

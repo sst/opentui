@@ -81,7 +81,7 @@ test("CodeRenderable - filetype updates", async () => {
   expect(codeRenderable.filetype).toBe("typescript")
 })
 
-test("CodeRenderable - re-highlighting when content changes during active highlighting", async () => {
+test("CodeRenderable - re-highlights when content changes during active highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -158,7 +158,7 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
   expect(mockClient.isHighlighting()).toBe(false)
 })
 
-test("CodeRenderable - fallback when no filetype provided", async () => {
+test("CodeRenderable - uses fallback rendering when no filetype provided", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -177,7 +177,7 @@ test("CodeRenderable - fallback when no filetype provided", async () => {
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
 })
 
-test("CodeRenderable - fallback when highlighting throws error", async () => {
+test("CodeRenderable - uses fallback rendering when highlighting throws error", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -204,7 +204,7 @@ test("CodeRenderable - fallback when highlighting throws error", async () => {
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
 })
 
-test("CodeRenderable - early return when content is empty", async () => {
+test("CodeRenderable - handles empty content", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -297,7 +297,7 @@ test("CodeRenderable - text renders immediately before highlighting completes", 
   expect(frameAfterHighlighting).toMatchSnapshot("text visible after highlighting completes")
 })
 
-test("CodeRenderable - batch concurrent content and filetype updates", async () => {
+test("CodeRenderable - batches concurrent content and filetype updates", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -343,7 +343,7 @@ test("CodeRenderable - batch concurrent content and filetype updates", async () 
   expect(codeRenderable.filetype).toBe("typescript")
 })
 
-test("CodeRenderable - only call highlightOnce once when triple-updating in same tick", async () => {
+test("CodeRenderable - batches multiple updates in same tick into single highlight", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -421,7 +421,7 @@ test("CodeRenderable - renders markdown with TypeScript injection correctly", as
   expect(codeRenderable.plainText).toContain("typescript")
 })
 
-test("CodeRenderable - handles when tree-sitter promise never resolves", async () => {
+test("CodeRenderable - continues highlighting after unresolved promise", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -531,7 +531,7 @@ test("CodeRenderable - concealment can be disabled explicitly", async () => {
   expect(codeRenderable.conceal).toBe(false)
 })
 
-test("CodeRenderable - concealment setting is passed to treeSitterToStyledText", async () => {
+test("CodeRenderable - applies concealment to styled text", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -564,7 +564,7 @@ test("CodeRenderable - concealment setting is passed to treeSitterToStyledText",
   expect(codeRenderable.content).toBe("const message = 'hello';")
 })
 
-test("CodeRenderable - conceal property can be updated dynamically", async () => {
+test("CodeRenderable - updating conceal triggers re-highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -706,7 +706,7 @@ test("CodeRenderable - with drawUnstyledText=false, text does not render before 
   expect(frameAfterHighlighting).toContain("const message")
 })
 
-test("CodeRenderable - drawUnstyledText can be updated dynamically from false to true", async () => {
+test("CodeRenderable - updating drawUnstyledText from false to true triggers re-highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -740,7 +740,6 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
 
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  // The update triggers another highlight
   expect(mockClient.isHighlighting()).toBe(true)
 
   mockClient.resolveHighlightOnce(0)
@@ -751,7 +750,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 })
 
-test("CodeRenderable - drawUnstyledText can be updated dynamically from true to false", async () => {
+test("CodeRenderable - updating drawUnstyledText from true to false triggers re-highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -784,7 +783,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from true to 
   await new Promise((resolve) => setTimeout(resolve, 10))
 })
 
-test("CodeRenderable - with drawUnstyledText=false, fallback is still used on error", async () => {
+test("CodeRenderable - uses fallback rendering on error even with drawUnstyledText=false", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -808,11 +807,9 @@ test("CodeRenderable - with drawUnstyledText=false, fallback is still used on er
 
   currentRenderer.root.add(codeRenderable)
 
-  // Wait for highlight to fail
   await new Promise((resolve) => setTimeout(resolve, 20))
   await renderOnce()
 
-  // Even with drawUnstyledText=false, fallback is called on error and text is visible
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
 })
 

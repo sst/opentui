@@ -1,18 +1,3 @@
-/**
- * Tests for scrollbox content visibility bug.
- *
- * ISSUE: When adding many items to a scrollbox and scrolling to the bottom,
- * the content inside the scrollbox disappears (becomes blank) while the
- * surrounding content (header/footer) remains visible.
- *
- * This test suite reproduces the bug with various scenarios:
- * 1. Simple text content (passes - no bug)
- * 2. Code element with syntax highlighting (FAILS - reproduces bug)
- * 3. Large code blocks (FAILS - reproduces bug)
- *
- * The tests capture frames and verify content is not blank/missing.
- */
-
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal, createMemo, createEffect, For } from "solid-js"
@@ -38,7 +23,7 @@ describe("ScrollBox Content Visibility", () => {
     }
   })
 
-  it("should not have blank content after adding many items and scrolling", async () => {
+  it("maintains content visibility when adding many items and scrolling", async () => {
     const [count, setCount] = createSignal(0)
     const messages = createMemo(() => Array.from({ length: count() }, (_, i) => `Message ${i + 1}`))
 
@@ -70,35 +55,27 @@ describe("ScrollBox Content Visibility", () => {
       },
     )
 
-    // Render initial state (empty)
     await testSetup.renderOnce()
     const initialFrame = testSetup.captureCharFrame()
     expect(initialFrame).toContain("Header Content")
     expect(initialFrame).toContain("Footer Content")
 
-    // Add many items
     setCount(100)
     await testSetup.renderOnce()
 
-    // Scroll to bottom
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
       await testSetup.renderOnce()
     }
 
-    // Capture frame after scrolling
     const frameAfterScroll = testSetup.captureCharFrame()
 
-    // The issue: content disappears (frame is blank or missing expected content)
-    // Check that we still have visible content
     expect(frameAfterScroll).toContain("Header Content")
     expect(frameAfterScroll).toContain("Footer Content")
 
-    // Should show some messages (the ones that fit in the viewport)
     const hasMessageContent = /Message \d+/.test(frameAfterScroll)
     expect(hasMessageContent).toBe(true)
 
-    // Frame should not be mostly blank/empty
     const nonWhitespaceChars = frameAfterScroll.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(20)
   })
@@ -178,36 +155,27 @@ world
       },
     )
 
-    // Render initial state
     await testSetup.renderOnce()
     const initialFrame = testSetup.captureCharFrame()
     expect(initialFrame).toContain("Some visual content")
 
-    // Add many code blocks - exactly as in tmp.tsx
     setCount(100)
     await testSetup.renderOnce()
 
-    // Resolve highlighting for all code elements
     for (let i = 0; i < 100; i++) {
       mockTreeSitterClient.resolveHighlightOnce()
     }
     await new Promise((resolve) => setTimeout(resolve, 1))
 
-    // Scroll to bottom - with a small delay as in tmp.tsx
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
       await testSetup.renderOnce()
     }
 
-    // Capture frame after scrolling
     const frameAfterScroll = testSetup.captureCharFrame()
 
-    // Check that header/footer are still visible
     expect(frameAfterScroll).toContain("Some visual content")
 
-    // BUG: The scrollbox content should be visible but it's not!
-    // After adding 100 items and scrolling to bottom, the scrollbox area is blank.
-    // This test demonstrates the disappearing content issue.
     const hasCodeContent =
       frameAfterScroll.includes("HELLO") ||
       frameAfterScroll.includes("world") ||
@@ -215,17 +183,13 @@ world
       frameAfterScroll.includes("```") ||
       frameAfterScroll.includes("class=")
 
-    // This should pass but fails due to the bug
     expect(hasCodeContent).toBe(true)
 
-    // The scrollbox should not be completely blank
-    // Count non-whitespace characters - should have more than just header/footer
     const nonWhitespaceChars = frameAfterScroll.replace(/\s/g, "").length
-    // Just header + footer is ~35 chars, so we expect much more with content
     expect(nonWhitespaceChars).toBeGreaterThan(50)
   })
 
-  it("should show scrollbox content after adding many items with code element (MINIMAL REPRO)", async () => {
+  it("maintains visibility with many Code elements", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
     const [count, setCount] = createSignal(0)
 
@@ -263,18 +227,14 @@ world
       },
     )
 
-    // Initial render
     await testSetup.renderOnce()
 
-    // Add many items
     setCount(50)
     await testSetup.renderOnce()
 
-    // Resolve highlighting for all code elements
     mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
-    // Scroll to bottom
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
     }
@@ -282,15 +242,12 @@ world
 
     const frame = testSetup.captureCharFrame()
 
-    // Should have header and footer
     expect(frame).toContain("Header")
     expect(frame).toContain("Footer")
 
-    // BUG: Should have visible items in the scrollbox but they disappear
     const hasItems = /Item \d+/.test(frame)
     expect(hasItems).toBe(true)
 
-    // Should not be mostly blank
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(18)
   })
@@ -321,13 +278,11 @@ world
 
     await testSetup.renderOnce()
 
-    // Rapidly add items
     for (let i = 0; i < 50; i++) {
       setItems((prev) => [...prev, `Item ${i + 1}`])
     }
     await testSetup.renderOnce()
 
-    // Scroll to bottom
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
       await testSetup.renderOnce()
@@ -335,11 +290,9 @@ world
 
     const frame = testSetup.captureCharFrame()
 
-    // Should have visible content
     const hasItems = /Item \d+/.test(frame)
     expect(hasItems).toBe(true)
 
-    // Should not be blank
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(10)
   })
