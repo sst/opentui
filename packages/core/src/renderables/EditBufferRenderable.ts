@@ -3,7 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { EditBuffer, type LogicalCursor } from "../edit-buffer"
 import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { type RenderContext, type Highlight } from "../types"
+import type { RenderContext, Highlight, CursorStyleOptions } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { SyntaxStyle } from "../syntax-style"
@@ -28,6 +28,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   scrollMargin?: number
   showCursor?: boolean
   cursorColor?: string | RGBA
+  cursorStyle?: CursorStyleOptions
   syntaxStyle?: SyntaxStyle
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
@@ -48,6 +49,7 @@ export abstract class EditBufferRenderable extends Renderable {
   protected _scrollMargin: number = 0.2
   protected _showCursor: boolean = true
   protected _cursorColor: RGBA
+  protected _cursorStyle: CursorStyleOptions
   protected lastLocalSelection: LocalSelectionBounds | null = null
   protected _tabIndicator?: string | number
   protected _tabIndicatorColor?: RGBA
@@ -69,6 +71,10 @@ export abstract class EditBufferRenderable extends Renderable {
     scrollMargin: 0.2,
     showCursor: true,
     cursorColor: RGBA.fromValues(1, 1, 1, 1),
+    cursorStyle: {
+      style: "block",
+      blinking: true,
+    },
     tabIndicator: undefined,
     tabIndicatorColor: undefined,
   } satisfies Partial<EditBufferOptions>
@@ -86,6 +92,7 @@ export abstract class EditBufferRenderable extends Renderable {
     this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
     this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
     this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
+    this._cursorStyle = options.cursorStyle ?? this._defaultOptions.cursorStyle
     this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
     this._tabIndicatorColor = options.tabIndicatorColor
       ? parseColor(options.tabIndicatorColor)
@@ -260,7 +267,23 @@ export abstract class EditBufferRenderable extends Renderable {
     const newColor = parseColor(value)
     if (this._cursorColor !== newColor) {
       this._cursorColor = newColor
-      this.requestRender()
+      if (this._focused) {
+        this.requestRender()
+      }
+    }
+  }
+
+  get cursorStyle(): CursorStyleOptions {
+    return this._cursorStyle
+  }
+
+  set cursorStyle(style: CursorStyleOptions) {
+    const newStyle = style
+    if (this.cursorStyle.style !== newStyle.style || this.cursorStyle.blinking !== newStyle.blinking) {
+      this._cursorStyle = newStyle
+      if (this._focused) {
+        this.requestRender()
+      }
     }
   }
 
@@ -417,12 +440,12 @@ export abstract class EditBufferRenderable extends Renderable {
 
     this._ctx.setCursorPosition(cursorX, cursorY, true)
     this._ctx.setCursorColor(this._cursorColor)
-    this._ctx.setCursorStyle("block", true)
+    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
   }
 
   public focus(): void {
     super.focus()
-    this._ctx.setCursorStyle("block", true)
+    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
     this._ctx.setCursorColor(this._cursorColor)
     this.requestRender()
   }
