@@ -77,7 +77,18 @@ export type GetNonStyledProperties<TConstructor> =
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>
           ? NonStyledProps | "placeholder" | "value"
-          : NonStyledProps
+          : TConstructor extends RenderableConstructor<TextareaRenderable>
+            ? NonStyledProps | "placeholder" | "initialValue"
+            : TConstructor extends RenderableConstructor<CodeRenderable>
+              ?
+                  | NonStyledProps
+                  | "content"
+                  | "filetype"
+                  | "syntaxStyle"
+                  | "treeSitterClient"
+                  | "conceal"
+                  | "drawUnstyledText"
+              : NonStyledProps
 
 // ============================================================================
 // Component Props System
