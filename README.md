@@ -20,7 +20,7 @@ This monorepo contains the following packages:
 
 ## Install
 
-NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed on your system to build the packages.
+NOTE: You must have [Zig](https://ziglang.org/) installed on your system to build the packages.
 
 ### TypeScript/JavaScript
 
