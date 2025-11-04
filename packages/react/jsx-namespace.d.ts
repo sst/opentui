@@ -2,6 +2,7 @@ import type * as React from "react"
 import type {
   AsciiFontProps,
   BoxProps,
+  CodeProps,
   ExtendedIntrinsicElements,
   InputProps,
   LineBreakProps,
@@ -35,6 +36,7 @@ export namespace JSX {
     box: BoxProps
     text: TextProps
     span: SpanProps
+    code: CodeProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

@@ -1,6 +1,7 @@
 import {
   ASCIIFontRenderable,
   BoxRenderable,
+  CodeRenderable,
   InputRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
@@ -20,6 +21,7 @@ import {
 export const baseComponents = {
   box: BoxRenderable,
   text: TextRenderable,
+  code: CodeRenderable,
   input: InputRenderable,
   select: SelectRenderable,
   textarea: TextareaRenderable,
