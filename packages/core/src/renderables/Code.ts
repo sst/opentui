@@ -3,6 +3,7 @@ import { StyledText } from "../lib/styled-text"
 import { SyntaxStyle } from "../syntax-style"
 import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
+import type { OptimizedBuffer } from "../buffer"
 
 export interface CodeOptions extends TextBufferOptions {
   content?: string
@@ -24,6 +25,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _currentHighlightId: number = 0
   private _conceal: boolean
   private _drawUnstyledText: boolean
+  private _shouldRenderTextBuffer: boolean = true
 
   protected _contentDefaultOptions = {
     content: "",
@@ -99,6 +101,17 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get treeSitterClient(): TreeSitterClient {
+    return this._treeSitterClient
+  }
+
+  set treeSitterClient(value: TreeSitterClient) {
+    if (this._treeSitterClient !== value) {
+      this._treeSitterClient = value
+      this.scheduleUpdate()
+    }
+  }
+
   private scheduleUpdate(): void {
     if (this._pendingUpdate) return
     this._pendingUpdate = true
@@ -113,14 +126,16 @@ export class CodeRenderable extends TextBufferRenderable {
 
     if (!this._filetype) {
       this.fallback(content)
+      this._shouldRenderTextBuffer = true
       return
     }
 
     this._currentHighlightId++
     const highlightId = this._currentHighlightId
 
-    if (this._drawUnstyledText) {
-      this.fallback(content)
+    this.fallback(content)
+    if (!this._drawUnstyledText) {
+      this._shouldRenderTextBuffer = false
     }
 
     this._isHighlighting = true
@@ -144,6 +159,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
       if (this.isDestroyed) return
       this.textBuffer.setStyledText(styledText)
+      this._shouldRenderTextBuffer = true
       this.updateTextInfo()
     } catch (error) {
       if (highlightId !== this._currentHighlightId) {
@@ -151,6 +167,7 @@ export class CodeRenderable extends TextBufferRenderable {
       }
       console.warn("Code highlighting failed, falling back to plain text:", error)
       this.fallback(content)
+      this._shouldRenderTextBuffer = true
     } finally {
       if (highlightId === this._currentHighlightId) {
         this._isHighlighting = false
@@ -180,5 +197,10 @@ export class CodeRenderable extends TextBufferRenderable {
 
   public getLineHighlights(lineIdx: number) {
     return this.textBuffer.getLineHighlights(lineIdx)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    if (!this._shouldRenderTextBuffer) return
+    super.renderSelf(buffer)
   }
 }

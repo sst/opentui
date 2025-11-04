@@ -1,16 +1,27 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
+import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { BoxRenderable } from "../renderables/Box"
 import { TextRenderable } from "../renderables/Text"
+import { CodeRenderable } from "../renderables/Code"
 import { LinearScrollAccel, MacOSScrollAccel } from "../lib/scroll-acceleration"
+import { SyntaxStyle } from "../syntax-style"
 
 let testRenderer: TestRenderer
 let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
+let captureCharFrame: () => string
+let mockTreeSitterClient: MockTreeSitterClient
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer, mockMouse, renderOnce } = await createTestRenderer({ width: 80, height: 24 }))
+  ;({
+    renderer: testRenderer,
+    mockMouse,
+    renderOnce,
+    captureCharFrame,
+  } = await createTestRenderer({ width: 80, height: 24 }))
+  mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({ highlights: [] })
 })
 
 afterEach(() => {
@@ -124,7 +135,12 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
     const linearDistance = linearBox.scrollTop
 
     testRenderer.destroy()
-    ;({ renderer: testRenderer, mockMouse, renderOnce } = await createTestRenderer({ width: 80, height: 24 }))
+    ;({
+      renderer: testRenderer,
+      mockMouse,
+      renderOnce,
+      captureCharFrame,
+    } = await createTestRenderer({ width: 80, height: 24 }))
 
     const accelBox = new ScrollBoxRenderable(testRenderer, {
       width: 50,
@@ -166,5 +182,206 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
     const rapidScrollDistance = scrollBox.scrollTop
 
     expect(rapidScrollDistance).toBeGreaterThan(slowScrollDistance * 3)
+  })
+})
+
+describe("ScrollBoxRenderable - Content Visibility", () => {
+  test("maintains visibility when scrolling with many Code elements", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+
+    const parent = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 1,
+    })
+
+    const header = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    header.add(new TextRenderable(testRenderer, { content: "Header Content" }))
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      flexGrow: 1,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    const footer = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    footer.add(new TextRenderable(testRenderer, { content: "Footer Content" }))
+
+    parent.add(header)
+    parent.add(scrollBox)
+    parent.add(footer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+    const initialFrame = captureCharFrame()
+    expect(initialFrame).toContain("Header Content")
+    expect(initialFrame).toContain("Footer Content")
+
+    const codeContent = `
+# HELLO
+
+world
+
+## HELLO World
+
+\`\`\`html
+<div class="example">
+  <p>Content</p>
+</div>
+\`\`\`
+`
+
+    for (let i = 0; i < 100; i++) {
+      const wrapper = new BoxRenderable(testRenderer, {
+        marginTop: 2,
+        marginBottom: 2,
+      })
+      const code = new CodeRenderable(testRenderer, {
+        content: codeContent,
+        filetype: "markdown",
+        syntaxStyle,
+        drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
+      })
+      wrapper.add(code)
+      scrollBox.add(wrapper)
+    }
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+
+    await renderOnce()
+
+    scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    const frameAfterScroll = captureCharFrame()
+
+    expect(frameAfterScroll).toContain("Header Content")
+    expect(frameAfterScroll).toContain("Footer Content")
+
+    const hasCodeContent =
+      frameAfterScroll.includes("HELLO") ||
+      frameAfterScroll.includes("world") ||
+      frameAfterScroll.includes("<div") ||
+      frameAfterScroll.includes("```")
+
+    expect(hasCodeContent).toBe(true)
+
+    const nonWhitespaceChars = frameAfterScroll.replace(/\s/g, "").length
+    expect(nonWhitespaceChars).toBeGreaterThan(50)
+  })
+
+  test("maintains visibility with simple Code elements", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+
+    const parent = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 1,
+    })
+
+    const header = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    header.add(new TextRenderable(testRenderer, { content: "Header" }))
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      flexGrow: 1,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    const footer = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    footer.add(new TextRenderable(testRenderer, { content: "Footer" }))
+
+    parent.add(header)
+    parent.add(scrollBox)
+    parent.add(footer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    for (let i = 0; i < 50; i++) {
+      const wrapper = new BoxRenderable(testRenderer, {
+        marginTop: 1,
+        marginBottom: 1,
+      })
+      const code = new CodeRenderable(testRenderer, {
+        content: `Item ${i}`,
+        filetype: "markdown",
+        syntaxStyle,
+        drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
+      })
+      wrapper.add(code)
+      scrollBox.add(wrapper)
+    }
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+
+    await renderOnce()
+
+    scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    const frame = captureCharFrame()
+
+    expect(frame).toContain("Header")
+    expect(frame).toContain("Footer")
+
+    const hasItems = /Item \d+/.test(frame)
+    expect(hasItems).toBe(true)
+
+    const nonWhitespaceChars = frame.replace(/\s/g, "").length
+    expect(nonWhitespaceChars).toBeGreaterThan(18)
+  })
+
+  test("maintains visibility with TextRenderable elements", async () => {
+    const parent = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 1,
+    })
+
+    const header = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    header.add(new TextRenderable(testRenderer, { content: "Header" }))
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      flexGrow: 1,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    const footer = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    footer.add(new TextRenderable(testRenderer, { content: "Footer" }))
+
+    parent.add(header)
+    parent.add(scrollBox)
+    parent.add(footer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    for (let i = 0; i < 50; i++) {
+      const wrapper = new BoxRenderable(testRenderer, {
+        marginTop: 1,
+        marginBottom: 1,
+      })
+      wrapper.add(new TextRenderable(testRenderer, { content: `Item ${i}` }))
+      scrollBox.add(wrapper)
+    }
+
+    await renderOnce()
+
+    scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    const frame = captureCharFrame()
+
+    expect(frame).toContain("Header")
+    expect(frame).toContain("Footer")
+
+    const hasItems = /Item \d+/.test(frame)
+    expect(hasItems).toBe(true)
+
+    const nonWhitespaceChars = frame.replace(/\s/g, "").length
+    expect(nonWhitespaceChars).toBeGreaterThan(20)
   })
 })
