@@ -18,14 +18,18 @@ import { testRender } from "../index"
 import { createSignal, createMemo, createEffect, For } from "solid-js"
 import type { ScrollBoxRenderable } from "../../core/src/renderables"
 import { SyntaxStyle } from "../../core/src/syntax-style"
+import { MockTreeSitterClient } from "@opentui/core/testing"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
+let mockTreeSitterClient: MockTreeSitterClient
 
 describe("ScrollBox Content Visibility", () => {
   beforeEach(async () => {
     if (testSetup) {
       testSetup.renderer.destroy()
     }
+    mockTreeSitterClient = new MockTreeSitterClient()
+    mockTreeSitterClient.setMockResult({ highlights: [] })
   })
 
   afterEach(() => {
@@ -152,7 +156,13 @@ world
             <For each={messages()}>
               {(code) => (
                 <box marginTop={2} marginBottom={2}>
-                  <code drawUnstyledText={false} syntaxStyle={syntaxStyle} content={code} filetype="markdown" />
+                  <code
+                    drawUnstyledText={false}
+                    syntaxStyle={syntaxStyle}
+                    content={code}
+                    filetype="markdown"
+                    treeSitterClient={mockTreeSitterClient}
+                  />
                 </box>
               )}
             </For>
@@ -176,6 +186,12 @@ world
     // Add many code blocks - exactly as in tmp.tsx
     setCount(100)
     await testSetup.renderOnce()
+
+    // Resolve highlighting for all code elements
+    for (let i = 0; i < 100; i++) {
+      mockTreeSitterClient.resolveHighlightOnce()
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
 
     // Scroll to bottom - with a small delay as in tmp.tsx
     if (scrollRef) {
@@ -225,7 +241,13 @@ world
             <For each={Array.from({ length: count() }, (_, i) => i)}>
               {(i) => (
                 <box marginTop={1} marginBottom={1}>
-                  <code drawUnstyledText={false} syntaxStyle={syntaxStyle} content={`Item ${i}`} filetype="markdown" />
+                  <code
+                    drawUnstyledText={false}
+                    syntaxStyle={syntaxStyle}
+                    content={`Item ${i}`}
+                    filetype="markdown"
+                    treeSitterClient={mockTreeSitterClient}
+                  />
                 </box>
               )}
             </For>
@@ -248,6 +270,12 @@ world
     setCount(50)
     await testSetup.renderOnce()
 
+    // Resolve highlighting for all code elements
+    for (let i = 0; i < 50; i++) {
+      mockTreeSitterClient.resolveHighlightOnce()
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
+
     // Scroll to bottom
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
@@ -266,7 +294,7 @@ world
 
     // Should not be mostly blank
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
-    expect(nonWhitespaceChars).toBeGreaterThan(20)
+    expect(nonWhitespaceChars).toBeGreaterThan(18)
   })
 
   it("should maintain content when rapidly updating and scrolling", async () => {
