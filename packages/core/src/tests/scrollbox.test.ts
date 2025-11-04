@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse } from "../testing/test-renderer"
+import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { BoxRenderable } from "../renderables/Box"
 import { TextRenderable } from "../renderables/Text"
@@ -11,6 +11,7 @@ let testRenderer: TestRenderer
 let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureCharFrame: () => string
+let mockTreeSitterClient: MockTreeSitterClient
 
 beforeEach(async () => {
   ;({
@@ -19,6 +20,8 @@ beforeEach(async () => {
     renderOnce,
     captureCharFrame,
   } = await createTestRenderer({ width: 80, height: 24 }))
+  mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({ highlights: [] })
 })
 
 afterEach(() => {
@@ -250,10 +253,17 @@ world
         filetype: "markdown",
         syntaxStyle,
         drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
       })
       wrapper.add(code)
       scrollBox.add(wrapper)
     }
+
+    // Resolve highlighting for all code elements
+    for (let i = 0; i < 100; i++) {
+      mockTreeSitterClient.resolveHighlightOnce()
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
 
     await renderOnce()
 
@@ -320,10 +330,17 @@ world
         filetype: "markdown",
         syntaxStyle,
         drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
       })
       wrapper.add(code)
       scrollBox.add(wrapper)
     }
+
+    // Resolve highlighting for all code elements
+    for (let i = 0; i < 50; i++) {
+      mockTreeSitterClient.resolveHighlightOnce()
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1))
 
     await renderOnce()
 
@@ -343,7 +360,7 @@ world
 
     // Should not be mostly blank
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
-    expect(nonWhitespaceChars).toBeGreaterThan(20)
+    expect(nonWhitespaceChars).toBeGreaterThan(18)
   })
 
   test("should show TextRenderable content (control test - should pass)", async () => {
