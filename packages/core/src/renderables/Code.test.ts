@@ -2,49 +2,9 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { CodeRenderable } from "./Code"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { createTestRenderer, type TestRenderer, MockTreeSitterClient } from "../testing"
 import { TreeSitterClient } from "../lib/tree-sitter"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
-
-class MockTreeSitterClient extends TreeSitterClient {
-  private _highlightOnceResolver:
-    | ((result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void)
-    | null = null
-  private _highlightOncePromise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> | null =
-    null
-  private _mockResult: { highlights?: SimpleHighlight[]; warning?: string; error?: string } = { highlights: [] }
-
-  constructor() {
-    super({ dataPath: "/tmp/mock" })
-  }
-
-  async highlightOnce(
-    content: string,
-    filetype: string,
-  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
-    this._highlightOncePromise = new Promise((resolve) => {
-      this._highlightOnceResolver = resolve
-    })
-
-    return this._highlightOncePromise
-  }
-
-  setMockResult(result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) {
-    this._mockResult = result
-  }
-
-  resolveHighlightOnce() {
-    if (this._highlightOnceResolver) {
-      this._highlightOnceResolver(this._mockResult)
-      this._highlightOnceResolver = null
-      this._highlightOncePromise = null
-    }
-  }
-
-  isHighlighting(): boolean {
-    return this._highlightOncePromise !== null
-  }
-}
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -925,7 +885,6 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  
   expect(mockClient.isHighlighting()).toBe(false)
   expect(codeRenderable.plainText).toBe("let newMessage = 'world';")
   const frameAfterHighlighting = captureFrame()
