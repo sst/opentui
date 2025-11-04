@@ -17,6 +17,7 @@ export interface SelectRenderableOptions extends RenderableOptions<SelectRendera
   focusedBackgroundColor?: ColorInput
   focusedTextColor?: ColorInput
   options?: SelectOption[]
+  selectedIndex?: number
   selectedBackgroundColor?: ColorInput
   selectedTextColor?: ColorInput
   descriptionColor?: ColorInput
@@ -38,7 +39,7 @@ export class SelectRenderable extends Renderable {
   protected _focusable: boolean = true
 
   private _options: SelectOption[] = []
-  private selectedIndex: number = 0
+  private _selectedIndex: number = 0
   private scrollOffset: number = 0
   private maxVisibleItems: number
 
@@ -66,6 +67,7 @@ export class SelectRenderable extends Renderable {
     focusedTextColor: "#FFFFFF",
     selectedBackgroundColor: "#334455",
     selectedTextColor: "#FFFF00",
+    selectedIndex: 0,
     descriptionColor: "#888888",
     selectedDescriptionColor: "#CCCCCC",
     showScrollIndicator: false,
@@ -77,7 +79,7 @@ export class SelectRenderable extends Renderable {
 
   constructor(ctx: RenderContext, options: SelectRenderableOptions) {
     super(ctx, { ...options, buffered: true })
-
+    this._selectedIndex = options.selectedIndex || this._defaultOptions.selectedIndex
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)
     this._focusedBackgroundColor = parseColor(
@@ -141,7 +143,7 @@ export class SelectRenderable extends Renderable {
     for (let i = 0; i < visibleOptions.length; i++) {
       const actualIndex = this.scrollOffset + i
       const option = visibleOptions[i]
-      const isSelected = actualIndex === this.selectedIndex
+      const isSelected = actualIndex === this._selectedIndex
       const itemY = contentY + i * this.linesPerItem
 
       if (itemY + this.linesPerItem - 1 >= contentY + contentHeight) break
@@ -194,7 +196,7 @@ export class SelectRenderable extends Renderable {
   ): void {
     if (!this.frameBuffer) return
 
-    const scrollPercent = this.selectedIndex / Math.max(1, this._options.length - 1)
+    const scrollPercent = this._selectedIndex / Math.max(1, this._options.length - 1)
     const indicatorHeight = Math.max(1, contentHeight - 2)
     const indicatorY = contentY + 1 + Math.floor(scrollPercent * indicatorHeight)
     const indicatorX = contentX + contentWidth - 1
@@ -208,64 +210,64 @@ export class SelectRenderable extends Renderable {
 
   public set options(options: SelectOption[]) {
     this._options = options
-    this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, options.length - 1))
+    this._selectedIndex = Math.min(this._selectedIndex, Math.max(0, options.length - 1))
     this.updateScrollOffset()
     this.requestRender()
   }
 
   public getSelectedOption(): SelectOption | null {
-    return this._options[this.selectedIndex] || null
+    return this._options[this._selectedIndex] || null
   }
 
   public getSelectedIndex(): number {
-    return this.selectedIndex
+    return this._selectedIndex
   }
 
   public moveUp(steps: number = 1): void {
-    const newIndex = this.selectedIndex - steps
+    const newIndex = this._selectedIndex - steps
 
     if (newIndex >= 0) {
-      this.selectedIndex = newIndex
+      this._selectedIndex = newIndex
     } else if (this._wrapSelection && this._options.length > 0) {
-      this.selectedIndex = this._options.length - 1
+      this._selectedIndex = this._options.length - 1
     } else {
-      this.selectedIndex = 0
+      this._selectedIndex = 0
     }
 
     this.updateScrollOffset()
     this.requestRender()
-    this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+    this.emit(SelectRenderableEvents.SELECTION_CHANGED, this._selectedIndex, this.getSelectedOption())
   }
 
   public moveDown(steps: number = 1): void {
-    const newIndex = this.selectedIndex + steps
+    const newIndex = this._selectedIndex + steps
 
     if (newIndex < this._options.length) {
-      this.selectedIndex = newIndex
+      this._selectedIndex = newIndex
     } else if (this._wrapSelection && this._options.length > 0) {
-      this.selectedIndex = 0
+      this._selectedIndex = 0
     } else {
-      this.selectedIndex = this._options.length - 1
+      this._selectedIndex = this._options.length - 1
     }
 
     this.updateScrollOffset()
     this.requestRender()
-    this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+    this.emit(SelectRenderableEvents.SELECTION_CHANGED, this._selectedIndex, this.getSelectedOption())
   }
 
   public selectCurrent(): void {
     const selected = this.getSelectedOption()
     if (selected) {
-      this.emit(SelectRenderableEvents.ITEM_SELECTED, this.selectedIndex, selected)
+      this.emit(SelectRenderableEvents.ITEM_SELECTED, this._selectedIndex, selected)
     }
   }
 
   public setSelectedIndex(index: number): void {
     if (index >= 0 && index < this._options.length) {
-      this.selectedIndex = index
+      this._selectedIndex = index
       this.updateScrollOffset()
       this.requestRender()
-      this.emit(SelectRenderableEvents.SELECTION_CHANGED, this.selectedIndex, this.getSelectedOption())
+      this.emit(SelectRenderableEvents.SELECTION_CHANGED, this._selectedIndex, this.getSelectedOption())
     }
   }
 
@@ -275,7 +277,7 @@ export class SelectRenderable extends Renderable {
     const halfVisible = Math.floor(this.maxVisibleItems / 2)
     const newScrollOffset = Math.max(
       0,
-      Math.min(this.selectedIndex - halfVisible, this._options.length - this.maxVisibleItems),
+      Math.min(this._selectedIndex - halfVisible, this._options.length - this.maxVisibleItems),
     )
 
     if (newScrollOffset !== this.scrollOffset) {
@@ -448,5 +450,13 @@ export class SelectRenderable extends Renderable {
 
   public set fastScrollStep(step: number) {
     this._fastScrollStep = step
+  }
+
+  public set selectedIndex(value: number) {
+    const newIndex = value ?? this._defaultOptions.selectedIndex
+    if (this._selectedIndex !== newIndex) {
+      this._selectedIndex = newIndex
+      this.requestRender()
+    }
   }
 }
