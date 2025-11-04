@@ -5,6 +5,7 @@ import {
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
+  TextareaRenderable,
   TextRenderable,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/components"
@@ -21,6 +22,7 @@ export const baseComponents = {
   text: TextRenderable,
   input: InputRenderable,
   select: SelectRenderable,
+  textarea: TextareaRenderable,
   scrollbox: ScrollBoxRenderable,
   "ascii-font": ASCIIFontRenderable,
   "tab-select": TabSelectRenderable,

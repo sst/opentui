@@ -326,6 +326,35 @@ function App() {
 }
 ```
 
+### Textarea Component
+
+```tsx
+import type { TextareaRenderable } from "@opentui/core"
+import { useKeyboard, useRenderer } from "@opentui/react"
+import { useEffect, useRef } from "react"
+
+function App() {
+  const renderer = useRenderer()
+  const textareaRef = useRef<TextareaRenderable>(null)
+
+  useEffect(() => {
+    renderer.console.show()
+  }, [renderer])
+
+  useKeyboard((key) => {
+    if (key.name === "return") {
+      console.log(textareaRef.current?.plainText)
+    }
+  })
+
+  return (
+    <box title="Interactive Editor" style={{ border: true, flexGrow: 1 }}>
+      <textarea ref={textareaRef} placeholder="Type here..." focused />
+    </box>
+  )
+}
+```
+
 ### Select Component
 
 Dropdown selection component.

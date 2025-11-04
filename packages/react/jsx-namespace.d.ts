@@ -10,6 +10,7 @@ import type {
   SelectProps,
   SpanProps,
   TabSelectProps,
+  TextareaProps,
   TextProps,
 } from "./src/types/components"
 
@@ -35,6 +36,7 @@ export namespace JSX {
     text: TextProps
     span: SpanProps
     input: InputProps
+    textarea: TextareaProps
     select: SelectProps
     scrollbox: ScrollBoxProps
     "ascii-font": AsciiFontProps

@@ -16,6 +16,8 @@ import type {
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
+  TextareaOptions,
+  TextareaRenderable,
   TextNodeOptions,
   TextNodeRenderable,
   TextOptions,
@@ -111,6 +113,10 @@ export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable>
   onInput?: (value: string) => void
   onChange?: (value: string) => void
   onSubmit?: (value: string) => void
+}
+
+export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> & {
+  focused?: boolean
 }
 
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
