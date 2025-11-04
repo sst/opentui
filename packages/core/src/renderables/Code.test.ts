@@ -737,13 +737,17 @@ test("CodeRenderable - with drawUnstyledText=false, text does not render before 
 
   await renderOnce()
 
-  expect(codeRenderable.plainText).toBe("")
+  expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  const frameBeforeHighlighting = captureFrame()
+  expect(frameBeforeHighlighting.trim()).toBe("")
 
   mockClient.resolveHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  const frameAfterHighlighting = captureFrame()
+  expect(frameAfterHighlighting).toContain("const message")
 })
 
 test("CodeRenderable - drawUnstyledText can be updated dynamically from false to true", async () => {
@@ -770,9 +774,8 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
   expect(codeRenderable.drawUnstyledText).toBe(false)
 
   await renderOnce()
-  expect(codeRenderable.plainText).toBe("")
+  expect(codeRenderable.plainText).toBe("const message = 'hello';")
 
-  // Resolve the first highlight
   mockClient.resolveHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
 
@@ -906,24 +909,25 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   expect(mockClient.isHighlighting()).toBe(true)
 
   await renderOnce()
-  // With drawUnstyledText=false, text is not visible until highlighting completes
-  expect(codeRenderable.plainText).toBe("")
+  expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  const frameBeforeHighlighting = captureFrame()
+  expect(frameBeforeHighlighting.trim()).toBe("")
 
-  // Change content before the first highlight completes
   codeRenderable.content = "let newMessage = 'world';"
   await new Promise((resolve) => queueMicrotask(resolve))
 
   await renderOnce()
-  // Still empty because highlighting hasn't completed
-  expect(codeRenderable.plainText).toBe("")
+  expect(codeRenderable.plainText).toBe("let newMessage = 'world';")
+  const frameAfterUpdate = captureFrame()
+  expect(frameAfterUpdate.trim()).toBe("")
 
-  // Resolve highlights - the mock tracks only the latest promise
-  // so this resolves the latest highlight request
   mockClient.resolveHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // Now text should be visible with the final content
+  
   expect(mockClient.isHighlighting()).toBe(false)
   expect(codeRenderable.plainText).toBe("let newMessage = 'world';")
+  const frameAfterHighlighting = captureFrame()
+  expect(frameAfterHighlighting).toContain("let newMessage")
 })
