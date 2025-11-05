@@ -79,14 +79,15 @@ export class SelectRenderable extends Renderable {
 
   constructor(ctx: RenderContext, options: SelectRenderableOptions) {
     super(ctx, { ...options, buffered: true })
-    this._selectedIndex = options.selectedIndex || this._defaultOptions.selectedIndex
+    this._options = options.options || []
+    const requestedIndex = options.selectedIndex ?? this._defaultOptions.selectedIndex
+    this._selectedIndex = this._options.length > 0 ? Math.min(requestedIndex, this._options.length - 1) : 0
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)
     this._focusedBackgroundColor = parseColor(
       options.focusedBackgroundColor || this._defaultOptions.focusedBackgroundColor,
     )
     this._focusedTextColor = parseColor(options.focusedTextColor || this._defaultOptions.focusedTextColor)
-    this._options = options.options || []
 
     this._showScrollIndicator = options.showScrollIndicator ?? this._defaultOptions.showScrollIndicator
     this._wrapSelection = options.wrapSelection ?? this._defaultOptions.wrapSelection
@@ -454,8 +455,10 @@ export class SelectRenderable extends Renderable {
 
   public set selectedIndex(value: number) {
     const newIndex = value ?? this._defaultOptions.selectedIndex
-    if (this._selectedIndex !== newIndex) {
-      this._selectedIndex = newIndex
+    const clampedIndex = this._options.length > 0 ? Math.min(Math.max(0, newIndex), this._options.length - 1) : 0
+    if (this._selectedIndex !== clampedIndex) {
+      this._selectedIndex = clampedIndex
+      this.updateScrollOffset()
       this.requestRender()
     }
   }
