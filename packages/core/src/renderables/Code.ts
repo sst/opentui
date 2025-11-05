@@ -164,9 +164,10 @@ export class CodeRenderable extends TextBufferRenderable {
     const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText
 
     // TODO: Setting initial text should not be necessary,
-    // instead of yogaNode.markDirty() it should call .markDirty()
-    // which in turn should set childrenPrimarySortDirty
+    // this is done to give the renderable initial dimensions
+    // to solve the disappearing content
     this.fallback(content)
+
     if (!shouldDrawUnstyledNow) {
       this._shouldRenderTextBuffer = false
     }
