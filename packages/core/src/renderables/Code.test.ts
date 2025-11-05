@@ -883,3 +883,80 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   const frameAfterHighlighting = captureFrame()
   expect(frameAfterHighlighting).toContain("let newMessage")
 })
+
+test("CodeRenderable - simulates markdown stream from LLM with async updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+    string: { fg: RGBA.fromValues(0, 1, 0, 1) },
+    "markup.heading.1": { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  // Base markdown content that we'll repeat to grow to ~1MB
+  const baseMarkdownContent = `# Code Example
+
+Here's a simple TypeScript function:
+
+\`\`\`typescript
+function greet(name: string): string {
+  return \`Hello, \${name}!\`;
+}
+
+const message = greet("World");
+console.log(message);
+\`\`\`
+`
+
+  const targetSize = 64 * 128
+  let fullMarkdownContent = ""
+  let iteration = 0
+  while (fullMarkdownContent.length < targetSize) {
+    fullMarkdownContent += `\n--- Iteration ${iteration} ---\n\n` + baseMarkdownContent
+    iteration++
+  }
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-markdown-stream",
+    content: "",
+    filetype: "markdown",
+    syntaxStyle,
+    conceal: false,
+    left: 0,
+    top: 0,
+    drawUnstyledText: false,
+  })
+  await codeRenderable.treeSitterClient.initialize()
+  await codeRenderable.treeSitterClient.preloadParser("markdown")
+
+  currentRenderer.root.add(codeRenderable)
+  currentRenderer.start()
+
+  let currentContent = ""
+
+  const chunkSize = 64
+  const chunks: string[] = []
+  for (let i = 0; i < fullMarkdownContent.length; i += chunkSize) {
+    chunks.push(fullMarkdownContent.slice(i, Math.min(i + chunkSize, fullMarkdownContent.length)))
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]
+    currentContent += chunk
+    codeRenderable.content = currentContent
+    await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 25) + 1))
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  expect(codeRenderable.content).toBe(fullMarkdownContent)
+  expect(codeRenderable.content.length).toBeGreaterThanOrEqual(targetSize)
+  expect(codeRenderable.plainText).toContain("# Code Example")
+  expect(codeRenderable.plainText).toContain("function greet")
+  expect(codeRenderable.plainText).toContain("typescript")
+  expect(codeRenderable.plainText).toContain("Hello")
+
+  const plainText = codeRenderable.plainText
+  expect(plainText.length).toBeGreaterThan(targetSize * 0.9)
+  expect(plainText).toContain("Code Example")
+  expect(plainText).toContain("const message = greet")
+})
