@@ -115,7 +115,6 @@ export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable>
 
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
   focused?: boolean
-  selectedIndex?: number
   onChange?: (index: number, option: SelectOption | null) => void
   onSelect?: (index: number, option: SelectOption | null) => void
 }
