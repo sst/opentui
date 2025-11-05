@@ -617,7 +617,7 @@ describe("SelectRenderable", () => {
       expect(lastOption).toEqual(sampleOptions[2])
     })
 
-    test("should not emit events when movement is blocked", async () => {
+    test("should emit events even when movement is blocked", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {
         width: 20,
         height: 5,
@@ -632,10 +632,18 @@ describe("SelectRenderable", () => {
         eventCount++
       })
 
-      // Try to move up from first item (should be blocked)
+      // Try to move up from first item (index stays the same but event is emitted)
       select.moveUp()
-      expect(eventCount).toBe(0)
+      expect(eventCount).toBe(1)
       expect(select.getSelectedIndex()).toBe(0)
+
+      // Try to move down to last item and then try to move down again
+      select.setSelectedIndex(4) // Move to last item
+      eventCount = 0 // Reset counter
+
+      select.moveDown()
+      expect(eventCount).toBe(1)
+      expect(select.getSelectedIndex()).toBe(4) // Should stay at last item
     })
   })
 
@@ -693,12 +701,19 @@ describe("SelectRenderable", () => {
       expect(select.getSelectedIndex()).toBe(0)
       expect(select.getSelectedOption()).toEqual(singleOption[0])
 
-      // Movement should not change selection
+      let eventCount = 0
+      select.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
+        eventCount++
+      })
+
+      // Movement should not change selection but events are still emitted
       select.moveUp()
       expect(select.getSelectedIndex()).toBe(0)
+      expect(eventCount).toBe(1)
 
       select.moveDown()
       expect(select.getSelectedIndex()).toBe(0)
+      expect(eventCount).toBe(2)
     })
 
     test("should handle very small dimensions", async () => {
