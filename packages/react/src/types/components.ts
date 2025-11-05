@@ -4,6 +4,8 @@ import type {
   BaseRenderable,
   BoxOptions,
   BoxRenderable,
+  CodeOptions,
+  CodeRenderable,
   InputRenderable,
   InputRenderableOptions,
   RenderableOptions,
@@ -16,6 +18,8 @@ import type {
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
+  TextareaOptions,
+  TextareaRenderable,
   TextNodeOptions,
   TextNodeRenderable,
   TextOptions,
@@ -73,7 +77,18 @@ export type GetNonStyledProperties<TConstructor> =
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>
           ? NonStyledProps | "placeholder" | "value"
-          : NonStyledProps
+          : TConstructor extends RenderableConstructor<TextareaRenderable>
+            ? NonStyledProps | "placeholder" | "initialValue"
+            : TConstructor extends RenderableConstructor<CodeRenderable>
+              ?
+                  | NonStyledProps
+                  | "content"
+                  | "filetype"
+                  | "syntaxStyle"
+                  | "treeSitterClient"
+                  | "conceal"
+                  | "drawUnstyledText"
+              : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -112,6 +127,12 @@ export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable>
   onChange?: (value: string) => void
   onSubmit?: (value: string) => void
 }
+
+export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> & {
+  focused?: boolean
+}
+
+export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
   focused?: boolean
