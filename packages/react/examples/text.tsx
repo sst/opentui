@@ -1,4 +1,5 @@
-import { render } from "../src"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "../src"
 
 function App() {
   return (
@@ -60,4 +61,5 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)

@@ -19,13 +19,15 @@ bun install @opentui/react @opentui/core react
 ## Quick Start
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
 function App() {
   return <text>Hello, world!</text>
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ## TypeScript Configuration
@@ -83,23 +85,32 @@ Components can be styled using props or the `style` prop:
 
 ## API Reference
 
-### `render(element, config?)`
+### `createRoot(renderer)`
 
-Renders a React element to the terminal.
+Creates a root for rendering a React tree with the given CLI renderer.
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
-await render(<App />, {
+const renderer = await createCliRenderer({
   // Optional renderer configuration
   exitOnCtrlC: false,
 })
+createRoot(renderer).render(<App />)
 ```
 
 **Parameters:**
 
-- `element`: React element to render
-- `config?`: Optional `CliRendererConfig` object
+- `renderer`: A `CliRenderer` instance (typically created with `createCliRenderer()`)
+
+**Returns:** An object with a `render` method that accepts a React element.
+
+### `render(element, config?)` (Deprecated)
+
+> **Deprecated:** Use `createRoot(renderer).render(node)` instead.
+
+Renders a React element to the terminal. This function is deprecated in favor of `createRoot`.
 
 ### Hooks
 
@@ -193,7 +204,7 @@ function App() {
 Create and manage animations using OpenTUI's timeline system. This hook automatically registers and unregisters the timeline with the animation engine.
 
 ```tsx
-import { render, useTimeline } from "@opentui/react"
+import { useTimeline } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -530,7 +541,8 @@ function App() {
 ### Login Form
 
 ```tsx
-import { render, useKeyboard } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot, useKeyboard } from "@opentui/react"
 import { useCallback, useState } from "react"
 
 function App() {
@@ -586,13 +598,15 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ### Counter with Timer
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -613,14 +627,15 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ### System Monitor Animation
 
 ```tsx
-import { TextAttributes } from "@opentui/core"
-import { render, useTimeline } from "@opentui/react"
+import { createCliRenderer, TextAttributes } from "@opentui/core"
+import { createRoot, useTimeline } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 type Stats = {
@@ -696,13 +711,15 @@ export const App = () => {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ### Styled Text Showcase
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
 function App() {
   return (
@@ -730,7 +747,8 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ## Component Extension
@@ -738,8 +756,15 @@ render(<App />)
 You can create custom components by extending OpenTUIs base renderables:
 
 ```tsx
-import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
-import { extend, render } from "@opentui/react"
+import {
+  BoxRenderable,
+  createCliRenderer,
+  OptimizedBuffer,
+  RGBA,
+  type BoxOptions,
+  type RenderContext,
+} from "@opentui/core"
+import { createRoot, extend } from "@opentui/react"
 
 // Create custom component class
 class ButtonRenderable extends BoxRenderable {
@@ -793,5 +818,6 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```

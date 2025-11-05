@@ -1,4 +1,5 @@
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
 const LOREM = [
   "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
@@ -105,4 +106,5 @@ export const App = () => {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)

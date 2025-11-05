@@ -1,5 +1,5 @@
-import { measureText, type ASCIIFontName } from "@opentui/core"
-import { render } from "@opentui/react"
+import { createCliRenderer, measureText, type ASCIIFontName } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 import { useState } from "react"
 
 export const App = () => {
@@ -55,4 +55,5 @@ export const App = () => {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)

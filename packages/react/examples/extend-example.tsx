@@ -1,5 +1,12 @@
-import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
-import { extend, render } from "@opentui/react"
+import {
+  BoxRenderable,
+  createCliRenderer,
+  OptimizedBuffer,
+  RGBA,
+  type BoxOptions,
+  type RenderContext,
+} from "@opentui/core"
+import { createRoot, extend } from "@opentui/react"
 
 // Custom renderable that extends BoxRenderable
 class ConsoleButtonRenderable extends BoxRenderable {
@@ -59,4 +66,5 @@ export function ExtendExample() {
   )
 }
 
-render(<ExtendExample />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<ExtendExample />)
