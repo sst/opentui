@@ -326,6 +326,66 @@ function App() {
 }
 ```
 
+### Textarea Component
+
+```tsx
+import type { TextareaRenderable } from "@opentui/core"
+import { useKeyboard, useRenderer } from "@opentui/react"
+import { useEffect, useRef } from "react"
+
+function App() {
+  const renderer = useRenderer()
+  const textareaRef = useRef<TextareaRenderable>(null)
+
+  useEffect(() => {
+    renderer.console.show()
+  }, [renderer])
+
+  useKeyboard((key) => {
+    if (key.name === "return") {
+      console.log(textareaRef.current?.plainText)
+    }
+  })
+
+  return (
+    <box title="Interactive Editor" style={{ border: true, flexGrow: 1 }}>
+      <textarea ref={textareaRef} placeholder="Type here..." focused />
+    </box>
+  )
+}
+```
+
+### Code Component
+
+```tsx
+import { RGBA, SyntaxStyle } from "@opentui/core"
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  keyword: { fg: RGBA.fromHex("#ff6b6b"), bold: true }, // red, bold
+  string: { fg: RGBA.fromHex("#51cf66") }, // green
+  comment: { fg: RGBA.fromHex("#868e96"), italic: true }, // gray, italic
+  number: { fg: RGBA.fromHex("#ffd43b") }, // yellow
+  default: { fg: RGBA.fromHex("#ffffff") }, // white
+})
+
+const codeExample = `function hello() {
+  // This is a comment
+
+  const message = "Hello, world!"
+  const count = 42
+
+  return message + " " + count
+}`
+
+function App() {
+  return (
+    <box style={{ border: true, flexGrow: 1 }}>
+      <code content={codeExample} filetype="javascript" syntaxStyle={syntaxStyle} />
+    </box>
+  )
+}
+```
+
 ### Select Component
 
 Dropdown selection component.
