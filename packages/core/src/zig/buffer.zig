@@ -310,7 +310,7 @@ pub const OptimizedBuffer = struct {
         self.buffer.attributes = self.allocator.realloc(self.buffer.attributes, size) catch return BufferError.OutOfMemory;
 
         // TODO: Only when resizing down,
-        //we need to clear the graphemes from the area that is being removed
+        // do we need to clear the graphemes from the  removed area?
         if (width < self.width or height < self.height) {
             try self.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
         }
