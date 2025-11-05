@@ -10,6 +10,7 @@ import type {
   SelectProps,
   SpanProps,
   TabSelectProps,
+  TextareaProps,
   TextProps,
 } from "./src/types/elements"
 import type { DomNode } from "./dist"
@@ -30,6 +31,7 @@ declare namespace JSX {
     tab_select: TabSelectProps
     scrollbox: ScrollBoxProps
     code: CodeProps
+    textarea: TextareaProps
 
     b: SpanProps
     strong: SpanProps
