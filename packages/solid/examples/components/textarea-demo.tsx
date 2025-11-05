@@ -1,6 +1,6 @@
 import { useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal, onMount } from "solid-js"
-import { bold, cyan, fg, t, type TextareaRenderable } from "@opentui/core"
+import { bold, cyan, fg, t, type TextareaRenderable, type CursorStyleOptions } from "@opentui/core"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
 
@@ -34,6 +34,7 @@ UNDO/REDO:
 
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
+  • Tab to toggle cursor style
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
@@ -48,6 +49,7 @@ Press ESC to return to main menu`
 
 export function TextareaDemo() {
   const renderer = useRenderer()
+  const [cursorStyle, setCursorStyle] = createSignal<CursorStyleOptions>({ style: "block", blinking: true })
   const [wrapMode, setWrapMode] = createSignal<"word" | "char" | "none">("word")
   const [statusText, setStatusText] = createSignal("")
   let textareaRef: TextareaRenderable | null = null
@@ -60,8 +62,13 @@ export function TextareaDemo() {
       if (textareaRef && !textareaRef.isDestroyed) {
         try {
           const cursor = textareaRef.logicalCursor
-          const wrap = wrapMode() !== "none" ? "ON" : "OFF"
-          setStatusText(`Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap}`)
+          const wrap = wrapMode().toUpperCase()
+          const cursorOptions = cursorStyle()
+          const styleLabel = cursorOptions.style.toUpperCase()
+          const blinkLabel = cursorOptions.blinking ? "Blinking" : "Steady"
+          setStatusText(
+            `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap} | Cursor: ${styleLabel} (${blinkLabel})`,
+          )
         } catch (error) {
           // Ignore errors during shutdown
         }
@@ -77,6 +84,16 @@ export function TextareaDemo() {
         const nextMode = currentMode === "word" ? "char" : currentMode === "char" ? "none" : "word"
         setWrapMode(nextMode)
         textareaRef.wrapMode = nextMode
+      }
+    }
+    if (key.name === "tab") {
+      key.preventDefault()
+      if (textareaRef && !textareaRef.isDestroyed) {
+        const currentStyle = cursorStyle()
+        const nextStyle: CursorStyleOptions =
+          currentStyle.style === "block" ? { style: "line", blinking: false } : { style: "block", blinking: true }
+        setCursorStyle(nextStyle)
+        textareaRef.cursorStyle = nextStyle
       }
     }
     if (key.ctrl && (key.name === "pageup" || key.name === "pagedown")) {
@@ -114,6 +131,7 @@ export function TextareaDemo() {
           wrapMode={wrapMode()}
           showCursor
           cursorColor="#4ECDC4"
+          cursorStyle={cursorStyle()}
           focused
           style={{ flexGrow: 1 }}
         />
