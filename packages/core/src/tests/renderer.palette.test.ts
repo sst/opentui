@@ -69,6 +69,27 @@ describe("Palette caching behavior", () => {
     renderer.destroy()
   })
 
+  test("getPalette caches correctly with non-256 size parameter", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // First call with size=16
+    const palette1 = await renderer.getPalette({ size: 16, timeout: 300 })
+
+    // Second call with size=16 - should return cached palette
+    const palette2 = await renderer.getPalette({ size: 16, timeout: 300 })
+
+    // Should be same reference (cached)
+    expect(palette1).toBe(palette2)
+    expect(renderer.paletteDetectionStatus).toBe("cached")
+
+    renderer.destroy()
+  })
+
   test("cached palette is returned instantly", async () => {
     const { mockStdin, mockStdout, writes } = createMockStreams()
 
