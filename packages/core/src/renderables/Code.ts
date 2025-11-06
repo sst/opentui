@@ -165,7 +165,14 @@ export class CodeRenderable extends TextBufferRenderable {
 
     // TODO: Setting initial text should not be necessary,
     // this is done to give the renderable initial dimensions
-    // to solve the disappearing content
+    // to solve the disappearing content in scrollbox.
+    // What actually happens is that _getChildren() in the ContentRenderable
+    // for the ScrollBox reduces # of children _to update_.
+    // So children never get their dimensions updated,
+    // and getChildrenSortedByPrimaryAxis() is just wrong then.
+    // However, the main bottleneck there is the yoga-layout getters
+    // are ridicoulously slow, so for a list with many children
+    // that becomes a performance bottleneck the longer the list is.
     this.fallback(content)
 
     if (!shouldDrawUnstyledNow) {
