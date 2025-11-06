@@ -14,6 +14,8 @@ import {
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { TerminalColors } from "../lib/terminal-palette"
+import { PaletteGridRenderable } from "./lib/PaletteGrid"
+import { HexListRenderable } from "./lib/HexList"
 
 /**
  * This demo showcases terminal palette detection.
@@ -22,9 +24,9 @@ import type { TerminalColors } from "../lib/terminal-palette"
 
 let scrollBox: ScrollBoxRenderable | null = null
 let contentContainer: BoxRenderable | null = null
-let paletteBuffer: FrameBufferRenderable | null = null
+let paletteGrid: PaletteGridRenderable | null = null
 let statusText: TextRenderable | null = null
-let hexListBuffer: FrameBufferRenderable | null = null
+let hexList: HexListRenderable | null = null
 let specialColorsBuffer: FrameBufferRenderable | null = null
 let terminalColors: TerminalColors | null = null
 let keyboardHandler: ((key: any) => void) | null = null
@@ -116,15 +118,13 @@ export function run(renderer: CliRenderer): void {
   })
   contentContainer.add(instructionsText)
 
-  // Create framebuffer for palette display (just the color grid)
-  paletteBuffer = new FrameBufferRenderable(renderer, {
-    id: "palette-buffer",
-    width: 64,
-    height: 32,
+  // Create palette grid - will be populated when palette is fetched
+  paletteGrid = new PaletteGridRenderable(renderer, {
+    id: "palette-grid",
+    colors: [],
     marginTop: 2,
   })
-  contentContainer.add(paletteBuffer)
-  paletteBuffer.frameBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
+  contentContainer.add(paletteGrid)
 
   // Set up input submit handler
   paletteSizeInput.on(InputRenderableEvents.ENTER, async (value: string) => {
@@ -153,7 +153,7 @@ export function run(renderer: CliRenderer): void {
 }
 
 async function fetchAndDisplayPalette(renderer: CliRenderer, size: number): Promise<void> {
-  if (!statusText || !paletteBuffer) return
+  if (!statusText || !paletteGrid) return
 
   try {
     const status = renderer.paletteDetectionStatus
@@ -167,7 +167,7 @@ async function fetchAndDisplayPalette(renderer: CliRenderer, size: number): Prom
     statusText.content = `Status: Palette (${size} colors) fetched in ${elapsed}ms (${status === "cached" ? "from cache" : "from terminal"})`
     statusText.fg = RGBA.fromInts(34, 197, 94) // Emerald - fresh success state
 
-    drawPalette(renderer, paletteBuffer, terminalColors, size)
+    drawPalette(renderer, terminalColors, size)
   } catch (error) {
     if (statusText) {
       statusText.content = `Status: Error - ${error instanceof Error ? error.message : String(error)}`
@@ -184,59 +184,12 @@ function clearPaletteCache(renderer: CliRenderer): void {
   statusText.fg = RGBA.fromInts(148, 163, 184) // Slate-400 - neutral info state
 }
 
-function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBufferRenderable, terminalColors: TerminalColors, size: number): void {
-  const buffer = paletteBufferRenderable.frameBuffer
+function drawPalette(renderer: CliRenderer, terminalColors: TerminalColors, size: number): void {
+  const colors = terminalColors.palette.slice(0, size)
 
-  // Clear the buffer
-  buffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
-
-  const colors = terminalColors.palette
-
-  // Draw a grid of colors based on the requested size
-  // Each color is represented as a 4x2 block of cells
-  const blockWidth = 4
-  const blockHeight = 2
-
-  for (let i = 0; i < size; i++) {
-    const color = colors[i]
-    if (!color) continue
-
-    const row = Math.floor(i / 16)
-    const col = i % 16
-
-    const x = col * blockWidth
-    const y = row * blockHeight
-
-    // Parse hex color
-    const hex = color.replace("#", "")
-    const r = parseInt(hex.substring(0, 2), 16)
-    const g = parseInt(hex.substring(2, 4), 16)
-    const b = parseInt(hex.substring(4, 6), 16)
-    const rgba = RGBA.fromInts(r, g, b)
-
-    // Draw the color block using spaces with background color
-    for (let dy = 0; dy < blockHeight; dy++) {
-      for (let dx = 0; dx < blockWidth; dx++) {
-        buffer.setCell(x + dx, y + dy, " ", RGBA.fromInts(255, 255, 255), rgba)
-      }
-    }
-
-    // Add color index number in the center of the block (if block is large enough)
-    if (blockWidth >= 3 && blockHeight >= 1) {
-      const indexStr = i.toString()
-      const textX = x + Math.floor((blockWidth - indexStr.length) / 2)
-      const textY = y + Math.floor(blockHeight / 2)
-
-      // Choose text color based on background brightness
-      const brightness = (r * 299 + g * 587 + b * 114) / 1000
-      const textColor = brightness > 128 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
-
-      if (indexStr.length <= blockWidth) {
-        for (let ci = 0; ci < indexStr.length; ci++) {
-          buffer.drawText(indexStr[ci], textX + ci, textY, textColor, rgba, TextAttributes.NONE)
-        }
-      }
-    }
+  // Update the palette grid with new colors
+  if (paletteGrid) {
+    paletteGrid.colors = colors
   }
 
   // Create special colors list with colored boxes
@@ -306,62 +259,16 @@ function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBuffer
     }
   })
 
-  // Create hex list below the special colors with colored boxes
-  const hexListColumns = 4
-  const hexBlockWidth = 4
-  const hexBlockHeight = 2
-  const hexSpacing = 2 // Horizontal spacing between items
-  const hexItemWidth = 18 // Space for color box + spacing + index + hex
-  const hexBufferWidth = hexListColumns * hexItemWidth
-  const hexBufferHeight = Math.ceil(256 / hexListColumns) * (hexBlockHeight + 1) // Add spacing between rows
-
-  if (!hexListBuffer) {
-    hexListBuffer = new FrameBufferRenderable(renderer, {
-      id: "hex-list-buffer",
-      width: hexBufferWidth,
-      height: hexBufferHeight,
+  // Update the hex list with new colors
+  if (!hexList) {
+    hexList = new HexListRenderable(renderer, {
+      id: "hex-list",
+      colors: colors,
       marginTop: 2,
     })
-    contentContainer!.add(hexListBuffer)
-  }
-
-  const hexBuffer = hexListBuffer.frameBuffer
-  hexBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
-
-  // Only render the colors that were fetched (limited by size)
-  const actualSize = Math.min(terminalColors.palette.length, 256)
-  for (let i = 0; i < actualSize; i++) {
-    const color = colors[i]
-    if (!color) continue
-
-    const row = Math.floor(i / hexListColumns)
-    const col = i % hexListColumns
-
-    const x = col * hexItemWidth
-    const y = row * (hexBlockHeight + 1) // Add spacing between rows
-
-    // Parse hex color
-    const hex = color.replace("#", "")
-    const r = parseInt(hex.substring(0, 2), 16)
-    const g = parseInt(hex.substring(2, 4), 16)
-    const b = parseInt(hex.substring(4, 6), 16)
-    const rgba = RGBA.fromInts(r, g, b)
-
-    // Draw colored box (4x2 block)
-    for (let dy = 0; dy < hexBlockHeight; dy++) {
-      for (let dx = 0; dx < hexBlockWidth; dx++) {
-        hexBuffer.setCell(x + dx, y + dy, " ", RGBA.fromInts(255, 255, 255), rgba)
-      }
-    }
-
-    // Draw index and hex value next to the box
-    const text = `${i.toString().padStart(3, " ")}: ${color.toUpperCase()}`
-    const textColor = RGBA.fromInts(148, 163, 184)
-    const bgColor = RGBA.fromInts(30, 41, 59, 255)
-    const textStartX = x + hexBlockWidth + 1
-    for (let ci = 0; ci < text.length && textStartX + ci < x + hexItemWidth - hexSpacing; ci++) {
-      hexBuffer.drawText(text[ci], textStartX + ci, y, textColor, bgColor, TextAttributes.NONE)
-    }
+    contentContainer!.add(hexList)
+  } else {
+    hexList.colors = colors
   }
 }
 
@@ -382,8 +289,8 @@ export function destroy(renderer: CliRenderer): void {
   }
 
   contentContainer = null
-  paletteBuffer = null
-  hexListBuffer = null
+  paletteGrid = null
+  hexList = null
   specialColorsBuffer = null
   statusText = null
   terminalColors = null
