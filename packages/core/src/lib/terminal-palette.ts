@@ -165,7 +165,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
   async detect(timeoutMs = 5000): Promise<Hex[]> {
     const supported = await this.detectOSCSupport()
-    
+
     if (!supported) {
       // Return 256 nulls if OSC is not supported
       return Array(256).fill(null)

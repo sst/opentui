@@ -51,7 +51,7 @@ test("TerminalPalette parses OSC 4 hex format correctly", async () => {
 
   // Emit OSC detection response immediately
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   // Then emit palette responses after OSC detection completes (~350ms)
   setTimeout(() => {
     for (let i = 0; i < 256; i++) {
@@ -76,7 +76,7 @@ test("TerminalPalette parses OSC 4 rgb format with 4 hex digits", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;rgb:ffff/0000/aaaa\x07"))
     for (let i = 1; i < 256; i++) {
@@ -99,7 +99,7 @@ test("TerminalPalette parses OSC 4 rgb format with 2 hex digits", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;rgb:ff/00/aa\x07"))
     for (let i = 1; i < 256; i++) {
@@ -122,7 +122,7 @@ test("TerminalPalette handles multiple color responses in single buffer", async 
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     stdin.emit(
       "data",
@@ -133,7 +133,7 @@ test("TerminalPalette handles multiple color responses in single buffer", async 
           "\x1b]4;3;rgb:aa00/aa00/0000\x07",
       ),
     )
-    
+
     for (let i = 4; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -156,7 +156,7 @@ test("TerminalPalette handles BEL terminator", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
     for (let i = 1; i < 256; i++) {
@@ -178,7 +178,7 @@ test("TerminalPalette handles ST terminator", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#00ff00\x1b\\"))
     for (let i = 1; i < 256; i++) {
@@ -200,7 +200,7 @@ test("TerminalPalette scales color components correctly", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;rgb:ffff/0000/0000\x07"))
     for (let i = 1; i < 256; i++) {
@@ -222,7 +222,7 @@ test("TerminalPalette returns null for colors that don't respond", async () => {
   const detectPromise = palette.detect(1000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Only respond to first color
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
@@ -243,17 +243,17 @@ test("TerminalPalette handles response split across chunks", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Split a single OSC response across multiple chunks
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff"))
     stdin.emit("data", Buffer.from("00aa\x07"))
-    
+
     // Split another response at different positions
     stdin.emit("data", Buffer.from("\x1b]4;1;rgb:0000/"))
     stdin.emit("data", Buffer.from("ffff/"))
     stdin.emit("data", Buffer.from("0000\x07"))
-    
+
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -274,7 +274,7 @@ test("TerminalPalette handles OSC response mixed with mouse events", async () =>
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Mix OSC responses with mouse events (SGR mouse tracking format)
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
@@ -283,7 +283,7 @@ test("TerminalPalette handles OSC response mixed with mouse events", async () =>
     stdin.emit("data", Buffer.from("\x1b[<0;11;5M")) // Mouse move event
     stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
     stdin.emit("data", Buffer.from("\x1b[<0;12;5m")) // Mouse up event
-    
+
     for (let i = 3; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -305,7 +305,7 @@ test("TerminalPalette handles OSC response mixed with key events", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Mix OSC responses with keyboard input
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
@@ -315,7 +315,7 @@ test("TerminalPalette handles OSC response mixed with key events", async () => {
     stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
     stdin.emit("data", Buffer.from("\x1b[B")) // Arrow down key
     stdin.emit("data", Buffer.from("\x1b]4;3;#ffff00\x07"))
-    
+
     for (let i = 4; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -338,22 +338,22 @@ test("TerminalPalette handles response split mid-escape sequence", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Split at the escape character itself
     stdin.emit("data", Buffer.from("\x1b"))
     stdin.emit("data", Buffer.from("]4;0;#ff00aa\x07"))
-    
+
     // Split at various points in the sequence
     stdin.emit("data", Buffer.from("\x1b]"))
     stdin.emit("data", Buffer.from("4;1;#00ff00\x07"))
-    
+
     stdin.emit("data", Buffer.from("\x1b]4"))
     stdin.emit("data", Buffer.from(";2;#0000ff\x07"))
-    
+
     stdin.emit("data", Buffer.from("\x1b]4;"))
     stdin.emit("data", Buffer.from("3;#ffff00\x07"))
-    
+
     for (let i = 4; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -376,7 +376,7 @@ test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () 
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Mix with various ANSI CSI sequences
     stdin.emit("data", Buffer.from("\x1b[2J")) // Clear screen
@@ -386,7 +386,7 @@ test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () 
     stdin.emit("data", Buffer.from("\x1b[31m")) // Red foreground
     stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
     stdin.emit("data", Buffer.from("\x1b[0m")) // Reset
-    
+
     for (let i = 3; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -408,14 +408,14 @@ test("TerminalPalette handles complex chunking with partial responses", async ()
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Very aggressive chunking - split every few characters
     const response0 = "\x1b]4;0;rgb:ffff/0000/aaaa\x07"
     for (let i = 0; i < response0.length; i += 3) {
       stdin.emit("data", Buffer.from(response0.slice(i, i + 3)))
     }
-    
+
     // Mix with other content while chunking - but ensure valid hex format
     stdin.emit("data", Buffer.from("\x1b]4;1"))
     stdin.emit("data", Buffer.from(";#00"))
@@ -423,11 +423,11 @@ test("TerminalPalette handles complex chunking with partial responses", async ()
     stdin.emit("data", Buffer.from("ff00"))
     stdin.emit("data", Buffer.from("\x1b[D")) // Arrow left
     stdin.emit("data", Buffer.from("\x07"))
-    
+
     // Color index 1 should remain null because the hex format is incomplete/malformed
     // Send a proper response for index 1
     stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
-    
+
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -448,18 +448,18 @@ test("TerminalPalette ignores malformed responses and waits for valid ones", asy
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Send malformed responses that should be ignored
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00\x07")) // Incomplete hex (only 4 digits)
     stdin.emit("data", Buffer.from("\x1b]4;1;rgb:gg00/0000/0000\x07")) // Invalid hex chars
     stdin.emit("data", Buffer.from("\x1b]4;2;#zzzzzz\x07")) // Invalid hex chars
-    
+
     // Send proper responses
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
     stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
     stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
-    
+
     for (let i = 3; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -482,16 +482,16 @@ test("TerminalPalette handles buffer overflow gracefully", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Send a huge amount of junk data to trigger buffer trimming
     const junkData = "x".repeat(10000)
     stdin.emit("data", Buffer.from(junkData))
-    
+
     // Send valid responses after the buffer has been trimmed
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
     stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
-    
+
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -512,7 +512,7 @@ test("TerminalPalette handles all 256 colors in a single blob", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Build a single massive blob with all 256 color responses
     let blob = ""
@@ -520,7 +520,7 @@ test("TerminalPalette handles all 256 colors in a single blob", async () => {
       const color = i === 0 ? "#ff0011" : i === 1 ? "#00ff22" : i === 255 ? "#aabbcc" : "#000000"
       blob += `\x1b]4;${i};${color}\x07`
     }
-    
+
     // Send it all at once
     stdin.emit("data", Buffer.from(blob))
   }, 400)
@@ -542,7 +542,7 @@ test("TerminalPalette handles blob split across multiple chunks", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Build a blob and split it at arbitrary positions
     let blob = ""
@@ -550,7 +550,7 @@ test("TerminalPalette handles blob split across multiple chunks", async () => {
       const color = i === 5 ? "#112233" : i === 100 ? "#445566" : i === 200 ? "#778899" : "#000000"
       blob += `\x1b]4;${i};${color}\x07`
     }
-    
+
     // Split the blob into chunks of 500 bytes
     const chunkSize = 500
     for (let i = 0; i < blob.length; i += chunkSize) {
@@ -575,14 +575,14 @@ test("TerminalPalette handles blob with mixed junk data", async () => {
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Build a blob with junk data interspersed
     let blob = ""
     for (let i = 0; i < 256; i++) {
       const color = i === 10 ? "#abcdef" : i === 50 ? "#fedcba" : "#000000"
       blob += `\x1b]4;${i};${color}\x07`
-      
+
       // Add junk data occasionally
       if (i % 20 === 0) {
         blob += "JUNK_DATA_HERE"
@@ -594,7 +594,7 @@ test("TerminalPalette handles blob with mixed junk data", async () => {
         blob += "\x1b[<0;10;5M" // Mouse event
       }
     }
-    
+
     stdin.emit("data", Buffer.from(blob))
   }, 400)
 
@@ -614,21 +614,21 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
   const detectPromise = palette.detect(2000)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   setTimeout(() => {
     // Simulate realistic terminal behavior:
     // 1. Some colors come in small batches
     // 2. Some come in large blobs
     // 3. Some are split mid-response
     // 4. Mixed with other terminal output
-    
+
     // Batch 1: Colors 0-5 in one chunk
     let chunk1 = ""
     for (let i = 0; i <= 5; i++) {
       chunk1 += `\x1b]4;${i};#ff0000\x07`
     }
     stdin.emit("data", Buffer.from(chunk1))
-    
+
     // Batch 2: Colors 6-50 in one chunk, but split mid-response
     let chunk2 = ""
     for (let i = 6; i <= 50; i++) {
@@ -636,7 +636,7 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
     }
     stdin.emit("data", Buffer.from(chunk2.slice(0, 200)))
     stdin.emit("data", Buffer.from(chunk2.slice(200)))
-    
+
     // Batch 3: Mouse movement happens, then colors 51-150
     stdin.emit("data", Buffer.from("\x1b[<35;20;10M"))
     let chunk3 = ""
@@ -644,7 +644,7 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
       chunk3 += `\x1b]4;${i};#0000ff\x07`
     }
     stdin.emit("data", Buffer.from(chunk3))
-    
+
     // Batch 4: Colors 151-255 come in as huge blob
     let chunk4 = ""
     for (let i = 151; i <= 255; i++) {
@@ -670,7 +670,7 @@ test("TerminalPalette uses custom write function when provided", async () => {
   const stdin = new MockStream() as any
   const stdout = new MockStream() as any
   const writtenData: string[] = []
-  
+
   const customWrite = (data: string | Buffer) => {
     writtenData.push(data.toString())
     return true
@@ -694,7 +694,7 @@ test("TerminalPalette uses custom write function for palette detection", async (
   const stdin = new MockStream() as any
   const stdout = new MockStream() as any
   const writtenData: string[] = []
-  
+
   const customWrite = (data: string | Buffer) => {
     writtenData.push(data.toString())
     return true
@@ -706,7 +706,7 @@ test("TerminalPalette uses custom write function for palette detection", async (
 
   // Emit OSC detection response
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-  
+
   // Emit palette responses after OSC detection
   setTimeout(() => {
     for (let i = 0; i < 256; i++) {
@@ -720,7 +720,7 @@ test("TerminalPalette uses custom write function for palette detection", async (
   // Should have written OSC support query + palette query for all 256 colors
   expect(writtenData.length).toBe(2)
   expect(writtenData[0]).toBe("\x1b]4;0;?\x07") // OSC support check
-  
+
   // Verify palette query contains all 256 color queries
   const paletteQuery = writtenData[1]
   for (let i = 0; i < 256; i++) {
@@ -731,7 +731,7 @@ test("TerminalPalette uses custom write function for palette detection", async (
 test("TerminalPalette falls back to stdout.write when no custom write function provided", async () => {
   const stdin = new MockStream() as any
   const writtenData: string[] = []
-  
+
   const stdout = new MockStream() as any
   stdout.write = (data: string) => {
     writtenData.push(data)
@@ -757,7 +757,7 @@ test("TerminalPalette custom write function can intercept and modify output", as
   const stdout = new MockStream() as any
   const interceptedWrites: string[] = []
   let actualWrites = 0
-  
+
   // Custom write that intercepts but doesn't write to stdout
   const customWrite = (data: string | Buffer) => {
     interceptedWrites.push(data.toString())
