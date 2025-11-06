@@ -37,30 +37,31 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
     if (!out.isTTY || !inp.isTTY) return false
 
-    let buffer = ""
-    let detected = false
+    return new Promise<boolean>((resolve) => {
+      let buffer = ""
 
-    const onData = (chunk: string | Buffer) => {
-      buffer += chunk.toString()
-      if (OSC4_RESPONSE.test(buffer)) {
-        detected = true
+      const onData = (chunk: string | Buffer) => {
+        buffer += chunk.toString()
+        if (OSC4_RESPONSE.test(buffer)) {
+          cleanup()
+          resolve(true)
+        }
       }
-    }
 
-    inp.on("data", onData)
+      const onTimeout = () => {
+        cleanup()
+        resolve(false)
+      }
 
-    out.write("\x1b]4;0;?\x07")
+      const cleanup = () => {
+        clearTimeout(timer)
+        inp.removeListener("data", onData)
+      }
 
-    const start = Date.now()
-    while (Date.now() - start < timeoutMs && !detected) {
-      await new Promise((r) => setTimeout(r, 10))
-    }
-
-    inp.removeListener("data", onData)
-
-    await new Promise((r) => setTimeout(r, 50))
-
-    return detected
+      const timer = setTimeout(onTimeout, timeoutMs)
+      inp.on("data", onData)
+      out.write("\x1b]4;0;?\x07")
+    })
   }
 
   private async queryPalette(indices: number[], timeoutMs = 1200): Promise<Map<number, Hex>> {
@@ -73,59 +74,53 @@ export class TerminalPalette implements TerminalPaletteDetector {
       return results
     }
 
-    let buffer = ""
-    const onData = (chunk: string | Buffer) => {
-      buffer += chunk.toString()
-      let m: RegExpExecArray | null
-      OSC4_RESPONSE.lastIndex = 0
-      while ((m = OSC4_RESPONSE.exec(buffer))) {
-        const idx = parseInt(m[1], 10)
-        if (results.has(idx)) results.set(idx, toHex(m[2], m[3], m[4], m[5]))
+    return new Promise<Map<number, Hex>>((resolve) => {
+      let buffer = ""
+      let lastResponseTime = Date.now()
+      let idleTimer: NodeJS.Timeout | null = null
+
+      const onData = (chunk: string | Buffer) => {
+        buffer += chunk.toString()
+        lastResponseTime = Date.now()
+
+        let m: RegExpExecArray | null
+        OSC4_RESPONSE.lastIndex = 0
+        while ((m = OSC4_RESPONSE.exec(buffer))) {
+          const idx = parseInt(m[1], 10)
+          if (results.has(idx)) results.set(idx, toHex(m[2], m[3], m[4], m[5]))
+        }
+
+        if (buffer.length > 8192) buffer = buffer.slice(-4096)
+
+        const done = [...results.values()].filter((v) => v !== null).length
+        if (done === results.size) {
+          cleanup()
+          resolve(results)
+          return
+        }
+
+        if (idleTimer) clearTimeout(idleTimer)
+        idleTimer = setTimeout(() => {
+          cleanup()
+          resolve(results)
+        }, 150)
       }
-      if (buffer.length > 8192) buffer = buffer.slice(-4096)
-    }
 
-    inp.on("data", onData)
-
-    out.write(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
-
-    const start = Date.now()
-    let lastChange = Date.now()
-    let prevCount = 0
-
-    while (Date.now() - start < timeoutMs) {
-      const done = [...results.values()].filter((v) => v !== null).length
-      if (done === results.size) break
-      if (done !== prevCount) {
-        prevCount = done
-        lastChange = Date.now()
-      } else if (Date.now() - lastChange > 150) {
-        break
+      const onTimeout = () => {
+        cleanup()
+        resolve(results)
       }
-      await new Promise((r) => setTimeout(r, 25))
-    }
 
-    await new Promise((r) => setTimeout(r, 200))
-
-    inp.removeListener("data", onData)
-
-    const drain = new Promise<void>((resolve) => {
-      let drainTimer: NodeJS.Timeout
-      const stopDrain = () => {
-        clearTimeout(drainTimer)
-        inp.removeListener("data", ignore)
-        resolve()
+      const cleanup = () => {
+        clearTimeout(timer)
+        if (idleTimer) clearTimeout(idleTimer)
+        inp.removeListener("data", onData)
       }
-      const ignore = () => {
-        clearTimeout(drainTimer)
-        drainTimer = setTimeout(stopDrain, 100)
-      }
-      inp.on("data", ignore)
-      drainTimer = setTimeout(stopDrain, 150)
+
+      const timer = setTimeout(onTimeout, timeoutMs)
+      inp.on("data", onData)
+      out.write(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
     })
-    await drain
-
-    return results
   }
 
   async detect(timeoutMs = 5000): Promise<Hex[]> {
