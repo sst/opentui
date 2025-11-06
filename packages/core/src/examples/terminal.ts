@@ -9,6 +9,7 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
 } from "../index"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { TerminalColors } from "../lib/terminal-palette"
 
@@ -17,11 +18,12 @@ import type { TerminalColors } from "../lib/terminal-palette"
  * Press 'p' to fetch and display the terminal's color palette.
  */
 
-let parentContainer: BoxRenderable | null = null
+let scrollBox: ScrollBoxRenderable | null = null
+let contentContainer: BoxRenderable | null = null
 let paletteBuffer: FrameBufferRenderable | null = null
 let statusText: TextRenderable | null = null
-let hexListText: TextRenderable | null = null
-let specialColorsText: TextRenderable | null = null
+let hexListBuffer: FrameBufferRenderable | null = null
+let specialColorsBuffer: FrameBufferRenderable | null = null
 let terminalColors: TerminalColors | null = null
 let keyboardHandler: ((key: any) => void) | null = null
 
@@ -30,68 +32,66 @@ export function run(renderer: CliRenderer): void {
   const backgroundColor = RGBA.fromInts(15, 23, 42) // Slate-900 inspired
   renderer.setBackgroundColor(backgroundColor)
 
-  parentContainer = new BoxRenderable(renderer, {
-    id: "terminal-palette-container",
-    zIndex: 10,
+  const mainContainer = new BoxRenderable(renderer, {
+    id: "main-container",
+    flexGrow: 1,
+    flexDirection: "column",
   })
-  renderer.root.add(parentContainer)
+  renderer.root.add(mainContainer)
 
-  const titleText = new TextRenderable(renderer, {
-    id: "terminal_title",
-    content: "Terminal Palette Demo",
-    position: "absolute",
-    left: 2,
-    top: 1,
-    fg: RGBA.fromInts(139, 92, 246), // Vibrant purple
-    attributes: TextAttributes.BOLD,
-    zIndex: 1000,
+  scrollBox = new ScrollBoxRenderable(renderer, {
+    id: "terminal-scroll-box",
+    stickyScroll: false,
+    border: true,
+    borderColor: "#8B5CF6",
+    title: "Terminal Palette Demo (Ctrl+C to exit)",
+    titleAlignment: "center",
+    contentOptions: {
+      paddingLeft: 2,
+      paddingRight: 2,
+      paddingTop: 1,
+    },
   })
-  parentContainer.add(titleText)
+  mainContainer.add(scrollBox)
+
+  contentContainer = new BoxRenderable(renderer, {
+    id: "terminal-palette-container",
+    width: "auto",
+    flexDirection: "column",
+  })
+  scrollBox.add(contentContainer)
 
   const subtitleText = new TextRenderable(renderer, {
     id: "terminal_subtitle",
     content: "Press 'p' to fetch terminal colors | Press 'c' to clear cache",
-    position: "absolute",
-    left: 2,
-    top: 2,
     fg: RGBA.fromInts(148, 163, 184), // Slate-400 - softer contrast
-    zIndex: 1000,
   })
-  parentContainer.add(subtitleText)
+  contentContainer.add(subtitleText)
 
   statusText = new TextRenderable(renderer, {
     id: "terminal_status",
     content: "Status: Ready to fetch palette",
-    position: "absolute",
-    left: 2,
-    top: 3,
+    marginTop: 1,
     fg: RGBA.fromInts(56, 189, 248), // Sky blue - modern accent
-    zIndex: 1000,
   })
-  parentContainer.add(statusText)
+  contentContainer.add(statusText)
 
   const instructionsText = new TextRenderable(renderer, {
     id: "terminal_instructions",
     content: "Press Escape to return to menu",
-    position: "absolute",
-    left: 2,
-    top: 4,
+    marginTop: 1,
     fg: RGBA.fromInts(100, 116, 139), // Slate-500 - muted but readable
-    zIndex: 1000,
   })
-  parentContainer.add(instructionsText)
+  contentContainer.add(instructionsText)
 
   // Create framebuffer for palette display (just the color grid)
   paletteBuffer = new FrameBufferRenderable(renderer, {
     id: "palette-buffer",
     width: 64,
     height: 32,
-    position: "absolute",
-    left: 2,
-    top: 6,
-    zIndex: 100,
+    marginTop: 2,
   })
-  renderer.root.add(paletteBuffer)
+  contentContainer.add(paletteBuffer)
   paletteBuffer.frameBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
 
   // Set up keyboard handler
@@ -193,36 +193,7 @@ function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBuffer
     }
   }
 
-  // Create hex list below the grid
-  const hexLines: string[] = []
-  const hexListColumns = 4
-  for (let i = 0; i < 256; i += hexListColumns) {
-    const line: string[] = []
-    for (let j = 0; j < hexListColumns && i + j < 256; j++) {
-      const color = colors[i + j]
-      if (color) {
-        line.push(`${(i + j).toString().padStart(3, " ")}: ${color.toUpperCase()}`)
-      }
-    }
-    hexLines.push(line.join("  "))
-  }
-
-  if (!hexListText) {
-    hexListText = new TextRenderable(renderer, {
-      id: "hex-list",
-      content: hexLines.join("\n"),
-      position: "absolute",
-      left: 2,
-      top: 39, // Below the grid (top: 6 + height: 32 = 38, +1 for spacing)
-      fg: RGBA.fromInts(148, 163, 184),
-      zIndex: 100,
-    })
-    renderer.root.add(hexListText)
-  } else {
-    hexListText.content = hexLines.join("\n")
-  }
-
-  // Create special colors list to the right of the grid
+  // Create special colors list with colored boxes
   const specialColors = [
     { label: "Default FG", value: terminalColors.defaultForeground },
     { label: "Default BG", value: terminalColors.defaultBackground },
@@ -235,26 +206,114 @@ function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBuffer
     { label: "Highlight FG", value: terminalColors.highlightForeground },
   ]
 
-  const specialLines = specialColors.map(({ label, value }) => {
+  // Create a framebuffer for special colors with colored boxes
+  const specialBufferWidth = 30
+  const specialBufferHeight = specialColors.length * 2
+  
+  if (!specialColorsBuffer) {
+    specialColorsBuffer = new FrameBufferRenderable(renderer, {
+      id: "special-colors-buffer",
+      width: specialBufferWidth,
+      height: specialBufferHeight,
+      marginTop: 2,
+    })
+    contentContainer!.add(specialColorsBuffer)
+  }
+
+  const specialBuffer = specialColorsBuffer.frameBuffer
+  specialBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
+
+  specialColors.forEach(({ label, value }, index) => {
+    const y = index * 2
+    const boxWidth = 4
+    
     if (value) {
-      return `${label.padEnd(12)}: ${value.toUpperCase()}`
+      // Parse hex color
+      const hex = value.replace("#", "")
+      const r = parseInt(hex.substring(0, 2), 16)
+      const g = parseInt(hex.substring(2, 4), 16)
+      const b = parseInt(hex.substring(4, 6), 16)
+      const rgba = RGBA.fromInts(r, g, b)
+
+      // Draw colored box (4x2 block)
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < boxWidth; dx++) {
+          specialBuffer.setCell(dx, y + dy, " ", RGBA.fromInts(255, 255, 255), rgba)
+        }
+      }
+
+      // Draw label and hex value
+      const text = `${label}: ${value.toUpperCase()}`
+      const textColor = RGBA.fromInts(148, 163, 184)
+      const bgColor = RGBA.fromInts(30, 41, 59, 255)
+      for (let i = 0; i < text.length; i++) {
+        specialBuffer.drawText(text[i], boxWidth + 1 + i, y, textColor, bgColor, TextAttributes.NONE)
+      }
+    } else {
+      // Draw N/A
+      const text = `${label}: N/A`
+      const textColor = RGBA.fromInts(100, 116, 139)
+      const bgColor = RGBA.fromInts(30, 41, 59, 255)
+      for (let i = 0; i < text.length; i++) {
+        specialBuffer.drawText(text[i], boxWidth + 1 + i, y, textColor, bgColor, TextAttributes.NONE)
+      }
     }
-    return `${label.padEnd(12)}: N/A`
   })
 
-  if (!specialColorsText) {
-    specialColorsText = new TextRenderable(renderer, {
-      id: "special-colors",
-      content: specialLines.join("\n"),
-      position: "absolute",
-      left: 68, // Right of the 64-width grid + 4 spacing
-      top: 6,
-      fg: RGBA.fromInts(148, 163, 184),
-      zIndex: 100,
+  // Create hex list below the special colors with colored boxes
+  const hexListColumns = 4
+  const hexBlockWidth = 4
+  const hexBlockHeight = 2
+  const hexSpacing = 2 // Horizontal spacing between items
+  const hexItemWidth = 18 // Space for color box + spacing + index + hex
+  const hexBufferWidth = hexListColumns * hexItemWidth
+  const hexBufferHeight = Math.ceil(256 / hexListColumns) * (hexBlockHeight + 1) // Add spacing between rows
+
+  if (!hexListBuffer) {
+    hexListBuffer = new FrameBufferRenderable(renderer, {
+      id: "hex-list-buffer",
+      width: hexBufferWidth,
+      height: hexBufferHeight,
+      marginTop: 2,
     })
-    renderer.root.add(specialColorsText)
-  } else {
-    specialColorsText.content = specialLines.join("\n")
+    contentContainer!.add(hexListBuffer)
+  }
+
+  const hexBuffer = hexListBuffer.frameBuffer
+  hexBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
+
+  for (let i = 0; i < 256; i++) {
+    const color = colors[i]
+    if (!color) continue
+
+    const row = Math.floor(i / hexListColumns)
+    const col = i % hexListColumns
+
+    const x = col * hexItemWidth
+    const y = row * (hexBlockHeight + 1) // Add spacing between rows
+
+    // Parse hex color
+    const hex = color.replace("#", "")
+    const r = parseInt(hex.substring(0, 2), 16)
+    const g = parseInt(hex.substring(2, 4), 16)
+    const b = parseInt(hex.substring(4, 6), 16)
+    const rgba = RGBA.fromInts(r, g, b)
+
+    // Draw colored box (4x2 block)
+    for (let dy = 0; dy < hexBlockHeight; dy++) {
+      for (let dx = 0; dx < hexBlockWidth; dx++) {
+        hexBuffer.setCell(x + dx, y + dy, " ", RGBA.fromInts(255, 255, 255), rgba)
+      }
+    }
+
+    // Draw index and hex value next to the box
+    const text = `${i.toString().padStart(3, " ")}: ${color.toUpperCase()}`
+    const textColor = RGBA.fromInts(148, 163, 184)
+    const bgColor = RGBA.fromInts(30, 41, 59, 255)
+    const textStartX = x + hexBlockWidth + 1
+    for (let ci = 0; ci < text.length && textStartX + ci < x + hexItemWidth - hexSpacing; ci++) {
+      hexBuffer.drawText(text[ci], textStartX + ci, y, textColor, bgColor, TextAttributes.NONE)
+    }
   }
 }
 
@@ -264,26 +323,15 @@ export function destroy(renderer: CliRenderer): void {
     keyboardHandler = null
   }
 
-  if (parentContainer) {
-    renderer.root.remove("terminal-palette-container")
-    parentContainer = null
+  if (scrollBox) {
+    renderer.root.remove("main-container")
+    scrollBox = null
   }
 
-  if (paletteBuffer) {
-    renderer.root.remove("palette-buffer")
-    paletteBuffer = null
-  }
-
-  if (hexListText) {
-    renderer.root.remove("hex-list")
-    hexListText = null
-  }
-
-  if (specialColorsText) {
-    renderer.root.remove("special-colors")
-    specialColorsText = null
-  }
-
+  contentContainer = null
+  paletteBuffer = null
+  hexListBuffer = null
+  specialColorsBuffer = null
   statusText = null
   terminalColors = null
 }
