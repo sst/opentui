@@ -3,10 +3,26 @@ type Hex = string | null
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
 
+const OSC_SPECIAL_RESPONSE =
+  /\x1b](\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
+
 export type WriteFunction = (data: string | Buffer) => boolean
 
+export interface TerminalColors {
+  palette: Hex[]
+  defaultForeground: Hex
+  defaultBackground: Hex
+  cursorColor: Hex
+  mouseForeground: Hex
+  mouseBackground: Hex
+  tekForeground: Hex
+  tekBackground: Hex
+  highlightBackground: Hex
+  highlightForeground: Hex
+}
+
 export interface TerminalPaletteDetector {
-  detect(timeoutMs?: number): Promise<Hex[]>
+  detect(timeoutMs?: number): Promise<TerminalColors>
   detectOSCSupport(timeoutMs?: number): Promise<boolean>
   cleanup(): void
 }
@@ -163,18 +179,122 @@ export class TerminalPalette implements TerminalPaletteDetector {
     })
   }
 
-  async detect(timeoutMs = 5000): Promise<Hex[]> {
+  private async querySpecialColors(timeoutMs = 1200): Promise<Record<number, Hex>> {
+    const out = this.stdout
+    const inp = this.stdin
+    const results: Record<number, Hex> = {
+      10: null,
+      11: null,
+      12: null,
+      13: null,
+      14: null,
+      15: null,
+      16: null,
+      17: null,
+      19: null,
+    }
+
+    if (!out.isTTY || !inp.isTTY) {
+      return results
+    }
+
+    return new Promise<Record<number, Hex>>((resolve) => {
+      let buffer = ""
+      let idleTimer: NodeJS.Timeout | null = null
+
+      const onData = (chunk: string | Buffer) => {
+        buffer += chunk.toString()
+
+        let m: RegExpExecArray | null
+        OSC_SPECIAL_RESPONSE.lastIndex = 0
+        while ((m = OSC_SPECIAL_RESPONSE.exec(buffer))) {
+          const idx = parseInt(m[1], 10)
+          if (idx in results) {
+            results[idx] = toHex(m[2], m[3], m[4], m[5])
+          }
+        }
+
+        if (buffer.length > 8192) buffer = buffer.slice(-4096)
+
+        const done = Object.values(results).filter((v) => v !== null).length
+        if (done === Object.keys(results).length) {
+          cleanup()
+          resolve(results)
+          return
+        }
+
+        if (idleTimer) clearTimeout(idleTimer)
+        idleTimer = setTimeout(() => {
+          cleanup()
+          resolve(results)
+        }, 150)
+        if (idleTimer) this.activeTimers.push(idleTimer)
+      }
+
+      const onTimeout = () => {
+        cleanup()
+        resolve(results)
+      }
+
+      const cleanup = () => {
+        clearTimeout(timer)
+        if (idleTimer) clearTimeout(idleTimer)
+        inp.removeListener("data", onData)
+        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
+        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
+        const timerIdx = this.activeTimers.indexOf(timer)
+        if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
+        if (idleTimer) {
+          const idleTimerIdx = this.activeTimers.indexOf(idleTimer)
+          if (idleTimerIdx !== -1) this.activeTimers.splice(idleTimerIdx, 1)
+        }
+      }
+
+      const timer = setTimeout(onTimeout, timeoutMs)
+      this.activeTimers.push(timer)
+      inp.on("data", onData)
+      this.activeListeners.push({ event: "data", handler: onData })
+      this.writeFn(
+        ["\x1b]10;?\x07", "\x1b]11;?\x07", "\x1b]12;?\x07", "\x1b]13;?\x07", "\x1b]14;?\x07", "\x1b]15;?\x07", "\x1b]16;?\x07", "\x1b]17;?\x07", "\x1b]19;?\x07"].join(""),
+      )
+    })
+  }
+
+  async detect(timeoutMs = 5000): Promise<TerminalColors> {
     const supported = await this.detectOSCSupport()
 
     if (!supported) {
-      // Return 256 nulls if OSC is not supported
-      return Array(256).fill(null)
+      return {
+        palette: Array(256).fill(null),
+        defaultForeground: null,
+        defaultBackground: null,
+        cursorColor: null,
+        mouseForeground: null,
+        mouseBackground: null,
+        tekForeground: null,
+        tekBackground: null,
+        highlightBackground: null,
+        highlightForeground: null,
+      }
     }
 
-    // Always query all 256 colors when OSC is supported
-    const INDICES = [...Array(256).keys()]
-    const results = await this.queryPalette(INDICES, timeoutMs)
-    return INDICES.map((i) => results.get(i) ?? null)
+    const [paletteResults, specialColors] = await Promise.all([
+      this.queryPalette([...Array(256).keys()], timeoutMs),
+      this.querySpecialColors(timeoutMs),
+    ])
+
+    return {
+      palette: [...Array(256).keys()].map((i) => paletteResults.get(i) ?? null),
+      defaultForeground: specialColors[10],
+      defaultBackground: specialColors[11],
+      cursorColor: specialColors[12],
+      mouseForeground: specialColors[13],
+      mouseBackground: specialColors[14],
+      tekForeground: specialColors[15],
+      tekBackground: specialColors[16],
+      highlightBackground: specialColors[17],
+      highlightForeground: specialColors[19],
+    }
   }
 }
 

@@ -10,6 +10,7 @@ import {
   BoxRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import type { TerminalColors } from "../lib/terminal-palette"
 
 /**
  * This demo showcases terminal palette detection.
@@ -19,7 +20,9 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 let parentContainer: BoxRenderable | null = null
 let paletteBuffer: FrameBufferRenderable | null = null
 let statusText: TextRenderable | null = null
-let palette: (string | null)[] | null = null
+let hexListText: TextRenderable | null = null
+let specialColorsText: TextRenderable | null = null
+let terminalColors: TerminalColors | null = null
 let keyboardHandler: ((key: any) => void) | null = null
 
 export function run(renderer: CliRenderer): void {
@@ -78,10 +81,10 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainer.add(instructionsText)
 
-  // Create framebuffer for palette display (wider to accommodate color values)
+  // Create framebuffer for palette display (just the color grid)
   paletteBuffer = new FrameBufferRenderable(renderer, {
     id: "palette-buffer",
-    width: 120,
+    width: 64,
     height: 32,
     position: "absolute",
     left: 2,
@@ -112,13 +115,13 @@ async function fetchAndDisplayPalette(renderer: CliRenderer): Promise<void> {
     statusText.fg = RGBA.fromInts(250, 204, 21) // Amber - warm loading state
 
     const startTime = Date.now()
-    palette = await renderer.getPalette()
+    terminalColors = await renderer.getPalette()
     const elapsed = Date.now() - startTime
 
     statusText.content = `Status: Palette fetched in ${elapsed}ms (${status === "cached" ? "from cache" : "from terminal"})`
     statusText.fg = RGBA.fromInts(34, 197, 94) // Emerald - fresh success state
 
-    drawPalette(paletteBuffer, palette)
+    drawPalette(renderer, paletteBuffer, terminalColors)
   } catch (error) {
     if (statusText) {
       statusText.content = `Status: Error - ${error instanceof Error ? error.message : String(error)}`
@@ -135,18 +138,18 @@ function clearPaletteCache(renderer: CliRenderer): void {
   statusText.fg = RGBA.fromInts(148, 163, 184) // Slate-400 - neutral info state
 }
 
-function drawPalette(paletteBufferRenderable: FrameBufferRenderable, colors: (string | null)[]): void {
+function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBufferRenderable, terminalColors: TerminalColors): void {
   const buffer = paletteBufferRenderable.frameBuffer
 
   // Clear the buffer
   buffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
 
+  const colors = terminalColors.palette
+
   // Draw a 16x16 grid of colors (256 colors total)
   // Each color is represented as a 4x2 block of cells
   const blockWidth = 4
   const blockHeight = 2
-  const gridWidth = 16 * blockWidth // 64 columns for the grid
-  const valueStartX = gridWidth + 2 // Start hex values 2 columns after grid
 
   for (let i = 0; i < 256; i++) {
     const color = colors[i]
@@ -188,35 +191,70 @@ function drawPalette(paletteBufferRenderable: FrameBufferRenderable, colors: (st
         }
       }
     }
+  }
 
-    // Draw hex value next to grid (one per row, showing all 16 colors in that row)
-    if (col === 15) {
-      // Last column of the row, now draw all 16 hex values for this row
-      const valueY = y
-      let currentX = valueStartX
-
-      for (let rowCol = 0; rowCol < 16; rowCol++) {
-        const colorIndex = row * 16 + rowCol
-        const rowColor = colors[colorIndex]
-        if (rowColor) {
-          const hexValue = rowColor.replace("#", "").toUpperCase()
-          const valueText = `${hexValue} `
-          const textColor = RGBA.fromInts(148, 163, 184) // Slate-400
-
-          for (let ci = 0; ci < valueText.length; ci++) {
-            buffer.drawText(
-              valueText[ci],
-              currentX + ci,
-              valueY,
-              textColor,
-              RGBA.fromInts(30, 41, 59, 255),
-              TextAttributes.NONE
-            )
-          }
-          currentX += valueText.length
-        }
+  // Create hex list below the grid
+  const hexLines: string[] = []
+  const hexListColumns = 4
+  for (let i = 0; i < 256; i += hexListColumns) {
+    const line: string[] = []
+    for (let j = 0; j < hexListColumns && i + j < 256; j++) {
+      const color = colors[i + j]
+      if (color) {
+        line.push(`${(i + j).toString().padStart(3, " ")}: ${color.toUpperCase()}`)
       }
     }
+    hexLines.push(line.join("  "))
+  }
+
+  if (!hexListText) {
+    hexListText = new TextRenderable(renderer, {
+      id: "hex-list",
+      content: hexLines.join("\n"),
+      position: "absolute",
+      left: 2,
+      top: 39, // Below the grid (top: 6 + height: 32 = 38, +1 for spacing)
+      fg: RGBA.fromInts(148, 163, 184),
+      zIndex: 100,
+    })
+    renderer.root.add(hexListText)
+  } else {
+    hexListText.content = hexLines.join("\n")
+  }
+
+  // Create special colors list to the right of the grid
+  const specialColors = [
+    { label: "Default FG", value: terminalColors.defaultForeground },
+    { label: "Default BG", value: terminalColors.defaultBackground },
+    { label: "Cursor", value: terminalColors.cursorColor },
+    { label: "Mouse FG", value: terminalColors.mouseForeground },
+    { label: "Mouse BG", value: terminalColors.mouseBackground },
+    { label: "Tek FG", value: terminalColors.tekForeground },
+    { label: "Tek BG", value: terminalColors.tekBackground },
+    { label: "Highlight BG", value: terminalColors.highlightBackground },
+    { label: "Highlight FG", value: terminalColors.highlightForeground },
+  ]
+
+  const specialLines = specialColors.map(({ label, value }) => {
+    if (value) {
+      return `${label.padEnd(12)}: ${value.toUpperCase()}`
+    }
+    return `${label.padEnd(12)}: N/A`
+  })
+
+  if (!specialColorsText) {
+    specialColorsText = new TextRenderable(renderer, {
+      id: "special-colors",
+      content: specialLines.join("\n"),
+      position: "absolute",
+      left: 68, // Right of the 64-width grid + 4 spacing
+      top: 6,
+      fg: RGBA.fromInts(148, 163, 184),
+      zIndex: 100,
+    })
+    renderer.root.add(specialColorsText)
+  } else {
+    specialColorsText.content = specialLines.join("\n")
   }
 }
 
@@ -236,8 +274,18 @@ export function destroy(renderer: CliRenderer): void {
     paletteBuffer = null
   }
 
+  if (hexListText) {
+    renderer.root.remove("hex-list")
+    hexListText = null
+  }
+
+  if (specialColorsText) {
+    renderer.root.remove("special-colors")
+    specialColorsText = null
+  }
+
   statusText = null
-  palette = null
+  terminalColors = null
 }
 
 if (import.meta.main) {

@@ -58,13 +58,17 @@ test("TerminalPalette parses OSC 4 hex format correctly", async () => {
       const color = i === 0 ? "#ff00aa" : i === 1 ? "#00ff00" : i === 2 ? "#0000ff" : "#000000"
       stdin.emit("data", Buffer.from(`\x1b]4;${i};${color}\x07`))
     }
+    stdin.emit("data", Buffer.from("\x1b]10;#aabbcc\x07"))
+    stdin.emit("data", Buffer.from("\x1b]11;#ddeeff\x07"))
   }, 400)
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
-  expect(result[2]).toBe("#0000ff")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
+  expect(result.palette[2]).toBe("#0000ff")
+  expect(result.defaultForeground).toBe("#aabbcc")
+  expect(result.defaultBackground).toBe("#ddeeff")
 })
 
 test("TerminalPalette parses OSC 4 rgb format with 4 hex digits", async () => {
@@ -86,8 +90,8 @@ test("TerminalPalette parses OSC 4 rgb format with 4 hex digits", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toMatch(/^#[0-9a-f]{6}$/)
-  expect(result[0]).toBe("#ff00aa")
+  expect(result.palette[0]).toMatch(/^#[0-9a-f]{6}$/)
+  expect(result.palette[0]).toBe("#ff00aa")
 })
 
 test("TerminalPalette parses OSC 4 rgb format with 2 hex digits", async () => {
@@ -109,8 +113,8 @@ test("TerminalPalette parses OSC 4 rgb format with 2 hex digits", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toMatch(/^#[0-9a-f]{6}$/)
-  expect(result[0]).toBe("#ff00aa")
+  expect(result.palette[0]).toMatch(/^#[0-9a-f]{6}$/)
+  expect(result.palette[0]).toBe("#ff00aa")
 })
 
 test("TerminalPalette handles multiple color responses in single buffer", async () => {
@@ -141,10 +145,10 @@ test("TerminalPalette handles multiple color responses in single buffer", async 
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#000000")
-  expect(result[1]).toBe("#a90000")
-  expect(result[2]).toBe("#00a900")
-  expect(result[3]).toBe("#a9a900")
+  expect(result.palette[0]).toBe("#000000")
+  expect(result.palette[1]).toBe("#a90000")
+  expect(result.palette[2]).toBe("#00a900")
+  expect(result.palette[3]).toBe("#a9a900")
 })
 
 test("TerminalPalette handles BEL terminator", async () => {
@@ -166,7 +170,7 @@ test("TerminalPalette handles BEL terminator", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff0000")
+  expect(result.palette[0]).toBe("#ff0000")
 })
 
 test("TerminalPalette handles ST terminator", async () => {
@@ -188,7 +192,7 @@ test("TerminalPalette handles ST terminator", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#00ff00")
+  expect(result.palette[0]).toBe("#00ff00")
 })
 
 test("TerminalPalette scales color components correctly", async () => {
@@ -210,7 +214,7 @@ test("TerminalPalette scales color components correctly", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff0000")
+  expect(result.palette[0]).toBe("#ff0000")
 })
 
 test("TerminalPalette returns null for colors that don't respond", async () => {
@@ -230,8 +234,8 @@ test("TerminalPalette returns null for colors that don't respond", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff0000")
-  expect(result.some((color: string | null) => color === null)).toBe(true)
+  expect(result.palette[0]).toBe("#ff0000")
+  expect(result.palette.some((color: string | null) => color === null)).toBe(true)
 })
 
 test("TerminalPalette handles response split across chunks", async () => {
@@ -261,8 +265,8 @@ test("TerminalPalette handles response split across chunks", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
 })
 
 test("TerminalPalette handles OSC response mixed with mouse events", async () => {
@@ -291,9 +295,9 @@ test("TerminalPalette handles OSC response mixed with mouse events", async () =>
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
-  expect(result[2]).toBe("#0000ff")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
+  expect(result.palette[2]).toBe("#0000ff")
 })
 
 test("TerminalPalette handles OSC response mixed with key events", async () => {
@@ -323,10 +327,10 @@ test("TerminalPalette handles OSC response mixed with key events", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
-  expect(result[2]).toBe("#0000ff")
-  expect(result[3]).toBe("#ffff00")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
+  expect(result.palette[2]).toBe("#0000ff")
+  expect(result.palette[3]).toBe("#ffff00")
 })
 
 test("TerminalPalette handles response split mid-escape sequence", async () => {
@@ -361,10 +365,10 @@ test("TerminalPalette handles response split mid-escape sequence", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
-  expect(result[2]).toBe("#0000ff")
-  expect(result[3]).toBe("#ffff00")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
+  expect(result.palette[2]).toBe("#0000ff")
+  expect(result.palette[3]).toBe("#ffff00")
 })
 
 test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () => {
@@ -394,9 +398,9 @@ test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () 
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
-  expect(result[2]).toBe("#0000ff")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
+  expect(result.palette[2]).toBe("#0000ff")
 })
 
 test("TerminalPalette handles complex chunking with partial responses", async () => {
@@ -435,8 +439,8 @@ test("TerminalPalette handles complex chunking with partial responses", async ()
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
 })
 
 test("TerminalPalette ignores malformed responses and waits for valid ones", async () => {
@@ -468,9 +472,9 @@ test("TerminalPalette ignores malformed responses and waits for valid ones", asy
   const result = await detectPromise
 
   // Should get the valid responses, not the malformed ones
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
-  expect(result[2]).toBe("#0000ff")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
+  expect(result.palette[2]).toBe("#0000ff")
 })
 
 test("TerminalPalette handles buffer overflow gracefully", async () => {
@@ -499,8 +503,8 @@ test("TerminalPalette handles buffer overflow gracefully", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff00aa")
-  expect(result[1]).toBe("#00ff00")
+  expect(result.palette[0]).toBe("#ff00aa")
+  expect(result.palette[1]).toBe("#00ff00")
 })
 
 test("TerminalPalette handles all 256 colors in a single blob", async () => {
@@ -527,10 +531,10 @@ test("TerminalPalette handles all 256 colors in a single blob", async () => {
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff0011")
-  expect(result[1]).toBe("#00ff22")
-  expect(result[255]).toBe("#aabbcc")
-  expect(result.length).toBe(256)
+  expect(result.palette[0]).toBe("#ff0011")
+  expect(result.palette[1]).toBe("#00ff22")
+  expect(result.palette[255]).toBe("#aabbcc")
+  expect(result.palette.length).toBe(256)
 })
 
 test("TerminalPalette handles blob split across multiple chunks", async () => {
@@ -560,10 +564,10 @@ test("TerminalPalette handles blob split across multiple chunks", async () => {
 
   const result = await detectPromise
 
-  expect(result[5]).toBe("#112233")
-  expect(result[100]).toBe("#445566")
-  expect(result[200]).toBe("#778899")
-  expect(result.length).toBe(256)
+  expect(result.palette[5]).toBe("#112233")
+  expect(result.palette[100]).toBe("#445566")
+  expect(result.palette[200]).toBe("#778899")
+  expect(result.palette.length).toBe(256)
 })
 
 test("TerminalPalette handles blob with mixed junk data", async () => {
@@ -600,9 +604,9 @@ test("TerminalPalette handles blob with mixed junk data", async () => {
 
   const result = await detectPromise
 
-  expect(result[10]).toBe("#abcdef")
-  expect(result[50]).toBe("#fedcba")
-  expect(result.length).toBe(256)
+  expect(result.palette[10]).toBe("#abcdef")
+  expect(result.palette[50]).toBe("#fedcba")
+  expect(result.palette.length).toBe(256)
 })
 
 test("TerminalPalette handles realistic terminal response pattern", async () => {
@@ -655,15 +659,15 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
 
   const result = await detectPromise
 
-  expect(result[0]).toBe("#ff0000")
-  expect(result[5]).toBe("#ff0000")
-  expect(result[6]).toBe("#00ff00")
-  expect(result[50]).toBe("#00ff00")
-  expect(result[51]).toBe("#0000ff")
-  expect(result[150]).toBe("#0000ff")
-  expect(result[151]).toBe("#ffffff")
-  expect(result[255]).toBe("#ffffff")
-  expect(result.length).toBe(256)
+  expect(result.palette[0]).toBe("#ff0000")
+  expect(result.palette[5]).toBe("#ff0000")
+  expect(result.palette[6]).toBe("#00ff00")
+  expect(result.palette[50]).toBe("#00ff00")
+  expect(result.palette[51]).toBe("#0000ff")
+  expect(result.palette[150]).toBe("#0000ff")
+  expect(result.palette[151]).toBe("#ffffff")
+  expect(result.palette[255]).toBe("#ffffff")
+  expect(result.palette.length).toBe(256)
 })
 
 test("TerminalPalette uses custom write function when provided", async () => {
@@ -717,8 +721,8 @@ test("TerminalPalette uses custom write function for palette detection", async (
 
   await detectPromise
 
-  // Should have written OSC support query + palette query for all 256 colors
-  expect(writtenData.length).toBe(2)
+  // Should have written OSC support query + palette query + special colors query
+  expect(writtenData.length).toBe(3)
   expect(writtenData[0]).toBe("\x1b]4;0;?\x07") // OSC support check
 
   // Verify palette query contains all 256 color queries
@@ -726,6 +730,11 @@ test("TerminalPalette uses custom write function for palette detection", async (
   for (let i = 0; i < 256; i++) {
     expect(paletteQuery).toContain(`\x1b]4;${i};?\x07`)
   }
+
+  // Verify special colors query
+  const specialQuery = writtenData[2]
+  expect(specialQuery).toContain("\x1b]10;?\x07") // Default foreground
+  expect(specialQuery).toContain("\x1b]11;?\x07") // Default background
 })
 
 test("TerminalPalette falls back to stdout.write when no custom write function provided", async () => {
@@ -778,4 +787,178 @@ test("TerminalPalette custom write function can intercept and modify output", as
   expect(actualWrites).toBe(1)
   expect(interceptedWrites.length).toBe(1)
   expect(interceptedWrites[0]).toBe("\x1b]4;0;?\x07")
+})
+
+test("TerminalPalette detects all special OSC colors (10-19)", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+
+  setTimeout(() => {
+    for (let i = 0; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+    stdin.emit("data", Buffer.from("\x1b]10;#ff0001\x07")) // Default foreground
+    stdin.emit("data", Buffer.from("\x1b]11;#ff0002\x07")) // Default background
+    stdin.emit("data", Buffer.from("\x1b]12;#ff0003\x07")) // Cursor color
+    stdin.emit("data", Buffer.from("\x1b]13;#ff0004\x07")) // Mouse foreground
+    stdin.emit("data", Buffer.from("\x1b]14;#ff0005\x07")) // Mouse background
+    stdin.emit("data", Buffer.from("\x1b]15;#ff0006\x07")) // Tek foreground
+    stdin.emit("data", Buffer.from("\x1b]16;#ff0007\x07")) // Tek background
+    stdin.emit("data", Buffer.from("\x1b]17;#ff0008\x07")) // Highlight background
+    stdin.emit("data", Buffer.from("\x1b]19;#ff0009\x07")) // Highlight foreground
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result.defaultForeground).toBe("#ff0001")
+  expect(result.defaultBackground).toBe("#ff0002")
+  expect(result.cursorColor).toBe("#ff0003")
+  expect(result.mouseForeground).toBe("#ff0004")
+  expect(result.mouseBackground).toBe("#ff0005")
+  expect(result.tekForeground).toBe("#ff0006")
+  expect(result.tekBackground).toBe("#ff0007")
+  expect(result.highlightBackground).toBe("#ff0008")
+  expect(result.highlightForeground).toBe("#ff0009")
+})
+
+test("TerminalPalette handles special colors in rgb format", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+
+  setTimeout(() => {
+    for (let i = 0; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+    stdin.emit("data", Buffer.from("\x1b]10;rgb:ffff/0000/0000\x07"))
+    stdin.emit("data", Buffer.from("\x1b]11;rgb:0000/ffff/0000\x07"))
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result.defaultForeground).toBe("#ff0000")
+  expect(result.defaultBackground).toBe("#00ff00")
+})
+
+test("TerminalPalette handles missing special colors gracefully", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+
+  setTimeout(() => {
+    for (let i = 0; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+    // Only send some special colors, not all
+    stdin.emit("data", Buffer.from("\x1b]10;#ff0001\x07"))
+    stdin.emit("data", Buffer.from("\x1b]11;#ff0002\x07"))
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result.defaultForeground).toBe("#ff0001")
+  expect(result.defaultBackground).toBe("#ff0002")
+  expect(result.cursorColor).toBe(null)
+  expect(result.mouseForeground).toBe(null)
+  expect(result.mouseBackground).toBe(null)
+})
+
+test("TerminalPalette special colors with ST terminator", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+
+  setTimeout(() => {
+    for (let i = 0; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+    stdin.emit("data", Buffer.from("\x1b]10;#aabbcc\x1b\\"))
+    stdin.emit("data", Buffer.from("\x1b]11;#ddeeff\x1b\\"))
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result.defaultForeground).toBe("#aabbcc")
+  expect(result.defaultBackground).toBe("#ddeeff")
+})
+
+test("TerminalPalette handles mixed palette and special color responses", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+
+  setTimeout(() => {
+    // Interleave palette and special colors
+    stdin.emit("data", Buffer.from("\x1b]4;0;#010203\x07"))
+    stdin.emit("data", Buffer.from("\x1b]10;#aabbcc\x07"))
+    stdin.emit("data", Buffer.from("\x1b]4;1;#040506\x07"))
+    stdin.emit("data", Buffer.from("\x1b]11;#ddeeff\x07"))
+    for (let i = 2; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result.palette[0]).toBe("#010203")
+  expect(result.palette[1]).toBe("#040506")
+  expect(result.defaultForeground).toBe("#aabbcc")
+  expect(result.defaultBackground).toBe("#ddeeff")
+})
+
+test("TerminalPalette returns null special colors on non-TTY", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+  stdin.isTTY = false
+  stdout.isTTY = false
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const result = await palette.detect(100)
+
+  expect(result.defaultForeground).toBe(null)
+  expect(result.defaultBackground).toBe(null)
+  expect(result.cursorColor).toBe(null)
+  expect(result.palette.every((c: string | null) => c === null)).toBe(true)
+})
+
+test("TerminalPalette returns null special colors on OSC not supported", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  // Don't respond to OSC queries
+  const result = await palette.detect(100)
+
+  expect(result.defaultForeground).toBe(null)
+  expect(result.defaultBackground).toBe(null)
+  expect(result.cursorColor).toBe(null)
+  expect(result.palette.every((c: string | null) => c === null)).toBe(true)
 })

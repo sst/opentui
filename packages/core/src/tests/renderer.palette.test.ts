@@ -17,7 +17,7 @@ function createMockStreams() {
     isTTY: true,
     columns: 80,
     rows: 24,
-    write: (data: string | Buffer) => {
+      write: (data: string | Buffer) => {
       writes.push(data.toString())
       // Auto-respond to OSC queries immediately
       const dataStr = data.toString()
@@ -32,6 +32,13 @@ function createMockStreams() {
           for (let i = 0; i < 16; i++) {
             mockStdin.emit("data", Buffer.from(`\x1b]4;${i};rgb:1000/2000/3000\x07`))
           }
+        })
+      } else if (dataStr.includes("\x1b]10;?")) {
+        // Special color queries
+        process.nextTick(() => {
+          mockStdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+          mockStdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+          mockStdin.emit("data", Buffer.from("\x1b]12;#00ff00\x07"))
         })
       }
       return true
@@ -214,7 +221,7 @@ describe("Palette detection with non-TTY", () => {
     const palette = await renderer.getPalette(100)
 
     // Should return array (all null when not a TTY)
-    expect(Array.isArray(palette)).toBe(true)
+    expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
     // Cache should still work
     const cached = await renderer.getPalette(100)
@@ -268,14 +275,14 @@ describe("Palette detection with OSC responses", () => {
 
     const palette = await renderer.getPalette(300)
 
-    expect(Array.isArray(palette)).toBe(true)
-    expect(palette.length).toBeGreaterThanOrEqual(16)
+    expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
+    expect(palette.palette.length).toBeGreaterThanOrEqual(16)
 
     // Check specific colors were detected
-    expect(palette[0]).toBe("#000000")
-    expect(palette[1]).toBe("#ff0000")
-    expect(palette[2]).toBe("#00ff00")
-    expect(palette[3]).toBe("#0000ff")
+    expect(palette.palette[0]).toBe("#000000")
+    expect(palette.palette[1]).toBe("#ff0000")
+    expect(palette.palette[2]).toBe("#00ff00")
+    expect(palette.palette[3]).toBe("#0000ff")
 
     // Verify caching
     const cached = await renderer.getPalette(100)
@@ -322,9 +329,9 @@ describe("Palette detection with OSC responses", () => {
 
     const palette = await renderer.getPalette(300)
 
-    expect(palette[0]).toBe("#000000")
-    expect(palette[1]).toBe("#ff0000")
-    expect(palette[2]).toBe("#808080") // 8000 hex should map to 80 in 8-bit
+    expect(palette.palette[0]).toBe("#000000")
+    expect(palette.palette[1]).toBe("#ff0000")
+    expect(palette.palette[2]).toBe("#808080") // 8000 hex should map to 80 in 8-bit
 
     renderer.destroy()
   })
@@ -379,7 +386,7 @@ describe("Palette integration tests", () => {
       })
 
       const palette = await testRenderer.getPalette(300)
-      expect(Array.isArray(palette)).toBe(true)
+      expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
       // Verify caching
       const cached = await testRenderer.getPalette(100)
@@ -472,7 +479,7 @@ describe("Palette detection with suspended renderer", () => {
 
     // Should work now
     const palette = await renderer.getPalette(300)
-    expect(Array.isArray(palette)).toBe(true)
+    expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
     renderer.destroy()
   })
@@ -576,8 +583,8 @@ describe("Palette detection error handling", () => {
 
     // Should timeout and return array with nulls
     const palette = await renderer.getPalette(100)
-    expect(Array.isArray(palette)).toBe(true)
-    expect(palette.every((c) => c === null)).toBe(true)
+    expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
+    expect(palette.palette.every((c) => c === null)).toBe(true)
 
     renderer.destroy()
   })
