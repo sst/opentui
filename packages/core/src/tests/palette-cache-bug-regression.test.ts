@@ -62,7 +62,7 @@ describe("Palette cache bug regression tests", () => {
     const writeCountAfterFirst = writes.length
 
     expect(renderer.paletteDetectionStatus).toBe("cached")
-    expect(palette1.palette.length).toBe(256) // Always returns 256-element array
+    expect(palette1.palette.length).toBe(16) // Returns array with requested size
 
     // Second call with size=16 - should use cache
     const start = Date.now()
