@@ -1652,6 +1652,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error("Cannot detect palette while renderer is suspended")
     }
 
+    const requestedSize = options?.size ?? 256
+
+    if (this._cachedPalette && this._cachedPalette.palette.length !== requestedSize) {
+      this._cachedPalette = null
+    }
+
     if (this._cachedPalette) {
       return this._cachedPalette
     }

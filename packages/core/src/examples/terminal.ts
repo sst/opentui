@@ -8,6 +8,8 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   BoxRenderable,
+  InputRenderable,
+  InputRenderableEvents,
 } from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -15,7 +17,7 @@ import type { TerminalColors } from "../lib/terminal-palette"
 
 /**
  * This demo showcases terminal palette detection.
- * Press 'p' to fetch and display the terminal's color palette.
+ * Enter a palette size (1-256) in the input field and press Enter to fetch colors.
  */
 
 let scrollBox: ScrollBoxRenderable | null = null
@@ -26,6 +28,7 @@ let hexListBuffer: FrameBufferRenderable | null = null
 let specialColorsBuffer: FrameBufferRenderable | null = null
 let terminalColors: TerminalColors | null = null
 let keyboardHandler: ((key: any) => void) | null = null
+let paletteSizeInput: InputRenderable | null = null
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
@@ -63,10 +66,39 @@ export function run(renderer: CliRenderer): void {
 
   const subtitleText = new TextRenderable(renderer, {
     id: "terminal_subtitle",
-    content: "Press 'p' to fetch terminal colors | Press 'c' to clear cache",
+    content: "Enter palette size (1-256) and press Enter to fetch | Press 'c' to clear cache",
     fg: RGBA.fromInts(148, 163, 184), // Slate-400 - softer contrast
   })
   contentContainer.add(subtitleText)
+
+  // Add input field for palette size
+  const inputContainer = new BoxRenderable(renderer, {
+    id: "input-container",
+    flexDirection: "row",
+    marginTop: 1,
+  })
+  contentContainer.add(inputContainer)
+
+  const inputLabel = new TextRenderable(renderer, {
+    id: "input-label",
+    content: "Palette Size: ",
+    fg: RGBA.fromInts(148, 163, 184),
+  })
+  inputContainer.add(inputLabel)
+
+  paletteSizeInput = new InputRenderable(renderer, {
+    id: "palette-size-input",
+    width: 10,
+    height: 1,
+    backgroundColor: RGBA.fromInts(30, 41, 59),
+    textColor: RGBA.fromInts(255, 255, 255),
+    placeholder: "16",
+    placeholderColor: RGBA.fromInts(100, 116, 139),
+    cursorColor: RGBA.fromInts(139, 92, 246), // Purple cursor
+    value: "16",
+    maxLength: 3,
+  })
+  inputContainer.add(paletteSizeInput)
 
   statusText = new TextRenderable(renderer, {
     id: "terminal_status",
@@ -94,19 +126,33 @@ export function run(renderer: CliRenderer): void {
   contentContainer.add(paletteBuffer)
   paletteBuffer.frameBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
 
+  // Set up input submit handler
+  paletteSizeInput.on(InputRenderableEvents.ENTER, async (value: string) => {
+    const size = parseInt(value, 10)
+    if (isNaN(size) || size < 1 || size > 256) {
+      if (statusText) {
+        statusText.content = "Status: Invalid palette size. Please enter a number between 1 and 256."
+        statusText.fg = RGBA.fromInts(239, 68, 68) // Red error
+      }
+      return
+    }
+    await fetchAndDisplayPalette(renderer, size)
+  })
+
   // Set up keyboard handler
   keyboardHandler = async (key) => {
-    if (key.name === "p") {
-      await fetchAndDisplayPalette(renderer)
-    } else if (key.name === "c") {
+    if (key.name === "c") {
       clearPaletteCache(renderer)
     }
   }
 
   renderer.keyInput.on("keypress", keyboardHandler)
+
+  // Focus the input field on start
+  paletteSizeInput.focus()
 }
 
-async function fetchAndDisplayPalette(renderer: CliRenderer): Promise<void> {
+async function fetchAndDisplayPalette(renderer: CliRenderer, size: number): Promise<void> {
   if (!statusText || !paletteBuffer) return
 
   try {
@@ -115,13 +161,13 @@ async function fetchAndDisplayPalette(renderer: CliRenderer): Promise<void> {
     statusText.fg = RGBA.fromInts(250, 204, 21) // Amber - warm loading state
 
     const startTime = Date.now()
-    terminalColors = await renderer.getPalette()
+    terminalColors = await renderer.getPalette({ size })
     const elapsed = Date.now() - startTime
 
-    statusText.content = `Status: Palette fetched in ${elapsed}ms (${status === "cached" ? "from cache" : "from terminal"})`
+    statusText.content = `Status: Palette (${size} colors) fetched in ${elapsed}ms (${status === "cached" ? "from cache" : "from terminal"})`
     statusText.fg = RGBA.fromInts(34, 197, 94) // Emerald - fresh success state
 
-    drawPalette(renderer, paletteBuffer, terminalColors)
+    drawPalette(renderer, paletteBuffer, terminalColors, size)
   } catch (error) {
     if (statusText) {
       statusText.content = `Status: Error - ${error instanceof Error ? error.message : String(error)}`
@@ -134,11 +180,11 @@ function clearPaletteCache(renderer: CliRenderer): void {
   if (!statusText) return
 
   renderer.clearPaletteCache()
-  statusText.content = "Status: Cache cleared. Press 'p' to fetch palette again."
+  statusText.content = "Status: Cache cleared. Enter a size and press Enter to fetch palette again."
   statusText.fg = RGBA.fromInts(148, 163, 184) // Slate-400 - neutral info state
 }
 
-function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBufferRenderable, terminalColors: TerminalColors): void {
+function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBufferRenderable, terminalColors: TerminalColors, size: number): void {
   const buffer = paletteBufferRenderable.frameBuffer
 
   // Clear the buffer
@@ -146,12 +192,12 @@ function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBuffer
 
   const colors = terminalColors.palette
 
-  // Draw a 16x16 grid of colors (256 colors total)
+  // Draw a grid of colors based on the requested size
   // Each color is represented as a 4x2 block of cells
   const blockWidth = 4
   const blockHeight = 2
 
-  for (let i = 0; i < 256; i++) {
+  for (let i = 0; i < size; i++) {
     const color = colors[i]
     if (!color) continue
 
@@ -282,7 +328,9 @@ function drawPalette(renderer: CliRenderer, paletteBufferRenderable: FrameBuffer
   const hexBuffer = hexListBuffer.frameBuffer
   hexBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
 
-  for (let i = 0; i < 256; i++) {
+  // Only render the colors that were fetched (limited by size)
+  const actualSize = Math.min(terminalColors.palette.length, 256)
+  for (let i = 0; i < actualSize; i++) {
     const color = colors[i]
     if (!color) continue
 
@@ -321,6 +369,11 @@ export function destroy(renderer: CliRenderer): void {
   if (keyboardHandler) {
     renderer.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
+  }
+
+  if (paletteSizeInput) {
+    paletteSizeInput.destroy()
+    paletteSizeInput = null
   }
 
   if (scrollBox) {
