@@ -233,3 +233,435 @@ test("TerminalPalette returns null for colors that don't respond", async () => {
   expect(result[0]).toBe("#ff0000")
   expect(result.some((color: string | null) => color === null)).toBe(true)
 })
+
+test("TerminalPalette handles response split across chunks", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Split a single OSC response across multiple chunks
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff"))
+    stdin.emit("data", Buffer.from("00aa\x07"))
+    
+    // Split another response at different positions
+    stdin.emit("data", Buffer.from("\x1b]4;1;rgb:0000/"))
+    stdin.emit("data", Buffer.from("ffff/"))
+    stdin.emit("data", Buffer.from("0000\x07"))
+    
+    for (let i = 2; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+})
+
+test("TerminalPalette handles OSC response mixed with mouse events", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Mix OSC responses with mouse events (SGR mouse tracking format)
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
+    stdin.emit("data", Buffer.from("\x1b[<0;10;5M")) // Mouse down event
+    stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
+    stdin.emit("data", Buffer.from("\x1b[<0;11;5M")) // Mouse move event
+    stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
+    stdin.emit("data", Buffer.from("\x1b[<0;12;5m")) // Mouse up event
+    
+    for (let i = 3; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+  expect(result[2]).toBe("#0000ff")
+})
+
+test("TerminalPalette handles OSC response mixed with key events", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Mix OSC responses with keyboard input
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
+    stdin.emit("data", Buffer.from("hello")) // Regular text input
+    stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
+    stdin.emit("data", Buffer.from("\x1b[A")) // Arrow up key
+    stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
+    stdin.emit("data", Buffer.from("\x1b[B")) // Arrow down key
+    stdin.emit("data", Buffer.from("\x1b]4;3;#ffff00\x07"))
+    
+    for (let i = 4; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+  expect(result[2]).toBe("#0000ff")
+  expect(result[3]).toBe("#ffff00")
+})
+
+test("TerminalPalette handles response split mid-escape sequence", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Split at the escape character itself
+    stdin.emit("data", Buffer.from("\x1b"))
+    stdin.emit("data", Buffer.from("]4;0;#ff00aa\x07"))
+    
+    // Split at various points in the sequence
+    stdin.emit("data", Buffer.from("\x1b]"))
+    stdin.emit("data", Buffer.from("4;1;#00ff00\x07"))
+    
+    stdin.emit("data", Buffer.from("\x1b]4"))
+    stdin.emit("data", Buffer.from(";2;#0000ff\x07"))
+    
+    stdin.emit("data", Buffer.from("\x1b]4;"))
+    stdin.emit("data", Buffer.from("3;#ffff00\x07"))
+    
+    for (let i = 4; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+  expect(result[2]).toBe("#0000ff")
+  expect(result[3]).toBe("#ffff00")
+})
+
+test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Mix with various ANSI CSI sequences
+    stdin.emit("data", Buffer.from("\x1b[2J")) // Clear screen
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
+    stdin.emit("data", Buffer.from("\x1b[H")) // Cursor home
+    stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
+    stdin.emit("data", Buffer.from("\x1b[31m")) // Red foreground
+    stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
+    stdin.emit("data", Buffer.from("\x1b[0m")) // Reset
+    
+    for (let i = 3; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+  expect(result[2]).toBe("#0000ff")
+})
+
+test("TerminalPalette handles complex chunking with partial responses", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Very aggressive chunking - split every few characters
+    const response0 = "\x1b]4;0;rgb:ffff/0000/aaaa\x07"
+    for (let i = 0; i < response0.length; i += 3) {
+      stdin.emit("data", Buffer.from(response0.slice(i, i + 3)))
+    }
+    
+    // Mix with other content while chunking - but ensure valid hex format
+    stdin.emit("data", Buffer.from("\x1b]4;1"))
+    stdin.emit("data", Buffer.from(";#00"))
+    stdin.emit("data", Buffer.from("some junk data")) // Random text (won't match pattern)
+    stdin.emit("data", Buffer.from("ff00"))
+    stdin.emit("data", Buffer.from("\x1b[D")) // Arrow left
+    stdin.emit("data", Buffer.from("\x07"))
+    
+    // Color index 1 should remain null because the hex format is incomplete/malformed
+    // Send a proper response for index 1
+    stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
+    
+    for (let i = 2; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+})
+
+test("TerminalPalette ignores malformed responses and waits for valid ones", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Send malformed responses that should be ignored
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff00\x07")) // Incomplete hex (only 4 digits)
+    stdin.emit("data", Buffer.from("\x1b]4;1;rgb:gg00/0000/0000\x07")) // Invalid hex chars
+    stdin.emit("data", Buffer.from("\x1b]4;2;#zzzzzz\x07")) // Invalid hex chars
+    
+    // Send proper responses
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
+    stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
+    stdin.emit("data", Buffer.from("\x1b]4;2;#0000ff\x07"))
+    
+    for (let i = 3; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  // Should get the valid responses, not the malformed ones
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+  expect(result[2]).toBe("#0000ff")
+})
+
+test("TerminalPalette handles buffer overflow gracefully", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Send a huge amount of junk data to trigger buffer trimming
+    const junkData = "x".repeat(10000)
+    stdin.emit("data", Buffer.from(junkData))
+    
+    // Send valid responses after the buffer has been trimmed
+    stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
+    stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
+    
+    for (let i = 2; i < 256; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff00aa")
+  expect(result[1]).toBe("#00ff00")
+})
+
+test("TerminalPalette handles all 256 colors in a single blob", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Build a single massive blob with all 256 color responses
+    let blob = ""
+    for (let i = 0; i < 256; i++) {
+      const color = i === 0 ? "#ff0011" : i === 1 ? "#00ff22" : i === 255 ? "#aabbcc" : "#000000"
+      blob += `\x1b]4;${i};${color}\x07`
+    }
+    
+    // Send it all at once
+    stdin.emit("data", Buffer.from(blob))
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff0011")
+  expect(result[1]).toBe("#00ff22")
+  expect(result[255]).toBe("#aabbcc")
+  expect(result.length).toBe(256)
+})
+
+test("TerminalPalette handles blob split across multiple chunks", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Build a blob and split it at arbitrary positions
+    let blob = ""
+    for (let i = 0; i < 256; i++) {
+      const color = i === 5 ? "#112233" : i === 100 ? "#445566" : i === 200 ? "#778899" : "#000000"
+      blob += `\x1b]4;${i};${color}\x07`
+    }
+    
+    // Split the blob into chunks of 500 bytes
+    const chunkSize = 500
+    for (let i = 0; i < blob.length; i += chunkSize) {
+      stdin.emit("data", Buffer.from(blob.slice(i, i + chunkSize)))
+    }
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[5]).toBe("#112233")
+  expect(result[100]).toBe("#445566")
+  expect(result[200]).toBe("#778899")
+  expect(result.length).toBe(256)
+})
+
+test("TerminalPalette handles blob with mixed junk data", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Build a blob with junk data interspersed
+    let blob = ""
+    for (let i = 0; i < 256; i++) {
+      const color = i === 10 ? "#abcdef" : i === 50 ? "#fedcba" : "#000000"
+      blob += `\x1b]4;${i};${color}\x07`
+      
+      // Add junk data occasionally
+      if (i % 20 === 0) {
+        blob += "JUNK_DATA_HERE"
+      }
+      if (i % 30 === 0) {
+        blob += "\x1b[2J\x1b[H" // ANSI clear screen and home
+      }
+      if (i % 40 === 0) {
+        blob += "\x1b[<0;10;5M" // Mouse event
+      }
+    }
+    
+    stdin.emit("data", Buffer.from(blob))
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[10]).toBe("#abcdef")
+  expect(result[50]).toBe("#fedcba")
+  expect(result.length).toBe(256)
+})
+
+test("TerminalPalette handles realistic terminal response pattern", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect(2000)
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  setTimeout(() => {
+    // Simulate realistic terminal behavior:
+    // 1. Some colors come in small batches
+    // 2. Some come in large blobs
+    // 3. Some are split mid-response
+    // 4. Mixed with other terminal output
+    
+    // Batch 1: Colors 0-5 in one chunk
+    let chunk1 = ""
+    for (let i = 0; i <= 5; i++) {
+      chunk1 += `\x1b]4;${i};#ff0000\x07`
+    }
+    stdin.emit("data", Buffer.from(chunk1))
+    
+    // Batch 2: Colors 6-50 in one chunk, but split mid-response
+    let chunk2 = ""
+    for (let i = 6; i <= 50; i++) {
+      chunk2 += `\x1b]4;${i};#00ff00\x07`
+    }
+    stdin.emit("data", Buffer.from(chunk2.slice(0, 200)))
+    stdin.emit("data", Buffer.from(chunk2.slice(200)))
+    
+    // Batch 3: Mouse movement happens, then colors 51-150
+    stdin.emit("data", Buffer.from("\x1b[<35;20;10M"))
+    let chunk3 = ""
+    for (let i = 51; i <= 150; i++) {
+      chunk3 += `\x1b]4;${i};#0000ff\x07`
+    }
+    stdin.emit("data", Buffer.from(chunk3))
+    
+    // Batch 4: Colors 151-255 come in as huge blob
+    let chunk4 = ""
+    for (let i = 151; i <= 255; i++) {
+      chunk4 += `\x1b]4;${i};#ffffff\x07`
+    }
+    stdin.emit("data", Buffer.from(chunk4))
+  }, 400)
+
+  const result = await detectPromise
+
+  expect(result[0]).toBe("#ff0000")
+  expect(result[5]).toBe("#ff0000")
+  expect(result[6]).toBe("#00ff00")
+  expect(result[50]).toBe("#00ff00")
+  expect(result[51]).toBe("#0000ff")
+  expect(result[150]).toBe("#0000ff")
+  expect(result[151]).toBe("#ffffff")
+  expect(result[255]).toBe("#ffffff")
+  expect(result.length).toBe(256)
+})
