@@ -3,7 +3,6 @@ import { createTestRenderer } from "../testing/test-renderer"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
 
-// Helper to create mock stdin/stdout for palette testing
 function createMockStreams() {
   const mockStdin = new EventEmitter() as any
   mockStdin.isTTY = true
@@ -19,22 +18,18 @@ function createMockStreams() {
     rows: 24,
       write: (data: string | Buffer) => {
       writes.push(data.toString())
-      // Auto-respond to OSC queries immediately
       const dataStr = data.toString()
       if (dataStr.includes("\x1b]4;0;?")) {
-        // OSC support check
         process.nextTick(() => {
           mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
         })
       } else if (dataStr.includes("\x1b]4;")) {
-        // Palette queries - respond to each
         process.nextTick(() => {
           for (let i = 0; i < 16; i++) {
             mockStdin.emit("data", Buffer.from(`\x1b]4;${i};rgb:1000/2000/3000\x07`))
           }
         })
       } else if (dataStr.includes("\x1b]10;?")) {
-        // Special color queries
         process.nextTick(() => {
           mockStdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
           mockStdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
@@ -57,14 +52,11 @@ describe("Palette caching behavior", () => {
       stdout: mockStdout,
     })
 
-    // First call - triggers detection
     const palette1 = await renderer.getPalette({ timeout: 300 })
-
-    // Second call - should return cached palette
     const palette2 = await renderer.getPalette({ timeout: 300 })
 
-    expect(palette1).toBe(palette2) // Same reference
-    expect(palette1).toEqual(palette2) // Same values
+    expect(palette1).toBe(palette2)
+    expect(palette1).toEqual(palette2)
 
     renderer.destroy()
   })
@@ -77,13 +69,9 @@ describe("Palette caching behavior", () => {
       stdout: mockStdout,
     })
 
-    // First call with size=16
     const palette1 = await renderer.getPalette({ size: 16, timeout: 300 })
-
-    // Second call with size=16 - should return cached palette
     const palette2 = await renderer.getPalette({ size: 16, timeout: 300 })
 
-    // Should be same reference (cached)
     expect(palette1).toBe(palette2)
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
@@ -98,19 +86,14 @@ describe("Palette caching behavior", () => {
       stdout: mockStdout,
     })
 
-    // First call
     await renderer.getPalette({ timeout: 300 })
     const writeCountAfterFirst = writes.length
 
-    // Second call should not trigger new writes
     const start = Date.now()
     await renderer.getPalette({ timeout: 300 })
     const duration = Date.now() - start
 
-    // Should be instant (cached)
     expect(duration).toBeLessThan(50)
-
-    // Should not have sent new queries
     expect(writes.length).toBe(writeCountAfterFirst)
 
     renderer.destroy()
@@ -124,18 +107,15 @@ describe("Palette caching behavior", () => {
       stdout: mockStdout,
     })
 
-    // Start three concurrent getPalette calls
     const [palette1, palette2, palette3] = await Promise.all([
       renderer.getPalette({ timeout: 300 }),
       renderer.getPalette({ timeout: 300 }),
       renderer.getPalette({ timeout: 300 }),
     ])
 
-    // All should be the same reference
     expect(palette1).toBe(palette2)
     expect(palette2).toBe(palette3)
 
-    // Should only have queried once or twice (support check + queries)
     const oscSupportChecks = writes.filter((w) => w.includes("\x1b]4;0;?"))
     expect(oscSupportChecks.length).toBeLessThanOrEqual(2)
 
@@ -163,8 +143,6 @@ describe("Palette caching behavior", () => {
 
     // @ts-expect-error - accessing private property for testing
     const detector2 = renderer._paletteDetector
-
-    // Should be same instance
     expect(detector1).toBe(detector2)
 
     renderer.destroy()
@@ -183,10 +161,7 @@ describe("Palette caching behavior", () => {
 
     const palette2 = await renderer.getPalette({ timeout: 5000 })
 
-    // Should not send new queries
     expect(writes.length).toBe(writeCountAfterFirst)
-
-    // Should be same reference
     expect(palette1).toBe(palette2)
 
     renderer.destroy()
@@ -202,7 +177,6 @@ describe("Palette caching behavior", () => {
 
     const palette1 = await renderer.getPalette({ timeout: 300 })
 
-    // Lifecycle operations
     renderer.start()
     await new Promise((resolve) => setTimeout(resolve, 10))
     renderer.pause()
@@ -210,7 +184,6 @@ describe("Palette caching behavior", () => {
     renderer.resume()
     renderer.stop()
 
-    // Should still have cached palette
     const palette2 = await renderer.getPalette({ timeout: 100 })
     expect(palette1).toBe(palette2)
 
@@ -241,10 +214,8 @@ describe("Palette detection with non-TTY", () => {
 
     const palette = await renderer.getPalette({ timeout: 100 })
 
-    // Should return array (all null when not a TTY)
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
-    // Cache should still work
     const cached = await renderer.getPalette({ timeout: 100 })
     expect(palette).toBe(cached)
 
@@ -267,15 +238,11 @@ describe("Palette detection with OSC responses", () => {
       rows: 24,
       write: (data: string | Buffer) => {
         const dataStr = data.toString()
-        // Respond on next tick to allow listener setup
         setImmediate(() => {
           if (dataStr.includes("\x1b]4;0;?")) {
-            // OSC support check
             mockStdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
           }
-          // Check if this is a palette query (has multiple color indices)
           if (dataStr.match(/\x1b\]4;\d+;/g)) {
-            // Send specific test colors for all detected indices
             mockStdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
             mockStdin.emit("data", Buffer.from("\x1b]4;1;#ff0000\x07"))
             mockStdin.emit("data", Buffer.from("\x1b]4;2;#00ff00\x07"))
@@ -298,14 +265,11 @@ describe("Palette detection with OSC responses", () => {
 
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
     expect(palette.palette.length).toBeGreaterThanOrEqual(16)
-
-    // Check specific colors were detected
     expect(palette.palette[0]).toBe("#000000")
     expect(palette.palette[1]).toBe("#ff0000")
     expect(palette.palette[2]).toBe("#00ff00")
     expect(palette.palette[3]).toBe("#0000ff")
 
-    // Verify caching
     const cached = await renderer.getPalette({ timeout: 100 })
     expect(palette).toBe(cached)
 
@@ -352,7 +316,7 @@ describe("Palette detection with OSC responses", () => {
 
     expect(palette.palette[0]).toBe("#000000")
     expect(palette.palette[1]).toBe("#ff0000")
-    expect(palette.palette[2]).toBe("#808080") // 8000 hex should map to 80 in 8-bit
+    expect(palette.palette[2]).toBe("#808080")
 
     renderer.destroy()
   })
@@ -372,23 +336,16 @@ describe("Palette integration tests", () => {
       keysReceived.push(event.name || "unknown")
     })
 
-    // Start palette detection (does NOT block stdin listener)
     const palettePromise = renderer.getPalette({ timeout: 300 })
 
-    // Send key input while detection is active - should be processed immediately
-    // The palette detector only looks for OSC responses and ignores other input
     mockStdin.emit("data", Buffer.from("a"))
     mockStdin.emit("data", Buffer.from("b"))
     mockStdin.emit("data", Buffer.from("c"))
 
-    // Give event loop time to process events
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    // Keys should have been received (not blocked by palette detection)
-    // Note: May receive more than 3 due to OSC responses also being processed as input
     expect(keysReceived.length).toBeGreaterThanOrEqual(3)
 
-    // Wait for palette detection to complete
     await palettePromise
 
     renderer.destroy()
@@ -409,7 +366,6 @@ describe("Palette integration tests", () => {
       const palette = await testRenderer.getPalette({ timeout: 300 })
       expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
-      // Verify caching
       const cached = await testRenderer.getPalette({ timeout: 100 })
       expect(palette).toBe(cached)
 
@@ -427,18 +383,14 @@ describe("Palette cache invalidation", () => {
       stdout: mockStdout,
     })
 
-    // First detection
     const palette1 = await renderer.getPalette({ timeout: 300 })
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
-    // Clear cache
     renderer.clearPaletteCache()
     expect(renderer.paletteDetectionStatus).toBe("idle")
 
-    // Second detection - should re-detect
     const palette2 = await renderer.getPalette({ timeout: 300 })
 
-    // Should be different references (not same cached object)
     expect(palette1).not.toBe(palette2)
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
@@ -453,14 +405,11 @@ describe("Palette cache invalidation", () => {
       stdout: mockStdout,
     })
 
-    // Initial state
     expect(renderer.paletteDetectionStatus).toBe("idle")
 
-    // Start detection
     const palettePromise = renderer.getPalette({ timeout: 300 })
     expect(renderer.paletteDetectionStatus).toBe("detecting")
 
-    // Wait for completion
     await palettePromise
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
@@ -477,10 +426,8 @@ describe("Palette detection with suspended renderer", () => {
       stdout: mockStdout,
     })
 
-    // Suspend the renderer
     renderer.suspend()
 
-    // Should throw
     await expect(renderer.getPalette({ timeout: 300 })).rejects.toThrow("Cannot detect palette while renderer is suspended")
 
     renderer.destroy()
@@ -494,11 +441,9 @@ describe("Palette detection with suspended renderer", () => {
       stdout: mockStdout,
     })
 
-    // Suspend then resume
     renderer.suspend()
     renderer.resume()
 
-    // Should work now
     const palette = await renderer.getPalette({ timeout: 300 })
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
@@ -515,13 +460,10 @@ describe("Palette detector cleanup", () => {
       stdout: mockStdout,
     })
 
-    // Complete detection first
     await renderer.getPalette({ timeout: 300 })
 
-    // Now destroy
     renderer.destroy()
 
-    // Verify internal state is cleared
     // @ts-expect-error - accessing private property for testing
     expect(renderer._paletteDetector).toBeNull()
     // @ts-expect-error - accessing private property for testing
@@ -540,7 +482,6 @@ describe("Palette detector cleanup", () => {
 
     await renderer.getPalette({ timeout: 300 })
 
-    // Multiple destroys should be safe
     expect(() => {
       renderer.destroy()
       renderer.destroy()
@@ -556,26 +497,20 @@ describe("Palette detector cleanup", () => {
       stdout: mockStdout,
     })
 
-    // Count initial listeners
     const initialListenerCount = mockStdin.listenerCount("data")
 
-    // Start detection - palette detector adds its own listener
     const palettePromise = renderer.getPalette({ timeout: 300 })
 
-    // During detection, there should be one extra listener (the palette detector)
     const duringDetectionCount = mockStdin.listenerCount("data")
     expect(duringDetectionCount).toBe(initialListenerCount + 1)
 
-    // Wait for completion
     await palettePromise
 
-    // After completion, palette detector's listener should be cleaned up
     const afterDetectionCount = mockStdin.listenerCount("data")
     expect(afterDetectionCount).toBe(initialListenerCount)
 
     renderer.destroy()
 
-    // After destroy, all listeners should be cleaned up
     const afterDestroyCount = mockStdin.listenerCount("data")
     expect(afterDestroyCount).toBe(0)
   })
@@ -594,7 +529,7 @@ describe("Palette detection error handling", () => {
       isTTY: true,
       columns: 80,
       rows: 24,
-      write: () => true, // Never respond
+      write: () => true,
     } as any
 
     const { renderer } = await createTestRenderer({
@@ -602,7 +537,6 @@ describe("Palette detection error handling", () => {
       stdout: mockStdout,
     })
 
-    // Should timeout and return array with nulls
     const palette = await renderer.getPalette({ timeout: 100 })
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
     expect(palette.palette.every((c) => c === null)).toBe(true)
@@ -618,28 +552,20 @@ describe("Palette detection error handling", () => {
       stdout: mockStdout,
     })
 
-    let errorThrown = false
-    let listenerRestored = false
-
-    // Mock an error during detection by checking listener count after
     try {
       const palettePromise = renderer.getPalette({ timeout: 300 })
       await palettePromise
     } catch (error) {
-      errorThrown = true
     }
 
-    // Listener should be restored even if there was an error
     const listenerCount = mockStdin.listenerCount("data")
-    listenerRestored = listenerCount > 0
-
-    expect(listenerRestored).toBe(true)
+    expect(listenerCount).toBeGreaterThan(0)
 
     renderer.destroy()
   })
 })
 
-describe("Palette cache bug regression tests", () => {
+describe("Palette cache with different sizes", () => {
   test("cache works correctly when requesting size=16 twice", async () => {
     const { mockStdin, mockStdout, writes } = createMockStreams()
 
@@ -648,25 +574,18 @@ describe("Palette cache bug regression tests", () => {
       stdout: mockStdout,
     })
 
-    // First call with size=16
     const palette1 = await renderer.getPalette({ size: 16, timeout: 300 })
     const writeCountAfterFirst = writes.length
 
     expect(renderer.paletteDetectionStatus).toBe("cached")
-    expect(palette1.palette.length).toBe(16) // Returns array with requested size
+    expect(palette1.palette.length).toBe(16)
 
-    // Second call with size=16 - should use cache
     const start = Date.now()
     const palette2 = await renderer.getPalette({ size: 16, timeout: 300 })
     const elapsed = Date.now() - start
 
-    // Should be instant (cached)
     expect(elapsed).toBeLessThan(50)
-
-    // Should not have sent new queries
     expect(writes.length).toBe(writeCountAfterFirst)
-
-    // Should be exact same object reference
     expect(palette1).toBe(palette2)
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
@@ -681,18 +600,13 @@ describe("Palette cache bug regression tests", () => {
       stdout: mockStdout,
     })
 
-    // First call with size=16
     const palette1 = await renderer.getPalette({ size: 16, timeout: 300 })
     const writeCountAfter16 = writes.length
 
-    // Second call with size=256 - should re-detect
     const palette2 = await renderer.getPalette({ size: 256, timeout: 300 })
     const writeCountAfter256 = writes.length
 
-    // Should have sent new queries (cache was invalidated due to different size)
     expect(writeCountAfter256).toBeGreaterThan(writeCountAfter16)
-
-    // Should be different references
     expect(palette1).not.toBe(palette2)
 
     renderer.destroy()
@@ -706,19 +620,14 @@ describe("Palette cache bug regression tests", () => {
       stdout: mockStdout,
     })
 
-    // First call
     const palette1 = await renderer.getPalette({ size: 16, timeout: 300 })
     const writeCountAfterFirst = writes.length
 
-    // Multiple subsequent calls with same size
     const palette2 = await renderer.getPalette({ size: 16, timeout: 300 })
     const palette3 = await renderer.getPalette({ size: 16, timeout: 300 })
     const palette4 = await renderer.getPalette({ size: 16, timeout: 300 })
 
-    // Should not have sent any new queries
     expect(writes.length).toBe(writeCountAfterFirst)
-
-    // All should be same reference
     expect(palette1).toBe(palette2)
     expect(palette2).toBe(palette3)
     expect(palette3).toBe(palette4)
@@ -726,7 +635,7 @@ describe("Palette cache bug regression tests", () => {
     renderer.destroy()
   })
 
-  test("timing: cached call is significantly faster than initial detection", async () => {
+  test("cached call is significantly faster than initial detection", async () => {
     const { mockStdin, mockStdout } = createMockStreams()
 
     const { renderer } = await createTestRenderer({
@@ -734,21 +643,15 @@ describe("Palette cache bug regression tests", () => {
       stdout: mockStdout,
     })
 
-    // First call - actual detection
     const start1 = performance.now()
     await renderer.getPalette({ size: 16, timeout: 300 })
     const elapsed1 = performance.now() - start1
 
-    // Second call - from cache
     const start2 = performance.now()
     await renderer.getPalette({ size: 16, timeout: 300 })
     const elapsed2 = performance.now() - start2
 
-    // Cached call should be much faster (< 10ms)
     expect(elapsed2).toBeLessThan(10)
-
-    // Initial detection takes longer (at least a few ms for async operations)
-    // Cached call should be at least 10x faster
     expect(elapsed2).toBeLessThan(elapsed1 / 10)
 
     renderer.destroy()
