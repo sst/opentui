@@ -665,3 +665,117 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
   expect(result[255]).toBe("#ffffff")
   expect(result.length).toBe(256)
 })
+
+test("TerminalPalette uses custom write function when provided", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+  const writtenData: string[] = []
+  
+  const customWrite = (data: string | Buffer) => {
+    writtenData.push(data.toString())
+    return true
+  }
+
+  const palette = new TerminalPalette(stdin, stdout, customWrite)
+
+  const detectPromise = palette.detectOSCSupport(500)
+
+  // Emit response
+  stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  const result = await detectPromise
+
+  expect(result).toBe(true)
+  expect(writtenData.length).toBe(1)
+  expect(writtenData[0]).toBe("\x1b]4;0;?\x07")
+})
+
+test("TerminalPalette uses custom write function for palette detection", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+  const writtenData: string[] = []
+  
+  const customWrite = (data: string | Buffer) => {
+    writtenData.push(data.toString())
+    return true
+  }
+
+  const palette = new TerminalPalette(stdin, stdout, customWrite)
+
+  const detectPromise = palette.detect(2000)
+
+  // Emit OSC detection response
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  
+  // Emit palette responses after OSC detection
+  setTimeout(() => {
+    for (let i = 0; i < 256; i++) {
+      const color = "#aabbcc"
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};${color}\x07`))
+    }
+  }, 400)
+
+  await detectPromise
+
+  // Should have written OSC support query + palette query for all 256 colors
+  expect(writtenData.length).toBe(2)
+  expect(writtenData[0]).toBe("\x1b]4;0;?\x07") // OSC support check
+  
+  // Verify palette query contains all 256 color queries
+  const paletteQuery = writtenData[1]
+  for (let i = 0; i < 256; i++) {
+    expect(paletteQuery).toContain(`\x1b]4;${i};?\x07`)
+  }
+})
+
+test("TerminalPalette falls back to stdout.write when no custom write function provided", async () => {
+  const stdin = new MockStream() as any
+  const writtenData: string[] = []
+  
+  const stdout = new MockStream() as any
+  stdout.write = (data: string) => {
+    writtenData.push(data)
+    return true
+  }
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detectOSCSupport(500)
+
+  // Emit response
+  stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  const result = await detectPromise
+
+  expect(result).toBe(true)
+  expect(writtenData.length).toBe(1)
+  expect(writtenData[0]).toBe("\x1b]4;0;?\x07")
+})
+
+test("TerminalPalette custom write function can intercept and modify output", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+  const interceptedWrites: string[] = []
+  let actualWrites = 0
+  
+  // Custom write that intercepts but doesn't write to stdout
+  const customWrite = (data: string | Buffer) => {
+    interceptedWrites.push(data.toString())
+    actualWrites++
+    return true
+  }
+
+  const palette = new TerminalPalette(stdin, stdout, customWrite)
+
+  const detectPromise = palette.detectOSCSupport(500)
+
+  // Emit response
+  stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  await detectPromise
+
+  // Verify custom write was called instead of stdout.write
+  expect(actualWrites).toBe(1)
+  expect(interceptedWrites.length).toBe(1)
+  expect(interceptedWrites[0]).toBe("\x1b]4;0;?\x07")
+})
