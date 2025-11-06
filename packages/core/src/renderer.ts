@@ -20,7 +20,7 @@ import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
-import { createTerminalPalette, type TerminalPaletteDetector } from "./lib/terminal-palette"
+import { createTerminalPalette, type TerminalPaletteDetector, type TerminalColors } from "./lib/terminal-palette"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -319,8 +319,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
-  private _cachedPalette: (string | null)[] | null = null
-  private _paletteDetectionPromise: Promise<(string | null)[]> | null = null
+  private _cachedPalette: TerminalColors | null = null
+  private _paletteDetectionPromise: Promise<TerminalColors> | null = null
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -1640,10 +1640,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * Detects the terminal's color palette
    *
    * @param timeoutMs Maximum time to wait for terminal responses (default: 5000ms)
-   * @returns Promise resolving to array of 256 color values
+   * @returns Promise resolving to TerminalColors object containing palette and special colors
    * @throws Error if renderer is suspended
    */
-  public async getPalette(timeoutMs = 5000): Promise<(string | null)[]> {
+  public async getPalette(timeoutMs = 5000): Promise<TerminalColors> {
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       throw new Error("Cannot detect palette while renderer is suspended")
     }
