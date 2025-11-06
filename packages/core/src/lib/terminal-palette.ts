@@ -3,6 +3,8 @@ type Hex = string | null
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
 
+export type WriteFunction = (data: string | Buffer) => boolean
+
 export interface TerminalPaletteDetector {
   detect(timeoutMs?: number): Promise<Hex[]>
   detectOSCSupport(timeoutMs?: number): Promise<boolean>
@@ -26,12 +28,14 @@ function toHex(r?: string, g?: string, b?: string, hex6?: string): string {
 export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
+  private writeFn: WriteFunction
   private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
   private activeTimers: Array<NodeJS.Timeout> = []
 
-  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream) {
+  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction) {
     this.stdin = stdin
     this.stdout = stdout
+    this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
   }
 
   cleanup(): void {
@@ -84,7 +88,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      out.write("\x1b]4;0;?\x07")
+      this.writeFn("\x1b]4;0;?\x07")
     })
   }
 
@@ -155,7 +159,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      out.write(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
+      this.writeFn(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
     })
   }
 
@@ -177,6 +181,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
 export function createTerminalPalette(
   stdin: NodeJS.ReadStream,
   stdout: NodeJS.WriteStream,
+  writeFn?: WriteFunction,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout)
+  return new TerminalPalette(stdin, stdout, writeFn)
 }

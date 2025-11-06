@@ -1657,7 +1657,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this._paletteDetector) {
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout)
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this))
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(timeoutMs).then((result) => {
