@@ -20,6 +20,7 @@ import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
+import { createTerminalPalette, type TerminalPaletteDetector } from "./lib/terminal-palette"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -317,6 +318,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
+  private _paletteDetector: TerminalPaletteDetector | null = null
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -1612,5 +1614,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.walkSelectableRenderables(child, selectionBounds, selectedRenderables, touchedRenderables)
       }
     }
+  }
+
+  public async getPalette(timeoutMs = 5000): Promise<(string | null)[]> {
+    if (!this._paletteDetector) {
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout)
+    }
+
+    return await this._paletteDetector.detect(timeoutMs)
   }
 }
