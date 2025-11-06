@@ -24,7 +24,7 @@ let keyboardHandler: ((key: any) => void) | null = null
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
-  const backgroundColor = RGBA.fromInts(10, 10, 30)
+  const backgroundColor = RGBA.fromInts(15, 23, 42) // Slate-900 inspired
   renderer.setBackgroundColor(backgroundColor)
 
   parentContainer = new BoxRenderable(renderer, {
@@ -39,7 +39,7 @@ export function run(renderer: CliRenderer): void {
     position: "absolute",
     left: 2,
     top: 1,
-    fg: RGBA.fromInts(255, 255, 100),
+    fg: RGBA.fromInts(139, 92, 246), // Vibrant purple
     attributes: TextAttributes.BOLD,
     zIndex: 1000,
   })
@@ -51,7 +51,7 @@ export function run(renderer: CliRenderer): void {
     position: "absolute",
     left: 2,
     top: 2,
-    fg: RGBA.fromInts(200, 200, 200),
+    fg: RGBA.fromInts(148, 163, 184), // Slate-400 - softer contrast
     zIndex: 1000,
   })
   parentContainer.add(subtitleText)
@@ -62,7 +62,7 @@ export function run(renderer: CliRenderer): void {
     position: "absolute",
     left: 2,
     top: 3,
-    fg: RGBA.fromInts(150, 150, 150),
+    fg: RGBA.fromInts(56, 189, 248), // Sky blue - modern accent
     zIndex: 1000,
   })
   parentContainer.add(statusText)
@@ -73,7 +73,7 @@ export function run(renderer: CliRenderer): void {
     position: "absolute",
     left: 2,
     top: 4,
-    fg: RGBA.fromInts(150, 150, 150),
+    fg: RGBA.fromInts(100, 116, 139), // Slate-500 - muted but readable
     zIndex: 1000,
   })
   parentContainer.add(instructionsText)
@@ -89,7 +89,7 @@ export function run(renderer: CliRenderer): void {
     zIndex: 100,
   })
   renderer.root.add(paletteBuffer)
-  paletteBuffer.frameBuffer.clear(RGBA.fromInts(0, 0, 0, 255))
+  paletteBuffer.frameBuffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
 
   // Set up keyboard handler
   keyboardHandler = async (key) => {
@@ -109,20 +109,20 @@ async function fetchAndDisplayPalette(renderer: CliRenderer): Promise<void> {
   try {
     const status = renderer.paletteDetectionStatus
     statusText.content = `Status: ${status === "cached" ? "Using cached palette" : "Fetching palette..."}`
-    statusText.fg = RGBA.fromInts(255, 255, 0)
+    statusText.fg = RGBA.fromInts(250, 204, 21) // Amber - warm loading state
 
     const startTime = Date.now()
     palette = await renderer.getPalette()
     const elapsed = Date.now() - startTime
 
     statusText.content = `Status: Palette fetched in ${elapsed}ms (${status === "cached" ? "from cache" : "from terminal"})`
-    statusText.fg = RGBA.fromInts(0, 255, 0)
+    statusText.fg = RGBA.fromInts(34, 197, 94) // Emerald - fresh success state
 
     drawPalette(paletteBuffer, palette)
   } catch (error) {
     if (statusText) {
       statusText.content = `Status: Error - ${error instanceof Error ? error.message : String(error)}`
-      statusText.fg = RGBA.fromInts(255, 0, 0)
+      statusText.fg = RGBA.fromInts(239, 68, 68) // Red-500 - modern error state
     }
   }
 }
@@ -132,14 +132,14 @@ function clearPaletteCache(renderer: CliRenderer): void {
 
   renderer.clearPaletteCache()
   statusText.content = "Status: Cache cleared. Press 'p' to fetch palette again."
-  statusText.fg = RGBA.fromInts(150, 150, 150)
+  statusText.fg = RGBA.fromInts(148, 163, 184) // Slate-400 - neutral info state
 }
 
 function drawPalette(paletteBufferRenderable: FrameBufferRenderable, colors: (string | null)[]): void {
   const buffer = paletteBufferRenderable.frameBuffer
 
   // Clear the buffer
-  buffer.clear(RGBA.fromInts(0, 0, 0, 255))
+  buffer.clear(RGBA.fromInts(30, 41, 59, 255)) // Slate-800 background
 
   // Draw a 16x16 grid of colors (256 colors total)
   // Each color is represented as a 4x2 block of cells
