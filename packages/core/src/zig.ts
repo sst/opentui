@@ -823,18 +823,31 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
   const debugSymbols: Record<string, any> = {}
   const traceSymbols: Record<string, any> = {}
   let hasTracing = false
+  let ffiLogWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null
 
   Object.entries(symbols).forEach(([key, value]) => {
     debugSymbols[key] = value
   })
 
   if (env.OTUI_DEBUG_FFI) {
+    const now = new Date()
+    const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
+    const logFilePath = `ffi_debug_${timestamp}.log`
+    ffiLogWriter = Bun.file(logFilePath).writer()
+
+    const writer = ffiLogWriter
+    const writeSync = (msg: string) => {
+      const buffer = new TextEncoder().encode(msg + "\n")
+      writer.write(buffer)
+      writer.flush()
+    }
+
     Object.entries(symbols).forEach(([key, value]) => {
       if (typeof value === "function") {
         debugSymbols[key] = (...args: any[]) => {
-          console.log(`${key}(${args.map((arg) => String(arg)).join(", ")})`)
+          writeSync(`${key}(${args.map((arg) => String(arg)).join(", ")})`)
           const result = value(...args)
-          console.log(`${key} returned:`, String(result))
+          writeSync(`${key} returned: ${String(result)}`)
           return result
         }
       }
@@ -854,6 +867,16 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
           traceSymbols[key].push(end - start)
           return result
         }
+      }
+    })
+  }
+
+  if (env.OTUI_DEBUG_FFI && ffiLogWriter) {
+    process.on("exit", () => {
+      try {
+        ffiLogWriter.end()
+      } catch (e) {
+        // Ignore errors on exit
       }
     })
   }

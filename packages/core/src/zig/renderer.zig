@@ -607,8 +607,9 @@ pub const CliRenderer = struct {
                 // Handle grapheme characters
                 if (gp.isGraphemeChar(cell.char)) {
                     const gid: u32 = gp.graphemeIdFromChar(cell.char);
-                    const bytes = self.pool.get(gid) catch {
-                        std.debug.panic("Fatal: no grapheme bytes in pool for gid {d}", .{gid});
+                    const bytes = self.pool.get(gid) catch |err| {
+                        self.performShutdownSequence();
+                        std.debug.panic("Fatal: no grapheme bytes in pool for gid {d}: {}", .{ gid, err });
                     };
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
