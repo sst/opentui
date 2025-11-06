@@ -367,11 +367,7 @@ describe("Palette integration tests", () => {
   })
 
   test("getPalette works with different renderer configurations", async () => {
-    const configs = [
-      { width: 40, height: 10 },
-      { width: 120, height: 40 },
-      { useMouse: false },
-    ]
+    const configs = [{ width: 40, height: 10 }, { width: 120, height: 40 }, { useMouse: false }]
 
     for (const config of configs) {
       const { mockStdin, mockStdout } = createMockStreams()

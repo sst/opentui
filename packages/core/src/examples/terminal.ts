@@ -78,10 +78,10 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainer.add(instructionsText)
 
-  // Create framebuffer for palette display
+  // Create framebuffer for palette display (wider to accommodate color values)
   paletteBuffer = new FrameBufferRenderable(renderer, {
     id: "palette-buffer",
-    width: 64,
+    width: 120,
     height: 32,
     position: "absolute",
     left: 2,
@@ -145,6 +145,8 @@ function drawPalette(paletteBufferRenderable: FrameBufferRenderable, colors: (st
   // Each color is represented as a 4x2 block of cells
   const blockWidth = 4
   const blockHeight = 2
+  const gridWidth = 16 * blockWidth // 64 columns for the grid
+  const valueStartX = gridWidth + 2 // Start hex values 2 columns after grid
 
   for (let i = 0; i < 256; i++) {
     const color = colors[i]
@@ -183,6 +185,35 @@ function drawPalette(paletteBufferRenderable: FrameBufferRenderable, colors: (st
       if (indexStr.length <= blockWidth) {
         for (let ci = 0; ci < indexStr.length; ci++) {
           buffer.drawText(indexStr[ci], textX + ci, textY, textColor, rgba, TextAttributes.NONE)
+        }
+      }
+    }
+
+    // Draw hex value next to grid (one per row, showing all 16 colors in that row)
+    if (col === 15) {
+      // Last column of the row, now draw all 16 hex values for this row
+      const valueY = y
+      let currentX = valueStartX
+
+      for (let rowCol = 0; rowCol < 16; rowCol++) {
+        const colorIndex = row * 16 + rowCol
+        const rowColor = colors[colorIndex]
+        if (rowColor) {
+          const hexValue = rowColor.replace("#", "").toUpperCase()
+          const valueText = `${hexValue} `
+          const textColor = RGBA.fromInts(148, 163, 184) // Slate-400
+
+          for (let ci = 0; ci < valueText.length; ci++) {
+            buffer.drawText(
+              valueText[ci],
+              currentX + ci,
+              valueY,
+              textColor,
+              RGBA.fromInts(30, 41, 59, 255),
+              TextAttributes.NONE
+            )
+          }
+          currentX += valueText.length
         }
       }
     }
