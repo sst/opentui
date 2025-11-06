@@ -293,6 +293,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.updateLineInfo()
   }
 
+  // Undefined = 0,
+  // Exactly = 1,
+  // AtMost = 2
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -305,19 +308,26 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       const effectiveWidth = isNaN(width) ? 1 : width
 
       if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
-        this.updateWrapWidth(effectiveWidth)
+        this.updateWrapWidth(Math.floor(effectiveWidth))
       } else {
         this.updateLineInfo()
       }
 
-      const measuredWidth = this._lineInfo.maxLineWidth
-      const measuredHeight = this._lineInfo.lineStarts.length
+      const measuredWidth = Math.max(1, this._lineInfo.maxLineWidth)
+      const measuredHeight = Math.max(1, this._lineInfo.lineStarts.length)
+
+      if (widthMode === MeasureMode.AtMost) {
+        return {
+          width: Math.min(effectiveWidth, measuredWidth),
+          height: Math.min(isNaN(height) ? 1 : height, measuredHeight),
+        }
+      }
 
       // NOTE: Yoga may use these measurements or not.
       // If the yoga node settings and the parent allow this node to grow, it will.
       return {
-        width: Math.max(1, measuredWidth),
-        height: Math.max(1, measuredHeight),
+        width: measuredWidth,
+        height: measuredHeight,
       }
     }
 
