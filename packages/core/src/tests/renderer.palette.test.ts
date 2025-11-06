@@ -58,10 +58,10 @@ describe("Palette caching behavior", () => {
     })
 
     // First call - triggers detection
-    const palette1 = await renderer.getPalette(300)
+    const palette1 = await renderer.getPalette({ timeout: 300 })
 
     // Second call - should return cached palette
-    const palette2 = await renderer.getPalette(300)
+    const palette2 = await renderer.getPalette({ timeout: 300 })
 
     expect(palette1).toBe(palette2) // Same reference
     expect(palette1).toEqual(palette2) // Same values
@@ -78,12 +78,12 @@ describe("Palette caching behavior", () => {
     })
 
     // First call
-    await renderer.getPalette(300)
+    await renderer.getPalette({ timeout: 300 })
     const writeCountAfterFirst = writes.length
 
     // Second call should not trigger new writes
     const start = Date.now()
-    await renderer.getPalette(300)
+    await renderer.getPalette({ timeout: 300 })
     const duration = Date.now() - start
 
     // Should be instant (cached)
@@ -105,9 +105,9 @@ describe("Palette caching behavior", () => {
 
     // Start three concurrent getPalette calls
     const [palette1, palette2, palette3] = await Promise.all([
-      renderer.getPalette(300),
-      renderer.getPalette(300),
-      renderer.getPalette(300),
+      renderer.getPalette({ timeout: 300 }),
+      renderer.getPalette({ timeout: 300 }),
+      renderer.getPalette({ timeout: 300 }),
     ])
 
     // All should be the same reference
@@ -132,13 +132,13 @@ describe("Palette caching behavior", () => {
     // @ts-expect-error - accessing private property for testing
     expect(renderer._paletteDetector).toBeNull()
 
-    await renderer.getPalette(300)
+    await renderer.getPalette({ timeout: 300 })
 
     // @ts-expect-error - accessing private property for testing
     const detector1 = renderer._paletteDetector
     expect(detector1).not.toBeNull()
 
-    await renderer.getPalette(300)
+    await renderer.getPalette({ timeout: 300 })
 
     // @ts-expect-error - accessing private property for testing
     const detector2 = renderer._paletteDetector
@@ -157,10 +157,10 @@ describe("Palette caching behavior", () => {
       stdout: mockStdout,
     })
 
-    const palette1 = await renderer.getPalette(100)
+    const palette1 = await renderer.getPalette({ timeout: 100 })
     const writeCountAfterFirst = writes.length
 
-    const palette2 = await renderer.getPalette(5000)
+    const palette2 = await renderer.getPalette({ timeout: 5000 })
 
     // Should not send new queries
     expect(writes.length).toBe(writeCountAfterFirst)
@@ -179,7 +179,7 @@ describe("Palette caching behavior", () => {
       stdout: mockStdout,
     })
 
-    const palette1 = await renderer.getPalette(300)
+    const palette1 = await renderer.getPalette({ timeout: 300 })
 
     // Lifecycle operations
     renderer.start()
@@ -190,7 +190,7 @@ describe("Palette caching behavior", () => {
     renderer.stop()
 
     // Should still have cached palette
-    const palette2 = await renderer.getPalette(100)
+    const palette2 = await renderer.getPalette({ timeout: 100 })
     expect(palette1).toBe(palette2)
 
     renderer.destroy()
@@ -218,13 +218,13 @@ describe("Palette detection with non-TTY", () => {
       stdout: mockStdout,
     })
 
-    const palette = await renderer.getPalette(100)
+    const palette = await renderer.getPalette({ timeout: 100 })
 
     // Should return array (all null when not a TTY)
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
     // Cache should still work
-    const cached = await renderer.getPalette(100)
+    const cached = await renderer.getPalette({ timeout: 100 })
     expect(palette).toBe(cached)
 
     renderer.destroy()
@@ -273,7 +273,7 @@ describe("Palette detection with OSC responses", () => {
       stdout: mockStdout,
     })
 
-    const palette = await renderer.getPalette(300)
+    const palette = await renderer.getPalette({ timeout: 300 })
 
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
     expect(palette.palette.length).toBeGreaterThanOrEqual(16)
@@ -285,7 +285,7 @@ describe("Palette detection with OSC responses", () => {
     expect(palette.palette[3]).toBe("#0000ff")
 
     // Verify caching
-    const cached = await renderer.getPalette(100)
+    const cached = await renderer.getPalette({ timeout: 100 })
     expect(palette).toBe(cached)
 
     renderer.destroy()
@@ -327,7 +327,7 @@ describe("Palette detection with OSC responses", () => {
       stdout: mockStdout,
     })
 
-    const palette = await renderer.getPalette(300)
+    const palette = await renderer.getPalette({ timeout: 300 })
 
     expect(palette.palette[0]).toBe("#000000")
     expect(palette.palette[1]).toBe("#ff0000")
@@ -352,7 +352,7 @@ describe("Palette integration tests", () => {
     })
 
     // Start palette detection (does NOT block stdin listener)
-    const palettePromise = renderer.getPalette(300)
+    const palettePromise = renderer.getPalette({ timeout: 300 })
 
     // Send key input while detection is active - should be processed immediately
     // The palette detector only looks for OSC responses and ignores other input
@@ -385,11 +385,11 @@ describe("Palette integration tests", () => {
         stdout: mockStdout,
       })
 
-      const palette = await testRenderer.getPalette(300)
+      const palette = await testRenderer.getPalette({ timeout: 300 })
       expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
       // Verify caching
-      const cached = await testRenderer.getPalette(100)
+      const cached = await testRenderer.getPalette({ timeout: 100 })
       expect(palette).toBe(cached)
 
       testRenderer.destroy()
@@ -407,7 +407,7 @@ describe("Palette cache invalidation", () => {
     })
 
     // First detection
-    const palette1 = await renderer.getPalette(300)
+    const palette1 = await renderer.getPalette({ timeout: 300 })
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
     // Clear cache
@@ -415,7 +415,7 @@ describe("Palette cache invalidation", () => {
     expect(renderer.paletteDetectionStatus).toBe("idle")
 
     // Second detection - should re-detect
-    const palette2 = await renderer.getPalette(300)
+    const palette2 = await renderer.getPalette({ timeout: 300 })
 
     // Should be different references (not same cached object)
     expect(palette1).not.toBe(palette2)
@@ -436,7 +436,7 @@ describe("Palette cache invalidation", () => {
     expect(renderer.paletteDetectionStatus).toBe("idle")
 
     // Start detection
-    const palettePromise = renderer.getPalette(300)
+    const palettePromise = renderer.getPalette({ timeout: 300 })
     expect(renderer.paletteDetectionStatus).toBe("detecting")
 
     // Wait for completion
@@ -460,7 +460,7 @@ describe("Palette detection with suspended renderer", () => {
     renderer.suspend()
 
     // Should throw
-    await expect(renderer.getPalette(300)).rejects.toThrow("Cannot detect palette while renderer is suspended")
+    await expect(renderer.getPalette({ timeout: 300 })).rejects.toThrow("Cannot detect palette while renderer is suspended")
 
     renderer.destroy()
   })
@@ -478,7 +478,7 @@ describe("Palette detection with suspended renderer", () => {
     renderer.resume()
 
     // Should work now
-    const palette = await renderer.getPalette(300)
+    const palette = await renderer.getPalette({ timeout: 300 })
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
 
     renderer.destroy()
@@ -495,7 +495,7 @@ describe("Palette detector cleanup", () => {
     })
 
     // Complete detection first
-    await renderer.getPalette(300)
+    await renderer.getPalette({ timeout: 300 })
 
     // Now destroy
     renderer.destroy()
@@ -517,7 +517,7 @@ describe("Palette detector cleanup", () => {
       stdout: mockStdout,
     })
 
-    await renderer.getPalette(300)
+    await renderer.getPalette({ timeout: 300 })
 
     // Multiple destroys should be safe
     expect(() => {
@@ -539,7 +539,7 @@ describe("Palette detector cleanup", () => {
     const initialListenerCount = mockStdin.listenerCount("data")
 
     // Start detection - palette detector adds its own listener
-    const palettePromise = renderer.getPalette(300)
+    const palettePromise = renderer.getPalette({ timeout: 300 })
 
     // During detection, there should be one extra listener (the palette detector)
     const duringDetectionCount = mockStdin.listenerCount("data")
@@ -582,7 +582,7 @@ describe("Palette detection error handling", () => {
     })
 
     // Should timeout and return array with nulls
-    const palette = await renderer.getPalette(100)
+    const palette = await renderer.getPalette({ timeout: 100 })
     expect(typeof palette === "object" && palette !== null && Array.isArray(palette.palette)).toBe(true)
     expect(palette.palette.every((c) => c === null)).toBe(true)
 
@@ -602,7 +602,7 @@ describe("Palette detection error handling", () => {
 
     // Mock an error during detection by checking listener count after
     try {
-      const palettePromise = renderer.getPalette(300)
+      const palettePromise = renderer.getPalette({ timeout: 300 })
       await palettePromise
     } catch (error) {
       errorThrown = true

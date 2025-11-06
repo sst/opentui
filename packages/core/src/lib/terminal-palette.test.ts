@@ -47,7 +47,7 @@ test("TerminalPalette parses OSC 4 hex format correctly", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   // Emit OSC detection response immediately
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
@@ -77,7 +77,7 @@ test("TerminalPalette parses OSC 4 rgb format with 4 hex digits", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -100,7 +100,7 @@ test("TerminalPalette parses OSC 4 rgb format with 2 hex digits", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -123,7 +123,7 @@ test("TerminalPalette handles multiple color responses in single buffer", async 
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -157,7 +157,7 @@ test("TerminalPalette handles BEL terminator", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -179,7 +179,7 @@ test("TerminalPalette handles ST terminator", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -201,7 +201,7 @@ test("TerminalPalette scales color components correctly", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -223,7 +223,7 @@ test("TerminalPalette returns null for colors that don't respond", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(1000)
+  const detectPromise = palette.detect({ timeout: 1000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -244,7 +244,7 @@ test("TerminalPalette handles response split across chunks", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -275,7 +275,7 @@ test("TerminalPalette handles OSC response mixed with mouse events", async () =>
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -306,7 +306,7 @@ test("TerminalPalette handles OSC response mixed with key events", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -339,7 +339,7 @@ test("TerminalPalette handles response split mid-escape sequence", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -377,7 +377,7 @@ test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () 
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -409,7 +409,7 @@ test("TerminalPalette handles complex chunking with partial responses", async ()
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -449,7 +449,7 @@ test("TerminalPalette ignores malformed responses and waits for valid ones", asy
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -483,7 +483,7 @@ test("TerminalPalette handles buffer overflow gracefully", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -513,7 +513,7 @@ test("TerminalPalette handles all 256 colors in a single blob", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -543,7 +543,7 @@ test("TerminalPalette handles blob split across multiple chunks", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -576,7 +576,7 @@ test("TerminalPalette handles blob with mixed junk data", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -615,7 +615,7 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -706,7 +706,7 @@ test("TerminalPalette uses custom write function for palette detection", async (
 
   const palette = new TerminalPalette(stdin, stdout, customWrite)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   // Emit OSC detection response
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
@@ -795,7 +795,7 @@ test("TerminalPalette detects all special OSC colors (10-19)", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -833,7 +833,7 @@ test("TerminalPalette handles special colors in rgb format", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -857,7 +857,7 @@ test("TerminalPalette handles missing special colors gracefully", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -885,7 +885,7 @@ test("TerminalPalette special colors with ST terminator", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -909,7 +909,7 @@ test("TerminalPalette handles mixed palette and special color responses", async 
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const detectPromise = palette.detect(2000)
+  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
 
@@ -940,7 +940,7 @@ test("TerminalPalette returns null special colors on non-TTY", async () => {
 
   const palette = new TerminalPalette(stdin, stdout)
 
-  const result = await palette.detect(100)
+  const result = await palette.detect({ timeout: 100 })
 
   expect(result.defaultForeground).toBe(null)
   expect(result.defaultBackground).toBe(null)
@@ -955,7 +955,7 @@ test("TerminalPalette returns null special colors on OSC not supported", async (
   const palette = new TerminalPalette(stdin, stdout)
 
   // Don't respond to OSC queries
-  const result = await palette.detect(100)
+  const result = await palette.detect({ timeout: 100 })
 
   expect(result.defaultForeground).toBe(null)
   expect(result.defaultBackground).toBe(null)
