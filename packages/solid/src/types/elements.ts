@@ -23,6 +23,7 @@ import type {
   TextNodeRenderable,
   TextOptions,
   TextRenderable,
+  KeyEvent,
 } from "@opentui/core"
 import type { Ref } from "solid-js"
 import type { JSX } from "../../jsx-runtime"
@@ -121,8 +122,8 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
   onSubmit?: () => void
   onContentChange?: (value: string) => void
   onCursorChange?: (value: { line: number; visualColumn: number }) => void
-  onKeyDown?: (event: KeyboardEvent) => void
-  onKeyPress?: (event: KeyboardEvent) => void
+  onKeyDown?: (event: KeyEvent) => void
+  onKeyPress?: (event: KeyEvent) => void
 }
 
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {

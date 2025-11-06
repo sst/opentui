@@ -163,6 +163,8 @@ The \`CodeRenderable\` component provides syntax highlighting:
 
 > **Note**: Tree-sitter parsers are loaded lazily for performance.
 
+CJK: 알겠습니다. Task 에이전트에 ktlint + detekt 검사를 위임하겠습니다.
+
 ---
 
 For more info, visit [github.com/opentui](https://github.com)`,
