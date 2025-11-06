@@ -331,7 +331,7 @@ describe("Palette detection with OSC responses", () => {
 })
 
 describe("Palette integration tests", () => {
-  test("palette detection does not interfere with input handling - keys are queued", async () => {
+  test("palette detection does not interfere with input handling", async () => {
     const { mockStdin, mockStdout } = createMockStreams()
 
     const { renderer } = await createTestRenderer({
@@ -344,22 +344,24 @@ describe("Palette integration tests", () => {
       keysReceived.push(event.name || "unknown")
     })
 
-    // Start palette detection (blocks stdin listener)
+    // Start palette detection (does NOT block stdin listener)
     const palettePromise = renderer.getPalette(300)
 
-    // Send key input while detection is active - should be queued by Node.js EventEmitter
+    // Send key input while detection is active - should be processed immediately
+    // The palette detector only looks for OSC responses and ignores other input
     mockStdin.emit("data", Buffer.from("a"))
     mockStdin.emit("data", Buffer.from("b"))
     mockStdin.emit("data", Buffer.from("c"))
 
+    // Give event loop time to process events
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    // Keys should have been received (not blocked by palette detection)
+    // Note: May receive more than 3 due to OSC responses also being processed as input
+    expect(keysReceived.length).toBeGreaterThanOrEqual(3)
+
     // Wait for palette detection to complete
     await palettePromise
-
-    // Give event loop time to process queued events after stdin listener is restored
-    await new Promise((resolve) => setTimeout(resolve, 50))
-
-    // Keys should have been received after listener was restored
-    expect(keysReceived.length).toBeGreaterThan(0)
 
     renderer.destroy()
   })
@@ -522,7 +524,7 @@ describe("Palette detector cleanup", () => {
     }).not.toThrow()
   })
 
-  test("cleanup removes all listeners from stdin", async () => {
+  test("cleanup removes all palette detector listeners from stdin", async () => {
     const { mockStdin, mockStdout } = createMockStreams()
 
     const { renderer } = await createTestRenderer({
@@ -533,23 +535,23 @@ describe("Palette detector cleanup", () => {
     // Count initial listeners
     const initialListenerCount = mockStdin.listenerCount("data")
 
-    // Start detection
+    // Start detection - palette detector adds its own listener
     const palettePromise = renderer.getPalette(300)
 
-    // During detection, there should be extra listeners
+    // During detection, there should be one extra listener (the palette detector)
     const duringDetectionCount = mockStdin.listenerCount("data")
-    expect(duringDetectionCount).toBeGreaterThanOrEqual(initialListenerCount)
+    expect(duringDetectionCount).toBe(initialListenerCount + 1)
 
     // Wait for completion
     await palettePromise
 
-    // After completion, listeners should be cleaned up
+    // After completion, palette detector's listener should be cleaned up
     const afterDetectionCount = mockStdin.listenerCount("data")
-    expect(afterDetectionCount).toBeLessThanOrEqual(initialListenerCount + 1)
+    expect(afterDetectionCount).toBe(initialListenerCount)
 
     renderer.destroy()
 
-    // After destroy, should be cleaned up
+    // After destroy, all listeners should be cleaned up
     const afterDestroyCount = mockStdin.listenerCount("data")
     expect(afterDestroyCount).toBe(0)
   })
