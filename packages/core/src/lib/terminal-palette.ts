@@ -271,7 +271,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
     if (!supported) {
       return {
-        palette: Array(256).fill(null),
+        palette: Array(size).fill(null),
         defaultForeground: null,
         defaultBackground: null,
         cursorColor: null,
@@ -291,7 +291,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
     ])
 
     return {
-      palette: [...Array(256).keys()].map((i) => paletteResults.get(i) ?? null),
+      palette: [...Array(size).keys()].map((i) => paletteResults.get(i) ?? null),
       defaultForeground: specialColors[10],
       defaultBackground: specialColors[11],
       cursorColor: specialColors[12],
