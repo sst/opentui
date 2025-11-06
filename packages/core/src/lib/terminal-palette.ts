@@ -21,8 +21,13 @@ export interface TerminalColors {
   highlightForeground: Hex
 }
 
+export interface GetPaletteOptions {
+  timeout?: number
+  size?: number
+}
+
 export interface TerminalPaletteDetector {
-  detect(timeoutMs?: number): Promise<TerminalColors>
+  detect(options?: GetPaletteOptions): Promise<TerminalColors>
   detectOSCSupport(timeoutMs?: number): Promise<boolean>
   cleanup(): void
 }
@@ -260,7 +265,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
     })
   }
 
-  async detect(timeoutMs = 5000): Promise<TerminalColors> {
+  async detect(options?: GetPaletteOptions): Promise<TerminalColors> {
+    const { timeout = 5000, size = 16 } = options || {}
     const supported = await this.detectOSCSupport()
 
     if (!supported) {
@@ -278,9 +284,10 @@ export class TerminalPalette implements TerminalPaletteDetector {
       }
     }
 
+    const indicesToQuery = [...Array(size).keys()]
     const [paletteResults, specialColors] = await Promise.all([
-      this.queryPalette([...Array(256).keys()], timeoutMs),
-      this.querySpecialColors(timeoutMs),
+      this.queryPalette(indicesToQuery, timeout),
+      this.querySpecialColors(timeout),
     ])
 
     return {
