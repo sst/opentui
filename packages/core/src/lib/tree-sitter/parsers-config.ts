@@ -56,8 +56,18 @@ export default {
       wasm: "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown_inline.wasm",
       queries: {
         highlights: [
-          // NOTE: Pinned to last working version of the query, newer versions are adapted to neovim breaking changes
-          "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/99ddf573531c4dbe53f743ecbc1595af5eb1d32f/queries/markdown_inline/highlights.scm",
+          // NOTE: Based on the last working version of the query, newer versions are adapted to neovim breaking changes
+          // "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/99ddf573531c4dbe53f743ecbc1595af5eb1d32f/queries/markdown_inline/highlights.scm",
+          "./assets/markdown_inline/highlights.scm",
+        ],
+      },
+    },
+    {
+      filetype: "zig",
+      wasm: "https://github.com/tree-sitter-grammars/tree-sitter-zig/releases/download/v1.1.2/tree-sitter-zig.wasm",
+      queries: {
+        highlights: [
+          "https://github.com/nvim-treesitter/nvim-treesitter/raw/refs/heads/master/queries/zig/highlights.scm",
         ],
       },
     },
