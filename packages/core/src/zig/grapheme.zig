@@ -5,6 +5,7 @@ pub const DisplayWidth = @import("DisplayWidth");
 pub const GraphemePoolError = error{
     OutOfMemory,
     InvalidId,
+    WrongGeneration,
 };
 
 // Encoding flags for char buffer entries (u32)
@@ -236,7 +237,7 @@ pub const GraphemePool = struct {
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
             if (header_ptr.generation != expected_generation) {
                 // Generation mismatch - this is a stale reference
-                return GraphemePoolError.InvalidId;
+                return GraphemePoolError.WrongGeneration;
             }
             header_ptr.refcount +%= 1;
         }
@@ -246,7 +247,7 @@ pub const GraphemePool = struct {
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
 
             if (header_ptr.refcount == 0) return GraphemePoolError.InvalidId;
-            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
 
             header_ptr.refcount -%= 1;
 
@@ -261,7 +262,7 @@ pub const GraphemePool = struct {
             const p = self.slotPtr(slot_index);
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
             // Validate generation to prevent accessing stale data
-            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
 
             const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
 
@@ -280,7 +281,7 @@ pub const GraphemePool = struct {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
-            if (header_ptr.generation != expected_generation) return GraphemePoolError.InvalidId;
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
             return header_ptr.refcount;
         }
     };

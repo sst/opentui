@@ -271,7 +271,102 @@ world
     expect(nonWhitespaceChars).toBeGreaterThan(50)
   })
 
-  test("maintains visibility with simple Code elements", async () => {
+  test("maintains visibility when scrolling with many Code elements (setter-based, like SolidJS)", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+
+    const parent = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 1,
+    })
+
+    const header = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    header.add(new TextRenderable(testRenderer, { content: "Header Content" }))
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      flexGrow: 1,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    const footer = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    footer.add(new TextRenderable(testRenderer, { content: "Footer Content" }))
+
+    parent.add(header)
+    parent.add(scrollBox)
+    parent.add(footer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+    const initialFrame = captureCharFrame()
+    expect(initialFrame).toContain("Header Content")
+    expect(initialFrame).toContain("Footer Content")
+
+    const codeContent = `
+# HELLO
+
+world
+
+## HELLO World
+
+\`\`\`html
+<div class="example">
+  <p>Content</p>
+</div>
+\`\`\`
+`
+
+    // Simulate SolidJS reconciler behavior: createElement first, then set properties
+    for (let i = 0; i < 100; i++) {
+      const wrapper = new BoxRenderable(testRenderer, { id: `wrapper-${i}` })
+      wrapper.marginTop = 2
+      wrapper.marginBottom = 2
+
+      // Create CodeRenderable with minimal options (like SolidJS createElement)
+      const code = new CodeRenderable(testRenderer, {
+        id: `code-${i}`,
+        syntaxStyle,
+        drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
+      })
+
+      // Then set properties via setters (like SolidJS setProperty)
+      // NOTE: Order matters! Setting content first gives initial dimensions
+      code.content = codeContent
+      code.filetype = "markdown"
+
+      wrapper.add(code)
+      scrollBox.add(wrapper)
+    }
+
+    // Wait for microtasks (scheduleUpdate uses queueMicrotask)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+
+    await renderOnce()
+
+    scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    const frameAfterScroll = captureCharFrame()
+
+    expect(frameAfterScroll).toContain("Header Content")
+    expect(frameAfterScroll).toContain("Footer Content")
+
+    const hasCodeContent =
+      frameAfterScroll.includes("HELLO") ||
+      frameAfterScroll.includes("world") ||
+      frameAfterScroll.includes("<div") ||
+      frameAfterScroll.includes("```")
+
+    expect(hasCodeContent).toBe(true)
+
+    const nonWhitespaceChars = frameAfterScroll.replace(/\s/g, "").length
+    expect(nonWhitespaceChars).toBeGreaterThan(50)
+  })
+
+  test("maintains visibility with simple Code elements (constructor)", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
 
     const parent = new BoxRenderable(testRenderer, {
@@ -313,6 +408,79 @@ world
       wrapper.add(code)
       scrollBox.add(wrapper)
     }
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+
+    await renderOnce()
+
+    scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    const frame = captureCharFrame()
+
+    expect(frame).toContain("Header")
+    expect(frame).toContain("Footer")
+
+    const hasItems = /Item \d+/.test(frame)
+    expect(hasItems).toBe(true)
+
+    const nonWhitespaceChars = frame.replace(/\s/g, "").length
+    expect(nonWhitespaceChars).toBeGreaterThan(18)
+  })
+
+  test("maintains visibility with simple Code elements (setter-based, like SolidJS)", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+
+    const parent = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 1,
+    })
+
+    const header = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    header.add(new TextRenderable(testRenderer, { content: "Header" }))
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      flexGrow: 1,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    const footer = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    footer.add(new TextRenderable(testRenderer, { content: "Footer" }))
+
+    parent.add(header)
+    parent.add(scrollBox)
+    parent.add(footer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    // Simulate SolidJS reconciler behavior
+    for (let i = 0; i < 50; i++) {
+      const wrapper = new BoxRenderable(testRenderer, { id: `wrapper-${i}` })
+      wrapper.marginTop = 1
+      wrapper.marginBottom = 1
+
+      // Create with minimal options first
+      const code = new CodeRenderable(testRenderer, {
+        id: `code-${i}`,
+        syntaxStyle,
+        drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
+      })
+
+      // Set properties via setters
+      // NOTE: Order matters! Setting content first gives initial dimensions
+      code.content = `Item ${i}`
+      code.filetype = "markdown"
+
+      wrapper.add(code)
+      scrollBox.add(wrapper)
+    }
+
+    // Wait for microtasks (scheduleUpdate uses queueMicrotask)
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))

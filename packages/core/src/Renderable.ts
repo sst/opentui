@@ -993,6 +993,7 @@ export abstract class Renderable extends BaseRenderable {
 
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
+      // TODO: Should probably .markDirty()
       this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
       this.requestRender()
@@ -1023,7 +1024,7 @@ export abstract class Renderable extends BaseRenderable {
 
     try {
       const widthMethod = this._ctx.widthMethod
-      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true })
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true, id: `framebuffer-${this.id}` })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null

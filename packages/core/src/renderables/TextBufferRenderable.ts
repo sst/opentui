@@ -254,10 +254,7 @@ export abstract class TextBufferRenderable extends Renderable {
 
   protected updateTextInfo(): void {
     if (this.lastLocalSelection) {
-      const changed = this.updateLocalSelection(this.lastLocalSelection)
-      if (changed) {
-        this.requestRender()
-      }
+      this.updateLocalSelection(this.lastLocalSelection)
     }
 
     this.yogaNode.markDirty()
@@ -348,6 +345,10 @@ export abstract class TextBufferRenderable extends Renderable {
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
 
     this.renderSelf(buffer)
+
+    if (this.buffered && this.frameBuffer) {
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {

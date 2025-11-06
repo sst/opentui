@@ -10,14 +10,32 @@ import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./S
 
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable
+  private _viewportCulling: boolean
 
-  constructor(ctx: RenderContext, viewport: BoxRenderable, options: RenderableOptions<BoxRenderable>) {
+  constructor(
+    ctx: RenderContext,
+    viewport: BoxRenderable,
+    viewportCulling: boolean,
+    options: RenderableOptions<BoxRenderable>,
+  ) {
     super(ctx, options)
     this.viewport = viewport
+    this._viewportCulling = viewportCulling
+  }
+
+  get viewportCulling(): boolean {
+    return this._viewportCulling
+  }
+
+  set viewportCulling(value: boolean) {
+    this._viewportCulling = value
   }
 
   protected _getChildren(): Renderable[] {
-    return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis)
+    if (this._viewportCulling) {
+      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis)
+    }
+    return this.getChildrenSortedByPrimaryAxis()
   }
 }
 
@@ -34,6 +52,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollX?: boolean
   scrollY?: boolean
   scrollAcceleration?: ScrollAcceleration
+  viewportCulling?: boolean
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -184,6 +203,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollX = false,
       scrollY = true,
       scrollAcceleration,
+      viewportCulling = true,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -229,7 +249,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.viewport)
 
-    this.content = new ContentRenderable(ctx, this.viewport, {
+    this.content = new ContentRenderable(ctx, this.viewport, viewportCulling, {
       alignSelf: "flex-start",
       flexShrink: 0,
       ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
@@ -593,6 +613,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   public set scrollAcceleration(value: ScrollAcceleration) {
     this.scrollAccel = value
+  }
+
+  get viewportCulling(): boolean {
+    return this.content.viewportCulling
+  }
+
+  set viewportCulling(value: boolean) {
+    this.content.viewportCulling = value
+    this.requestRender()
   }
 
   protected destroySelf(): void {

@@ -304,13 +304,16 @@ pub const OptimizedBuffer = struct {
 
         const size = width * height;
 
-        // Clear grapheme tracker since resize invalidates all buffer contents
-        self.grapheme_tracker.clear();
-
         self.buffer.char = self.allocator.realloc(self.buffer.char, size) catch return BufferError.OutOfMemory;
         self.buffer.fg = self.allocator.realloc(self.buffer.fg, size) catch return BufferError.OutOfMemory;
         self.buffer.bg = self.allocator.realloc(self.buffer.bg, size) catch return BufferError.OutOfMemory;
         self.buffer.attributes = self.allocator.realloc(self.buffer.attributes, size) catch return BufferError.OutOfMemory;
+
+        // TODO: Only when resizing down,
+        // do we need to clear the graphemes from the  removed area?
+        if (width < self.width or height < self.height) {
+            try self.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        }
 
         self.width = width;
         self.height = height;
@@ -360,7 +363,9 @@ pub const OptimizedBuffer = struct {
             const left = gp.charLeftExtent(prev_char);
             const right = gp.charRightExtent(prev_char);
             const id = gp.graphemeIdFromChar(prev_char);
+
             self.grapheme_tracker.remove(id);
+
             const span_start = index - @min(left, index - row_start);
             const span_end = index + @min(right, row_end - index);
             const span_len = span_end - span_start + 1;
@@ -595,6 +600,10 @@ pub const OptimizedBuffer = struct {
 
         if (self.get(x, y)) |destCell| {
             const blendedCell = blendCells(overlayCell, destCell);
+            // After blending, check if result contains a grapheme
+            if (gp.isGraphemeChar(blendedCell.char)) {
+                return self.set(x, y, blendedCell);
+            }
             self.setRaw(x, y, blendedCell);
         } else {
             self.setRaw(x, y, overlayCell);
@@ -1148,7 +1157,7 @@ pub const OptimizedBuffer = struct {
                         if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
                             encoded_char = @as(u32, grapheme_bytes[0]);
                         } else {
-                            const gid = self.pool.allocUnowned(grapheme_bytes) catch |err| {
+                            const gid = self.pool.alloc(grapheme_bytes) catch |err| {
                                 logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
                                 globalCharPos += g_width;
                                 currentX += @as(i32, @intCast(g_width));
