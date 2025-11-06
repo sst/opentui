@@ -5,16 +5,67 @@
  * Works with Bun or Node. No dependencies.
  *
  * Usage:
- *   bun run palette.ts ansi  # indices 0–15
- *   bun run palette.ts osc   # indices 0–255
+ *   bun run palette.ts         # auto-detect (default)
+ *   bun run palette.ts auto    # auto-detect OSC support
+ *   bun run palette.ts ansi    # indices 0–15
+ *   bun run palette.ts osc     # indices 0–255
  */
 
 type Hex = string | null
-const method = (process.argv[2] || "ansi").toLowerCase()
-const INDICES = method === "osc" ? [...Array(256).keys()] : [...Array(16).keys()]
 
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
+
+/**
+ * Detect if the terminal supports OSC 4 queries by probing with a single query.
+ */
+async function detectOSCSupport(timeoutMs = 300): Promise<boolean> {
+  const out = process.stdout
+  const inp = process.stdin
+
+  if (!out.isTTY || !inp.isTTY) return false
+
+  inp.setEncoding("utf8")
+  inp.setRawMode?.(true)
+  inp.resume()
+
+  let buffer = ""
+  let detected = false
+
+  const onData = (chunk: string) => {
+    buffer += chunk
+    if (OSC4_RESPONSE.test(buffer)) {
+      detected = true
+    }
+  }
+
+  inp.on("data", onData)
+  
+  // Probe with a single color query (index 0)
+  out.write("\x1b]4;0;?\x07")
+
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs && !detected) {
+    await new Promise((r) => setTimeout(r, 10))
+  }
+
+  inp.removeListener("data", onData)
+  inp.setRawMode?.(false)
+  
+  // Drain any remaining data
+  await new Promise((r) => setTimeout(r, 50))
+  const drain = () => new Promise<void>((resolve) => {
+    const ignore = () => {}
+    inp.on("data", ignore)
+    setTimeout(() => {
+      inp.removeListener("data", ignore)
+      resolve()
+    }, 50)
+  })
+  await drain()
+
+  return detected
+}
 
 function scaleComponent(comp: string): string {
   const val = parseInt(comp, 16)
@@ -106,11 +157,21 @@ async function queryPalette(indices: number[], timeoutMs = 1200): Promise<Map<nu
 }
 
 ;(async () => {
-  if (method !== "ansi" && method !== "osc") {
-    console.error("Usage: bun run palette.ts [ansi|osc]")
+  const arg = (process.argv[2] || "auto").toLowerCase()
+  
+  if (arg !== "ansi" && arg !== "osc" && arg !== "auto") {
+    console.error("Usage: bun run palette.ts [auto|ansi|osc]")
     process.exit(1)
   }
 
+  let method = arg
+  if (method === "auto") {
+    const supported = await detectOSCSupport()
+    method = supported ? "osc" : "ansi"
+    console.error(`Auto-detected: ${method} mode`)
+  }
+
+  const INDICES = method === "osc" ? [...Array(256).keys()] : [...Array(16).keys()]
   const timeout = method === "osc" ? 5000 : 1000
   const results = await queryPalette(INDICES, timeout)
   const arr: Hex[] = INDICES.map((i) => results.get(i) ?? null)
