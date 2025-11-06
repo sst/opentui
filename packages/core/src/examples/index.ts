@@ -52,6 +52,7 @@ import * as textNodeDemo from "./text-node-demo"
 import * as textWrapExample from "./text-wrap"
 import * as editorDemo from "./editor-demo"
 import * as sliderDemo from "./slider-demo"
+import * as terminalDemo from "./terminal"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -259,6 +260,12 @@ const examples: Example[] = [
     description: "Interactive InputElement demo with validation and multiple fields",
     run: inputExample.run,
     destroy: inputExample.destroy,
+  },
+  {
+    name: "Terminal Palette Demo",
+    description: "Terminal color palette detection and visualization - fetch and display all 256 terminal colors",
+    run: terminalDemo.run,
+    destroy: terminalDemo.destroy,
   },
   {
     name: "Editor Demo",
