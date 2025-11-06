@@ -156,15 +156,15 @@ async function fetchAndDisplayPalette(renderer: CliRenderer, size: number): Prom
   if (!statusText || !paletteGrid) return
 
   try {
-    const status = renderer.paletteDetectionStatus
-    statusText.content = `Status: ${status === "cached" ? "Using cached palette" : "Fetching palette..."}`
+    const wasAlreadyCached = renderer.paletteDetectionStatus === "cached"
+    statusText.content = `Status: ${wasAlreadyCached ? "Using cached palette" : "Fetching palette..."}`
     statusText.fg = RGBA.fromInts(250, 204, 21) // Amber - warm loading state
 
-    const startTime = Date.now()
+    const startTime = performance.now()
     terminalColors = await renderer.getPalette({ size })
-    const elapsed = Date.now() - startTime
+    const elapsed = Math.round(performance.now() - startTime)
 
-    statusText.content = `Status: Palette (${size} colors) fetched in ${elapsed}ms (${status === "cached" ? "from cache" : "from terminal"})`
+    statusText.content = `Status: Palette (${size} colors) fetched in ${elapsed}ms (${wasAlreadyCached ? "from cache" : "from terminal"})`
     statusText.fg = RGBA.fromInts(34, 197, 94) // Emerald - fresh success state
 
     drawPalette(renderer, terminalColors, size)

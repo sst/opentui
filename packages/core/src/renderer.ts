@@ -325,6 +325,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
   private _cachedPalette: TerminalColors | null = null
+  private _cachedPaletteSize: number | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
 
   private handleError: (error: Error) => void = ((error: Error) => {
@@ -1294,6 +1295,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this._paletteDetectionPromise = null
     this._cachedPalette = null
+    this._cachedPaletteSize = null
 
     if (this._isDestroyed) return
     this._isDestroyed = true
@@ -1639,6 +1641,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public clearPaletteCache(): void {
     this._cachedPalette = null
+    this._cachedPaletteSize = null
   }
 
   /**
@@ -1654,8 +1657,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const requestedSize = options?.size ?? 256
 
-    if (this._cachedPalette && this._cachedPalette.palette.length !== requestedSize) {
+    if (this._cachedPalette && this._cachedPaletteSize !== requestedSize) {
       this._cachedPalette = null
+      this._cachedPaletteSize = null
     }
 
     if (this._cachedPalette) {
@@ -1672,6 +1676,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {
       this._cachedPalette = result
+      this._cachedPaletteSize = requestedSize
       this._paletteDetectionPromise = null
       return result
     })
