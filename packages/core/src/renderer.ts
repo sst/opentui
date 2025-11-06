@@ -319,6 +319,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
+  private _cachedPalette: (string | null)[] | null = null
+  private _paletteDetectionPromise: Promise<(string | null)[]> | null = null
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -1617,10 +1619,24 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public async getPalette(timeoutMs = 5000): Promise<(string | null)[]> {
+    if (this._cachedPalette) {
+      return this._cachedPalette
+    }
+
+    if (this._paletteDetectionPromise) {
+      return this._paletteDetectionPromise
+    }
+
     if (!this._paletteDetector) {
       this._paletteDetector = createTerminalPalette(this.stdin, this.stdout)
     }
 
-    return await this._paletteDetector.detect(timeoutMs)
+    this._paletteDetectionPromise = this._paletteDetector.detect(timeoutMs).then((result) => {
+      this._cachedPalette = result
+      this._paletteDetectionPromise = null
+      return result
+    })
+
+    return this._paletteDetectionPromise
   }
 }
