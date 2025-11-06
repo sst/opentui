@@ -57,6 +57,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
+        // Reset regex lastIndex before testing due to global flag
+        OSC4_RESPONSE.lastIndex = 0
         if (OSC4_RESPONSE.test(buffer)) {
           cleanup()
           resolve(true)
@@ -159,12 +161,15 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
   async detect(timeoutMs = 5000): Promise<Hex[]> {
     const supported = await this.detectOSCSupport()
-    const method = supported ? "osc" : "ansi"
+    
+    if (!supported) {
+      // Return 256 nulls if OSC is not supported
+      return Array(256).fill(null)
+    }
 
-    const INDICES = method === "osc" ? [...Array(256).keys()] : [...Array(16).keys()]
-    const timeout = method === "osc" ? timeoutMs : 1000
-
-    const results = await this.queryPalette(INDICES, timeout)
+    // Always query all 256 colors when OSC is supported
+    const INDICES = [...Array(256).keys()]
+    const results = await this.queryPalette(INDICES, timeoutMs)
     return INDICES.map((i) => results.get(i) ?? null)
   }
 }
