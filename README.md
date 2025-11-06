@@ -87,3 +87,7 @@ This will link `@opentui/core` to your target project.
 - By default, the script links to the source packages, allowing hot-reloading of changes
 - Use `--dist` when you need to test the built artifacts
 - Use `--copy` mode when working in environments that don't support symlinks well (e.g., Docker containers, Windows)
+
+## Showcase
+
+Consider showcasing your work on the [awesome-opentui](https://github.com/msmps/awesome-opentui) list. A curated list of awesome resources and terminal user interfaces built with OpenTUI.
