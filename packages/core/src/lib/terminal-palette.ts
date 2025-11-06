@@ -6,6 +6,7 @@ const OSC4_RESPONSE =
 export interface TerminalPaletteDetector {
   detect(timeoutMs?: number): Promise<Hex[]>
   detectOSCSupport(timeoutMs?: number): Promise<boolean>
+  cleanup(): void
 }
 
 function scaleComponent(comp: string): string {
@@ -25,10 +26,24 @@ function toHex(r?: string, g?: string, b?: string, hex6?: string): string {
 export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
+  private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
+  private activeTimers: Array<NodeJS.Timeout> = []
 
   constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream) {
     this.stdin = stdin
     this.stdout = stdout
+  }
+
+  cleanup(): void {
+    for (const { event, handler } of this.activeListeners) {
+      this.stdin.removeListener(event, handler)
+    }
+    this.activeListeners = []
+
+    for (const timer of this.activeTimers) {
+      clearTimeout(timer)
+    }
+    this.activeTimers = []
   }
 
   async detectOSCSupport(timeoutMs = 300): Promise<boolean> {
@@ -56,10 +71,17 @@ export class TerminalPalette implements TerminalPaletteDetector {
       const cleanup = () => {
         clearTimeout(timer)
         inp.removeListener("data", onData)
+        // Remove from active tracking
+        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
+        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
+        const timerIdx = this.activeTimers.indexOf(timer)
+        if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
       }
 
       const timer = setTimeout(onTimeout, timeoutMs)
+      this.activeTimers.push(timer)
       inp.on("data", onData)
+      this.activeListeners.push({ event: "data", handler: onData })
       out.write("\x1b]4;0;?\x07")
     })
   }
@@ -104,6 +126,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
           cleanup()
           resolve(results)
         }, 150)
+        if (idleTimer) this.activeTimers.push(idleTimer)
       }
 
       const onTimeout = () => {
@@ -115,10 +138,21 @@ export class TerminalPalette implements TerminalPaletteDetector {
         clearTimeout(timer)
         if (idleTimer) clearTimeout(idleTimer)
         inp.removeListener("data", onData)
+        // Remove from active tracking
+        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
+        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
+        const timerIdx = this.activeTimers.indexOf(timer)
+        if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
+        if (idleTimer) {
+          const idleTimerIdx = this.activeTimers.indexOf(idleTimer)
+          if (idleTimerIdx !== -1) this.activeTimers.splice(idleTimerIdx, 1)
+        }
       }
 
       const timer = setTimeout(onTimeout, timeoutMs)
+      this.activeTimers.push(timer)
       inp.on("data", onData)
+      this.activeListeners.push({ event: "data", handler: onData })
       out.write(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
     })
   }

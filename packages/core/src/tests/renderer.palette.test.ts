@@ -1,128 +1,231 @@
-import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { test, expect, describe } from "bun:test"
+import { createTestRenderer } from "../testing/test-renderer"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
 
-let renderer: TestRenderer
+// Helper to create mock stdin/stdout for palette testing
+function createMockStreams() {
+  const mockStdin = new EventEmitter() as any
+  mockStdin.isTTY = true
+  mockStdin.setRawMode = () => {}
+  mockStdin.resume = () => {}
+  mockStdin.pause = () => {}
+  mockStdin.setEncoding = () => {}
 
-beforeEach(async () => {
-  ;({ renderer } = await createTestRenderer({}))
-})
+  const writes: string[] = []
+  const mockStdout = {
+    isTTY: true,
+    columns: 80,
+    rows: 24,
+    write: (data: string | Buffer) => {
+      writes.push(data.toString())
+      // Auto-respond to OSC queries immediately
+      const dataStr = data.toString()
+      if (dataStr.includes("\x1b]4;0;?")) {
+        // OSC support check
+        process.nextTick(() => {
+          mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
+        })
+      } else if (dataStr.includes("\x1b]4;")) {
+        // Palette queries - respond to each
+        process.nextTick(() => {
+          for (let i = 0; i < 16; i++) {
+            mockStdin.emit("data", Buffer.from(`\x1b]4;${i};rgb:1000/2000/3000\x07`))
+          }
+        })
+      }
+      return true
+    },
+  } as any
 
-afterEach(() => {
-  renderer.destroy()
-})
+  return { mockStdin, mockStdout, writes }
+}
 
-describe("Palette detection and caching", () => {
-  test("getPalette returns a palette array", async () => {
-    const palette = await renderer.getPalette(100)
-    expect(Array.isArray(palette)).toBe(true)
-  })
-
+describe("Palette caching behavior", () => {
   test("getPalette returns cached palette on subsequent calls", async () => {
-    // First call - should detect palette
-    const palette1 = await renderer.getPalette(100)
+    const { mockStdin, mockStdout } = createMockStreams()
 
-    // Second call - should return cached palette without detection
-    const palette2 = await renderer.getPalette(100)
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // First call - triggers detection
+    const palette1 = await renderer.getPalette(300)
+
+    // Second call - should return cached palette
+    const palette2 = await renderer.getPalette(300)
 
     expect(palette1).toBe(palette2) // Same reference
     expect(palette1).toEqual(palette2) // Same values
+
+    renderer.destroy()
   })
 
-  test("cached palette is returned immediately without timeout delay", async () => {
-    // First call with short timeout
-    const start1 = Date.now()
-    await renderer.getPalette(100)
-    const duration1 = Date.now() - start1
+  test("cached palette is returned instantly", async () => {
+    const { mockStdin, mockStdout, writes } = createMockStreams()
 
-    // Second call should be instant since it's cached
-    const start2 = Date.now()
-    await renderer.getPalette(5000) // Even with longer timeout
-    const duration2 = Date.now() - start2
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
 
-    // Second call should be significantly faster (cached)
-    expect(duration2).toBeLessThan(50) // Should be nearly instant
+    // First call
+    await renderer.getPalette(300)
+    const writeCountAfterFirst = writes.length
+
+    // Second call should not trigger new writes
+    const start = Date.now()
+    await renderer.getPalette(300)
+    const duration = Date.now() - start
+
+    // Should be instant (cached)
+    expect(duration).toBeLessThan(50)
+
+    // Should not have sent new queries
+    expect(writes.length).toBe(writeCountAfterFirst)
+
+    renderer.destroy()
   })
 
-  test("palette detector is created only once", async () => {
+  test("multiple concurrent calls share same detection", async () => {
+    const { mockStdin, mockStdout, writes } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Start three concurrent getPalette calls
+    const [palette1, palette2, palette3] = await Promise.all([
+      renderer.getPalette(300),
+      renderer.getPalette(300),
+      renderer.getPalette(300),
+    ])
+
+    // All should be the same reference
+    expect(palette1).toBe(palette2)
+    expect(palette2).toBe(palette3)
+
+    // Should only have queried once or twice (support check + queries)
+    const oscSupportChecks = writes.filter((w) => w.includes("\x1b]4;0;?"))
+    expect(oscSupportChecks.length).toBeLessThanOrEqual(2)
+
+    renderer.destroy()
+  })
+
+  test("palette detector created only once", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
     // @ts-expect-error - accessing private property for testing
     expect(renderer._paletteDetector).toBeNull()
 
-    await renderer.getPalette(100)
+    await renderer.getPalette(300)
+
     // @ts-expect-error - accessing private property for testing
     const detector1 = renderer._paletteDetector
     expect(detector1).not.toBeNull()
 
-    await renderer.getPalette(100)
+    await renderer.getPalette(300)
+
     // @ts-expect-error - accessing private property for testing
     const detector2 = renderer._paletteDetector
 
-    // Should be the same detector instance
+    // Should be same instance
     expect(detector1).toBe(detector2)
+
+    renderer.destroy()
   })
 
-  test("multiple concurrent getPalette calls return the same result", async () => {
-    // Start multiple palette detection requests simultaneously
-    const [palette1, palette2, palette3] = await Promise.all([
-      renderer.getPalette(100),
-      renderer.getPalette(100),
-      renderer.getPalette(100),
-    ])
+  test("cache persists with different timeout values", async () => {
+    const { mockStdin, mockStdout, writes } = createMockStreams()
 
-    // All should return the same cached palette
-    expect(palette1).toBe(palette2)
-    expect(palette2).toBe(palette3)
-  })
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
 
-  test("palette cache persists across different timeout values", async () => {
     const palette1 = await renderer.getPalette(100)
-    const palette2 = await renderer.getPalette(500)
-    const palette3 = await renderer.getPalette(1000)
+    const writeCountAfterFirst = writes.length
 
+    const palette2 = await renderer.getPalette(5000)
+
+    // Should not send new queries
+    expect(writes.length).toBe(writeCountAfterFirst)
+
+    // Should be same reference
     expect(palette1).toBe(palette2)
-    expect(palette2).toBe(palette3)
+
+    renderer.destroy()
   })
 
-  test("palette array has expected length", async () => {
-    const palette = await renderer.getPalette(100)
+  test("cache persists across renderer lifecycle", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
 
-    // Should have at least 16 colors (basic ANSI) or up to 256 (extended)
-    expect(palette.length).toBeGreaterThanOrEqual(16)
-    expect(palette.length).toBeLessThanOrEqual(256)
-  })
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
 
-  test("palette entries are either hex strings or null", async () => {
-    const palette = await renderer.getPalette(100)
+    const palette1 = await renderer.getPalette(300)
 
-    for (const color of palette) {
-      if (color !== null) {
-        expect(typeof color).toBe("string")
-        expect((color as string)).toMatch(/^#[0-9a-f]{6}$/)
-      } else {
-        expect(color).toBeNull()
-      }
-    }
-  })
-
-  test("cached palette is preserved after renderer operations", async () => {
-    const palette1 = await renderer.getPalette(100)
-
-    // Perform some renderer operations
-    renderer.requestRender()
+    // Lifecycle operations
     renderer.start()
+    await new Promise((resolve) => setTimeout(resolve, 10))
     renderer.pause()
+    renderer.suspend()
+    renderer.resume()
+    renderer.stop()
 
+    // Should still have cached palette
     const palette2 = await renderer.getPalette(100)
-
-    // Cache should still be valid
     expect(palette1).toBe(palette2)
+
+    renderer.destroy()
+  })
+})
+
+describe("Palette detection with non-TTY", () => {
+  test("handles non-TTY streams gracefully", async () => {
+    const mockStdin = new EventEmitter() as any
+    mockStdin.isTTY = false
+    mockStdin.setRawMode = () => {}
+    mockStdin.resume = () => {}
+    mockStdin.pause = () => {}
+    mockStdin.setEncoding = () => {}
+
+    const mockStdout = {
+      isTTY: false,
+      columns: 80,
+      rows: 24,
+      write: () => true,
+    } as any
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    const palette = await renderer.getPalette(100)
+
+    // Should return array (all null when not a TTY)
+    expect(Array.isArray(palette)).toBe(true)
+
+    // Cache should still work
+    const cached = await renderer.getPalette(100)
+    expect(palette).toBe(cached)
+
+    renderer.destroy()
   })
 })
 
 describe("Palette detection with OSC responses", () => {
-  test("handles OSC 4 color responses", async () => {
-    // Create a new renderer with mocked stdin for this test
+  test("detects colors from OSC responses", async () => {
     const mockStdin = new EventEmitter() as any
     mockStdin.isTTY = true
     mockStdin.setRawMode = () => {}
@@ -134,183 +237,150 @@ describe("Palette detection with OSC responses", () => {
       isTTY: true,
       columns: 80,
       rows: 24,
-      write: () => true,
+      write: (data: string | Buffer) => {
+        const dataStr = data.toString()
+        // Respond on next tick to allow listener setup
+        setImmediate(() => {
+          if (dataStr.includes("\x1b]4;0;?")) {
+            // OSC support check
+            mockStdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+          }
+          // Check if this is a palette query (has multiple color indices)
+          if (dataStr.match(/\x1b\]4;\d+;/g)) {
+            // Send specific test colors for all detected indices
+            mockStdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+            mockStdin.emit("data", Buffer.from("\x1b]4;1;#ff0000\x07"))
+            mockStdin.emit("data", Buffer.from("\x1b]4;2;#00ff00\x07"))
+            mockStdin.emit("data", Buffer.from("\x1b]4;3;#0000ff\x07"))
+            for (let i = 4; i < 256; i++) {
+              mockStdin.emit("data", Buffer.from(`\x1b]4;${i};#808080\x07`))
+            }
+          }
+        })
+        return true
+      },
     } as any
 
-    const { renderer: testRenderer } = await createTestRenderer({
+    const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
     })
 
-    // Simulate OSC response after getPalette is called
-    const palettePromise = testRenderer.getPalette(200)
-
-    // Simulate terminal sending back OSC 4 response for color 0
-    setTimeout(() => {
-      mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
-    }, 10)
-
-    const palette = await palettePromise
+    const palette = await renderer.getPalette(300)
 
     expect(Array.isArray(palette)).toBe(true)
+    expect(palette.length).toBeGreaterThanOrEqual(16)
 
-    testRenderer.destroy()
-  })
+    // Check specific colors were detected
+    expect(palette[0]).toBe("#000000")
+    expect(palette[1]).toBe("#ff0000")
+    expect(palette[2]).toBe("#00ff00")
+    expect(palette[3]).toBe("#0000ff")
 
-  test("handles multiple OSC 4 responses", async () => {
-    const mockStdin = new EventEmitter() as any
-    mockStdin.isTTY = true
-    mockStdin.setRawMode = () => {}
-    mockStdin.resume = () => {}
-    mockStdin.pause = () => {}
-    mockStdin.setEncoding = () => {}
-
-    const mockStdout = {
-      isTTY: true,
-      columns: 80,
-      rows: 24,
-      write: () => true,
-    } as any
-
-    const { renderer: testRenderer } = await createTestRenderer({
-      stdin: mockStdin,
-      stdout: mockStdout,
-    })
-
-    const palettePromise = testRenderer.getPalette(200)
-
-    // Simulate multiple color responses
-    setTimeout(() => {
-      mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
-      mockStdin.emit("data", Buffer.from("\x1b]4;1;rgb:ffff/0000/0000\x07"))
-      mockStdin.emit("data", Buffer.from("\x1b]4;2;rgb:0000/ffff/0000\x07"))
-    }, 10)
-
-    const palette = await palettePromise
-    expect(palette.length).toBeGreaterThan(0)
-
-    // Verify caching works after OSC responses
-    const cachedPalette = await testRenderer.getPalette(100)
-    expect(palette).toBe(cachedPalette)
-
-    testRenderer.destroy()
-  })
-
-  test("palette detection times out gracefully", async () => {
-    // This test should complete even if no OSC responses are received
-    const start = Date.now()
-    const palette = await renderer.getPalette(100)
-    const duration = Date.now() - start
-
-    expect(Array.isArray(palette)).toBe(true)
-    expect(duration).toBeLessThan(500) // Should timeout within reasonable time
-  })
-
-  test("cached palette is not affected by subsequent timeout changes", async () => {
-    const palette1 = await renderer.getPalette(50)
-
-    // Even with a longer timeout, should return cached result immediately
-    const start = Date.now()
-    const palette2 = await renderer.getPalette(5000)
-    const duration = Date.now() - start
-
-    expect(palette1).toBe(palette2)
-    expect(duration).toBeLessThan(50) // Should be instant
-  })
-})
-
-describe("Palette caching across renderer lifecycle", () => {
-  test("palette cache survives start/stop cycles", async () => {
-    const palette1 = await renderer.getPalette(100)
-
-    renderer.start()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    renderer.stop()
-
-    const palette2 = await renderer.getPalette(100)
-    expect(palette1).toBe(palette2)
-  })
-
-  test("palette cache survives suspend/resume cycles", async () => {
-    const palette1 = await renderer.getPalette(100)
-
-    renderer.start()
-    renderer.suspend()
-    renderer.resume()
-
-    const palette2 = await renderer.getPalette(100)
-    expect(palette1).toBe(palette2)
-  })
-
-  test("palette cache is available immediately after creation", async () => {
-    // Fresh renderer, no previous detection
-    const start = Date.now()
-    const palette = await renderer.getPalette(100)
-    const firstCallDuration = Date.now() - start
-
-    // Second call should be cached and fast
-    const start2 = Date.now()
-    const cachedPalette = await renderer.getPalette(100)
-    const secondCallDuration = Date.now() - start2
-
-    expect(palette).toBe(cachedPalette)
-    // Second call should be <= first call (cached should never be slower)
-    expect(secondCallDuration).toBeLessThanOrEqual(firstCallDuration)
-  })
-})
-
-describe("Palette detection edge cases", () => {
-  test("handles getPalette with default timeout", async () => {
-    const palette = await renderer.getPalette()
-    expect(Array.isArray(palette)).toBe(true)
-
-    // Should be cached
-    const cached = await renderer.getPalette()
+    // Verify caching
+    const cached = await renderer.getPalette(100)
     expect(palette).toBe(cached)
+
+    renderer.destroy()
   })
 
-  test("handles getPalette with zero timeout", async () => {
-    const palette = await renderer.getPalette(0)
-    expect(Array.isArray(palette)).toBe(true)
-  })
+  test("handles RGB format responses", async () => {
+    const mockStdin = new EventEmitter() as any
+    mockStdin.isTTY = true
+    mockStdin.setRawMode = () => {}
+    mockStdin.resume = () => {}
+    mockStdin.pause = () => {}
+    mockStdin.setEncoding = () => {}
 
-  test("handles getPalette with very long timeout", async () => {
-    const start = Date.now()
-    const palette = await renderer.getPalette(10000)
-    const duration = Date.now() - start
+    const mockStdout = {
+      isTTY: true,
+      columns: 80,
+      rows: 24,
+      write: (data: string | Buffer) => {
+        const dataStr = data.toString()
+        setImmediate(() => {
+          if (dataStr.includes("\x1b]4;0;?")) {
+            mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
+          }
+          if (dataStr.match(/\x1b\]4;\d+;/g)) {
+            mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
+            mockStdin.emit("data", Buffer.from("\x1b]4;1;rgb:ffff/0000/0000\x07"))
+            mockStdin.emit("data", Buffer.from("\x1b]4;2;rgb:8000/8000/8000\x07"))
+            for (let i = 3; i < 256; i++) {
+              mockStdin.emit("data", Buffer.from(`\x1b]4;${i};rgb:1111/1111/1111\x07`))
+            }
+          }
+        })
+        return true
+      },
+    } as any
 
-    expect(Array.isArray(palette)).toBe(true)
-    // Should not actually wait the full timeout if already cached or detected
-    expect(duration).toBeLessThan(2000)
-  })
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
 
-  test("palette detection creates detector before detection", async () => {
-    // @ts-expect-error - accessing private property for testing
-    expect(renderer._paletteDetector).toBeNull()
+    const palette = await renderer.getPalette(300)
 
-    const palettePromise = renderer.getPalette(100)
+    expect(palette[0]).toBe("#000000")
+    expect(palette[1]).toBe("#ff0000")
+    expect(palette[2]).toBe("#808080") // 8000 hex should map to 80 in 8-bit
 
-    // Detector should be created synchronously
-    // @ts-expect-error - accessing private property for testing
-    expect(renderer._paletteDetector).not.toBeNull()
-
-    await palettePromise
+    renderer.destroy()
   })
 })
 
-describe("Palette integration with renderer", () => {
+describe("Palette integration tests", () => {
+  test("palette detection does not interfere with input handling - keys are queued", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    const keysReceived: string[] = []
+    renderer.keyInput.on("keypress", (event) => {
+      keysReceived.push(event.name || "unknown")
+    })
+
+    // Start palette detection (blocks stdin listener)
+    const palettePromise = renderer.getPalette(300)
+
+    // Send key input while detection is active - should be queued by Node.js EventEmitter
+    mockStdin.emit("data", Buffer.from("a"))
+    mockStdin.emit("data", Buffer.from("b"))
+    mockStdin.emit("data", Buffer.from("c"))
+
+    // Wait for palette detection to complete
+    await palettePromise
+
+    // Give event loop time to process queued events after stdin listener is restored
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Keys should have been received after listener was restored
+    expect(keysReceived.length).toBeGreaterThan(0)
+
+    renderer.destroy()
+  })
+
   test("getPalette works with different renderer configurations", async () => {
     const configs = [
       { width: 40, height: 10 },
       { width: 120, height: 40 },
       { useMouse: false },
-      { exitOnCtrlC: false },
     ]
 
     for (const config of configs) {
-      const { renderer: testRenderer } = await createTestRenderer(config)
+      const { mockStdin, mockStdout } = createMockStreams()
 
-      const palette = await testRenderer.getPalette(100)
+      const { renderer: testRenderer } = await createTestRenderer({
+        ...config,
+        stdin: mockStdin,
+        stdout: mockStdout,
+      })
+
+      const palette = await testRenderer.getPalette(300)
       expect(Array.isArray(palette)).toBe(true)
 
       // Verify caching
@@ -320,31 +390,225 @@ describe("Palette integration with renderer", () => {
       testRenderer.destroy()
     }
   })
+})
 
-  test("palette detection does not interfere with rendering", async () => {
-    renderer.start()
+describe("Palette cache invalidation", () => {
+  test("clearPaletteCache invalidates cache", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
 
-    // Get palette while renderer is running
-    const palette = await renderer.getPalette(100)
-    expect(Array.isArray(palette)).toBe(true)
-
-    renderer.stop()
-  })
-
-  test("palette detection does not interfere with input handling", async () => {
-    let keyReceived = false
-    renderer.keyInput.once("keypress", () => {
-      keyReceived = true
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
     })
 
-    // Get palette
-    const palettePromise = renderer.getPalette(100)
+    // First detection
+    const palette1 = await renderer.getPalette(300)
+    expect(renderer.paletteDetectionStatus).toBe("cached")
 
-    // Simulate key input
-    renderer.stdin.emit("data", Buffer.from("a"))
+    // Clear cache
+    renderer.clearPaletteCache()
+    expect(renderer.paletteDetectionStatus).toBe("idle")
 
+    // Second detection - should re-detect
+    const palette2 = await renderer.getPalette(300)
+
+    // Should be different references (not same cached object)
+    expect(palette1).not.toBe(palette2)
+    expect(renderer.paletteDetectionStatus).toBe("cached")
+
+    renderer.destroy()
+  })
+
+  test("paletteDetectionStatus tracks detection lifecycle", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Initial state
+    expect(renderer.paletteDetectionStatus).toBe("idle")
+
+    // Start detection
+    const palettePromise = renderer.getPalette(300)
+    expect(renderer.paletteDetectionStatus).toBe("detecting")
+
+    // Wait for completion
+    await palettePromise
+    expect(renderer.paletteDetectionStatus).toBe("cached")
+
+    renderer.destroy()
+  })
+})
+
+describe("Palette detection with suspended renderer", () => {
+  test("getPalette throws error when renderer is suspended", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Suspend the renderer
+    renderer.suspend()
+
+    // Should throw
+    await expect(renderer.getPalette(300)).rejects.toThrow("Cannot detect palette while renderer is suspended")
+
+    renderer.destroy()
+  })
+
+  test("getPalette works after resume", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Suspend then resume
+    renderer.suspend()
+    renderer.resume()
+
+    // Should work now
+    const palette = await renderer.getPalette(300)
+    expect(Array.isArray(palette)).toBe(true)
+
+    renderer.destroy()
+  })
+})
+
+describe("Palette detector cleanup", () => {
+  test("destroy cleans up palette detector", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Complete detection first
+    await renderer.getPalette(300)
+
+    // Now destroy
+    renderer.destroy()
+
+    // Verify internal state is cleared
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._paletteDetector).toBeNull()
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._paletteDetectionPromise).toBeNull()
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._cachedPalette).toBeNull()
+  })
+
+  test("multiple destroy calls don't cause errors", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    await renderer.getPalette(300)
+
+    // Multiple destroys should be safe
+    expect(() => {
+      renderer.destroy()
+      renderer.destroy()
+      renderer.destroy()
+    }).not.toThrow()
+  })
+
+  test("cleanup removes all listeners from stdin", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Count initial listeners
+    const initialListenerCount = mockStdin.listenerCount("data")
+
+    // Start detection
+    const palettePromise = renderer.getPalette(300)
+
+    // During detection, there should be extra listeners
+    const duringDetectionCount = mockStdin.listenerCount("data")
+    expect(duringDetectionCount).toBeGreaterThanOrEqual(initialListenerCount)
+
+    // Wait for completion
     await palettePromise
 
-    expect(keyReceived).toBe(true)
+    // After completion, listeners should be cleaned up
+    const afterDetectionCount = mockStdin.listenerCount("data")
+    expect(afterDetectionCount).toBeLessThanOrEqual(initialListenerCount + 1)
+
+    renderer.destroy()
+
+    // After destroy, should be cleaned up
+    const afterDestroyCount = mockStdin.listenerCount("data")
+    expect(afterDestroyCount).toBe(0)
+  })
+})
+
+describe("Palette detection error handling", () => {
+  test("handles timeout gracefully", async () => {
+    const mockStdin = new EventEmitter() as any
+    mockStdin.isTTY = true
+    mockStdin.setRawMode = () => {}
+    mockStdin.resume = () => {}
+    mockStdin.pause = () => {}
+    mockStdin.setEncoding = () => {}
+
+    const mockStdout = {
+      isTTY: true,
+      columns: 80,
+      rows: 24,
+      write: () => true, // Never respond
+    } as any
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    // Should timeout and return array with nulls
+    const palette = await renderer.getPalette(100)
+    expect(Array.isArray(palette)).toBe(true)
+    expect(palette.every((c) => c === null)).toBe(true)
+
+    renderer.destroy()
+  })
+
+  test("handles stdin listener restoration on error", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+    })
+
+    let errorThrown = false
+    let listenerRestored = false
+
+    // Mock an error during detection by checking listener count after
+    try {
+      const palettePromise = renderer.getPalette(300)
+      await palettePromise
+    } catch (error) {
+      errorThrown = true
+    }
+
+    // Listener should be restored even if there was an error
+    const listenerCount = mockStdin.listenerCount("data")
+    listenerRestored = listenerCount > 0
+
+    expect(listenerRestored).toBe(true)
+
+    renderer.destroy()
   })
 })

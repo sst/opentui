@@ -1282,6 +1282,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearInterval(this.memorySnapshotTimer)
     }
 
+    // Clean up palette detector
+    if (this._paletteDetector) {
+      this._paletteDetector.cleanup()
+      this._paletteDetector = null
+    }
+    this._paletteDetectionPromise = null
+    this._cachedPalette = null
+
     if (this._isDestroyed) return
     this._isDestroyed = true
 
@@ -1618,7 +1626,43 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
 
+  /**
+   * Gets the current palette detection status.
+   * @returns "idle" if no detection has occurred, "detecting" if detection is in progress, "cached" if palette is cached
+   */
+  public get paletteDetectionStatus(): "idle" | "detecting" | "cached" {
+    if (this._cachedPalette) return "cached"
+    if (this._paletteDetectionPromise) return "detecting"
+    return "idle"
+  }
+
+  /**
+   * Clears the cached palette, forcing the next getPalette() call to re-detect.
+   * This is useful if the terminal color scheme changes at runtime.
+   */
+  public clearPaletteCache(): void {
+    this._cachedPalette = null
+  }
+
+  /**
+   * Detects the terminal's color palette by querying via OSC 4 sequences.
+   *
+   * Results are cached automatically. Returns an array of 256 hex color strings
+   * (e.g., "#ff0000") or null for colors that couldn't be detected.
+   *
+   * During detection, the renderer temporarily pauses its normal stdin processing
+   * to avoid interference with palette responses.
+   *
+   * @param timeoutMs Maximum time to wait for terminal responses (default: 5000ms)
+   * @returns Promise resolving to array of 256 color values
+   * @throws Error if renderer is suspended
+   */
   public async getPalette(timeoutMs = 5000): Promise<(string | null)[]> {
+    // Check if renderer is suspended
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      throw new Error("Cannot detect palette while renderer is suspended")
+    }
+
     if (this._cachedPalette) {
       return this._cachedPalette
     }
@@ -1631,11 +1675,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._paletteDetector = createTerminalPalette(this.stdin, this.stdout)
     }
 
-    this._paletteDetectionPromise = this._paletteDetector.detect(timeoutMs).then((result) => {
-      this._cachedPalette = result
-      this._paletteDetectionPromise = null
-      return result
-    })
+    // Temporarily remove stdin listener to prevent interference
+    this.stdin.removeListener("data", this.stdinListener)
+
+    this._paletteDetectionPromise = this._paletteDetector
+      .detect(timeoutMs)
+      .then((result) => {
+        this._cachedPalette = result
+        this._paletteDetectionPromise = null
+        return result
+      })
+      .finally(() => {
+        // Restore stdin listener
+        this.stdin.on("data", this.stdinListener)
+      })
 
     return this._paletteDetectionPromise
   }
