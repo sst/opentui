@@ -1152,3 +1152,108 @@ test("parseKeypress - fallback to raw parsing when Kitty option is enabled but s
   expect(normalCtrl?.name).toBe("a")
   expect(normalCtrl?.ctrl).toBe(true)
 })
+
+test("parseKeypress - Ghostty terminal modified enter keys", () => {
+  // Ghostty terminal sends special escape sequences for modified enter keys
+  // Format: ESC[27;modifier;charcode~ where charcode 13 is enter/return
+
+  // Shift+Enter: ESC[27;2;13~ (modifier 2 = shift bit 1)
+  const shiftEnter = parseKeypress("\u001b[27;2;13~")!
+  expect(shiftEnter.name).toBe("return")
+  expect(shiftEnter.shift).toBe(true)
+  expect(shiftEnter.ctrl).toBe(false)
+  expect(shiftEnter.meta).toBe(false)
+  expect(shiftEnter.option).toBe(false)
+  expect(shiftEnter.sequence).toBe("\u001b[27;2;13~")
+  expect(shiftEnter.raw).toBe("\u001b[27;2;13~")
+  expect(shiftEnter.eventType).toBe("press")
+  expect(shiftEnter.source).toBe("raw")
+
+  // Test with \x1b notation as well
+  const shiftEnter2 = parseKeypress("\x1b[27;2;13~")!
+  expect(shiftEnter2.name).toBe("return")
+  expect(shiftEnter2.shift).toBe(true)
+  expect(shiftEnter2.ctrl).toBe(false)
+  expect(shiftEnter2.meta).toBe(false)
+  expect(shiftEnter2.option).toBe(false)
+
+  // Ctrl+Enter: ESC[27;5;13~ (modifier 5 = ctrl bit 4)
+  const ctrlEnter = parseKeypress("\u001b[27;5;13~")!
+  expect(ctrlEnter.name).toBe("return")
+  expect(ctrlEnter.ctrl).toBe(true)
+  expect(ctrlEnter.shift).toBe(false)
+  expect(ctrlEnter.meta).toBe(false)
+  expect(ctrlEnter.option).toBe(false)
+  expect(ctrlEnter.sequence).toBe("\u001b[27;5;13~")
+  expect(ctrlEnter.raw).toBe("\u001b[27;5;13~")
+  expect(ctrlEnter.eventType).toBe("press")
+  expect(ctrlEnter.source).toBe("raw")
+
+  // Test with \x1b notation
+  const ctrlEnter2 = parseKeypress("\x1b[27;5;13~")!
+  expect(ctrlEnter2.name).toBe("return")
+  expect(ctrlEnter2.ctrl).toBe(true)
+  expect(ctrlEnter2.shift).toBe(false)
+  expect(ctrlEnter2.meta).toBe(false)
+  expect(ctrlEnter2.option).toBe(false)
+
+  // Alt/Option+Enter: ESC[27;3;13~ (modifier 3 = alt/option bit 2)
+  const altEnter = parseKeypress("\u001b[27;3;13~")!
+  expect(altEnter.name).toBe("return")
+  expect(altEnter.meta).toBe(true)
+  expect(altEnter.option).toBe(true)
+  expect(altEnter.ctrl).toBe(false)
+  expect(altEnter.shift).toBe(false)
+  expect(altEnter.sequence).toBe("\u001b[27;3;13~")
+  expect(altEnter.raw).toBe("\u001b[27;3;13~")
+  expect(altEnter.eventType).toBe("press")
+  expect(altEnter.source).toBe("raw")
+
+  // Shift+Ctrl+Enter: ESC[27;6;13~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
+  const shiftCtrlEnter = parseKeypress("\u001b[27;6;13~")!
+  expect(shiftCtrlEnter.name).toBe("return")
+  expect(shiftCtrlEnter.shift).toBe(true)
+  expect(shiftCtrlEnter.ctrl).toBe(true)
+  expect(shiftCtrlEnter.meta).toBe(false)
+  expect(shiftCtrlEnter.option).toBe(false)
+  expect(shiftCtrlEnter.sequence).toBe("\u001b[27;6;13~")
+  expect(shiftCtrlEnter.raw).toBe("\u001b[27;6;13~")
+  expect(shiftCtrlEnter.eventType).toBe("press")
+  expect(shiftCtrlEnter.source).toBe("raw")
+
+  // Shift+Alt+Enter: ESC[27;4;13~ (modifier 4 = shift(1) + alt(2) = bits 3)
+  const shiftAltEnter = parseKeypress("\u001b[27;4;13~")!
+  expect(shiftAltEnter.name).toBe("return")
+  expect(shiftAltEnter.shift).toBe(true)
+  expect(shiftAltEnter.meta).toBe(true)
+  expect(shiftAltEnter.option).toBe(true)
+  expect(shiftAltEnter.ctrl).toBe(false)
+  expect(shiftAltEnter.sequence).toBe("\u001b[27;4;13~")
+  expect(shiftAltEnter.raw).toBe("\u001b[27;4;13~")
+  expect(shiftAltEnter.eventType).toBe("press")
+  expect(shiftAltEnter.source).toBe("raw")
+
+  // Ctrl+Alt+Enter: ESC[27;7;13~ (modifier 7 = alt(2) + ctrl(4) = bits 6)
+  const ctrlAltEnter = parseKeypress("\u001b[27;7;13~")!
+  expect(ctrlAltEnter.name).toBe("return")
+  expect(ctrlAltEnter.ctrl).toBe(true)
+  expect(ctrlAltEnter.meta).toBe(true)
+  expect(ctrlAltEnter.option).toBe(true)
+  expect(ctrlAltEnter.shift).toBe(false)
+  expect(ctrlAltEnter.sequence).toBe("\u001b[27;7;13~")
+  expect(ctrlAltEnter.raw).toBe("\u001b[27;7;13~")
+  expect(ctrlAltEnter.eventType).toBe("press")
+  expect(ctrlAltEnter.source).toBe("raw")
+
+  // Shift+Ctrl+Alt+Enter: ESC[27;8;13~ (modifier 8 = shift(1) + alt(2) + ctrl(4) = bits 7)
+  const allModsEnter = parseKeypress("\u001b[27;8;13~")!
+  expect(allModsEnter.name).toBe("return")
+  expect(allModsEnter.shift).toBe(true)
+  expect(allModsEnter.ctrl).toBe(true)
+  expect(allModsEnter.meta).toBe(true)
+  expect(allModsEnter.option).toBe(true)
+  expect(allModsEnter.sequence).toBe("\u001b[27;8;13~")
+  expect(allModsEnter.raw).toBe("\u001b[27;8;13~")
+  expect(allModsEnter.eventType).toBe("press")
+  expect(allModsEnter.source).toBe("raw")
+})
