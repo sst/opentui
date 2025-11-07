@@ -172,32 +172,29 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   private applyStickyStart(stickyStart: "bottom" | "top" | "left" | "right"): void {
     this._isApplyingStickyScroll = true
-    try {
-      switch (stickyStart) {
-        case "top":
-          this._stickyScrollTop = true
-          this._stickyScrollBottom = false
-          this.verticalScrollBar.scrollPosition = 0
-          break
-        case "bottom":
-          this._stickyScrollTop = false
-          this._stickyScrollBottom = true
-          this.verticalScrollBar.scrollPosition = Math.max(0, this.scrollHeight - this.viewport.height)
-          break
-        case "left":
-          this._stickyScrollLeft = true
-          this._stickyScrollRight = false
-          this.horizontalScrollBar.scrollPosition = 0
-          break
-        case "right":
-          this._stickyScrollLeft = false
-          this._stickyScrollRight = true
-          this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
-          break
-      }
-    } finally {
-      this._isApplyingStickyScroll = false
+    switch (stickyStart) {
+      case "top":
+        this._stickyScrollTop = true
+        this._stickyScrollBottom = false
+        this.verticalScrollBar.scrollPosition = 0
+        break
+      case "bottom":
+        this._stickyScrollTop = false
+        this._stickyScrollBottom = true
+        this.verticalScrollBar.scrollPosition = Math.max(0, this.scrollHeight - this.viewport.height)
+        break
+      case "left":
+        this._stickyScrollLeft = true
+        this._stickyScrollRight = false
+        this.horizontalScrollBar.scrollPosition = 0
+        break
+      case "right":
+        this._stickyScrollLeft = false
+        this._stickyScrollRight = true
+        this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
+        break
     }
+    this._isApplyingStickyScroll = false
   }
 
   constructor(
@@ -550,35 +547,33 @@ export class ScrollBoxRenderable extends BoxRenderable {
     const wasApplyingStickyScroll = this._isApplyingStickyScroll
     this._isApplyingStickyScroll = true
 
-    try {
-      this.verticalScrollBar.scrollSize = this.content.height
-      this.verticalScrollBar.viewportSize = this.viewport.height
-      this.horizontalScrollBar.scrollSize = this.content.width
-      this.horizontalScrollBar.viewportSize = this.viewport.width
+    this.verticalScrollBar.scrollSize = this.content.height
+    this.verticalScrollBar.viewportSize = this.viewport.height
+    this.horizontalScrollBar.scrollSize = this.content.width
+    this.horizontalScrollBar.viewportSize = this.viewport.width
 
-      if (this._stickyScroll) {
-        const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
-        const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+    if (this._stickyScroll) {
+      const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+      const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
 
-        if (this._stickyStart && !this._hasManualScroll) {
-          this.applyStickyStart(this._stickyStart)
-        } else {
-          if (this._stickyScrollTop) {
-            this.scrollTop = 0
-          } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
-            this.scrollTop = newMaxScrollTop
-          }
+      if (this._stickyStart && !this._hasManualScroll) {
+        this.applyStickyStart(this._stickyStart)
+      } else {
+        if (this._stickyScrollTop) {
+          this.scrollTop = 0
+        } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
+          this.scrollTop = newMaxScrollTop
+        }
 
-          if (this._stickyScrollLeft) {
-            this.scrollLeft = 0
-          } else if (this._stickyScrollRight && newMaxScrollLeft > 0) {
-            this.scrollLeft = newMaxScrollLeft
-          }
+        if (this._stickyScrollLeft) {
+          this.scrollLeft = 0
+        } else if (this._stickyScrollRight && newMaxScrollLeft > 0) {
+          this.scrollLeft = newMaxScrollLeft
         }
       }
-    } finally {
-      this._isApplyingStickyScroll = wasApplyingStickyScroll
     }
+
+    this._isApplyingStickyScroll = wasApplyingStickyScroll
 
     // NOTE: This is obviously a workaround for something,
     // which is that the bar props are recalculated when the viewport is resized,
