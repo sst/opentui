@@ -468,11 +468,11 @@ describe("InputRenderable", () => {
       input.value = "programmatic"
       expect(input.value).toBe("programmatic")
 
-      // Cursor position should be clamped to current position (0) since value changed
-      expect(input.cursorPosition).toBe(0)
+      // Cursor position should move to end when value is set programmatically
+      expect(input.cursorPosition).toBe("programmatic".length)
     })
 
-    it("should handle value changes with cursor position preservation", () => {
+    it("should handle value changes with cursor at end", () => {
       const { input } = createInputRenderable({
         value: "hello",
       })
@@ -482,7 +482,7 @@ describe("InputRenderable", () => {
 
       input.value = "world"
       expect(input.value).toBe("world")
-      expect(input.cursorPosition).toBe(2) // Cursor should be clamped
+      expect(input.cursorPosition).toBe("world".length) // Cursor should move to end when value is set programmatically
     })
 
     it("should handle empty value setting", () => {
