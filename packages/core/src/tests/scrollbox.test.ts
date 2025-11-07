@@ -552,4 +552,195 @@ world
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(20)
   })
+
+  test("stays scrolled to bottom with growing code renderables in sticky scroll mode", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+
+    const parent = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 1,
+    })
+
+    const header = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    header.add(new TextRenderable(testRenderer, { content: "Header" }))
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      flexGrow: 1,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    const footer = new BoxRenderable(testRenderer, { flexShrink: 0 })
+    footer.add(new TextRenderable(testRenderer, { content: "Footer" }))
+
+    parent.add(header)
+    parent.add(scrollBox)
+    parent.add(footer)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    const scrollPositions: number[] = []
+    const maxScrollPositions: number[] = []
+
+    // Phase 1: Add first code renderable with small content
+    const wrapper1 = new BoxRenderable(testRenderer, {
+      marginTop: 1,
+      marginBottom: 1,
+    })
+    const code1 = new CodeRenderable(testRenderer, {
+      content: "console.log('hello')",
+      filetype: "javascript",
+      syntaxStyle,
+      drawUnstyledText: false,
+      treeSitterClient: mockTreeSitterClient,
+    })
+    wrapper1.add(code1)
+    scrollBox.add(wrapper1)
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await renderOnce()
+
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    expect(scrollBox.scrollTop).toBe(maxScrollPositions[0])
+
+    // Phase 2: Grow the first code renderable
+    code1.content = `console.log('hello')
+const foo = 'bar'
+const baz = 'qux'
+function test() {
+  return 42
+}
+console.log(test())`
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await renderOnce()
+
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    expect(scrollBox.scrollTop).toBe(maxScrollPositions[1])
+
+    // Phase 3: Add a second code renderable
+    const wrapper2 = new BoxRenderable(testRenderer, {
+      marginTop: 1,
+      marginBottom: 1,
+    })
+    const code2 = new CodeRenderable(testRenderer, {
+      content: "const x = 10\nconst y = 20",
+      filetype: "javascript",
+      syntaxStyle,
+      drawUnstyledText: false,
+      treeSitterClient: mockTreeSitterClient,
+    })
+    wrapper2.add(code2)
+    scrollBox.add(wrapper2)
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await renderOnce()
+
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    expect(scrollBox.scrollTop).toBe(maxScrollPositions[2])
+
+    // Phase 4: Grow the second code renderable
+    code2.content = `const x = 10
+const y = 20
+const z = x + y
+console.log(z)
+function multiply(a, b) {
+  return a * b
+}
+const result = multiply(x, y)
+console.log('Result:', result)`
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await renderOnce()
+
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    expect(scrollBox.scrollTop).toBe(maxScrollPositions[3])
+
+    // Phase 5: Add a third code renderable
+    const wrapper3 = new BoxRenderable(testRenderer, {
+      marginTop: 1,
+      marginBottom: 1,
+    })
+    const code3 = new CodeRenderable(testRenderer, {
+      content: "// Final code block\nconst final = 'done'",
+      filetype: "javascript",
+      syntaxStyle,
+      drawUnstyledText: false,
+      treeSitterClient: mockTreeSitterClient,
+    })
+    wrapper3.add(code3)
+    scrollBox.add(wrapper3)
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await renderOnce()
+
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    expect(scrollBox.scrollTop).toBe(maxScrollPositions[4])
+
+    // Phase 6: Grow the third code renderable significantly
+    code3.content = `// Final code block
+const final = 'done'
+
+class DataProcessor {
+  constructor(data) {
+    this.data = data
+  }
+  
+  process() {
+    return this.data.map(item => item * 2)
+  }
+  
+  filter(predicate) {
+    return this.data.filter(predicate)
+  }
+  
+  reduce(fn, initial) {
+    return this.data.reduce(fn, initial)
+  }
+}
+
+const processor = new DataProcessor([1, 2, 3, 4, 5])
+console.log(processor.process())
+console.log(processor.filter(x => x > 2))
+console.log(processor.reduce((acc, val) => acc + val, 0))`
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    await renderOnce()
+
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    expect(scrollBox.scrollTop).toBe(maxScrollPositions[5])
+
+    const frame = captureCharFrame()
+    expect(frame).toContain("Header")
+    expect(frame).toContain("Footer")
+
+    const hasCodeContent =
+      frame.includes("console") ||
+      frame.includes("function") ||
+      frame.includes("const") ||
+      frame.includes("DataProcessor") ||
+      frame.includes("processor")
+
+    expect(hasCodeContent).toBe(true)
+
+    const nonWhitespaceChars = frame.replace(/\s/g, "").length
+    expect(nonWhitespaceChars).toBeGreaterThan(50)
+
+    for (let i = 0; i < scrollPositions.length; i++) {
+      expect(scrollPositions[i]).toBe(maxScrollPositions[i])
+    }
+  })
 })

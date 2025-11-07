@@ -88,6 +88,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollRight: boolean = false
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
+  private _isApplyingStickyScroll: boolean = false
   private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
@@ -114,7 +115,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollTop(value: number) {
     this.verticalScrollBar.scrollPosition = value
-    this._hasManualScroll = true
+    if (!this._isApplyingStickyScroll) {
+      this._hasManualScroll = true
+    }
     this.updateStickyState()
   }
 
@@ -124,7 +127,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollLeft(value: number) {
     this.horizontalScrollBar.scrollPosition = value
-    this._hasManualScroll = true
+    if (!this._isApplyingStickyScroll) {
+      this._hasManualScroll = true
+    }
     this.updateStickyState()
   }
 
@@ -166,27 +171,32 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private applyStickyStart(stickyStart: "bottom" | "top" | "left" | "right"): void {
-    switch (stickyStart) {
-      case "top":
-        this._stickyScrollTop = true
-        this._stickyScrollBottom = false
-        this.verticalScrollBar.scrollPosition = 0
-        break
-      case "bottom":
-        this._stickyScrollTop = false
-        this._stickyScrollBottom = true
-        this.verticalScrollBar.scrollPosition = Math.max(0, this.scrollHeight - this.viewport.height)
-        break
-      case "left":
-        this._stickyScrollLeft = true
-        this._stickyScrollRight = false
-        this.horizontalScrollBar.scrollPosition = 0
-        break
-      case "right":
-        this._stickyScrollLeft = false
-        this._stickyScrollRight = true
-        this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
-        break
+    this._isApplyingStickyScroll = true
+    try {
+      switch (stickyStart) {
+        case "top":
+          this._stickyScrollTop = true
+          this._stickyScrollBottom = false
+          this.verticalScrollBar.scrollPosition = 0
+          break
+        case "bottom":
+          this._stickyScrollTop = false
+          this._stickyScrollBottom = true
+          this.verticalScrollBar.scrollPosition = Math.max(0, this.scrollHeight - this.viewport.height)
+          break
+        case "left":
+          this._stickyScrollLeft = true
+          this._stickyScrollRight = false
+          this.horizontalScrollBar.scrollPosition = 0
+          break
+        case "right":
+          this._stickyScrollLeft = false
+          this._stickyScrollRight = true
+          this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
+          break
+      }
+    } finally {
+      this._isApplyingStickyScroll = false
     }
   }
 
@@ -275,7 +285,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
-        this._hasManualScroll = true
+        if (!this._isApplyingStickyScroll) {
+          this._hasManualScroll = true
+        }
         this.updateStickyState()
       },
     })
@@ -292,7 +304,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
-        this._hasManualScroll = true
+        if (!this._isApplyingStickyScroll) {
+          this._hasManualScroll = true
+        }
         this.updateStickyState()
       },
     })
@@ -532,30 +546,38 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private recalculateBarProps(): void {
-    this.verticalScrollBar.scrollSize = this.content.height
-    this.verticalScrollBar.viewportSize = this.viewport.height
-    this.horizontalScrollBar.scrollSize = this.content.width
-    this.horizontalScrollBar.viewportSize = this.viewport.width
+    // Wrap entire method to prevent scroll changes from being treated as manual
+    const wasApplyingStickyScroll = this._isApplyingStickyScroll
+    this._isApplyingStickyScroll = true
 
-    if (this._stickyScroll) {
-      const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
-      const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+    try {
+      this.verticalScrollBar.scrollSize = this.content.height
+      this.verticalScrollBar.viewportSize = this.viewport.height
+      this.horizontalScrollBar.scrollSize = this.content.width
+      this.horizontalScrollBar.viewportSize = this.viewport.width
 
-      if (this._stickyStart && !this._hasManualScroll) {
-        this.applyStickyStart(this._stickyStart)
-      } else {
-        if (this._stickyScrollTop) {
-          this.scrollTop = 0
-        } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
-          this.scrollTop = newMaxScrollTop
-        }
+      if (this._stickyScroll) {
+        const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+        const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
 
-        if (this._stickyScrollLeft) {
-          this.scrollLeft = 0
-        } else if (this._stickyScrollRight && newMaxScrollLeft > 0) {
-          this.scrollLeft = newMaxScrollLeft
+        if (this._stickyStart && !this._hasManualScroll) {
+          this.applyStickyStart(this._stickyStart)
+        } else {
+          if (this._stickyScrollTop) {
+            this.scrollTop = 0
+          } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
+            this.scrollTop = newMaxScrollTop
+          }
+
+          if (this._stickyScrollLeft) {
+            this.scrollLeft = 0
+          } else if (this._stickyScrollRight && newMaxScrollLeft > 0) {
+            this.scrollLeft = newMaxScrollLeft
+          }
         }
       }
+    } finally {
+      this._isApplyingStickyScroll = wasApplyingStickyScroll
     }
 
     // NOTE: This is obviously a workaround for something,
