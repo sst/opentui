@@ -170,7 +170,7 @@ export class InputRenderable extends Renderable {
     const newValue = value.substring(0, this._maxLength)
     if (this._value !== newValue) {
       this._value = newValue
-      this._cursorPosition = Math.max(0, this._value.length)
+      this._cursorPosition = this._value.length
       this.requestRender()
       this.updateCursorPosition()
       this.emit(InputRenderableEvents.INPUT, this._value)
