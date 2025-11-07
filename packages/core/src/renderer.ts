@@ -437,10 +437,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.on("unhandledRejection", this.handleError)
     process.on("exit", this.exitHandler)
 
-    this._console = new TerminalConsole(this, config.consoleOptions)
-    this.useConsole = config.useConsole ?? true
-    this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
-
     this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
@@ -450,6 +446,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
     })
+
+    this._console = new TerminalConsole(this, config.consoleOptions)
+    this.useConsole = config.useConsole ?? true
+    this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
