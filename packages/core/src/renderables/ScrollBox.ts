@@ -116,7 +116,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
   set scrollTop(value: number) {
     this.verticalScrollBar.scrollPosition = value
     if (!this._isApplyingStickyScroll) {
-      this._hasManualScroll = true
+      // Only mark as manual scroll if:
+      // 1. We're not at a sticky position after scrolling (prevents programmatic scrolls to sticky edges from disabling sticky)
+      // 2. There's actually meaningful scrollable content (prevents accidental scrolls when content is smaller than viewport from disabling sticky)
+      // Use a small threshold (>1) to account for rounding/layout quirks
+      const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+      if (!this.isAtStickyPosition() && maxScrollTop > 1) {
+        this._hasManualScroll = true
+      }
     }
     this.updateStickyState()
   }
@@ -128,7 +135,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
   set scrollLeft(value: number) {
     this.horizontalScrollBar.scrollPosition = value
     if (!this._isApplyingStickyScroll) {
-      this._hasManualScroll = true
+      // Only mark as manual scroll if:
+      // 1. We're not at a sticky position after scrolling (prevents programmatic scrolls to sticky edges from disabling sticky)
+      // 2. There's actually meaningful scrollable content (prevents accidental scrolls when content is smaller than viewport from disabling sticky)
+      // Use a small threshold (>1) to account for rounding/layout quirks
+      const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+      if (!this.isAtStickyPosition() && maxScrollLeft > 1) {
+        this._hasManualScroll = true
+      }
     }
     this.updateStickyState()
   }
@@ -146,11 +160,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
     const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
-
-    // Prevent initial sticky loss
-    if (this._hasManualScroll && this._stickyStart) {
-      return
-    }
 
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
@@ -288,7 +297,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
       onChange: (position) => {
         this.content.translateY = -position
         if (!this._isApplyingStickyScroll) {
-          this._hasManualScroll = true
+          // Only mark as manual scroll if we're not at a sticky position and there's meaningful scrollable content
+          const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+          if (!this.isAtStickyPosition() && maxScrollTop > 1) {
+            this._hasManualScroll = true
+          }
         }
         this.updateStickyState()
       },
@@ -307,7 +320,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
       onChange: (position) => {
         this.content.translateX = -position
         if (!this._isApplyingStickyScroll) {
-          this._hasManualScroll = true
+          // Only mark as manual scroll if we're not at a sticky position and there's meaningful scrollable content
+          const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+          if (!this.isAtStickyPosition() && maxScrollLeft > 1) {
+            this._hasManualScroll = true
+          }
         }
         this.updateStickyState()
       },
@@ -340,7 +357,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.verticalScrollBar.scrollBy(delta.y, unit)
       this.horizontalScrollBar.scrollBy(delta.x, unit)
     }
-    this._hasManualScroll = true
+    // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar
+    // change will trigger the scrollTop setter which handles it
   }
 
   public scrollTo(position: number | { x: number; y: number }): void {
@@ -349,6 +367,30 @@ export class ScrollBoxRenderable extends BoxRenderable {
     } else {
       this.scrollTop = position.y
       this.scrollLeft = position.x
+    }
+    // Note: scrollTo doesn't need to set _hasManualScroll here because
+    // the scrollTop/scrollLeft setters handle it
+  }
+
+  private isAtStickyPosition(): boolean {
+    if (!this._stickyScroll || !this._stickyStart) {
+      return false
+    }
+
+    const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+    const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+
+    switch (this._stickyStart) {
+      case "top":
+        return this.scrollTop === 0
+      case "bottom":
+        return this.scrollTop >= maxScrollTop
+      case "left":
+        return this.scrollLeft === 0
+      case "right":
+        return this.scrollLeft >= maxScrollLeft
+      default:
+        return false
     }
   }
 
@@ -388,7 +430,12 @@ export class ScrollBoxRenderable extends BoxRenderable {
         this.scrollLeft += baseDelta * multiplier
       }
 
-      this._hasManualScroll = true
+      // Only mark as manual scroll if there's meaningful scrollable content
+      const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+      const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+      if (maxScrollTop > 1 || maxScrollLeft > 1) {
+        this._hasManualScroll = true
+      }
     }
 
     if (event.type === "drag" && event.isSelecting) {
