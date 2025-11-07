@@ -20,6 +20,12 @@ import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
+import {
+  createTerminalPalette,
+  type TerminalPaletteDetector,
+  type TerminalColors,
+  type GetPaletteOptions,
+} from "./lib/terminal-palette"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -317,6 +323,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
+  private _paletteDetector: TerminalPaletteDetector | null = null
+  private _cachedPalette: TerminalColors | null = null
+  private _paletteDetectionPromise: Promise<TerminalColors> | null = null
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -1278,6 +1287,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearInterval(this.memorySnapshotTimer)
     }
 
+    // Clean up palette detector
+    if (this._paletteDetector) {
+      this._paletteDetector.cleanup()
+      this._paletteDetector = null
+    }
+    this._paletteDetectionPromise = null
+    this._cachedPalette = null
+
     if (this._isDestroyed) return
     this._isDestroyed = true
 
@@ -1612,5 +1629,53 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.walkSelectableRenderables(child, selectionBounds, selectedRenderables, touchedRenderables)
       }
     }
+  }
+
+  public get paletteDetectionStatus(): "idle" | "detecting" | "cached" {
+    if (this._cachedPalette) return "cached"
+    if (this._paletteDetectionPromise) return "detecting"
+    return "idle"
+  }
+
+  public clearPaletteCache(): void {
+    this._cachedPalette = null
+  }
+
+  /**
+   * Detects the terminal's color palette
+   *
+   * @returns Promise resolving to TerminalColors object containing palette and special colors
+   * @throws Error if renderer is suspended
+   */
+  public async getPalette(options?: GetPaletteOptions): Promise<TerminalColors> {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      throw new Error("Cannot detect palette while renderer is suspended")
+    }
+
+    const requestedSize = options?.size ?? 16
+
+    if (this._cachedPalette && this._cachedPalette.palette.length !== requestedSize) {
+      this._cachedPalette = null
+    }
+
+    if (this._cachedPalette) {
+      return this._cachedPalette
+    }
+
+    if (this._paletteDetectionPromise) {
+      return this._paletteDetectionPromise
+    }
+
+    if (!this._paletteDetector) {
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this))
+    }
+
+    this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {
+      this._cachedPalette = result
+      this._paletteDetectionPromise = null
+      return result
+    })
+
+    return this._paletteDetectionPromise
   }
 }
