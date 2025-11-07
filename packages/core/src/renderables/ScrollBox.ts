@@ -357,7 +357,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.verticalScrollBar.scrollBy(delta.y, unit)
       this.horizontalScrollBar.scrollBy(delta.x, unit)
     }
-    // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar 
+    // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar
     // change will trigger the scrollTop setter which handles it
   }
 
@@ -368,7 +368,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.scrollTop = position.y
       this.scrollLeft = position.x
     }
-    // Note: scrollTo doesn't need to set _hasManualScroll here because 
+    // Note: scrollTo doesn't need to set _hasManualScroll here because
     // the scrollTop/scrollLeft setters handle it
   }
 

@@ -213,7 +213,7 @@ describe("ScrollBox Sticky Scroll Behavior", () => {
           scrollRef = r
           // Set sticky properties via setters (like SolidJS does)
           if (r && !(r as any).__stickyConfigure) {
-            (r as any).__stickyConfigure = true
+            ;(r as any).__stickyConfigure = true
             r.stickyScroll = true
             r.stickyStart = "bottom"
           }
