@@ -31,11 +31,13 @@ class ContentRenderable extends BoxRenderable {
     this._viewportCulling = value
   }
 
-  protected _getChildren(): Renderable[] {
+  protected _getVisibleChildren(): number[] {
     if (this._viewportCulling) {
-      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis)
+      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis).map(
+        (child) => child.num,
+      )
     }
-    return this.getChildrenSortedByPrimaryAxis()
+    return this.getChildrenSortedByPrimaryAxis().map((child) => child.num)
   }
 }
 
@@ -86,6 +88,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollRight: boolean = false
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
+  private _isApplyingStickyScroll: boolean = false
   private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
@@ -112,7 +115,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollTop(value: number) {
     this.verticalScrollBar.scrollPosition = value
-    this._hasManualScroll = true
+    if (!this._isApplyingStickyScroll) {
+      this._hasManualScroll = true
+    }
     this.updateStickyState()
   }
 
@@ -122,7 +127,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollLeft(value: number) {
     this.horizontalScrollBar.scrollPosition = value
-    this._hasManualScroll = true
+    if (!this._isApplyingStickyScroll) {
+      this._hasManualScroll = true
+    }
     this.updateStickyState()
   }
 
@@ -139,6 +146,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
     const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+
+    // Prevent initial sticky loss
+    if (this._hasManualScroll && this._stickyStart) {
+      return
+    }
 
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
@@ -164,6 +176,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private applyStickyStart(stickyStart: "bottom" | "top" | "left" | "right"): void {
+    this._isApplyingStickyScroll = true
     switch (stickyStart) {
       case "top":
         this._stickyScrollTop = true
@@ -186,6 +199,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
         this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
         break
     }
+    this._isApplyingStickyScroll = false
   }
 
   constructor(
@@ -273,7 +287,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
-        this._hasManualScroll = true
+        if (!this._isApplyingStickyScroll) {
+          this._hasManualScroll = true
+        }
         this.updateStickyState()
       },
     })
@@ -290,7 +306,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
-        this._hasManualScroll = true
+        if (!this._isApplyingStickyScroll) {
+          this._hasManualScroll = true
+        }
         this.updateStickyState()
       },
     })
@@ -530,6 +548,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private recalculateBarProps(): void {
+    // Wrap entire method to prevent scroll changes from being treated as manual
+    const wasApplyingStickyScroll = this._isApplyingStickyScroll
+    this._isApplyingStickyScroll = true
+
     this.verticalScrollBar.scrollSize = this.content.height
     this.verticalScrollBar.viewportSize = this.viewport.height
     this.horizontalScrollBar.scrollSize = this.content.width
@@ -555,6 +577,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
         }
       }
     }
+
+    this._isApplyingStickyScroll = wasApplyingStickyScroll
 
     // NOTE: This is obviously a workaround for something,
     // which is that the bar props are recalculated when the viewport is resized,
