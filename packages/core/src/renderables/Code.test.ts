@@ -946,7 +946,8 @@ console.log(message);
     await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 25) + 1))
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  // wait for highlighting to complete (long for slow machines/CI)
+  await new Promise((resolve) => setTimeout(resolve, 500))
 
   expect(codeRenderable.content).toBe(fullMarkdownContent)
   expect(codeRenderable.content.length).toBeGreaterThanOrEqual(targetSize)
