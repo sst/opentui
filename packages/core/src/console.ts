@@ -425,8 +425,7 @@ export class TerminalConsole extends EventEmitter {
     } else if (event.name === "down") {
       // Down arrow
       const canCursorMoveDown =
-        this.currentLineIndex < logAreaHeight - 1 &&
-        this.scrollTopIndex + this.currentLineIndex < displayLineCount - 1
+        this.currentLineIndex < logAreaHeight - 1 && this.scrollTopIndex + this.currentLineIndex < displayLineCount - 1
 
       if (canCursorMoveDown) {
         this.currentLineIndex++
