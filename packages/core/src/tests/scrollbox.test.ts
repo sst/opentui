@@ -743,4 +743,126 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       expect(scrollPositions[i]).toBe(maxScrollPositions[i])
     }
   })
+
+  test("REPRO: sticky scroll bottom fails after scrollBy/scrollTo is called", async () => {
+    // This test reproduces the issue where calling scrollBy() or scrollTo()
+    // marks the scroll as "manual" which prevents stickyScroll from working
+    
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+    
+    // Add initial content
+    scrollBox.add(new TextRenderable(testRenderer, { content: `Line 0` }))
+    await renderOnce()
+    
+    // THE BUG: Someone calls scrollBy() programmatically (e.g., trying to scroll to bottom)
+    // This marks hasManualScroll=true which breaks sticky scroll behavior
+    scrollBox.scrollBy(100000)
+    await renderOnce()
+    
+    scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+    
+    // Now add content gradually - it SHOULD stay at bottom but it WON'T!
+    for (let i = 1; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+      await renderOnce()
+      
+      const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+      
+      // Check after content has grown
+      if (i === 16) {
+        // At this point, scrollTop should equal maxScroll (be at bottom)
+        // But because hasManualScroll=true, it gets stuck at scrollTop=0 (top)
+        expect(scrollBox.scrollTop).toBe(maxScroll)
+      }
+    }
+  })
+
+  test("sticky scroll bottom - starts empty and gradually fills with code renderables", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+    
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    // Track scroll position after each addition
+    const scrollPositions: number[] = []
+    const maxScrollPositions: number[] = []
+    const failures: string[] = []
+
+    // Initial state: empty scrollbox
+    scrollPositions.push(scrollBox.scrollTop)
+    maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
+    console.log(`Initial: scrollTop=${scrollBox.scrollTop}, maxScroll=${maxScrollPositions[0]}, height=${scrollBox.scrollHeight}, viewport=${scrollBox.viewport.height}`)
+    
+    if (scrollBox.scrollTop !== maxScrollPositions[0]) {
+      failures.push(`Step 0 (initial): scrollTop=${scrollBox.scrollTop}, expected=${maxScrollPositions[0]}`)
+    }
+
+    // Add code renderables one by one, each with growing content
+    for (let i = 0; i < 10; i++) {
+      // Create code renderable with minimal options first (like SolidJS)
+      const code = new CodeRenderable(testRenderer, {
+        syntaxStyle,
+        drawUnstyledText: false,
+        treeSitterClient: mockTreeSitterClient,
+      })
+
+      // Set content via setter - growing content each time
+      let content = `// Block ${i}\n`
+      for (let j = 0; j <= i; j++) {
+        content += `const var${j} = ${j}\n`
+      }
+      code.content = content
+      code.filetype = "javascript"
+
+      scrollBox.add(code)
+      
+      mockTreeSitterClient.resolveAllHighlightOnce()
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      await renderOnce()
+
+      const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+      scrollPositions.push(scrollBox.scrollTop)
+      maxScrollPositions.push(maxScroll)
+      
+      console.log(`After adding block ${i}: scrollTop=${scrollBox.scrollTop}, maxScroll=${maxScroll}, height=${scrollBox.scrollHeight}, viewport=${scrollBox.viewport.height}`)
+      
+      if (scrollBox.scrollTop !== maxScroll) {
+        failures.push(
+          `Step ${i + 1}: scrollTop=${scrollBox.scrollTop}, expected=${maxScroll}, ` +
+          `scrollHeight=${scrollBox.scrollHeight}, viewportHeight=${scrollBox.viewport.height}`
+        )
+      }
+    }
+
+    // Log all failures before asserting
+    if (failures.length > 0) {
+      console.log("\nSticky scroll failures:")
+      failures.forEach((f) => console.log("  " + f))
+    }
+
+    // Verify that at each step, scrollTop equals maxScrollTop (stayed at bottom)
+    for (let i = 0; i < scrollPositions.length; i++) {
+      if (scrollPositions[i] !== maxScrollPositions[i]) {
+        throw new Error(
+          `Failed at step ${i}: scrollTop=${scrollPositions[i]}, expected=${maxScrollPositions[i]}`
+        )
+      }
+    }
+  })
 })

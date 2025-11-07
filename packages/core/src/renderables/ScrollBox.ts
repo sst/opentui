@@ -147,6 +147,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
     const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
     const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
 
+    // Prevent initial sticky loss
+    if (this._hasManualScroll && this._stickyStart) {
+      return
+    }
+
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
       this._stickyScrollBottom = false
