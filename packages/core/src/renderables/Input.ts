@@ -1,18 +1,9 @@
-import { OptimizedBuffer } from "../buffer"
-import type { KeyEvent } from "../lib/KeyHandler"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import type { RenderContext, CursorStyleOptions } from "../types"
+import type { PasteEvent } from "../lib/KeyHandler"
+import type { CursorStyleOptions, RenderContext } from "../types"
+import { TextareaRenderable, type TextareaOptions } from "./Textarea"
 
-export interface InputRenderableOptions extends RenderableOptions<InputRenderable> {
-  backgroundColor?: ColorInput
-  textColor?: ColorInput
-  focusedBackgroundColor?: ColorInput
-  focusedTextColor?: ColorInput
+export interface InputRenderableOptions extends Omit<TextareaOptions, "initialValue" | "placeholder" | "keyBindings"> {
   placeholder?: string
-  placeholderColor?: ColorInput
-  cursorColor?: ColorInput
-  cursorStyle?: CursorStyleOptions
   maxLength?: number
   value?: string
 }
@@ -24,32 +15,19 @@ export enum InputRenderableEvents {
   ENTER = "enter",
 }
 
-export class InputRenderable extends Renderable {
-  protected _focusable: boolean = true
-
-  private _value: string = ""
-  private _cursorPosition: number = 0
-  private _placeholder: string
-  private _backgroundColor: RGBA
-  private _textColor: RGBA
-  private _focusedBackgroundColor: RGBA
-  private _focusedTextColor: RGBA
-  private _placeholderColor: RGBA
-  private _cursorColor: RGBA
-  private _cursorStyle: CursorStyleOptions
+export class InputRenderable extends TextareaRenderable {
   private _maxLength: number
-  private _lastCommittedValue: string = ""
 
-  protected _defaultOptions = {
+  private static readonly defaultOptions = {
     backgroundColor: "transparent",
     textColor: "#FFFFFF",
-    focusedBackgroundColor: "#1a1a1a",
+    focusedBackgroundColor: "transparent",
     focusedTextColor: "#FFFFFF",
     placeholder: "",
     placeholderColor: "#666666",
     cursorColor: "#FFFFFF",
     cursorStyle: {
-      style: "block",
+      style: "block" as const,
       blinking: true,
     },
     maxLength: 1000,
@@ -57,318 +35,125 @@ export class InputRenderable extends Renderable {
   } satisfies Partial<InputRenderableOptions>
 
   constructor(ctx: RenderContext, options: InputRenderableOptions) {
-    super(ctx, { ...options, buffered: true })
+    const defaults = InputRenderable.defaultOptions
 
-    this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
-    this._textColor = parseColor(options.textColor || this._defaultOptions.textColor)
-    this._focusedBackgroundColor = parseColor(
-      options.focusedBackgroundColor || options.backgroundColor || this._defaultOptions.focusedBackgroundColor,
-    )
-    this._focusedTextColor = parseColor(
-      options.focusedTextColor || options.textColor || this._defaultOptions.focusedTextColor,
-    )
-    this._placeholder = options.placeholder || this._defaultOptions.placeholder
-    this._value = options.value || this._defaultOptions.value
-    this._lastCommittedValue = this._value
-    this._cursorPosition = this._value.length
-    this._maxLength = options.maxLength || this._defaultOptions.maxLength
+    // Convert Input options to Textarea options
+    const textareaOptions: TextareaOptions = {
+      ...options,
+      height: options.height ?? 1,
+      wrapMode: "none",
+      selectable: false, // Disable selection for single-line input
+      initialValue: options.value || defaults.value,
+      backgroundColor: options.backgroundColor || defaults.backgroundColor,
+      textColor: options.textColor || defaults.textColor,
+      focusedBackgroundColor:
+        options.focusedBackgroundColor || options.backgroundColor || defaults.focusedBackgroundColor,
+      focusedTextColor: options.focusedTextColor || options.textColor || defaults.focusedTextColor,
+      placeholder: options.placeholder ?? defaults.placeholder,
+      placeholderColor: options.placeholderColor || defaults.placeholderColor,
+      cursorColor: options.cursorColor || defaults.cursorColor,
+      cursorStyle: options.cursorStyle || defaults.cursorStyle,
+      keyBindings: [{ name: "return", action: "submit" }],
+    }
 
-    this._placeholderColor = parseColor(options.placeholderColor || this._defaultOptions.placeholderColor)
-    this._cursorColor = parseColor(options.cursorColor || this._defaultOptions.cursorColor)
-    this._cursorStyle = options.cursorStyle || this._defaultOptions.cursorStyle
+    super(ctx, textareaOptions)
+
+    this._maxLength = options.maxLength || defaults.maxLength
+    const initialValue = options.value || defaults.value
+
+    // Set cursor to end of initial value
+    if (initialValue) {
+      this.cursorOffset = initialValue.length
+    }
+
+    this.editBuffer.on("content-changed", () => {
+      this.emit(InputRenderableEvents.INPUT, this.plainText)
+    })
   }
 
-  private updateCursorPosition(): void {
-    if (!this._focused) return
-
-    const contentX = 0
-    const contentY = 0
-    const contentWidth = this.width
-
-    const maxVisibleChars = contentWidth - 1
-    let displayStartIndex = 0
-
-    if (this._cursorPosition >= maxVisibleChars) {
-      displayStartIndex = this._cursorPosition - maxVisibleChars + 1
-    }
-
-    const cursorDisplayX = this._cursorPosition - displayStartIndex
-
-    if (cursorDisplayX >= 0 && cursorDisplayX < contentWidth) {
-      const absoluteCursorX = this.x + contentX + cursorDisplayX + 1
-      const absoluteCursorY = this.y + contentY + 1
-
-      this._ctx.setCursorPosition(absoluteCursorX, absoluteCursorY, true)
-      this._ctx.setCursorColor(this._cursorColor)
-    }
+  public override newLine(): boolean {
+    // Don't allow newlines in single line input
+    return false
   }
 
-  public focus(): void {
-    super.focus()
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
-    this._ctx.setCursorColor(this._cursorColor)
-    this.updateCursorPosition()
+  public override handlePaste(event: PasteEvent): void {
+    // Strip newlines from pasted text and enforce maxLength
+    this.insertText(event.text)
   }
 
-  public blur(): void {
-    super.blur()
-    this._ctx.setCursorPosition(0, 0, false)
+  public override insertText(text: string): void {
+    // Strip newlines and enforce maxLength
+    const sanitized = text.replace(/\n|\r/g, "")
+    if (!sanitized) return
 
-    if (this._value !== this._lastCommittedValue) {
-      this._lastCommittedValue = this._value
-      this.emit(InputRenderableEvents.CHANGE, this._value)
-    }
-  }
+    const currentLength = this.plainText.length
+    const remaining = this._maxLength - currentLength
+    if (remaining <= 0) return
 
-  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
-    if (!this.visible || !this.frameBuffer) return
-
-    if (this.isDirty) {
-      this.refreshFrameBuffer()
-    }
-  }
-
-  private refreshFrameBuffer(): void {
-    if (!this.frameBuffer) return
-
-    const bgColor = this._focused ? this._focusedBackgroundColor : this._backgroundColor
-    this.frameBuffer.clear(bgColor)
-
-    const contentX = 0
-    const contentY = 0
-    const contentWidth = this.width
-    const contentHeight = this.height
-
-    const displayText = this._value || this._placeholder
-    const isPlaceholder = !this._value && this._placeholder
-    const baseTextColor = this._focused ? this._focusedTextColor : this._textColor
-    const textColor = isPlaceholder ? this._placeholderColor : baseTextColor
-
-    const maxVisibleChars = contentWidth - 1
-    let displayStartIndex = 0
-
-    if (this._cursorPosition >= maxVisibleChars) {
-      displayStartIndex = this._cursorPosition - maxVisibleChars + 1
-    }
-
-    const visibleText = displayText.substring(displayStartIndex, displayStartIndex + maxVisibleChars)
-
-    if (visibleText) {
-      this.frameBuffer.drawText(visibleText, contentX, contentY, textColor)
-    }
-
-    if (this._focused) {
-      this.updateCursorPosition()
-    }
+    const toInsert = sanitized.substring(0, remaining)
+    super.insertText(toInsert)
   }
 
   public get value(): string {
-    return this._value
+    return this.plainText
   }
 
   public set value(value: string) {
     const newValue = value.substring(0, this._maxLength)
-    if (this._value !== newValue) {
-      this._value = newValue
-      this._cursorPosition = this._value.length
-      this.requestRender()
-      this.updateCursorPosition()
-      this.emit(InputRenderableEvents.INPUT, this._value)
+    const currentValue = this.plainText
+    if (currentValue !== newValue) {
+      this.setText(newValue, { history: false })
+      this.cursorOffset = newValue.length
     }
   }
 
-  public set placeholder(placeholder: string) {
-    if (this._placeholder !== placeholder) {
-      this._placeholder = placeholder
-      this.requestRender()
-    }
+  override submit(): boolean {
+    return this.emit(InputRenderableEvents.ENTER, this.plainText)
   }
 
+  /**
+   * @deprecated use `cursorOffset` instead
+   */
   public get cursorPosition(): number {
-    return this._cursorPosition
+    return this.cursorOffset
   }
 
+  /**
+   * @deprecated use `cursorOffset` instead
+   */
   public set cursorPosition(position: number) {
-    const newPosition = Math.max(0, Math.min(position, this._value.length))
-    if (this._cursorPosition !== newPosition) {
-      this._cursorPosition = newPosition
-      this.requestRender()
-      this.updateCursorPosition()
-    }
-  }
-
-  public insertText(text: string): void {
-    if (this._value.length + text.length > this._maxLength) {
-      return
-    }
-
-    const beforeCursor = this._value.substring(0, this._cursorPosition)
-    const afterCursor = this._value.substring(this._cursorPosition)
-    this._value = beforeCursor + text + afterCursor
-    this._cursorPosition += text.length
-    this.requestRender()
-    this.updateCursorPosition()
-    this.emit(InputRenderableEvents.INPUT, this._value)
-  }
-
-  public deleteCharacter(direction: "backward" | "forward"): void {
-    if (direction === "backward" && this._cursorPosition > 0) {
-      const beforeCursor = this._value.substring(0, this._cursorPosition - 1)
-      const afterCursor = this._value.substring(this._cursorPosition)
-      this._value = beforeCursor + afterCursor
-      this._cursorPosition--
-      this.requestRender()
-      this.updateCursorPosition()
-      this.emit(InputRenderableEvents.INPUT, this._value)
-    } else if (direction === "forward" && this._cursorPosition < this._value.length) {
-      const beforeCursor = this._value.substring(0, this._cursorPosition)
-      const afterCursor = this._value.substring(this._cursorPosition + 1)
-      this._value = beforeCursor + afterCursor
-      this.requestRender()
-      this.updateCursorPosition()
-      this.emit(InputRenderableEvents.INPUT, this._value)
-    }
-  }
-
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keySequence = typeof key === "string" ? key : key.sequence
-
-    switch (keyName) {
-      case "left":
-        this.cursorPosition = this._cursorPosition - 1
-        return true
-
-      case "right":
-        this.cursorPosition = this._cursorPosition + 1
-        return true
-
-      case "home":
-        this.cursorPosition = 0
-        return true
-
-      case "end":
-        this.cursorPosition = this._value.length
-        return true
-
-      case "backspace":
-        this.deleteCharacter("backward")
-        return true
-
-      case "delete":
-        this.deleteCharacter("forward")
-        return true
-
-      case "return":
-      case "linefeed":
-        if (this._value !== this._lastCommittedValue) {
-          this._lastCommittedValue = this._value
-          this.emit(InputRenderableEvents.CHANGE, this._value)
-        }
-        this.emit(InputRenderableEvents.ENTER, this._value)
-        return true
-
-      default:
-        if (
-          keySequence &&
-          keySequence.length === 1 &&
-          keySequence.charCodeAt(0) >= 32 &&
-          keySequence.charCodeAt(0) <= 126
-        ) {
-          this.insertText(keySequence)
-          return true
-        }
-        break
-    }
-
-    return false
+    const textLength = this.plainText.length
+    const newPosition = Math.max(0, Math.min(position, textLength))
+    this.cursorOffset = newPosition
   }
 
   public set maxLength(maxLength: number) {
     this._maxLength = maxLength
-    if (this._value.length > maxLength) {
-      this._value = this._value.substring(0, maxLength)
-      this.requestRender()
+    const currentValue = this.plainText
+    if (currentValue.length > maxLength) {
+      const truncated = currentValue.substring(0, maxLength)
+      this.setText(truncated, { history: false })
     }
   }
 
-  public set backgroundColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._defaultOptions.backgroundColor)
-    if (this._backgroundColor !== newColor) {
-      this._backgroundColor = newColor
-      this.requestRender()
-    }
+  public get maxLength(): number {
+    return this._maxLength
   }
 
-  public set textColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._defaultOptions.textColor)
-    if (this._textColor !== newColor) {
-      this._textColor = newColor
-      this.requestRender()
-    }
+  public set placeholder(placeholder: string) {
+    super.placeholder = placeholder
   }
 
-  public set focusedBackgroundColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._defaultOptions.focusedBackgroundColor)
-    if (this._focusedBackgroundColor !== newColor) {
-      this._focusedBackgroundColor = newColor
-      this.requestRender()
-    }
+  public get placeholder(): string {
+    // Constrain to string type
+    return typeof super.placeholder === "string" ? super.placeholder : ""
   }
 
-  public set focusedTextColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._defaultOptions.focusedTextColor)
-    if (this._focusedTextColor !== newColor) {
-      this._focusedTextColor = newColor
-      this.requestRender()
-    }
+  public override get cursorStyle(): CursorStyleOptions {
+    return super.cursorStyle
   }
 
-  public set placeholderColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._defaultOptions.placeholderColor)
-    if (this._placeholderColor !== newColor) {
-      this._placeholderColor = newColor
-      this.requestRender()
-    }
-  }
-
-  public set cursorColor(value: ColorInput) {
-    const newColor = parseColor(value ?? this._defaultOptions.cursorColor)
-    if (this._cursorColor !== newColor) {
-      this._cursorColor = newColor
-      if (this._focused) {
-        this._ctx.requestRender()
-      }
-    }
-  }
-
-  public get cursorStyle(): CursorStyleOptions {
-    return this._cursorStyle
-  }
-
-  public set cursorStyle(style: CursorStyleOptions) {
-    const newStyle = style
-    if (this.cursorStyle.style !== newStyle.style || this.cursorStyle.blinking !== newStyle.blinking) {
-      this._cursorStyle = newStyle
-      if (this._focused) {
-        this._ctx.requestRender()
-      }
-    }
-  }
-
-  public updateFromLayout(): void {
-    super.updateFromLayout()
-    this.updateCursorPosition()
-  }
-
-  protected onResize(width: number, height: number): void {
-    super.onResize(width, height)
-    this.updateCursorPosition()
-  }
-
-  protected onRemove(): void {
-    if (this._focused) {
-      this._ctx.setCursorPosition(0, 0, false)
-    }
+  public override set cursorStyle(style: CursorStyleOptions) {
+    super.cursorStyle = style
   }
 }

@@ -281,9 +281,8 @@ describe("InputRenderable", () => {
       input.focus()
 
       mockInput.pasteBracketedText("pasted text")
-      // NOTE: The input itself does not automatically insert the pasted text for now,
-      // as the whole InputRenderable will get replaced by and EditBuffer that handles it
-      expect(input.value).toBe("")
+      // Input now automatically inserts pasted text (using EditBuffer from Textarea)
+      expect(input.value).toBe("pasted text")
       expect(pasteCalled).toBe(true)
       expect(pasteText).toBe("pasted text")
     })
