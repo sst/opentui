@@ -315,13 +315,11 @@ world
 \`\`\`
 `
 
-    // Simulate SolidJS reconciler behavior: createElement first, then set properties
     for (let i = 0; i < 100; i++) {
       const wrapper = new BoxRenderable(testRenderer, { id: `wrapper-${i}` })
       wrapper.marginTop = 2
       wrapper.marginBottom = 2
 
-      // Create CodeRenderable with minimal options (like SolidJS createElement)
       const code = new CodeRenderable(testRenderer, {
         id: `code-${i}`,
         syntaxStyle,
@@ -329,16 +327,13 @@ world
         treeSitterClient: mockTreeSitterClient,
       })
 
-      // Then set properties via setters (like SolidJS setProperty)
-      // NOTE: Order matters! Setting content first gives initial dimensions
+      wrapper.add(code)
       code.content = codeContent
       code.filetype = "markdown"
 
-      wrapper.add(code)
       scrollBox.add(wrapper)
     }
 
-    // Wait for microtasks (scheduleUpdate uses queueMicrotask)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     mockTreeSitterClient.resolveAllHighlightOnce()
@@ -456,13 +451,11 @@ world
 
     await renderOnce()
 
-    // Simulate SolidJS reconciler behavior
     for (let i = 0; i < 50; i++) {
       const wrapper = new BoxRenderable(testRenderer, { id: `wrapper-${i}` })
       wrapper.marginTop = 1
       wrapper.marginBottom = 1
 
-      // Create with minimal options first
       const code = new CodeRenderable(testRenderer, {
         id: `code-${i}`,
         syntaxStyle,
@@ -470,16 +463,13 @@ world
         treeSitterClient: mockTreeSitterClient,
       })
 
-      // Set properties via setters
-      // NOTE: Order matters! Setting content first gives initial dimensions
+      wrapper.add(code)
       code.content = `Item ${i}`
       code.filetype = "markdown"
 
-      wrapper.add(code)
       scrollBox.add(wrapper)
     }
 
-    // Wait for microtasks (scheduleUpdate uses queueMicrotask)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     mockTreeSitterClient.resolveAllHighlightOnce()
@@ -582,8 +572,6 @@ world
 
     const scrollPositions: number[] = []
     const maxScrollPositions: number[] = []
-
-    // Phase 1: Add first code renderable with small content
     const wrapper1 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -605,8 +593,6 @@ world
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[0])
-
-    // Phase 2: Grow the first code renderable
     code1.content = `console.log('hello')
 const foo = 'bar'
 const baz = 'qux'
@@ -622,8 +608,6 @@ console.log(test())`
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[1])
-
-    // Phase 3: Add a second code renderable
     const wrapper2 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -645,8 +629,6 @@ console.log(test())`
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[2])
-
-    // Phase 4: Grow the second code renderable
     code2.content = `const x = 10
 const y = 20
 const z = x + y
@@ -664,8 +646,6 @@ console.log('Result:', result)`
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[3])
-
-    // Phase 5: Add a third code renderable
     const wrapper3 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -687,8 +667,6 @@ console.log('Result:', result)`
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[4])
-
-    // Phase 6: Grow the third code renderable significantly
     code3.content = `// Final code block
 const final = 'done'
 
@@ -744,10 +722,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     }
   })
 
-  test("REPRO: sticky scroll bottom fails after scrollBy/scrollTo is called", async () => {
-    // This test reproduces the issue where calling scrollBy() or scrollTo()
-    // marks the scroll as "manual" which prevents stickyScroll from working
-    
+  test("sticky scroll bottom stays at bottom after scrollBy/scrollTo is called", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
       height: 10,
@@ -757,38 +732,31 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
 
     testRenderer.root.add(scrollBox)
     await renderOnce()
-    
-    // Add initial content
+
     scrollBox.add(new TextRenderable(testRenderer, { content: `Line 0` }))
     await renderOnce()
-    
-    // THE BUG: Someone calls scrollBy() programmatically (e.g., trying to scroll to bottom)
-    // This marks hasManualScroll=true which breaks sticky scroll behavior
+
     scrollBox.scrollBy(100000)
     await renderOnce()
-    
+
     scrollBox.scrollTo(scrollBox.scrollHeight)
     await renderOnce()
-    
-    // Now add content gradually - it SHOULD stay at bottom but it WON'T!
+
     for (let i = 1; i < 30; i++) {
       scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
       await renderOnce()
-      
+
       const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
-      
-      // Check after content has grown
+
       if (i === 16) {
-        // At this point, scrollTop should equal maxScroll (be at bottom)
-        // But because hasManualScroll=true, it gets stuck at scrollTop=0 (top)
         expect(scrollBox.scrollTop).toBe(maxScroll)
       }
     }
   })
 
-  test("sticky scroll bottom - starts empty and gradually fills with code renderables", async () => {
+  test("sticky scroll bottom stays at bottom when gradually filled with code renderables", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
-    
+
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
       height: 10,
@@ -799,30 +767,19 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     testRenderer.root.add(scrollBox)
     await renderOnce()
 
-    // Track scroll position after each addition
     const scrollPositions: number[] = []
     const maxScrollPositions: number[] = []
-    const failures: string[] = []
 
-    // Initial state: empty scrollbox
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
-    console.log(`Initial: scrollTop=${scrollBox.scrollTop}, maxScroll=${maxScrollPositions[0]}, height=${scrollBox.scrollHeight}, viewport=${scrollBox.viewport.height}`)
-    
-    if (scrollBox.scrollTop !== maxScrollPositions[0]) {
-      failures.push(`Step 0 (initial): scrollTop=${scrollBox.scrollTop}, expected=${maxScrollPositions[0]}`)
-    }
 
-    // Add code renderables one by one, each with growing content
     for (let i = 0; i < 10; i++) {
-      // Create code renderable with minimal options first (like SolidJS)
       const code = new CodeRenderable(testRenderer, {
         syntaxStyle,
         drawUnstyledText: false,
         treeSitterClient: mockTreeSitterClient,
       })
 
-      // Set content via setter - growing content each time
       let content = `// Block ${i}\n`
       for (let j = 0; j <= i; j++) {
         content += `const var${j} = ${j}\n`
@@ -831,7 +788,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       code.filetype = "javascript"
 
       scrollBox.add(code)
-      
+
       mockTreeSitterClient.resolveAllHighlightOnce()
       await new Promise((resolve) => setTimeout(resolve, 1))
       await renderOnce()
@@ -839,30 +796,10 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
       scrollPositions.push(scrollBox.scrollTop)
       maxScrollPositions.push(maxScroll)
-      
-      console.log(`After adding block ${i}: scrollTop=${scrollBox.scrollTop}, maxScroll=${maxScroll}, height=${scrollBox.scrollHeight}, viewport=${scrollBox.viewport.height}`)
-      
-      if (scrollBox.scrollTop !== maxScroll) {
-        failures.push(
-          `Step ${i + 1}: scrollTop=${scrollBox.scrollTop}, expected=${maxScroll}, ` +
-          `scrollHeight=${scrollBox.scrollHeight}, viewportHeight=${scrollBox.viewport.height}`
-        )
-      }
     }
 
-    // Log all failures before asserting
-    if (failures.length > 0) {
-      console.log("\nSticky scroll failures:")
-      failures.forEach((f) => console.log("  " + f))
-    }
-
-    // Verify that at each step, scrollTop equals maxScrollTop (stayed at bottom)
     for (let i = 0; i < scrollPositions.length; i++) {
-      if (scrollPositions[i] !== maxScrollPositions[i]) {
-        throw new Error(
-          `Failed at step ${i}: scrollTop=${scrollPositions[i]}, expected=${maxScrollPositions[i]}`
-        )
-      }
+      expect(scrollPositions[i]).toBe(maxScrollPositions[i])
     }
   })
 })

@@ -233,11 +233,9 @@ describe("Renderable - Child Management", () => {
     parent.add(child)
     expect(parent.getRenderable("child")).toBe(child)
 
-    // Change the child's id
     child.id = "new-child-id"
     expect(child.id).toBe("new-child-id")
 
-    // Verify parent mapping is updated
     expect(parent.getRenderable("child")).toBeUndefined()
     expect(parent.getRenderable("new-child-id")).toBe(child)
   })
@@ -401,14 +399,11 @@ describe("Renderable - Child Management", () => {
     parent.add(child1)
     parent.add(child2)
 
-    // Before render, width should be 0 (no layout computed yet)
     expect(child1.width).toBe(0)
     expect(child2.width).toBe(0)
 
     await renderOnce()
 
-    // After render, children should have correct dimensions
-    // Width should be inherited from parent's width
     expect(child1.width).toBe(100)
     expect(child1.height).toBe(30)
     expect(child2.width).toBe(100)
@@ -425,7 +420,6 @@ describe("Renderable - Child Management", () => {
     testRenderer.root.add(parent)
     await renderOnce()
 
-    // Add a child with its own child
     const child = new TestRenderable(testRenderer, {
       id: "child",
       width: 50,
@@ -441,13 +435,9 @@ describe("Renderable - Child Management", () => {
 
     await renderOnce()
 
-    // Verify parent child gets layout
     expect(child.width).toBe(50)
     expect(child.height).toBe(50)
 
-    // Note: grandchild layout depends on whether the nested children 
-    // are also updated - we're testing the current behavior
-    // The grandchild should get some dimensions
     expect(grandchild.width).toBeGreaterThan(0)
     expect(grandchild.height).toBeGreaterThan(0)
   })
@@ -485,19 +475,16 @@ describe("Renderable - Child Management", () => {
 
     parent.insertBefore(child2, child3)
 
-    // Before render, width should be 0 (no layout computed yet)
     expect(child2.width).toBe(0)
 
     await renderOnce()
 
-    // After render, child2 should have correct dimensions
     expect(child2.width).toBe(100)
     expect(child2.height).toBe(15)
 
-    // Verify correct vertical positions (column layout)
     expect(child1.y).toBe(0)
-    expect(child2.y).toBe(20) // After child1
-    expect(child3.y).toBe(35) // After child1 + child2
+    expect(child2.y).toBe(20)
+    expect(child3.y).toBe(35)
   })
 
   test("children after insertBefore anchor maintain correct layout", async () => {
@@ -530,12 +517,10 @@ describe("Renderable - Child Management", () => {
     testRenderer.root.add(parent)
     await renderOnce()
 
-    // Capture initial positions
     const child1InitialX = child1.x
     const child2InitialX = child2.x
     const child3InitialX = child3.x
 
-    // Insert a new child before child2
     const newChild = new TestRenderable(testRenderer, {
       id: "newChild",
       width: 10,
@@ -545,18 +530,11 @@ describe("Renderable - Child Management", () => {
     parent.insertBefore(newChild, child2)
     await renderOnce()
 
-    // Verify all children have correct positions after insertion
-    // child1 should stay at same position
     expect(child1.x).toBe(child1InitialX)
-
-    // newChild should be after child1
     expect(newChild.x).toBe(child1InitialX + 20)
+    expect(child2.x).toBe(child1InitialX + 30)
+    expect(child3.x).toBe(child1InitialX + 55)
 
-    // child2 and child3 should shift right
-    expect(child2.x).toBe(child1InitialX + 30) // After child1 + newChild
-    expect(child3.x).toBe(child1InitialX + 55) // After child1 + newChild + child2
-
-    // Verify they all have correct dimensions
     expect(child1.width).toBe(20)
     expect(newChild.width).toBe(10)
     expect(child2.width).toBe(25)
@@ -604,7 +582,6 @@ describe("Renderable - Child Management", () => {
 
     await renderOnce()
 
-    // Verify all have correct dimensions
     expect(newChild1.width).toBe(200)
     expect(newChild1.height).toBe(15)
     expect(newChild2.width).toBe(200)
@@ -612,11 +589,10 @@ describe("Renderable - Child Management", () => {
     expect(newChild3.width).toBe(200)
     expect(newChild3.height).toBe(25)
 
-    // Verify correct vertical layout
     expect(newChild1.y).toBe(0)
     expect(newChild2.y).toBe(15)
     expect(newChild3.y).toBe(35)
-    expect(anchor.y).toBe(60) // After all three new children
+    expect(anchor.y).toBe(60)
   })
 
   test("existing child moved via insertBefore maintains layout integrity", async () => {
@@ -649,16 +625,13 @@ describe("Renderable - Child Management", () => {
     testRenderer.root.add(parent)
     await renderOnce()
 
-    // Move child3 to the beginning
     parent.insertBefore(child3, child1)
     await renderOnce()
 
-    // Verify new layout order
     expect(child3.y).toBe(0)
-    expect(child1.y).toBe(30) // After child3
-    expect(child2.y).toBe(40) // After child3 and child1
+    expect(child1.y).toBe(30)
+    expect(child2.y).toBe(40)
 
-    // Verify all maintain their dimensions
     expect(child1.width).toBe(100)
     expect(child1.height).toBe(10)
     expect(child2.width).toBe(100)
@@ -864,7 +837,6 @@ describe("Renderable - Layout with Viewport Filtering", () => {
       if (!this._filterEnabled) {
         return super._getVisibleChildren()
       }
-      // Simulate viewport culling - only return first 2 children
       const children = this._childrenInZIndexOrder.slice(0, 2)
       return children.map((c) => c.num)
     }
@@ -905,14 +877,13 @@ describe("Renderable - Layout with Viewport Filtering", () => {
 
     parent.add(child3)
 
-    expect(child3.width).toBe(0) // Not laid out yet
+    expect(child3.width).toBe(0)
 
     await renderOnce()
 
-    // Even though child3 is filtered from viewport, it should still get layout
     expect(child3.width).toBe(100)
     expect(child3.height).toBe(25)
-    expect(child3.y).toBe(60) // After child1 (30) + child2 (30)
+    expect(child3.y).toBe(60)
   })
 
   test("child inserted before visible children receives layout when filtered", async () => {
@@ -957,17 +928,15 @@ describe("Renderable - Layout with Viewport Filtering", () => {
 
     await renderOnce()
 
-    // All children should have correct layout even though child3 is filtered
     expect(newChild.width).toBe(100)
     expect(newChild.height).toBe(15)
     expect(child3.width).toBe(100)
     expect(child3.height).toBe(20)
 
-    // Verify positions
     expect(child1.y).toBe(0)
     expect(newChild.y).toBe(20)
     expect(child2.y).toBe(35)
-    expect(child3.y).toBe(55) // child3 is outside viewport filter but still laid out
+    expect(child3.y).toBe(55)
   })
 })
 
@@ -982,7 +951,6 @@ describe("Renderable - Nested Children Layout", () => {
     testRenderer.root.add(root)
     await renderOnce()
 
-    // Create a hierarchy: parent -> child -> grandchild -> greatGrandchild
     const parent = new TestRenderable(testRenderer, {
       id: "parent",
       width: 150,
@@ -1007,21 +975,16 @@ describe("Renderable - Nested Children Layout", () => {
     child.add(grandchild)
     parent.add(child)
 
-    // Add the whole hierarchy at once
     root.add(parent)
 
     await renderOnce()
 
-    // Verify parent gets layout
     expect(parent.width).toBe(150)
     expect(parent.height).toBe(150)
 
-    // Verify direct child gets layout
     expect(child.width).toBe(100)
     expect(child.height).toBe(100)
 
-    // Verify grandchild also receives layout
-    // (testing that nested children are properly initialized)
     expect(grandchild.width).toBeGreaterThan(0)
     expect(grandchild.height).toBeGreaterThan(0)
   })
@@ -1044,7 +1007,6 @@ describe("Renderable - Nested Children Layout", () => {
     testRenderer.root.add(root)
     await renderOnce()
 
-    // Create a parent with nested child
     const newParent = new TestRenderable(testRenderer, {
       id: "newParent",
       height: 80,
@@ -1060,16 +1022,13 @@ describe("Renderable - Nested Children Layout", () => {
 
     await renderOnce()
 
-    // Verify newParent (the direct child) gets correct layout
     expect(newParent.width).toBe(200)
     expect(newParent.height).toBe(80)
     expect(newParent.y).toBe(0)
 
-    // Verify nestedChild gets some layout
     expect(nestedChild.width).toBeGreaterThan(0)
     expect(nestedChild.height).toBeGreaterThan(0)
 
-    // Verify existingChild is pushed down correctly
     expect(existingChild.y).toBe(80)
   })
 })
@@ -1086,7 +1045,6 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
     testRenderer.root.add(parent)
     await renderOnce()
 
-    // Rapidly add multiple children before any render occurs
     const children: TestRenderable[] = []
     for (let i = 0; i < 5; i++) {
       const child = new TestRenderable(testRenderer, {
@@ -1098,14 +1056,12 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
       parent.add(child)
     }
 
-    // All should be pending layout
     for (const child of children) {
       expect(child.width).toBe(0)
     }
 
     await renderOnce()
 
-    // All should receive correct layout
     let expectedY = 0
     for (const child of children) {
       expect(child.width).toBe(100)
@@ -1137,7 +1093,6 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
     testRenderer.root.add(parent)
     await renderOnce()
 
-    // Insert before position 2 (middle)
     const insert1 = new TestRenderable(testRenderer, {
       id: "insert1",
       height: 15,
@@ -1147,15 +1102,13 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
 
     await renderOnce()
 
-    // Verify children from position 2 onwards have updated positions
     expect(children[0]!.y).toBe(0)
     expect(children[1]!.y).toBe(20)
     expect(insert1.y).toBe(40)
-    expect(children[2]!.y).toBe(55) // Shifted by insert1's height
+    expect(children[2]!.y).toBe(55)
     expect(children[3]!.y).toBe(75)
     expect(children[4]!.y).toBe(95)
 
-    // Insert before position 4 (near end)
     const insert2 = new TestRenderable(testRenderer, {
       id: "insert2",
       height: 10,
@@ -1165,14 +1118,13 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
 
     await renderOnce()
 
-    // Verify only children after insert position are updated
     expect(children[0]!.y).toBe(0)
     expect(children[1]!.y).toBe(20)
     expect(insert1.y).toBe(40)
     expect(children[2]!.y).toBe(55)
     expect(children[3]!.y).toBe(75)
     expect(insert2.y).toBe(95)
-    expect(children[4]!.y).toBe(105) // Shifted by insert2's height
+    expect(children[4]!.y).toBe(105)
   })
 
   test("add and insertBefore mixed operations maintain layout integrity", async () => {
@@ -1216,13 +1168,11 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
 
     await renderOnce()
 
-    // Verify final layout order and positions
     expect(child1.y).toBe(0)
-    expect(child3.y).toBe(10) // Inserted before child2
-    expect(child2.y).toBe(25) // Pushed down by child3
-    expect(child4.y).toBe(45) // Added at end
+    expect(child3.y).toBe(10)
+    expect(child2.y).toBe(25)
+    expect(child4.y).toBe(45)
 
-    // Verify all have correct dimensions
     expect(child1.width).toBe(100)
     expect(child2.width).toBe(100)
     expect(child3.width).toBe(100)
@@ -1259,18 +1209,14 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
     expect(child1InitialY).toBe(0)
     expect(child2InitialY).toBe(30)
 
-    // Remove child1
     parent.remove(child1.id)
     await renderOnce()
 
-    // child2 should move up
     expect(child2.y).toBe(0)
 
-    // Re-add child1 at the end
     parent.add(child1)
     await renderOnce()
 
-    // child1 should now be after child2
     expect(child2.y).toBe(0)
     expect(child1.y).toBe(40)
     expect(child1.width).toBe(100)

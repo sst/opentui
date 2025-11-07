@@ -1017,18 +1017,15 @@ test("CodeRenderable - streaming mode respects drawUnstyledText only for initial
 
   currentRenderer.root.add(codeRenderable)
 
-  // Initial content should show unstyled text
   await renderOnce()
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // Update content - should NOT show unstyled text immediately in streaming mode
   codeRenderable.content = "const updated = 'world';"
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  // Content should be updated but rendering depends on cached highlights
   expect(codeRenderable.content).toBe("const updated = 'world';")
 })
 
@@ -1057,25 +1054,20 @@ test("CodeRenderable - streaming mode uses cached highlights for partial styling
 
   currentRenderer.root.add(codeRenderable)
 
-  // Wait for initial highlighting
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // Update content - should use cached highlights immediately
   codeRenderable.content = "const updated = 'world';"
   await new Promise((resolve) => queueMicrotask(resolve))
   await renderOnce()
 
-  // Text should be visible with partial styling from cached highlights
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 
-  // Wait for new highlights
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // Should still have correct content with updated highlights
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 })
 
@@ -1103,11 +1095,9 @@ test("CodeRenderable - streaming mode caches highlights between updates", async 
 
   currentRenderer.root.add(codeRenderable)
 
-  // Wait for initial highlighting
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // Multiple rapid updates
   codeRenderable.content = "const updated = 'world';"
   await new Promise((resolve) => queueMicrotask(resolve))
 
@@ -1190,17 +1180,14 @@ test("CodeRenderable - disabling streaming clears cached highlights", async () =
 
   expect(codeRenderable.streaming).toBe(true)
 
-  // Wait for initial highlighting
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // Disable streaming
   codeRenderable.streaming = false
   expect(codeRenderable.streaming).toBe(false)
 
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  // Should trigger re-highlighting
   expect(mockClient.isHighlighting()).toBe(true)
 })
 
@@ -1229,12 +1216,10 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false shows nothing 
 
   currentRenderer.root.add(codeRenderable)
 
-  // Initial render should show nothing
   await renderOnce()
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting.trim()).toBe("")
 
-  // After highlighting completes, content should be visible
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
@@ -1263,11 +1248,9 @@ test("CodeRenderable - streaming mode handles empty cached highlights gracefully
     drawUnstyledText: true,
   })
 
-  // Wait for initial highlighting (which returns empty highlights)
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // Update content - should not crash with empty cached highlights
   codeRenderable.content = "more plain text"
   await new Promise((resolve) => queueMicrotask(resolve))
 
