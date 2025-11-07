@@ -16,7 +16,7 @@ function createMockStreams() {
     isTTY: true,
     columns: 80,
     rows: 24,
-      write: (data: string | Buffer) => {
+    write: (data: string | Buffer) => {
       writes.push(data.toString())
       const dataStr = data.toString()
       if (dataStr.includes("\x1b]4;0;?")) {
@@ -428,7 +428,9 @@ describe("Palette detection with suspended renderer", () => {
 
     renderer.suspend()
 
-    await expect(renderer.getPalette({ timeout: 300 })).rejects.toThrow("Cannot detect palette while renderer is suspended")
+    await expect(renderer.getPalette({ timeout: 300 })).rejects.toThrow(
+      "Cannot detect palette while renderer is suspended",
+    )
 
     renderer.destroy()
   })
@@ -555,8 +557,7 @@ describe("Palette detection error handling", () => {
     try {
       const palettePromise = renderer.getPalette({ timeout: 300 })
       await palettePromise
-    } catch (error) {
-    }
+    } catch (error) {}
 
     const listenerCount = mockStdin.listenerCount("data")
     expect(listenerCount).toBeGreaterThan(0)

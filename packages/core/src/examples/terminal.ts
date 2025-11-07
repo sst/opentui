@@ -208,7 +208,7 @@ function drawPalette(renderer: CliRenderer, terminalColors: TerminalColors, size
   // Create a framebuffer for special colors with colored boxes
   const specialBufferWidth = 30
   const specialBufferHeight = specialColors.length * 2
-  
+
   if (!specialColorsBuffer) {
     specialColorsBuffer = new FrameBufferRenderable(renderer, {
       id: "special-colors-buffer",
@@ -225,7 +225,7 @@ function drawPalette(renderer: CliRenderer, terminalColors: TerminalColors, size
   specialColors.forEach(({ label, value }, index) => {
     const y = index * 2
     const boxWidth = 4
-    
+
     if (value) {
       // Parse hex color
       const hex = value.replace("#", "")

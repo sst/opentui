@@ -260,7 +260,17 @@ export class TerminalPalette implements TerminalPaletteDetector {
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
       this.writeFn(
-        ["\x1b]10;?\x07", "\x1b]11;?\x07", "\x1b]12;?\x07", "\x1b]13;?\x07", "\x1b]14;?\x07", "\x1b]15;?\x07", "\x1b]16;?\x07", "\x1b]17;?\x07", "\x1b]19;?\x07"].join(""),
+        [
+          "\x1b]10;?\x07",
+          "\x1b]11;?\x07",
+          "\x1b]12;?\x07",
+          "\x1b]13;?\x07",
+          "\x1b]14;?\x07",
+          "\x1b]15;?\x07",
+          "\x1b]16;?\x07",
+          "\x1b]17;?\x07",
+          "\x1b]19;?\x07",
+        ].join(""),
       )
     })
   }
