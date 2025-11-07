@@ -1290,8 +1290,12 @@ export abstract class Renderable extends BaseRenderable {
         height: scissorRect.height,
       })
     }
-
-    for (const child of this._getChildren()) {
+    const visibleChildren = this._getVisibleChildren()
+    for (const child of this._childrenInZIndexOrder) {
+      if (!visibleChildren.includes(child.num)) {
+        child.updateFromLayout()
+        continue
+      }
       child.updateLayout(deltaTime, renderList)
     }
 
@@ -1324,8 +1328,8 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
-  protected _getChildren(): Renderable[] {
-    return this._childrenInZIndexOrder
+  protected _getVisibleChildren(): number[] {
+    return this._childrenInZIndexOrder.map((child) => child.num)
   }
 
   protected onUpdate(deltaTime: number): void {

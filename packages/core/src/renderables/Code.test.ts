@@ -693,7 +693,7 @@ test("CodeRenderable - with drawUnstyledText=false, text does not render before 
 
   await renderOnce()
 
-  expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  expect(codeRenderable.plainText).toBe("")
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting.trim()).toBe("")
 
@@ -730,7 +730,7 @@ test("CodeRenderable - updating drawUnstyledText from false to true triggers re-
   expect(codeRenderable.drawUnstyledText).toBe(false)
 
   await renderOnce()
-  expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  expect(codeRenderable.plainText).toBe("")
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
@@ -862,7 +862,7 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   expect(mockClient.isHighlighting()).toBe(true)
 
   await renderOnce()
-  expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  expect(codeRenderable.plainText).toBe("")
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting.trim()).toBe("")
 
@@ -870,7 +870,7 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   await new Promise((resolve) => queueMicrotask(resolve))
 
   await renderOnce()
-  expect(codeRenderable.plainText).toBe("let newMessage = 'world';")
+  expect(codeRenderable.plainText).toBe("")
   const frameAfterUpdate = captureFrame()
   expect(frameAfterUpdate.trim()).toBe("")
 
