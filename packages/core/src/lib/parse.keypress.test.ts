@@ -1257,3 +1257,123 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(allModsEnter.eventType).toBe("press")
   expect(allModsEnter.source).toBe("raw")
 })
+
+test("parseKeypress - Ghostty terminal modified escape keys", () => {
+  // Ghostty terminal also sends modified escape key sequences
+  // Format: ESC[27;modifier;27~ where charcode 27 is escape
+
+  // Ctrl+Escape: ESC[27;5;27~ (modifier 5 = ctrl bit 4)
+  const ctrlEscape = parseKeypress("\u001b[27;5;27~")!
+  expect(ctrlEscape.name).toBe("escape")
+  expect(ctrlEscape.ctrl).toBe(true)
+  expect(ctrlEscape.shift).toBe(false)
+  expect(ctrlEscape.meta).toBe(false)
+  expect(ctrlEscape.option).toBe(false)
+  expect(ctrlEscape.sequence).toBe("\u001b[27;5;27~")
+  expect(ctrlEscape.raw).toBe("\u001b[27;5;27~")
+  expect(ctrlEscape.eventType).toBe("press")
+  expect(ctrlEscape.source).toBe("raw")
+
+  // Test with \x1b notation as well
+  const ctrlEscape2 = parseKeypress("\x1b[27;5;27~")!
+  expect(ctrlEscape2.name).toBe("escape")
+  expect(ctrlEscape2.ctrl).toBe(true)
+  expect(ctrlEscape2.shift).toBe(false)
+  expect(ctrlEscape2.meta).toBe(false)
+  expect(ctrlEscape2.option).toBe(false)
+
+  // Shift+Escape: ESC[27;2;27~ (modifier 2 = shift bit 1)
+  const shiftEscape = parseKeypress("\u001b[27;2;27~")!
+  expect(shiftEscape.name).toBe("escape")
+  expect(shiftEscape.shift).toBe(true)
+  expect(shiftEscape.ctrl).toBe(false)
+  expect(shiftEscape.meta).toBe(false)
+  expect(shiftEscape.option).toBe(false)
+  expect(shiftEscape.sequence).toBe("\u001b[27;2;27~")
+  expect(shiftEscape.raw).toBe("\u001b[27;2;27~")
+  expect(shiftEscape.eventType).toBe("press")
+  expect(shiftEscape.source).toBe("raw")
+
+  // Alt+Escape: ESC[27;3;27~ (modifier 3 = alt/option bit 2)
+  const altEscape = parseKeypress("\u001b[27;3;27~")!
+  expect(altEscape.name).toBe("escape")
+  expect(altEscape.meta).toBe(true)
+  expect(altEscape.option).toBe(true)
+  expect(altEscape.ctrl).toBe(false)
+  expect(altEscape.shift).toBe(false)
+  expect(altEscape.sequence).toBe("\u001b[27;3;27~")
+  expect(altEscape.raw).toBe("\u001b[27;3;27~")
+  expect(altEscape.eventType).toBe("press")
+  expect(altEscape.source).toBe("raw")
+
+  // Shift+Ctrl+Escape: ESC[27;6;27~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
+  const shiftCtrlEscape = parseKeypress("\u001b[27;6;27~")!
+  expect(shiftCtrlEscape.name).toBe("escape")
+  expect(shiftCtrlEscape.shift).toBe(true)
+  expect(shiftCtrlEscape.ctrl).toBe(true)
+  expect(shiftCtrlEscape.meta).toBe(false)
+  expect(shiftCtrlEscape.option).toBe(false)
+  expect(shiftCtrlEscape.sequence).toBe("\u001b[27;6;27~")
+  expect(shiftCtrlEscape.raw).toBe("\u001b[27;6;27~")
+  expect(shiftCtrlEscape.eventType).toBe("press")
+  expect(shiftCtrlEscape.source).toBe("raw")
+})
+
+test("parseKeypress - Ghostty terminal modified tab, space, and backspace keys", () => {
+  // Tab key: charcode 9
+  const ctrlTab = parseKeypress("\u001b[27;5;9~")!
+  expect(ctrlTab.name).toBe("tab")
+  expect(ctrlTab.ctrl).toBe(true)
+  expect(ctrlTab.shift).toBe(false)
+  expect(ctrlTab.meta).toBe(false)
+  expect(ctrlTab.option).toBe(false)
+
+  const shiftTab = parseKeypress("\u001b[27;2;9~")!
+  expect(shiftTab.name).toBe("tab")
+  expect(shiftTab.shift).toBe(true)
+  expect(shiftTab.ctrl).toBe(false)
+  expect(shiftTab.meta).toBe(false)
+  expect(shiftTab.option).toBe(false)
+
+  // Space key: charcode 32
+  const ctrlSpace = parseKeypress("\u001b[27;5;32~")!
+  expect(ctrlSpace.name).toBe("space")
+  expect(ctrlSpace.ctrl).toBe(true)
+  expect(ctrlSpace.shift).toBe(false)
+  expect(ctrlSpace.meta).toBe(false)
+  expect(ctrlSpace.option).toBe(false)
+
+  const shiftSpace = parseKeypress("\u001b[27;2;32~")!
+  expect(shiftSpace.name).toBe("space")
+  expect(shiftSpace.shift).toBe(true)
+  expect(shiftSpace.ctrl).toBe(false)
+  expect(shiftSpace.meta).toBe(false)
+  expect(shiftSpace.option).toBe(false)
+
+  const altSpace = parseKeypress("\u001b[27;3;32~")!
+  expect(altSpace.name).toBe("space")
+  expect(altSpace.meta).toBe(true)
+  expect(altSpace.option).toBe(true)
+  expect(altSpace.ctrl).toBe(false)
+  expect(altSpace.shift).toBe(false)
+
+  // Backspace key: charcode 127 (or 8)
+  const ctrlBackspace = parseKeypress("\u001b[27;5;127~")!
+  expect(ctrlBackspace.name).toBe("backspace")
+  expect(ctrlBackspace.ctrl).toBe(true)
+  expect(ctrlBackspace.shift).toBe(false)
+  expect(ctrlBackspace.meta).toBe(false)
+  expect(ctrlBackspace.option).toBe(false)
+
+  const shiftBackspace = parseKeypress("\u001b[27;2;127~")!
+  expect(shiftBackspace.name).toBe("backspace")
+  expect(shiftBackspace.shift).toBe(true)
+  expect(shiftBackspace.ctrl).toBe(false)
+  expect(shiftBackspace.meta).toBe(false)
+  expect(shiftBackspace.option).toBe(false)
+
+  // Test charcode 8 variant
+  const ctrlBackspace8 = parseKeypress("\u001b[27;5;8~")!
+  expect(ctrlBackspace8.name).toBe("backspace")
+  expect(ctrlBackspace8.ctrl).toBe(true)
+})

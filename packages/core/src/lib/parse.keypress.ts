@@ -179,9 +179,9 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     }
   }
 
-  // Check for Ghostty terminal special sequences for modified enter keys
+  // Check for Ghostty terminal special sequences for modified keys
   // Format: ESC[27;modifier;charcode~
-  // Examples: ESC[27;2;13~ (shift+enter), ESC[27;5;13~ (ctrl+enter)
+  // Examples: ESC[27;2;13~ (shift+enter), ESC[27;5;13~ (ctrl+enter), ESC[27;5;27~ (ctrl+escape)
   const ghosttyMatch = ghosttyModifiedKeyRe.exec(s)
   if (ghosttyMatch) {
     const modifier = parseInt(ghosttyMatch[1]!, 10) - 1
@@ -192,10 +192,21 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     key.shift = !!(modifier & 1)
     key.option = !!(modifier & 2)
 
+    // NOTE: tab, space, and backspace are currently
+    // not triggered that way by Ghostty terminal,
+    // but might be, so just handle the most common cases here.
     if (charCode === 13) {
       key.name = "return"
+    } else if (charCode === 27) {
+      key.name = "escape"
+    } else if (charCode === 9) {
+      key.name = "tab"
+    } else if (charCode === 32) {
+      key.name = "space"
+    } else if (charCode === 127 || charCode === 8) {
+      key.name = "backspace"
     } else {
-      // For other character codes, could be extended in the future
+      // For other character codes, use the character itself
       key.name = String.fromCharCode(charCode)
     }
 
