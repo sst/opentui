@@ -116,7 +116,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
   set scrollTop(value: number) {
     this.verticalScrollBar.scrollPosition = value
     if (!this._isApplyingStickyScroll) {
-      this._hasManualScroll = true
+      // Only mark as manual scroll if we're not at a sticky position after scrolling
+      // This prevents programmatic scrolls to sticky edges from disabling sticky behavior
+      if (!this.isAtStickyPosition()) {
+        this._hasManualScroll = true
+      }
     }
     this.updateStickyState()
   }
@@ -128,7 +132,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
   set scrollLeft(value: number) {
     this.horizontalScrollBar.scrollPosition = value
     if (!this._isApplyingStickyScroll) {
-      this._hasManualScroll = true
+      // Only mark as manual scroll if we're not at a sticky position after scrolling
+      if (!this.isAtStickyPosition()) {
+        this._hasManualScroll = true
+      }
     }
     this.updateStickyState()
   }
@@ -146,11 +153,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
     const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
-
-    // Prevent initial sticky loss
-    if (this._hasManualScroll && this._stickyStart) {
-      return
-    }
 
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
@@ -288,7 +290,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
       onChange: (position) => {
         this.content.translateY = -position
         if (!this._isApplyingStickyScroll) {
-          this._hasManualScroll = true
+          // Only mark as manual scroll if we're not at a sticky position
+          if (!this.isAtStickyPosition()) {
+            this._hasManualScroll = true
+          }
         }
         this.updateStickyState()
       },
@@ -307,7 +312,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
       onChange: (position) => {
         this.content.translateX = -position
         if (!this._isApplyingStickyScroll) {
-          this._hasManualScroll = true
+          // Only mark as manual scroll if we're not at a sticky position
+          if (!this.isAtStickyPosition()) {
+            this._hasManualScroll = true
+          }
         }
         this.updateStickyState()
       },
@@ -340,7 +348,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.verticalScrollBar.scrollBy(delta.y, unit)
       this.horizontalScrollBar.scrollBy(delta.x, unit)
     }
-    this._hasManualScroll = true
+    // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar 
+    // change will trigger the scrollTop setter which handles it
   }
 
   public scrollTo(position: number | { x: number; y: number }): void {
@@ -349,6 +358,30 @@ export class ScrollBoxRenderable extends BoxRenderable {
     } else {
       this.scrollTop = position.y
       this.scrollLeft = position.x
+    }
+    // Note: scrollTo doesn't need to set _hasManualScroll here because 
+    // the scrollTop/scrollLeft setters handle it
+  }
+
+  private isAtStickyPosition(): boolean {
+    if (!this._stickyScroll || !this._stickyStart) {
+      return false
+    }
+
+    const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+    const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+
+    switch (this._stickyStart) {
+      case "top":
+        return this.scrollTop === 0
+      case "bottom":
+        return this.scrollTop >= maxScrollTop
+      case "left":
+        return this.scrollLeft === 0
+      case "right":
+        return this.scrollLeft >= maxScrollLeft
+      default:
+        return false
     }
   }
 
