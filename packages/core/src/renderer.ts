@@ -533,6 +533,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     ) {
       this.updateScheduled = true
       process.nextTick(() => {
+        this.switchToCorrectScreen()
         this.loop()
         this.updateScheduled = false
       })
@@ -772,6 +773,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.queryPixelResolution()
+  }
+
+  private switchToCorrectScreen(): void {
+    this.writeOut(this._useAlternateScreen ? ANSI.switchToAlternateScreen : ANSI.switchToMainScreen)
   }
 
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
@@ -1339,6 +1344,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentFps = 0
     this.targetFrameTime = 1000 / this.targetFps
 
+    this.switchToCorrectScreen()
     this.loop()
   }
 
