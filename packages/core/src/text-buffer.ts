@@ -57,6 +57,15 @@ export class TextBuffer {
     this._lineInfo = undefined
   }
 
+  public append(text: string): void {
+    this.guard()
+    const textBytes = this.lib.encoder.encode(text)
+    this.lib.textBufferAppend(this.bufferPtr, textBytes)
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+  }
+
   public loadFile(path: string): void {
     this.guard()
     const success = this.lib.textBufferLoadFile(this.bufferPtr, path)

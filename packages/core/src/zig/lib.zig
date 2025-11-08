@@ -457,6 +457,15 @@ export fn textBufferSetTextFromMem(tb: *text_buffer.UnifiedTextBuffer, id: u8) v
     tb.setTextFromMemId(id) catch {};
 }
 
+export fn textBufferAppend(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize) void {
+    const data = dataPtr[0..dataLen];
+    tb.append(data) catch {};
+}
+
+export fn textBufferAppendFromMemId(tb: *text_buffer.UnifiedTextBuffer, id: u8) void {
+    tb.appendFromMemId(id) catch {};
+}
+
 export fn textBufferLoadFile(tb: *text_buffer.UnifiedTextBuffer, pathPtr: [*]const u8, pathLen: usize) bool {
     const path = pathPtr[0..pathLen];
     tb.loadFile(path) catch return false;
