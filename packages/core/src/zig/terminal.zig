@@ -302,7 +302,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     if (std.mem.indexOf(u8, response, "1004;1$y") != null or std.mem.indexOf(u8, response, "1004;2$y") != null) {
         self.caps.focus_tracking = true;
     }
-    if (std.mem.indexOf(u8, response, "2026;2$y")) |_| {
+    if (std.mem.indexOf(u8, response, "2026;1$y") != null or std.mem.indexOf(u8, response, "2026;2$y") != null) {
         self.caps.sync = true;
     }
     if (std.mem.indexOf(u8, response, "2004;1$y") != null or std.mem.indexOf(u8, response, "2004;2$y") != null) {
