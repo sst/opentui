@@ -26,7 +26,7 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
   const testSetup = await createTestRenderer(renderConfig)
   engine.attach(testSetup.renderer)
 
-  renderInternal(
+  const dispose = renderInternal(
     () =>
       createComponent(RendererContext.Provider, {
         get value() {
@@ -38,6 +38,12 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
       }),
     testSetup.renderer.root,
   )
+
+  const destroy = testSetup.renderer.destroy
+  testSetup.renderer.destroy = () => {
+    destroy.call(testSetup.renderer)
+    dispose()
+  }
 
   return testSetup
 }
