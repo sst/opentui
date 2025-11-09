@@ -47,6 +47,16 @@ function isCompleteSequence(data: string): "complete" | "incomplete" | "not-esca
     return isCompleteOscSequence(data)
   }
 
+  // DCS sequences: ESC P ... ESC \ (includes XTVersion responses)
+  if (afterEsc.startsWith("P")) {
+    return isCompleteDcsSequence(data)
+  }
+
+  // APC sequences: ESC _ ... ESC \ (includes Kitty graphics responses)
+  if (afterEsc.startsWith("_")) {
+    return isCompleteApcSequence(data)
+  }
+
   // SS3 sequences: ESC O
   if (afterEsc.startsWith("O")) {
     // ESC O followed by a single character
@@ -121,6 +131,42 @@ function isCompleteOscSequence(data: string): "complete" | "incomplete" {
 
   // OSC sequences end with ST (ESC \) or BEL (\x07)
   if (data.endsWith(ESC + "\\") || data.endsWith("\x07")) {
+    return "complete"
+  }
+
+  return "incomplete"
+}
+
+/**
+ * Check if DCS (Device Control String) sequence is complete
+ * DCS sequences: ESC P ... ST (where ST is ESC \)
+ * Used for XTVersion responses like ESC P >| ... ESC \
+ */
+function isCompleteDcsSequence(data: string): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + "P")) {
+    return "complete"
+  }
+
+  // DCS sequences end with ST (ESC \)
+  if (data.endsWith(ESC + "\\")) {
+    return "complete"
+  }
+
+  return "incomplete"
+}
+
+/**
+ * Check if APC (Application Program Command) sequence is complete
+ * APC sequences: ESC _ ... ST (where ST is ESC \)
+ * Used for Kitty graphics responses like ESC _ G ... ESC \
+ */
+function isCompleteApcSequence(data: string): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + "_")) {
+    return "complete"
+  }
+
+  // APC sequences end with ST (ESC \)
+  if (data.endsWith(ESC + "\\")) {
     return "complete"
   }
 

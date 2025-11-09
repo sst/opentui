@@ -321,4 +321,163 @@ describe("StdinBuffer", () => {
       expect(emittedSequences).toEqual([])
     })
   })
+
+  describe("Terminal Capability Responses", () => {
+    it("should handle complete DECRPM response", () => {
+      processInput("\x1b[?1016;2$y")
+      expect(emittedSequences).toEqual(["\x1b[?1016;2$y"])
+    })
+
+    it("should handle split DECRPM response", () => {
+      processInput("\x1b[?10")
+      processInput("16;2$y")
+      expect(emittedSequences).toEqual(["\x1b[?1016;2$y"])
+    })
+
+    it("should handle CPR (Cursor Position Report) for width detection", () => {
+      processInput("\x1b[1;2R")
+      expect(emittedSequences).toEqual(["\x1b[1;2R"])
+    })
+
+    it("should handle CPR for scaled text detection", () => {
+      processInput("\x1b[1;3R")
+      expect(emittedSequences).toEqual(["\x1b[1;3R"])
+    })
+
+    it("should handle complete XTVersion response", () => {
+      processInput("\x1bP>|kitty(0.40.1)\x1b\\")
+      expect(emittedSequences).toEqual(["\x1bP>|kitty(0.40.1)\x1b\\"])
+    })
+
+    it("should handle split XTVersion response", () => {
+      processInput("\x1bP>|kit")
+      expect(emittedSequences).toEqual([])
+      expect(buffer.getBuffer()).toBe("\x1bP>|kit")
+
+      processInput("ty(0.40")
+      expect(emittedSequences).toEqual([])
+      expect(buffer.getBuffer()).toBe("\x1bP>|kitty(0.40")
+
+      processInput(".1)\x1b\\")
+      expect(emittedSequences).toEqual(["\x1bP>|kitty(0.40.1)\x1b\\"])
+      expect(buffer.getBuffer()).toBe("")
+    })
+
+    it("should handle Ghostty XTVersion response split", () => {
+      processInput("\x1bP>|gho")
+      processInput("stty 1.1.3")
+      processInput("\x1b\\")
+      expect(emittedSequences).toEqual(["\x1bP>|ghostty 1.1.3\x1b\\"])
+    })
+
+    it("should handle tmux XTVersion response", () => {
+      processInput("\x1bP>|tmux 3.5a\x1b\\")
+      expect(emittedSequences).toEqual(["\x1bP>|tmux 3.5a\x1b\\"])
+    })
+
+    it("should handle complete Kitty graphics response", () => {
+      processInput("\x1b_Gi=1;OK\x1b\\")
+      expect(emittedSequences).toEqual(["\x1b_Gi=1;OK\x1b\\"])
+    })
+
+    it("should handle split Kitty graphics response", () => {
+      processInput("\x1b_Gi=1;")
+      expect(emittedSequences).toEqual([])
+      expect(buffer.getBuffer()).toBe("\x1b_Gi=1;")
+
+      processInput("EINVAL:Zero width")
+      expect(emittedSequences).toEqual([])
+
+      processInput("/height not allowed\x1b\\")
+      expect(emittedSequences).toEqual(["\x1b_Gi=1;EINVAL:Zero width/height not allowed\x1b\\"])
+    })
+
+    it("should handle DA1 (Device Attributes) response", () => {
+      processInput("\x1b[?62;c")
+      expect(emittedSequences).toEqual(["\x1b[?62;c"])
+    })
+
+    it("should handle DA1 with multiple attributes", () => {
+      processInput("\x1b[?62;22c")
+      expect(emittedSequences).toEqual(["\x1b[?62;22c"])
+    })
+
+    it("should handle DA1 with sixel capability", () => {
+      processInput("\x1b[?1;2;4c")
+      expect(emittedSequences).toEqual(["\x1b[?1;2;4c"])
+    })
+
+    it("should handle pixel resolution response", () => {
+      processInput("\x1b[4;720;1280t")
+      expect(emittedSequences).toEqual(["\x1b[4;720;1280t"])
+    })
+
+    it("should handle split pixel resolution response", () => {
+      processInput("\x1b[4;72")
+      processInput("0;1280t")
+      expect(emittedSequences).toEqual(["\x1b[4;720;1280t"])
+    })
+
+    it("should handle multiple DECRPM responses in sequence", () => {
+      processInput("\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y")
+      expect(emittedSequences).toEqual(["\x1b[?1016;2$y", "\x1b[?2027;0$y", "\x1b[?2031;2$y"])
+    })
+
+    it("should handle kitty full capability response arriving in chunks", () => {
+      // Simulate kitty's full response arriving in multiple chunks
+      processInput("\x1b[?1016;2$y\x1b[?20")
+      expect(emittedSequences).toEqual(["\x1b[?1016;2$y"])
+      expect(buffer.getBuffer()).toBe("\x1b[?20")
+
+      processInput("27;0$y\x1b[?2031;2$y\x1bP>|kit")
+      expect(emittedSequences).toEqual(["\x1b[?1016;2$y", "\x1b[?2027;0$y", "\x1b[?2031;2$y"])
+      expect(buffer.getBuffer()).toBe("\x1bP>|kit")
+
+      processInput("ty(0.40.1)\x1b\\")
+      expect(emittedSequences).toEqual([
+        "\x1b[?1016;2$y",
+        "\x1b[?2027;0$y",
+        "\x1b[?2031;2$y",
+        "\x1bP>|kitty(0.40.1)\x1b\\",
+      ])
+    })
+
+    it("should handle capability response mixed with user input", () => {
+      processInput("\x1b[?1016;2$yh")
+      expect(emittedSequences).toEqual(["\x1b[?1016;2$y", "h"])
+    })
+
+    it("should handle user keypress during capability response", () => {
+      processInput("\x1bP>|kit")
+      expect(buffer.getBuffer()).toBe("\x1bP>|kit")
+
+      processInput("ty(0.40.1)\x1b\\a")
+      expect(emittedSequences).toEqual(["\x1bP>|kitty(0.40.1)\x1b\\", "a"])
+    })
+
+    it("should handle extremely split XTVersion", () => {
+      // Each character arrives separately
+      processInput("\x1b")
+      processInput("P")
+      processInput(">")
+      processInput("|")
+      processInput("k")
+      processInput("i")
+      processInput("t")
+      processInput("t")
+      processInput("y")
+      processInput("(")
+      processInput("0")
+      processInput(".")
+      processInput("4")
+      processInput("0")
+      processInput(".")
+      processInput("1")
+      processInput(")")
+      processInput("\x1b")
+      processInput("\\")
+
+      expect(emittedSequences).toEqual(["\x1bP>|kitty(0.40.1)\x1b\\"])
+    })
+  })
 })

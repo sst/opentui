@@ -107,9 +107,14 @@ async function main() {
 
   addEvent("capabilities", renderer.capabilities)
 
-  // Listen to key events
   renderer.keyInput.on("keypress", (event) => {
     addEvent("keypress", event)
+
+    if (event.name === "c" && event.shift) {
+      if (renderer) {
+        addEvent("capabilities", renderer.capabilities)
+      }
+    }
   })
 
   renderer.keyInput.on("keyrelease", (event) => {

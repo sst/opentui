@@ -27,6 +27,11 @@ import {
   type TerminalColors,
   type GetPaletteOptions,
 } from "./lib/terminal-palette"
+import {
+  isCapabilityResponse,
+  isPixelResolutionResponse,
+  parsePixelResolution,
+} from "./lib/terminal-capability-detection"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -754,21 +759,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }, 100)
-      const capListener = (str: string) => {
-        clearTimeout(timeout)
-        this.lib.processCapabilityResponse(this.rendererPtr, str)
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }
-      this.stdin.on("data", capListener)
-      this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
-    })
+    // Send capability queries; responses will be handled by StdinBuffer
+    this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
 
+    // Seed caps (will be updated as responses arrive)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
     if (this._useMouse) {
@@ -779,27 +773,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    const str = data.toString()
-
-    if (this.waitingForPixelResolution && /\x1b\[4;\d+;\d+t/.test(str)) {
-      const match = str.match(/\x1b\[4;(\d+);(\d+)t/)
-      if (match) {
-        const resolution: PixelResolution = {
-          width: parseInt(match[2]),
-          height: parseInt(match[1]),
-        }
-
-        this._resolution = resolution
-        this.waitingForPixelResolution = false
-        return
-      }
-    }
-
+    // Mouse first (consume and stop if handled)
     if (this._useMouse && this.handleMouseData(data)) {
       return
     }
 
-    // Forward non-mouse, non-resolution data to StdinBuffer for sequence buffering
+    // Everything else goes through the sequence buffer
     this._stdinBuffer.process(data)
   }).bind(this)
 
@@ -811,6 +790,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
     this._stdinBuffer.on("data", (sequence: string) => {
+      // Pixel resolution: ESC[4;h;wt
+      if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+        const resolution = parsePixelResolution(sequence)
+        if (resolution) {
+          this._resolution = resolution
+          this.waitingForPixelResolution = false
+        }
+        return
+      }
+
+      if (isCapabilityResponse(sequence)) {
+        this.lib.processCapabilityResponse(this.rendererPtr, sequence)
+        this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+        return
+      }
+
       this._keyHandler.processInput(sequence)
     })
   }
