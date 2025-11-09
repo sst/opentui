@@ -1,18 +1,12 @@
 import { describe, expect, it, beforeEach } from "bun:test"
 import { StdinBuffer } from "./stdin-buffer"
-import { Readable } from "stream"
 
 describe("StdinBuffer", () => {
   let buffer: StdinBuffer
-  let mockStdin: Readable
   let emittedSequences: string[]
 
   beforeEach(() => {
-    // Create a mock stdin stream
-    mockStdin = new Readable({
-      read() {},
-    }) as any
-    buffer = new StdinBuffer(mockStdin as any, { timeout: 10 })
+    buffer = new StdinBuffer({ timeout: 10 })
 
     // Collect emitted sequences
     emittedSequences = []
@@ -21,9 +15,9 @@ describe("StdinBuffer", () => {
     })
   })
 
-  // Helper to push data to mock stdin
-  function pushToStdin(data: string | Buffer): void {
-    mockStdin.push(data)
+  // Helper to process data through the buffer
+  function processInput(data: string | Buffer): void {
+    buffer.process(data)
   }
 
   // Helper to wait for async operations
@@ -33,17 +27,17 @@ describe("StdinBuffer", () => {
 
   describe("Regular Characters", () => {
     it("should pass through regular characters immediately", () => {
-      pushToStdin("a")
+      processInput("a")
       expect(emittedSequences).toEqual(["a"])
     })
 
     it("should pass through multiple regular characters", () => {
-      pushToStdin("abc")
+      processInput("abc")
       expect(emittedSequences).toEqual(["a", "b", "c"])
     })
 
     it("should handle unicode characters", () => {
-      pushToStdin("hello 世界")
+      processInput("hello 世界")
       expect(emittedSequences).toEqual(["h", "e", "l", "l", "o", " ", "世", "界"])
     })
   })
@@ -51,79 +45,79 @@ describe("StdinBuffer", () => {
   describe("Complete Escape Sequences", () => {
     it("should pass through complete mouse SGR sequences", () => {
       const mouseSeq = "\x1b[<35;20;5m"
-      pushToStdin(mouseSeq)
+      processInput(mouseSeq)
       expect(emittedSequences).toEqual([mouseSeq])
     })
 
     it("should pass through complete arrow key sequences", () => {
       const upArrow = "\x1b[A"
-      pushToStdin(upArrow)
+      processInput(upArrow)
       expect(emittedSequences).toEqual([upArrow])
     })
 
     it("should pass through complete function key sequences", () => {
       const f1 = "\x1b[11~"
-      pushToStdin(f1)
+      processInput(f1)
       expect(emittedSequences).toEqual([f1])
     })
 
     it("should pass through meta key sequences", () => {
       const metaA = "\x1ba"
-      pushToStdin(metaA)
+      processInput(metaA)
       expect(emittedSequences).toEqual([metaA])
     })
 
     it("should pass through SS3 sequences", () => {
       const ss3 = "\x1bOA"
-      pushToStdin(ss3)
+      processInput(ss3)
       expect(emittedSequences).toEqual([ss3])
     })
   })
 
   describe("Partial Escape Sequences", () => {
     it("should buffer incomplete mouse SGR sequence", async () => {
-      pushToStdin("\x1b")
+      processInput("\x1b")
       expect(emittedSequences).toEqual([])
       expect(buffer.getBuffer()).toBe("\x1b")
 
-      pushToStdin("[<35")
+      processInput("[<35")
       expect(emittedSequences).toEqual([])
       expect(buffer.getBuffer()).toBe("\x1b[<35")
 
-      pushToStdin(";20;5m")
+      processInput(";20;5m")
       expect(emittedSequences).toEqual(["\x1b[<35;20;5m"])
       expect(buffer.getBuffer()).toBe("")
     })
 
     it("should buffer incomplete CSI sequence", () => {
-      pushToStdin("\x1b[")
+      processInput("\x1b[")
       expect(emittedSequences).toEqual([])
 
-      pushToStdin("1;")
+      processInput("1;")
       expect(emittedSequences).toEqual([])
 
-      pushToStdin("5H")
+      processInput("5H")
       expect(emittedSequences).toEqual(["\x1b[1;5H"])
     })
 
     it("should buffer split across many chunks", () => {
-      pushToStdin("\x1b")
-      pushToStdin("[")
-      pushToStdin("<")
-      pushToStdin("3")
-      pushToStdin("5")
-      pushToStdin(";")
-      pushToStdin("2")
-      pushToStdin("0")
-      pushToStdin(";")
-      pushToStdin("5")
-      pushToStdin("m")
+      processInput("\x1b")
+      processInput("[")
+      processInput("<")
+      processInput("3")
+      processInput("5")
+      processInput(";")
+      processInput("2")
+      processInput("0")
+      processInput(";")
+      processInput("5")
+      processInput("m")
 
       expect(emittedSequences).toEqual(["\x1b[<35;20;5m"])
     })
 
     it("should flush incomplete sequence after timeout", async () => {
-      pushToStdin("\x1b[<35")
+      processInput("\x1b[<35")
       expect(emittedSequences).toEqual([])
 
       // Wait for timeout
@@ -135,85 +129,85 @@ describe("StdinBuffer", () => {
 
   describe("Mixed Content", () => {
     it("should handle characters followed by escape sequence", () => {
-      pushToStdin("abc\x1b[A")
+      processInput("abc\x1b[A")
       expect(emittedSequences).toEqual(["a", "b", "c", "\x1b[A"])
     })
 
     it("should handle escape sequence followed by characters", () => {
-      pushToStdin("\x1b[Aabc")
+      processInput("\x1b[Aabc")
       expect(emittedSequences).toEqual(["\x1b[A", "a", "b", "c"])
     })
 
     it("should handle multiple complete sequences", () => {
-      pushToStdin("\x1b[A\x1b[B\x1b[C")
+      processInput("\x1b[A\x1b[B\x1b[C")
       expect(emittedSequences).toEqual(["\x1b[A", "\x1b[B", "\x1b[C"])
     })
 
     it("should handle partial sequence with preceding characters", () => {
-      pushToStdin("abc\x1b[<35")
+      processInput("abc\x1b[<35")
       expect(emittedSequences).toEqual(["a", "b", "c"])
       expect(buffer.getBuffer()).toBe("\x1b[<35")
 
-      pushToStdin(";20;5m")
+      processInput(";20;5m")
       expect(emittedSequences).toEqual(["a", "b", "c", "\x1b[<35;20;5m"])
     })
   })
 
   describe("Mouse Events", () => {
     it("should handle mouse press event", () => {
-      pushToStdin("\x1b[<0;10;5M")
+      processInput("\x1b[<0;10;5M")
       expect(emittedSequences).toEqual(["\x1b[<0;10;5M"])
     })
 
     it("should handle mouse release event", () => {
-      pushToStdin("\x1b[<0;10;5m")
+      processInput("\x1b[<0;10;5m")
       expect(emittedSequences).toEqual(["\x1b[<0;10;5m"])
     })
 
     it("should handle mouse move event", () => {
-      pushToStdin("\x1b[<35;20;5m")
+      processInput("\x1b[<35;20;5m")
       expect(emittedSequences).toEqual(["\x1b[<35;20;5m"])
     })
 
     it("should handle split mouse events", () => {
-      pushToStdin("\x1b[<3")
-      pushToStdin("5;1")
-      pushToStdin("5;")
-      pushToStdin("10m")
+      processInput("\x1b[<3")
+      processInput("5;1")
+      processInput("5;")
+      processInput("10m")
       expect(emittedSequences).toEqual(["\x1b[<35;15;10m"])
     })
 
     it("should handle multiple mouse events", () => {
-      pushToStdin("\x1b[<35;1;1m\x1b[<35;2;2m\x1b[<35;3;3m")
+      processInput("\x1b[<35;1;1m\x1b[<35;2;2m\x1b[<35;3;3m")
       expect(emittedSequences).toEqual(["\x1b[<35;1;1m", "\x1b[<35;2;2m", "\x1b[<35;3;3m"])
     })
 
     it("should handle old-style mouse sequence (ESC[M + 3 bytes)", () => {
-      pushToStdin("\x1b[M abc")
+      processInput("\x1b[M abc")
       expect(emittedSequences).toEqual(["\x1b[M ab", "c"])
     })
 
     it("should buffer incomplete old-style mouse sequence", () => {
-      pushToStdin("\x1b[M")
+      processInput("\x1b[M")
       expect(buffer.getBuffer()).toBe("\x1b[M")
 
-      pushToStdin(" a")
+      processInput(" a")
       expect(buffer.getBuffer()).toBe("\x1b[M a")
 
-      pushToStdin("b")
+      processInput("b")
       expect(emittedSequences).toEqual(["\x1b[M ab"])
     })
   })
 
   describe("Edge Cases", () => {
     it("should handle empty input", () => {
-      pushToStdin("")
-      // Empty string doesn't trigger a data event from stdin
-      expect(emittedSequences).toEqual([])
+      processInput("")
+      // Empty string emits an empty data event
+      expect(emittedSequences).toEqual([""])
     })
 
     it("should handle lone escape character with timeout", async () => {
-      pushToStdin("\x1b")
+      processInput("\x1b")
       expect(emittedSequences).toEqual([])
 
       // After timeout, should emit
@@ -222,7 +216,7 @@ describe("StdinBuffer", () => {
     })
 
     it("should handle lone escape character with explicit flush", () => {
-      pushToStdin("\x1b")
+      processInput("\x1b")
       expect(emittedSequences).toEqual([])
 
       const flushed = buffer.flush()
@@ -230,20 +224,20 @@ describe("StdinBuffer", () => {
     })
 
     it("should handle buffer input", () => {
-      pushToStdin(Buffer.from("\x1b[A"))
+      processInput(Buffer.from("\x1b[A"))
       expect(emittedSequences).toEqual(["\x1b[A"])
     })
 
     it("should handle very long sequences", () => {
       const longSeq = "\x1b[" + "1;".repeat(50) + "H"
-      pushToStdin(longSeq)
+      processInput(longSeq)
       expect(emittedSequences).toEqual([longSeq])
     })
   })
 
   describe("Flush", () => {
     it("should flush incomplete sequences", () => {
-      pushToStdin("\x1b[<35")
+      processInput("\x1b[<35")
       const flushed = buffer.flush()
       expect(flushed).toEqual(["\x1b[<35"])
       expect(buffer.getBuffer()).toBe("")
@@ -255,7 +249,7 @@ describe("StdinBuffer", () => {
     })
 
     it("should emit flushed data via timeout", async () => {
-      pushToStdin("\x1b[<35")
+      processInput("\x1b[<35")
       expect(emittedSequences).toEqual([])
 
       // Wait for timeout to flush
@@ -267,7 +261,7 @@ describe("StdinBuffer", () => {
 
   describe("Clear", () => {
     it("should clear buffered content without emitting", () => {
-      pushToStdin("\x1b[<35")
+      processInput("\x1b[<35")
       expect(buffer.getBuffer()).toBe("\x1b[<35")
 
       buffer.clear()
@@ -279,18 +273,18 @@ describe("StdinBuffer", () => {
   describe("Real-world Scenarios", () => {
     it("should handle rapid typing with mouse movements", () => {
       // Type 'h'
-      pushToStdin("h")
+      processInput("h")
 
       // Mouse move arrives in chunks
-      pushToStdin("\x1b")
-      pushToStdin("[<35;")
-      pushToStdin("10;5m")
+      processInput("\x1b")
+      processInput("[<35;")
+      processInput("10;5m")
 
       // Type 'e'
-      pushToStdin("e")
+      processInput("e")
 
       // Type 'l'
-      pushToStdin("l")
+      processInput("l")
 
       expect(emittedSequences).toEqual(["h", "\x1b[<35;10;5m", "e", "l"])
     })
@@ -300,7 +294,7 @@ describe("StdinBuffer", () => {
       const pasteEnd = "\x1b[201~"
       const content = "hello world"
 
-      pushToStdin(pasteStart + content + pasteEnd)
+      processInput(pasteStart + content + pasteEnd)
 
       expect(emittedSequences).toContain(pasteStart)
       expect(emittedSequences).toContain(pasteEnd)
@@ -308,16 +302,16 @@ describe("StdinBuffer", () => {
   })
 
   describe("Destroy", () => {
-    it("should remove stdin listener on destroy", () => {
-      buffer.destroy()
+    it("should clear buffer on destroy", () => {
+      processInput("\x1b[<35")
+      expect(buffer.getBuffer()).toBe("\x1b[<35")
 
-      // Should not emit after destroy
-      pushToStdin("a")
-      expect(emittedSequences).toEqual([])
+      buffer.destroy()
+      expect(buffer.getBuffer()).toBe("")
     })
 
     it("should clear pending timeouts on destroy", async () => {
-      pushToStdin("\x1b[<35")
+      processInput("\x1b[<35")
       buffer.destroy()
 
       // Wait longer than timeout

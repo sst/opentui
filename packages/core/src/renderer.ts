@@ -449,9 +449,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     })
 
-    this._stdinBuffer = new StdinBuffer(this.stdin, { timeout: 5 })
+    this._stdinBuffer = new StdinBuffer({ timeout: 5 })
     this._stdinBuffer.on("data", (sequence: string) => {
-      // Renderer can filter/handle stdin data here before forwarding to keyHandler
       this._keyHandler.processInput(sequence)
     })
 
@@ -803,6 +802,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
+    // Forward non-mouse, non-resolution data to StdinBuffer for sequence buffering
+    this._stdinBuffer.process(data)
     this.emit("key", data)
   }).bind(this)
 

@@ -1,5 +1,5 @@
 /**
- * StdinBuffer wraps a stdin stream and emits complete sequences.
+ * StdinBuffer buffers input and emits complete sequences.
  *
  * This is necessary because stdin data events can arrive in partial chunks,
  * especially for escape sequences like mouse events. Without buffering,
@@ -11,6 +11,7 @@
  * - Event 3: `;20;5m`
  *
  * The buffer accumulates these until a complete sequence is detected.
+ * Call the `process()` method to feed input data.
  */
 
 import { EventEmitter } from "events"
@@ -184,29 +185,20 @@ export type StdinBufferEventMap = {
 }
 
 /**
- * Wraps a stdin stream and emits complete sequences via the 'data' event.
+ * Buffers stdin input and emits complete sequences via the 'data' event.
  * Handles partial escape sequences that arrive across multiple chunks.
  */
 export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   private buffer: string = ""
   private timeout: Timer | null = null
   private readonly timeoutMs: number
-  private readonly stdin: NodeJS.ReadStream
-  private readonly stdinListener: (data: Buffer) => void
 
-  constructor(stdin: NodeJS.ReadStream, options: StdinBufferOptions = {}) {
+  constructor(options: StdinBufferOptions = {}) {
     super()
-    this.stdin = stdin
     this.timeoutMs = options.timeout ?? 10
-
-    this.stdinListener = (data: Buffer) => {
-      this.handleData(data)
-    }
-
-    this.stdin.on("data", this.stdinListener)
   }
 
-  private handleData(data: string | Buffer): void {
+  public process(data: string | Buffer): void {
     // Clear any pending timeout
     if (this.timeout) {
       clearTimeout(this.timeout)
@@ -215,7 +207,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
     // Handle high-byte conversion (for compatibility with parseKeypress)
     // If buffer has single byte > 127, convert to ESC + (byte - 128)
-    // TODO: This seems overheadish as parseKeypress should handle this.
+    // TODO: This seems redundant as parseKeypress should handle this.
     let str: string
     if (Buffer.isBuffer(data)) {
       if (data.length === 1 && data[0]! > 127) {
@@ -281,7 +273,6 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   }
 
   destroy(): void {
-    this.stdin.removeListener("data", this.stdinListener)
     this.clear()
   }
 }
