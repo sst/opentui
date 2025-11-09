@@ -450,9 +450,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
-    this._stdinBuffer.on("data", (sequence: string) => {
-      this._keyHandler.processInput(sequence)
-    })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -804,7 +801,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     // Forward non-mouse, non-resolution data to StdinBuffer for sequence buffering
     this._stdinBuffer.process(data)
-    this.emit("key", data)
   }).bind(this)
 
   private setupInput(): void {
@@ -814,6 +810,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
+    this._stdinBuffer.on("data", (sequence: string) => {
+      this._keyHandler.processInput(sequence)
+    })
   }
 
   private handleMouseData(data: Buffer): boolean {

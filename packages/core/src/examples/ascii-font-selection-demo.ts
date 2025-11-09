@@ -200,8 +200,8 @@ export function run(renderer: CliRenderer): void {
     }
   })
 
-  renderer.on("key", (data) => {
-    const key = data.toString()
+  renderer.keyInput.on("keypress", (event) => {
+    const key = event.sequence
     if (key === "c" || key === "C") {
       renderer.clearSelection()
       if (statusText && debugText && selectionStartText && selectionMiddleText && selectionEndText) {
