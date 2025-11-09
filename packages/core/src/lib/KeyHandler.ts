@@ -1,7 +1,6 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
 import { ANSI } from "../ansi"
-import { StdinBuffer } from "./stdin-buffer"
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -75,28 +74,22 @@ export type KeyHandlerEventMap = {
 }
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
-  protected stdin: NodeJS.ReadStream
   protected useKittyKeyboard: boolean
   protected pasteMode: boolean = false
   protected pasteBuffer: string[] = []
   private suspended: boolean = false
-  private stdinBuffer: StdinBuffer
-  private dataListener: (sequence: string) => void
 
-  constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
+  constructor(useKittyKeyboard: boolean = false) {
     super()
 
-    this.stdin = stdin || process.stdin
     this.useKittyKeyboard = useKittyKeyboard
-
-    this.stdinBuffer = new StdinBuffer(this.stdin, { timeout: 5 })
-    this.dataListener = (sequence: string) => {
-      this.processSequence(sequence)
-    }
-    this.stdinBuffer.on("data", this.dataListener)
   }
 
-  private processSequence(data: string): void {
+  public processInput(data: string): void {
+    if (this.suspended) {
+      return
+    }
+
     if (data.startsWith(ANSI.bracketedPasteStart)) {
       this.pasteMode = true
     }
@@ -131,23 +124,12 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     }
   }
 
-  public destroy(): void {
-    this.stdinBuffer.removeListener("data", this.dataListener)
-    this.stdinBuffer.destroy()
-  }
-
   public suspend(): void {
-    if (!this.suspended) {
-      this.suspended = true
-      this.stdinBuffer.removeListener("data", this.dataListener)
-    }
+    this.suspended = true
   }
 
   public resume(): void {
-    if (this.suspended) {
-      this.suspended = false
-      this.stdinBuffer.on("data", this.dataListener)
-    }
+    this.suspended = false
   }
 }
 
@@ -158,8 +140,8 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 export class InternalKeyHandler extends KeyHandler {
   private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
 
-  constructor(stdin?: NodeJS.ReadStream, useKittyKeyboard: boolean = false) {
-    super(stdin, useKittyKeyboard)
+  constructor(useKittyKeyboard: boolean = false) {
+    super(useKittyKeyboard)
   }
 
   public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {

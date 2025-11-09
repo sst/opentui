@@ -18,6 +18,7 @@ import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
+import { StdinBuffer } from "./lib/stdin-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
 import {
@@ -278,6 +279,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
+  private _stdinBuffer: StdinBuffer
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -437,7 +439,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.on("unhandledRejection", this.handleError)
     process.on("exit", this.exitHandler)
 
-    this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? true)
+    this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -445,6 +447,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         })
         return
       }
+    })
+
+    this._stdinBuffer = new StdinBuffer(this.stdin, { timeout: 5 })
+    this._stdinBuffer.on("data", (sequence: string) => {
+      // Renderer can filter/handle stdin data here before forwarding to keyHandler
+      this._keyHandler.processInput(sequence)
     })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
@@ -1224,6 +1232,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this._keyHandler.suspend()
+    this._stdinBuffer.clear()
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
@@ -1313,7 +1322,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    this._keyHandler.destroy()
+    this._stdinBuffer.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
 
