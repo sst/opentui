@@ -162,15 +162,18 @@ world
     setCount(100)
     await testSetup.renderOnce()
 
-    for (let i = 0; i < 100; i++) {
-      mockTreeSitterClient.resolveHighlightOnce()
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await testSetup.renderOnce()
 
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
       await testSetup.renderOnce()
     }
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await testSetup.renderOnce()
 
     const frameAfterScroll = testSetup.captureCharFrame()
 
@@ -233,11 +236,16 @@ world
     await testSetup.renderOnce()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await testSetup.renderOnce()
 
     if (scrollRef) {
       scrollRef.scrollTo(scrollRef.scrollHeight)
     }
+    await testSetup.renderOnce()
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
     await testSetup.renderOnce()
 
     const frame = testSetup.captureCharFrame()
