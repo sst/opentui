@@ -331,6 +331,38 @@ pub const UnifiedTextBuffer = struct {
         try self.setTextInternal(mem_id, text);
     }
 
+    /// Append text to the end of the buffer without clearing
+    pub fn append(self: *Self, text: []const u8) TextBufferError!void {
+        if (text.len == 0) {
+            return;
+        }
+
+        const mem_id = try self.mem_registry.register(text, false);
+        try self.appendInternal(mem_id, text);
+    }
+
+    /// Append text from a pre-registered memory ID
+    pub fn appendFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
+        const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
+        try self.appendInternal(mem_id, text);
+    }
+
+    /// Internal append that doesn't register memory
+    fn appendInternal(self: *Self, mem_id: u8, text: []const u8) TextBufferError!void {
+        if (text.len == 0) {
+            return;
+        }
+
+        // The rope's boundary rewrite will handle normalization at join points
+        var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, false);
+        defer result.segments.deinit();
+
+        const insert_pos = self.rope.count();
+        try self.rope.insert_slice(insert_pos, result.segments.items);
+
+        self.markAllViewsDirty();
+    }
+
     /// Internal setText that doesn't call clear (for use by setStyledText)
     fn setTextInternal(self: *Self, mem_id: u8, text: []const u8) TextBufferError!void {
         if (text.len == 0) {

@@ -23,6 +23,7 @@ export class TextBuffer {
   private _syntaxStyle?: SyntaxStyle
   private _textBytes?: Uint8Array
   private _memId?: number
+  private _appendedChunks: Uint8Array[] = []
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
@@ -52,6 +53,18 @@ export class TextBuffer {
     }
 
     this.lib.textBufferSetTextFromMem(this.bufferPtr, this._memId)
+    this._length = this.lib.textBufferGetLength(this.bufferPtr)
+    this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
+    this._lineInfo = undefined
+    this._appendedChunks = [] // Clear any previously appended chunks
+  }
+
+  public append(text: string): void {
+    this.guard()
+    const textBytes = this.lib.encoder.encode(text)
+    // Keep the bytes alive to prevent garbage collection
+    this._appendedChunks.push(textBytes)
+    this.lib.textBufferAppend(this.bufferPtr, textBytes)
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
@@ -216,6 +229,7 @@ export class TextBuffer {
     this._byteSize = 0
     this._lineInfo = undefined
     this._textBytes = undefined
+    this._appendedChunks = []
     // Note: _memId is NOT cleared - it can be reused for next setText
   }
 
@@ -227,6 +241,7 @@ export class TextBuffer {
     this._lineInfo = undefined
     this._textBytes = undefined
     this._memId = undefined // Reset clears the registry, so clear our ID
+    this._appendedChunks = []
   }
 
   public destroy(): void {
