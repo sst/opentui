@@ -103,6 +103,10 @@ pub const CliRenderer = struct {
     hitGridWidth: u32,
     hitGridHeight: u32,
 
+    lastCursorStyleTag: ?u8 = null,
+    lastCursorBlinking: ?bool = null,
+    lastCursorColorRGB: ?[3]u8 = null,
+
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
     var outputBufferLen: usize = 0;
@@ -183,6 +187,9 @@ pub const CliRenderer = struct {
             .renderOffset = 0,
             .terminal = Terminal.init(.{}),
             .testing = testing,
+            .lastCursorStyleTag = null,
+            .lastCursorBlinking = null,
+            .lastCursorColorRGB = null,
 
             .renderStats = .{
                 .lastFrameTime = 0,
@@ -681,12 +688,27 @@ pub const CliRenderer = struct {
             const cursorG = rgbaComponentToU8(cursorColor[1]);
             const cursorB = rgbaComponentToU8(cursorColor[2]);
 
-            ansi.ANSI.cursorColorOutputWriter(writer, cursorR, cursorG, cursorB) catch {};
-            writer.writeAll(cursorStyleCode) catch {};
+            const styleTag: u8 = @intFromEnum(cursorStyle.style);
+            const styleChanged = (self.lastCursorStyleTag == null or self.lastCursorStyleTag.? != styleTag) or
+                (self.lastCursorBlinking == null or self.lastCursorBlinking.? != cursorStyle.blinking);
+            const colorChanged = (self.lastCursorColorRGB == null or self.lastCursorColorRGB.?[0] != cursorR or self.lastCursorColorRGB.?[1] != cursorG or self.lastCursorColorRGB.?[2] != cursorB);
+
+            if (colorChanged) {
+                ansi.ANSI.cursorColorOutputWriter(writer, cursorR, cursorG, cursorB) catch {};
+                self.lastCursorColorRGB = .{ cursorR, cursorG, cursorB };
+            }
+            if (styleChanged) {
+                writer.writeAll(cursorStyleCode) catch {};
+                self.lastCursorStyleTag = styleTag;
+                self.lastCursorBlinking = cursorStyle.blinking;
+            }
             ansi.ANSI.moveToOutput(writer, cursorPos.x, cursorPos.y + self.renderOffset) catch {};
             writer.writeAll(ansi.ANSI.showCursor) catch {};
         } else {
             writer.writeAll(ansi.ANSI.hideCursor) catch {};
+            self.lastCursorStyleTag = null;
+            self.lastCursorBlinking = null;
+            self.lastCursorColorRGB = null;
         }
 
         const renderEndTime = std.time.microTimestamp();
