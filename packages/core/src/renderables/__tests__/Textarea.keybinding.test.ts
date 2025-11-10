@@ -646,6 +646,41 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.plainText).toBe("Hello ")
     })
 
+    it("should delete from cursor to line start with ctrl+u", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("u", { ctrl: true })
+      expect(editor.plainText).toBe("World")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should map delete-to-line-start action to custom key", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "x", ctrl: true, action: "delete-to-line-start" }],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("x", { ctrl: true })
+      expect(editor.plainText).toBe("World")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
     it("should map buffer-home and buffer-end to custom keys", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",

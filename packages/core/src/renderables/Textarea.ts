@@ -28,6 +28,7 @@ export type TextareaAction =
   | "buffer-end"
   | "delete-line"
   | "delete-to-line-end"
+  | "delete-to-line-start"
   | "backspace"
   | "delete"
   | "newline"
@@ -60,6 +61,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "e", ctrl: true, action: "buffer-end" },
   { name: "d", ctrl: true, action: "delete-line" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
+  { name: "u", ctrl: true, action: "delete-to-line-start" },
   { name: "backspace", action: "backspace" },
   { name: "backspace", shift: true, action: "backspace" },
   { name: "delete", action: "delete" },
@@ -186,6 +188,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["buffer-end", () => this.gotoBufferEnd()],
       ["delete-line", () => this.deleteLine()],
       ["delete-to-line-end", () => this.deleteToLineEnd()],
+      ["delete-to-line-start", () => this.deleteToLineStart()],
       ["backspace", () => this.deleteCharBackward()],
       ["delete", () => this.deleteChar()],
       ["newline", () => this.newLine()],
@@ -399,6 +402,17 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     if (eol.col > cursor.col) {
       this.editBuffer.deleteRange(cursor.row, cursor.col, eol.row, eol.col)
+    }
+
+    this.requestRender()
+    return true
+  }
+
+  public deleteToLineStart(): boolean {
+    const cursor = this.editorView.getCursor()
+
+    if (cursor.col > 0) {
+      this.editBuffer.deleteRange(cursor.row, 0, cursor.row, cursor.col)
     }
 
     this.requestRender()
