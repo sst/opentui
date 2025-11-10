@@ -312,3 +312,190 @@ test("parseKeypress - Kitty progressive enhancement fallback", () => {
   expect(result.name).toBe("up")
   expect(result.shift).toBe(true)
 })
+
+test("parseKeypress - Kitty sequences are NOT filtered by terminal response filters", () => {
+  // This test ensures that ALL Kitty keyboard protocol sequences bypass
+  // the terminal response filters and reach the Kitty parser correctly.
+  // Kitty sequences all end with 'u' while filtered sequences end with other characters.
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  // Basic letters (all should have source: "kitty")
+  const letters = ["a", "z", "A", "Z", "0", "9"]
+  for (const letter of letters) {
+    const code = letter.charCodeAt(0)
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+  }
+
+  // All standard keys
+  const standardKeys = [
+    [27, "escape"],
+    [9, "tab"],
+    [13, "return"],
+    [127, "backspace"],
+  ] as const
+  for (const [code, expectedName] of standardKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // All arrow keys
+  const arrowKeys = [
+    [57350, "left"],
+    [57351, "right"],
+    [57352, "up"],
+    [57353, "down"],
+  ] as const
+  for (const [code, expectedName] of arrowKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // All navigation keys
+  const navKeys = [
+    [57348, "insert"],
+    [57349, "delete"],
+    [57354, "pageup"],
+    [57355, "pagedown"],
+    [57356, "home"],
+    [57357, "end"],
+  ] as const
+  for (const [code, expectedName] of navKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // All function keys (F1-F35)
+  for (let i = 1; i <= 35; i++) {
+    const code = 57363 + i
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(`f${i}`)
+  }
+
+  // All keypad keys
+  const keypadKeys = [
+    [57400, "kp0"],
+    [57401, "kp1"],
+    [57409, "kp9"],
+    [57410, "kpdecimal"],
+    [57411, "kpdivide"],
+    [57412, "kpmultiply"],
+    [57413, "kpminus"],
+    [57414, "kpplus"],
+    [57415, "kpenter"],
+    [57416, "kpequal"],
+  ] as const
+  for (const [code, expectedName] of keypadKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // All media keys
+  const mediaKeys = [
+    [57428, "mediaplay"],
+    [57429, "mediapause"],
+    [57430, "mediaplaypause"],
+    [57431, "mediareverse"],
+    [57432, "mediastop"],
+    [57433, "mediafastforward"],
+    [57434, "mediarewind"],
+    [57435, "medianext"],
+    [57436, "mediaprev"],
+    [57437, "mediarecord"],
+  ] as const
+  for (const [code, expectedName] of mediaKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // Volume keys
+  const volumeKeys = [
+    [57438, "volumedown"],
+    [57439, "volumeup"],
+    [57440, "mute"],
+  ] as const
+  for (const [code, expectedName] of volumeKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // All modifier keys
+  const modifierKeys = [
+    [57441, "leftshift"],
+    [57442, "leftctrl"],
+    [57443, "leftalt"],
+    [57444, "leftsuper"],
+    [57445, "lefthyper"],
+    [57446, "leftmeta"],
+    [57447, "rightshift"],
+    [57448, "rightctrl"],
+    [57449, "rightalt"],
+    [57450, "rightsuper"],
+    [57451, "righthyper"],
+    [57452, "rightmeta"],
+  ] as const
+  for (const [code, expectedName] of modifierKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // Special ISO keys
+  const isoKeys = [
+    [57453, "iso_level3_shift"],
+    [57454, "iso_level5_shift"],
+  ] as const
+  for (const [code, expectedName] of isoKeys) {
+    const result = parseKeypress(`\x1b[${code}u`, options)
+    expect(result).not.toBeNull()
+    expect(result?.source).toBe("kitty")
+    expect(result?.name).toBe(expectedName)
+  }
+
+  // Keys with modifiers
+  const withModifiers = parseKeypress("\x1b[97;5u", options) // Ctrl+a
+  expect(withModifiers).not.toBeNull()
+  expect(withModifiers?.source).toBe("kitty")
+  expect(withModifiers?.ctrl).toBe(true)
+
+  // Keys with event types
+  const withEventType = parseKeypress("\x1b[97;1:3u", options) // a release
+  expect(withEventType).not.toBeNull()
+  expect(withEventType?.source).toBe("kitty")
+  expect(withEventType?.eventType).toBe("release")
+
+  // Keys with all fields (unicode:shifted:base; modifiers:event; text)
+  const complex = parseKeypress("\x1b[97:65:113;5:2;97u", options)
+  expect(complex).not.toBeNull()
+  expect(complex?.source).toBe("kitty")
+  expect(complex?.ctrl).toBe(true)
+  expect(complex?.eventType).toBe("repeat")
+
+  // Unicode characters
+  const unicode = parseKeypress("\x1b[233u", options) // é
+  expect(unicode).not.toBeNull()
+  expect(unicode?.source).toBe("kitty")
+  expect(unicode?.name).toBe("é")
+
+  // Emoji
+  const emoji = parseKeypress("\x1b[128512u", options) // 😀
+  expect(emoji).not.toBeNull()
+  expect(emoji?.source).toBe("kitty")
+  expect(emoji?.name).toBe("😀")
+})

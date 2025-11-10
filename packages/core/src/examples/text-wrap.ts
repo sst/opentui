@@ -632,8 +632,8 @@ export function run(renderer: CliRenderer): void {
   mainContainer.add(instructionsBox)
 
   // Handle keyboard input
-  renderer.on("key", async (data) => {
-    const key = data.toString()
+  renderer.keyInput.on("keypress", async (event) => {
+    const key = event.sequence
 
     // If input is visible, don't process other keys (let input handle them)
     if (isInputVisible) {

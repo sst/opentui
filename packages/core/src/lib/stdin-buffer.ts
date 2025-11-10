@@ -1,5 +1,5 @@
 /**
- * StdinBuffer wraps a stdin stream and emits complete sequences.
+ * StdinBuffer buffers input and emits complete sequences.
  *
  * This is necessary because stdin data events can arrive in partial chunks,
  * especially for escape sequences like mouse events. Without buffering,
@@ -11,6 +11,7 @@
  * - Event 3: `;20;5m`
  *
  * The buffer accumulates these until a complete sequence is detected.
+ * Call the `process()` method to feed input data.
  */
 
 import { EventEmitter } from "events"
@@ -44,6 +45,16 @@ function isCompleteSequence(data: string): "complete" | "incomplete" | "not-esca
   // OSC sequences: ESC ]
   if (afterEsc.startsWith("]")) {
     return isCompleteOscSequence(data)
+  }
+
+  // DCS sequences: ESC P ... ESC \ (includes XTVersion responses)
+  if (afterEsc.startsWith("P")) {
+    return isCompleteDcsSequence(data)
+  }
+
+  // APC sequences: ESC _ ... ESC \ (includes Kitty graphics responses)
+  if (afterEsc.startsWith("_")) {
+    return isCompleteApcSequence(data)
   }
 
   // SS3 sequences: ESC O
@@ -127,6 +138,42 @@ function isCompleteOscSequence(data: string): "complete" | "incomplete" {
 }
 
 /**
+ * Check if DCS (Device Control String) sequence is complete
+ * DCS sequences: ESC P ... ST (where ST is ESC \)
+ * Used for XTVersion responses like ESC P >| ... ESC \
+ */
+function isCompleteDcsSequence(data: string): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + "P")) {
+    return "complete"
+  }
+
+  // DCS sequences end with ST (ESC \)
+  if (data.endsWith(ESC + "\\")) {
+    return "complete"
+  }
+
+  return "incomplete"
+}
+
+/**
+ * Check if APC (Application Program Command) sequence is complete
+ * APC sequences: ESC _ ... ST (where ST is ESC \)
+ * Used for Kitty graphics responses like ESC _ G ... ESC \
+ */
+function isCompleteApcSequence(data: string): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + "_")) {
+    return "complete"
+  }
+
+  // APC sequences end with ST (ESC \)
+  if (data.endsWith(ESC + "\\")) {
+    return "complete"
+  }
+
+  return "incomplete"
+}
+
+/**
  * Split accumulated buffer into complete sequences
  */
 function extractCompleteSequences(buffer: string): { sequences: string[]; remainder: string } {
@@ -184,29 +231,20 @@ export type StdinBufferEventMap = {
 }
 
 /**
- * Wraps a stdin stream and emits complete sequences via the 'data' event.
+ * Buffers stdin input and emits complete sequences via the 'data' event.
  * Handles partial escape sequences that arrive across multiple chunks.
  */
 export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   private buffer: string = ""
   private timeout: Timer | null = null
   private readonly timeoutMs: number
-  private readonly stdin: NodeJS.ReadStream
-  private readonly stdinListener: (data: Buffer) => void
 
-  constructor(stdin: NodeJS.ReadStream, options: StdinBufferOptions = {}) {
+  constructor(options: StdinBufferOptions = {}) {
     super()
-    this.stdin = stdin
     this.timeoutMs = options.timeout ?? 10
-
-    this.stdinListener = (data: Buffer) => {
-      this.handleData(data)
-    }
-
-    this.stdin.on("data", this.stdinListener)
   }
 
-  private handleData(data: string | Buffer): void {
+  public process(data: string | Buffer): void {
     // Clear any pending timeout
     if (this.timeout) {
       clearTimeout(this.timeout)
@@ -215,7 +253,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
     // Handle high-byte conversion (for compatibility with parseKeypress)
     // If buffer has single byte > 127, convert to ESC + (byte - 128)
-    // TODO: This seems overheadish as parseKeypress should handle this.
+    // TODO: This seems redundant as parseKeypress should handle this.
     let str: string
     if (Buffer.isBuffer(data)) {
       if (data.length === 1 && data[0]! > 127) {
@@ -281,7 +319,6 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   }
 
   destroy(): void {
-    this.stdin.removeListener("data", this.stdinListener)
     this.clear()
   }
 }

@@ -6,15 +6,43 @@ import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
 
 let currentRenderer: TestRenderer
 let kittyRenderer: TestRenderer
+let mockProcessCapabilityResponse: any
+let mockGetTerminalCapabilities: any
 
 beforeEach(async () => {
   // Small delay to ensure any pending StdinBuffer timeouts from previous tests complete
   await new Promise((resolve) => setTimeout(resolve, 15))
   ;({ renderer: currentRenderer } = await createTestRenderer({}))
   ;({ renderer: kittyRenderer } = await createTestRenderer({ useKittyKeyboard: true }))
+
+  // Mock native capability functions to avoid interfering with the test terminal
+  // @ts-expect-error - mocking for test
+  mockProcessCapabilityResponse = currentRenderer.lib.processCapabilityResponse
+  // @ts-expect-error - mocking for test
+  mockGetTerminalCapabilities = currentRenderer.lib.getTerminalCapabilities
+
+  // @ts-expect-error - mocking for test
+  currentRenderer.lib.processCapabilityResponse = () => {}
+  // @ts-expect-error - mocking for test
+  currentRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+
+  // @ts-expect-error - mocking for test
+  kittyRenderer.lib.processCapabilityResponse = () => {}
+  // @ts-expect-error - mocking for test
+  kittyRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
 })
 
 afterEach(() => {
+  // Restore mocks
+  // @ts-expect-error - restore mock
+  currentRenderer.lib.processCapabilityResponse = mockProcessCapabilityResponse
+  // @ts-expect-error - restore mock
+  currentRenderer.lib.getTerminalCapabilities = mockGetTerminalCapabilities
+  // @ts-expect-error - restore mock
+  kittyRenderer.lib.processCapabilityResponse = mockProcessCapabilityResponse
+  // @ts-expect-error - restore mock
+  kittyRenderer.lib.getTerminalCapabilities = mockGetTerminalCapabilities
+
   currentRenderer.destroy()
   kittyRenderer.destroy()
 })
@@ -1348,4 +1376,245 @@ test("KeyEventType type validation", async () => {
     }
     expect(mockKey.eventType).toBe(eventType)
   }
+})
+
+// ===== CAPABILITY RESPONSE HANDLING TESTS =====
+
+test("capability responses should not trigger keypress events", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Send various capability responses - none should trigger keypresses
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y")) // DECRPM
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[1;2R")) // CPR
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?62;c")) // DA1
+
+  // Wait for StdinBuffer timeout
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("capability response followed by keypress", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Send capability response followed by 'a'
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$ya"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(1)
+  expect(keypresses[0].name).toBe("a")
+})
+
+test("chunked XTVersion response should not trigger keypresses", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Send XTVersion in chunks (chunks arrive quickly, within StdinBuffer timeout)
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP>|kit"))
+  currentRenderer.stdin.emit("data", Buffer.from("ty(0.40"))
+  currentRenderer.stdin.emit("data", Buffer.from(".1)\x1b\\"))
+
+  // Wait for StdinBuffer to process
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("chunked XTVersion followed by keypress", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Send XTVersion in chunks followed by 'x'
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP>|ghostty"))
+  currentRenderer.stdin.emit("data", Buffer.from(" 1.1.3\x1b\\x"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(1)
+  expect(keypresses[0].name).toBe("x")
+})
+
+test("chunked Kitty graphics response should not trigger keypresses", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Send Kitty graphics response in chunks (arriving quickly)
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b_Gi=1;"))
+  currentRenderer.stdin.emit("data", Buffer.from("EINVAL:"))
+  currentRenderer.stdin.emit("data", Buffer.from("Zero width/height not allowed\x1b\\"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("multiple DECRPM responses in sequence", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Simulate multiple DECRPM responses arriving together
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("pixel resolution response should not trigger keypress", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Mark as waiting for resolution
+  // @ts-expect-error - accessing private property for testing
+  currentRenderer.waitingForPixelResolution = true
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+  expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
+})
+
+test("chunked pixel resolution response", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // @ts-expect-error - accessing private property for testing
+  currentRenderer.waitingForPixelResolution = true
+
+  // Send pixel resolution in chunks (arriving quickly)
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;72"))
+  currentRenderer.stdin.emit("data", Buffer.from("0;1280t"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+  expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
+})
+
+test("kitty full capability response arriving in realistic chunks", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Simulate how kitty might send its full response in a few chunks
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y\x1b[?2027;0$y"))
+  await new Promise((resolve) => setTimeout(resolve, 1))
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?2031;2$y\x1b[?1004;1$y\x1b[1;2R\x1b[1;3R"))
+  await new Promise((resolve) => setTimeout(resolve, 1))
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP>|kitty(0."))
+  await new Promise((resolve) => setTimeout(resolve, 1))
+
+  currentRenderer.stdin.emit("data", Buffer.from("40.1)\x1b\\\x1b_Gi=1;OK\x1b\\"))
+  await new Promise((resolve) => setTimeout(resolve, 1))
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?62;c"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("capability response interleaved with user input", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // User types 'h'
+  currentRenderer.stdin.emit("data", Buffer.from("h"))
+
+  // Capability response arrives
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y"))
+
+  // User types 'e'
+  currentRenderer.stdin.emit("data", Buffer.from("e"))
+
+  // More capability responses
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP>|kitty(0.40.1)\x1b\\"))
+
+  // User types 'llo'
+  currentRenderer.stdin.emit("data", Buffer.from("llo"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  // Should only have user keypresses
+  expect(keypresses).toHaveLength(5)
+  expect(keypresses.map((k) => k.name)).toEqual(["h", "e", "l", "l", "o"])
+})
+
+test("delayed capability responses should be processed", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // User input first
+  currentRenderer.stdin.emit("data", Buffer.from("abc"))
+
+  // Late capability response (e.g., terminal was slow to respond)
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?2027;2$y"))
+
+  // Wait for processing
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  // Should have user input but not capability
+  expect(keypresses).toHaveLength(3)
+  expect(keypresses.map((k) => k.name)).toEqual(["a", "b", "c"])
+})
+
+test("vscode minimal capability response", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // VSCode often sends just one DECRPM
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("alacritty capability response sequence", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Simulate alacritty's response pattern
+  const alacrittyResponse =
+    "\x1b[?1016;0$y\x1b[?2027;0$y\x1b[?2031;0$y\x1b[?1004;2$y\x1b[?2004;2$y\x1b[?2026;2$y\x1b[1;1R\x1b[1;1R\x1b[?0u\x1b[?6c"
+  currentRenderer.stdin.emit("data", Buffer.from(alacrittyResponse))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(0)
 })
