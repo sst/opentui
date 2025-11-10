@@ -90,25 +90,42 @@ function encodeKittySequence(
   }
 }
 
+interface ResolvedKey {
+  keyValue: string
+  keyName: string | undefined
+}
+
+function resolveKeyInput(key: KeyInput): ResolvedKey {
+  let keyValue: string
+  let keyName: string | undefined
+
+  if (typeof key === "string") {
+    if (key in KeyCodes) {
+      // It's a KeyCode name like "BACKSPACE", "ARROW_UP", etc.
+      keyValue = KeyCodes[key as keyof typeof KeyCodes]
+      keyName = key.toLowerCase()
+    } else {
+      // It's a regular character
+      keyValue = key
+      keyName = undefined
+    }
+  } else {
+    // It's already a keycode enum value
+    keyValue = KeyCodes[key]
+    if (!keyValue) {
+      throw new Error(`Unknown key: ${key}`)
+    }
+    keyName = String(key).toLowerCase()
+  }
+
+  return { keyValue, keyName }
+}
+
 export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions) {
   const useKittyKeyboard = options?.kittyKeyboard ?? false
   const pressKeys = async (keys: KeyInput[], delayMs: number = 0): Promise<void> => {
     for (const key of keys) {
-      let keyCode: string
-      if (typeof key === "string") {
-        // If it's a string but also exists in KeyCodes, use the KeyCodes value
-        if (key in KeyCodes) {
-          keyCode = KeyCodes[key as keyof typeof KeyCodes]
-        } else {
-          keyCode = key
-        }
-      } else {
-        // It's a KeyCode enum value
-        keyCode = KeyCodes[key]
-        if (!keyCode) {
-          throw new Error(`Unknown key: ${key}`)
-        }
-      }
+      const { keyValue: keyCode } = resolveKeyInput(key)
 
       renderer.stdin.emit("data", Buffer.from(keyCode))
 
@@ -121,25 +138,8 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
   const pressKey = (key: KeyInput, modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
     // Handle Kitty keyboard protocol mode
     if (useKittyKeyboard) {
-      // First, resolve the key to its string representation or keycode value
-      let keyValue: string
-      let keyName: string | undefined
-
-      if (typeof key === "string") {
-        if (key in KeyCodes) {
-          // It's a KeyCode name like "BACKSPACE", "ARROW_UP", etc.
-          keyValue = KeyCodes[key as keyof typeof KeyCodes]
-          keyName = key.toLowerCase()
-        } else {
-          // It's a regular character
-          keyValue = key
-          keyName = undefined
-        }
-      } else {
-        // It's already a keycode enum value
-        keyValue = KeyCodes[key]
-        keyName = String(key).toLowerCase()
-      }
+      // Resolve the key to its string representation or keycode value
+      let { keyValue, keyName } = resolveKeyInput(key)
 
       // Map control characters and escape sequences to their kitty key names
       const valueToKeyNameMap: Record<string, string> = {
@@ -189,21 +189,7 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
     }
 
     // Regular (non-Kitty) mode
-    let keyCode: string
-    if (typeof key === "string") {
-      // If it's a string but also exists in KeyCodes, use the KeyCodes value
-      if (key in KeyCodes) {
-        keyCode = KeyCodes[key as keyof typeof KeyCodes]
-      } else {
-        keyCode = key
-      }
-    } else {
-      // This branch handles KeyCode enum values (though they're strings at runtime)
-      keyCode = KeyCodes[key]
-      if (!keyCode) {
-        throw new Error(`Unknown key: ${key}`)
-      }
-    }
+    let keyCode = resolveKeyInput(key).keyValue
 
     // Apply modifiers if present
     if (modifiers) {
