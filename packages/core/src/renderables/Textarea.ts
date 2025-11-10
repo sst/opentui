@@ -61,6 +61,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "d", ctrl: true, action: "delete-line" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
   { name: "backspace", action: "backspace" },
+  { name: "backspace", shift: true, action: "backspace" },
   { name: "delete", action: "delete" },
   { name: "return", action: "newline" },
   { name: "linefeed", action: "newline" },

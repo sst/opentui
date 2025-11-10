@@ -806,6 +806,160 @@ describe("TextareaRenderable", () => {
       currentMockInput.pressArrow("left")
       expect(editor.logicalCursor.col).toBe(2)
     })
+
+    it("should handle shift+backspace same as backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999) // Move to end
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("Hello Worl")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("Hello Wor")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("Hello Wo")
+    })
+
+    it("should join lines with shift+backspace at start of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "First\nSecond",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("FirstSecond")
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(5)
+    })
+
+    it("should handle shift+backspace with selection", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe(" World")
+      expect(editor.hasSelection()).toBe(false)
+    })
+
+    it("should delete characters consistently with shift+backspace after typing", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("T")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("s")
+      currentMockInput.pressKey("t")
+      expect(editor.plainText).toBe("Test")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("Tes")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("Te")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("T")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not differentiate between backspace and shift+backspace behavior", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "ABCDEF",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("ABCDE")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("ABCD")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("ABC")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("AB")
+    })
+
+    it("should handle shift+backspace at start of buffer", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("Test")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should handle alternating backspace and shift+backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
+        initialValue: "123456",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.plainText).toBe("123456")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("12345")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("1234")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("123")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("12")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("1")
+
+      currentMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(editor.plainText).toBe("")
+    })
   })
 
   describe("Keyboard Input - Enter/Return", () => {
