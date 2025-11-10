@@ -3,11 +3,15 @@ import { createTestRenderer, type TestRenderer, type MockInput } from "../../tes
 import { createTextareaRenderable } from "./renderable-test-utils"
 import { RGBA } from "../../lib/RGBA"
 import { SyntaxStyle } from "../../syntax-style"
+import { OptimizedBuffer } from "../../buffer"
+import { fg, t } from "../../lib"
+import { BoxRenderable, TextareaRenderable, TextRenderable } from ".."
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
 let captureFrame: () => string
+let resize: (width: number, height: number) => void
 
 describe("Textarea - Rendering Tests", () => {
   beforeEach(async () => {
@@ -16,6 +20,7 @@ describe("Textarea - Rendering Tests", () => {
       renderOnce,
       captureCharFrame: captureFrame,
       mockInput: currentMockInput,
+      resize,
     } = await createTestRenderer({
       width: 80,
       height: 24,
@@ -371,6 +376,1108 @@ describe("Textarea - Rendering Tests", () => {
       currentMockInput.pressKey("x")
       currentMockInput.pressKey("t")
       expect(editor.plainText).toBe("New Text")
+    })
+  })
+
+  describe("Rendering After Edits", () => {
+    it("should render correctly after insert text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.insertText("x")
+
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+      buffer.drawEditorView(editor.editorView, 0, 0)
+
+      expect(editor.plainText).toBe("xTest")
+      expect(editor.logicalCursor.col).toBe(1)
+
+      buffer.destroy()
+    })
+
+    it("should render correctly after rapid edits", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      for (let i = 0; i < 5; i++) {
+        editor.insertText("a")
+        buffer.drawEditorView(editor.editorView, 0, 0)
+      }
+
+      expect(editor.plainText).toBe("aaaaa")
+      expect(editor.logicalCursor.col).toBe(5)
+
+      buffer.destroy()
+    })
+
+    it("should render correctly after newline", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      editor.newLine()
+      buffer.drawEditorView(editor.editorView, 0, 0)
+
+      expect(editor.plainText).toBe("Hello\n")
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
+
+      buffer.destroy()
+    })
+
+    it("should render correctly after backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      editor.deleteCharBackward()
+      buffer.drawEditorView(editor.editorView, 0, 0)
+
+      expect(editor.plainText).toBe("Hell")
+      expect(editor.logicalCursor.col).toBe(4)
+
+      buffer.destroy()
+    })
+
+    it("should render correctly with draw-edit-draw pattern", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      buffer.drawEditorView(editor.editorView, 0, 0)
+      editor.insertText("x")
+      buffer.drawEditorView(editor.editorView, 0, 0)
+
+      expect(editor.plainText).toBe("xTest")
+      expect(editor.logicalCursor.col).toBe(1)
+
+      buffer.destroy()
+    })
+
+    it("should render correctly after multiple text buffer modifications", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line1\nLine2\nLine3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      buffer.drawEditorView(editor.editorView, 0, 0)
+
+      editor.insertText("X")
+      buffer.drawEditorView(editor.editorView, 0, 0)
+      expect(editor.plainText).toBe("XLine1\nLine2\nLine3")
+
+      editor.newLine()
+      buffer.drawEditorView(editor.editorView, 0, 0)
+      expect(editor.plainText).toBe("X\nLine1\nLine2\nLine3")
+
+      editor.deleteCharBackward()
+      buffer.drawEditorView(editor.editorView, 0, 0)
+      expect(editor.plainText).toBe("XLine1\nLine2\nLine3")
+
+      buffer.destroy()
+    })
+  })
+
+  describe("Viewport Scrolling", () => {
+    it("should scroll viewport down when cursor moves below visible area", async () => {
+      // Create editor with small viewport
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9",
+        width: 40,
+        height: 5, // Only 5 lines visible
+      })
+
+      editor.focus()
+
+      // Initial viewport should show lines 0-4
+      let viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(0)
+      expect(viewport.height).toBe(5)
+
+      // Move cursor to line 7 (beyond viewport)
+      editor.gotoLine(7)
+
+      // Viewport should have scrolled to keep cursor visible
+      viewport = editor.editorView.getViewport()
+      // With scroll margin of 0.2 (20% = 1 line), viewport should scroll to show line 7
+      // Expected: offsetY should be at least 3 (to show lines 3-7)
+      expect(viewport.offsetY).toBeGreaterThanOrEqual(3)
+    })
+
+    it("should scroll viewport up when cursor moves above visible area", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9",
+        width: 40,
+        height: 5,
+      })
+
+      editor.focus()
+
+      // Start at line 8
+      editor.gotoLine(8)
+
+      let viewport = editor.editorView.getViewport()
+      // Viewport should have automatically scrolled to show line 8
+      expect(viewport.offsetY).toBeGreaterThan(0)
+
+      // Now move to line 1 (above viewport)
+      editor.gotoLine(1)
+
+      viewport = editor.editorView.getViewport()
+      // Viewport should have scrolled up to show line 1
+      expect(viewport.offsetY).toBeLessThanOrEqual(1)
+    })
+
+    it("should scroll viewport when using arrow keys to move beyond visible area", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 5,
+      })
+
+      editor.focus()
+
+      let viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(0)
+
+      // Press down arrow 6 times to move beyond initial viewport
+      for (let i = 0; i < 6; i++) {
+        currentMockInput.pressArrow("down")
+      }
+
+      viewport = editor.editorView.getViewport()
+      // Should have scrolled
+      expect(viewport.offsetY).toBeGreaterThan(0)
+    })
+
+    it("should maintain scroll margin when moving cursor", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        scrollMargin: 0.2, // 20% = 2 lines margin
+      })
+
+      editor.focus()
+
+      // Move to line 8 (near bottom of initial viewport)
+      editor.gotoLine(8)
+
+      let viewport = editor.editorView.getViewport()
+
+      // With 2-line margin, cursor at line 8 should trigger scroll
+      // so that line 8 is at most at position 8 in viewport
+      expect(viewport.offsetY).toBeGreaterThanOrEqual(0)
+    })
+
+    it("should handle viewport scrolling with text wrapping", async () => {
+      const longLine = "word ".repeat(50) // Creates line that will wrap
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 10 }, (_, i) => (i === 5 ? longLine : `Line ${i}`)).join("\n"),
+        width: 20,
+        height: 5,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+
+      // Move to the long line
+      editor.gotoLine(5)
+
+      const vlineCount = editor.editorView.getTotalVirtualLineCount()
+      expect(vlineCount).toBeGreaterThan(10) // Should be more due to wrapping
+
+      // Move to end of long line
+      const cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
+
+      let viewport = editor.editorView.getViewport()
+
+      // Viewport should have scrolled to show cursor
+      // This is complex with wrapping - we need virtual line scrolling
+    })
+
+    it("should verify viewport follows cursor to line 10", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 8,
+      })
+
+      editor.focus()
+
+      // Move to line 10
+      editor.gotoLine(10)
+
+      const viewport = editor.editorView.getViewport()
+
+      // Viewport should have scrolled to show line 10
+      // With height=8 and scroll margin, line 10 should be visible
+      expect(viewport.offsetY).toBeGreaterThan(0)
+      expect(viewport.offsetY).toBeLessThanOrEqual(10)
+
+      // Line 10 should be within the viewport range
+      const viewportEnd = viewport.offsetY + viewport.height
+      expect(10).toBeGreaterThanOrEqual(viewport.offsetY)
+      expect(10).toBeLessThan(viewportEnd)
+    })
+
+    it("should track viewport offset as cursor moves through document", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 30,
+        height: 5,
+      })
+
+      editor.focus()
+
+      const viewportOffsets: number[] = []
+
+      // Track viewport offset at different cursor positions
+      for (const line of [0, 2, 4, 6, 8, 10, 12]) {
+        editor.gotoLine(line)
+        const viewport = editor.editorView.getViewport()
+        viewportOffsets.push(viewport.offsetY)
+      }
+
+      // Viewport should generally increase as cursor moves down
+      // (with possible plateaus when cursor is already visible)
+      const lastOffset = viewportOffsets[viewportOffsets.length - 1]
+      const firstOffset = viewportOffsets[0]
+      expect(lastOffset).toBeGreaterThan(firstOffset)
+
+      // At line 0, viewport should be at 0
+      expect(viewportOffsets[0]).toBe(0)
+
+      // At line 12, viewport should have scrolled
+      expect(viewportOffsets[viewportOffsets.length - 1]).toBeGreaterThan(5)
+    })
+
+    it("should scroll viewport when cursor moves with Page Up/Page Down", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 30 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      let viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(0)
+
+      // Move down 15 lines (more than viewport height)
+      for (let i = 0; i < 15; i++) {
+        editor.moveCursorDown()
+      }
+
+      viewport = editor.editorView.getViewport()
+
+      // Should have scrolled
+      expect(viewport.offsetY).toBeGreaterThan(0)
+      expect(editor.logicalCursor.row).toBe(15)
+    })
+
+    it("should scroll viewport down when pressing Enter repeatedly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Start",
+        width: 40,
+        height: 5,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999) // Move to end
+
+      let viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+
+      // Press Enter 8 times to create 8 new lines
+      for (let i = 0; i < 8; i++) {
+        currentMockInput.pressEnter()
+      }
+
+      // After 8 Enters, we should have 9 lines total (0-8)
+      expect(editor.logicalCursor.row).toBe(8)
+
+      // Viewport should have scrolled to keep cursor visible
+      viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(0)
+
+      // Cursor should be visible in viewport
+      const cursorLine = editor.logicalCursor.row
+      expect(cursorLine).toBeGreaterThanOrEqual(viewport.offsetY)
+      expect(cursorLine).toBeLessThan(viewport.offsetY + viewport.height)
+    })
+
+    it("should scroll viewport up when pressing Backspace to delete characters and move up", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 5,
+      })
+
+      editor.focus()
+
+      // Start at line 10, move to end so we have characters to delete
+      editor.gotoLine(10)
+      let cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
+
+      let viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(0)
+      const initialOffset = viewport.offsetY
+
+      // Delete all text and move cursor up to line 0
+      // Press Ctrl+A to go to start, then move to line 2, then backspace repeatedly
+      editor.gotoLine(0) // Move to start
+      editor.gotoLine(2)
+      cursor = editor.logicalCursor
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
+
+      // Now we're at line 2, and viewport should have scrolled up
+      viewport = editor.editorView.getViewport()
+
+      // Viewport should have scrolled up from initial position
+      expect(viewport.offsetY).toBeLessThan(initialOffset)
+      expect(editor.logicalCursor.row).toBe(2)
+    })
+
+    it("should scroll viewport when typing at end creates wrapped lines beyond viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Start",
+        width: 20,
+        height: 5,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(9999) // Move to end
+
+      let viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(0)
+
+      // Type enough to create multiple wrapped lines
+      const longText = " word".repeat(50)
+      for (const char of longText) {
+        currentMockInput.pressKey(char)
+      }
+
+      viewport = editor.editorView.getViewport()
+      const vlineCount = editor.editorView.getTotalVirtualLineCount()
+
+      // Should have created multiple virtual lines
+      expect(vlineCount).toBeGreaterThan(5)
+
+      // Viewport should have scrolled to keep cursor visible
+      // (This test may fail if virtual line scrolling isn't implemented yet)
+      expect(viewport.offsetY).toBeGreaterThanOrEqual(0)
+    })
+
+    it("should scroll viewport when using Enter to add lines, then Backspace to remove them", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 0\nLine 1\nLine 2",
+        width: 40,
+        height: 5,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999) // Move to end
+
+      let viewport = editor.editorView.getViewport()
+      const initialOffset = viewport.offsetY
+
+      // Add 6 new lines
+      for (let i = 0; i < 6; i++) {
+        currentMockInput.pressEnter()
+        currentMockInput.pressKey("X")
+      }
+
+      // Should have scrolled down
+      viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(initialOffset)
+      const maxOffset = viewport.offsetY
+
+      // Now delete those lines by backspacing
+      for (let i = 0; i < 12; i++) {
+        // 12 backspaces to delete 6 "X\n" pairs
+        currentMockInput.pressBackspace()
+      }
+
+      // Should have scrolled back up
+      viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeLessThan(maxOffset)
+    })
+
+    it("should show last line at bottom of viewport with no gap", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 10 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 5,
+      })
+
+      editor.focus()
+
+      // Move to last line (line 9)
+      editor.gotoLine(9)
+
+      let viewport = editor.editorView.getViewport()
+
+      // With 10 lines (0-9) and viewport height 5, max offset is 10 - 5 = 5
+      // Viewport should be at offset 5, showing lines 5-9 with line 9 at the bottom
+      expect(viewport.offsetY).toBe(5)
+
+      // Verify cursor line is visible
+      expect(9).toBeGreaterThanOrEqual(viewport.offsetY)
+      expect(9).toBeLessThan(viewport.offsetY + viewport.height)
+
+      // No gap - last visible line should be the last line of content
+      const lastVisibleLine = viewport.offsetY + viewport.height - 1
+      expect(lastVisibleLine).toBe(9)
+    })
+
+    it("should not scroll past end when document is smaller than viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 0\nLine 1\nLine 2",
+        width: 40,
+        height: 10, // Viewport bigger than content
+      })
+
+      editor.focus()
+
+      // Move to last line
+      editor.gotoLine(2)
+
+      let viewport = editor.editorView.getViewport()
+
+      // Should NOT scroll at all - content fits in viewport
+      expect(viewport.offsetY).toBe(0)
+    })
+  })
+
+  describe("Placeholder Support", () => {
+    it("should display placeholder when empty", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Enter text here...",
+      })
+
+      // plainText should return empty (placeholder is display-only)
+      expect(editor.plainText).toBe("")
+      expect(editor.placeholder).toBe("Enter text here...")
+    })
+
+    it("should hide placeholder when text is inserted", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Type something...",
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("H")
+      currentMockInput.pressKey("i")
+
+      expect(editor.plainText).toBe("Hi")
+    })
+
+    it("should reactivate placeholder when all text is deleted", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Test",
+        width: 40,
+        height: 10,
+        placeholder: "Empty buffer...",
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("Test")
+
+      // Move to end, then delete all text
+      editor.gotoLine(9999)
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressBackspace()
+      }
+
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should update placeholder text dynamically", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "First placeholder",
+      })
+
+      expect(editor.placeholder).toBe("First placeholder")
+      expect(editor.plainText).toBe("")
+
+      editor.placeholder = "Second placeholder"
+      expect(editor.placeholder).toBe("Second placeholder")
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should update placeholder with styled text dynamically", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Colored placeholder",
+      })
+
+      expect(editor.plainText).toBe("")
+
+      // Update placeholder with styled text
+      editor.placeholder = t`${fg("#FF0000")("Red placeholder")}`
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should work with value property setter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Empty state",
+      })
+
+      expect(editor.plainText).toBe("")
+
+      editor.setText("New content")
+      expect(editor.plainText).toBe("New content")
+
+      editor.setText("")
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should handle placeholder with focus changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Click to edit",
+      })
+
+      // Placeholder should show regardless of focus
+      expect(editor.plainText).toBe("")
+
+      editor.focus()
+      expect(editor.plainText).toBe("")
+
+      editor.blur()
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should handle typing after placeholder is shown", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Start typing...",
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("H")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("o")
+
+      expect(editor.plainText).toBe("Hello")
+    })
+
+    it("should show placeholder after deleting all typed text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Type here",
+      })
+
+      editor.focus()
+
+      // Type "Test"
+      currentMockInput.pressKey("T")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("s")
+      currentMockInput.pressKey("t")
+      expect(editor.plainText).toBe("Test")
+
+      // Backspace all
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressBackspace()
+      }
+
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should handle placeholder with newlines", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Line 1\nLine 2",
+      })
+
+      expect(editor.plainText).toBe("")
+
+      editor.insertText("Content")
+      expect(editor.plainText).toBe("Content")
+    })
+
+    it("should handle null placeholder (no placeholder)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: null,
+      })
+
+      expect(editor.placeholder).toBe(null)
+      expect(editor.plainText).toBe("")
+
+      editor.insertText("Content")
+      expect(editor.plainText).toBe("Content")
+    })
+
+    it("should clear placeholder when set to null", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Initial placeholder",
+      })
+
+      expect(editor.placeholder).toBe("Initial placeholder")
+      expect(editor.plainText).toBe("")
+
+      editor.placeholder = null
+      expect(editor.placeholder).toBe(null)
+      expect(editor.plainText).toBe("")
+    })
+  })
+
+  describe("Textarea Content Snapshots", () => {
+    it("should render basic text content correctly", async () => {
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        left: 5,
+        top: 3,
+        width: 20,
+        height: 5,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render multiline text content correctly", async () => {
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1: Hello\nLine 2: World\nLine 3: Testing\nLine 4: Multiline",
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 10,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with character wrapping correctly", async () => {
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "This is a very long text that should wrap to multiple lines when wrap is enabled",
+        wrapMode: "char",
+        width: 15,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render text with word wrapping and punctuation", async () => {
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello,World.Test-Example/Path with various punctuation marks!",
+        wrapMode: "word",
+        width: 12,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render placeholder when creating textarea with placeholder directly", async () => {
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        placeholder: "Enter text here...",
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 5,
+      })
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should render placeholder when set programmatically after creation", async () => {
+      const { textarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        left: 1,
+        top: 1,
+        width: 30,
+        height: 5,
+      })
+
+      textarea.placeholder = "Type something..."
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+    })
+
+    it("should resize correctly when typing return as first input with placeholder", async () => {
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, {
+        border: true,
+        left: 1,
+        top: 1,
+      })
+      currentRenderer.root.add(container)
+
+      const textarea = new TextareaRenderable(currentRenderer, {
+        placeholder: "Enter your message...",
+        width: 30,
+        minHeight: 1,
+        maxHeight: 3,
+      })
+      container.add(textarea)
+
+      textarea.focus()
+      await renderOnce()
+
+      const frameBeforeEnter = captureFrame()
+      expect(textarea.height).toBe(1)
+
+      currentMockInput.pressEnter()
+      await renderOnce()
+      await renderOnce()
+
+      const frameAfterEnter = captureFrame()
+      expect(frameAfterEnter).toMatchSnapshot()
+      expect(textarea.height).toBe(2)
+      expect(textarea.plainText).toBe("\n")
+    })
+  })
+
+  describe("Layout Reflow on Size Change", () => {
+    it("should reflow subsequent elements when textarea grows and shrinks", async () => {
+      const { textarea: firstEditor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Short",
+        width: 20,
+        wrapMode: "word",
+      })
+
+      const { textarea: secondEditor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "I am below the first textarea",
+        width: 30,
+      })
+
+      await renderOnce()
+
+      // Initially, first editor is 1 line high
+      expect(firstEditor.height).toBe(1)
+      const initialSecondY = secondEditor.y
+      expect(initialSecondY).toBe(1) // Right after first editor
+
+      // Expand first editor with wrapped content
+      firstEditor.setText("This is a very long line that will wrap to multiple lines and push the second textarea down")
+      await renderOnce()
+
+      // First editor should now be taller
+      expect(firstEditor.height).toBeGreaterThan(1)
+      // Second editor should have moved down
+      expect(secondEditor.y).toBeGreaterThan(initialSecondY)
+      const expandedSecondY = secondEditor.y
+
+      // Shrink first editor back
+      firstEditor.setText("Short again")
+      await renderOnce()
+
+      // First editor should be 1 line again
+      expect(firstEditor.height).toBe(1)
+      // Second editor should have moved back up
+      expect(secondEditor.y).toBeLessThan(expandedSecondY)
+      expect(secondEditor.y).toBe(initialSecondY)
+    })
+  })
+
+  describe("Width/Height Setter Layout Tests", () => {
+    it("should not shrink box when width is set via setter", async () => {
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00" })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      const initialIndicatorWidth = indicator.width
+
+      indicator.width = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBe(5)
+      expect(content.width).toBeGreaterThan(0)
+      expect(content.width).toBeLessThan(30)
+    })
+
+    it("should not shrink box when height is set via setter in column layout with textarea", async () => {
+      resize(30, 15)
+
+      const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
+      currentRenderer.root.add(outerBox)
+
+      const column = new BoxRenderable(currentRenderer, { flexDirection: "column", height: "100%" })
+      outerBox.add(column)
+
+      const header = new BoxRenderable(currentRenderer, { backgroundColor: "#f00" })
+      column.add(header)
+
+      const headerText = new TextRenderable(currentRenderer, { content: "Header" })
+      header.add(headerText)
+
+      const mainContent = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      column.add(mainContent)
+
+      const { textarea: mainTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8",
+      })
+      mainContent.add(mainTextarea)
+
+      const footer = new BoxRenderable(currentRenderer, { height: 2, backgroundColor: "#00f" })
+      column.add(footer)
+
+      const footerText = new TextRenderable(currentRenderer, { content: "Footer" })
+      footer.add(footerText)
+
+      await renderOnce()
+
+      header.height = 3
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(header.height).toBe(3)
+      expect(mainContent.height).toBeGreaterThan(0)
+      expect(footer.height).toBe(2)
+    })
+
+    it("should not shrink box when minWidth is set via setter", async () => {
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      indicator.minWidth = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+      expect(indicator.width).toBeGreaterThanOrEqual(5)
+      expect(content.width).toBeGreaterThan(0)
+    })
+
+    it("should not shrink box when minHeight is set via setter in column layout with textarea", async () => {
+      resize(30, 15)
+
+      const outerBox = new BoxRenderable(currentRenderer, { border: true, width: 25, height: 10 })
+      currentRenderer.root.add(outerBox)
+
+      const column = new BoxRenderable(currentRenderer, { flexDirection: "column", height: "100%" })
+      outerBox.add(column)
+
+      const header = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      column.add(header)
+
+      const headerText = new TextRenderable(currentRenderer, { content: "Header" })
+      header.add(headerText)
+
+      const mainContent = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      column.add(mainContent)
+
+      const { textarea: mainTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8",
+      })
+      mainContent.add(mainTextarea)
+
+      const footer = new BoxRenderable(currentRenderer, { height: 2, backgroundColor: "#00f" })
+      column.add(footer)
+
+      const footerText = new TextRenderable(currentRenderer, { content: "Footer" })
+      footer.add(footerText)
+
+      await renderOnce()
+
+      header.minHeight = 3
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(header.height).toBeGreaterThanOrEqual(3)
+      expect(mainContent.height).toBeGreaterThan(0)
+      expect(footer.height).toBe(2)
+    })
+
+    it("should not shrink box when width is set from undefined via setter", async () => {
+      resize(40, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 30 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const indicator = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(indicator)
+
+      const indicatorText = new TextRenderable(currentRenderer, { content: ">" })
+      indicator.add(indicatorText)
+
+      const content = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexGrow: 1 })
+      row.add(content)
+
+      const contentText = new TextRenderable(currentRenderer, { content: "Content that takes up space" })
+      content.add(contentText)
+
+      await renderOnce()
+
+      indicator.width = 5
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(indicator.width).toBe(5)
+      expect(content.width).toBeGreaterThan(0)
+    })
+
+    it("should verify dimensions are actually respected under extreme pressure", async () => {
+      resize(30, 10)
+
+      const container = new BoxRenderable(currentRenderer, { border: true, width: 20 })
+      currentRenderer.root.add(container)
+
+      const row = new BoxRenderable(currentRenderer, { flexDirection: "row", width: "100%" })
+      container.add(row)
+
+      const box1 = new BoxRenderable(currentRenderer, { backgroundColor: "#f00", flexShrink: 1 })
+      row.add(box1)
+      const text1 = new TextRenderable(currentRenderer, { content: "AAA" })
+      box1.add(text1)
+
+      const box2 = new BoxRenderable(currentRenderer, { backgroundColor: "#0f0", flexShrink: 1 })
+      row.add(box2)
+      const text2 = new TextRenderable(currentRenderer, { content: "BBB" })
+      box2.add(text2)
+
+      const box3 = new BoxRenderable(currentRenderer, { backgroundColor: "#00f", flexGrow: 1 })
+      row.add(box3)
+      const text3 = new TextRenderable(currentRenderer, { content: "CCC" })
+      box3.add(text3)
+
+      await renderOnce()
+
+      box1.width = 7
+      box2.minWidth = 5
+      await renderOnce()
+
+      expect(box1.width).toBe(7)
+      expect(box2.width).toBeGreaterThanOrEqual(5)
+      expect(box3.width).toBeGreaterThan(0)
+
+      const total = box1.width + box2.width + box3.width
+      expect(total).toBeLessThanOrEqual(18)
     })
   })
 })

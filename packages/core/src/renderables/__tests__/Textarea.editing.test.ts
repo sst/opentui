@@ -1735,4 +1735,218 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.plainText).toBe("Testi")
     })
   })
+
+  describe("Edit Operations", () => {
+    it("should maintain correct cursor position after join, insert, backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ABC\nDEF",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      editor.gotoLine(1)
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.plainText).toBe("ABC\nDEF")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("ABCDEF")
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(3)
+
+      currentMockInput.pressKey("X")
+      expect(editor.plainText).toBe("ABCXDEF")
+      expect(editor.logicalCursor.col).toBe(4)
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("ABCDEF")
+      expect(editor.logicalCursor.col).toBe(3)
+    })
+
+    it("should type correctly after backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("h")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("l")
+      currentMockInput.pressKey("o")
+
+      expect(editor.plainText).toBe("hello")
+
+      currentMockInput.pressBackspace()
+      expect(editor.plainText).toBe("hell")
+
+      currentMockInput.pressKey("p")
+      expect(editor.plainText).toBe("hellp")
+
+      currentMockInput.pressKey("!")
+      expect(editor.plainText).toBe("hellp!")
+    })
+
+    it("should type correctly after multiple backspaces", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("t")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("s")
+      currentMockInput.pressKey("t")
+      currentMockInput.pressKey("i")
+      currentMockInput.pressKey("n")
+      currentMockInput.pressKey("g")
+
+      expect(editor.plainText).toBe("testing")
+
+      currentMockInput.pressBackspace()
+      currentMockInput.pressBackspace()
+      currentMockInput.pressBackspace()
+
+      expect(editor.plainText).toBe("test")
+
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("d")
+
+      expect(editor.plainText).toBe("tested")
+    })
+
+    it("should type correctly after backspacing all text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("w")
+      currentMockInput.pressKey("r")
+      currentMockInput.pressKey("o")
+      currentMockInput.pressKey("n")
+      currentMockInput.pressKey("g")
+
+      expect(editor.plainText).toBe("wrong")
+
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressBackspace()
+      }
+
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("r")
+      currentMockInput.pressKey("i")
+      currentMockInput.pressKey("g")
+      currentMockInput.pressKey("h")
+      currentMockInput.pressKey("t")
+
+      expect(editor.plainText).toBe("right")
+    })
+  })
+
+  describe("Deletion with empty lines", () => {
+    it("should delete selection on line after empty lines correctly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(2) // Line with "BBBB"
+
+      expect(editor.logicalCursor.row).toBe(2)
+      expect(editor.plainText).toBe("AAAA\n\nBBBB\n\nCCCC")
+
+      // Select "BBBB" by pressing shift+right 4 times
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("BBBB")
+
+      // Delete the selection
+      currentMockInput.pressKey("DELETE")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("AAAA\n\n\n\nCCCC")
+      expect(editor.logicalCursor.row).toBe(2)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should delete selection on first line correctly (baseline test)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(0) // First line with "AAAA"
+
+      expect(editor.logicalCursor.row).toBe(0)
+
+      // Select "AAAA"
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.getSelectedText()).toBe("AAAA")
+
+      // Delete the selection
+      currentMockInput.pressKey("DELETE")
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.plainText).toBe("\n\nBBBB\n\nCCCC")
+    })
+
+    it("should delete selection on last line after empty lines correctly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "AAAA\n\nBBBB\n\nCCCC",
+        width: 40,
+        height: 10,
+        selectable: true,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+      editor.gotoLine(4) // Last line with "CCCC"
+
+      expect(editor.logicalCursor.row).toBe(4)
+
+      // Select "CCCC"
+      for (let i = 0; i < 4; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toBe("CCCC")
+
+      // Delete the selection
+      currentMockInput.pressKey("DELETE")
+
+      expect(editor.hasSelection()).toBe(false)
+      // After deleting CCCC, we should still have AAAA and BBBB
+      expect(editor.plainText).toContain("AAAA")
+      expect(editor.plainText).toContain("BBBB")
+      expect(editor.plainText).not.toContain("CCCC")
+    })
+  })
 })
