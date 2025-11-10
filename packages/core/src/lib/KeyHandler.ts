@@ -85,9 +85,9 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.useKittyKeyboard = useKittyKeyboard
   }
 
-  public processInput(data: string): void {
+  public processInput(data: string): boolean {
     if (this.suspended) {
-      return
+      return false
     }
 
     if (data.startsWith(ANSI.bracketedPasteStart)) {
@@ -100,12 +100,12 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
         this.emit("paste", new PasteEvent(this.pasteBuffer.join("")))
         this.pasteBuffer = []
       }
-      return
+      return true
     }
     const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
 
     if (!parsedKey) {
-      return
+      return false
     }
 
     switch (parsedKey.eventType) {
@@ -122,6 +122,8 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
         this.emit("keypress", new KeyEvent(parsedKey))
         break
     }
+
+    return true
   }
 
   public suspend(): void {

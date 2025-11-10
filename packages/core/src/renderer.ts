@@ -753,17 +753,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setUseThread(this.rendererPtr, useThread)
   }
 
-  // TODO:All input management may move to native when zig finally has async io support again,
+  // TODO: All input management may move to native when zig finally has async io support again,
   // without rolling a full event loop
   public async setupTerminal(): Promise<void> {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
-    // Send capability queries; responses will be handled by StdinBuffer
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
-
-    // Seed caps (will be updated as responses arrive)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+
+    setTimeout(() => {
+      this.removeInputHandler(this.capabilityHandler)
+    }, 5000)
 
     if (this._useMouse) {
       this.enableMouse()
@@ -782,33 +783,55 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._stdinBuffer.process(data)
   }).bind(this)
 
-  private setupInput(): void {
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(true)
+  private inputHandlers: ((sequence: string) => boolean)[] = []
+
+  public addInputHandler(handler: (sequence: string) => boolean): void {
+    this.inputHandlers.push(handler)
+  }
+
+  public removeInputHandler(handler: (sequence: string) => boolean): void {
+    this.inputHandlers = this.inputHandlers.filter((h) => h !== handler)
+  }
+
+  private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (isCapabilityResponse(sequence)) {
+      this.lib.processCapabilityResponse(this.rendererPtr, sequence)
+      this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+      return true
     }
-    this.stdin.resume()
-    this.stdin.setEncoding("utf8")
-    this.stdin.on("data", this.stdinListener)
-    this._stdinBuffer.on("data", (sequence: string) => {
-      // Pixel resolution: ESC[4;h;wt
+    return false
+  }).bind(this)
+
+  private setupInput(): void {
+    this.addInputHandler((sequence: string) => {
       if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
           this.waitingForPixelResolution = false
         }
-        return
+        return true
       }
+      return false
+    })
+    this.addInputHandler(this.capabilityHandler)
+    this.addInputHandler((sequence: string) => {
+      return this._keyHandler.processInput(sequence)
+    })
 
-      console.log("isCapabilityResponse", sequence, isCapabilityResponse(sequence))
-      if (isCapabilityResponse(sequence)) {
-        console.log("processCapabilityResponse", JSON.stringify(sequence))
-        this.lib.processCapabilityResponse(this.rendererPtr, sequence)
-        this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-        return
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(true)
+    }
+
+    this.stdin.resume()
+    this.stdin.setEncoding("utf8")
+    this.stdin.on("data", this.stdinListener)
+    this._stdinBuffer.on("data", (sequence: string) => {
+      for (const handler of this.inputHandlers) {
+        if (handler(sequence)) {
+          return
+        }
       }
-
-      this._keyHandler.processInput(sequence)
     })
   }
 
