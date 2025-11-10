@@ -62,8 +62,8 @@ describe("TextareaRenderable", () => {
     })
   })
 
-  describe("Segfault Reproduction", () => {
-    it("SEGFAULT TEST: insert text with full render like demo", async () => {
+  describe("Rendering After Edits", () => {
+    it("should render correctly after insert text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "Test",
         width: 40,
@@ -71,23 +71,18 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-
-      // Call insertText like demo does
       editor.insertText("x")
 
-      // Force actual rendering with a standalone buffer
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
-
-      // THIS IS THE CRITICAL PART - actually draw the editor view
-      // This should segfault if there's an issue
       buffer.drawEditorView(editor.editorView, 0, 0)
 
       expect(editor.plainText).toBe("xTest")
+      expect(editor.logicalCursor.col).toBe(1)
 
       buffer.destroy()
     })
 
-    it("SEGFAULT TEST: rapid edits with rendering", async () => {
+    it("should render correctly after rapid edits", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "",
         width: 40,
@@ -100,16 +95,16 @@ describe("TextareaRenderable", () => {
 
       for (let i = 0; i < 5; i++) {
         editor.insertText("a")
-        // Draw after each insert - this is what happens in the demo
         buffer.drawEditorView(editor.editorView, 0, 0)
       }
 
       expect(editor.plainText).toBe("aaaaa")
+      expect(editor.logicalCursor.col).toBe(5)
 
       buffer.destroy()
     })
 
-    it("SEGFAULT TEST: newline with rendering", async () => {
+    it("should render correctly after newline", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "Hello",
         width: 40,
@@ -117,20 +112,21 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      editor.gotoLine(9999) // Move to end
+      editor.gotoLine(9999)
 
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       editor.newLine()
-      // Draw after newline - THIS SHOULD SEGFAULT
       buffer.drawEditorView(editor.editorView, 0, 0)
 
       expect(editor.plainText).toBe("Hello\n")
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(0)
 
       buffer.destroy()
     })
 
-    it("SEGFAULT TEST: backspace with rendering", async () => {
+    it("should render correctly after backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "Hello",
         width: 40,
@@ -138,20 +134,20 @@ describe("TextareaRenderable", () => {
       })
 
       editor.focus()
-      editor.gotoLine(9999) // Move to end
+      editor.gotoLine(9999)
 
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
       editor.deleteCharBackward()
-      // Draw after delete - THIS SHOULD SEGFAULT
       buffer.drawEditorView(editor.editorView, 0, 0)
 
       expect(editor.plainText).toBe("Hell")
+      expect(editor.logicalCursor.col).toBe(4)
 
       buffer.destroy()
     })
 
-    it("SEGFAULT TEST: draw, edit, draw pattern", async () => {
+    it("should render correctly with draw-edit-draw pattern", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "Test",
         width: 40,
@@ -162,19 +158,17 @@ describe("TextareaRenderable", () => {
 
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
-      // Draw initial
       buffer.drawEditorView(editor.editorView, 0, 0)
-
-      // Edit
       editor.insertText("x")
-
-      // Draw again - THIS IS WHERE IT CRASHES
       buffer.drawEditorView(editor.editorView, 0, 0)
+
+      expect(editor.plainText).toBe("xTest")
+      expect(editor.logicalCursor.col).toBe(1)
 
       buffer.destroy()
     })
 
-    it("SEGFAULT TEST: render after text buffer modification", async () => {
+    it("should render correctly after multiple text buffer modifications", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "Line1\nLine2\nLine3",
         width: 40,
@@ -185,28 +179,26 @@ describe("TextareaRenderable", () => {
 
       const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
 
-      // Draw initial
       buffer.drawEditorView(editor.editorView, 0, 0)
 
-      // Modify text buffer
       editor.insertText("X")
-
-      // Draw again - buffer contents changed
       buffer.drawEditorView(editor.editorView, 0, 0)
+      expect(editor.plainText).toBe("XLine1\nLine2\nLine3")
 
-      // More edits
       editor.newLine()
       buffer.drawEditorView(editor.editorView, 0, 0)
+      expect(editor.plainText).toBe("X\nLine1\nLine2\nLine3")
 
       editor.deleteCharBackward()
       buffer.drawEditorView(editor.editorView, 0, 0)
+      expect(editor.plainText).toBe("XLine1\nLine2\nLine3")
 
       buffer.destroy()
     })
   })
 
-  describe("BUG REPRODUCTION: Type, backspace, type again", () => {
-    it("BUG: cursor position after join, insert, backspace", async () => {
+  describe("Edit Operations", () => {
+    it("should maintain correct cursor position after join, insert, backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "ABC\nDEF",
         width: 40,
@@ -215,35 +207,26 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      // Move to start of line 2 (DEF)
       editor.gotoLine(1)
       expect(editor.logicalCursor.row).toBe(1)
       expect(editor.logicalCursor.col).toBe(0)
       expect(editor.plainText).toBe("ABC\nDEF")
 
-      // Backspace to join lines - this creates a chunk boundary at position 3
-      // Chunks: [chunk 0: "ABC" (mem_id 0), chunk 1: "DEF" (mem_id 0)]
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
       expect(editor.logicalCursor.row).toBe(0)
-      expect(editor.logicalCursor.col).toBe(3) // After "ABC"
+      expect(editor.logicalCursor.col).toBe(3)
 
-      // Insert a character at the chunk boundary
-      // Chunks: [chunk 0: "ABC", chunk 1: "X" (new mem_id), chunk 2: "DEF"]
       currentMockInput.pressKey("X")
       expect(editor.plainText).toBe("ABCXDEF")
-      expect(editor.logicalCursor.col).toBe(4) // After "ABCX"
+      expect(editor.logicalCursor.col).toBe(4)
 
-      // Backspace to delete the just-inserted character
-      // This removes chunk 1, so chunks become: [chunk 0: "ABC", chunk 1: "DEF"]
-      // BUG: cursor.chunk stays at 1, cursor.chunk_byte_offset stays at 1
-      // So cursor now points to position 1 in "DEF" instead of end of "ABC"
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("ABCDEF")
-      expect(editor.logicalCursor.col).toBe(3) // Should be back to after "ABC"
+      expect(editor.logicalCursor.col).toBe(3)
     })
 
-    it("BUG: typing after backspace inserts old characters", async () => {
+    it("should type correctly after backspace", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "",
         width: 40,
@@ -252,7 +235,6 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      // Type some characters
       currentMockInput.pressKey("h")
       currentMockInput.pressKey("e")
       currentMockInput.pressKey("l")
@@ -261,19 +243,17 @@ describe("TextareaRenderable", () => {
 
       expect(editor.plainText).toBe("hello")
 
-      // Backspace once
       currentMockInput.pressBackspace()
       expect(editor.plainText).toBe("hell")
 
-      // Type again - THIS IS WHERE THE BUG HAPPENS
       currentMockInput.pressKey("p")
-      expect(editor.plainText).toBe("hellp") // Should be "hellp", not "hellhellop" or similar
+      expect(editor.plainText).toBe("hellp")
 
       currentMockInput.pressKey("!")
       expect(editor.plainText).toBe("hellp!")
     })
 
-    it("BUG: multiple backspaces then typing", async () => {
+    it("should type correctly after multiple backspaces", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "",
         width: 40,
@@ -282,7 +262,6 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      // Type "testing"
       currentMockInput.pressKey("t")
       currentMockInput.pressKey("e")
       currentMockInput.pressKey("s")
@@ -293,21 +272,19 @@ describe("TextareaRenderable", () => {
 
       expect(editor.plainText).toBe("testing")
 
-      // Backspace 3 times
       currentMockInput.pressBackspace()
       currentMockInput.pressBackspace()
       currentMockInput.pressBackspace()
 
       expect(editor.plainText).toBe("test")
 
-      // Type "ed" - should get "tested", not something weird
       currentMockInput.pressKey("e")
       currentMockInput.pressKey("d")
 
       expect(editor.plainText).toBe("tested")
     })
 
-    it("BUG: type, backspace all, type new text", async () => {
+    it("should type correctly after backspacing all text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {
         initialValue: "",
         width: 40,
@@ -316,7 +293,6 @@ describe("TextareaRenderable", () => {
 
       editor.focus()
 
-      // Type "wrong"
       currentMockInput.pressKey("w")
       currentMockInput.pressKey("r")
       currentMockInput.pressKey("o")
@@ -325,14 +301,12 @@ describe("TextareaRenderable", () => {
 
       expect(editor.plainText).toBe("wrong")
 
-      // Backspace everything
       for (let i = 0; i < 5; i++) {
         currentMockInput.pressBackspace()
       }
 
       expect(editor.plainText).toBe("")
 
-      // Type "right" - should get "right", not "wrongright" or similar
       currentMockInput.pressKey("r")
       currentMockInput.pressKey("i")
       currentMockInput.pressKey("g")
