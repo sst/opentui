@@ -153,11 +153,9 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         // Version and capability queries
         ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery ++
-        // Note: kittyGraphicsQuery is disabled because it sends an invalid query (querying for non-existent image ID 1)
-        // which causes error responses like "Gi=1;EINVAL:Zero width/height not allowed" that can leak into user input.
-        // Kitty graphics support is already detected via the xtversion response (">|kitty(...)" string).
-        // ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.primaryDeviceAttrs ++
+        // Kitty graphics detection: sends dummy query + DA1
+        // Terminal will respond with ESC_Gi=31337;OK/ERROR ESC\ if supported, or just DA1 if not
+        ansi.ANSI.kittyGraphicsQuery ++
         ansi.ANSI.restoreCursorState
             // ++ ansi.ANSI.sixelGeometryQuery
     );
@@ -362,9 +360,13 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
-    // Kitty graphics response
+    // Kitty graphics response: ESC_Gi=31337;OK ESC\ or ESC_Gi=31337;EERROR... ESC\
+    // We look for our specific query ID (31337) to avoid false positives
     if (std.mem.indexOf(u8, response, "\x1b_G")) |_| {
-        if (std.mem.indexOf(u8, response, "OK")) |_| {
+        if (std.mem.indexOf(u8, response, "i=31337")) |_| {
+            // Got a response to our graphics query with our ID
+            // If it contains "OK" or even an error, the protocol is supported
+            // (errors mean the query was understood, just parameters were wrong)
             self.caps.kitty_graphics = true;
         }
     }

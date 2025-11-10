@@ -88,7 +88,7 @@ pub const ANSI = struct {
     pub const decrqmUnicode = "\x1b[?2027$p";
     pub const decrqmColorScheme = "\x1b[?2031$p";
     pub const csiUQuery = "\x1b[?u";
-    pub const kittyGraphicsQuery = "\x1b_Gi=1,a=q\x1b\\";
+    pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";
