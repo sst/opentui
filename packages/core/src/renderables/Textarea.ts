@@ -63,6 +63,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "backspace", action: "backspace" },
   { name: "backspace", shift: true, action: "backspace" },
   { name: "delete", action: "delete" },
+  { name: "delete", shift: true, action: "delete" },
   { name: "return", action: "newline" },
   { name: "linefeed", action: "newline" },
   { name: "return", meta: true, action: "submit" },

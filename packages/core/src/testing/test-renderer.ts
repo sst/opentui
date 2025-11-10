@@ -6,6 +6,7 @@ import { createMockMouse } from "./mock-mouse"
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
   height?: number
+  kittyKeyboard?: boolean
 }
 export interface TestRenderer extends CliRenderer {}
 export type MockInput = ReturnType<typeof createMockKeys>
@@ -30,7 +31,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 
   renderer.disableStdoutInterception()
 
-  const mockInput = createMockKeys(renderer)
+  const mockInput = createMockKeys(renderer, { kittyKeyboard: options.kittyKeyboard })
   const mockMouse = createMockMouse(renderer)
 
   const renderOnce = async () => {

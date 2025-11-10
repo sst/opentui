@@ -962,6 +962,191 @@ describe("TextareaRenderable", () => {
     })
   })
 
+  describe("Keyboard Input - Kitty Keyboard Protocol", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+    let kittyMockInput: MockInput
+
+    beforeEach(async () => {
+      ;({
+        renderer: kittyRenderer,
+        renderOnce: kittyRenderOnce,
+        mockInput: kittyMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    it("should handle shift+backspace in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "Hello World",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+      textarea.gotoLine(9999)
+
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(textarea.plainText).toBe("Hello Worl")
+
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(textarea.plainText).toBe("Hello Wor")
+    })
+
+    it("should handle shift+backspace joining lines in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "Line1\nLine2",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+      textarea.gotoLine(1)
+
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(textarea.plainText).toBe("Line1Line2")
+      expect(textarea.logicalCursor.row).toBe(0)
+      expect(textarea.logicalCursor.col).toBe(5)
+    })
+
+    it("should handle shift+backspace with selection in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "Hello World",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+
+      for (let i = 0; i < 5; i++) {
+        kittyMockInput.pressArrow("right", { shift: true })
+      }
+      expect(textarea.hasSelection()).toBe(true)
+      expect(textarea.getSelectedText()).toBe("Hello")
+
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(textarea.plainText).toBe(" World")
+      expect(textarea.hasSelection()).toBe(false)
+    })
+
+    it("should distinguish backspace vs shift+backspace keybindings in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "ABC",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+      textarea.gotoLine(9999)
+
+      kittyMockInput.pressBackspace()
+      expect(textarea.plainText).toBe("AB")
+
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+      expect(textarea.plainText).toBe("A")
+    })
+
+    it("should handle mixed backspace and shift+backspace in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "123456",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+      textarea.gotoLine(9999)
+
+      kittyMockInput.pressBackspace()
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+      kittyMockInput.pressBackspace()
+      kittyMockInput.pressKey("BACKSPACE", { shift: true })
+
+      expect(textarea.plainText).toBe("12")
+    })
+
+    it("should handle shift+delete in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "Hello",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+
+      kittyMockInput.pressKey("DELETE", { shift: true })
+      expect(textarea.plainText).toBe("ello")
+    })
+
+    it("should handle ctrl+backspace for word deletion in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "hello world test",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+      textarea.gotoLine(9999)
+
+      kittyMockInput.pressKey("w", { ctrl: true })
+      expect(textarea.plainText).toBe("hello world ")
+    })
+
+    it("should handle meta+backspace for word deletion in kitty mode", async () => {
+      const textarea = new TextareaRenderable(kittyRenderer, {
+        left: 0,
+        top: 0,
+        width: 40,
+        height: 10,
+        initialValue: "hello world test",
+      })
+      kittyRenderer.root.add(textarea)
+      await kittyRenderOnce()
+
+      textarea.focus()
+      textarea.gotoLine(9999)
+
+      kittyMockInput.pressBackspace({ meta: true })
+      const text = textarea.plainText
+      expect(text.startsWith("hello world")).toBe(true)
+      expect(text.length).toBeLessThan(16)
+    })
+  })
+
   describe("Keyboard Input - Enter/Return", () => {
     it("should insert newline with Enter key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, {

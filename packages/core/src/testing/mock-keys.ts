@@ -36,7 +36,62 @@ export const KeyCodes = {
 
 export type KeyInput = string | keyof typeof KeyCodes
 
-export function createMockKeys(renderer: CliRenderer) {
+export interface MockKeysOptions {
+  kittyKeyboard?: boolean
+}
+
+// Kitty keyboard protocol key mappings
+const kittyKeyCodeMap: Record<string, number> = {
+  escape: 27,
+  tab: 9,
+  return: 13,
+  backspace: 127,
+  insert: 57348,
+  delete: 57349,
+  left: 57350,
+  right: 57351,
+  up: 57352,
+  down: 57353,
+  pageup: 57354,
+  pagedown: 57355,
+  home: 57356,
+  end: 57357,
+  f1: 57364,
+  f2: 57365,
+  f3: 57366,
+  f4: 57367,
+  f5: 57368,
+  f6: 57369,
+  f7: 57370,
+  f8: 57371,
+  f9: 57372,
+  f10: 57373,
+  f11: 57374,
+  f12: 57375,
+}
+
+function encodeKittySequence(
+  codepoint: number,
+  modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean },
+): string {
+  // Kitty keyboard protocol: CSI unicode-key-code ; modifiers u
+  // Modifier encoding: shift=1, alt=2, ctrl=4, super=8, hyper=16, meta=32, caps=64, num=128
+  let modMask = 0
+  if (modifiers?.shift) modMask |= 1
+  if (modifiers?.meta) modMask |= 2 // alt/meta
+  if (modifiers?.ctrl) modMask |= 4
+
+  if (modMask === 0) {
+    // No modifiers
+    return `\x1b[${codepoint}u`
+  } else {
+    // With modifiers (kitty uses 1-based, so add 1)
+    return `\x1b[${codepoint};${modMask + 1}u`
+  }
+}
+
+export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions) {
+  const useKittyKeyboard = options?.kittyKeyboard ?? false
   const pressKeys = async (keys: KeyInput[], delayMs: number = 0): Promise<void> => {
     for (const key of keys) {
       let keyCode: string
@@ -64,6 +119,76 @@ export function createMockKeys(renderer: CliRenderer) {
   }
 
   const pressKey = (key: KeyInput, modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+    // Handle Kitty keyboard protocol mode
+    if (useKittyKeyboard) {
+      // First, resolve the key to its string representation or keycode value
+      let keyValue: string
+      let keyName: string | undefined
+
+      if (typeof key === "string") {
+        if (key in KeyCodes) {
+          // It's a KeyCode name like "BACKSPACE", "ARROW_UP", etc.
+          keyValue = KeyCodes[key as keyof typeof KeyCodes]
+          keyName = key.toLowerCase()
+        } else {
+          // It's a regular character
+          keyValue = key
+          keyName = undefined
+        }
+      } else {
+        // It's already a keycode enum value
+        keyValue = KeyCodes[key]
+        keyName = String(key).toLowerCase()
+      }
+
+      // Map control characters and escape sequences to their kitty key names
+      const valueToKeyNameMap: Record<string, string> = {
+        "\b": "backspace",
+        "\r": "return",
+        "\n": "return",
+        "\t": "tab",
+        "\x1b": "escape",
+        "\x1b[A": "up",
+        "\x1b[B": "down",
+        "\x1b[C": "right",
+        "\x1b[D": "left",
+        "\x1b[H": "home",
+        "\x1b[F": "end",
+        "\x1b[3~": "delete",
+      }
+
+      // Check value mapping
+      if (keyValue && valueToKeyNameMap[keyValue]) {
+        keyName = valueToKeyNameMap[keyValue]
+      }
+
+      // Also check for ARROW_ prefix
+      if (keyName && keyName.startsWith("arrow_")) {
+        keyName = keyName.substring(6) // Remove "arrow_" prefix
+      }
+
+      // Check if we have a direct kitty code mapping
+      if (keyName && kittyKeyCodeMap[keyName]) {
+        const kittyCode = kittyKeyCodeMap[keyName]
+        const sequence = encodeKittySequence(kittyCode, modifiers)
+        renderer.stdin.emit("data", Buffer.from(sequence))
+        return
+      }
+
+      // For regular characters, get the codepoint
+      if (keyValue && keyValue.length === 1 && !keyValue.startsWith("\x1b")) {
+        const codepoint = keyValue.codePointAt(0)
+        if (codepoint) {
+          const sequence = encodeKittySequence(codepoint, modifiers)
+          renderer.stdin.emit("data", Buffer.from(sequence))
+          return
+        }
+      }
+
+      // Fall through to regular mode for unknown keys
+    }
+
+    // Regular (non-Kitty) mode
     let keyCode: string
     if (typeof key === "string") {
       // If it's a string but also exists in KeyCodes, use the KeyCodes value
