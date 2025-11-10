@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer"
 import { createTextareaRenderable } from "./renderable-test-utils"
 import { RGBA } from "../../lib/RGBA"
+import { SyntaxStyle } from "../../syntax-style"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -241,6 +242,135 @@ describe("Textarea - Rendering Tests", () => {
 
       currentMockInput.pressArrow("right") // Move past B
       expect(editor.logicalCursor.col).toBe(4)
+    })
+  })
+
+  describe("Content Property", () => {
+    it("should update content programmatically", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Initial",
+        width: 40,
+        height: 10,
+      })
+
+      editor.setText("Updated")
+      expect(editor.plainText).toBe("Updated")
+      expect(editor.plainText).toBe("Updated")
+    })
+
+    it("should reset cursor when content changes", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.gotoLine(9999) // Move to end
+      expect(editor.logicalCursor.col).toBe(11)
+
+      editor.setText("New")
+      // Cursor should reset to start
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should clear text with clear() method", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      expect(editor.plainText).toBe("Hello World")
+
+      editor.clear()
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should clear highlights with clear() method", async () => {
+      const style = SyntaxStyle.create()
+      const styleId = style.registerStyle("highlight", {
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        syntaxStyle: style,
+      })
+
+      editor.addHighlightByCharRange({
+        start: 0,
+        end: 5,
+        styleId: styleId,
+        priority: 0,
+      })
+
+      const highlightsBefore = editor.getLineHighlights(0)
+      expect(highlightsBefore.length).toBeGreaterThan(0)
+
+      editor.clear()
+
+      expect(editor.plainText).toBe("")
+      const highlightsAfter = editor.getLineHighlights(0)
+      expect(highlightsAfter.length).toBe(0)
+    })
+
+    it("should clear both text and highlights together", async () => {
+      const style = SyntaxStyle.create()
+      const styleId = style.registerStyle("highlight", {
+        fg: RGBA.fromValues(1, 0, 0, 1),
+      })
+
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+        syntaxStyle: style,
+      })
+
+      editor.addHighlight(0, { start: 0, end: 6, styleId: styleId, priority: 0 })
+      editor.addHighlight(1, { start: 0, end: 6, styleId: styleId, priority: 0 })
+
+      expect(editor.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(editor.getLineHighlights(0).length).toBe(1)
+      expect(editor.getLineHighlights(1).length).toBe(1)
+
+      editor.clear()
+
+      expect(editor.plainText).toBe("")
+      expect(editor.getLineHighlights(0).length).toBe(0)
+      expect(editor.getLineHighlights(1).length).toBe(0)
+    })
+
+    it("should allow typing after clear()", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.plainText).toBe("Hello World")
+
+      currentMockInput.pressKey("!")
+      expect(editor.plainText).toBe("!Hello World")
+
+      editor.clear()
+      expect(editor.plainText).toBe("")
+
+      currentMockInput.pressKey("N")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("w")
+      expect(editor.plainText).toBe("New")
+
+      currentMockInput.pressKey(" ")
+      currentMockInput.pressKey("T")
+      currentMockInput.pressKey("e")
+      currentMockInput.pressKey("x")
+      currentMockInput.pressKey("t")
+      expect(editor.plainText).toBe("New Text")
     })
   })
 })
