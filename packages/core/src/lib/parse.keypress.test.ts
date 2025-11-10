@@ -1078,6 +1078,153 @@ test("parseKeypress - filters out basic mouse events", () => {
   expect(basicMouse).toBeNull()
 })
 
+test("parseKeypress - filters out terminal response sequences", () => {
+  // Window/cell size reports - Format: ESC[4;height;width t or ESC[8;rows;cols t
+  // Example: resolution query response "\u001b[4;1782;3012t"
+  const windowSize1 = parseKeypress("\u001b[4;1782;3012t")
+  expect(windowSize1).toBeNull()
+
+  const windowSize2 = parseKeypress("\x1b[4;800;600t")
+  expect(windowSize2).toBeNull()
+
+  const cellSize = parseKeypress("\x1b[8;24;80t")
+  expect(cellSize).toBeNull()
+
+  // Cursor position reports - Format: ESC[row;col R
+  // Response to DSR (Device Status Report) query
+  const cursorPos1 = parseKeypress("\x1b[10;25R")
+  expect(cursorPos1).toBeNull()
+
+  const cursorPos2 = parseKeypress("\u001b[1;1R")
+  expect(cursorPos2).toBeNull()
+
+  // Device Attributes (DA) responses - Format: ESC[?...c
+  // Response to terminal identification query
+  const deviceAttrs1 = parseKeypress("\x1b[?1;2c")
+  expect(deviceAttrs1).toBeNull()
+
+  const deviceAttrs2 = parseKeypress("\x1b[?62;c")
+  expect(deviceAttrs2).toBeNull()
+
+  const deviceAttrs3 = parseKeypress("\x1b[?1;0;6;9;15c")
+  expect(deviceAttrs3).toBeNull()
+
+  // Mode reports - Format: ESC[?...;...$y
+  // Response to DECRQM (Request Mode) query
+  const modeReport1 = parseKeypress("\x1b[?1;2$y")
+  expect(modeReport1).toBeNull()
+
+  const modeReport2 = parseKeypress("\x1b[?25;1$y")
+  expect(modeReport2).toBeNull()
+
+  // Focus events
+  const focusIn = parseKeypress("\x1b[I")
+  expect(focusIn).toBeNull()
+
+  const focusOut = parseKeypress("\x1b[O")
+  expect(focusOut).toBeNull()
+
+  // OSC (Operating System Command) responses - color/style queries
+  // Format: ESC]...ESC\ or ESC]...BEL
+  // Must be complete sequences with proper terminators to be filtered
+  const oscResponse1 = parseKeypress("\x1b]11;rgb:0000/0000/0000\x1b\\")
+  expect(oscResponse1).toBeNull()
+
+  const oscResponse2 = parseKeypress("\x1b]10;rgb:ffff/ffff/ffff\x07")
+  expect(oscResponse2).toBeNull()
+
+  // Incomplete OSC sequences should NOT be filtered
+  // StdinBuffer will either complete them or timeout and flush them
+  const incompleteOsc = parseKeypress("\x1b]11;rgb:0000")
+  expect(incompleteOsc).not.toBeNull()
+  expect(incompleteOsc?.name).toBe("") // Unknown sequence, but not filtered
+})
+
+test("parseKeypress - does not filter valid key sequences that might look similar", () => {
+  // Make sure we don't accidentally filter out valid keys
+
+  // F1-F12 should still work (e.g., [11~, [24~)
+  const f1 = parseKeypress("\x1b[11~")
+  expect(f1).not.toBeNull()
+  expect(f1?.name).toBe("f1")
+
+  const f12 = parseKeypress("\x1b[24~")
+  expect(f12).not.toBeNull()
+  expect(f12?.name).toBe("f12")
+
+  // Arrow keys with O prefix should still work (SS3 sequences)
+  const arrowUp = parseKeypress("\x1bOA")
+  expect(arrowUp).not.toBeNull()
+  expect(arrowUp?.name).toBe("up")
+
+  // Other SS3 sequences
+  const ss3Down = parseKeypress("\x1bOB")
+  expect(ss3Down).not.toBeNull()
+  expect(ss3Down?.name).toBe("down")
+
+  // Note: ESC[O without a following character is filtered (focus out event)
+  const focusOutFiltered = parseKeypress("\x1b[O")
+  expect(focusOutFiltered).toBeNull()
+
+  // Standard arrow keys should still work
+  const arrowLeft = parseKeypress("\x1b[D")
+  expect(arrowLeft).not.toBeNull()
+  expect(arrowLeft?.name).toBe("left")
+
+  // Modified keys should still work
+  const ctrlUp = parseKeypress("\x1b[1;5A")
+  expect(ctrlUp).not.toBeNull()
+  expect(ctrlUp?.name).toBe("up")
+  expect(ctrlUp?.ctrl).toBe(true)
+
+  // Delete, insert, page up/down should still work
+  const deleteKey = parseKeypress("\x1b[3~")
+  expect(deleteKey).not.toBeNull()
+  expect(deleteKey?.name).toBe("delete")
+
+  const insertKey = parseKeypress("\x1b[2~")
+  expect(insertKey).not.toBeNull()
+  expect(insertKey?.name).toBe("insert")
+
+  const pageUp = parseKeypress("\x1b[5~")
+  expect(pageUp).not.toBeNull()
+  expect(pageUp?.name).toBe("pageup")
+
+  // Kitty keyboard protocol sequences should still work
+  const kittyA = parseKeypress("\x1b[97u", { useKittyKeyboard: true })
+  expect(kittyA).not.toBeNull()
+  expect(kittyA?.name).toBe("a")
+  expect(kittyA?.source).toBe("kitty")
+
+  const kittyArrow = parseKeypress("\x1b[57352u", { useKittyKeyboard: true })
+  expect(kittyArrow).not.toBeNull()
+  expect(kittyArrow?.name).toBe("up")
+  expect(kittyArrow?.source).toBe("kitty")
+
+  // Bracketed paste markers should be filtered
+  // They're handled by KeyHandler before parseKeypress is called,
+  // but should return null for defense-in-depth
+  const pasteStart = parseKeypress("\x1b[200~")
+  expect(pasteStart).toBeNull()
+
+  const pasteEnd = parseKeypress("\x1b[201~")
+  expect(pasteEnd).toBeNull()
+
+  // Control characters should still work (including BEL which is Ctrl+G)
+  const bel = parseKeypress("\x07")
+  expect(bel).not.toBeNull()
+  expect(bel?.name).toBe("g")
+  expect(bel?.ctrl).toBe(true)
+
+  const backspace = parseKeypress("\b")
+  expect(backspace).not.toBeNull()
+  expect(backspace?.name).toBe("backspace")
+
+  const backspace2 = parseKeypress("\x7f")
+  expect(backspace2).not.toBeNull()
+  expect(backspace2?.name).toBe("backspace")
+})
+
 test("parseKeypress - source field is always 'raw' for non-Kitty parsing", () => {
   // Test various key types to ensure they all have source: "raw"
   const letter = parseKeypress("a")

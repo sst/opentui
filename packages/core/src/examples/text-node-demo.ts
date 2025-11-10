@@ -82,8 +82,8 @@ ${underline("Current:")} Example 1 - Basic TextNode Creation`,
   showExample1()
 
   // Set up keyboard controls
-  renderer.on("key", (data) => {
-    const key = data.toString()
+  renderer.keyInput.on("keypress", (event) => {
+    const key = event.sequence
     if (key === "1") {
       showExample1()
     } else if (key === "2") {

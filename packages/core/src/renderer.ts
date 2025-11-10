@@ -18,6 +18,7 @@ import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
+import { StdinBuffer } from "./lib/stdin-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
 import {
@@ -26,6 +27,11 @@ import {
   type TerminalColors,
   type GetPaletteOptions,
 } from "./lib/terminal-palette"
+import {
+  isCapabilityResponse,
+  isPixelResolutionResponse,
+  parsePixelResolution,
+} from "./lib/terminal-capability-detection"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -278,6 +284,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
+  private _stdinBuffer: StdinBuffer
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -437,7 +444,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.on("unhandledRejection", this.handleError)
     process.on("exit", this.exitHandler)
 
-    this._keyHandler = new InternalKeyHandler(this.stdin, config.useKittyKeyboard ?? true)
+    this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -446,6 +453,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
     })
+
+    this._stdinBuffer = new StdinBuffer({ timeout: 5 })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -744,28 +753,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setUseThread(this.rendererPtr, useThread)
   }
 
-  // TODO:All input management may move to native when zig finally has async io support again,
+  // TODO: All input management may move to native when zig finally has async io support again,
   // without rolling a full event loop
   public async setupTerminal(): Promise<void> {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }, 100)
-      const capListener = (str: string) => {
-        clearTimeout(timeout)
-        this.lib.processCapabilityResponse(this.rendererPtr, str)
-        this.stdin.off("data", capListener)
-        resolve(true)
-      }
-      this.stdin.on("data", capListener)
-      this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
-    })
-
+    this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+
+    setTimeout(() => {
+      this.removeInputHandler(this.capabilityHandler)
+    }, 5000)
 
     if (this._useMouse) {
       this.enableMouse()
@@ -775,36 +774,65 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    const str = data.toString()
-
-    if (this.waitingForPixelResolution && /\x1b\[4;\d+;\d+t/.test(str)) {
-      const match = str.match(/\x1b\[4;(\d+);(\d+)t/)
-      if (match) {
-        const resolution: PixelResolution = {
-          width: parseInt(match[2]),
-          height: parseInt(match[1]),
-        }
-
-        this._resolution = resolution
-        this.waitingForPixelResolution = false
-        return
-      }
-    }
-
+    // Mouse first (consume and stop if handled)
     if (this._useMouse && this.handleMouseData(data)) {
       return
     }
 
-    this.emit("key", data)
+    // Everything else goes through the sequence buffer
+    this._stdinBuffer.process(data)
+  }).bind(this)
+
+  private inputHandlers: ((sequence: string) => boolean)[] = []
+
+  public addInputHandler(handler: (sequence: string) => boolean): void {
+    this.inputHandlers.push(handler)
+  }
+
+  public removeInputHandler(handler: (sequence: string) => boolean): void {
+    this.inputHandlers = this.inputHandlers.filter((h) => h !== handler)
+  }
+
+  private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (isCapabilityResponse(sequence)) {
+      this.lib.processCapabilityResponse(this.rendererPtr, sequence)
+      this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+      return true
+    }
+    return false
   }).bind(this)
 
   private setupInput(): void {
+    this.addInputHandler((sequence: string) => {
+      if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+        const resolution = parsePixelResolution(sequence)
+        if (resolution) {
+          this._resolution = resolution
+          this.waitingForPixelResolution = false
+        }
+        return true
+      }
+      return false
+    })
+    this.addInputHandler(this.capabilityHandler)
+    this.addInputHandler((sequence: string) => {
+      return this._keyHandler.processInput(sequence)
+    })
+
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
+
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
+    this._stdinBuffer.on("data", (sequence: string) => {
+      for (const handler of this.inputHandlers) {
+        if (handler(sequence)) {
+          return
+        }
+      }
+    })
   }
 
   private handleMouseData(data: Buffer): boolean {
@@ -1224,6 +1252,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this._keyHandler.suspend()
+    this._stdinBuffer.clear()
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
@@ -1313,7 +1342,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    this._keyHandler.destroy()
+    this._stdinBuffer.destroy()
     this._console.deactivate()
     this.disableStdoutInterception()
 

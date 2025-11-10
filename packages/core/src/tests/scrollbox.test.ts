@@ -246,12 +246,18 @@ world
       scrollBox.add(wrapper)
     }
 
+    await renderOnce()
+
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     await renderOnce()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
     await renderOnce()
 
     const frameAfterScroll = captureCharFrame()
@@ -404,12 +410,18 @@ world
       scrollBox.add(wrapper)
     }
 
+    await renderOnce()
+
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
     await renderOnce()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
+    await renderOnce()
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
     await renderOnce()
 
     const frame = captureCharFrame()

@@ -352,6 +352,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u8"],
       returns: "void",
     },
+    textBufferAppend: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    textBufferAppendFromMemId: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
     textBufferLoadFile: {
       args: ["ptr", "ptr", "usize"],
       returns: "bool",
@@ -1167,6 +1175,8 @@ export interface RenderLib {
   textBufferReplaceMemBuffer: (buffer: Pointer, memId: number, bytes: Uint8Array, owned?: boolean) => boolean
   textBufferClearMemRegistry: (buffer: Pointer) => void
   textBufferSetTextFromMem: (buffer: Pointer, memId: number) => void
+  textBufferAppend: (buffer: Pointer, bytes: Uint8Array) => void
+  textBufferAppendFromMemId: (buffer: Pointer, memId: number) => void
   textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
     buffer: Pointer,
@@ -1965,6 +1975,14 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetTextFromMem(buffer: Pointer, memId: number): void {
     this.opentui.symbols.textBufferSetTextFromMem(buffer, memId)
+  }
+
+  public textBufferAppend(buffer: Pointer, bytes: Uint8Array): void {
+    this.opentui.symbols.textBufferAppend(buffer, bytes, bytes.length)
+  }
+
+  public textBufferAppendFromMemId(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.textBufferAppendFromMemId(buffer, memId)
   }
 
   public textBufferLoadFile(buffer: Pointer, path: string): boolean {
