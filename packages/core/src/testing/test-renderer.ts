@@ -1,3 +1,4 @@
+import { Readable } from "stream"
 import { CliRenderer, type CliRendererConfig } from "../renderer"
 import { resolveRenderLib } from "../zig"
 import { createMockKeys } from "./mock-keys"
@@ -56,7 +57,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 }
 
 async function setupTestRenderer(config: TestRendererOptions) {
-  const stdin = config.stdin || process.stdin
+  const stdin = config.stdin || new Readable({ read() {} })
   const stdout = config.stdout || process.stdout
 
   const width = config.width || stdout.columns || 80
