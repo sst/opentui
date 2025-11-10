@@ -153,8 +153,9 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         // Version and capability queries
         ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery ++
+        // Kitty graphics detection: sends dummy query + DA1
+        // Terminal will respond with ESC_Gi=31337;OK/ERROR ESC\ if supported, or just DA1 if not
         ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.primaryDeviceAttrs ++
         ansi.ANSI.restoreCursorState
             // ++ ansi.ANSI.sixelGeometryQuery
     );
@@ -302,21 +303,31 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     if (std.mem.indexOf(u8, response, "1004;1$y") != null or std.mem.indexOf(u8, response, "1004;2$y") != null) {
         self.caps.focus_tracking = true;
     }
-    if (std.mem.indexOf(u8, response, "2026;2$y")) |_| {
+    if (std.mem.indexOf(u8, response, "2026;1$y") != null or std.mem.indexOf(u8, response, "2026;2$y") != null) {
         self.caps.sync = true;
     }
     if (std.mem.indexOf(u8, response, "2004;1$y") != null or std.mem.indexOf(u8, response, "2004;2$y") != null) {
         self.caps.bracketed_paste = true;
     }
 
-    // Explicit width detection - cursor position report [1;2R means explicit width supported
-    if (std.mem.indexOf(u8, response, "\x1b[1;2R")) |_| {
-        self.caps.explicit_width = true;
-    }
-
-    // Scaled text detection - cursor position report [1;3R means scaled text supported
-    if (std.mem.indexOf(u8, response, "\x1b[1;3R")) |_| {
-        self.caps.scaled_text = true;
+    // Explicit width detection - cursor position report [1;NR where N >= 2 means explicit width supported
+    // We look for ESC[1; followed by a digit >= 2
+    // This handles cases where the cursor isn't at exact home position when queries are sent
+    if (std.mem.indexOf(u8, response, "\x1b[1;")) |pos| {
+        const after = response[pos + 4 ..];
+        if (after.len > 0) {
+            var end: usize = 0;
+            while (end < after.len and after[end] >= '0' and after[end] <= '9') : (end += 1) {}
+            if (end > 0 and end < after.len and after[end] == 'R') {
+                const col = std.fmt.parseInt(u16, after[0..end], 10) catch 0;
+                if (col >= 2) {
+                    self.caps.explicit_width = true;
+                }
+                if (col >= 3) {
+                    self.caps.scaled_text = true;
+                }
+            }
+        }
     }
 
     // Kitty detection
@@ -349,9 +360,13 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
-    // Kitty graphics response
+    // Kitty graphics response: ESC_Gi=31337;OK ESC\ or ESC_Gi=31337;EERROR... ESC\
+    // We look for our specific query ID (31337) to avoid false positives
     if (std.mem.indexOf(u8, response, "\x1b_G")) |_| {
-        if (std.mem.indexOf(u8, response, "OK")) |_| {
+        if (std.mem.indexOf(u8, response, "i=31337")) |_| {
+            // Got a response to our graphics query with our ID
+            // If it contains "OK" or even an error, the protocol is supported
+            // (errors mean the query was understood, just parameters were wrong)
             self.caps.kitty_graphics = true;
         }
     }

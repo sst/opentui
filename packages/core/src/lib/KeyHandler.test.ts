@@ -1,79 +1,22 @@
-import { test, expect, afterAll } from "bun:test"
-import { KeyHandler, InternalKeyHandler, KeyEvent } from "./KeyHandler"
+import { test, expect } from "bun:test"
+import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
 import { createTestRenderer } from "../testing/test-renderer"
-import { EventEmitter } from "events"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
 function createKeyHandler(useKittyKeyboard: boolean = false): InternalKeyHandler {
-  if (!renderer) {
-    throw new Error("Renderer not initialized")
-  }
-
-  return new InternalKeyHandler(renderer.stdin, useKittyKeyboard)
+  return new InternalKeyHandler(useKittyKeyboard)
 }
 
-afterAll(() => {
-  if (renderer) {
-    renderer.destroy()
-  }
-})
-
-test("KeyHandler - constructor uses process.stdin by default", () => {
-  const originalStdin = process.stdin
-
-  // Mock process.stdin temporarily
-  const mockStdin = Object.assign(new EventEmitter(), {
-    setRawMode: () => {},
-    resume: () => {},
-    setEncoding: () => {},
-  })
-
-  Object.defineProperty(process, "stdin", {
-    value: mockStdin,
-    writable: true,
-  })
-
-  try {
-    const handler = new InternalKeyHandler()
-
-    let receivedKey: KeyEvent | undefined
-    handler.on("keypress", (key: KeyEvent) => {
-      receivedKey = key
-    })
-
-    mockStdin.emit("data", Buffer.from("a"))
-
-    expect(receivedKey).toMatchObject({
-      name: "a",
-      ctrl: false,
-      meta: false,
-      shift: false,
-      option: false,
-      number: false,
-      sequence: "a",
-      raw: "a",
-      eventType: "press",
-    })
-
-    handler.destroy()
-  } finally {
-    Object.defineProperty(process, "stdin", {
-      value: originalStdin,
-      writable: true,
-    })
-  }
-})
-
-test("KeyHandler - emits keypress events", () => {
-  const handler = createKeyHandler()
+test("KeyHandler - processInput emits keypress events", () => {
+  const handler = new InternalKeyHandler()
 
   let receivedKey: KeyEvent | undefined
   handler.on("keypress", (key: KeyEvent) => {
     receivedKey = key
   })
 
-  mockInput.pressKey("a")
+  handler.processInput("a")
 
   expect(receivedKey).toMatchObject({
     name: "a",
@@ -86,11 +29,32 @@ test("KeyHandler - emits keypress events", () => {
     raw: "a",
     eventType: "press",
   })
-
-  handler.destroy()
 })
 
-test("KeyHandler - handles paste mode", () => {
+test("KeyHandler - emits keypress events", () => {
+  const handler = createKeyHandler()
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  handler.processInput("a")
+
+  expect(receivedKey).toMatchObject({
+    name: "a",
+    ctrl: false,
+    meta: false,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "a",
+    raw: "a",
+    eventType: "press",
+  })
+})
+
+test("KeyHandler - handles paste mode", async () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
@@ -98,11 +62,11 @@ test("KeyHandler - handles paste mode", () => {
     receivedPaste = event.text
   })
 
-  mockInput.pasteBracketedText("pasted content")
+  const pasteStart = "\x1b[200~"
+  const pasteEnd = "\x1b[201~"
+  handler.processInput(pasteStart + "pasted content" + pasteEnd)
 
   expect(receivedPaste).toBe("pasted content")
-
-  handler.destroy()
 })
 
 test("KeyHandler - handles paste with multiple parts", () => {
@@ -113,11 +77,15 @@ test("KeyHandler - handles paste with multiple parts", () => {
     receivedPaste = event.text
   })
 
-  mockInput.pasteBracketedText("chunk1chunk2chunk3")
+  const pasteStart = "\x1b[200~"
+  const pasteEnd = "\x1b[201~"
+
+  // Simulate paste arriving in chunks
+  handler.processInput(pasteStart + "chunk1")
+  handler.processInput("chunk2")
+  handler.processInput("chunk3" + pasteEnd)
 
   expect(receivedPaste).toBe("chunk1chunk2chunk3")
-
-  handler.destroy()
 })
 
 test("KeyHandler - strips ANSI codes in paste mode", () => {
@@ -128,11 +96,11 @@ test("KeyHandler - strips ANSI codes in paste mode", () => {
     receivedPaste = event.text
   })
 
-  mockInput.pasteBracketedText("text with \x1b[31mred\x1b[0m color")
+  const pasteStart = "\x1b[200~"
+  const pasteEnd = "\x1b[201~"
+  handler.processInput(pasteStart + "text with \x1b[31mred\x1b[0m color" + pasteEnd)
 
   expect(receivedPaste).toBe("text with red color")
-
-  handler.destroy()
 })
 
 test("KeyHandler - constructor accepts useKittyKeyboard parameter", () => {
@@ -142,18 +110,9 @@ test("KeyHandler - constructor accepts useKittyKeyboard parameter", () => {
 
   expect(handler1).toBeDefined()
   expect(handler2).toBeDefined()
-
-  handler1.destroy()
-  handler2.destroy()
 })
 
-test("KeyHandler - destroy method cleans up properly", () => {
-  const handler = createKeyHandler()
-
-  expect(() => handler.destroy()).not.toThrow()
-})
-
-test("KeyHandler - handles Buffer input", () => {
+test("KeyHandler - handles string input", () => {
   const handler = createKeyHandler()
 
   let receivedKey: KeyEvent | undefined
@@ -161,7 +120,7 @@ test("KeyHandler - handles Buffer input", () => {
     receivedKey = key
   })
 
-  mockInput.pressKey("c")
+  handler.processInput("c")
 
   expect(receivedKey).toMatchObject({
     name: "c",
@@ -174,8 +133,6 @@ test("KeyHandler - handles Buffer input", () => {
     raw: "c",
     eventType: "press",
   })
-
-  handler.destroy()
 })
 
 test("KeyHandler - event inheritance from EventEmitter", () => {
@@ -184,8 +141,6 @@ test("KeyHandler - event inheritance from EventEmitter", () => {
   expect(typeof handler.on).toBe("function")
   expect(typeof handler.emit).toBe("function")
   expect(typeof handler.removeListener).toBe("function")
-
-  handler.destroy()
 })
 
 test("KeyHandler - preventDefault stops propagation", () => {
@@ -205,12 +160,10 @@ test("KeyHandler - preventDefault stops propagation", () => {
     }
   })
 
-  mockInput.pressKey("a")
+  handler.processInput("a")
 
   expect(globalHandlerCalled).toBe(true)
   expect(secondHandlerCalled).toBe(false)
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - onInternal handlers run after regular handlers", () => {
@@ -226,11 +179,9 @@ test("InternalKeyHandler - onInternal handlers run after regular handlers", () =
     callOrder.push("regular")
   })
 
-  mockInput.pressKey("a")
+  handler.processInput("a")
 
   expect(callOrder).toEqual(["regular", "internal"])
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - preventDefault prevents internal handlers from running", () => {
@@ -250,12 +201,10 @@ test("InternalKeyHandler - preventDefault prevents internal handlers from runnin
     internalHandlerCalled = true
   })
 
-  mockInput.pressKey("a")
+  handler.processInput("a")
 
   expect(regularHandlerCalled).toBe(true)
   expect(internalHandlerCalled).toBe(false)
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - multiple internal handlers can be registered", () => {
@@ -279,13 +228,11 @@ test("InternalKeyHandler - multiple internal handlers can be registered", () => 
   handler.onInternal("keypress", internalHandler2)
   handler.onInternal("keypress", internalHandler3)
 
-  mockInput.pressKey("a")
+  handler.processInput("a")
 
   expect(handler1Called).toBe(true)
   expect(handler2Called).toBe(true)
   expect(handler3Called).toBe(true)
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - offInternal removes specific handlers", () => {
@@ -307,12 +254,10 @@ test("InternalKeyHandler - offInternal removes specific handlers", () => {
   // Remove only handler1
   handler.offInternal("keypress", internalHandler1)
 
-  mockInput.pressKey("a")
+  handler.processInput("a")
 
   expect(handler1Called).toBe(false)
   expect(handler2Called).toBe(true)
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - emit returns true when there are listeners", () => {
@@ -374,8 +319,6 @@ test("InternalKeyHandler - emit returns true when there are listeners", () => {
     }),
   )
   expect(hasListeners).toBe(true)
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - paste events work with priority system", () => {
@@ -391,11 +334,11 @@ test("InternalKeyHandler - paste events work with priority system", () => {
     callOrder.push(`internal:${event.text}`)
   })
 
-  mockInput.pasteBracketedText("hello")
+  const pasteStart = "\x1b[200~"
+  const pasteEnd = "\x1b[201~"
+  handler.processInput(pasteStart + "hello" + pasteEnd)
 
   expect(callOrder).toEqual(["regular:hello", "internal:hello"])
-
-  handler.destroy()
 })
 
 test("InternalKeyHandler - paste preventDefault prevents internal handlers", () => {
@@ -415,13 +358,13 @@ test("InternalKeyHandler - paste preventDefault prevents internal handlers", () 
     internalHandlerCalled = true
   })
 
-  mockInput.pasteBracketedText("test paste")
+  const pasteStart = "\x1b[200~"
+  const pasteEnd = "\x1b[201~"
+  handler.processInput(pasteStart + "test paste" + pasteEnd)
 
   expect(regularHandlerCalled).toBe(true)
   expect(receivedText).toBe("test paste")
   expect(internalHandlerCalled).toBe(false)
-
-  handler.destroy()
 })
 
 test("KeyHandler - emits paste event even with empty content", () => {
@@ -435,12 +378,12 @@ test("KeyHandler - emits paste event even with empty content", () => {
     receivedPaste = event.text
   })
 
-  mockInput.pasteBracketedText("")
+  const pasteStart = "\x1b[200~"
+  const pasteEnd = "\x1b[201~"
+  handler.processInput(pasteStart + pasteEnd)
 
   expect(pasteEventReceived).toBe(true)
   expect(receivedPaste).toBe("")
-
-  handler.destroy()
 })
 
 test("KeyHandler - filters out mouse events", () => {
@@ -451,31 +394,31 @@ test("KeyHandler - filters out mouse events", () => {
     keypressCount++
   })
 
+  // Mouse events should not generate keypresses
+  handler.processInput("\x1b[<0;10;5M")
+  expect(keypressCount).toBe(0)
+
+  handler.processInput("\x1b[<0;10;5m")
+  expect(keypressCount).toBe(0)
+
+  // Old-style mouse: \x1b[M + 3 bytes, then "c" is a separate keypress
+  handler.processInput("\x1b[M ab")
+  expect(keypressCount).toBe(0)
+
+  handler.processInput("c")
+  expect(keypressCount).toBe(1)
+
+  handler.processInput("a")
+  expect(keypressCount).toBe(2) // Now we have "c" and "a"
+})
+
+test("KeyHandler - KeyEvent has source field set to 'raw' by default", () => {
   if (!renderer) {
     throw new Error("Renderer not initialized")
   }
 
-  renderer.stdin.emit("data", Buffer.from("\x1b[<0;10;5M"))
-  expect(keypressCount).toBe(0)
-
-  renderer.stdin.emit("data", Buffer.from("\x1b[<0;10;5m"))
-  expect(keypressCount).toBe(0)
-
-  // Old-style mouse: \x1b[M + 3 bytes = "\x1b[M ab", then "c" is a separate keypress
-  renderer.stdin.emit("data", Buffer.from("\x1b[M abc"))
-  expect(keypressCount).toBe(1) // The "c" after the mouse event
-
-  renderer.stdin.emit("data", Buffer.from("a"))
-  expect(keypressCount).toBe(2) // Now we have "c" and "a"
-
-  handler.destroy()
-})
-
-test("KeyHandler - KeyEvent has source field set to 'raw' by default", () => {
-  const handler = createKeyHandler(false)
-
   let receivedKey: KeyEvent | undefined
-  handler.on("keypress", (key: KeyEvent) => {
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
     receivedKey = key
   })
 
@@ -485,14 +428,16 @@ test("KeyHandler - KeyEvent has source field set to 'raw' by default", () => {
   expect(receivedKey?.source).toBe("raw")
   expect(receivedKey?.name).toBe("a")
 
-  handler.destroy()
+  renderer.keyInput.removeAllListeners("keypress")
 })
 
 test("KeyHandler - KeyEvent has source field for different key types", () => {
-  const handler = createKeyHandler(false)
+  if (!renderer) {
+    throw new Error("Renderer not initialized")
+  }
 
   const receivedKeys: KeyEvent[] = []
-  handler.on("keypress", (key: KeyEvent) => {
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
     receivedKeys.push(key)
   })
 
@@ -508,7 +453,7 @@ test("KeyHandler - KeyEvent has source field for different key types", () => {
   expect(receivedKeys[2]?.source).toBe("raw")
   expect(receivedKeys[3]?.source).toBe("raw")
 
-  handler.destroy()
+  renderer.keyInput.removeAllListeners("keypress")
 })
 
 test("KeyHandler - KeyEvent source is 'kitty' when using Kitty keyboard protocol", () => {
@@ -519,25 +464,21 @@ test("KeyHandler - KeyEvent source is 'kitty' when using Kitty keyboard protocol
     receivedKey = key
   })
 
-  if (!renderer) {
-    throw new Error("Renderer not initialized")
-  }
-
   // Send a Kitty keyboard protocol sequence for 'a' (codepoint 97)
-  renderer.stdin.emit("data", Buffer.from("\x1b[97u"))
+  handler.processInput("\x1b[97u")
 
   expect(receivedKey).toBeDefined()
   expect(receivedKey?.source).toBe("kitty")
   expect(receivedKey?.name).toBe("a")
-
-  handler.destroy()
 })
 
 test("KeyHandler - KeyEvent source is 'raw' for non-Kitty sequences even with Kitty enabled", () => {
-  const handler = createKeyHandler(true)
+  if (!renderer) {
+    throw new Error("Renderer not initialized")
+  }
 
   const receivedKeys: KeyEvent[] = []
-  handler.on("keypress", (key: KeyEvent) => {
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
     receivedKeys.push(key)
   })
 
@@ -551,14 +492,16 @@ test("KeyHandler - KeyEvent source is 'raw' for non-Kitty sequences even with Ki
   expect(receivedKeys[1]?.source).toBe("raw")
   expect(receivedKeys[1]?.name).toBe("up")
 
-  handler.destroy()
+  renderer.keyInput.removeAllListeners("keypress")
 })
 
 test("KeyHandler - source field persists through KeyEvent wrapper", () => {
-  const handler = createKeyHandler(false)
+  if (!renderer) {
+    throw new Error("Renderer not initialized")
+  }
 
   let receivedKey: KeyEvent | undefined
-  handler.on("keypress", (key: KeyEvent) => {
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
     receivedKey = key
   })
 
@@ -572,5 +515,26 @@ test("KeyHandler - source field persists through KeyEvent wrapper", () => {
   const parsedKey: typeof receivedKey = receivedKey
   expect(parsedKey?.source).toBe("raw")
 
-  handler.destroy()
+  renderer.keyInput.removeAllListeners("keypress")
+})
+
+test("KeyHandler - suspend ignores processInput calls", () => {
+  const handler = createKeyHandler()
+
+  let keypressCount = 0
+  handler.on("keypress", () => {
+    keypressCount++
+  })
+
+  handler.processInput("a")
+  expect(keypressCount).toBe(1)
+
+  handler.suspend()
+  handler.processInput("b")
+  handler.processInput("c")
+  expect(keypressCount).toBe(1) // No new keypresses while suspended
+
+  handler.resume()
+  handler.processInput("d")
+  expect(keypressCount).toBe(2) // Resumes processing
 })

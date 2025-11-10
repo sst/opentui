@@ -149,10 +149,50 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     s = ""
   }
 
+  // Filter out mouse events (SGR and basic)
   if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
     return null
   }
   if (s.startsWith("\x1b[M") && s.length >= 6) {
+    return null
+  }
+
+  // Filter out terminal response sequences (not keyboard events)
+  // These are responses to terminal queries and should not be treated as key presses
+
+  // Window/cell size reports: ESC[4;height;width t or ESC[8;rows;cols t
+  if (/^\x1b\[\d+;\d+;\d+t$/.test(s)) {
+    return null
+  }
+
+  // Cursor position reports (DSR): ESC[row;col R
+  if (/^\x1b\[\d+;\d+R$/.test(s)) {
+    return null
+  }
+
+  // Device Attributes (DA) responses: ESC[?...c
+  if (/^\x1b\[\?[\d;]+c$/.test(s)) {
+    return null
+  }
+
+  // Mode reports: ESC[?...;...$y
+  if (/^\x1b\[\?[\d;]+\$y$/.test(s)) {
+    return null
+  }
+
+  // Focus events: ESC[I (focus in), ESC[O (focus out)
+  // Note: ESC[O is also used for SS3 sequences (like arrow keys), but those have a character after O
+  if (s === "\x1b[I" || s === "\x1b[O") {
+    return null
+  }
+
+  // OSC (Operating System Command) responses: ESC]...ESC\ or ESC]...BEL
+  if (/^\x1b\][\d;].*(\x1b\\|\x07)$/.test(s)) {
+    return null
+  }
+
+  // Bracketed paste mode markers: ESC[200~ (start), ESC[201~ (end)
+  if (s === "\x1b[200~" || s === "\x1b[201~") {
     return null
   }
 
