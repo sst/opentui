@@ -9,7 +9,7 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
 
-describe("Textarea - Stress Tests", () => {
+describe("Textarea - Syntax Highlighting Tests", () => {
   beforeEach(async () => {
     ;({
       renderer: currentRenderer,

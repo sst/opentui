@@ -6,7 +6,7 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
 
-describe("Textarea - Stress Tests", () => {
+describe("Textarea - Event Handlers Tests", () => {
   beforeEach(async () => {
     ;({
       renderer: currentRenderer,

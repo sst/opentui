@@ -9,7 +9,7 @@ let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
 
-describe("Textarea - Stress Tests", () => {
+describe("Textarea - Selection Tests", () => {
   beforeEach(async () => {
     ;({
       renderer: currentRenderer,
