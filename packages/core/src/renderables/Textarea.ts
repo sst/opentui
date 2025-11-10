@@ -67,15 +67,19 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "return", action: "newline" },
   { name: "linefeed", action: "newline" },
   { name: "return", meta: true, action: "submit" },
-  { name: "z", ctrl: true, action: "undo" },
-  { name: "Z", ctrl: true, shift: true, action: "redo" },
-  { name: "y", ctrl: true, action: "redo" },
+
+  // undo/redo
+  { name: "-", ctrl: true, action: "undo" },
+  { name: ".", ctrl: true, action: "redo" },
+  { name: "z", super: true, action: "undo" },
+  { name: "z", super: true, shift: true, action: "redo" },
+
   { name: "f", meta: true, action: "word-forward" },
   { name: "b", meta: true, action: "word-backward" },
   { name: "right", meta: true, action: "word-forward" },
   { name: "left", meta: true, action: "word-backward" },
-  { name: "F", meta: true, shift: true, action: "select-word-forward" },
-  { name: "B", meta: true, shift: true, action: "select-word-backward" },
+  { name: "f", meta: true, shift: true, action: "select-word-forward" },
+  { name: "b", meta: true, shift: true, action: "select-word-backward" },
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
   { name: "d", meta: true, action: "delete-word-forward" },
@@ -207,12 +211,14 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyCtrl = typeof key === "string" ? false : key.ctrl
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
+    const keySuper = typeof key === "string" ? false : key.super
 
     const bindingKey = getKeyBindingKey({
       name: keyName,
       ctrl: keyCtrl,
       shift: keyShift,
       meta: keyMeta,
+      super: keySuper,
       action: "move-left" as TextareaAction,
     })
 
