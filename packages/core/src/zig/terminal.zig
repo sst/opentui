@@ -153,7 +153,10 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         // Version and capability queries
         ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery ++
-        ansi.ANSI.kittyGraphicsQuery ++
+        // Note: kittyGraphicsQuery is disabled because it sends an invalid query (querying for non-existent image ID 1)
+        // which causes error responses like "Gi=1;EINVAL:Zero width/height not allowed" that can leak into user input.
+        // Kitty graphics support is already detected via the xtversion response (">|kitty(...)" string).
+        // ansi.ANSI.kittyGraphicsQuery ++
         ansi.ANSI.primaryDeviceAttrs ++
         ansi.ANSI.restoreCursorState
             // ++ ansi.ANSI.sixelGeometryQuery
@@ -309,14 +312,24 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.bracketed_paste = true;
     }
 
-    // Explicit width detection - cursor position report [1;2R means explicit width supported
-    if (std.mem.indexOf(u8, response, "\x1b[1;2R")) |_| {
-        self.caps.explicit_width = true;
-    }
-
-    // Scaled text detection - cursor position report [1;3R means scaled text supported
-    if (std.mem.indexOf(u8, response, "\x1b[1;3R")) |_| {
-        self.caps.scaled_text = true;
+    // Explicit width detection - cursor position report [1;NR where N >= 2 means explicit width supported
+    // We look for ESC[1; followed by a digit >= 2
+    // This handles cases where the cursor isn't at exact home position when queries are sent
+    if (std.mem.indexOf(u8, response, "\x1b[1;")) |pos| {
+        const after = response[pos + 4 ..];
+        if (after.len > 0) {
+            var end: usize = 0;
+            while (end < after.len and after[end] >= '0' and after[end] <= '9') : (end += 1) {}
+            if (end > 0 and end < after.len and after[end] == 'R') {
+                const col = std.fmt.parseInt(u16, after[0..end], 10) catch 0;
+                if (col >= 2) {
+                    self.caps.explicit_width = true;
+                }
+                if (col >= 3) {
+                    self.caps.scaled_text = true;
+                }
+            }
+        }
     }
 
     // Kitty detection

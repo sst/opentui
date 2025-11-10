@@ -800,7 +800,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
 
+      console.log("isCapabilityResponse", sequence, isCapabilityResponse(sequence))
       if (isCapabilityResponse(sequence)) {
+        console.log("processCapabilityResponse", JSON.stringify(sequence))
         this.lib.processCapabilityResponse(this.rendererPtr, sequence)
         this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
         return
