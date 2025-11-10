@@ -451,4 +451,279 @@ describe("mock-keys", () => {
 
     expect(mockRenderer.getEmittedData()).toBe("\x1bx")
   })
+
+  describe("Kitty Keyboard Protocol Mode", () => {
+    test("basic character in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97u")
+    })
+
+    test("backspace without modifiers in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressBackspace()
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[127u")
+    })
+
+    test("backspace with shift in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressBackspace({ shift: true })
+
+      // Kitty protocol: backspace(127) with shift modifier (1+1=2)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[127;2u")
+    })
+
+    test("backspace with ctrl in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressBackspace({ ctrl: true })
+
+      // Kitty protocol: backspace(127) with ctrl modifier (4+1=5)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[127;5u")
+    })
+
+    test("backspace with meta in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressBackspace({ meta: true })
+
+      // Kitty protocol: backspace(127) with meta modifier (2+1=3)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[127;3u")
+    })
+
+    test("backspace with shift+meta in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressBackspace({ shift: true, meta: true })
+
+      // Kitty protocol: backspace(127) with shift+meta (1+2+1=4)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[127;4u")
+    })
+
+    test("delete key in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("DELETE")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57349u")
+    })
+
+    test("arrow keys in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressArrow("up")
+      mockKeys.pressArrow("down")
+      mockKeys.pressArrow("left")
+      mockKeys.pressArrow("right")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57352u\x1b[57353u\x1b[57350u\x1b[57351u")
+    })
+
+    test("arrow key with shift in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressArrow("right", { shift: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57351;2u")
+    })
+
+    test("arrow key with ctrl in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressArrow("left", { ctrl: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57350;5u")
+    })
+
+    test("arrow key with meta in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressArrow("down", { meta: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57353;3u")
+    })
+
+    test("arrow key with shift+ctrl+meta in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressArrow("up", { shift: true, ctrl: true, meta: true })
+
+      // shift(1) + meta(2) + ctrl(4) = 7, plus 1 = 8
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57352;8u")
+    })
+
+    test("enter/return in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressEnter()
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[13u")
+    })
+
+    test("enter with meta in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressEnter({ meta: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[13;3u")
+    })
+
+    test("tab in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressTab()
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[9u")
+    })
+
+    test("tab with shift in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressTab({ shift: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[9;2u")
+    })
+
+    test("escape in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressEscape()
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27u")
+    })
+
+    test("home key in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("HOME")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57356u")
+    })
+
+    test("home with shift in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("HOME", { shift: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57356;2u")
+    })
+
+    test("end key in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("END")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57357u")
+    })
+
+    test("function keys in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("F1")
+      mockKeys.pressKey("F2")
+      mockKeys.pressKey("F12")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[57364u\x1b[57365u\x1b[57375u")
+    })
+
+    test("regular characters with shift in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a", { shift: true })
+
+      // 'a' (97) with shift modifier
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;2u")
+    })
+
+    test("regular characters with ctrl in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("c", { ctrl: true })
+
+      // 'c' (99) with ctrl modifier (4+1=5)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[99;5u")
+    })
+
+    test("regular characters with meta in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("x", { meta: true })
+
+      // 'x' (120) with meta modifier (2+1=3)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[120;3u")
+    })
+
+    test("multiple keys in sequence in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("h")
+      mockKeys.pressKey("i")
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[104u\x1b[105u")
+    })
+
+    test("mixed modifier combinations in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a")
+      mockKeys.pressKey("a", { shift: true })
+      mockKeys.pressKey("a", { ctrl: true })
+      mockKeys.pressKey("a", { meta: true })
+      mockKeys.pressKey("a", { shift: true, ctrl: true })
+
+      expect(mockRenderer.getEmittedData()).toBe(
+        "\x1b[97u" + // no mods
+          "\x1b[97;2u" + // shift
+          "\x1b[97;5u" + // ctrl
+          "\x1b[97;3u" + // meta
+          "\x1b[97;6u", // shift+ctrl
+      )
+    })
+
+    test("kitty mode vs regular mode comparison", () => {
+      const kittyRenderer = new MockRenderer()
+      const regularRenderer = new MockRenderer()
+      const kittyKeys = createMockKeys(kittyRenderer as any, { kittyKeyboard: true })
+      const regularKeys = createMockKeys(regularRenderer as any, { kittyKeyboard: false })
+
+      kittyKeys.pressBackspace({ shift: true })
+      regularKeys.pressBackspace({ shift: true })
+
+      // Kitty should send the protocol sequence with modifier
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[127;2u")
+      // Regular should just send backspace (shift is ignored)
+      expect(regularRenderer.getEmittedData()).toBe("\b")
+    })
+  })
 })
