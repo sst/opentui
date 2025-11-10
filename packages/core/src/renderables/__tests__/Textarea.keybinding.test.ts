@@ -681,6 +681,109 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
 
+    it("should delete from cursor to line end with ctrl+k in multiline text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content\nLine 3 content",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 7; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 \nLine 2 content\nLine 3 content")
+      expect(editor.logicalCursor.col).toBe(7)
+      expect(editor.logicalCursor.row).toBe(0)
+    })
+
+    it("should delete from cursor to line end with ctrl+k on line 2", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content\nLine 3 content",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+      for (let i = 0; i < 7; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 content\nLine 2 \nLine 3 content")
+      expect(editor.logicalCursor.col).toBe(7)
+      expect(editor.logicalCursor.row).toBe(1)
+    })
+
+    it("should delete from start to cursor with ctrl+u in multiline text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content\nLine 3 content",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 7; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("u", { ctrl: true })
+      expect(editor.plainText).toBe("content\nLine 2 content\nLine 3 content")
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+    })
+
+    it("should delete from start to cursor with ctrl+u on line 2", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content\nLine 3 content",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+      for (let i = 0; i < 7; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("u", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 content\ncontent\nLine 3 content")
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.logicalCursor.row).toBe(1)
+    })
+
+    it("should do nothing with ctrl+k when cursor is at end of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 content\nLine 2 content")
+      expect(editor.logicalCursor.col).toBe(14)
+    })
+
+    it("should do nothing with ctrl+u when cursor is at start of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("u", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 content\nLine 2 content")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
     it("should map buffer-home and buffer-end to custom keys", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
