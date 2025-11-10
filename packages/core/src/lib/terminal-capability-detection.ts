@@ -36,8 +36,9 @@ export function isCapabilityResponse(sequence: string): boolean {
   }
 
   // Kitty graphics response: ESC _ G ... ESC \
-  // We specifically look for responses with our query ID (31337)
-  if (/\x1b_G[\s\S]*?i=31337[\s\S]*?\x1b\\/.test(sequence)) {
+  // Matches any graphics response including OK, errors, etc.
+  // This is for filtering capability responses from user input
+  if (/\x1b_G[\s\S]*?\x1b\\/.test(sequence)) {
     return true
   }
 
