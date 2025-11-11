@@ -32,6 +32,106 @@ describe("Textarea - Rendering Tests", () => {
   })
 
   describe("Wrapping", () => {
+    it("should move cursor down through all wrapped visual lines at column 0", async () => {
+      // Create a long line that will wrap into multiple visual lines
+      const longText =
+        "This is a very long line that will definitely wrap into multiple visual lines when the viewport is small"
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: longText,
+        width: 20, // Small viewport to force wrapping
+        height: 10,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+
+      // Set cursor at the beginning (0, 0) - logical position
+      editor.editBuffer.setCursor(0, 0)
+      await renderOnce()
+
+      // Get initial visual cursor position - should be at visual 0, 0
+      let visualCursor = editor.editorView.getVisualCursor()
+      expect(visualCursor.visualRow).toBe(0)
+      expect(visualCursor.visualCol).toBe(0)
+
+      // Verify we have multiple wrapped lines (should be 7 for this text)
+      const vlineCount = editor.editorView.getVirtualLineCount()
+      expect(vlineCount).toBeGreaterThan(1)
+
+      // Move down through each wrapped line - cursor should stay at column 0
+      for (let i = 1; i < vlineCount; i++) {
+        currentMockInput.pressArrow("down")
+        await renderOnce()
+
+        visualCursor = editor.editorView.getVisualCursor()
+
+        // Cursor should have moved down to the next visual line
+        expect(visualCursor.visualRow).toBe(i)
+
+        // Cursor should be at column 0 (beginning of each wrapped line)
+        expect(visualCursor.visualCol).toBe(0)
+      }
+
+      // After moving through all wrapped lines, we should be at the last wrapped line
+      expect(visualCursor.visualRow).toBe(vlineCount - 1)
+      expect(visualCursor.visualCol).toBe(0)
+    })
+
+    it("should move cursor up through all wrapped visual lines at column 0", async () => {
+      // Create a long line that will wrap into multiple visual lines
+      const longText =
+        "This is a very long line that will definitely wrap into multiple visual lines when the viewport is small"
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: longText,
+        width: 20, // Small viewport to force wrapping
+        height: 10,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+
+      // Verify we have multiple wrapped lines
+      const vlineCount = editor.editorView.getVirtualLineCount()
+      expect(vlineCount).toBeGreaterThan(1)
+
+      // Start at the END of the line (which will be on the last wrapped visual line)
+      const eol = editor.editBuffer.getEOL()
+      editor.editBuffer.setCursor(eol.row, eol.col)
+      await renderOnce()
+
+      // Move to the beginning of the last wrapped line (column 0 of last visual line)
+      let visualCursor = editor.editorView.getVisualCursor()
+      const lastVisualRow = visualCursor.visualRow
+
+      // Set cursor to column 0 of the last wrapped visual line by finding its logical column
+      // Last visual line starts at a specific logical column - we need to find it
+      const lastVlineStartCol = editor.logicalCursor.col - visualCursor.visualCol
+      editor.editBuffer.setCursor(0, lastVlineStartCol)
+      await renderOnce()
+
+      visualCursor = editor.editorView.getVisualCursor()
+      expect(visualCursor.visualRow).toBe(lastVisualRow)
+      expect(visualCursor.visualCol).toBe(0)
+
+      // Now move UP through each wrapped line - cursor should stay at column 0
+      for (let i = lastVisualRow - 1; i >= 0; i--) {
+        currentMockInput.pressArrow("up")
+        await renderOnce()
+
+        visualCursor = editor.editorView.getVisualCursor()
+
+        // Cursor should have moved up to the previous visual line
+        expect(visualCursor.visualRow).toBe(i)
+
+        // Cursor should be at column 0 (beginning of each wrapped line)
+        expect(visualCursor.visualCol).toBe(0)
+      }
+
+      // After moving through all wrapped lines, we should be at the first wrapped line
+      expect(visualCursor.visualRow).toBe(0)
+      expect(visualCursor.visualCol).toBe(0)
+    })
+
     it("should handle wrap mode property", async () => {
       const longText = "A".repeat(100)
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
