@@ -58,6 +58,8 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 - **`<text>`** - Display text with styling
 - **`<box>`** - Container with borders and layout
 - **`<input>`** - Text input field
+- **`<textarea>`** - Multi-line text input field
+- **`<code>`** - Code block with syntax highlighting
 - **`<select>`** - Selection dropdown
 - **`<scrollbox>`** - A scrollable box
 - **`<tab-select>`** - Tab-based selection
