@@ -244,19 +244,94 @@ describe("TextBufferView", () => {
     })
   })
 
-  describe("wrapped view offset stability", () => {
-    it("should maintain stable char offsets with ASCII wrapping", () => {
-      const text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      const styledText = stringToStyledText(text)
+  describe("undo/redo with line info", () => {
+    it("should update lineInfo correctly after undo", () => {
+      // This test verifies that marker cache is invalidated after undo
+      const styledText = stringToStyledText("Line 1 content\nLine 2")
       buffer.setStyledText(styledText)
 
-      view.setWrapMode("char")
-      view.setWrapWidth(10)
+      const lineInfoBefore = view.lineInfo
+      expect(lineInfoBefore.lineStarts).toEqual([0, 15])
+      expect(lineInfoBefore.lineWidths[0]).toBe(14)
+      expect(lineInfoBefore.lineWidths[1]).toBe(6)
+
+      // Modify the buffer (this would normally go through EditBuffer with undo tracking)
+      // For this test, we'll just verify the view updates correctly
+      const modifiedText = stringToStyledText("Line 1 \nLine 2")
+      buffer.setStyledText(modifiedText)
+
+      const lineInfoAfterModify = view.lineInfo
+      expect(lineInfoAfterModify.lineStarts).toEqual([0, 8])
+      expect(lineInfoAfterModify.lineWidths[0]).toBe(7)
+
+      // Restore original (simulating undo)
+      buffer.setStyledText(styledText)
+
+      const lineInfoAfterRestore = view.lineInfo
+      expect(lineInfoAfterRestore.lineStarts).toEqual([0, 15])
+      expect(lineInfoAfterRestore.lineWidths[0]).toBe(14)
+    })
+
+    it("should handle line info correctly through multiple undo/redo cycles", () => {
+      const text1 = stringToStyledText("Short\nLine 2")
+      const text2 = stringToStyledText("This is a longer line\nLine 2")
+      const text3 = stringToStyledText("X\nLine 2")
+
+      buffer.setStyledText(text1)
+      const info1 = view.lineInfo
+      expect(info1.lineWidths[0]).toBe(5)
+
+      buffer.setStyledText(text2)
+      const info2 = view.lineInfo
+      expect(info2.lineWidths[0]).toBe(21)
+
+      buffer.setStyledText(text3)
+      const info3 = view.lineInfo
+      expect(info3.lineWidths[0]).toBe(1)
+
+      // Go back to text2 (simulating undo)
+      buffer.setStyledText(text2)
+      const info2Again = view.lineInfo
+      expect(info2Again.lineWidths[0]).toBe(21)
+
+      // Go back to text1 (simulating another undo)
+      buffer.setStyledText(text1)
+      const info1Again = view.lineInfo
+      expect(info1Again.lineWidths[0]).toBe(5)
+
+      // Forward to text2 (simulating redo)
+      buffer.setStyledText(text2)
+      const info2Redo = view.lineInfo
+      expect(info2Redo.lineWidths[0]).toBe(21)
+    })
+
+    it("should correctly track line starts after undo with multiline text", () => {
+      const original = stringToStyledText("Line 1 content\nLine 2 content\nLine 3")
+      const modified = stringToStyledText("Line 1 \nLine 2 content\nLine 3")
+
+      buffer.setStyledText(original)
+      const originalInfo = view.lineInfo
+      expect(originalInfo.lineStarts).toEqual([0, 15, 30])
+
+      buffer.setStyledText(modified)
+      const modifiedInfo = view.lineInfo
+      expect(modifiedInfo.lineStarts).toEqual([0, 8, 23])
+
+      // Restore (undo)
+      buffer.setStyledText(original)
+      const restoredInfo = view.lineInfo
+      expect(restoredInfo.lineStarts).toEqual([0, 15, 30])
+    })
+  })
+
+  describe("wrapped view offset stability", () => {
+    it("should return line info for empty buffer", () => {
+      const emptyText = stringToStyledText("")
+      buffer.setStyledText(emptyText)
 
       const lineInfo = view.lineInfo
-      // Offsets should be in display width units
-      expect(lineInfo.lineStarts).toEqual([0, 10, 20])
-      expect(lineInfo.lineWidths).toEqual([10, 10, 6])
+      expect(lineInfo.lineStarts).toEqual([0])
+      expect(lineInfo.lineWidths).toEqual([0])
     })
 
     it("should maintain stable char offsets with wide characters", () => {

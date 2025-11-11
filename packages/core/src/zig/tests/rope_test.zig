@@ -1989,6 +1989,127 @@ test "Rope - marker cache MUST update after delete operations" {
     try std.testing.expectEqual(@as(u32, 3), nl1_after.?.leaf_index);
 }
 
+test "Rope - marker cache MUST update after undo" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+
+    // Create: word(10) newline word(5)
+    const tokens = [_]TokenType{
+        .{ .word = 10 },
+        .{ .newline = {} },
+        .{ .word = 5 },
+    };
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens);
+
+    // Initial state: 1 newline at weight 10
+    const nl_before = rope.getMarker(.newline, 0);
+    try std.testing.expect(nl_before != null);
+    try std.testing.expectEqual(@as(u32, 10), nl_before.?.global_weight);
+
+    // Store undo point
+    try rope.store_undo("before delete");
+
+    // Delete part of first word: delete range [0, 1) removes first word
+    try rope.delete_range(0, 1);
+
+    // After delete: newline should be at weight 0 (no word before it)
+    const nl_after_delete = rope.getMarker(.newline, 0);
+    try std.testing.expect(nl_after_delete != null);
+    try std.testing.expectEqual(@as(u32, 0), nl_after_delete.?.global_weight);
+
+    // Undo the delete
+    _ = try rope.undo("after delete");
+
+    // CRITICAL: After undo, marker cache MUST be recalculated!
+    // Newline should be back at weight 10
+    const nl_after_undo = rope.getMarker(.newline, 0);
+    try std.testing.expect(nl_after_undo != null);
+    try std.testing.expectEqual(@as(u32, 10), nl_after_undo.?.global_weight);
+}
+
+test "Rope - marker cache MUST update after redo" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+
+    const tokens = [_]TokenType{
+        .{ .word = 10 },
+        .{ .newline = {} },
+        .{ .word = 5 },
+    };
+
+    var rope = try RopeType.from_slice(arena.allocator(), &tokens);
+
+    try rope.store_undo("initial");
+    try rope.delete_range(0, 1);
+
+    const nl_after_delete = rope.getMarker(.newline, 0);
+    try std.testing.expectEqual(@as(u32, 0), nl_after_delete.?.global_weight);
+
+    // Undo
+    _ = try rope.undo("after delete");
+    const nl_after_undo = rope.getMarker(.newline, 0);
+    try std.testing.expectEqual(@as(u32, 10), nl_after_undo.?.global_weight);
+
+    // Redo
+    _ = try rope.redo();
+
+    // CRITICAL: After redo, marker cache MUST be recalculated!
+    const nl_after_redo = rope.getMarker(.newline, 0);
+    try std.testing.expect(nl_after_redo != null);
+    try std.testing.expectEqual(@as(u32, 0), nl_after_redo.?.global_weight);
+}
+
+test "Rope - marker cache survives multiple undo/redo cycles" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const RopeType = rope_mod.Rope(TokenType);
+
+    var rope = try RopeType.from_slice(arena.allocator(), &[_]TokenType{
+        .{ .word = 5 },
+        .{ .newline = {} },
+        .{ .word = 5 },
+    });
+
+    try rope.store_undo("state1");
+    try rope.append(.{ .newline = {} });
+    try rope.append(.{ .word = 5 });
+
+    // Should have 2 newlines now
+    try std.testing.expectEqual(@as(u32, 2), rope.markerCount(.newline));
+    const nl1_orig = rope.getMarker(.newline, 1);
+    try std.testing.expectEqual(@as(u32, 10), nl1_orig.?.global_weight);
+
+    try rope.store_undo("state2");
+    try rope.delete(0); // Delete first word
+
+    // Markers should update: first newline now at weight 0
+    const nl0_after_delete = rope.getMarker(.newline, 0);
+    try std.testing.expectEqual(@as(u32, 0), nl0_after_delete.?.global_weight);
+
+    // Undo twice
+    _ = try rope.undo("current");
+    _ = try rope.undo("current");
+
+    // Back to original: 1 newline at weight 5
+    try std.testing.expectEqual(@as(u32, 1), rope.markerCount(.newline));
+    const nl_final = rope.getMarker(.newline, 0);
+    try std.testing.expectEqual(@as(u32, 5), nl_final.?.global_weight);
+
+    // Redo twice
+    _ = try rope.redo();
+    _ = try rope.redo();
+
+    // Should match the post-delete state
+    const nl0_redo = rope.getMarker(.newline, 0);
+    try std.testing.expectEqual(@as(u32, 0), nl0_redo.?.global_weight);
+}
+
 //===== Configurable Undo Depth Tests =====
 
 test "Rope - weight-based balancing with custom weight function" {
