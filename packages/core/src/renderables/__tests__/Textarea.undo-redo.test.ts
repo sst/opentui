@@ -15,6 +15,7 @@ describe("Textarea - Undo/Redo Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      otherModifiersMode: true,
     }))
   })
 
@@ -66,13 +67,13 @@ describe("Textarea - Undo/Redo Tests", () => {
       expect(editor.plainText).toBe("")
       expect(editor.hasSelection()).toBe(false)
 
-      currentMockInput.pressKey("z", { ctrl: true })
+      currentMockInput.pressKey("-", { ctrl: true })
       expect(editor.plainText).toBe(" Test")
 
-      currentMockInput.pressKey("z", { ctrl: true })
+      currentMockInput.pressKey("-", { ctrl: true })
       expect(editor.plainText).toBe(" World Test")
 
-      currentMockInput.pressKey("z", { ctrl: true })
+      currentMockInput.pressKey("-", { ctrl: true })
       expect(editor.plainText).toBe(initialText)
     })
   })
@@ -151,7 +152,7 @@ describe("Textarea - Undo/Redo Tests", () => {
       expect(editor.plainText).toBe("")
     })
 
-    it("should handle Ctrl+Z for undo", async () => {
+    it("should handle Ctrl+- for undo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "",
         width: 40,
@@ -164,12 +165,12 @@ describe("Textarea - Undo/Redo Tests", () => {
       currentMockInput.pressKey("i")
       expect(editor.plainText).toBe("Hi")
 
-      // Ctrl+Z to undo
-      currentMockInput.pressKey("z", { ctrl: true })
+      // Ctrl+- to undo
+      currentMockInput.pressKey("-", { ctrl: true })
       expect(editor.plainText).toBe("H")
     })
 
-    it("should handle Ctrl+Y for redo", async () => {
+    it("should handle Ctrl+. for redo", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "",
         width: 40,
@@ -182,11 +183,11 @@ describe("Textarea - Undo/Redo Tests", () => {
       expect(editor.plainText).toBe("X")
 
       // Undo
-      currentMockInput.pressKey("z", { ctrl: true })
+      currentMockInput.pressKey("-", { ctrl: true })
       expect(editor.plainText).toBe("")
 
-      // Ctrl+Y to redo
-      currentMockInput.pressKey("y", { ctrl: true })
+      // Ctrl+. to redo
+      currentMockInput.pressKey(".", { ctrl: true })
       expect(editor.plainText).toBe("X")
     })
 
