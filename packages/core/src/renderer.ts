@@ -65,6 +65,7 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   exitOnCtrlC?: boolean
+  exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
   targetFps?: number
   memorySnapshotInterval?: number
@@ -143,14 +144,6 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-singleton("ProcessExitSignals", () => {
-  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
-    process.on(signal, () => {
-      process.exit()
-    })
-  })
-})
-
 const rendererTracker = singleton("RendererTracker", () => {
   const renderers = new Set<CliRenderer>()
   return {
@@ -227,6 +220,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
+  private exitSignals: NodeJS.Signals[]
+  private _exitSignalListener: ((signal: NodeJS.Signals) => void) | null = null
   private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
@@ -417,6 +412,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
+    this.exitSignals = config.exitSignals ?? ["SIGABRT", "SIGINT", "SIGTERM", "SIGQUIT"]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
@@ -458,6 +454,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
     })
+
+    this.mountExitSignals()
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
 
@@ -1252,6 +1250,28 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
   }
 
+  private mountExitSignals(): void {
+    if (this.exitSignals.length > 0 && this._exitSignalListener === null) {
+      const listener = () => {
+        // We need to schedule the destroy call to the next tick, to prevent
+        // the terminal from printing sequences after the raw mode is disabled
+        process.nextTick(() => this.destroy())
+        this.unmountExitSignals()
+      };
+
+      this.exitSignals.forEach((signal) => process.addListener(signal, listener))
+      this._exitSignalListener = listener
+    }
+  }
+
+  private unmountExitSignals(): void {
+    const listener = this._exitSignalListener
+    if (this.exitSignals.length > 0 && listener !== null) {
+      this.exitSignals.forEach((signal) => process.removeListener(signal, listener))
+      this._exitSignalListener = null
+    }
+  }
+
   private internalStart(): void {
     if (!this._isRunning && !this._isDestroyed) {
       this._isRunning = true
@@ -1279,6 +1299,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this._keyHandler.suspend()
+    this.unmountExitSignals()
     this._stdinBuffer.clear()
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
@@ -1292,6 +1313,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this.stdin.resume()
     this._keyHandler.resume()
+    this.mountExitSignals()
 
     if (this._suspendedMouseEnabled) {
       this.enableMouse()
@@ -1338,6 +1360,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("unhandledRejection", this.handleError)
     process.removeListener("warning", this.warningHandler)
     capture.removeListener("write", this.captureCallback)
+
+    this.unmountExitSignals()
 
     if (this.memorySnapshotTimer) {
       clearInterval(this.memorySnapshotTimer)
