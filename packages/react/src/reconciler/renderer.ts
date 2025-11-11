@@ -7,17 +7,13 @@ import { _render } from "./reconciler"
 /**
  * @deprecated Use `createRoot(renderer).render(node)` instead
  */
-export async function render(node: ReactNode, rendererConfig: CliRendererConfig = {}): Promise<void> {
+export async function render(
+  node: ReactNode,
+  rendererConfig: CliRendererConfig = {},
+): Promise<{ renderer: CliRenderer }> {
   const renderer = await createCliRenderer(rendererConfig)
-  engine.attach(renderer)
-  _render(
-    React.createElement(
-      AppContext.Provider,
-      { value: { keyHandler: renderer.keyInput, renderer } },
-      React.createElement(ErrorBoundary, null, node),
-    ),
-    renderer.root,
-  )
+  createRoot(renderer).render(node)
+  return { renderer }
 }
 
 /**
