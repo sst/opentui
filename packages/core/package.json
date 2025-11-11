@@ -33,7 +33,7 @@
     "web-tree-sitter": "0.25.10"
   },
   "dependencies": {
-    "bun-ffi-structs": "^0.1.0",
+    "bun-ffi-structs": "0.1.1",
     "jimp": "1.6.0",
     "yoga-layout": "3.2.1"
   },

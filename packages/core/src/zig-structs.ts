@@ -1,4 +1,4 @@
-import { defineStruct } from "bun-ffi-structs"
+import { defineStruct, defineEnum } from "bun-ffi-structs"
 import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
 import { RGBA } from "./lib/RGBA"
 
@@ -49,4 +49,27 @@ export const VisualCursorStruct = defineStruct([
   ["logicalRow", "u32"],
   ["logicalCol", "u32"],
   ["offset", "u32"],
+])
+
+const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
+
+export const TerminalCapabilitiesStruct = defineStruct([
+  ["kitty_keyboard", "bool_u8"],
+  ["kitty_graphics", "bool_u8"],
+  ["rgb", "bool_u8"],
+  ["unicode", UnicodeMethodEnum],
+  ["sgr_pixels", "bool_u8"],
+  ["color_scheme_updates", "bool_u8"],
+  ["explicit_width", "bool_u8"],
+  ["scaled_text", "bool_u8"],
+  ["sixel", "bool_u8"],
+  ["focus_tracking", "bool_u8"],
+  ["sync", "bool_u8"],
+  ["bracketed_paste", "bool_u8"],
+  ["hyperlinks", "bool_u8"],
+  ["term_name", "char*"],
+  ["term_name_len", "u64", { lengthOf: "term_name" }],
+  ["term_version", "char*"],
+  ["term_version_len", "u64", { lengthOf: "term_version" }],
+  ["term_from_xtversion", "bool_u8"],
 ])

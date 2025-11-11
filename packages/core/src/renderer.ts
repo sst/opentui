@@ -81,6 +81,7 @@ export interface CliRendererConfig {
   useKittyKeyboard?: boolean
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
+  prependInputHandlers?: ((sequence: string) => boolean)[]
 }
 
 export type PixelResolution = {
@@ -334,6 +335,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
 
+  private inputHandlers: ((sequence: string) => boolean)[] = []
+  private prependedInputHandlers: ((sequence: string) => boolean)[] = []
+
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
 
@@ -424,6 +428,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
+    this.prependedInputHandlers = config.prependInputHandlers || []
 
     this.root = new RootRenderable(this)
 
@@ -783,10 +788,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._stdinBuffer.process(data)
   }).bind(this)
 
-  private inputHandlers: ((sequence: string) => boolean)[] = []
-
   public addInputHandler(handler: (sequence: string) => boolean): void {
     this.inputHandlers.push(handler)
+  }
+
+  public prependInputHandler(handler: (sequence: string) => boolean): void {
+    this.inputHandlers.unshift(handler)
   }
 
   public removeInputHandler(handler: (sequence: string) => boolean): void {
@@ -815,6 +822,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
 
   private setupInput(): void {
+    for (const handler of this.prependedInputHandlers) {
+      this.addInputHandler(handler)
+    }
+
     this.addInputHandler((sequence: string) => {
       if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
         const resolution = parsePixelResolution(sequence)

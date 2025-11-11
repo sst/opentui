@@ -1300,11 +1300,12 @@ test("parseKeypress - fallback to raw parsing when Kitty option is enabled but s
   expect(normalCtrl?.ctrl).toBe(true)
 })
 
-test("parseKeypress - Ghostty terminal modified enter keys", () => {
-  // Ghostty terminal sends special escape sequences for modified enter keys
-  // Format: ESC[27;modifier;charcode~ where charcode 13 is enter/return
+test("parseKeypress - modifyOtherKeys modified enter keys", () => {
+  // Terminals with modifyOtherKeys mode enabled send special escape sequences for modified keys
+  // Format: CSI 27 ; modifier ; code ~ where code 13 is enter/return
+  // This is part of the CSI u protocol and is sent by xterm, iTerm2, Ghostty, etc.
 
-  // Shift+Enter: ESC[27;2;13~ (modifier 2 = shift bit 1)
+  // Shift+Enter: CSI 27;2;13~ (modifier 2 = shift bit 1)
   const shiftEnter = parseKeypress("\u001b[27;2;13~")!
   expect(shiftEnter.name).toBe("return")
   expect(shiftEnter.shift).toBe(true)
@@ -1324,7 +1325,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(shiftEnter2.meta).toBe(false)
   expect(shiftEnter2.option).toBe(false)
 
-  // Ctrl+Enter: ESC[27;5;13~ (modifier 5 = ctrl bit 4)
+  // Ctrl+Enter: CSI 27;5;13~ (modifier 5 = ctrl bit 4)
   const ctrlEnter = parseKeypress("\u001b[27;5;13~")!
   expect(ctrlEnter.name).toBe("return")
   expect(ctrlEnter.ctrl).toBe(true)
@@ -1344,7 +1345,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(ctrlEnter2.meta).toBe(false)
   expect(ctrlEnter2.option).toBe(false)
 
-  // Alt/Option+Enter: ESC[27;3;13~ (modifier 3 = alt/option bit 2)
+  // Alt/Option+Enter: CSI 27;3;13~ (modifier 3 = alt/option bit 2)
   const altEnter = parseKeypress("\u001b[27;3;13~")!
   expect(altEnter.name).toBe("return")
   expect(altEnter.meta).toBe(true)
@@ -1356,7 +1357,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(altEnter.eventType).toBe("press")
   expect(altEnter.source).toBe("raw")
 
-  // Shift+Ctrl+Enter: ESC[27;6;13~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
+  // Shift+Ctrl+Enter: CSI 27;6;13~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
   const shiftCtrlEnter = parseKeypress("\u001b[27;6;13~")!
   expect(shiftCtrlEnter.name).toBe("return")
   expect(shiftCtrlEnter.shift).toBe(true)
@@ -1368,7 +1369,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(shiftCtrlEnter.eventType).toBe("press")
   expect(shiftCtrlEnter.source).toBe("raw")
 
-  // Shift+Alt+Enter: ESC[27;4;13~ (modifier 4 = shift(1) + alt(2) = bits 3)
+  // Shift+Alt+Enter: CSI 27;4;13~ (modifier 4 = shift(1) + alt(2) = bits 3)
   const shiftAltEnter = parseKeypress("\u001b[27;4;13~")!
   expect(shiftAltEnter.name).toBe("return")
   expect(shiftAltEnter.shift).toBe(true)
@@ -1380,7 +1381,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(shiftAltEnter.eventType).toBe("press")
   expect(shiftAltEnter.source).toBe("raw")
 
-  // Ctrl+Alt+Enter: ESC[27;7;13~ (modifier 7 = alt(2) + ctrl(4) = bits 6)
+  // Ctrl+Alt+Enter: CSI 27;7;13~ (modifier 7 = alt(2) + ctrl(4) = bits 6)
   const ctrlAltEnter = parseKeypress("\u001b[27;7;13~")!
   expect(ctrlAltEnter.name).toBe("return")
   expect(ctrlAltEnter.ctrl).toBe(true)
@@ -1392,7 +1393,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(ctrlAltEnter.eventType).toBe("press")
   expect(ctrlAltEnter.source).toBe("raw")
 
-  // Shift+Ctrl+Alt+Enter: ESC[27;8;13~ (modifier 8 = shift(1) + alt(2) + ctrl(4) = bits 7)
+  // Shift+Ctrl+Alt+Enter: CSI 27;8;13~ (modifier 8 = shift(1) + alt(2) + ctrl(4) = bits 7)
   const allModsEnter = parseKeypress("\u001b[27;8;13~")!
   expect(allModsEnter.name).toBe("return")
   expect(allModsEnter.shift).toBe(true)
@@ -1405,11 +1406,11 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(allModsEnter.source).toBe("raw")
 })
 
-test("parseKeypress - Ghostty terminal modified escape keys", () => {
-  // Ghostty terminal also sends modified escape key sequences
-  // Format: ESC[27;modifier;27~ where charcode 27 is escape
+test("parseKeypress - modifyOtherKeys modified escape keys", () => {
+  // Terminals with modifyOtherKeys mode enabled also send modified escape key sequences
+  // Format: CSI 27 ; modifier ; 27 ~ where code 27 is escape
 
-  // Ctrl+Escape: ESC[27;5;27~ (modifier 5 = ctrl bit 4)
+  // Ctrl+Escape: CSI 27;5;27~ (modifier 5 = ctrl bit 4)
   const ctrlEscape = parseKeypress("\u001b[27;5;27~")!
   expect(ctrlEscape.name).toBe("escape")
   expect(ctrlEscape.ctrl).toBe(true)
@@ -1429,7 +1430,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(ctrlEscape2.meta).toBe(false)
   expect(ctrlEscape2.option).toBe(false)
 
-  // Shift+Escape: ESC[27;2;27~ (modifier 2 = shift bit 1)
+  // Shift+Escape: CSI 27;2;27~ (modifier 2 = shift bit 1)
   const shiftEscape = parseKeypress("\u001b[27;2;27~")!
   expect(shiftEscape.name).toBe("escape")
   expect(shiftEscape.shift).toBe(true)
@@ -1441,7 +1442,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(shiftEscape.eventType).toBe("press")
   expect(shiftEscape.source).toBe("raw")
 
-  // Alt+Escape: ESC[27;3;27~ (modifier 3 = alt/option bit 2)
+  // Alt+Escape: CSI 27;3;27~ (modifier 3 = alt/option bit 2)
   const altEscape = parseKeypress("\u001b[27;3;27~")!
   expect(altEscape.name).toBe("escape")
   expect(altEscape.meta).toBe(true)
@@ -1453,7 +1454,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(altEscape.eventType).toBe("press")
   expect(altEscape.source).toBe("raw")
 
-  // Shift+Ctrl+Escape: ESC[27;6;27~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
+  // Shift+Ctrl+Escape: CSI 27;6;27~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
   const shiftCtrlEscape = parseKeypress("\u001b[27;6;27~")!
   expect(shiftCtrlEscape.name).toBe("escape")
   expect(shiftCtrlEscape.shift).toBe(true)
@@ -1466,7 +1467,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(shiftCtrlEscape.source).toBe("raw")
 })
 
-test("parseKeypress - Ghostty terminal modified tab, space, and backspace keys", () => {
+test("parseKeypress - modifyOtherKeys modified tab, space, and backspace keys", () => {
   // Tab key: charcode 9
   const ctrlTab = parseKeypress("\u001b[27;5;9~")!
   expect(ctrlTab.name).toBe("tab")
