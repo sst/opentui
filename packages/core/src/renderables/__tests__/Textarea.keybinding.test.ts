@@ -1679,4 +1679,163 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.row).toBe(1)
     })
   })
+
+  describe("Default Character and Word Movement Keybindings", () => {
+    it("should move forward one character with ctrl+f", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("f", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(1)
+
+      currentMockInput.pressKey("f", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(2)
+
+      currentMockInput.pressKey("f", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(3)
+    })
+
+    it("should move backward one character with ctrl+b", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor.col).toBe(11)
+
+      currentMockInput.pressKey("b", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(10)
+
+      currentMockInput.pressKey("b", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(9)
+
+      currentMockInput.pressKey("b", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(8)
+    })
+
+    it("should move forward one word with meta+f", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("f", { meta: true })
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressKey("f", { meta: true })
+      expect(editor.logicalCursor.col).toBe(12)
+
+      currentMockInput.pressKey("f", { meta: true })
+      expect(editor.logicalCursor.col).toBe(16)
+    })
+
+    it("should move backward one word with meta+b", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor.col).toBe(16)
+
+      currentMockInput.pressKey("b", { meta: true })
+      expect(editor.logicalCursor.col).toBe(12)
+
+      currentMockInput.pressKey("b", { meta: true })
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressKey("b", { meta: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should not insert 'f' when using ctrl+f for movement", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      const before = editor.plainText
+
+      currentMockInput.pressKey("f", { ctrl: true })
+      expect(editor.plainText).toBe(before)
+      expect(editor.logicalCursor.col).toBe(1)
+    })
+
+    it("should not insert 'b' when using ctrl+b for movement", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+      const before = editor.plainText
+
+      currentMockInput.pressKey("b", { ctrl: true })
+      expect(editor.plainText).toBe(before)
+      expect(editor.logicalCursor.col).toBe(3)
+    })
+
+    it("should combine ctrl+f and ctrl+b for character navigation", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("f", { ctrl: true })
+      currentMockInput.pressKey("f", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(2)
+
+      currentMockInput.pressKey("b", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(1)
+
+      currentMockInput.pressKey("f", { ctrl: true })
+      currentMockInput.pressKey("f", { ctrl: true })
+      currentMockInput.pressKey("f", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(4)
+    })
+
+    it("should combine meta+f and meta+b for word navigation", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "one two three four",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("f", { meta: true })
+      expect(editor.logicalCursor.col).toBe(4)
+
+      currentMockInput.pressKey("f", { meta: true })
+      expect(editor.logicalCursor.col).toBe(8)
+
+      currentMockInput.pressKey("b", { meta: true })
+      expect(editor.logicalCursor.col).toBe(4)
+
+      currentMockInput.pressKey("b", { meta: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+  })
 })
