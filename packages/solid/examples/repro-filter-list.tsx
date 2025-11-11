@@ -1,5 +1,5 @@
 import { createSignal, For } from "solid-js"
-import { createRoot, render, useRenderer } from "@opentui/solid"
+import { createRoot, useRenderer } from "@opentui/solid"
 import { createCliRenderer } from "@opentui/core"
 
 process.env.DEBUG = "true"

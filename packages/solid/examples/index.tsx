@@ -1,4 +1,4 @@
-import { createRoot, render } from "@opentui/solid"
+import { createRoot } from "@opentui/solid"
 import { ConsolePosition, createCliRenderer } from "@opentui/core"
 import ExampleSelector from "./components/ExampleSelector"
 

@@ -1,5 +1,5 @@
 import { createSignal, Match, Show, Switch } from "solid-js"
-import { createRoot, render, useKeyboard, useRenderer } from "@opentui/solid"
+import { createRoot, useKeyboard, useRenderer } from "@opentui/solid"
 import { createCliRenderer } from "@opentui/core"
 
 process.env.DEBUG = "true"
