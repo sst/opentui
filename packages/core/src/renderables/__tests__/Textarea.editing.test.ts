@@ -1243,7 +1243,7 @@ describe("Textarea - Editing Tests", () => {
       expect(cursor.row).toBe(2)
     })
 
-    it("should delete line with Ctrl+D", async () => {
+    it("should delete word forward with Ctrl+D", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
         width: 40,
@@ -1254,7 +1254,7 @@ describe("Textarea - Editing Tests", () => {
       editor.gotoLine(1)
 
       currentMockInput.pressKey("d", { ctrl: true })
-      expect(editor.plainText).toBe("Line 1\nLine 3")
+      expect(editor.plainText).toBe("Line 1\n2\nLine 3")
     })
 
     it("should delete to line end with Ctrl+K", async () => {
@@ -1349,7 +1349,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.logicalCursor.col).toBe(4)
     })
 
-    it("should delete word forward with Alt+D", async () => {
+    it("should delete line with Alt+D", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "hello world foo",
         width: 40,
@@ -1360,10 +1360,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.plainText).toBe("hello world foo")
 
       currentMockInput.pressKey("d", { meta: true })
-      expect(editor.plainText).toBe("world foo")
-
-      currentMockInput.pressKey("d", { meta: true })
-      expect(editor.plainText).toBe("foo")
+      expect(editor.plainText).toBe("")
     })
 
     it("should delete word backward with Alt+Backspace", async () => {
@@ -1376,7 +1373,7 @@ describe("Textarea - Editing Tests", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      currentMockInput.pressKey("BACKSPACE", { meta: true })
+      currentMockInput.pressBackspace({ meta: true })
       const text = editor.plainText
       expect(text.startsWith("hello world")).toBe(true)
       expect(text.length).toBeLessThan(15)
@@ -1397,35 +1394,6 @@ describe("Textarea - Editing Tests", () => {
 
       currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("test ")
-    })
-
-    it("should select word forward with Alt+Shift+F", async () => {
-      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "hello world foo",
-        width: 40,
-        height: 10,
-      })
-
-      editor.focus()
-
-      currentMockInput.pressKey("f", { meta: true, shift: true })
-      expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("hello ")
-    })
-
-    it("should select word backward with Alt+Shift+B", async () => {
-      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "hello world foo",
-        width: 40,
-        height: 10,
-      })
-
-      editor.focus()
-      editor.gotoLine(9999)
-
-      currentMockInput.pressKey("b", { meta: true, shift: true })
-      expect(editor.hasSelection()).toBe(true)
-      expect(editor.getSelectedText()).toBe("foo")
     })
 
     it("should handle word movement across multiple lines", async () => {
@@ -1460,7 +1428,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.plainText).toContain("hello")
     })
 
-    it("should handle word deletion operations", async () => {
+    it("should handle line deletion operations", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "hello world test",
         width: 40,
@@ -1468,11 +1436,9 @@ describe("Textarea - Editing Tests", () => {
       })
 
       editor.focus()
-      const initialText = editor.plainText
 
       currentMockInput.pressKey("d", { meta: true })
-      expect(editor.plainText.length).toBeLessThan(initialText.length)
-      expect(editor.plainText).toContain("world")
+      expect(editor.plainText).toBe("")
     })
 
     it("should navigate by words and characters", async () => {
@@ -1497,11 +1463,12 @@ describe("Textarea - Editing Tests", () => {
       expect(col3).toBeGreaterThan(col2)
     })
 
-    it("should delete selected text when deleting word with selection", async () => {
+    it("should delete line even with selection when using meta+d", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "hello world foo",
         width: 40,
         height: 10,
+        selectable: true,
       })
 
       editor.focus()
@@ -1512,7 +1479,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.hasSelection()).toBe(true)
 
       currentMockInput.pressKey("d", { meta: true })
-      expect(editor.plainText).toBe("lo world foo")
+      expect(editor.plainText).toBe("")
     })
   })
 

@@ -75,7 +75,9 @@ const defaultTextareaKeybindings: KeyBinding[] = [
 
   // undo/redo
   { name: "-", ctrl: true, action: "undo" },
+  { name: "z", ctrl: true, action: "undo" },
   { name: ".", ctrl: true, action: "redo" },
+  { name: "y", ctrl: true, action: "redo" },
   { name: "z", super: true, action: "undo" },
   { name: "z", super: true, shift: true, action: "redo" },
 
@@ -88,6 +90,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
   { name: "d", meta: true, action: "delete-line" },
+  { name: "backspace", meta: true, action: "delete-word-backward" },
 ]
 
 export interface SubmitEvent {}
