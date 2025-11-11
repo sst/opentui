@@ -375,6 +375,246 @@ describe("StdinBuffer", () => {
       expect(emittedPaste).toEqual(["pasted content"])
       expect(emittedSequences).toEqual(["a", "b", "c", "\x1b[A"])
     })
+
+    it("should handle data before paste start in same chunk", () => {
+      processInput("abc\x1b[200~pasted\x1b[201~")
+
+      expect(emittedSequences).toEqual(["a", "b", "c"])
+      expect(emittedPaste).toEqual(["pasted"])
+    })
+
+    it("should handle data after paste end in same chunk", () => {
+      processInput("\x1b[200~pasted\x1b[201~xyz")
+
+      expect(emittedPaste).toEqual(["pasted"])
+      expect(emittedSequences).toEqual(["x", "y", "z"])
+    })
+
+    it("should handle data before and after paste in same chunk", () => {
+      processInput("abc\x1b[200~pasted\x1b[201~xyz")
+
+      expect(emittedSequences).toEqual(["a", "b", "c", "x", "y", "z"])
+      expect(emittedPaste).toEqual(["pasted"])
+    })
+
+    it("should handle escape sequences before paste", () => {
+      processInput("\x1b[A\x1b[200~pasted\x1b[201~")
+
+      expect(emittedSequences).toEqual(["\x1b[A"])
+      expect(emittedPaste).toEqual(["pasted"])
+    })
+
+    it("should handle escape sequences after paste", () => {
+      processInput("\x1b[200~pasted\x1b[201~\x1b[B")
+
+      expect(emittedPaste).toEqual(["pasted"])
+      expect(emittedSequences).toEqual(["\x1b[B"])
+    })
+
+    it("should handle escape sequences before and after paste", () => {
+      processInput("\x1b[A\x1b[200~pasted\x1b[201~\x1b[B")
+
+      expect(emittedSequences).toEqual(["\x1b[A", "\x1b[B"])
+      expect(emittedPaste).toEqual(["pasted"])
+    })
+
+    it("should handle mixed content before paste in same chunk", () => {
+      processInput("a\x1b[Ab\x1b[200~pasted\x1b[201~")
+
+      expect(emittedSequences).toEqual(["a", "\x1b[A", "b"])
+      expect(emittedPaste).toEqual(["pasted"])
+    })
+
+    it("should handle mixed content after paste in same chunk", () => {
+      processInput("\x1b[200~pasted\x1b[201~x\x1b[By")
+
+      expect(emittedPaste).toEqual(["pasted"])
+      expect(emittedSequences).toEqual(["x", "\x1b[B", "y"])
+    })
+
+    it("should handle complex mixed content with paste", () => {
+      processInput("start\x1b[A\x1b[200~pasted content\x1b[201~\x1b[Bend")
+
+      expect(emittedSequences).toEqual(["s", "t", "a", "r", "t", "\x1b[A", "\x1b[B", "e", "n", "d"])
+      expect(emittedPaste).toEqual(["pasted content"])
+    })
+
+    it("should handle paste start split from content", () => {
+      processInput("\x1b[200")
+      expect(emittedPaste).toEqual([])
+      expect(emittedSequences).toEqual([])
+
+      processInput("~content\x1b[201~")
+      expect(emittedPaste).toEqual(["content"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste end split from content", () => {
+      processInput("\x1b[200~content\x1b[201")
+      expect(emittedPaste).toEqual([])
+
+      processInput("~")
+      expect(emittedPaste).toEqual(["content"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste markers split across chunks", () => {
+      processInput("\x1b")
+      processInput("[")
+      processInput("200")
+      processInput("~")
+      expect(emittedPaste).toEqual([])
+
+      processInput("content")
+      expect(emittedPaste).toEqual([])
+
+      processInput("\x1b")
+      processInput("[")
+      processInput("201")
+      processInput("~")
+      expect(emittedPaste).toEqual(["content"])
+    })
+
+    it("should handle paste with newlines", () => {
+      processInput("\x1b[200~line1\nline2\nline3\x1b[201~")
+
+      expect(emittedPaste).toEqual(["line1\nline2\nline3"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste with tabs", () => {
+      processInput("\x1b[200~col1\tcol2\tcol3\x1b[201~")
+
+      expect(emittedPaste).toEqual(["col1\tcol2\tcol3"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste with special characters", () => {
+      processInput("\x1b[200~!@#$%^&*()_+-=[]{}|;:',.<>?/\x1b[201~")
+
+      expect(emittedPaste).toEqual(["!@#$%^&*()_+-=[]{}|;:',.<>?/"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste with unicode", () => {
+      processInput("\x1b[200~Hello 世界 🎉\x1b[201~")
+
+      expect(emittedPaste).toEqual(["Hello 世界 🎉"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle very long paste content", () => {
+      const longContent = "a".repeat(10000)
+      processInput("\x1b[200~" + longContent + "\x1b[201~")
+
+      expect(emittedPaste).toEqual([longContent])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste interrupted by clear", () => {
+      processInput("\x1b[200~partial content")
+      expect(emittedPaste).toEqual([])
+
+      buffer.clear()
+      expect(emittedPaste).toEqual([])
+
+      processInput("a")
+      expect(emittedSequences).toEqual(["a"])
+      expect(emittedPaste).toEqual([])
+    })
+
+    it("should handle paste interrupted by destroy", () => {
+      processInput("\x1b[200~partial content")
+      expect(emittedPaste).toEqual([])
+
+      buffer.destroy()
+      expect(emittedPaste).toEqual([])
+    })
+
+    it("should handle consecutive pastes without data between", () => {
+      processInput("\x1b[200~first\x1b[201~\x1b[200~second\x1b[201~")
+
+      expect(emittedPaste).toEqual(["first", "second"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste with only paste markers and data in separate chunks", () => {
+      processInput("\x1b[200~\x1b[201~")
+      processInput("a")
+
+      expect(emittedPaste).toEqual([""])
+      expect(emittedSequences).toEqual(["a"])
+    })
+
+    it("should handle data arriving between paste start chunks", () => {
+      processInput("\x1b")
+      processInput("[")
+      processInput("200~content\x1b[201~")
+
+      expect(emittedPaste).toEqual(["content"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle incomplete escape before paste start", () => {
+      processInput("\x1b[<35")
+      expect(emittedSequences).toEqual([])
+
+      processInput(";20;5m\x1b[200~paste\x1b[201~")
+      expect(emittedSequences).toEqual(["\x1b[<35;20;5m"])
+      expect(emittedPaste).toEqual(["paste"])
+    })
+
+    it("should handle paste followed by incomplete escape", () => {
+      processInput("\x1b[200~paste\x1b[201~\x1b[<35")
+      expect(emittedPaste).toEqual(["paste"])
+      expect(emittedSequences).toEqual([])
+      expect(buffer.getBuffer()).toBe("\x1b[<35")
+
+      processInput(";20;5m")
+      expect(emittedSequences).toEqual(["\x1b[<35;20;5m"])
+    })
+
+    it("should handle escape sequence interrupted by paste start", () => {
+      processInput("\x1b[1;")
+      expect(emittedSequences).toEqual([])
+      expect(buffer.getBuffer()).toBe("\x1b[1;")
+
+      processInput("5H\x1b[200~paste\x1b[201~")
+      expect(emittedSequences).toEqual(["\x1b[1;5H"])
+      expect(emittedPaste).toEqual(["paste"])
+    })
+
+    it("should handle paste start marker appearing in regular data stream", () => {
+      // If somehow a paste start appears without being complete
+      processInput("\x1b[20")
+      expect(emittedSequences).toEqual([])
+
+      // Complete as a different sequence
+      processInput("0R") // CPR response
+      expect(emittedSequences).toEqual(["\x1b[200R"])
+      expect(emittedPaste).toEqual([])
+    })
+
+    it("should handle multiple escape sequences after paste", () => {
+      processInput("\x1b[200~pasted\x1b[201~\x1b[A\x1b[B\x1b[C")
+
+      expect(emittedPaste).toEqual(["pasted"])
+      expect(emittedSequences).toEqual(["\x1b[A", "\x1b[B", "\x1b[C"])
+    })
+
+    it("should handle Buffer input for paste", () => {
+      processInput(Buffer.from("\x1b[200~pasted\x1b[201~"))
+
+      expect(emittedPaste).toEqual(["pasted"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste with carriage returns", () => {
+      processInput("\x1b[200~line1\r\nline2\r\nline3\x1b[201~")
+
+      expect(emittedPaste).toEqual(["line1\r\nline2\r\nline3"])
+      expect(emittedSequences).toEqual([])
+    })
   })
 
   describe("Destroy", () => {
