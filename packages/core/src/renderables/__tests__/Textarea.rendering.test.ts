@@ -32,6 +32,52 @@ describe("Textarea - Rendering Tests", () => {
   })
 
   describe("Wrapping", () => {
+    it("should move cursor down through all wrapped visual lines at column 0", async () => {
+      // Create a long line that will wrap into multiple visual lines
+      const longText =
+        "This is a very long line that will definitely wrap into multiple visual lines when the viewport is small"
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: longText,
+        width: 20, // Small viewport to force wrapping
+        height: 10,
+        wrapMode: "word",
+      })
+
+      editor.focus()
+
+      // Set cursor at the beginning (0, 0) - logical position
+      editor.editBuffer.setCursor(0, 0)
+      await renderOnce()
+
+      // Get initial visual cursor position - should be at visual 0, 0
+      let visualCursor = editor.editorView.getVisualCursor()
+      expect(visualCursor.visualRow).toBe(0)
+      expect(visualCursor.visualCol).toBe(0)
+
+      // Verify we have multiple wrapped lines (should be 7 for this text)
+      const vlineCount = editor.editorView.getVirtualLineCount()
+      expect(vlineCount).toBeGreaterThan(1)
+
+      // THE BUG: Pressing down arrow should move through ALL visual wrapped lines
+      // Move down through each wrapped line - cursor should stay at column 0
+      for (let i = 1; i < vlineCount; i++) {
+        currentMockInput.pressArrow("down")
+        await renderOnce()
+
+        visualCursor = editor.editorView.getVisualCursor()
+
+        // Cursor should have moved down to the next visual line
+        expect(visualCursor.visualRow).toBe(i)
+
+        // Cursor should be at column 0 (beginning of each wrapped line)
+        expect(visualCursor.visualCol).toBe(0)
+      }
+
+      // After moving through all wrapped lines, we should be at the last wrapped line
+      expect(visualCursor.visualRow).toBe(vlineCount - 1)
+      expect(visualCursor.visualCol).toBe(0)
+    })
+
     it("should handle wrap mode property", async () => {
       const longText = "A".repeat(100)
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
