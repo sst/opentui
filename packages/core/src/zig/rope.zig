@@ -1066,6 +1066,7 @@ pub fn Rope(comptime T: type) type {
             self.undo_history = h.next;
             self.curr_history = h;
             self.root = h.root;
+            self.version += 1;
             self.push_redo(r);
             if (self.undo_depth > 0) self.undo_depth -= 1;
             return h.meta;
@@ -1078,6 +1079,7 @@ pub fn Rope(comptime T: type) type {
             self.redo_history = h.next;
             self.curr_history = h;
             self.root = h.root;
+            self.version += 1;
             self.push_undo(u);
             return h.meta;
         }
