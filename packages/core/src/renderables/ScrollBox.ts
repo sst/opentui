@@ -241,14 +241,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.internalId = ScrollBoxRenderable.idCounter++
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
-
-    // Initialize scroll acceleration
-    if (scrollAcceleration) {
-      this.scrollAccel = scrollAcceleration
-    } else if (process.platform === "darwin") {
-      this.scrollAccel = new MacOSScrollAccel()
-    }
-    this.scrollAccel ??= new LinearScrollAccel()
+    this.scrollAccel = scrollAcceleration ?? new LinearScrollAccel()
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
