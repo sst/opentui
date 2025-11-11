@@ -3,6 +3,7 @@ export interface KeyBinding<Action extends string = string> {
   ctrl?: boolean
   shift?: boolean
   meta?: boolean
+  super?: boolean
   action: Action
 }
 
@@ -23,7 +24,7 @@ export function mergeKeyBindings<Action extends string>(
 }
 
 export function getKeyBindingKey<Action extends string>(binding: KeyBinding<Action>): string {
-  return `${binding.name}:${!!binding.ctrl}:${!!binding.shift}:${!!binding.meta}`
+  return `${binding.name}:${binding.ctrl ? 1 : 0}:${binding.shift ? 1 : 0}:${binding.meta ? 1 : 0}:${binding.super ? 1 : 0}`
 }
 
 export function buildKeyBindingsMap<Action extends string>(bindings: KeyBinding<Action>[]): Map<string, Action> {
