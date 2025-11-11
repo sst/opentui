@@ -64,6 +64,7 @@ state: struct {
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
     focus_tracking: bool = false,
+    modify_other_keys: bool = false,
     cursor: struct {
         row: u16 = 0,
         col: u16 = 0,
@@ -90,6 +91,10 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
 
     if (self.state.kitty_keyboard) {
         try self.setKittyKeyboard(tty, false, 0);
+    }
+
+    if (self.state.modify_other_keys) {
+        try self.setModifyOtherKeys(tty, false);
     }
 
     if (self.state.mouse) {
@@ -181,7 +186,14 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         else => {
             self.checkEnvironmentOverrides();
 
+            if (!self.state.modify_other_keys and !self.state.kitty_keyboard) {
+                try self.setModifyOtherKeys(tty, true);
+            }
+
             if (self.caps.kitty_keyboard and use_kitty_keyboard) {
+                if (self.state.modify_other_keys) {
+                    try self.setModifyOtherKeys(tty, false);
+                }
                 try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
             }
 
@@ -305,6 +317,12 @@ pub fn setKittyKeyboard(self: *Terminal, tty: anytype, enable: bool, flags: u8) 
             self.state.kitty_keyboard = false;
         }
     }
+}
+
+pub fn setModifyOtherKeys(self: *Terminal, tty: anytype, enable: bool) !void {
+    const seq = if (enable) ansi.ANSI.modifyOtherKeysSet else ansi.ANSI.modifyOtherKeysReset;
+    try tty.writeAll(seq);
+    self.state.modify_other_keys = enable;
 }
 
 /// The responses look like these:
