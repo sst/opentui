@@ -17,6 +17,8 @@
 import { EventEmitter } from "events"
 
 const ESC = "\x1b"
+const BRACKETED_PASTE_START = "\x1b[200~"
+const BRACKETED_PASTE_END = "\x1b[201~"
 
 /**
  * Check if a string is a complete escape sequence or needs more data
@@ -228,6 +230,7 @@ export type StdinBufferOptions = {
 
 export type StdinBufferEventMap = {
   data: [string]
+  paste: [string]
 }
 
 /**
@@ -238,6 +241,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   private buffer: string = ""
   private timeout: Timer | null = null
   private readonly timeoutMs: number
+  private pasteMode: boolean = false
+  private pasteBuffer: string = ""
 
   constructor(options: StdinBufferOptions = {}) {
     super()
@@ -272,6 +277,59 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     }
 
     this.buffer += str
+
+    if (this.pasteMode) {
+      this.pasteBuffer += this.buffer
+      this.buffer = ""
+
+      const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
+      if (endIndex !== -1) {
+        const pastedContent = this.pasteBuffer.slice(0, endIndex)
+        const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
+
+        this.pasteMode = false
+        this.pasteBuffer = ""
+
+        this.emit("paste", pastedContent)
+
+        if (remaining.length > 0) {
+          this.process(remaining)
+        }
+      }
+      return
+    }
+
+    const startIndex = this.buffer.indexOf(BRACKETED_PASTE_START)
+    if (startIndex !== -1) {
+      if (startIndex > 0) {
+        const beforePaste = this.buffer.slice(0, startIndex)
+        const result = extractCompleteSequences(beforePaste)
+        for (const sequence of result.sequences) {
+          this.emit("data", sequence)
+        }
+      }
+
+      this.buffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length)
+      this.pasteMode = true
+      this.pasteBuffer = this.buffer
+      this.buffer = ""
+
+      const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
+      if (endIndex !== -1) {
+        const pastedContent = this.pasteBuffer.slice(0, endIndex)
+        const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
+
+        this.pasteMode = false
+        this.pasteBuffer = ""
+
+        this.emit("paste", pastedContent)
+
+        if (remaining.length > 0) {
+          this.process(remaining)
+        }
+      }
+      return
+    }
 
     const result = extractCompleteSequences(this.buffer)
     this.buffer = result.remainder
@@ -312,6 +370,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
       this.timeout = null
     }
     this.buffer = ""
+    this.pasteMode = false
+    this.pasteBuffer = ""
   }
 
   getBuffer(): string {

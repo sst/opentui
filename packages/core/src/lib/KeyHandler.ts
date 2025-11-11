@@ -75,8 +75,6 @@ export type KeyHandlerEventMap = {
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   protected useKittyKeyboard: boolean
-  protected pasteMode: boolean = false
-  protected pasteBuffer: string[] = []
   private suspended: boolean = false
 
   constructor(useKittyKeyboard: boolean = false) {
@@ -90,18 +88,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
       return false
     }
 
-    if (data.startsWith(ANSI.bracketedPasteStart)) {
-      this.pasteMode = true
-    }
-    if (this.pasteMode) {
-      this.pasteBuffer.push(Bun.stripANSI(data))
-      if (data.endsWith(ANSI.bracketedPasteEnd)) {
-        this.pasteMode = false
-        this.emit("paste", new PasteEvent(this.pasteBuffer.join("")))
-        this.pasteBuffer = []
-      }
-      return true
-    }
     const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
 
     if (!parsedKey) {
@@ -124,6 +110,15 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     }
 
     return true
+  }
+
+  public processPaste(data: string): void {
+    if (this.suspended) {
+      return
+    }
+
+    const cleanedData = Bun.stripANSI(data)
+    this.emit("paste", new PasteEvent(cleanedData))
   }
 
   public suspend(): void {
