@@ -183,12 +183,12 @@ describe("Textarea - Keybinding Tests", () => {
       currentMockInput.pressArrow("right")
       expect(editor.logicalCursor.col).toBe(1)
 
-      editor.keyBindings = [{ name: "x", meta: true, action: "delete-line" }]
+      editor.keyBindings = [{ name: "d", meta: true, action: "delete-line" }]
 
       currentMockInput.pressArrow("right")
       expect(editor.logicalCursor.col).toBe(2)
 
-      currentMockInput.pressKey("x", { meta: true })
+      currentMockInput.pressKey("d", { meta: true })
       expect(editor.plainText).toBe("Line 2")
     })
 
@@ -1368,7 +1368,7 @@ describe("Textarea - Keybinding Tests", () => {
         height: 10,
         keyBindings: [
           { name: "d", action: "delete" },
-          { name: "d", ctrl: true, action: "delete-line" },
+          { name: "d", meta: true, action: "delete-line" },
         ],
       })
 
@@ -1554,6 +1554,129 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressKey("h", { ctrl: true })
       expect(editor.logicalCursor.col).toBe(4)
+    })
+  })
+
+  describe("Default Word Deletion Keybindings", () => {
+    it("should delete word forward with ctrl+d", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressKey("d", { ctrl: true })
+      expect(editor.plainText).toBe("world test")
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("d", { ctrl: true })
+      expect(editor.plainText).toBe("test")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should delete word backward with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor.col).toBe(16)
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("hello world ")
+      expect(editor.logicalCursor.col).toBe(12)
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("hello ")
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("should delete line with meta+d", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+      expect(editor.logicalCursor.row).toBe(1)
+
+      currentMockInput.pressKey("d", { meta: true })
+      expect(editor.plainText).toBe("Line 1\nLine 3")
+      expect(editor.logicalCursor.row).toBe(1)
+    })
+
+    it("should delete word forward from middle of word with ctrl+d", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(3)
+
+      currentMockInput.pressKey("d", { ctrl: true })
+      expect(editor.plainText).toBe("helworld")
+      expect(editor.logicalCursor.col).toBe(3)
+    })
+
+    it("should delete word backward from middle of word with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 8; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(8)
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("hello rld")
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("should delete first line with meta+d", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.row).toBe(0)
+
+      currentMockInput.pressKey("d", { meta: true })
+      expect(editor.plainText).toBe("Line 2\nLine 3")
+      expect(editor.logicalCursor.row).toBe(0)
+    })
+
+    it("should delete last line with meta+d", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(2)
+      expect(editor.logicalCursor.row).toBe(2)
+
+      currentMockInput.pressKey("d", { meta: true })
+      expect(editor.plainText).toBe("Line 1\nLine 2")
+      expect(editor.logicalCursor.row).toBe(1)
     })
   })
 })

@@ -59,7 +59,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "end", shift: true, action: "select-line-end" },
   { name: "a", ctrl: true, action: "buffer-home" },
   { name: "e", ctrl: true, action: "buffer-end" },
-  { name: "d", ctrl: true, action: "delete-line" },
+  { name: "d", ctrl: true, action: "delete-word-forward" },
+  { name: "w", ctrl: true, action: "delete-word-backward" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
   { name: "u", ctrl: true, action: "delete-to-line-start" },
   { name: "backspace", action: "backspace" },
@@ -84,9 +85,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "b", meta: true, shift: true, action: "select-word-backward" },
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
-  { name: "d", meta: true, action: "delete-word-forward" },
-  { name: "backspace", meta: true, action: "delete-word-backward" },
-  { name: "w", ctrl: true, action: "delete-word-backward" },
+  { name: "d", meta: true, action: "delete-line" },
 ]
 
 export interface SubmitEvent {}
