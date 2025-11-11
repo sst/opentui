@@ -784,6 +784,109 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
 
+    it("should work with ctrl+k after undo", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "u", action: "undo" }],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Hello ")
+
+      currentMockInput.pressKey("u")
+      expect(editor.plainText).toBe("Hello World")
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Hello ")
+    })
+
+    it("should work with ctrl+u after undo when cursor is repositioned", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "z", action: "undo" }],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("u", { ctrl: true })
+      expect(editor.plainText).toBe("World")
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("z")
+      expect(editor.plainText).toBe("Hello World")
+
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressKey("u", { ctrl: true })
+      expect(editor.plainText).toBe("World")
+    })
+
+    it("should allow cursor to move right within restored line after undo", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2 content\nLine 3 content",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "u", action: "undo" }],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 7; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 \nLine 2 content\nLine 3 content")
+
+      currentMockInput.pressKey("u")
+      expect(editor.plainText).toBe("Line 1 content\nLine 2 content\nLine 3 content")
+
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight()
+      }
+
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(10)
+    })
+
+    it("should allow ctrl+k to work again after undo", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1 content\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "u", action: "undo" }],
+      })
+
+      editor.focus()
+      for (let i = 0; i < 7; i++) {
+        editor.moveCursorRight()
+      }
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 \nLine 2")
+
+      currentMockInput.pressKey("u")
+      expect(editor.plainText).toBe("Line 1 content\nLine 2")
+
+      currentMockInput.pressKey("k", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1 \nLine 2")
+    })
+
     it("should map buffer-home and buffer-end to custom keys", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
