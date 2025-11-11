@@ -615,6 +615,55 @@ describe("StdinBuffer", () => {
       expect(emittedPaste).toEqual(["line1\r\nline2\r\nline3"])
       expect(emittedSequences).toEqual([])
     })
+
+    it("should handle paste start marker in pasted content as literal data", () => {
+      processInput("\x1b[200~content with \x1b[200~ inside\x1b[201~")
+
+      expect(emittedPaste).toEqual(["content with \x1b[200~ inside"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle nested paste: inner end marker closes outer paste", () => {
+      processInput("\x1b[200~outer \x1b[200~inner\x1b[201~ rest\x1b[201~")
+
+      // First \x1b[201~ ends the paste, remaining is processed as data
+      expect(emittedPaste).toEqual(["outer \x1b[200~inner"])
+      expect(emittedSequences).toContain(" ")
+      expect(emittedSequences).toContain("r")
+      expect(emittedSequences).toContain("e")
+      expect(emittedSequences).toContain("s")
+      expect(emittedSequences).toContain("t")
+      expect(emittedSequences).toContain("\x1b[201~")
+    })
+
+    it("should handle paste end marker without paste start as normal escape", () => {
+      processInput("\x1b[201~")
+
+      expect(emittedPaste).toEqual([])
+      expect(emittedSequences).toEqual(["\x1b[201~"])
+    })
+
+    it("should handle paste end marker in regular content as escape sequence", () => {
+      processInput("hello\x1b[201~world")
+
+      expect(emittedPaste).toEqual([])
+      expect(emittedSequences).toEqual(["h", "e", "l", "l", "o", "\x1b[201~", "w", "o", "r", "l", "d"])
+    })
+
+    it("should handle multiple paste start markers before end", () => {
+      processInput("\x1b[200~first \x1b[200~ second \x1b[200~ third\x1b[201~")
+
+      // All inner paste starts are treated as content
+      expect(emittedPaste).toEqual(["first \x1b[200~ second \x1b[200~ third"])
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle paste with literal backslash-x-1-b sequence", () => {
+      processInput("\x1b[200~The text \\x1b[200~ is literal\x1b[201~")
+
+      expect(emittedPaste).toEqual(["The text \\x1b[200~ is literal"])
+      expect(emittedSequences).toEqual([])
+    })
   })
 
   describe("Destroy", () => {
