@@ -3182,3 +3182,45 @@ test "TextBufferView - tab indicator set and get" {
     try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
     try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);
 }
+
+test "TextBufferView findVisualLineIndex - finds correct line for wrapped text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Same text as in the failing test - wraps into 7 virtual lines
+    try tb.setText("This is a very long line that will definitely wrap into multiple visual lines when the viewport is small");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+
+    // Test findVisualLineIndex for various logical columns
+    // Column 0 should be in visual line 0
+    const idx0 = view.findVisualLineIndex(0, 0);
+    try std.testing.expectEqual(@as(u32, 0), idx0);
+
+    // Column 20 should be in visual line 1 (starts at col 20)
+    const idx20 = view.findVisualLineIndex(0, 20);
+    try std.testing.expectEqual(@as(u32, 1), idx20);
+
+    // Column 35 should be in visual line 2 (starts at col 35)
+    const idx35 = view.findVisualLineIndex(0, 35);
+    try std.testing.expectEqual(@as(u32, 2), idx35);
+
+    // Column 50 is the last column of visual line 2
+    const idx50 = view.findVisualLineIndex(0, 50);
+    try std.testing.expectEqual(@as(u32, 2), idx50);
+
+    // Column 51 should be in visual line 3 (starts at col 51)
+    const idx51 = view.findVisualLineIndex(0, 51);
+    try std.testing.expectEqual(@as(u32, 3), idx51);
+}

@@ -58,7 +58,6 @@ describe("Textarea - Rendering Tests", () => {
       const vlineCount = editor.editorView.getVirtualLineCount()
       expect(vlineCount).toBeGreaterThan(1)
 
-      // THE BUG: Pressing down arrow should move through ALL visual wrapped lines
       // Move down through each wrapped line - cursor should stay at column 0
       for (let i = 1; i < vlineCount; i++) {
         currentMockInput.pressArrow("down")
