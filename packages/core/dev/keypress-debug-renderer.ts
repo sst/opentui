@@ -21,7 +21,7 @@ let renderer: CliRenderer | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let eventCount = 0
 
-function addEvent(eventType: string, event: any) {
+function addEvent(eventType: string, event: object) {
   if (!renderer || !scrollBox || !syntaxStyle) return
 
   eventCount++
@@ -52,7 +52,6 @@ function addEvent(eventType: string, event: any) {
   eventBox.add(codeDisplay)
   scrollBox.add(eventBox)
 
-  // Keep only last 50 events to prevent memory issues
   const children = scrollBox.getChildren()
   if (children.length > 50) {
     const oldest = children[0]
@@ -106,6 +105,11 @@ async function main() {
   })
 
   addEvent("capabilities", renderer.capabilities)
+
+  renderer.addInputHandler((sequence) => {
+    addEvent("raw-input", { sequence })
+    return true
+  })
 
   renderer.keyInput.on("keypress", (event) => {
     addEvent("keypress", event)
