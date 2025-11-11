@@ -141,8 +141,51 @@ export fn setCursorPosition(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, 
     rendererPtr.terminal.setCursorPosition(@intCast(@max(1, x)), @intCast(@max(1, y)), visible);
 }
 
-export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *terminal.Capabilities) void {
-    capsPtr.* = rendererPtr.getTerminalCapabilities();
+pub const ExternalCapabilities = extern struct {
+    kitty_keyboard: bool,
+    kitty_graphics: bool,
+    rgb: bool,
+    unicode: u8, // 0 = wcwidth, 1 = unicode
+    sgr_pixels: bool,
+    color_scheme_updates: bool,
+    explicit_width: bool,
+    scaled_text: bool,
+    sixel: bool,
+    focus_tracking: bool,
+    sync: bool,
+    bracketed_paste: bool,
+    hyperlinks: bool,
+    term_name_ptr: [*]const u8,
+    term_name_len: usize,
+    term_version_ptr: [*]const u8,
+    term_version_len: usize,
+    term_from_xtversion: bool,
+};
+
+export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *ExternalCapabilities) void {
+    const caps = rendererPtr.getTerminalCapabilities();
+    const term = &rendererPtr.terminal;
+
+    capsPtr.* = .{
+        .kitty_keyboard = caps.kitty_keyboard,
+        .kitty_graphics = caps.kitty_graphics,
+        .rgb = caps.rgb,
+        .unicode = if (caps.unicode == .wcwidth) 0 else 1,
+        .sgr_pixels = caps.sgr_pixels,
+        .color_scheme_updates = caps.color_scheme_updates,
+        .explicit_width = caps.explicit_width,
+        .scaled_text = caps.scaled_text,
+        .sixel = caps.sixel,
+        .focus_tracking = caps.focus_tracking,
+        .sync = caps.sync,
+        .bracketed_paste = caps.bracketed_paste,
+        .hyperlinks = caps.hyperlinks,
+        .term_name_ptr = &term.term_info.name,
+        .term_name_len = term.term_info.name_len,
+        .term_version_ptr = &term.term_info.version,
+        .term_version_len = term.term_info.version_len,
+        .term_from_xtversion = term.term_info.from_xtversion,
+    };
 }
 
 export fn processCapabilityResponse(rendererPtr: *renderer.CliRenderer, responsePtr: [*]const u8, responseLen: usize) void {

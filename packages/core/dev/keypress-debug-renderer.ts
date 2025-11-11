@@ -63,10 +63,20 @@ function addEvent(eventType: string, event: object) {
 }
 
 async function main() {
+  const usePrepend = process.argv.includes("--prepend")
+  const prependInputHandlers = usePrepend
+    ? [
+        (sequence: string) => {
+          addEvent("raw-input-before", { sequence })
+          return false
+        },
+      ]
+    : []
   renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 60,
     useKittyKeyboard: true,
+    prependInputHandlers,
   })
 
   renderer.setBackgroundColor("#0D1117")
@@ -85,7 +95,7 @@ async function main() {
     stickyStart: "bottom",
     border: true,
     borderColor: "#6BCF7F",
-    title: "Keypress Debug (Ctrl+C to exit)",
+    title: `Keypress Debug${usePrepend ? " (prepend mode)" : ""} (Ctrl+C to exit)`,
     titleAlignment: "center",
     contentOptions: {
       paddingLeft: 1,
@@ -107,7 +117,7 @@ async function main() {
   addEvent("capabilities", renderer.capabilities)
 
   renderer.addInputHandler((sequence) => {
-    addEvent("raw-input", { sequence })
+    addEvent("raw-input-after", { sequence })
     return true
   })
 
