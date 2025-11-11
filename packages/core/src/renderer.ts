@@ -802,6 +802,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }).bind(this)
 
+  private focusHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (sequence === "\x1b[I") {
+      this.emit("focus")
+      return true
+    }
+    if (sequence === "\x1b[O") {
+      this.emit("blur")
+      return true
+    }
+    return false
+  }).bind(this)
+
   private setupInput(): void {
     this.addInputHandler((sequence: string) => {
       if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
@@ -815,6 +827,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return false
     })
     this.addInputHandler(this.capabilityHandler)
+    this.addInputHandler(this.focusHandler)
     this.addInputHandler((sequence: string) => {
       return this._keyHandler.processInput(sequence)
     })
