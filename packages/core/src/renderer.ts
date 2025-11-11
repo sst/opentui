@@ -857,6 +857,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
     })
+    this._stdinBuffer.on("paste", (data: string) => {
+      this._keyHandler.processPaste(data)
+    })
   }
 
   private handleMouseData(data: Buffer): boolean {
