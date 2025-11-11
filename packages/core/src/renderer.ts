@@ -447,7 +447,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("exit", this.exitHandler)
+    process.on("beforeExit", this.exitHandler)
 
     this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
