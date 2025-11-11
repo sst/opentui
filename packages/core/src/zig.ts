@@ -6,7 +6,13 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
-import { StyledChunkStruct, HighlightStruct, LogicalCursorStruct, VisualCursorStruct } from "./zig-structs"
+import {
+  StyledChunkStruct,
+  HighlightStruct,
+  LogicalCursorStruct,
+  VisualCursorStruct,
+  TerminalCapabilitiesStruct,
+} from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -2759,28 +2765,32 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferClearScissorRects(buffer)
   }
 
-  public getTerminalCapabilities(renderer: Pointer): any {
-    const capsBuffer = new Uint8Array(64)
-    this.opentui.symbols.getTerminalCapabilities(renderer, capsBuffer)
+  public getTerminalCapabilities(renderer: Pointer) {
+    const capsBuffer = new ArrayBuffer(TerminalCapabilitiesStruct.size)
+    this.opentui.symbols.getTerminalCapabilities(renderer, ptr(capsBuffer))
 
-    let offset = 0
-    const capabilities = {
-      kitty_keyboard: capsBuffer[offset++] !== 0,
-      kitty_graphics: capsBuffer[offset++] !== 0,
-      rgb: capsBuffer[offset++] !== 0,
-      unicode: capsBuffer[offset++] === 0 ? "wcwidth" : "unicode",
-      sgr_pixels: capsBuffer[offset++] !== 0,
-      color_scheme_updates: capsBuffer[offset++] !== 0,
-      explicit_width: capsBuffer[offset++] !== 0,
-      scaled_text: capsBuffer[offset++] !== 0,
-      sixel: capsBuffer[offset++] !== 0,
-      focus_tracking: capsBuffer[offset++] !== 0,
-      sync: capsBuffer[offset++] !== 0,
-      bracketed_paste: capsBuffer[offset++] !== 0,
-      hyperlinks: capsBuffer[offset++] !== 0,
+    const caps = TerminalCapabilitiesStruct.unpack(capsBuffer)
+
+    return {
+      kitty_keyboard: caps.kitty_keyboard,
+      kitty_graphics: caps.kitty_graphics,
+      rgb: caps.rgb,
+      unicode: caps.unicode,
+      sgr_pixels: caps.sgr_pixels,
+      color_scheme_updates: caps.color_scheme_updates,
+      explicit_width: caps.explicit_width,
+      scaled_text: caps.scaled_text,
+      sixel: caps.sixel,
+      focus_tracking: caps.focus_tracking,
+      sync: caps.sync,
+      bracketed_paste: caps.bracketed_paste,
+      hyperlinks: caps.hyperlinks,
+      terminal: {
+        name: caps.term_name ?? "",
+        version: caps.term_version ?? "",
+        from_xtversion: caps.term_from_xtversion,
+      },
     }
-
-    return capabilities
   }
 
   public processCapabilityResponse(renderer: Pointer, response: string): void {
