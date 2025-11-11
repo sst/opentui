@@ -221,7 +221,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
   private exitSignals: NodeJS.Signals[]
-  private _exitSignalListener: ((signal: NodeJS.Signals) => void) | null = null
+  private isExitSignalHandlerMounted: boolean = false
   private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
@@ -373,6 +373,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private warningHandler: (warning: any) => void = ((warning: any) => {
     console.warn(JSON.stringify(warning.message, null, 2))
+  }).bind(this)
+
+  private exitSignalHandler: (signal: NodeJS.Signals) => void = (() => {
+    this.destroy()
   }).bind(this)
 
   public get controlState(): RendererControlState {
@@ -1251,24 +1255,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private mountExitSignals(): void {
-    if (this.exitSignals.length > 0 && this._exitSignalListener === null) {
-      const listener = () => {
-        // We need to schedule the destroy call to the next tick, to prevent
-        // the terminal from printing sequences after the raw mode is disabled
-        process.nextTick(() => this.destroy())
-        this.unmountExitSignals()
-      };
-
-      this.exitSignals.forEach((signal) => process.addListener(signal, listener))
-      this._exitSignalListener = listener
+    if (!this.isExitSignalHandlerMounted && this.exitSignals.length > 0) {
+      this.exitSignals.forEach((signal) => process.addListener(signal, this.exitSignalHandler))
+      this.isExitSignalHandlerMounted = true
     }
   }
 
   private unmountExitSignals(): void {
-    const listener = this._exitSignalListener
-    if (this.exitSignals.length > 0 && listener !== null) {
-      this.exitSignals.forEach((signal) => process.removeListener(signal, listener))
-      this._exitSignalListener = null
+    if (this.isExitSignalHandlerMounted && this.exitSignals.length > 0) {
+      this.exitSignals.forEach((signal) => process.removeListener(signal, this.exitSignalHandler))
+      this.isExitSignalHandlerMounted = false
     }
   }
 
