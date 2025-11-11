@@ -2698,7 +2698,7 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     try std.testing.expectEqual(@as(u32, 8), logical_cursor_after_space.col);
 
     try std.testing.expectEqual(@as(u32, 0), vcursor_after_space.logical_row);
-    try std.testing.expectEqual(@as(u32, 0), vcursor_after_space.visual_row);
+    try std.testing.expectEqual(@as(u32, 1), vcursor_after_space.visual_row);
 
     try eb.backspace();
 

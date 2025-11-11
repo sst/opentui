@@ -653,15 +653,11 @@ pub const UnifiedTextBufferView = struct {
             const vline_end_col = vline_start_col + vline.width;
 
             const is_last_vline = (i == vline_count - 1);
-            const is_at_boundary = (logical_col == vline_end_col);
 
-            var prefer_current_vline = is_last_vline;
-            if (is_at_boundary and !is_last_vline and self.wrap_width != null) {
-                const wrap_w = self.wrap_width.?;
-                prefer_current_vline = (vline.width < wrap_w);
-            }
-
-            const end_check = if (prefer_current_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
+            // For the end check: use < for all lines except the last line where we use <=
+            // This ensures that a position exactly at vline_end_col goes to the NEXT line
+            // unless this is the last line (where there is no next line)
+            const end_check = if (is_last_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
 
             if (logical_col >= vline_start_col and end_check) {
                 return vline_idx;
