@@ -80,6 +80,8 @@ async function setupTestRenderer(config: TestRendererOptions) {
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
 
+  process.off("SIGWINCH", renderer["sigwinchHandler"])
+
   // Do not setup the terminal for testing as we will not actualy output anything to the terminal
   // await renderer.setupTerminal()
 
