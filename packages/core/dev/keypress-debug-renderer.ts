@@ -67,7 +67,8 @@ async function main() {
   const prependInputHandlers = usePrepend
     ? [
         (sequence: string) => {
-          addEvent("raw-input", { sequence })
+          addEvent("raw-input-before", { sequence })
+          return false
         },
       ]
     : []
@@ -116,7 +117,7 @@ async function main() {
   addEvent("capabilities", renderer.capabilities)
 
   renderer.addInputHandler((sequence) => {
-    addEvent("raw-input", { sequence })
+    addEvent("raw-input-after", { sequence })
     return true
   })
 
