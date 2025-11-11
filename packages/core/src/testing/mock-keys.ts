@@ -214,6 +214,29 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
             keyCode = String.fromCharCode(char.charCodeAt(0) - 96)
           } else if (char >= "A" && char <= "Z") {
             keyCode = String.fromCharCode(char.charCodeAt(0) - 64)
+          } else {
+            // Handle special characters with ctrl modifier
+            // These produce ASCII control codes
+            const specialCtrlMap: Record<string, string> = {
+              "[": "\x1b", // Ctrl+[ = ESC (ASCII 27)
+              "\\": "\x1c", // Ctrl+\ = FS (ASCII 28)
+              "]": "\x1d", // Ctrl+] = GS (ASCII 29)
+              "^": "\x1e", // Ctrl+^ = RS (ASCII 30)
+              _: "\x1f", // Ctrl+_ = US (ASCII 31)
+              "?": "\x7f", // Ctrl+? = DEL (ASCII 127)
+              // Common aliases
+              "/": "\x1f", // Ctrl+/ = US (ASCII 31, same as Ctrl+_)
+              "-": "\x1f", // Ctrl+- = US (ASCII 31, same as Ctrl+_)
+              ".": "\x1e", // Ctrl+. = RS (ASCII 30, same as Ctrl+^)
+              ",": "\x1c", // Ctrl+, = FS (ASCII 28, same as Ctrl+\)
+              "@": "\x00", // Ctrl+@ = NUL (ASCII 0)
+              " ": "\x00", // Ctrl+Space = NUL (ASCII 0)
+            }
+
+            if (char in specialCtrlMap) {
+              keyCode = specialCtrlMap[char]
+            }
+            // If no mapping found, keep the original character
           }
           // If meta is also pressed, prefix with escape
           if (modifiers.meta) {

@@ -452,6 +452,125 @@ describe("mock-keys", () => {
     expect(mockRenderer.getEmittedData()).toBe("\x1bx")
   })
 
+  test("pressKey with ctrl modifier on special characters", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    // Ctrl+- should produce \u001f (ASCII 31, Unit Separator)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("-", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\u001f")
+
+    // Ctrl+. should produce \u001e (ASCII 30, Record Separator)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey(".", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\u001e")
+
+    // Ctrl+, should produce \u001c (ASCII 28, File Separator)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey(",", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\u001c")
+
+    // Ctrl+] should produce \u001d (ASCII 29, Group Separator)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("]", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\u001d")
+
+    // Ctrl+[ should produce \x1b (ASCII 27, Escape)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("[", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\x1b")
+
+    // Ctrl+/ should produce \u001f (ASCII 31, same as Ctrl+-)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("/", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\u001f")
+
+    // Ctrl+_ should also produce \u001f (ASCII 31)
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("_", { ctrl: true })
+    expect(mockRenderer.getEmittedData()).toBe("\u001f")
+  })
+
+  test("pressKey with ctrl modifier on all special control characters", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    // Test all standard control character mappings
+    const tests = [
+      { key: "[", expected: "\x1b" }, // ESC
+      { key: "\\", expected: "\x1c" }, // FS
+      { key: "]", expected: "\x1d" }, // GS
+      { key: "^", expected: "\x1e" }, // RS
+      { key: "_", expected: "\x1f" }, // US
+      { key: "?", expected: "\x7f" }, // DEL
+      { key: "@", expected: "\x00" }, // NUL
+      { key: " ", expected: "\x00" }, // NUL (Ctrl+Space)
+    ]
+
+    for (const { key, expected } of tests) {
+      mockRenderer.emittedData = []
+      mockKeys.pressKey(key, { ctrl: true })
+      expect(mockRenderer.getEmittedData()).toBe(expected)
+    }
+  })
+
+  test("pressKey with ctrl+meta on special characters", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    // Ctrl+Meta+- should produce ESC + \u001f
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("-", { ctrl: true, meta: true })
+    expect(mockRenderer.getEmittedData()).toBe("\x1b\u001f")
+
+    // Ctrl+Meta+] should produce ESC + \u001d
+    mockRenderer.emittedData = []
+    mockKeys.pressKey("]", { ctrl: true, meta: true })
+    expect(mockRenderer.getEmittedData()).toBe("\x1b\u001d")
+  })
+
+  test("pressKey with ctrl on special chars does NOT use kitty keyboard", () => {
+    const mockRenderer = new MockRenderer()
+    // Explicitly use non-kitty mode
+    const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: false })
+
+    mockKeys.pressKey("-", { ctrl: true })
+
+    // Should produce raw control sequence, NOT kitty CSI u sequence
+    const data = mockRenderer.getEmittedData()
+    expect(data).toBe("\u001f")
+    expect(data).not.toContain("[") // Should not contain CSI
+    expect(data).not.toContain("u") // Should not contain kitty 'u' ending
+  })
+
+  test("comprehensive test: all punctuation keys work with ctrl modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    // Test multiple punctuation keys in sequence
+    mockKeys.pressKey("-", { ctrl: true })
+    mockKeys.pressKey(".", { ctrl: true })
+    mockKeys.pressKey(",", { ctrl: true })
+    mockKeys.pressKey("]", { ctrl: true })
+    mockKeys.pressKey("[", { ctrl: true })
+
+    const expected = "\u001f\u001e\u001c\u001d\x1b"
+    expect(mockRenderer.getEmittedData()).toBe(expected)
+  })
+
+  test("ctrl modifier with non-mapped characters preserves original", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    // Characters without specific ctrl mappings should be preserved
+    // (though in real terminals they might not do anything)
+    mockKeys.pressKey("(", { ctrl: true })
+
+    // Should preserve the character since it's not in the mapping
+    expect(mockRenderer.getEmittedData()).toBe("(")
+  })
+
   describe("Kitty Keyboard Protocol Mode", () => {
     test("basic character in kitty mode", () => {
       const mockRenderer = new MockRenderer()
@@ -724,6 +843,40 @@ describe("mock-keys", () => {
       expect(kittyRenderer.getEmittedData()).toBe("\x1b[127;2u")
       // Regular should just send backspace (shift is ignored)
       expect(regularRenderer.getEmittedData()).toBe("\b")
+    })
+
+    test("special characters with ctrl in kitty mode", () => {
+      const kittyRenderer = new MockRenderer()
+      const regularRenderer = new MockRenderer()
+      const kittyKeys = createMockKeys(kittyRenderer as any, { kittyKeyboard: true })
+      const regularKeys = createMockKeys(regularRenderer as any, { kittyKeyboard: false })
+
+      // Test Ctrl+- in both modes
+      kittyKeys.pressKey("-", { ctrl: true })
+      regularKeys.pressKey("-", { ctrl: true })
+
+      // Kitty should send the protocol sequence: '-' is codepoint 45, ctrl modifier is 4+1=5
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[45;5u")
+      // Regular should send raw control sequence \u001f
+      expect(regularRenderer.getEmittedData()).toBe("\u001f")
+    })
+
+    test("various special characters with ctrl in kitty mode", () => {
+      const kittyRenderer = new MockRenderer()
+      const kittyKeys = createMockKeys(kittyRenderer as any, { kittyKeyboard: true })
+
+      // Test multiple special characters
+      kittyRenderer.emittedData = []
+      kittyKeys.pressKey(".", { ctrl: true })
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[46;5u") // '.' is codepoint 46
+
+      kittyRenderer.emittedData = []
+      kittyKeys.pressKey(",", { ctrl: true })
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[44;5u") // ',' is codepoint 44
+
+      kittyRenderer.emittedData = []
+      kittyKeys.pressKey("]", { ctrl: true })
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[93;5u") // ']' is codepoint 93
     })
   })
 })
