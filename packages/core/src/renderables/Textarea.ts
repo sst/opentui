@@ -75,9 +75,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
 
   // undo/redo
   { name: "-", ctrl: true, action: "undo" },
-  { name: "z", ctrl: true, action: "undo" },
   { name: ".", ctrl: true, action: "redo" },
-  { name: "y", ctrl: true, action: "redo" },
   { name: "z", super: true, action: "undo" },
   { name: "z", super: true, shift: true, action: "redo" },
 
