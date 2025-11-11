@@ -54,7 +54,7 @@ test("KeyHandler - emits keypress events", () => {
   })
 })
 
-test("KeyHandler - handles paste mode", async () => {
+test("KeyHandler - handles paste via processPaste", async () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
@@ -62,14 +62,12 @@ test("KeyHandler - handles paste mode", async () => {
     receivedPaste = event.text
   })
 
-  const pasteStart = "\x1b[200~"
-  const pasteEnd = "\x1b[201~"
-  handler.processInput(pasteStart + "pasted content" + pasteEnd)
+  handler.processPaste("pasted content")
 
   expect(receivedPaste).toBe("pasted content")
 })
 
-test("KeyHandler - handles paste with multiple parts", () => {
+test("KeyHandler - processPaste handles content directly", () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
@@ -77,18 +75,13 @@ test("KeyHandler - handles paste with multiple parts", () => {
     receivedPaste = event.text
   })
 
-  const pasteStart = "\x1b[200~"
-  const pasteEnd = "\x1b[201~"
-
-  // Simulate paste arriving in chunks
-  handler.processInput(pasteStart + "chunk1")
-  handler.processInput("chunk2")
-  handler.processInput("chunk3" + pasteEnd)
+  // processPaste receives the full content, no chunking
+  handler.processPaste("chunk1chunk2chunk3")
 
   expect(receivedPaste).toBe("chunk1chunk2chunk3")
 })
 
-test("KeyHandler - strips ANSI codes in paste mode", () => {
+test("KeyHandler - strips ANSI codes in paste", () => {
   const handler = createKeyHandler()
 
   let receivedPaste: string | undefined
@@ -96,9 +89,7 @@ test("KeyHandler - strips ANSI codes in paste mode", () => {
     receivedPaste = event.text
   })
 
-  const pasteStart = "\x1b[200~"
-  const pasteEnd = "\x1b[201~"
-  handler.processInput(pasteStart + "text with \x1b[31mred\x1b[0m color" + pasteEnd)
+  handler.processPaste("text with \x1b[31mred\x1b[0m color")
 
   expect(receivedPaste).toBe("text with red color")
 })
@@ -334,9 +325,7 @@ test("InternalKeyHandler - paste events work with priority system", () => {
     callOrder.push(`internal:${event.text}`)
   })
 
-  const pasteStart = "\x1b[200~"
-  const pasteEnd = "\x1b[201~"
-  handler.processInput(pasteStart + "hello" + pasteEnd)
+  handler.processPaste("hello")
 
   expect(callOrder).toEqual(["regular:hello", "internal:hello"])
 })
@@ -358,9 +347,7 @@ test("InternalKeyHandler - paste preventDefault prevents internal handlers", () 
     internalHandlerCalled = true
   })
 
-  const pasteStart = "\x1b[200~"
-  const pasteEnd = "\x1b[201~"
-  handler.processInput(pasteStart + "test paste" + pasteEnd)
+  handler.processPaste("test paste")
 
   expect(regularHandlerCalled).toBe(true)
   expect(receivedText).toBe("test paste")
@@ -378,9 +365,7 @@ test("KeyHandler - emits paste event even with empty content", () => {
     receivedPaste = event.text
   })
 
-  const pasteStart = "\x1b[200~"
-  const pasteEnd = "\x1b[201~"
-  handler.processInput(pasteStart + pasteEnd)
+  handler.processPaste("")
 
   expect(pasteEventReceived).toBe(true)
   expect(receivedPaste).toBe("")
