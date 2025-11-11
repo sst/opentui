@@ -1,10 +1,13 @@
-import { createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
+import { createCliRenderer, engine, type CliRendererConfig, type CliRenderer } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import type { JSX } from "./jsx-runtime"
 import { RendererContext } from "./src/elements"
 import { _render as renderInternal, createComponent } from "./src/reconciler"
 
-export const render = async (node: () => JSX.Element, renderConfig: CliRendererConfig = {}) => {
+export const render = async (
+  node: () => JSX.Element,
+  renderConfig: CliRendererConfig = {},
+): Promise<{ renderer: CliRenderer }> => {
   const renderer = await createCliRenderer(renderConfig)
   engine.attach(renderer)
 
@@ -20,6 +23,8 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
       }),
     renderer.root,
   )
+
+  return { renderer }
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
