@@ -1,5 +1,6 @@
 import { createSignal, For } from "solid-js"
-import { render, useRenderer } from "@opentui/solid"
+import { createRoot, render, useRenderer } from "@opentui/solid"
+import { createCliRenderer } from "@opentui/core"
 
 process.env.DEBUG = "true"
 
@@ -37,4 +38,5 @@ const FilterListTest = () => {
   )
 }
 
-render(FilterListTest)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(FilterListTest)

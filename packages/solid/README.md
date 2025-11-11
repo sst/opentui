@@ -30,9 +30,11 @@ preload = ["@opentui/solid/preload"]
 3. Add render function to index.tsx:
 
 ```tsx
+import { createCliRenderer } from "@opentui/core"
 import { render } from "@opentui/solid"
 
-render(() => <text>Hello, World!</text>)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(() => <text>Hello, World!</text>)
 ```
 
 4. Run with `bun index.tsx`.

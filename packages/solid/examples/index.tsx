@@ -1,13 +1,11 @@
-import { render } from "@opentui/solid"
-import { ConsolePosition } from "@opentui/core"
+import { createRoot, render } from "@opentui/solid"
+import { ConsolePosition, createCliRenderer } from "@opentui/core"
 import ExampleSelector from "./components/ExampleSelector"
 
 // Uncomment to debug solidjs reconciler
 // process.env.DEBUG = "true"
 
-const App = () => <ExampleSelector />
-
-render(App, {
+const renderer = await createCliRenderer({
   targetFps: 30,
   consoleOptions: {
     position: ConsolePosition.BOTTOM,
@@ -15,3 +13,6 @@ render(App, {
     sizePercent: 40,
   },
 })
+
+const App = () => <ExampleSelector />
+createRoot(renderer).render(App)
