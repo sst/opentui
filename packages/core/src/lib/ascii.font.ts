@@ -1,5 +1,5 @@
 import { OptimizedBuffer } from "../buffer"
-import { RGBA } from "./RGBA"
+import { parseColor, RGBA, type ColorInput } from "./RGBA"
 import tiny from "./fonts/tiny.json"
 import block from "./fonts/block.json"
 import shade from "./fonts/shade.json"
@@ -224,8 +224,8 @@ export function renderFontToFrameBuffer(
     text: string
     x?: number
     y?: number
-    fg?: RGBA | RGBA[]
-    bg?: RGBA
+    fg?: ColorInput | ColorInput[]
+    bg?: ColorInput
     font?: keyof typeof fonts
   },
 ): { width: number; height: number } {
@@ -294,7 +294,7 @@ export function renderFontToFrameBuffer(
             if (renderX >= 0 && renderX < width) {
               const fontChar = segment.text[charIdx]
               if (fontChar !== " ") {
-                buffer.setCellWithAlphaBlending(renderX, renderY, fontChar, segmentColor, bg)
+                buffer.setCellWithAlphaBlending(renderX, renderY, fontChar, parseColor(segmentColor), parseColor(bg))
               }
             }
           }
