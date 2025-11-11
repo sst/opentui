@@ -177,8 +177,8 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
       text: this._text,
       x: 0,
       y: 0,
-      fg: this.color,
-      bg: this._backgroundColor,
+      color: this.color,
+      backgroundColor: this._backgroundColor,
       font: this._font,
     })
 
@@ -210,8 +210,8 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
         text: selectedText,
         x: startX,
         y: 0,
-        fg: this._selectionFg ? this._selectionFg : this._color,
-        bg: this._selectionBg ? this._selectionBg : this._backgroundColor,
+        color: this._selectionFg ? this._selectionFg : this._color,
+        backgroundColor: this._selectionBg ? this._selectionBg : this._backgroundColor,
         font: this._font,
       })
     }

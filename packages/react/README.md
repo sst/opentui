@@ -479,17 +479,11 @@ function App() {
 Display ASCII art text with different font styles.
 
 ```tsx
-import { measureText } from "@opentui/core"
 import { useState } from "react"
 
 function App() {
   const text = "ASCII"
   const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
-
-  const { width, height } = measureText({
-    text,
-    font,
-  })
 
   return (
     <box style={{ border: true, paddingLeft: 1, paddingRight: 1 }}>
@@ -530,7 +524,7 @@ function App() {
         />
       </box>
 
-      <ascii-font style={{ width, height }} text={text} font={font} />
+      <ascii-font text={text} font={font} />
     </box>
   )
 }

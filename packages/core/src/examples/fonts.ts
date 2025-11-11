@@ -66,8 +66,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "FONTS",
     x: 5,
     y: 1,
-    fg: [RGBA.fromInts(255, 100, 100, 255), RGBA.fromInts(100, 100, 255, 255)],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: [RGBA.fromInts(255, 100, 100, 255), RGBA.fromInts(100, 100, 255, 255)],
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "block",
   })
 
@@ -76,8 +76,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "TINY FONT DEMO",
     x: 5,
     y: 8,
-    fg: RGBA.fromInts(255, 255, 255, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 255, 255, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -86,8 +86,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "HELLO WORLD",
     x: 5,
     y: 11,
-    fg: RGBA.fromInts(255, 255, 0, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 255, 0, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -96,8 +96,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "1234567890",
     x: 5,
     y: 14,
-    fg: RGBA.fromInts(0, 255, 0, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(0, 255, 0, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -106,8 +106,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "!@#$%&*()+-=",
     x: 5,
     y: 17,
-    fg: RGBA.fromInts(255, 0, 255, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 0, 255, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -116,8 +116,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "BLOCK FONT DEMO",
     x: 5,
     y: 20,
-    fg: RGBA.fromInts(255, 255, 255, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 255, 255, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -126,8 +126,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "HI",
     x: 5,
     y: 23,
-    fg: [RGBA.fromInts(255, 255, 0, 255), RGBA.fromInts(0, 255, 255, 255)],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: [RGBA.fromInts(255, 255, 0, 255), RGBA.fromInts(0, 255, 255, 255)],
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "block",
   })
 
@@ -136,8 +136,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "2025",
     x: 25,
     y: 23,
-    fg: [RGBA.fromInts(255, 128, 0, 255), RGBA.fromInts(128, 255, 128, 255)],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: [RGBA.fromInts(255, 128, 0, 255), RGBA.fromInts(128, 255, 128, 255)],
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "block",
   })
 
@@ -146,8 +146,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "SHADE FONT DEMO",
     x: 5,
     y: 30,
-    fg: RGBA.fromInts(255, 255, 255, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 255, 255, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -156,11 +156,11 @@ export function run(rendererInstance: CliRenderer): void {
     text: "COOL",
     x: 5,
     y: 33,
-    fg: [
+    color: [
       RGBA.fromInts(255, 200, 100, 255), // c1 - warm orange
       RGBA.fromInts(100, 150, 200, 255), // c2 - cool blue
     ],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "shade",
   })
 
@@ -169,8 +169,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "SLICK FONT DEMO",
     x: 5,
     y: 42,
-    fg: RGBA.fromInts(255, 255, 255, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 255, 255, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
@@ -179,11 +179,11 @@ export function run(rendererInstance: CliRenderer): void {
     text: "STYLE",
     x: 5,
     y: 45,
-    fg: [
+    color: [
       RGBA.fromInts(100, 255, 100, 255), // c1 - bright green
       RGBA.fromInts(255, 100, 255, 255), // c2 - bright magenta
     ],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "slick",
   })
 
@@ -202,8 +202,8 @@ export function run(rendererInstance: CliRenderer): void {
     text: "ESC TO RETURN",
     x: 5,
     y: 53,
-    fg: RGBA.fromInts(128, 128, 128, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(128, 128, 128, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     font: "tiny",
   })
 
