@@ -879,4 +879,367 @@ describe("mock-keys", () => {
       expect(kittyRenderer.getEmittedData()).toBe("\x1b[93;5u") // ']' is codepoint 93
     })
   })
+
+  describe("modifyOtherKeys Mode (CSI u variant)", () => {
+    test("modifyOtherKeys sequences can be parsed by parseKeypress", async () => {
+      const { parseKeypress } = await import("../lib/parse.keypress")
+
+      // Test that our generated sequences can be parsed correctly
+      const tests = [
+        { seq: "\x1b[27;5;97~", expectedName: "a", expectedCtrl: true },
+        { seq: "\x1b[27;2;13~", expectedName: "return", expectedShift: true },
+        { seq: "\x1b[27;5;27~", expectedName: "escape", expectedCtrl: true },
+        { seq: "\x1b[27;2;9~", expectedName: "tab", expectedShift: true },
+        { seq: "\x1b[27;5;32~", expectedName: "space", expectedCtrl: true },
+        { seq: "\x1b[27;6;97~", expectedName: "a", expectedShift: true, expectedCtrl: true },
+      ]
+
+      for (const test of tests) {
+        const result = parseKeypress(test.seq)
+        expect(result).not.toBeNull()
+        expect(result?.name).toBe(test.expectedName)
+        if (test.expectedCtrl !== undefined) {
+          expect(result?.ctrl).toBe(test.expectedCtrl)
+        }
+        if (test.expectedShift !== undefined) {
+          expect(result?.shift).toBe(test.expectedShift)
+        }
+      }
+    })
+
+    test("basic character without modifiers in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a")
+
+      // Without modifiers, should send plain character
+      expect(mockRenderer.getEmittedData()).toBe("a")
+    })
+
+    test("character with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { ctrl: true })
+
+      // modifyOtherKeys format: CSI 27 ; modifier ; code ~
+      // 'a' is charCode 97, ctrl is 4, modifier is 4+1=5
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;97~")
+    })
+
+    test("character with shift in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { shift: true })
+
+      // 'a' is charCode 97, shift is 1, modifier is 1+1=2
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;2;97~")
+    })
+
+    test("character with meta in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { meta: true })
+
+      // 'a' is charCode 97, meta is 2, modifier is 2+1=3
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;3;97~")
+    })
+
+    test("return/enter with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressEnter({ ctrl: true })
+
+      // return is charCode 13, ctrl is 4, modifier is 4+1=5
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;13~")
+    })
+
+    test("return with shift in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressEnter({ shift: true })
+
+      // return is charCode 13, shift is 1, modifier is 1+1=2
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;2;13~")
+    })
+
+    test("escape with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressEscape({ ctrl: true })
+
+      // escape is charCode 27, ctrl is 4, modifier is 4+1=5
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;27~")
+    })
+
+    test("tab with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressTab({ ctrl: true })
+
+      // tab is charCode 9, ctrl is 4, modifier is 4+1=5
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;9~")
+    })
+
+    test("tab with shift in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressTab({ shift: true })
+
+      // tab is charCode 9, shift is 1, modifier is 1+1=2
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;2;9~")
+    })
+
+    test("backspace with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressBackspace({ ctrl: true })
+
+      // backspace is charCode 127, ctrl is 4, modifier is 4+1=5
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;127~")
+    })
+
+    test("backspace with meta in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressBackspace({ meta: true })
+
+      // backspace is charCode 127, meta is 2, modifier is 2+1=3
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;3;127~")
+    })
+
+    test("space with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey(" ", { ctrl: true })
+
+      // space is charCode 32, ctrl is 4, modifier is 4+1=5
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;32~")
+    })
+
+    test("special characters with ctrl in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      // Ctrl+- should use modifyOtherKeys format
+      mockRenderer.emittedData = []
+      mockKeys.pressKey("-", { ctrl: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;45~") // '-' is charCode 45
+
+      // Ctrl+. should use modifyOtherKeys format
+      mockRenderer.emittedData = []
+      mockKeys.pressKey(".", { ctrl: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;46~") // '.' is charCode 46
+
+      // Ctrl+, should use modifyOtherKeys format
+      mockRenderer.emittedData = []
+      mockKeys.pressKey(",", { ctrl: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;44~") // ',' is charCode 44
+
+      // Ctrl+] should use modifyOtherKeys format
+      mockRenderer.emittedData = []
+      mockKeys.pressKey("]", { ctrl: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;93~") // ']' is charCode 93
+    })
+
+    test("multiple modifier combinations in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      // shift + ctrl: 1 + 4 = 5, + 1 = 6
+      mockRenderer.emittedData = []
+      mockKeys.pressKey("a", { shift: true, ctrl: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;6;97~")
+
+      // shift + meta: 1 + 2 = 3, + 1 = 4
+      mockRenderer.emittedData = []
+      mockKeys.pressKey("a", { shift: true, meta: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;4;97~")
+
+      // ctrl + meta: 4 + 2 = 6, + 1 = 7
+      mockRenderer.emittedData = []
+      mockKeys.pressKey("a", { ctrl: true, meta: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;7;97~")
+
+      // shift + ctrl + meta: 1 + 4 + 2 = 7, + 1 = 8
+      mockRenderer.emittedData = []
+      mockKeys.pressKey("a", { shift: true, ctrl: true, meta: true })
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;8;97~")
+    })
+
+    test("arrow keys with modifiers fall through to regular mode in modifyOtherKeys", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      // Arrow keys should still use the standard CSI sequence with modifiers
+      // not the modifyOtherKeys format
+      mockKeys.pressArrow("right", { shift: true })
+
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[1;2C")
+    })
+
+    test("kitty mode takes precedence over modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, {
+        kittyKeyboard: true,
+        otherModifiersMode: true,
+      })
+
+      mockKeys.pressKey("a", { ctrl: true })
+
+      // Should use kitty format, not modifyOtherKeys
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;5u")
+    })
+
+    test("modifyOtherKeys vs regular mode comparison", () => {
+      const modifyOtherKeysRenderer = new MockRenderer()
+      const regularRenderer = new MockRenderer()
+      const modifyOtherKeysKeys = createMockKeys(modifyOtherKeysRenderer as any, { otherModifiersMode: true })
+      const regularKeys = createMockKeys(regularRenderer as any, { otherModifiersMode: false })
+
+      modifyOtherKeysKeys.pressKey("-", { ctrl: true })
+      regularKeys.pressKey("-", { ctrl: true })
+
+      // modifyOtherKeys should send CSI 27 format
+      expect(modifyOtherKeysRenderer.getEmittedData()).toBe("\x1b[27;5;45~")
+      // Regular should send raw control sequence
+      expect(regularRenderer.getEmittedData()).toBe("\u001f")
+    })
+
+    test("characters without modifiers don't use modifyOtherKeys format", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      // Without modifiers, should send plain characters
+      mockKeys.pressKey("a")
+      mockKeys.pressKey("b")
+      mockKeys.pressEnter()
+
+      expect(mockRenderer.getEmittedData()).toBe("ab\r")
+    })
+
+    test("modifyOtherKeys with all printable characters", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      const chars = "abcdefghijklmnopqrstuvwxyz0123456789-=[]\\;',./`"
+
+      for (const char of chars) {
+        mockRenderer.emittedData = []
+        mockKeys.pressKey(char, { ctrl: true })
+        const charCode = char.charCodeAt(0)
+        expect(mockRenderer.getEmittedData()).toBe(`\x1b[27;5;${charCode}~`)
+      }
+    })
+
+    test("modifyOtherKeys mode can be parsed back correctly", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      // Test various keys with modifiers
+      const tests = [
+        { key: "a", mods: { ctrl: true }, expectedSeq: "\x1b[27;5;97~" },
+        { key: "-", mods: { ctrl: true }, expectedSeq: "\x1b[27;5;45~" },
+        { key: KeyCodes.RETURN, mods: { shift: true }, expectedSeq: "\x1b[27;2;13~" },
+        { key: KeyCodes.ESCAPE, mods: { ctrl: true }, expectedSeq: "\x1b[27;5;27~" },
+        { key: KeyCodes.TAB, mods: { shift: true }, expectedSeq: "\x1b[27;2;9~" },
+        { key: " ", mods: { ctrl: true }, expectedSeq: "\x1b[27;5;32~" },
+      ]
+
+      for (const { key, mods, expectedSeq } of tests) {
+        mockRenderer.emittedData = []
+        mockKeys.pressKey(key, mods)
+        expect(mockRenderer.getEmittedData()).toBe(expectedSeq)
+      }
+    })
+
+    test("comprehensive three-mode comparison: regular vs modifyOtherKeys vs kitty", () => {
+      const regularRenderer = new MockRenderer()
+      const modifyOtherKeysRenderer = new MockRenderer()
+      const kittyRenderer = new MockRenderer()
+
+      const regularKeys = createMockKeys(regularRenderer as any, { kittyKeyboard: false, otherModifiersMode: false })
+      const modifyOtherKeysKeys = createMockKeys(modifyOtherKeysRenderer as any, { otherModifiersMode: true })
+      const kittyKeys = createMockKeys(kittyRenderer as any, { kittyKeyboard: true })
+
+      // Test Ctrl+- in all three modes
+      regularKeys.pressKey("-", { ctrl: true })
+      modifyOtherKeysKeys.pressKey("-", { ctrl: true })
+      kittyKeys.pressKey("-", { ctrl: true })
+
+      expect(regularRenderer.getEmittedData()).toBe("\u001f") // Raw control sequence
+      expect(modifyOtherKeysRenderer.getEmittedData()).toBe("\x1b[27;5;45~") // modifyOtherKeys format
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[45;5u") // Kitty format
+
+      // Test Shift+Enter in all three modes
+      regularRenderer.emittedData = []
+      modifyOtherKeysRenderer.emittedData = []
+      kittyRenderer.emittedData = []
+
+      regularKeys.pressEnter({ shift: true })
+      modifyOtherKeysKeys.pressEnter({ shift: true })
+      kittyKeys.pressEnter({ shift: true })
+
+      expect(regularRenderer.getEmittedData()).toBe("\r") // Regular mode ignores shift on Enter
+      expect(modifyOtherKeysRenderer.getEmittedData()).toBe("\x1b[27;2;13~") // modifyOtherKeys format
+      expect(kittyRenderer.getEmittedData()).toBe("\x1b[13;2u") // Kitty format
+    })
+  })
+
+  describe("Mode selection and precedence", () => {
+    test("default mode (no options)", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any)
+
+      mockKeys.pressKey("-", { ctrl: true })
+
+      // Default should use raw control sequences
+      expect(mockRenderer.getEmittedData()).toBe("\u001f")
+    })
+
+    test("only kittyKeyboard enabled", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a", { ctrl: true })
+
+      // Should use kitty format
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;5u")
+    })
+
+    test("only otherModifiersMode enabled", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { ctrl: true })
+
+      // Should use modifyOtherKeys format
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;5;97~")
+    })
+
+    test("both kittyKeyboard and otherModifiersMode enabled (kitty wins)", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, {
+        kittyKeyboard: true,
+        otherModifiersMode: true,
+      })
+
+      mockKeys.pressKey("a", { ctrl: true })
+
+      // Kitty should take precedence
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;5u")
+      expect(mockRenderer.getEmittedData()).not.toContain("27;5;97~")
+    })
+  })
 })

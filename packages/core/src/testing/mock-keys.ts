@@ -38,6 +38,7 @@ export type KeyInput = string | keyof typeof KeyCodes
 
 export interface MockKeysOptions {
   kittyKeyboard?: boolean
+  otherModifiersMode?: boolean
 }
 
 // Kitty keyboard protocol key mappings
@@ -90,6 +91,28 @@ function encodeKittySequence(
   }
 }
 
+function encodeModifyOtherKeysSequence(
+  charCode: number,
+  modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean },
+): string {
+  // modifyOtherKeys protocol: CSI 27 ; modifier ; code ~
+  // This is the format used by xterm, iTerm2, Ghostty with modifyOtherKeys enabled
+  // Modifier encoding: shift=1, alt/option=2, ctrl=4, meta=8 (1-based, so add 1)
+  let modMask = 0
+  if (modifiers?.shift) modMask |= 1
+  if (modifiers?.meta) modMask |= 2 // alt/option/meta
+  if (modifiers?.ctrl) modMask |= 4
+
+  // modifyOtherKeys is only used when modifiers are present
+  // Without modifiers, use the standard key sequence
+  if (modMask === 0) {
+    return String.fromCharCode(charCode)
+  }
+
+  // With modifiers, use CSI 27 ; modifier ; code ~
+  return `\x1b[27;${modMask + 1};${charCode}~`
+}
+
 interface ResolvedKey {
   keyValue: string
   keyName: string | undefined
@@ -123,6 +146,11 @@ function resolveKeyInput(key: KeyInput): ResolvedKey {
 
 export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions) {
   const useKittyKeyboard = options?.kittyKeyboard ?? false
+  const useOtherModifiersMode = options?.otherModifiersMode ?? false
+
+  // Kitty keyboard takes precedence over otherModifiersMode
+  const effectiveOtherModifiersMode = useOtherModifiersMode && !useKittyKeyboard
+
   const pressKeys = async (keys: KeyInput[], delayMs: number = 0): Promise<void> => {
     for (const key of keys) {
       const { keyValue: keyCode } = resolveKeyInput(key)
@@ -188,7 +216,43 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
       // Fall through to regular mode for unknown keys
     }
 
-    // Regular (non-Kitty) mode
+    // Handle modifyOtherKeys mode (CSI u protocol variant)
+    // Used by xterm, iTerm2, Ghostty with modifyOtherKeys enabled
+    if (effectiveOtherModifiersMode && modifiers) {
+      // Resolve the key to its string representation or keycode value
+      let { keyValue, keyName } = resolveKeyInput(key)
+
+      // Map control characters and escape sequences to their char codes
+      const valueToCharCodeMap: Record<string, number> = {
+        "\b": 127, // backspace (or 8, but 127 is more common)
+        "\r": 13, // return
+        "\n": 13, // linefeed -> return
+        "\t": 9, // tab
+        "\x1b": 27, // escape
+        " ": 32, // space
+      }
+
+      // Check if we have a control character that needs modifyOtherKeys encoding
+      let charCode: number | undefined
+
+      if (keyValue && valueToCharCodeMap[keyValue] !== undefined) {
+        charCode = valueToCharCodeMap[keyValue]
+      } else if (keyValue && keyValue.length === 1 && !keyValue.startsWith("\x1b")) {
+        // For regular single characters
+        charCode = keyValue.charCodeAt(0)
+      }
+
+      // If we have a char code and modifiers, use modifyOtherKeys format
+      if (charCode !== undefined) {
+        const sequence = encodeModifyOtherKeysSequence(charCode, modifiers)
+        renderer.stdin.emit("data", Buffer.from(sequence))
+        return
+      }
+
+      // For other keys (like arrow keys with modifiers), fall through to regular mode
+    }
+
+    // Regular (non-Kitty, non-modifyOtherKeys) mode
     let keyCode = resolveKeyInput(key).keyValue
 
     // Apply modifiers if present
