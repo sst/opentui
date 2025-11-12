@@ -392,18 +392,23 @@ pub const UnifiedTextBufferView = struct {
 
                             std.debug.print("  DECISION: last_wrap_that_fits={?d}, remaining_in_chunk={d}, remaining_on_line={d}\n", .{ last_wrap_that_fits, remaining_in_chunk, remaining_on_line });
 
-                            // Priority: If whole chunk fits, add it all. Only split at boundaries if needed.
                             if (remaining_in_chunk <= remaining_on_line) {
-                                std.debug.print("    Branch B: whole chunk fits (FIRST PRIORITY)\n", .{});
-                                // Whole remaining chunk fits - just add it all
+                                std.debug.print("    Branch: whole chunk fits\n", .{});
+                                // Whole remaining chunk fits
                                 to_add = remaining_in_chunk;
-                                std.debug.print("  Whole chunk fits: to_add={d}\n", .{to_add});
+                                // But if there are wrap boundaries, record the last one for potential rollback
+                                if (last_wrap_that_fits) |_| {
+                                    has_wrap_after = true;
+                                    std.debug.print("  Whole chunk fits with wrap boundary: to_add={d}, has_wrap_after=true\n", .{to_add});
+                                } else {
+                                    std.debug.print("  Whole chunk fits: to_add={d}\n", .{to_add});
+                                }
                             } else if (last_wrap_that_fits) |wrap_width| {
-                                std.debug.print("    Branch A: split at wrap boundary (chunk doesn't fit)\n", .{});
+                                std.debug.print("    Branch: split at wrap boundary\n", .{});
                                 // Chunk doesn't fit, add up to the wrap boundary
                                 to_add = wrap_width;
                                 has_wrap_after = true;
-                                std.debug.print("  Found wrap boundary: to_add={d}, has_wrap_after=true\n", .{to_add});
+                                std.debug.print("  Splitting at wrap boundary: to_add={d}, has_wrap_after=true\n", .{to_add});
                             } else if (wctx.line_position == 0) {
                                 // Line is empty, force add something (fallback to char wrap with grapheme boundary respect)
                                 // Find byte offset for char_offset to get the remaining bytes
