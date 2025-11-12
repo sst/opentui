@@ -10,7 +10,7 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
     onDestroy: () => {
       dispose()
       renderConfig.onDestroy?.()
-    }
+    },
   })
   engine.attach(renderer)
 
@@ -34,7 +34,7 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
     onDestroy: () => {
       dispose()
       renderConfig.onDestroy?.()
-    }
+    },
   })
   engine.attach(testSetup.renderer)
 
