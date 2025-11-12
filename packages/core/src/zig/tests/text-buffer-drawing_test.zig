@@ -2408,3 +2408,62 @@ test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
     // All text should be present
     try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证 - 实时输入验证和错误处理") != null);
 }
+
+test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\前后端分离 - TypeScript逻辑 + Go TUI界面
+        \\组件化设计 - 基于tview的可复用组件
+        \\渐进式交互 - 逐步披露避免信息过载
+        \\智能上下文 - 基于项目状态动态生成问题
+        \\丰富的问题类型 - 支持6种不同的交互形式
+        \\完整的验证 - 实时输入验证和错误处理
+    ;
+
+    try tb.setText(text);
+
+    // Char wrapping with a width that might split multibyte chars
+    view.setWrapMode(.char);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        35,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Write the rendered buffer to check for stray bytes
+    var out_buffer: [2000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    // Verify the output is valid UTF-8
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+
+    // Should NOT contain stray bytes
+    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null);
+
+    // Verify the problematic characters appear correctly
+    try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
+}

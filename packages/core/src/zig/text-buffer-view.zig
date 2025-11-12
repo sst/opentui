@@ -397,8 +397,8 @@ pub const UnifiedTextBufferView = struct {
                                 to_add = wrap_width;
                                 has_wrap_after = true;
                             } else if (wctx.line_position == 0) {
-                                // Line is empty, force add something (fallback to char wrap with grapheme boundary respect)
-                                // Find byte offset for char_offset to get the remaining bytes
+                                // Line is empty, force add something (fallback to char wrap)
+                                // Must respect grapheme boundaries to avoid splitting wide characters
                                 const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                                 var byte_offset: u32 = 0;
                                 if (char_offset > 0) {
