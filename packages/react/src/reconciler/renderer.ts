@@ -1,23 +1,13 @@
-import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
+import { CliRenderer, engine } from "@opentui/core"
 import React, { type ReactNode } from "react"
+import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app"
 import { ErrorBoundary } from "../components/error-boundary"
-import { _render } from "./reconciler"
+import { _render, reconciler } from "./reconciler"
 
-/**
- * @deprecated Use `createRoot(renderer).render(node)` instead
- */
-export async function render(node: ReactNode, rendererConfig: CliRendererConfig = {}): Promise<void> {
-  const renderer = await createCliRenderer(rendererConfig)
-  engine.attach(renderer)
-  _render(
-    React.createElement(
-      AppContext.Provider,
-      { value: { keyHandler: renderer.keyInput, renderer } },
-      React.createElement(ErrorBoundary, null, node),
-    ),
-    renderer.root,
-  )
+export type Root = {
+  render: (node: ReactNode) => void
+  unmount: () => void
 }
 
 /**
@@ -30,12 +20,14 @@ export async function render(node: ReactNode, rendererConfig: CliRendererConfig 
  * createRoot(renderer).render(<App />)
  * ```
  */
-export function createRoot(renderer: CliRenderer): { render: (node: ReactNode) => void } {
+export function createRoot(renderer: CliRenderer): Root {
+  let container: OpaqueRoot | null = null
+
   return {
     render: (node: ReactNode) => {
       engine.attach(renderer)
 
-      _render(
+      container = _render(
         React.createElement(
           AppContext.Provider,
           { value: { keyHandler: renderer.keyInput, renderer } },
@@ -43,6 +35,17 @@ export function createRoot(renderer: CliRenderer): { render: (node: ReactNode) =
         ),
         renderer.root,
       )
+    },
+
+    unmount: (): void => {
+      if (!container) {
+        return
+      }
+
+      reconciler.updateContainer(null, container, null, () => {})
+      // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
+      reconciler.flushSyncWork()
+      container = null
     },
   }
 }
