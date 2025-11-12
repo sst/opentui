@@ -5,10 +5,16 @@ import { RendererContext } from "./src/elements"
 import { _render as renderInternal, createComponent } from "./src/reconciler"
 
 export const render = async (node: () => JSX.Element, renderConfig: CliRendererConfig = {}) => {
-  const renderer = await createCliRenderer(renderConfig)
+  const renderer = await createCliRenderer({
+    ...renderConfig,
+    onDestroy: () => {
+      dispose()
+      renderConfig.onDestroy?.()
+    }
+  })
   engine.attach(renderer)
 
-  renderInternal(
+  const dispose = renderInternal(
     () =>
       createComponent(RendererContext.Provider, {
         get value() {
@@ -23,7 +29,13 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
-  const testSetup = await createTestRenderer(renderConfig)
+  const testSetup = await createTestRenderer({
+    ...renderConfig,
+    onDestroy: () => {
+      dispose()
+      renderConfig.onDestroy?.()
+    }
+  })
   engine.attach(testSetup.renderer)
 
   const dispose = renderInternal(
@@ -38,12 +50,6 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
       }),
     testSetup.renderer.root,
   )
-
-  const destroy = testSetup.renderer.destroy
-  testSetup.renderer.destroy = () => {
-    destroy.call(testSetup.renderer)
-    dispose()
-  }
 
   return testSetup
 }
