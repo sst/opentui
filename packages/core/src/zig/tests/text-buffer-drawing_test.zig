@@ -2277,3 +2277,102 @@ test "setStyledText - highlight positioning with Unicode text" {
     const has_green_bg = @abs(period_cell.bg[1] - 1.0) < epsilon and @abs(period_cell.bg[0] - 0.0) < epsilon;
     try std.testing.expect(!has_green_bg);
 }
+
+test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\前后端分离 - TypeScript逻辑 + Go TUI界面
+        \\组件化设计 - 基于tview的可复用组件
+        \\渐进式交互 - 逐步披露避免信息过载
+        \\智能上下文 - 基于项目状态动态生成问题
+        \\丰富的问题类型 - 支持6种不同的交互形式
+        \\完整的验证 - 实时输入验证和错误处理
+    ;
+
+    try tb.setText(text);
+
+    // Try word wrapping with a width that might split multibyte chars
+    view.setWrapMode(.word);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        40,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Write the rendered buffer to check for stray bytes
+    var out_buffer: [2000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    std.debug.print("\n=== Rendered output ({d} bytes) ===\n{s}\n=== End ===\n", .{ written, result });
+
+    // Verify the output is valid UTF-8
+    if (!std.unicode.utf8ValidateSlice(result)) {
+        std.debug.print("\n!!! INVALID UTF-8 DETECTED !!!\n", .{});
+        // Find and print the invalid sequences
+        var i: usize = 0;
+        while (i < result.len) {
+            const byte = result[i];
+            if (byte < 0x80) {
+                i += 1;
+                continue;
+            }
+            const len = std.unicode.utf8ByteSequenceLength(byte) catch {
+                std.debug.print("Invalid UTF-8 start byte at index {d}: 0x{X}\n", .{ i, byte });
+                std.debug.print("Context: {s}\n", .{result[if (i > 10) i - 10 else 0..@min(i + 20, result.len)]});
+                i += 1;
+                continue;
+            };
+            if (i + len > result.len) {
+                std.debug.print("Truncated UTF-8 sequence at index {d}, need {d} bytes but only {d} available\n", .{ i, len, result.len - i });
+                break;
+            }
+            i += len;
+        }
+        return error.InvalidUTF8;
+    }
+
+    // Verify that the original text is contained in the output (with possible spaces/newlines from wrapping)
+    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "实时输入验证和错误处理") != null);
+
+    // Check specific problematic line - should NOT contain stray bytes
+    // The line should be present correctly (possibly wrapped with spaces)
+    // But there should be NO stray å character or partial UTF-8 sequences
+    try std.testing.expect(std.mem.indexOf(u8, result, "å式") == null); // This should NOT appear
+
+    // Check that there are no invalid UTF-8 sequences by iterating through codepoints
+    var utf8_view = try std.unicode.Utf8View.init(result);
+    var iter = utf8_view.iterator();
+    var codepoint_count: usize = 0;
+    while (iter.nextCodepoint()) |cp| {
+        codepoint_count += 1;
+        // Every codepoint should be valid
+        try std.testing.expect(cp <= 0x10FFFF);
+    }
+
+    std.debug.print("Total valid codepoints: {d}\n", .{codepoint_count});
+    try std.testing.expect(codepoint_count > 0);
+}
