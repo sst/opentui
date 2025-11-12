@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: React - Build and Type Check
+    name: React - Build and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
