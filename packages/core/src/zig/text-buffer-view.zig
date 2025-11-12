@@ -353,12 +353,12 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_position += width;
                 }
 
-                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
-                    _ = line_idx;
+                fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
                     const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     wctx.chunk_idx_in_line = chunk_idx_in_line;
 
                     if (wctx.view.wrap_mode == .word) {
+                        const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
 
                         var char_offset: u32 = 0;
@@ -385,17 +385,30 @@ pub const UnifiedTextBufferView = struct {
                             var to_add: u32 = 0;
                             var has_wrap_after: bool = false;
 
-                            if (last_wrap_that_fits) |wrap_width| {
-                                // Add up to the wrap boundary
-                                to_add = wrap_width;
-                                has_wrap_after = true;
-                            } else if (remaining_in_chunk <= remaining_on_line) {
+                            if (remaining_in_chunk <= remaining_on_line) {
                                 // Whole remaining chunk fits
                                 to_add = remaining_in_chunk;
+                                // Record wrap boundary for potential rollback even when chunk fits
+                                if (last_wrap_that_fits) |_| {
+                                    has_wrap_after = true;
+                                }
+                            } else if (last_wrap_that_fits) |wrap_width| {
+                                // Chunk doesn't fit, add up to the wrap boundary
+                                to_add = wrap_width;
+                                has_wrap_after = true;
                             } else if (wctx.line_position == 0) {
                                 // Line is empty, force add something (fallback to char wrap)
-                                to_add = @min(remaining_on_line, remaining_in_chunk);
-                                if (to_add == 0) to_add = 1;
+                                // Must respect grapheme boundaries to avoid splitting wide characters
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, remaining_on_line, wctx.view.text_buffer.tab_width, is_ascii_only);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1; // Force at least one grapheme
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 // Doesn't fit and we have a previous wrap point, rollback and wrap
                                 // Get the chunks that need to move to the next line (they're already in order)
