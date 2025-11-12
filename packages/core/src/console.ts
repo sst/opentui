@@ -262,6 +262,7 @@ export class TerminalConsole extends EventEmitter {
   private _displayLines: DisplayLine[] = []
   private _allLogEntries: [Date, LogLevel, any[], CallerInfo | null][] = []
   private _needsFrameBufferUpdate: boolean = false
+  private _entryListener: (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => void
 
   private markNeedsRerender(): void {
     this._needsFrameBufferUpdate = true
@@ -308,9 +309,10 @@ export class TerminalConsole extends EventEmitter {
     this._updateConsoleDimensions()
     this._scrollToBottom(true)
 
-    terminalConsoleCache.on("entry", (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => {
+    this._entryListener = (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => {
       this._handleNewLog(logEntry)
-    })
+    }
+    terminalConsoleCache.on("entry", this._entryListener)
 
     if (env.SHOW_CONSOLE) {
       this.show()
@@ -587,6 +589,12 @@ export class TerminalConsole extends EventEmitter {
       this.blur()
       terminalConsoleCache.setCachingEnabled(true)
     }
+  }
+
+  public destroy(): void {
+    this.hide()
+    this.deactivate()
+    terminalConsoleCache.off("entry", this._entryListener)
   }
 
   public getCachedLogs(): string {
