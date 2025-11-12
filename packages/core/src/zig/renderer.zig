@@ -531,7 +531,7 @@ pub const CliRenderer = struct {
 
         var writer = OutputBufferWriter.writer();
 
-        writer.writeAll(ansi.ANSI.syncSet) catch {};
+        // writer.writeAll(ansi.ANSI.syncSet) catch {};
         writer.writeAll(ansi.ANSI.hideCursor) catch {};
 
         var currentFg: ?RGBA = null;
@@ -712,7 +712,7 @@ pub const CliRenderer = struct {
             self.lastCursorColorRGB = null;
         }
 
-        writer.writeAll(ansi.ANSI.syncReset) catch {};
+        // writer.writeAll(ansi.ANSI.syncReset) catch {};
 
         const renderEndTime = std.time.microTimestamp();
         const renderTime = @as(f64, @floatFromInt(renderEndTime - renderStartTime));
