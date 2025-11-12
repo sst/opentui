@@ -43,7 +43,7 @@ render(() => <text>Hello, World!</text>)
 import solidPlugin from "./node_modules/@opentui/solid/scripts/solid-plugin";
 
 await Bun.build({
-  entrypoints: ["./src/index.tsx"],
+  entrypoints: ["./index.tsx"],
   target: "bun",
   outdir: "./build",
   plugins: [solidPlugin],
