@@ -30,3 +30,8 @@ jobs:
         run: |
           cd packages/react
           bun run build --ci
+
+      - name: Run tests
+        run: |
+          cd packages/react
+          bun run test
