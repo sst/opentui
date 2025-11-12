@@ -73,11 +73,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const mentionStart = displayOffset // Should be 11
       const mentionEnd = displayOffset + mentionDisplayWidth // Should be 25
 
-      console.log("Text:", text)
-      console.log("@ at JS string index:", atJsIndex)
-      console.log("@ at CORRECT display-width offset:", mentionStart)
-      console.log("Mention end at CORRECT display-width offset:", mentionEnd)
-
       extmarks.create({
         start: mentionStart,
         end: mentionEnd,
@@ -85,10 +80,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("\nHighlights returned:")
-      console.log("  start:", highlights[0].start, "(expected: 11)")
-      console.log("  end:", highlights[0].end, "(expected: 25)")
-
       expect(highlights.length).toBe(1)
       expect(highlights[0].start).toBe(11)
       expect(highlights[0].end).toBe(25)
@@ -112,7 +103,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("Highlight before multi-width - start:", highlights[0].start, "end:", highlights[0].end)
 
       expect(highlights.length).toBe(1)
       expect(highlights[0].start).toBe(0)
@@ -134,9 +124,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const testStart = 3
       const testEnd = 7
 
-      console.log("Text:", textarea.plainText)
-      console.log("Highlighting offsets:", testStart, "-", testEnd)
-      console.log("Expected text:", textarea.plainText.substring(testStart, testEnd))
 
       extmarks.create({
         start: testStart,
@@ -145,12 +132,10 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("Highlight between multi-width - start:", highlights[0].start, "end:", highlights[0].end)
 
       if (highlights.length > 0) {
         const lineText = textarea.plainText.split("\n")[0]
         const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-        console.log("Actual highlighted text:", actualHighlightedText)
         expect(actualHighlightedText).toBe("test")
       }
 
@@ -172,9 +157,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const chineseStart = 6
       const chineseEnd = 11
 
-      console.log("Text:", textarea.plainText)
-      console.log("Highlighting offsets:", chineseStart, "-", chineseEnd)
-      console.log("Expected text:", textarea.plainText.substring(chineseStart, chineseEnd))
 
       extmarks.create({
         start: chineseStart,
@@ -183,12 +165,10 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("Highlight multi-width chars - start:", highlights[0].start, "end:", highlights[0].end)
 
       if (highlights.length > 0) {
         const lineText = textarea.plainText.split("\n")[0]
         const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-        console.log("Actual highlighted text:", actualHighlightedText)
         expect(actualHighlightedText).toBe("前后端分离")
       }
 
@@ -211,8 +191,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const text = textarea.plainText
       const testPos = text.indexOf("test")
 
-      console.log("Text:", text)
-      console.log("Test position:", testPos)
 
       extmarks.create({
         start: testPos,
@@ -221,13 +199,11 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("Highlights with emoji - start:", highlights[0].start, "end:", highlights[0].end)
 
       expect(highlights.length).toBe(1)
 
       const lineText = textarea.plainText.split("\n")[0]
       const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-      console.log("Actual highlighted text:", actualHighlightedText)
       expect(actualHighlightedText).toBe("test")
     })
 
@@ -242,15 +218,12 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       textarea.syntaxStyle = style
 
       const text = textarea.plainText
-      console.log("Text:", text)
 
       const user1Start = text.indexOf("@user1")
       const user1End = user1Start + 6
       const user2Start = text.indexOf("@user2")
       const user2End = user2Start + 6
 
-      console.log("User1 position:", user1Start, "-", user1End)
-      console.log("User2 position:", user2Start, "-", user2End)
 
       extmarks.create({
         start: user1Start,
@@ -265,13 +238,10 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("Number of highlights:", highlights.length)
 
       highlights.forEach((h, i) => {
-        console.log(`Highlight ${i} - start: ${h.start}, end: ${h.end}`)
         const lineText = textarea.plainText.split("\n")[0]
         const highlightedText = lineText.substring(h.start, h.end)
-        console.log(`Highlighted text ${i}:`, highlightedText)
       })
 
       expect(highlights.length).toBe(2)
@@ -297,7 +267,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       }
 
       const cursorPos = textarea.cursorOffset
-      console.log("Cursor position after moving right 3 times:", cursorPos)
 
       // Cursor should be at display-width offset 5 (after "前后 ")
       expect(cursorPos).toBe(5)
@@ -318,20 +287,14 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       textarea.syntaxStyle = style
 
       const text = textarea.plainText
-      console.log("\n=== CRITICAL TEST ===")
-      console.log("Text:", text)
-      console.log("Text length:", text.length)
 
       // The @ symbol is at cursor offset 6
       const atPos = text.indexOf("@")
-      console.log("@ symbol at cursor offset:", atPos)
 
       // We want to highlight from @ to the end of "committer"
       const start = atPos
       const end = atPos + 14 // "@git-committer" is 14 chars
 
-      console.log("Creating extmark with offsets:", start, "-", end)
-      console.log("Expected to highlight:", text.substring(start, end))
 
       const extmarkId = extmarks.create({
         start: start,
@@ -340,29 +303,22 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       })
 
       const extmark = extmarks.get(extmarkId)
-      console.log("Extmark created - start:", extmark?.start, "end:", extmark?.end)
 
       const highlights = textarea.getLineHighlights(0)
-      console.log("Highlights received:", highlights.length)
 
       if (highlights.length > 0) {
         const h = highlights[0]
-        console.log("Highlight - start:", h.start, "end:", h.end)
 
         // This is where the bug manifests:
         // The offsetToCharOffset in extmarks.ts doesn't account for multi-width display
         // So the highlight char offset will be wrong
 
         const lineText = text.split("\n")[0]
-        console.log("Line text:", lineText)
-        console.log("Line text length:", lineText.length)
 
         // Try to extract what's actually highlighted using the char offsets
         const actualText = lineText.substring(h.start, Math.min(h.end, lineText.length))
-        console.log("Text at highlight char offset [", h.start, "-", h.end, "]:", actualText)
 
         // This will likely FAIL because the char offsets don't account for display width
-        console.log("Does it match '@git-committer'?", actualText === "@git-committer")
       }
 
       expect(highlights.length).toBe(1)
