@@ -17,6 +17,10 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./test-utils": {
+      "import": "./src/test-utils.ts",
+      "types": "./src/test-utils.d.ts"
+    },
     "./jsx-runtime": {
       "import": "./jsx-runtime.js",
       "types": "./jsx-runtime.d.ts"

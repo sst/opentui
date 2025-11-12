@@ -124,7 +124,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const testStart = 3
       const testEnd = 7
 
-
       extmarks.create({
         start: testStart,
         end: testEnd,
@@ -156,7 +155,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       // Offsets: h=0,e=1,l=2,l=3,o=4,space=5,前=6,后=7,端=8,分=9,离=10,space=11,w=12...
       const chineseStart = 6
       const chineseEnd = 11
-
 
       extmarks.create({
         start: chineseStart,
@@ -191,7 +189,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const text = textarea.plainText
       const testPos = text.indexOf("test")
 
-
       extmarks.create({
         start: testPos,
         end: testPos + 4,
@@ -223,7 +220,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const user1End = user1Start + 6
       const user2Start = text.indexOf("@user2")
       const user2End = user2Start + 6
-
 
       extmarks.create({
         start: user1Start,
@@ -294,7 +290,6 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       // We want to highlight from @ to the end of "committer"
       const start = atPos
       const end = atPos + 14 // "@git-committer" is 14 chars
-
 
       const extmarkId = extmarks.create({
         start: start,
