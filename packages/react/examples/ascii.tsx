@@ -1,15 +1,10 @@
-import { createCliRenderer, measureText, type ASCIIFontName } from "@opentui/core"
+import { createCliRenderer, type ASCIIFontName } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { useState } from "react"
 
 export const App = () => {
   const text = "ASCII"
   const [font, setFont] = useState<ASCIIFontName>("tiny")
-
-  const { width, height } = measureText({
-    text,
-    font,
-  })
 
   return (
     <box style={{ paddingLeft: 1, paddingRight: 1 }}>
@@ -50,7 +45,7 @@ export const App = () => {
         />
       </box>
 
-      <ascii-font style={{ width, height }} text={text} font={font} />
+      <ascii-font text={text} font={font} />
     </box>
   )
 }
