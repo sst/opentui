@@ -1373,7 +1373,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this._stdinBuffer.destroy()
-    this._console.deactivate()
+    this._console.destroy()
     this.disableStdoutInterception()
 
     if (this._splitHeight > 0) {
