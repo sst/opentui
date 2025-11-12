@@ -82,6 +82,7 @@ export interface CliRendererConfig {
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
+  onDestroy?: () => void
 }
 
 export type PixelResolution = {
@@ -334,6 +335,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetector: TerminalPaletteDetector | null = null
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
+  private _onDestroy?: () => void
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -464,6 +466,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
     this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
+    this._onDestroy = config.onDestroy
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
       const id = CliRenderer.animationFrameId++
@@ -1384,6 +1387,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
+
+    if (this._onDestroy) {
+      try {
+        this._onDestroy()
+      } catch (e) {
+        console.error("Error in onDestroy callback:", e instanceof Error ? e.stack : String(e))
+      }
+    }
   }
 
   private startRenderLoop(): void {
