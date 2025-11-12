@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js"
-import { render, useKeyboard, useRenderer } from "@opentui/solid"
-import { t } from "@opentui/core"
+import { createRoot, useKeyboard, useRenderer } from "@opentui/solid"
+import { createCliRenderer, t } from "@opentui/core"
 
 process.env.DEBUG = "true"
 
@@ -42,4 +42,5 @@ const EmptyStyledTextTest = () => {
   )
 }
 
-render(EmptyStyledTextTest)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(EmptyStyledTextTest)

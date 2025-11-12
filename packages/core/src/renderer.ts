@@ -65,6 +65,7 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   exitOnCtrlC?: boolean
+  exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
   targetFps?: number
   memorySnapshotInterval?: number
@@ -143,14 +144,6 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-singleton("ProcessExitSignals", () => {
-  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
-    process.on(signal, () => {
-      process.exit()
-    })
-  })
-})
-
 const rendererTracker = singleton("RendererTracker", () => {
   const renderers = new Set<CliRenderer>()
   return {
@@ -227,6 +220,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
+  private exitSignals: NodeJS.Signals[]
+  private isExitSignalHandlerMounted: boolean = false
   private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
@@ -380,6 +375,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     console.warn(JSON.stringify(warning.message, null, 2))
   }).bind(this)
 
+  private exitSignalHandler: (signal: NodeJS.Signals) => void = (() => {
+    this.destroy()
+  }).bind(this)
+
   public get controlState(): RendererControlState {
     return this._controlState
   }
@@ -417,6 +416,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
+    this.exitSignals = config.exitSignals ?? ["SIGABRT", "SIGINT", "SIGTERM", "SIGQUIT"]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
@@ -447,7 +447,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("exit", this.exitHandler)
+    process.on("beforeExit", this.exitHandler)
 
     this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
@@ -458,6 +458,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
     })
+
+    this.mountExitSignals()
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
 
@@ -1252,6 +1254,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._controlState = this._isRunning ? RendererControlState.AUTO_STARTED : RendererControlState.IDLE
   }
 
+  private mountExitSignals(): void {
+    if (!this.isExitSignalHandlerMounted && this.exitSignals.length > 0) {
+      this.exitSignals.forEach((signal) => process.addListener(signal, this.exitSignalHandler))
+      this.isExitSignalHandlerMounted = true
+    }
+  }
+
+  private unmountExitSignals(): void {
+    if (this.isExitSignalHandlerMounted && this.exitSignals.length > 0) {
+      this.exitSignals.forEach((signal) => process.removeListener(signal, this.exitSignalHandler))
+      this.isExitSignalHandlerMounted = false
+    }
+  }
+
   private internalStart(): void {
     if (!this._isRunning && !this._isDestroyed) {
       this._isRunning = true
@@ -1279,6 +1295,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this._keyHandler.suspend()
+    this.unmountExitSignals()
     this._stdinBuffer.clear()
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
@@ -1292,6 +1309,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this.stdin.resume()
     this._keyHandler.resume()
+    this.mountExitSignals()
 
     if (this._suspendedMouseEnabled) {
       this.enableMouse()
@@ -1338,6 +1356,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("unhandledRejection", this.handleError)
     process.removeListener("warning", this.warningHandler)
     capture.removeListener("write", this.captureCallback)
+
+    this.unmountExitSignals()
 
     if (this.memorySnapshotTimer) {
       clearInterval(this.memorySnapshotTimer)
