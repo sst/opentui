@@ -367,6 +367,8 @@ pub const UnifiedTextBufferView = struct {
                             const remaining_in_chunk = chunk.width - char_offset;
                             const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
 
+                            std.debug.print("  LOOP START: char_offset={d}, chunk.width={d}, remaining_in_chunk={d}, remaining_on_line={d}, line_position={d}, wrap_w={d}\n", .{ char_offset, chunk.width, remaining_in_chunk, remaining_on_line, wctx.line_position, wctx.wrap_w });
+
                             // Find the last wrap boundary in the remaining part that fits on current line
                             // Only scan forward from last position
                             var last_wrap_that_fits: ?u32 = null;
@@ -374,24 +376,34 @@ pub const UnifiedTextBufferView = struct {
                             while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
                                 const wrap_break = wrap_offsets[wrap_idx];
                                 const offset = @as(u32, wrap_break.char_offset);
+                                std.debug.print("    Checking wrap_break: char_offset={d}, byte_offset={d}, offset={d}, char_offset={d}\n", .{ wrap_break.char_offset, wrap_break.byte_offset, offset, char_offset });
                                 if (offset < char_offset) continue;
                                 const width_to_boundary = offset - char_offset + 1;
+                                std.debug.print("      width_to_boundary={d}, remaining_on_line={d}, remaining_in_chunk={d}\n", .{ width_to_boundary, remaining_on_line, remaining_in_chunk });
                                 if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
                                 last_wrap_that_fits = width_to_boundary;
                                 saved_wrap_idx = wrap_idx + 1;
+                                std.debug.print("      FITS! last_wrap_that_fits={d}\n", .{width_to_boundary});
                             }
                             wrap_idx = saved_wrap_idx;
 
                             var to_add: u32 = 0;
                             var has_wrap_after: bool = false;
 
-                            if (last_wrap_that_fits) |wrap_width| {
-                                // Add up to the wrap boundary
+                            std.debug.print("  DECISION: last_wrap_that_fits={?d}, remaining_in_chunk={d}, remaining_on_line={d}\n", .{ last_wrap_that_fits, remaining_in_chunk, remaining_on_line });
+
+                            // Priority: If whole chunk fits, add it all. Only split at boundaries if needed.
+                            if (remaining_in_chunk <= remaining_on_line) {
+                                std.debug.print("    Branch B: whole chunk fits (FIRST PRIORITY)\n", .{});
+                                // Whole remaining chunk fits - just add it all
+                                to_add = remaining_in_chunk;
+                                std.debug.print("  Whole chunk fits: to_add={d}\n", .{to_add});
+                            } else if (last_wrap_that_fits) |wrap_width| {
+                                std.debug.print("    Branch A: split at wrap boundary (chunk doesn't fit)\n", .{});
+                                // Chunk doesn't fit, add up to the wrap boundary
                                 to_add = wrap_width;
                                 has_wrap_after = true;
-                            } else if (remaining_in_chunk <= remaining_on_line) {
-                                // Whole remaining chunk fits
-                                to_add = remaining_in_chunk;
+                                std.debug.print("  Found wrap boundary: to_add={d}, has_wrap_after=true\n", .{to_add});
                             } else if (wctx.line_position == 0) {
                                 // Line is empty, force add something (fallback to char wrap with grapheme boundary respect)
                                 // Find byte offset for char_offset to get the remaining bytes
@@ -441,17 +453,22 @@ pub const UnifiedTextBufferView = struct {
                             }
 
                             if (to_add > 0) {
+                                std.debug.print("  ADDING CHUNK: char_offset={d}, to_add={d}, has_wrap_after={}\n", .{ char_offset, to_add, has_wrap_after });
                                 addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
                                 char_offset += to_add;
+                                std.debug.print("  AFTER ADD: char_offset={d}, line_position={d}\n", .{ char_offset, wctx.line_position });
 
                                 if (has_wrap_after) {
                                     wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
                                     wctx.last_wrap_line_position = wctx.line_position;
                                     wctx.last_wrap_global_offset = wctx.global_char_offset;
+                                    std.debug.print("  SAVED WRAP POINT: chunk_count={d}, line_position={d}\n", .{ wctx.last_wrap_chunk_count, wctx.last_wrap_line_position });
                                 }
 
                                 if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                    std.debug.print("  CHECK COMMIT: line_position={d} >= wrap_w={d}, char_offset={d} < chunk.width={d}\n", .{ wctx.line_position, wctx.wrap_w, char_offset, chunk.width });
                                     if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
+                                        std.debug.print("  COMMITTING LINE\n", .{});
                                         commitVirtualLine(wctx);
                                     }
                                 }

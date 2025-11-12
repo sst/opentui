@@ -2342,3 +2342,75 @@ test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     // Verify the problematic characters appear correctly
     try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
 }
+
+test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\前后端分离 - TypeScript逻辑 + Go TUI界面
+        \\组件化设计 - 基于tview的可复用组件
+        \\渐进式交互 - 逐步披露避免信息过载
+        \\智能上下文 - 基于项目状态动态生成问题
+        \\丰富的问题类型 - 支持6种不同的交互形式
+        \\完整的验证 - 实时输入验证和错误处理
+    ;
+
+    try tb.setText(text);
+
+    // Word wrap mode but with wide width so nothing actually wraps
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    view.updateVirtualLines();
+
+    const vlines = view.getVirtualLines();
+    std.debug.print("\nVirtual lines count: {d}\n", .{vlines.len});
+
+    // Check each virtual line for duplicate chunks
+    for (vlines, 0..) |vline, vline_idx| {
+        std.debug.print("vline[{d}]: source_line={d}, chunks.len={d}\n", .{ vline_idx, vline.source_line, vline.chunks.items.len });
+        for (vline.chunks.items, 0..) |vchunk, chunk_idx| {
+            const chunk_bytes = vchunk.chunk.getBytes(&tb.mem_registry);
+            std.debug.print("  chunk[{d}]: grapheme_start={d}, width={d}, bytes: {s}\n", .{ chunk_idx, vchunk.grapheme_start, vchunk.width, chunk_bytes });
+        }
+        // Each line should have exactly ONE chunk when not wrapped
+        try std.testing.expectEqual(@as(usize, 1), vline.chunks.items.len);
+    }
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        10,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Write the rendered buffer
+    var out_buffer: [2000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    // Verify the output is valid UTF-8
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+
+    // Should NOT contain stray bytes
+    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null);
+
+    // All text should be present
+    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证 - 实时输入验证和错误处理") != null);
+}
