@@ -663,3 +663,63 @@ test "TextBuffer char range highlights - preserved after setText" {
     const cleared_highlights = tb.getLineHighlights(0);
     try std.testing.expectEqual(@as(usize, 0), cleared_highlights.len);
 }
+
+test "TextBuffer char range highlights - multi-width chars before highlight" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("前后端分离 @git-committer");
+    try tb.addHighlightByCharRange(11, 25, 1, 1, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 11), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 25), highlights[0].col_end);
+}
+
+test "TextBuffer char range highlights - multi-width chars between highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("abc前后端def");
+    try tb.addHighlightByCharRange(9, 12, 1, 1, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 9), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 12), highlights[0].col_end);
+}
+
+test "TextBuffer char range highlights - emoji grapheme clusters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("前🌟test");
+    try tb.addHighlightByCharRange(4, 8, 1, 1, 0);
+
+    const highlights = tb.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 1), highlights.len);
+    try std.testing.expectEqual(@as(u32, 4), highlights[0].col_start);
+    try std.testing.expectEqual(@as(u32, 8), highlights[0].col_end);
+}
