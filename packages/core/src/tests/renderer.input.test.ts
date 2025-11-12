@@ -1618,3 +1618,48 @@ test("alacritty capability response sequence", async () => {
 
   expect(keypresses).toHaveLength(0)
 })
+
+test("focus and blur events", async () => {
+  const events: string[] = []
+
+  currentRenderer.on("focus", () => {
+    events.push("focus")
+  })
+
+  currentRenderer.on("blur", () => {
+    events.push("blur")
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[I"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[O"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(events).toEqual(["focus", "blur"])
+})
+
+test("focus events should not trigger keypress", async () => {
+  const keypresses: KeyEvent[] = []
+  const focusEvents: string[] = []
+
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  currentRenderer.on("focus", () => {
+    focusEvents.push("focus")
+  })
+
+  currentRenderer.on("blur", () => {
+    focusEvents.push("blur")
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[I"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[O"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(focusEvents).toEqual(["focus", "blur"])
+  expect(keypresses).toHaveLength(0)
+})
