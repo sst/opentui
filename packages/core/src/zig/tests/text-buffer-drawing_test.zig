@@ -2277,3 +2277,193 @@ test "setStyledText - highlight positioning with Unicode text" {
     const has_green_bg = @abs(period_cell.bg[1] - 1.0) < epsilon and @abs(period_cell.bg[0] - 0.0) < epsilon;
     try std.testing.expect(!has_green_bg);
 }
+
+test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\前后端分离 - TypeScript逻辑 + Go TUI界面
+        \\组件化设计 - 基于tview的可复用组件
+        \\渐进式交互 - 逐步披露避免信息过载
+        \\智能上下文 - 基于项目状态动态生成问题
+        \\丰富的问题类型 - 支持6种不同的交互形式
+        \\完整的验证 - 实时输入验证和错误处理
+    ;
+
+    try tb.setText(text);
+
+    // Try word wrapping with a width that might split multibyte chars
+    view.setWrapMode(.word);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        40,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Write the rendered buffer to check for stray bytes
+    var out_buffer: [2000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    // Verify the output is valid UTF-8
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+
+    // Verify that the original text is contained in the output (with possible spaces/newlines from wrapping)
+    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "实时输入验证和错误处理") != null);
+
+    // Check specific problematic line - should NOT contain stray bytes
+    // The line should be present correctly (possibly wrapped with spaces)
+    // But there should be NO stray å character or partial UTF-8 sequences
+    try std.testing.expect(std.mem.indexOf(u8, result, "å式") == null); // This should NOT appear
+    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null); // No stray partial bytes
+
+    // Verify the problematic characters appear correctly
+    try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
+}
+
+test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\前后端分离 - TypeScript逻辑 + Go TUI界面
+        \\组件化设计 - 基于tview的可复用组件
+        \\渐进式交互 - 逐步披露避免信息过载
+        \\智能上下文 - 基于项目状态动态生成问题
+        \\丰富的问题类型 - 支持6种不同的交互形式
+        \\完整的验证 - 实时输入验证和错误处理
+    ;
+
+    try tb.setText(text);
+
+    // Word wrap mode but with wide width so nothing actually wraps
+    view.setWrapMode(.word);
+    view.setWrapWidth(80);
+    view.updateVirtualLines();
+
+    const vlines = view.getVirtualLines();
+
+    // Check each virtual line - should have exactly ONE chunk when width is large enough
+    for (vlines) |vline| {
+        // Each line should have exactly ONE chunk when not actually wrapping
+        try std.testing.expectEqual(@as(usize, 1), vline.chunks.items.len);
+    }
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        10,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Write the rendered buffer
+    var out_buffer: [2000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    // Verify the output is valid UTF-8
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+
+    // Should NOT contain stray bytes
+    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null);
+
+    // All text should be present
+    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证 - 实时输入验证和错误处理") != null);
+}
+
+test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        \\前后端分离 - TypeScript逻辑 + Go TUI界面
+        \\组件化设计 - 基于tview的可复用组件
+        \\渐进式交互 - 逐步披露避免信息过载
+        \\智能上下文 - 基于项目状态动态生成问题
+        \\丰富的问题类型 - 支持6种不同的交互形式
+        \\完整的验证 - 实时输入验证和错误处理
+    ;
+
+    try tb.setText(text);
+
+    // Char wrapping with a width that might split multibyte chars
+    view.setWrapMode(.char);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        35,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Write the rendered buffer to check for stray bytes
+    var out_buffer: [2000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    // Verify the output is valid UTF-8
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+
+    // Should NOT contain stray bytes
+    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null);
+
+    // Verify the problematic characters appear correctly
+    try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
+}
