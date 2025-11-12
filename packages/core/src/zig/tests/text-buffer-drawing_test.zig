@@ -2374,16 +2374,10 @@ test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
     view.updateVirtualLines();
 
     const vlines = view.getVirtualLines();
-    std.debug.print("\nVirtual lines count: {d}\n", .{vlines.len});
 
-    // Check each virtual line for duplicate chunks
-    for (vlines, 0..) |vline, vline_idx| {
-        std.debug.print("vline[{d}]: source_line={d}, chunks.len={d}\n", .{ vline_idx, vline.source_line, vline.chunks.items.len });
-        for (vline.chunks.items, 0..) |vchunk, chunk_idx| {
-            const chunk_bytes = vchunk.chunk.getBytes(&tb.mem_registry);
-            std.debug.print("  chunk[{d}]: grapheme_start={d}, width={d}, bytes: {s}\n", .{ chunk_idx, vchunk.grapheme_start, vchunk.width, chunk_bytes });
-        }
-        // Each line should have exactly ONE chunk when not wrapped
+    // Check each virtual line - should have exactly ONE chunk when width is large enough
+    for (vlines) |vline| {
+        // Each line should have exactly ONE chunk when not actually wrapping
         try std.testing.expectEqual(@as(usize, 1), vline.chunks.items.len);
     }
 
