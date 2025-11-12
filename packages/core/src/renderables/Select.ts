@@ -168,8 +168,8 @@ export class SelectRenderable extends Renderable {
           text: option.name,
           x: contentX + 1 + indicatorWidth,
           y: itemY,
-          fg: nameColor,
-          bg: isSelected ? this._selectedBackgroundColor : bgColor,
+          color: nameColor,
+          backgroundColor: isSelected ? this._selectedBackgroundColor : bgColor,
           font: this._font,
         })
         descX = contentX + 1 + indicatorWidth

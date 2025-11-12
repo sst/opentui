@@ -333,8 +333,8 @@ class ExampleSelector {
       margin: 1,
       text: titleText,
       font: titleFont,
-      fg: RGBA.fromInts(255, 255, 255, 255),
-      bg: RGBA.fromInts(0, 17, 34, 255),
+      color: RGBA.fromInts(255, 255, 255, 255),
+      backgroundColor: RGBA.fromInts(0, 17, 34, 255),
     })
     this.renderer.root.add(this.title)
   }
