@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
-import { testRender } from "../src/testing"
+import { testRender } from "../src/test-utils"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
