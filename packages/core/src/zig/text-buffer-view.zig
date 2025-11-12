@@ -353,12 +353,12 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_position += width;
                 }
 
-                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
-                    _ = line_idx;
+                fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
                     const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     wctx.chunk_idx_in_line = chunk_idx_in_line;
 
                     if (wctx.view.wrap_mode == .word) {
+                        const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
 
                         var char_offset: u32 = 0;
@@ -393,9 +393,18 @@ pub const UnifiedTextBufferView = struct {
                                 // Whole remaining chunk fits
                                 to_add = remaining_in_chunk;
                             } else if (wctx.line_position == 0) {
-                                // Line is empty, force add something (fallback to char wrap)
-                                to_add = @min(remaining_on_line, remaining_in_chunk);
-                                if (to_add == 0) to_add = 1;
+                                // Line is empty, force add something (fallback to char wrap with grapheme boundary respect)
+                                // Find byte offset for char_offset to get the remaining bytes
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, remaining_on_line, wctx.view.text_buffer.tab_width, is_ascii_only);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1; // Force at least one grapheme
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 // Doesn't fit and we have a previous wrap point, rollback and wrap
                                 // Get the chunks that need to move to the next line (they're already in order)

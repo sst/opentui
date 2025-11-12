@@ -2326,33 +2326,8 @@ test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
 
-    std.debug.print("\n=== Rendered output ({d} bytes) ===\n{s}\n=== End ===\n", .{ written, result });
-
     // Verify the output is valid UTF-8
-    if (!std.unicode.utf8ValidateSlice(result)) {
-        std.debug.print("\n!!! INVALID UTF-8 DETECTED !!!\n", .{});
-        // Find and print the invalid sequences
-        var i: usize = 0;
-        while (i < result.len) {
-            const byte = result[i];
-            if (byte < 0x80) {
-                i += 1;
-                continue;
-            }
-            const len = std.unicode.utf8ByteSequenceLength(byte) catch {
-                std.debug.print("Invalid UTF-8 start byte at index {d}: 0x{X}\n", .{ i, byte });
-                std.debug.print("Context: {s}\n", .{result[if (i > 10) i - 10 else 0..@min(i + 20, result.len)]});
-                i += 1;
-                continue;
-            };
-            if (i + len > result.len) {
-                std.debug.print("Truncated UTF-8 sequence at index {d}, need {d} bytes but only {d} available\n", .{ i, len, result.len - i });
-                break;
-            }
-            i += len;
-        }
-        return error.InvalidUTF8;
-    }
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
 
     // Verify that the original text is contained in the output (with possible spaces/newlines from wrapping)
     try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
@@ -2362,17 +2337,8 @@ test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     // The line should be present correctly (possibly wrapped with spaces)
     // But there should be NO stray å character or partial UTF-8 sequences
     try std.testing.expect(std.mem.indexOf(u8, result, "å式") == null); // This should NOT appear
+    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null); // No stray partial bytes
 
-    // Check that there are no invalid UTF-8 sequences by iterating through codepoints
-    var utf8_view = try std.unicode.Utf8View.init(result);
-    var iter = utf8_view.iterator();
-    var codepoint_count: usize = 0;
-    while (iter.nextCodepoint()) |cp| {
-        codepoint_count += 1;
-        // Every codepoint should be valid
-        try std.testing.expect(cp <= 0x10FFFF);
-    }
-
-    std.debug.print("Total valid codepoints: {d}\n", .{codepoint_count});
-    try std.testing.expect(codepoint_count > 0);
+    // Verify the problematic characters appear correctly
+    try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
 }
