@@ -162,8 +162,8 @@ const exports = {
   },
   "./test-utils": {
     types: "./src/test-utils.d.ts",
-    import: "./src/test-utils.js",
-    require: "./src/test-utils.js",
+    import: "./src/test-utils/test-utils.js",
+    require: "./src/test-utils/test-utils.js",
   },
   "./jsx-runtime": {
     types: "./jsx-runtime.d.ts",
