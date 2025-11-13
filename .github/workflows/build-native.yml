@@ -49,19 +49,21 @@ jobs:
           echo "Checking for dist packages..."
           ls -lah packages/*/dist/
 
-          # Verify critical files exist
+          # Verify critical files exist (all 6 platforms)
           echo ""
           echo "Verifying native binaries exist..."
           test -f packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
           test -f packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
           test -f packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so || (echo "❌ linux-x64 binary missing!" && exit 1)
+          test -f packages/core/src/lib/aarch64-linux/libwebgpu_wrapper.so || (echo "❌ linux-arm64 binary missing!" && exit 1)
           test -f packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
+          test -f packages/core/src/lib/aarch64-windows/webgpu_wrapper.dll || (echo "❌ windows-arm64 binary missing!" && exit 1)
 
           echo "Verifying dist packages exist..."
           test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
           test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified"
+          echo "✅ All required build outputs verified (6 platforms)"
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
@@ -108,6 +110,28 @@ jobs:
           test -f native-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
           test -s native-windows-x64.zip || (echo "❌ windows-x64 zip is empty" && exit 1)
           echo "✅ windows-x64 packaged successfully ($(du -h native-windows-x64.zip | cut -f1))"
+
+      - name: Package native binaries - linux-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-linux-arm64
+          cp packages/core/src/lib/aarch64-linux/libwebgpu_wrapper.so artifacts/native-linux-arm64/
+          cd artifacts
+          zip -r native-linux-arm64.zip native-linux-arm64/
+          test -f native-linux-arm64.zip || (echo "❌ Failed to create linux-arm64 zip" && exit 1)
+          test -s native-linux-arm64.zip || (echo "❌ linux-arm64 zip is empty" && exit 1)
+          echo "✅ linux-arm64 packaged successfully ($(du -h native-linux-arm64.zip | cut -f1))"
+
+      - name: Package native binaries - windows-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-windows-arm64
+          cp packages/core/src/lib/aarch64-windows/webgpu_wrapper.dll artifacts/native-windows-arm64/
+          cd artifacts
+          zip -r native-windows-arm64.zip native-windows-arm64/
+          test -f native-windows-arm64.zip || (echo "❌ Failed to create windows-arm64 zip" && exit 1)
+          test -s native-windows-arm64.zip || (echo "❌ windows-arm64 zip is empty" && exit 1)
+          echo "✅ windows-arm64 packaged successfully ($(du -h native-windows-arm64.zip | cut -f1))"
 
       # Package the built npm packages (for use by build-examples and npm-publish)
       - name: Package npm packages
@@ -159,11 +183,13 @@ jobs:
           test -f artifacts/native-darwin-x64.zip || (echo "❌ native-darwin-x64.zip missing!" && exit 1)
           test -f artifacts/native-darwin-arm64.zip || (echo "❌ native-darwin-arm64.zip missing!" && exit 1)
           test -f artifacts/native-linux-x64.zip || (echo "❌ native-linux-x64.zip missing!" && exit 1)
+          test -f artifacts/native-linux-arm64.zip || (echo "❌ native-linux-arm64.zip missing!" && exit 1)
           test -f artifacts/native-windows-x64.zip || (echo "❌ native-windows-x64.zip missing!" && exit 1)
+          test -f artifacts/native-windows-arm64.zip || (echo "❌ native-windows-arm64.zip missing!" && exit 1)
           test -f artifacts/npm-packages.zip || (echo "❌ npm-packages.zip missing!" && exit 1)
 
           echo ""
-          echo "✅ All artifacts verified. Ready to upload:"
+          echo "✅ All 6 platform artifacts verified. Ready to upload:"
           ls -lah artifacts/*.zip
 
       - name: Upload native binaries artifacts
@@ -174,7 +200,9 @@ jobs:
             artifacts/native-darwin-x64.zip
             artifacts/native-darwin-arm64.zip
             artifacts/native-linux-x64.zip
+            artifacts/native-linux-arm64.zip
             artifacts/native-windows-x64.zip
+            artifacts/native-windows-arm64.zip
           if-no-files-found: error
           retention-days: 30
 

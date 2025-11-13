@@ -211,7 +211,7 @@ jobs:
           # Verify all expected release assets exist
           echo ""
           echo "Verifying all release assets..."
-          EXPECTED_ASSETS=8  # 4 native + 4 examples
+          EXPECTED_ASSETS=10  # 6 native (darwin-x64, darwin-arm64, linux-x64, linux-arm64, windows-x64, windows-arm64) + 4 examples (no linux-arm64, no windows-arm64)
           ACTUAL_ASSETS=$(ls -1 release-assets/*.zip 2>/dev/null | wc -l | tr -d ' ')
 
           if [ "$ACTUAL_ASSETS" -ne "$EXPECTED_ASSETS" ]; then
@@ -221,6 +221,8 @@ jobs:
           fi
 
           echo "✅ All $ACTUAL_ASSETS release assets prepared:"
+          echo "   - 6 native binaries (all platforms)"
+          echo "   - 4 example executables (darwin-x64, darwin-arm64, linux-x64, windows-x64)"
           ls -lah release-assets/
 
       - name: Create GitHub Release
