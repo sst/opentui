@@ -907,6 +907,7 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
   renderer.root.remove("golden-star-main")
   renderer.root.remove("overlay")
+  renderer.root.remove("gradientBand")
 }
 
 if (import.meta.main) {
