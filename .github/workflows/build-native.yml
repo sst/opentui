@@ -1,0 +1,214 @@
+name: Build Native
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version being released"
+        required: true
+        type: string
+      isDryRun:
+        description: "Whether this is a dry run release"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ZIG_VERSION: 0.14.1
+
+jobs:
+  build-native:
+    name: Build Native Libraries
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages (cross-compile for all platforms)
+        run: bun run build
+
+      - name: Verify build outputs
+        run: |
+          set -e
+          echo "Checking for native binary packages..."
+          ls -lah packages/core/node_modules/@opentui/
+          echo "Checking for dist packages..."
+          ls -lah packages/*/dist/
+
+          # Verify critical files exist (all 6 platforms)
+          echo ""
+          echo "Verifying native binaries exist..."
+          test -f packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-x64/libopentui.so || (echo "❌ linux-x64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so || (echo "❌ linux-arm64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-x64/opentui.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll || (echo "❌ windows-arm64 binary missing!" && exit 1)
+
+          echo "Verifying dist packages exist..."
+          test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
+          test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
+
+          echo "✅ All required build outputs verified (6 platforms)"
+
+      # Create separate zips for each platform's native binaries
+      - name: Package native binaries - darwin-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-darwin-x64
+          cp packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib artifacts/native-darwin-x64/
+          cd artifacts
+          zip -r native-darwin-x64.zip native-darwin-x64/
+          test -f native-darwin-x64.zip || (echo "❌ Failed to create darwin-x64 zip" && exit 1)
+          test -s native-darwin-x64.zip || (echo "❌ darwin-x64 zip is empty" && exit 1)
+          echo "✅ darwin-x64 packaged successfully ($(du -h native-darwin-x64.zip | cut -f1))"
+
+      - name: Package native binaries - darwin-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-darwin-arm64
+          cp packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib artifacts/native-darwin-arm64/
+          cd artifacts
+          zip -r native-darwin-arm64.zip native-darwin-arm64/
+          test -f native-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
+          test -s native-darwin-arm64.zip || (echo "❌ darwin-arm64 zip is empty" && exit 1)
+          echo "✅ darwin-arm64 packaged successfully ($(du -h native-darwin-arm64.zip | cut -f1))"
+
+      - name: Package native binaries - linux-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-linux-x64
+          cp packages/core/node_modules/@opentui/core-linux-x64/libopentui.so artifacts/native-linux-x64/
+          cd artifacts
+          zip -r native-linux-x64.zip native-linux-x64/
+          test -f native-linux-x64.zip || (echo "❌ Failed to create linux-x64 zip" && exit 1)
+          test -s native-linux-x64.zip || (echo "❌ linux-x64 zip is empty" && exit 1)
+          echo "✅ linux-x64 packaged successfully ($(du -h native-linux-x64.zip | cut -f1))"
+
+      - name: Package native binaries - windows-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-windows-x64
+          cp packages/core/node_modules/@opentui/core-win32-x64/opentui.dll artifacts/native-windows-x64/
+          cd artifacts
+          zip -r native-windows-x64.zip native-windows-x64/
+          test -f native-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
+          test -s native-windows-x64.zip || (echo "❌ windows-x64 zip is empty" && exit 1)
+          echo "✅ windows-x64 packaged successfully ($(du -h native-windows-x64.zip | cut -f1))"
+
+      - name: Package native binaries - linux-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-linux-arm64
+          cp packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so artifacts/native-linux-arm64/
+          cd artifacts
+          zip -r native-linux-arm64.zip native-linux-arm64/
+          test -f native-linux-arm64.zip || (echo "❌ Failed to create linux-arm64 zip" && exit 1)
+          test -s native-linux-arm64.zip || (echo "❌ linux-arm64 zip is empty" && exit 1)
+          echo "✅ linux-arm64 packaged successfully ($(du -h native-linux-arm64.zip | cut -f1))"
+
+      - name: Package native binaries - windows-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-windows-arm64
+          cp packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll artifacts/native-windows-arm64/
+          cd artifacts
+          zip -r native-windows-arm64.zip native-windows-arm64/
+          test -f native-windows-arm64.zip || (echo "❌ Failed to create windows-arm64 zip" && exit 1)
+          test -s native-windows-arm64.zip || (echo "❌ windows-arm64 zip is empty" && exit 1)
+          echo "✅ windows-arm64 packaged successfully ($(du -h native-windows-arm64.zip | cut -f1))"
+
+      # Package the built npm packages (for use by build-examples and npm-publish)
+      - name: Package npm packages
+        run: |
+          set -e
+          mkdir -p artifacts/npm-packages
+
+          # Copy core package dist and native packages
+          echo "Packaging core dist..."
+          cp -r packages/core/dist artifacts/npm-packages/core-dist
+          test -f artifacts/npm-packages/core-dist/package.json || (echo "❌ core dist/package.json missing after copy!" && exit 1)
+
+          echo "Packaging core native packages..."
+          cp -r packages/core/node_modules/@opentui artifacts/npm-packages/core-native-packages
+
+          # Copy other package dists (optional - don't fail if missing)
+          echo "Packaging other packages..."
+          if [ -d packages/react/dist ]; then
+            cp -r packages/react/dist artifacts/npm-packages/react-dist
+            echo "✅ React dist packaged"
+          else
+            echo "⚠️  React dist not found (skipping)"
+          fi
+
+          if [ -d packages/solid/dist ]; then
+            cp -r packages/solid/dist artifacts/npm-packages/solid-dist
+            echo "✅ Solid dist packaged"
+          else
+            echo "⚠️  Solid dist not found (skipping)"
+          fi
+
+          if [ -d packages/vue/dist ]; then
+            cp -r packages/vue/dist artifacts/npm-packages/vue-dist
+            echo "✅ Vue dist packaged"
+          else
+            echo "⚠️  Vue dist not found (skipping)"
+          fi
+
+          cd artifacts
+          zip -r npm-packages.zip npm-packages/
+          test -f npm-packages.zip || (echo "❌ Failed to create npm-packages zip" && exit 1)
+          test -s npm-packages.zip || (echo "❌ npm-packages zip is empty" && exit 1)
+          echo "✅ npm packages packaged successfully ($(du -h npm-packages.zip | cut -f1))"
+
+      - name: Verify all artifacts before upload
+        run: |
+          set -e
+          echo "Verifying all artifacts exist..."
+          test -f artifacts/native-darwin-x64.zip || (echo "❌ native-darwin-x64.zip missing!" && exit 1)
+          test -f artifacts/native-darwin-arm64.zip || (echo "❌ native-darwin-arm64.zip missing!" && exit 1)
+          test -f artifacts/native-linux-x64.zip || (echo "❌ native-linux-x64.zip missing!" && exit 1)
+          test -f artifacts/native-linux-arm64.zip || (echo "❌ native-linux-arm64.zip missing!" && exit 1)
+          test -f artifacts/native-windows-x64.zip || (echo "❌ native-windows-x64.zip missing!" && exit 1)
+          test -f artifacts/native-windows-arm64.zip || (echo "❌ native-windows-arm64.zip missing!" && exit 1)
+          test -f artifacts/npm-packages.zip || (echo "❌ npm-packages.zip missing!" && exit 1)
+
+          echo ""
+          echo "✅ All 6 platform artifacts verified. Ready to upload:"
+          ls -lah artifacts/*.zip
+
+      - name: Upload native binaries artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-binaries-${{ inputs.version }}
+          path: |
+            artifacts/native-darwin-x64.zip
+            artifacts/native-darwin-arm64.zip
+            artifacts/native-linux-x64.zip
+            artifacts/native-linux-arm64.zip
+            artifacts/native-windows-x64.zip
+            artifacts/native-windows-arm64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload npm packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages-${{ inputs.version }}
+          path: artifacts/npm-packages.zip
+          if-no-files-found: error
+          retention-days: 30

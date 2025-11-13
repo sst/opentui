@@ -1,71 +1,134 @@
-name: NPM Latest Release
+name: NPM Publish
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      version:
+        description: "Version being published"
+        required: true
+        type: string
+      isDryRun:
+        description: "Whether this is a dry run (npm publish --dry-run)"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      NPM_TOKEN:
+        required: true
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  release:
+  publish:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-
-      - name: Extract version from tag
-        id: extract_version
-        run: |
-          TAG=${GITHUB_REF#refs/tags/v}
-          echo "version=$TAG" >> $GITHUB_OUTPUT
-          echo "Extracted version: $TAG"
-
-      - name: Check version matches package.json
-        run: |
-          TAG_VERSION="${{ steps.extract_version.outputs.version }}"
-
-          # Check packages/*/package.json versions (excluding vue by default)
-          for pkg in packages/*/; do
-            # Skip vue package
-            if [[ "$pkg" == "packages/vue/" ]]; then
-              echo "Skipping vue package version check"
-              continue
-            fi
-            
-            if [ -f "$pkg/package.json" ]; then
-              PKG_VERSION=$(node -p "require('./$pkg/package.json').version")
-              if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-                echo "Package $pkg version ($PKG_VERSION) does not match tag version ($TAG_VERSION)"
-                exit 1
-              fi
-            fi
-          done
-
-          echo "All package versions match tag version: $TAG_VERSION"
-
       - name: Install dependencies
-        run: bun i
+        run: bun install
 
-      - name: Build packages
-        run: bun run build
+      - name: Download npm packages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-packages-${{ inputs.version }}
 
-      - name: Publish packages
-        run: bun run publish
+      - name: Extract npm packages
+        run: |
+          echo "Extracting npm packages..."
+          unzip -q npm-packages.zip
+
+          # Copy core dist
+          if [ -d "npm-packages/core-dist" ]; then
+            cp -r npm-packages/core-dist packages/core/dist
+            echo "Copied core dist"
+          fi
+
+          # Copy native packages to core's node_modules
+          if [ -d "npm-packages/core-native-packages" ]; then
+            mkdir -p packages/core/node_modules/@opentui
+            cp -r npm-packages/core-native-packages/* packages/core/node_modules/@opentui/
+            echo "Copied native packages"
+          fi
+
+          # Copy other package dists
+          if [ -d "npm-packages/react-dist" ]; then
+            cp -r npm-packages/react-dist packages/react/dist
+            echo "Copied react dist"
+          fi
+
+          if [ -d "npm-packages/solid-dist" ]; then
+            cp -r npm-packages/solid-dist packages/solid/dist
+            echo "Copied solid dist"
+          fi
+
+          if [ -d "npm-packages/vue-dist" ]; then
+            cp -r npm-packages/vue-dist packages/vue/dist
+            echo "Copied vue dist"
+          fi
+
+          echo "Package extraction complete"
+
+      - name: Publish packages (dry-run)
+        if: ${{ inputs.isDryRun }}
+        run: |
+          echo "=========================================="
+          echo "DRY RUN MODE - Not publishing to npm"
+          echo "=========================================="
+          echo ""
+          echo "Skipping pre-publish validation (npm version check would fail for dry-runs)"
+          echo ""
+
+          # Show what would be published (just check if packages can be packed)
+          echo "Packages that would be published:"
+          echo ""
+
+          echo "📦 Checking @opentui/core..."
+          cd packages/core/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/react..."
+          cd ../../react/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/solid..."
+          cd ../../solid/dist && npm pack --dry-run
+
+          echo ""
+          echo "=========================================="
+          echo "DRY RUN COMPLETE - All packages validated"
+          echo "=========================================="
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CI: true
+
+      - name: Publish packages (production)
+        if: ${{ !inputs.isDryRun }}
+        run: |
+          echo "=========================================="
+          echo "PRODUCTION MODE - Publishing to npm"
+          echo "=========================================="
+
+          # Run pre-publish validation
+          bun run pre-publish
+
+          # Publish packages
+          bun run publish
+
+          echo ""
+          echo "=========================================="
+          echo "PUBLISH COMPLETE"
+          echo "=========================================="
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CI: true

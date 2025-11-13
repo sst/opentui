@@ -1,92 +1,239 @@
-name: Build and Release
+name: Release
 
 on:
   push:
     tags:
-      - "vv*"
-      - "!v*-snapshot*"
-  workflow_dispatch:
+      - "v*"
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  build-zig:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-linux
-          - os: macos-13
-            target: x86_64-macos
-          - os: macos-latest
-            target: aarch64-macos
-          - os: windows-latest
-            target: x86_64-windows
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-
-      - name: Build Zig library
-        run: |
-          cd packages/core/src/zig
-          zig build -Doptimize=ReleaseFast
-
-      - name: Upload library artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: library-${{ matrix.target }}
-          path: packages/core/src/zig/lib/
-
-  release:
-    needs: build-zig
+  # Extract version and check if it's a dry run
+  prepare:
+    name: Prepare Release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      fullTag: ${{ steps.extract.outputs.fullTag }}
+      isDryRun: ${{ steps.extract.outputs.isDryRun }}
+      releaseTitle: ${{ steps.extract.outputs.releaseTitle }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Extract version and dry-run flag
+        id: extract
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "Full tag: $TAG"
+
+          # Check if this is a dry run (contains -dry.)
+          if [[ "$TAG" =~ -dry\. ]]; then
+            IS_DRY_RUN=true
+            # Extract base version (remove -dry.X suffix for validation)
+            VERSION=$(echo "$TAG" | sed -E 's/-dry\.[0-9]+$//')
+            RELEASE_TITLE="Release v$TAG (DRY RUN)"
+            echo "This is a DRY RUN release"
+          else
+            IS_DRY_RUN=false
+            VERSION="$TAG"
+            RELEASE_TITLE="Release v$TAG"
+            echo "This is a PRODUCTION release"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "fullTag=$TAG" >> $GITHUB_OUTPUT
+          echo "isDryRun=$IS_DRY_RUN" >> $GITHUB_OUTPUT
+          echo "releaseTitle=$RELEASE_TITLE" >> $GITHUB_OUTPUT
+
+          echo "Version (for validation): $VERSION"
+          echo "Full Tag (for artifacts): $TAG"
+          echo "Is Dry Run: $IS_DRY_RUN"
+          echo "Release Title: $RELEASE_TITLE"
+
+  # Version validation check
+  validate-version:
+    name: Validate Version
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check version matches package.json files
+        run: |
+          TAG_VERSION="${{ needs.prepare.outputs.version }}"
+          echo "Validating version: $TAG_VERSION"
+
+          # Check packages/*/package.json versions (excluding vue by default)
+          FAILED=false
+          for pkg in packages/*/; do
+            # Skip vue package
+            if [[ "$pkg" == "packages/vue/" ]]; then
+              echo "Skipping vue package version check"
+              continue
+            fi
+            
+            if [ -f "$pkg/package.json" ]; then
+              PKG_VERSION=$(node -p "require('./$pkg/package.json').version")
+              if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+                echo "❌ Package $pkg version ($PKG_VERSION) does not match tag version ($TAG_VERSION)"
+                FAILED=true
+              else
+                echo "✅ Package $pkg version matches: $PKG_VERSION"
+              fi
+            fi
+          done
+
+          if [ "$FAILED" = true ]; then
+            echo ""
+            echo "Version validation FAILED!"
+            echo "Please update package.json versions to match the tag version: $TAG_VERSION"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All package versions match tag version: $TAG_VERSION"
+
+  # Build native libraries and packages
+  build-native:
+    name: Build Native
+    needs: [prepare, validate-version]
+    uses: ./.github/workflows/build-native.yml
+    with:
+      version: ${{ needs.prepare.outputs.fullTag }}
+      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
+
+  # Build example executables
+  build-examples:
+    name: Build Examples
+    needs: [prepare, validate-version, build-native]
+    uses: ./.github/workflows/build-examples.yml
+    with:
+      version: ${{ needs.prepare.outputs.fullTag }}
+      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
+
+  # Publish to npm
+  npm-publish:
+    name: NPM Publish
+    needs: [prepare, validate-version, build-native]
+    uses: ./.github/workflows/npm-latest-release.yml
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    with:
+      version: ${{ needs.prepare.outputs.fullTag }}
+      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
+
+  # Create GitHub release with assets
+  github-release:
+    name: Create GitHub Release
+    needs: [prepare, build-native, build-examples, npm-publish]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Prepare release assets
+      - name: Organize release assets
         run: |
-          mkdir -p release-assets
+          set -e
+          WORK_DIR=$(pwd)
+          mkdir -p "$WORK_DIR/release-assets"
 
-          # Copy header file and install script
-          cp packages/go/opentui.h release-assets/
-          cp install.sh release-assets/
-          cp opentui.pc.in release-assets/
+          FULL_TAG="${{ needs.prepare.outputs.fullTag }}"
+          echo "Organizing release assets for tag: $FULL_TAG"
+          echo "Working directory: $WORK_DIR"
 
-          # Copy libraries with proper naming
-          for target in x86_64-linux x86_64-macos aarch64-macos x86_64-windows; do
-            if [ -d "artifacts/library-$target" ]; then
-              case $target in
-                *-linux)
-                  find artifacts/library-$target -name "*.so" -exec cp {} release-assets/libopentui-$target.so \;
-                  ;;
-                *-macos)  
-                  find artifacts/library-$target -name "*.dylib" -exec cp {} release-assets/libopentui-$target.dylib \;
-                  ;;
-                *-windows)
-                  find artifacts/library-$target -name "*.dll" -exec cp {} release-assets/opentui-$target.dll \;
-                  ;;
-              esac
+          # Verify artifact directories exist
+          test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
+          test -d "artifacts/example-executables-$FULL_TAG" || (echo "❌ example-executables artifact directory not found!" && exit 1)
+
+          # Copy native binaries (unzip and rezip with versioned names)
+          echo "Processing native binaries..."
+          cd "artifacts/native-binaries-$FULL_TAG"
+
+          for zip_file in native-*.zip; do
+            if [ -f "$zip_file" ]; then
+              platform=$(echo "$zip_file" | sed 's/native-//' | sed 's/.zip//')
+              echo "  Processing $platform..."
+              unzip -q "$zip_file"
+              
+              # Repackage with versioned name
+              dir_name=$(echo "$zip_file" | sed 's/.zip//')
+              if [ -d "$dir_name" ]; then
+                cd "$dir_name"
+                zip -r "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" .
+                cd ..
+                
+                # Verify the output
+                test -f "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create native $platform release asset!" && exit 1)
+                echo "  ✅ opentui-native-v${FULL_TAG}-${platform}.zip created"
+              else
+                echo "❌ Directory $dir_name not found after unzip!" && exit 1
+              fi
             fi
           done
 
-          ls -la release-assets/
+          cd "$WORK_DIR"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+          # Copy example executables (unzip and rezip with versioned names)
+          echo "Processing example executables..."
+          cd "artifacts/example-executables-$FULL_TAG"
+
+          for zip_file in examples-*.zip; do
+            if [ -f "$zip_file" ]; then
+              platform=$(echo "$zip_file" | sed 's/examples-//' | sed 's/.zip//')
+              echo "  Processing $platform..."
+              unzip -q "$zip_file"
+              
+              # Repackage with versioned name
+              dir_name=$(echo "$zip_file" | sed 's/.zip//')
+              if [ -d "$dir_name" ]; then
+                cd "$dir_name"
+                zip -r "$WORK_DIR/release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" .
+                cd ..
+                
+                # Verify the output
+                test -f "$WORK_DIR/release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create examples $platform release asset!" && exit 1)
+                echo "  ✅ opentui-examples-v${FULL_TAG}-${platform}.zip created"
+              else
+                echo "❌ Directory $dir_name not found after unzip!" && exit 1
+              fi
+            fi
+          done
+
+          cd "$WORK_DIR"
+
+          # Verify all expected release assets exist
+          echo ""
+          echo "Verifying all release assets..."
+          EXPECTED_ASSETS=10  # 6 native (darwin-x64, darwin-arm64, linux-x64, linux-arm64, windows-x64, windows-arm64) + 4 examples (no linux-arm64, no windows-arm64)
+          ACTUAL_ASSETS=$(ls -1 release-assets/*.zip 2>/dev/null | wc -l | tr -d ' ')
+
+          if [ "$ACTUAL_ASSETS" -ne "$EXPECTED_ASSETS" ]; then
+            echo "❌ Expected $EXPECTED_ASSETS release assets, found $ACTUAL_ASSETS"
+            ls -lah release-assets/ || echo "No release assets found"
+            exit 1
+          fi
+
+          echo "✅ All $ACTUAL_ASSETS release assets prepared:"
+          echo "   - 6 native binaries (all platforms)"
+          echo "   - 4 example executables (darwin-x64, darwin-arm64, linux-x64, windows-x64)"
+          ls -lah release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/*
+          name: ${{ needs.prepare.outputs.releaseTitle }}
+          files: release-assets/*.zip
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.isDryRun == 'true' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: true
