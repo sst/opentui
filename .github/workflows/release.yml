@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract.outputs.version }}
+      fullTag: ${{ steps.extract.outputs.fullTag }}
       isDryRun: ${{ steps.extract.outputs.isDryRun }}
       releaseTitle: ${{ steps.extract.outputs.releaseTitle }}
 
@@ -29,7 +30,7 @@ jobs:
           # Check if this is a dry run (contains -dry.)
           if [[ "$TAG" =~ -dry\. ]]; then
             IS_DRY_RUN=true
-            # Extract base version (remove -dry.X suffix)
+            # Extract base version (remove -dry.X suffix for validation)
             VERSION=$(echo "$TAG" | sed -E 's/-dry\.[0-9]+$//')
             RELEASE_TITLE="Release v$TAG (DRY RUN)"
             echo "This is a DRY RUN release"
@@ -41,10 +42,12 @@ jobs:
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "fullTag=$TAG" >> $GITHUB_OUTPUT
           echo "isDryRun=$IS_DRY_RUN" >> $GITHUB_OUTPUT
           echo "releaseTitle=$RELEASE_TITLE" >> $GITHUB_OUTPUT
 
-          echo "Version: $VERSION"
+          echo "Version (for validation): $VERSION"
+          echo "Full Tag (for artifacts): $TAG"
           echo "Is Dry Run: $IS_DRY_RUN"
           echo "Release Title: $RELEASE_TITLE"
 
@@ -99,7 +102,7 @@ jobs:
     needs: [prepare, validate-version]
     uses: ./.github/workflows/build-native.yml
     with:
-      version: ${{ needs.prepare.outputs.version }}
+      version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Build example executables
@@ -108,7 +111,7 @@ jobs:
     needs: [prepare, validate-version, build-native]
     uses: ./.github/workflows/build-examples.yml
     with:
-      version: ${{ needs.prepare.outputs.version }}
+      version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Publish to npm
@@ -119,7 +122,7 @@ jobs:
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     with:
-      version: ${{ needs.prepare.outputs.version }}
+      version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Create GitHub release with assets
@@ -139,22 +142,38 @@ jobs:
 
       - name: Organize release assets
         run: |
+          set -e
           mkdir -p release-assets
 
+          FULL_TAG="${{ needs.prepare.outputs.fullTag }}"
+          echo "Organizing release assets for tag: $FULL_TAG"
+
+          # Verify artifact directories exist
+          test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
+          test -d "artifacts/example-executables-$FULL_TAG" || (echo "❌ example-executables artifact directory not found!" && exit 1)
+
           # Copy native binaries (unzip and rezip with versioned names)
-          cd artifacts/native-binaries-${{ needs.prepare.outputs.version }}
+          echo "Processing native binaries..."
+          cd "artifacts/native-binaries-$FULL_TAG"
 
           for zip_file in native-*.zip; do
             if [ -f "$zip_file" ]; then
               platform=$(echo "$zip_file" | sed 's/native-//' | sed 's/.zip//')
+              echo "  Processing $platform..."
               unzip -q "$zip_file"
               
               # Repackage with versioned name
               dir_name=$(echo "$zip_file" | sed 's/.zip//')
               if [ -d "$dir_name" ]; then
                 cd "$dir_name"
-                zip -r "../../release-assets/opentui-native-v${{ needs.prepare.outputs.version }}-${platform}.zip" .
+                zip -r "../../release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" .
                 cd ..
+                
+                # Verify the output
+                test -f "../../release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create native $platform release asset!" && exit 1)
+                echo "  ✅ opentui-native-v${FULL_TAG}-${platform}.zip created"
+              else
+                echo "❌ Directory $dir_name not found after unzip!" && exit 1
               fi
             fi
           done
@@ -162,26 +181,46 @@ jobs:
           cd ../..
 
           # Copy example executables (unzip and rezip with versioned names)
-          cd artifacts/example-executables-${{ needs.prepare.outputs.version }}
+          echo "Processing example executables..."
+          cd "artifacts/example-executables-$FULL_TAG"
 
           for zip_file in examples-*.zip; do
             if [ -f "$zip_file" ]; then
               platform=$(echo "$zip_file" | sed 's/examples-//' | sed 's/.zip//')
+              echo "  Processing $platform..."
               unzip -q "$zip_file"
               
               # Repackage with versioned name
               dir_name=$(echo "$zip_file" | sed 's/.zip//')
               if [ -d "$dir_name" ]; then
                 cd "$dir_name"
-                zip -r "../../release-assets/opentui-examples-v${{ needs.prepare.outputs.version }}-${platform}.zip" .
+                zip -r "../../release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" .
                 cd ..
+                
+                # Verify the output
+                test -f "../../release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create examples $platform release asset!" && exit 1)
+                echo "  ✅ opentui-examples-v${FULL_TAG}-${platform}.zip created"
+              else
+                echo "❌ Directory $dir_name not found after unzip!" && exit 1
               fi
             fi
           done
 
           cd ../..
 
-          echo "Release assets prepared:"
+          # Verify all expected release assets exist
+          echo ""
+          echo "Verifying all release assets..."
+          EXPECTED_ASSETS=8  # 4 native + 4 examples
+          ACTUAL_ASSETS=$(ls -1 release-assets/*.zip 2>/dev/null | wc -l | tr -d ' ')
+
+          if [ "$ACTUAL_ASSETS" -ne "$EXPECTED_ASSETS" ]; then
+            echo "❌ Expected $EXPECTED_ASSETS release assets, found $ACTUAL_ASSETS"
+            ls -lah release-assets/ || echo "No release assets found"
+            exit 1
+          fi
+
+          echo "✅ All $ACTUAL_ASSETS release assets prepared:"
           ls -lah release-assets/
 
       - name: Create GitHub Release
@@ -193,3 +232,4 @@ jobs:
           draft: false
           prerelease: ${{ needs.prepare.outputs.isDryRun == 'true' }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: true

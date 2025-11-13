@@ -43,64 +43,128 @@ jobs:
 
       - name: Verify build outputs
         run: |
+          set -e
           echo "Checking for native binaries..."
           ls -lah packages/core/src/lib/*/
           echo "Checking for dist packages..."
           ls -lah packages/*/dist/
 
+          # Verify critical files exist
+          echo ""
+          echo "Verifying native binaries exist..."
+          test -f packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
+          test -f packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
+          test -f packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so || (echo "❌ linux-x64 binary missing!" && exit 1)
+          test -f packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
+
+          echo "Verifying dist packages exist..."
+          test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
+          test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
+
+          echo "✅ All required build outputs verified"
+
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
         run: |
+          set -e
           mkdir -p artifacts/native-darwin-x64
-          cp packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-x64/ 2>/dev/null || echo "darwin-x64 binary not found"
+          cp packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-x64/
           cd artifacts
-          if [ -d "native-darwin-x64" ] && [ "$(ls -A native-darwin-x64)" ]; then
-            zip -r native-darwin-x64.zip native-darwin-x64/
-          fi
+          zip -r native-darwin-x64.zip native-darwin-x64/
+          # Verify zip was created and is not empty
+          test -f native-darwin-x64.zip || (echo "❌ Failed to create darwin-x64 zip" && exit 1)
+          test -s native-darwin-x64.zip || (echo "❌ darwin-x64 zip is empty" && exit 1)
+          echo "✅ darwin-x64 packaged successfully ($(du -h native-darwin-x64.zip | cut -f1))"
 
       - name: Package native binaries - darwin-arm64
         run: |
+          set -e
           mkdir -p artifacts/native-darwin-arm64
-          cp packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-arm64/ 2>/dev/null || echo "darwin-arm64 binary not found"
+          cp packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-arm64/
           cd artifacts
-          if [ -d "native-darwin-arm64" ] && [ "$(ls -A native-darwin-arm64)" ]; then
-            zip -r native-darwin-arm64.zip native-darwin-arm64/
-          fi
+          zip -r native-darwin-arm64.zip native-darwin-arm64/
+          test -f native-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
+          test -s native-darwin-arm64.zip || (echo "❌ darwin-arm64 zip is empty" && exit 1)
+          echo "✅ darwin-arm64 packaged successfully ($(du -h native-darwin-arm64.zip | cut -f1))"
 
       - name: Package native binaries - linux-x64
         run: |
+          set -e
           mkdir -p artifacts/native-linux-x64
-          cp packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so artifacts/native-linux-x64/ 2>/dev/null || echo "linux-x64 binary not found"
+          cp packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so artifacts/native-linux-x64/
           cd artifacts
-          if [ -d "native-linux-x64" ] && [ "$(ls -A native-linux-x64)" ]; then
-            zip -r native-linux-x64.zip native-linux-x64/
-          fi
+          zip -r native-linux-x64.zip native-linux-x64/
+          test -f native-linux-x64.zip || (echo "❌ Failed to create linux-x64 zip" && exit 1)
+          test -s native-linux-x64.zip || (echo "❌ linux-x64 zip is empty" && exit 1)
+          echo "✅ linux-x64 packaged successfully ($(du -h native-linux-x64.zip | cut -f1))"
 
       - name: Package native binaries - windows-x64
         run: |
+          set -e
           mkdir -p artifacts/native-windows-x64
-          cp packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll artifacts/native-windows-x64/ 2>/dev/null || echo "windows-x64 binary not found"
+          cp packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll artifacts/native-windows-x64/
           cd artifacts
-          if [ -d "native-windows-x64" ] && [ "$(ls -A native-windows-x64)" ]; then
-            zip -r native-windows-x64.zip native-windows-x64/
-          fi
+          zip -r native-windows-x64.zip native-windows-x64/
+          test -f native-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
+          test -s native-windows-x64.zip || (echo "❌ windows-x64 zip is empty" && exit 1)
+          echo "✅ windows-x64 packaged successfully ($(du -h native-windows-x64.zip | cut -f1))"
 
       # Package the built npm packages (for use by build-examples and npm-publish)
       - name: Package npm packages
         run: |
+          set -e
           mkdir -p artifacts/npm-packages
 
           # Copy core package dist and native packages
+          echo "Packaging core dist..."
           cp -r packages/core/dist artifacts/npm-packages/core-dist
-          cp -r packages/core/node_modules/@opentui artifacts/npm-packages/core-native-packages 2>/dev/null || echo "No native packages found"
+          test -f artifacts/npm-packages/core-dist/package.json || (echo "❌ core dist/package.json missing after copy!" && exit 1)
 
-          # Copy other package dists
-          cp -r packages/react/dist artifacts/npm-packages/react-dist 2>/dev/null || echo "React dist not found"
-          cp -r packages/solid/dist artifacts/npm-packages/solid-dist 2>/dev/null || echo "Solid dist not found"
-          cp -r packages/vue/dist artifacts/npm-packages/vue-dist 2>/dev/null || echo "Vue dist not found"
+          echo "Packaging core native packages..."
+          cp -r packages/core/node_modules/@opentui artifacts/npm-packages/core-native-packages
+
+          # Copy other package dists (optional - don't fail if missing)
+          echo "Packaging other packages..."
+          if [ -d packages/react/dist ]; then
+            cp -r packages/react/dist artifacts/npm-packages/react-dist
+            echo "✅ React dist packaged"
+          else
+            echo "⚠️  React dist not found (skipping)"
+          fi
+
+          if [ -d packages/solid/dist ]; then
+            cp -r packages/solid/dist artifacts/npm-packages/solid-dist
+            echo "✅ Solid dist packaged"
+          else
+            echo "⚠️  Solid dist not found (skipping)"
+          fi
+
+          if [ -d packages/vue/dist ]; then
+            cp -r packages/vue/dist artifacts/npm-packages/vue-dist
+            echo "✅ Vue dist packaged"
+          else
+            echo "⚠️  Vue dist not found (skipping)"
+          fi
 
           cd artifacts
           zip -r npm-packages.zip npm-packages/
+          test -f npm-packages.zip || (echo "❌ Failed to create npm-packages zip" && exit 1)
+          test -s npm-packages.zip || (echo "❌ npm-packages zip is empty" && exit 1)
+          echo "✅ npm packages packaged successfully ($(du -h npm-packages.zip | cut -f1))"
+
+      - name: Verify all artifacts before upload
+        run: |
+          set -e
+          echo "Verifying all artifacts exist..."
+          test -f artifacts/native-darwin-x64.zip || (echo "❌ native-darwin-x64.zip missing!" && exit 1)
+          test -f artifacts/native-darwin-arm64.zip || (echo "❌ native-darwin-arm64.zip missing!" && exit 1)
+          test -f artifacts/native-linux-x64.zip || (echo "❌ native-linux-x64.zip missing!" && exit 1)
+          test -f artifacts/native-windows-x64.zip || (echo "❌ native-windows-x64.zip missing!" && exit 1)
+          test -f artifacts/npm-packages.zip || (echo "❌ npm-packages.zip missing!" && exit 1)
+
+          echo ""
+          echo "✅ All artifacts verified. Ready to upload:"
+          ls -lah artifacts/*.zip
 
       - name: Upload native binaries artifacts
         uses: actions/upload-artifact@v4
@@ -111,9 +175,13 @@ jobs:
             artifacts/native-darwin-arm64.zip
             artifacts/native-linux-x64.zip
             artifacts/native-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload npm packages artifact
         uses: actions/upload-artifact@v4
         with:
           name: npm-packages-${{ inputs.version }}
           path: artifacts/npm-packages.zip
+          if-no-files-found: error
+          retention-days: 30
