@@ -143,10 +143,12 @@ jobs:
       - name: Organize release assets
         run: |
           set -e
-          mkdir -p release-assets
+          WORK_DIR=$(pwd)
+          mkdir -p "$WORK_DIR/release-assets"
 
           FULL_TAG="${{ needs.prepare.outputs.fullTag }}"
           echo "Organizing release assets for tag: $FULL_TAG"
+          echo "Working directory: $WORK_DIR"
 
           # Verify artifact directories exist
           test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
@@ -166,11 +168,11 @@ jobs:
               dir_name=$(echo "$zip_file" | sed 's/.zip//')
               if [ -d "$dir_name" ]; then
                 cd "$dir_name"
-                zip -r "../../release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" .
+                zip -r "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" .
                 cd ..
                 
                 # Verify the output
-                test -f "../../release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create native $platform release asset!" && exit 1)
+                test -f "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create native $platform release asset!" && exit 1)
                 echo "  ✅ opentui-native-v${FULL_TAG}-${platform}.zip created"
               else
                 echo "❌ Directory $dir_name not found after unzip!" && exit 1
@@ -178,7 +180,7 @@ jobs:
             fi
           done
 
-          cd ../..
+          cd "$WORK_DIR"
 
           # Copy example executables (unzip and rezip with versioned names)
           echo "Processing example executables..."
@@ -194,11 +196,11 @@ jobs:
               dir_name=$(echo "$zip_file" | sed 's/.zip//')
               if [ -d "$dir_name" ]; then
                 cd "$dir_name"
-                zip -r "../../release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" .
+                zip -r "$WORK_DIR/release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" .
                 cd ..
                 
                 # Verify the output
-                test -f "../../release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create examples $platform release asset!" && exit 1)
+                test -f "$WORK_DIR/release-assets/opentui-examples-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create examples $platform release asset!" && exit 1)
                 echo "  ✅ opentui-examples-v${FULL_TAG}-${platform}.zip created"
               else
                 echo "❌ Directory $dir_name not found after unzip!" && exit 1
@@ -206,7 +208,7 @@ jobs:
             fi
           done
 
-          cd ../..
+          cd "$WORK_DIR"
 
           # Verify all expected release assets exist
           echo ""
