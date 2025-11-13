@@ -30,7 +30,10 @@ const version = packageJson.version
 
 // Install bun-webgpu for all platforms to ensure cross-compilation works
 console.log("Installing bun-webgpu for all platforms...")
-const bunWebgpuVersion = packageJson.optionalDependencies?.["bun-webgpu"] || "0.1.3"
+const bunWebgpuVersion = packageJson.optionalDependencies?.["bun-webgpu"]
+if (!bunWebgpuVersion) {
+  throw new Error("bun-webgpu is not installed")
+}
 await Bun.$`bun install --os="*" --cpu="*" bun-webgpu@${bunWebgpuVersion}`
 console.log(`✅ bun-webgpu@${bunWebgpuVersion} installed for all platforms`)
 console.log()
