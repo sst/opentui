@@ -44,20 +44,20 @@ jobs:
       - name: Verify build outputs
         run: |
           set -e
-          echo "Checking for native binaries..."
-          ls -lah packages/core/src/lib/*/
+          echo "Checking for native binary packages..."
+          ls -lah packages/core/node_modules/@opentui/
           echo "Checking for dist packages..."
           ls -lah packages/*/dist/
 
           # Verify critical files exist (all 6 platforms)
           echo ""
           echo "Verifying native binaries exist..."
-          test -f packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
-          test -f packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
-          test -f packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so || (echo "❌ linux-x64 binary missing!" && exit 1)
-          test -f packages/core/src/lib/aarch64-linux/libwebgpu_wrapper.so || (echo "❌ linux-arm64 binary missing!" && exit 1)
-          test -f packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
-          test -f packages/core/src/lib/aarch64-windows/webgpu_wrapper.dll || (echo "❌ windows-arm64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-x64/libopentui.so || (echo "❌ linux-x64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so || (echo "❌ linux-arm64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-x64/opentui.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll || (echo "❌ windows-arm64 binary missing!" && exit 1)
 
           echo "Verifying dist packages exist..."
           test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
@@ -70,10 +70,9 @@ jobs:
         run: |
           set -e
           mkdir -p artifacts/native-darwin-x64
-          cp packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-x64/
+          cp packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib artifacts/native-darwin-x64/
           cd artifacts
           zip -r native-darwin-x64.zip native-darwin-x64/
-          # Verify zip was created and is not empty
           test -f native-darwin-x64.zip || (echo "❌ Failed to create darwin-x64 zip" && exit 1)
           test -s native-darwin-x64.zip || (echo "❌ darwin-x64 zip is empty" && exit 1)
           echo "✅ darwin-x64 packaged successfully ($(du -h native-darwin-x64.zip | cut -f1))"
@@ -82,7 +81,7 @@ jobs:
         run: |
           set -e
           mkdir -p artifacts/native-darwin-arm64
-          cp packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-arm64/
+          cp packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib artifacts/native-darwin-arm64/
           cd artifacts
           zip -r native-darwin-arm64.zip native-darwin-arm64/
           test -f native-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
@@ -93,7 +92,7 @@ jobs:
         run: |
           set -e
           mkdir -p artifacts/native-linux-x64
-          cp packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so artifacts/native-linux-x64/
+          cp packages/core/node_modules/@opentui/core-linux-x64/libopentui.so artifacts/native-linux-x64/
           cd artifacts
           zip -r native-linux-x64.zip native-linux-x64/
           test -f native-linux-x64.zip || (echo "❌ Failed to create linux-x64 zip" && exit 1)
@@ -104,7 +103,7 @@ jobs:
         run: |
           set -e
           mkdir -p artifacts/native-windows-x64
-          cp packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll artifacts/native-windows-x64/
+          cp packages/core/node_modules/@opentui/core-win32-x64/opentui.dll artifacts/native-windows-x64/
           cd artifacts
           zip -r native-windows-x64.zip native-windows-x64/
           test -f native-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
@@ -115,7 +114,7 @@ jobs:
         run: |
           set -e
           mkdir -p artifacts/native-linux-arm64
-          cp packages/core/src/lib/aarch64-linux/libwebgpu_wrapper.so artifacts/native-linux-arm64/
+          cp packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so artifacts/native-linux-arm64/
           cd artifacts
           zip -r native-linux-arm64.zip native-linux-arm64/
           test -f native-linux-arm64.zip || (echo "❌ Failed to create linux-arm64 zip" && exit 1)
@@ -126,7 +125,7 @@ jobs:
         run: |
           set -e
           mkdir -p artifacts/native-windows-arm64
-          cp packages/core/src/lib/aarch64-windows/webgpu_wrapper.dll artifacts/native-windows-arm64/
+          cp packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll artifacts/native-windows-arm64/
           cd artifacts
           zip -r native-windows-arm64.zip native-windows-arm64/
           test -f native-windows-arm64.zip || (echo "❌ Failed to create windows-arm64 zip" && exit 1)
