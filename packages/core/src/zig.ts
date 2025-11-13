@@ -846,7 +846,7 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
   if (env.OTUI_DEBUG_FFI) {
     const now = new Date()
     const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
-    const logFilePath = `ffi_debug_${timestamp}.log`
+    const logFilePath = `ffi_otui_debug_${timestamp}.log`
     ffiLogWriter = Bun.file(logFilePath).writer()
 
     const writer = ffiLogWriter

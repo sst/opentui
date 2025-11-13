@@ -4,19 +4,25 @@ import block from "./fonts/block.json"
 import shade from "./fonts/shade.json"
 import slick from "./fonts/slick.json"
 import tiny from "./fonts/tiny.json"
+import huge from "./fonts/huge.json"
+import grid from "./fonts/grid.json"
+import pallet from "./fonts/pallet.json"
 
 /*
  * Renders ASCII fonts to a buffer.
  * Font definitions plugged from cfonts - https://github.com/dominikwilkowski/cfonts
  */
 
-export type ASCIIFontName = "tiny" | "block" | "shade" | "slick"
+export type ASCIIFontName = "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
 
 export const fonts = {
   tiny,
   block,
   shade,
   slick,
+  huge,
+  grid,
+  pallet,
 }
 
 type FontSegment = {
