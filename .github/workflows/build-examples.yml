@@ -1,0 +1,150 @@
+name: Build Examples
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version being released"
+        required: true
+        type: string
+      isDryRun:
+        description: "Whether this is a dry run release"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ZIG_VERSION: 0.14.1
+
+jobs:
+  build-examples:
+    name: Build Example Executables
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Download npm packages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-packages-${{ inputs.version }}
+
+      - name: Extract npm packages to node_modules
+        run: |
+          echo "Extracting npm packages..."
+          unzip -q npm-packages.zip
+
+          # Create node_modules structure
+          mkdir -p node_modules/@opentui
+          mkdir -p packages/core/node_modules/@opentui
+
+          # Copy core dist
+          if [ -d "npm-packages/core-dist" ]; then
+            cp -r npm-packages/core-dist packages/core/dist
+            echo "Copied core dist"
+          fi
+
+          # Copy native packages to core's node_modules
+          if [ -d "npm-packages/core-native-packages" ]; then
+            cp -r npm-packages/core-native-packages/* packages/core/node_modules/@opentui/
+            echo "Copied native packages"
+          fi
+
+          # Copy other package dists
+          if [ -d "npm-packages/react-dist" ]; then
+            cp -r npm-packages/react-dist packages/react/dist
+            echo "Copied react dist"
+          fi
+
+          if [ -d "npm-packages/solid-dist" ]; then
+            cp -r npm-packages/solid-dist packages/solid/dist
+            echo "Copied solid dist"
+          fi
+
+          if [ -d "npm-packages/vue-dist" ]; then
+            cp -r npm-packages/vue-dist packages/vue/dist
+            echo "Copied vue dist"
+          fi
+
+          echo "Package extraction complete"
+          ls -lah packages/core/dist/ || echo "Core dist not found"
+          ls -lah packages/core/node_modules/@opentui/ || echo "Native packages not found"
+
+      - name: Build examples
+        run: |
+          cd packages/core
+          bun src/examples/build.ts
+
+      - name: Verify example builds
+        run: |
+          echo "Checking for example executables..."
+          ls -lah packages/core/src/examples/dist/*/
+
+      # Create separate zips for each platform's examples
+      - name: Package examples - darwin-x64
+        run: |
+          mkdir -p artifacts/examples-darwin-x64
+          if [ -f "packages/core/src/examples/dist/darwin-x64/opentui-examples" ]; then
+            cp packages/core/src/examples/dist/darwin-x64/opentui-examples artifacts/examples-darwin-x64/
+            cd artifacts
+            zip -r examples-darwin-x64.zip examples-darwin-x64/
+          else
+            echo "darwin-x64 example not found"
+          fi
+
+      - name: Package examples - darwin-arm64
+        run: |
+          mkdir -p artifacts/examples-darwin-arm64
+          if [ -f "packages/core/src/examples/dist/darwin-arm64/opentui-examples" ]; then
+            cp packages/core/src/examples/dist/darwin-arm64/opentui-examples artifacts/examples-darwin-arm64/
+            cd artifacts
+            zip -r examples-darwin-arm64.zip examples-darwin-arm64/
+          else
+            echo "darwin-arm64 example not found"
+          fi
+
+      - name: Package examples - linux-x64
+        run: |
+          mkdir -p artifacts/examples-linux-x64
+          if [ -f "packages/core/src/examples/dist/linux-x64/opentui-examples" ]; then
+            cp packages/core/src/examples/dist/linux-x64/opentui-examples artifacts/examples-linux-x64/
+            cd artifacts
+            zip -r examples-linux-x64.zip examples-linux-x64/
+          else
+            echo "linux-x64 example not found"
+          fi
+
+      - name: Package examples - windows-x64
+        run: |
+          mkdir -p artifacts/examples-windows-x64
+          if [ -f "packages/core/src/examples/dist/windows-x64/opentui-examples.exe" ]; then
+            cp packages/core/src/examples/dist/windows-x64/opentui-examples.exe artifacts/examples-windows-x64/
+            cd artifacts
+            zip -r examples-windows-x64.zip examples-windows-x64/
+          else
+            echo "windows-x64 example not found"
+          fi
+
+      - name: Upload example executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-executables-${{ inputs.version }}
+          path: |
+            artifacts/examples-darwin-x64.zip
+            artifacts/examples-darwin-arm64.zip
+            artifacts/examples-linux-x64.zip
+            artifacts/examples-windows-x64.zip

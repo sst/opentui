@@ -1,0 +1,119 @@
+name: Build Native
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version being released"
+        required: true
+        type: string
+      isDryRun:
+        description: "Whether this is a dry run release"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ZIG_VERSION: 0.14.1
+
+jobs:
+  build-native:
+    name: Build Native Libraries
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages (cross-compile for all platforms)
+        run: bun run build
+
+      - name: Verify build outputs
+        run: |
+          echo "Checking for native binaries..."
+          ls -lah packages/core/src/lib/*/
+          echo "Checking for dist packages..."
+          ls -lah packages/*/dist/
+
+      # Create separate zips for each platform's native binaries
+      - name: Package native binaries - darwin-x64
+        run: |
+          mkdir -p artifacts/native-darwin-x64
+          cp packages/core/src/lib/x86_64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-x64/ 2>/dev/null || echo "darwin-x64 binary not found"
+          cd artifacts
+          if [ -d "native-darwin-x64" ] && [ "$(ls -A native-darwin-x64)" ]; then
+            zip -r native-darwin-x64.zip native-darwin-x64/
+          fi
+
+      - name: Package native binaries - darwin-arm64
+        run: |
+          mkdir -p artifacts/native-darwin-arm64
+          cp packages/core/src/lib/aarch64-macos/libwebgpu_wrapper.dylib artifacts/native-darwin-arm64/ 2>/dev/null || echo "darwin-arm64 binary not found"
+          cd artifacts
+          if [ -d "native-darwin-arm64" ] && [ "$(ls -A native-darwin-arm64)" ]; then
+            zip -r native-darwin-arm64.zip native-darwin-arm64/
+          fi
+
+      - name: Package native binaries - linux-x64
+        run: |
+          mkdir -p artifacts/native-linux-x64
+          cp packages/core/src/lib/x86_64-linux/libwebgpu_wrapper.so artifacts/native-linux-x64/ 2>/dev/null || echo "linux-x64 binary not found"
+          cd artifacts
+          if [ -d "native-linux-x64" ] && [ "$(ls -A native-linux-x64)" ]; then
+            zip -r native-linux-x64.zip native-linux-x64/
+          fi
+
+      - name: Package native binaries - windows-x64
+        run: |
+          mkdir -p artifacts/native-windows-x64
+          cp packages/core/src/lib/x86_64-windows/webgpu_wrapper.dll artifacts/native-windows-x64/ 2>/dev/null || echo "windows-x64 binary not found"
+          cd artifacts
+          if [ -d "native-windows-x64" ] && [ "$(ls -A native-windows-x64)" ]; then
+            zip -r native-windows-x64.zip native-windows-x64/
+          fi
+
+      # Package the built npm packages (for use by build-examples and npm-publish)
+      - name: Package npm packages
+        run: |
+          mkdir -p artifacts/npm-packages
+
+          # Copy core package dist and native packages
+          cp -r packages/core/dist artifacts/npm-packages/core-dist
+          cp -r packages/core/node_modules/@opentui artifacts/npm-packages/core-native-packages 2>/dev/null || echo "No native packages found"
+
+          # Copy other package dists
+          cp -r packages/react/dist artifacts/npm-packages/react-dist 2>/dev/null || echo "React dist not found"
+          cp -r packages/solid/dist artifacts/npm-packages/solid-dist 2>/dev/null || echo "Solid dist not found"
+          cp -r packages/vue/dist artifacts/npm-packages/vue-dist 2>/dev/null || echo "Vue dist not found"
+
+          cd artifacts
+          zip -r npm-packages.zip npm-packages/
+
+      - name: Upload native binaries artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-binaries-${{ inputs.version }}
+          path: |
+            artifacts/native-darwin-x64.zip
+            artifacts/native-darwin-arm64.zip
+            artifacts/native-linux-x64.zip
+            artifacts/native-windows-x64.zip
+
+      - name: Upload npm packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages-${{ inputs.version }}
+          path: artifacts/npm-packages.zip
