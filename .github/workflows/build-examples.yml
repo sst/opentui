@@ -29,15 +29,12 @@ jobs:
 
       - name: Install dependencies FIRST (before copying built packages)
         run: |
-          echo "Installing base dependencies including bun-webgpu..."
+          echo "Installing base dependencies..."
           bun install
 
           echo ""
-          echo "Force installing ALL bun-webgpu platform packages for cross-compilation..."
-          bun add bun-webgpu-darwin-x64@0.1.3
-          bun add bun-webgpu-darwin-arm64@0.1.3
-          bun add bun-webgpu-linux-x64@0.1.3
-          bun add bun-webgpu-win32-x64@0.1.3
+          echo "Force installing bun-webgpu for ALL platforms (cross-compilation)..."
+          bun install --os="*" --cpu="*" bun-webgpu@0.1.3
 
           echo ""
           echo "✅ All dependencies installed (including all bun-webgpu platform packages)"
