@@ -138,5 +138,8 @@ echo ""
 echo "Running examples..."
 echo ""
 
-# Execute the binary
-exec "$EXEC_NAME"
+if [ -t 0 ]; then
+  exec "$EXEC_NAME"
+else
+  exec "$EXEC_NAME" < /dev/tty
+fi
