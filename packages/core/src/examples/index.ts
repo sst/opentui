@@ -13,7 +13,8 @@ import {
   type KeyEvent,
   ASCIIFontRenderable,
 } from "../index"
-import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
+import { measureText } from "../lib/ascii.font"
+import * as goldenStarDemo from "./golden-star-demo"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
 import * as framebufferExample from "./framebuffer-demo"
@@ -63,6 +64,12 @@ interface Example {
 }
 
 const examples: Example[] = [
+  {
+    name: "Golden Star Demo",
+    description: "3D golden star with particle effects and animated text celebrating 5000 stars",
+    run: goldenStarDemo.run,
+    destroy: goldenStarDemo.destroy,
+  },
   {
     name: "Mouse Interaction Demo",
     description: "Interactive mouse trails and clickable cells demonstration",
