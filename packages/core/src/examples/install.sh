@@ -141,10 +141,5 @@ echo ""
 if [ -t 0 ]; then
   exec "$EXEC_NAME"
 else
-  # stdin is not a TTY (e.g., running via curl | bash)
-  # Close the pipe and reconnect all stdio to the terminal
-  exec < /dev/tty
-  exec > /dev/tty
-  exec 2>&1
-  exec "$EXEC_NAME"
+  "$EXEC_NAME" < /dev/tty > /dev/tty 2>&1
 fi
