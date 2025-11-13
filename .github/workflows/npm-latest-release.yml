@@ -35,11 +35,6 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.14.1
-
       - name: Install dependencies
         run: bun install
 
@@ -111,7 +106,21 @@ jobs:
 
       - name: Publish packages (production)
         if: ${{ !inputs.isDryRun }}
-        run: bun run publish
+        run: |
+          echo "=========================================="
+          echo "PRODUCTION MODE - Publishing to npm"
+          echo "=========================================="
+
+          # Run pre-publish validation
+          bun run pre-publish
+
+          # Publish packages
+          bun run publish
+
+          echo ""
+          echo "=========================================="
+          echo "PUBLISH COMPLETE"
+          echo "=========================================="
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CI: true

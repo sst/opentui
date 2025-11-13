@@ -9,9 +9,6 @@ permissions:
   contents: write
   pull-requests: write
 
-env:
-  ZIG_VERSION: 0.14.1
-
 jobs:
   # Extract version and check if it's a dry run
   prepare:
