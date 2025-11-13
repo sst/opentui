@@ -34,6 +34,27 @@ NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed 
 bun install @opentui/core
 ```
 
+## Try Examples
+
+You can quickly try out OpenTUI examples without cloning the repository using our install script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sst/opentui/main/packages/core/src/examples/install.sh | sh
+```
+
+This will download and run the latest released examples binary for your platform. The script:
+
+- Auto-detects your platform (darwin-arm64, darwin-x64, linux-x64, windows-x64)
+- Downloads the latest stable release
+- Extracts and runs the examples binary in your current directory
+
+**Options:**
+
+```bash
+# Download the latest pre-release version (for testing)
+curl -fsSL https://raw.githubusercontent.com/sst/opentui/main/packages/core/src/examples/install.sh | sh -s -- --prerelease
+```
+
 ## Running Examples (from the repo root)
 
 ### TypeScript Examples
