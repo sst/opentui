@@ -27,12 +27,19 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install dependencies FIRST (before copying built packages)
+        run: |
+          echo "Installing base dependencies including bun-webgpu..."
+          bun install
+          echo ""
+          echo "✅ Base dependencies installed"
+
       - name: Download npm packages artifact
         uses: actions/download-artifact@v4
         with:
           name: npm-packages-${{ inputs.version }}
 
-      - name: Extract npm packages to node_modules
+      - name: Extract and install npm packages
         run: |
           set -e
           echo "Extracting npm packages..."
@@ -50,8 +57,8 @@ jobs:
           test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing after copy!" && exit 1)
           echo "✅ Core dist copied"
 
-          # Copy native packages to core's node_modules (required)
-          echo "Copying native packages..."
+          # Copy native packages to core's node_modules (required - these OVERRIDE the npm versions)
+          echo "Copying built native packages (overriding any npm versions)..."
           test -d "npm-packages/core-native-packages" || (echo "❌ core-native-packages not found in artifact!" && exit 1)
           cp -r npm-packages/core-native-packages/* packages/core/node_modules/@opentui/
           test -n "$(ls -A packages/core/node_modules/@opentui/)" || (echo "❌ No native packages copied!" && exit 1)
@@ -78,14 +85,21 @@ jobs:
           ls -lah packages/core/dist/
           ls -lah packages/core/node_modules/@opentui/
 
-      - name: Install dependencies (including bun-webgpu and optionalDependencies)
+      - name: Verify bun-webgpu is available for build
         run: |
-          echo "Installing dependencies..."
-          bun install
+          echo "Checking bun-webgpu installation..."
+          test -d node_modules/bun-webgpu || (echo "❌ bun-webgpu not found!" && exit 1)
+          test -d node_modules/bun-webgpu-darwin-arm64 || echo "⚠️  bun-webgpu-darwin-arm64 not found"
+          test -d node_modules/bun-webgpu-darwin-x64 || echo "⚠️  bun-webgpu-darwin-x64 not found"
+          test -d node_modules/bun-webgpu-linux-x64 || echo "⚠️  bun-webgpu-linux-x64 not found"
+          test -d node_modules/bun-webgpu-win32-x64 || echo "⚠️  bun-webgpu-win32-x64 not found"
+
+          # Show what's installed
           echo ""
-          echo "Verifying bun-webgpu is installed:"
-          ls -lah node_modules/ | grep bun-webgpu || echo "⚠️  bun-webgpu not in root node_modules"
-          ls -lah packages/core/node_modules/ | grep bun-webgpu || echo "⚠️  bun-webgpu not in core node_modules"
+          echo "bun-webgpu packages found:"
+          ls -lah node_modules/ | grep bun-webgpu
+          echo ""
+          echo "✅ bun-webgpu ready for bundling"
 
       - name: Build examples
         run: |
