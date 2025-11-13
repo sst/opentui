@@ -27,9 +27,6 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
-
       - name: Download npm packages artifact
         uses: actions/download-artifact@v4
         with:
@@ -80,6 +77,15 @@ jobs:
           echo "Package extraction complete:"
           ls -lah packages/core/dist/
           ls -lah packages/core/node_modules/@opentui/
+
+      - name: Install dependencies (including bun-webgpu and optionalDependencies)
+        run: |
+          echo "Installing dependencies..."
+          bun install
+          echo ""
+          echo "Verifying bun-webgpu is installed:"
+          ls -lah node_modules/ | grep bun-webgpu || echo "⚠️  bun-webgpu not in root node_modules"
+          ls -lah packages/core/node_modules/ | grep bun-webgpu || echo "⚠️  bun-webgpu not in core node_modules"
 
       - name: Build examples
         run: |
