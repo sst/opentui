@@ -33,11 +33,8 @@ jobs:
           bun install
 
           echo ""
-          echo "Force installing bun-webgpu for ALL platforms (cross-compilation)..."
-          bun install --os="*" --cpu="*" bun-webgpu@0.1.3
-
-          echo ""
-          echo "✅ All dependencies installed (including all bun-webgpu platform packages)"
+          echo "✅ Base dependencies installed"
+          echo "Note: bun-webgpu will be installed by build script for all platforms"
 
       - name: Download npm packages artifact
         uses: actions/download-artifact@v4

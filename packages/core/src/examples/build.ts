@@ -3,6 +3,7 @@
 import { mkdirSync } from "fs"
 import { join, dirname } from "path"
 import { fileURLToPath } from "url"
+import { $ } from "bun"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -26,6 +27,13 @@ mkdirSync(distDir, { recursive: true })
 // Get version from package.json
 const packageJson = JSON.parse(await Bun.file(join(rootDir, "package.json")).text())
 const version = packageJson.version
+
+// Install bun-webgpu for all platforms to ensure cross-compilation works
+console.log("Installing bun-webgpu for all platforms...")
+const bunWebgpuVersion = packageJson.optionalDependencies?.["bun-webgpu"] || "0.1.3"
+await Bun.$`bun install --os="*" --cpu="*" bun-webgpu@${bunWebgpuVersion}`
+console.log(`✅ bun-webgpu@${bunWebgpuVersion} installed for all platforms`)
+console.log()
 
 console.log(`Building examples executable for all platforms...`)
 console.log(`Output directory: ${distDir}`)
