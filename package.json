@@ -24,8 +24,5 @@
   "prettier": {
     "semi": false,
     "printWidth": 120
-  },
-  "dependencies": {
-    "bun-webgpu": "0.1.4"
   }
 }
