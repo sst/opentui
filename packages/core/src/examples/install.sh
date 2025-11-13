@@ -135,8 +135,10 @@ fi
 
 echo -e "${GREEN}✓ OpenTUI Examples installed successfully!${NC}"
 echo ""
-echo "Running examples..."
+echo -e "${BLUE}To run the examples, execute:${NC}"
+if [[ "$OS" == "windows" ]]; then
+  echo -e "  ${GREEN}.\\opentui-examples.exe${NC}"
+else
+  echo -e "  ${GREEN}./opentui-examples${NC}"
+fi
 echo ""
-
-exec </dev/tty
-exec "$EXEC_NAME"
