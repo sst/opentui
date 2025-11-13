@@ -30,6 +30,7 @@ process.stdin.on("data", (data: Buffer) => {
     number: parsed?.number,
     sequence: JSON.stringify(parsed?.sequence),
     code: parsed?.code,
+    buffer: data,
   })
   console.log("---")
 })

@@ -52,13 +52,12 @@ test "OptimizedBuffer - clear fills with default char" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Check that all cells are cleared
     var y: u32 = 0;
     while (y < 5) : (y += 1) {
         var x: u32 = 0;
         while (x < 5) : (x += 1) {
             const cell = buf.get(x, y).?;
-            try std.testing.expectEqual(@as(u32, 32), cell.char); // space
+            try std.testing.expectEqual(@as(u32, 32), cell.char);
         }
     }
 }
@@ -87,7 +86,6 @@ test "OptimizedBuffer - drawText with ASCII" {
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
     try buf.drawText("Hello", 0, 0, fg, bg, 0);
 
-    // Verify text was drawn
     const cell_h = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 'H'), cell_h.char);
 
@@ -1351,11 +1349,11 @@ test "OptimizedBuffer - grapheme refcount management" {
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
     try buf.drawText("•", 0, 0, fg, bg, 0);
-    const cell0 = buf.get(0, 0).?;
-    const id0 = gp.graphemeIdFromChar(cell0.char);
-    const rc0 = local_pool.getRefcount(id0) catch 0;
+    const initial_cell = buf.get(0, 0).?;
+    const initial_id = gp.graphemeIdFromChar(initial_cell.char);
+    const initial_refcount = local_pool.getRefcount(initial_id) catch 0;
 
-    try std.testing.expectEqual(@as(u32, 1), rc0);
+    try std.testing.expectEqual(@as(u32, 1), initial_refcount);
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
@@ -1367,8 +1365,101 @@ test "OptimizedBuffer - grapheme refcount management" {
         const slot = id & 0xFFFF;
 
         try std.testing.expectEqual(@as(u32, 1), rc);
-        // With 2 slots, we should cycle between slot 0 and slot 1
-        // since we alloc before we free the old one
         try std.testing.expect(slot == 0 or slot == 1);
     }
+}
+
+test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all pool references" {
+    const small_slots = [_]u32{ 4, 4, 4, 4, 4 };
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = small_slots,
+    });
+    defer local_pool.deinit();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("• Test • 🌟 • 🎨 •");
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        25,
+        .{ .pool = &local_pool, .id = "test-buffer" },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    try buf.drawTextBuffer(view, 0, 0);
+
+    const count_after_draw = buf.grapheme_tracker.getGraphemeCount();
+    try std.testing.expect(count_after_draw > 0);
+
+    var total_allocated_slots: u32 = 0;
+    var total_free_slots: u32 = 0;
+    for (local_pool.classes) |class| {
+        total_allocated_slots += class.num_slots;
+        total_free_slots += @intCast(class.free_list.items.len);
+    }
+    const slots_in_use_after_draw = total_allocated_slots - total_free_slots;
+    try std.testing.expect(slots_in_use_after_draw > 0);
+
+    try buf.clear(bg, null);
+
+    const count_after_clear = buf.grapheme_tracker.getGraphemeCount();
+    try std.testing.expectEqual(@as(u32, 0), count_after_clear);
+
+    var total_allocated_after_clear: u32 = 0;
+    var total_free_after_clear: u32 = 0;
+    for (local_pool.classes) |class| {
+        total_allocated_after_clear += class.num_slots;
+        total_free_after_clear += @intCast(class.free_list.items.len);
+    }
+    try std.testing.expectEqual(total_allocated_after_clear, total_free_after_clear);
+
+    var y: u32 = 0;
+    while (y < 5) : (y += 1) {
+        var x: u32 = 0;
+        while (x < 20) : (x += 1) {
+            const cell = buf.get(x, y).?;
+            try std.testing.expectEqual(@as(u32, 32), cell.char);
+            try std.testing.expect(!gp.isGraphemeChar(cell.char));
+            try std.testing.expect(!gp.isContinuationChar(cell.char));
+        }
+    }
+
+    try buf.drawTextBuffer(view, 0, 0);
+    const count_after_redraw = buf.grapheme_tracker.getGraphemeCount();
+    try std.testing.expect(count_after_redraw > 0);
+
+    var allocated_after_redraw: u32 = 0;
+    var free_after_redraw: u32 = 0;
+    for (local_pool.classes) |class| {
+        allocated_after_redraw += class.num_slots;
+        free_after_redraw += @intCast(class.free_list.items.len);
+    }
+    const slots_in_use_after_redraw = allocated_after_redraw - free_after_redraw;
+    try std.testing.expect(slots_in_use_after_redraw > 0);
+
+    try buf.clear(bg, null);
+    const count_after_second_clear = buf.grapheme_tracker.getGraphemeCount();
+    try std.testing.expectEqual(@as(u32, 0), count_after_second_clear);
+
+    var allocated_after_second_clear: u32 = 0;
+    var free_after_second_clear: u32 = 0;
+    for (local_pool.classes) |class| {
+        allocated_after_second_clear += class.num_slots;
+        free_after_second_clear += @intCast(class.free_list.items.len);
+    }
+    try std.testing.expectEqual(allocated_after_second_clear, free_after_second_clear);
 }

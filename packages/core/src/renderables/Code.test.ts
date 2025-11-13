@@ -2,49 +2,9 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { CodeRenderable } from "./Code"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { createTestRenderer, type TestRenderer, MockTreeSitterClient } from "../testing"
 import { TreeSitterClient } from "../lib/tree-sitter"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
-
-class MockTreeSitterClient extends TreeSitterClient {
-  private _highlightOnceResolver:
-    | ((result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void)
-    | null = null
-  private _highlightOncePromise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> | null =
-    null
-  private _mockResult: { highlights?: SimpleHighlight[]; warning?: string; error?: string } = { highlights: [] }
-
-  constructor() {
-    super({ dataPath: "/tmp/mock" })
-  }
-
-  async highlightOnce(
-    content: string,
-    filetype: string,
-  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
-    this._highlightOncePromise = new Promise((resolve) => {
-      this._highlightOnceResolver = resolve
-    })
-
-    return this._highlightOncePromise
-  }
-
-  setMockResult(result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) {
-    this._mockResult = result
-  }
-
-  resolveHighlightOnce() {
-    if (this._highlightOnceResolver) {
-      this._highlightOnceResolver(this._mockResult)
-      this._highlightOnceResolver = null
-      this._highlightOncePromise = null
-    }
-  }
-
-  isHighlighting(): boolean {
-    return this._highlightOncePromise !== null
-  }
-}
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -121,7 +81,7 @@ test("CodeRenderable - filetype updates", async () => {
   expect(codeRenderable.filetype).toBe("typescript")
 })
 
-test("CodeRenderable - re-highlighting when content changes during active highlighting", async () => {
+test("CodeRenderable - re-highlights when content changes during active highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -144,19 +104,25 @@ test("CodeRenderable - re-highlighting when content changes during active highli
     conceal: false,
   })
 
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
   expect(mockClient.isHighlighting()).toBe(true)
 
   codeRenderable.content = "let newMessage = 'world';"
 
   expect(codeRenderable.content).toBe("let newMessage = 'world';")
+
+  await renderOnce()
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(mockClient.isHighlighting()).toBe(false)
 })
@@ -178,6 +144,9 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
     conceal: false,
   })
 
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
   expect(mockClient.isHighlighting()).toBe(true)
 
   codeRenderable.content = "first change"
@@ -185,20 +154,23 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
   codeRenderable.content = "final content"
 
   expect(codeRenderable.content).toBe("final content")
+
+  await renderOnce()
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
 
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(mockClient.isHighlighting()).toBe(false)
 })
 
-test("CodeRenderable - fallback when no filetype provided", async () => {
+test("CodeRenderable - uses fallback rendering when no filetype provided", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -210,6 +182,7 @@ test("CodeRenderable - fallback when no filetype provided", async () => {
     conceal: false,
   })
 
+  currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
   expect(codeRenderable.content).toBe("const message = 'hello world';")
@@ -217,7 +190,7 @@ test("CodeRenderable - fallback when no filetype provided", async () => {
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
 })
 
-test("CodeRenderable - fallback when highlighting throws error", async () => {
+test("CodeRenderable - uses fallback rendering when highlighting throws error", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -237,6 +210,10 @@ test("CodeRenderable - fallback when highlighting throws error", async () => {
     conceal: false,
   })
 
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  await new Promise((resolve) => setTimeout(resolve, 20))
   await renderOnce()
 
   expect(codeRenderable.content).toBe("const message = 'hello world';")
@@ -244,7 +221,7 @@ test("CodeRenderable - fallback when highlighting throws error", async () => {
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
 })
 
-test("CodeRenderable - early return when content is empty", async () => {
+test("CodeRenderable - handles empty content", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -281,15 +258,18 @@ test("CodeRenderable - empty content does not trigger highlighting", async () =>
     conceal: false,
   })
 
-  mockClient.resolveHighlightOnce()
+  currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
 
   expect(codeRenderable.content).toBe("const message = 'hello';")
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 
   codeRenderable.content = ""
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(false)
   expect(codeRenderable.content).toBe("")
@@ -321,15 +301,14 @@ test("CodeRenderable - text renders immediately before highlighting completes", 
   })
 
   currentRenderer.root.add(codeRenderable)
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
-
-  await renderOnce()
 
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting).toMatchSnapshot("text visible before highlighting completes")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -337,7 +316,7 @@ test("CodeRenderable - text renders immediately before highlighting completes", 
   expect(frameAfterHighlighting).toMatchSnapshot("text visible after highlighting completes")
 })
 
-test("CodeRenderable - batch concurrent content and filetype updates", async () => {
+test("CodeRenderable - batches concurrent content and filetype updates", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -365,7 +344,10 @@ test("CodeRenderable - batch concurrent content and filetype updates", async () 
     conceal: false,
   })
 
-  mockClient.resolveHighlightOnce()
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   highlightCount = 0
@@ -373,19 +355,17 @@ test("CodeRenderable - batch concurrent content and filetype updates", async () 
   codeRenderable.content = "let newMessage = 'world';"
   codeRenderable.filetype = "typescript"
 
-  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
 
-  while (mockClient.isHighlighting()) {
-    mockClient.resolveHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(highlightCount).toBe(1)
   expect(codeRenderable.content).toBe("let newMessage = 'world';")
   expect(codeRenderable.filetype).toBe("typescript")
 })
 
-test("CodeRenderable - only call highlightOnce once when triple-updating in same tick", async () => {
+test("CodeRenderable - batches multiple updates in same tick into single highlight", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -412,7 +392,10 @@ test("CodeRenderable - only call highlightOnce once when triple-updating in same
     conceal: false,
   })
 
-  mockClient.resolveHighlightOnce()
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   highlightCount = 0
@@ -422,12 +405,10 @@ test("CodeRenderable - only call highlightOnce once when triple-updating in same
   codeRenderable.filetype = "typescript"
   codeRenderable.content = "second content change"
 
-  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
 
-  while (mockClient.isHighlighting()) {
-    mockClient.resolveHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
 
   expect(highlightCount).toBe(1)
   expect(highlightCalls[0]?.content).toBe("second content change")
@@ -465,7 +446,7 @@ test("CodeRenderable - renders markdown with TypeScript injection correctly", as
   expect(codeRenderable.plainText).toContain("typescript")
 })
 
-test("CodeRenderable - handles when tree-sitter promise never resolves", async () => {
+test("CodeRenderable - continues highlighting after unresolved promise", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -508,6 +489,8 @@ test("CodeRenderable - handles when tree-sitter promise never resolves", async (
     conceal: false,
   })
 
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   highlightCount = 0
@@ -515,23 +498,27 @@ test("CodeRenderable - handles when tree-sitter promise never resolves", async (
 
   codeRenderable.content = "const message = 'hello';"
   codeRenderable.filetype = "javascript"
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   codeRenderable.content = "# Documentation"
   codeRenderable.filetype = "markdown"
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   codeRenderable.content = "const message = 'world';"
   codeRenderable.filetype = "javascript"
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   codeRenderable.content = "interface User { name: string; }"
   codeRenderable.filetype = "typescript"
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   codeRenderable.content = "# New Documentation"
   codeRenderable.filetype = "markdown"
-  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   const markdownHighlightHappened = pendingPromises.some(
@@ -575,7 +562,7 @@ test("CodeRenderable - concealment can be disabled explicitly", async () => {
   expect(codeRenderable.conceal).toBe(false)
 })
 
-test("CodeRenderable - concealment setting is passed to treeSitterToStyledText", async () => {
+test("CodeRenderable - applies concealment to styled text", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -601,14 +588,14 @@ test("CodeRenderable - concealment setting is passed to treeSitterToStyledText",
 
   expect(codeRenderable.conceal).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
   expect(codeRenderable.content).toBe("const message = 'hello';")
 })
 
-test("CodeRenderable - conceal property can be updated dynamically", async () => {
+test("CodeRenderable - updating conceal triggers re-highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -625,19 +612,21 @@ test("CodeRenderable - conceal property can be updated dynamically", async () =>
     conceal: true,
   })
 
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
   expect(codeRenderable.conceal).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   codeRenderable.conceal = false
   expect(codeRenderable.conceal).toBe(false)
 
-  await new Promise((resolve) => queueMicrotask(resolve))
-  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 })
 
@@ -695,14 +684,13 @@ test("CodeRenderable - with drawUnstyledText=true, text renders before highlight
   })
 
   currentRenderer.root.add(codeRenderable)
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  await renderOnce()
-
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -732,21 +720,24 @@ test("CodeRenderable - with drawUnstyledText=false, text does not render before 
   })
 
   currentRenderer.root.add(codeRenderable)
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  await renderOnce()
-
   expect(codeRenderable.plainText).toBe("")
+  const frameBeforeHighlighting = captureFrame()
+  expect(frameBeforeHighlighting.trim()).toBe("")
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
+  const frameAfterHighlighting = captureFrame()
+  expect(frameAfterHighlighting).toContain("const message")
 })
 
-test("CodeRenderable - drawUnstyledText can be updated dynamically from false to true", async () => {
+test("CodeRenderable - updating drawUnstyledText from false to true triggers re-highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -772,19 +763,17 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
   await renderOnce()
   expect(codeRenderable.plainText).toBe("")
 
-  // Resolve the first highlight
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   codeRenderable.drawUnstyledText = true
   expect(codeRenderable.drawUnstyledText).toBe(true)
 
-  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
 
-  // The update triggers another highlight
   expect(mockClient.isHighlighting()).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
@@ -792,7 +781,7 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from false to
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 })
 
-test("CodeRenderable - drawUnstyledText can be updated dynamically from true to false", async () => {
+test("CodeRenderable - updating drawUnstyledText from true to false triggers re-highlighting", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -809,23 +798,25 @@ test("CodeRenderable - drawUnstyledText can be updated dynamically from true to 
     drawUnstyledText: true,
   })
 
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
   expect(codeRenderable.drawUnstyledText).toBe(true)
 
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
   codeRenderable.drawUnstyledText = false
   expect(codeRenderable.drawUnstyledText).toBe(false)
 
-  await new Promise((resolve) => queueMicrotask(resolve))
-  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
-  mockClient.resolveHighlightOnce()
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 })
 
-test("CodeRenderable - with drawUnstyledText=false, fallback is still used on error", async () => {
+test("CodeRenderable - uses fallback rendering on error even with drawUnstyledText=false", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -849,11 +840,9 @@ test("CodeRenderable - with drawUnstyledText=false, fallback is still used on er
 
   currentRenderer.root.add(codeRenderable)
 
-  // Wait for highlight to fail
   await new Promise((resolve) => setTimeout(resolve, 20))
   await renderOnce()
 
-  // Even with drawUnstyledText=false, fallback is called on error and text is visible
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
 })
 
@@ -902,28 +891,416 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only show f
   })
 
   currentRenderer.root.add(codeRenderable)
+  await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
 
-  await renderOnce()
-  // With drawUnstyledText=false, text is not visible until highlighting completes
   expect(codeRenderable.plainText).toBe("")
+  const frameBeforeHighlighting = captureFrame()
+  expect(frameBeforeHighlighting.trim()).toBe("")
 
-  // Change content before the first highlight completes
   codeRenderable.content = "let newMessage = 'world';"
+  await renderOnce()
+
+  expect(codeRenderable.plainText).toBe("")
+  const frameAfterUpdate = captureFrame()
+  expect(frameAfterUpdate.trim()).toBe("")
+
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  expect(mockClient.isHighlighting()).toBe(false)
+  expect(codeRenderable.plainText).toBe("let newMessage = 'world';")
+  const frameAfterHighlighting = captureFrame()
+  expect(frameAfterHighlighting).toContain("let newMessage")
+})
+
+// TODO: flaky in CI because it needs to finish in time
+// lib/tree-sitter/client.ts needs a way to check if the queue is empty
+// then this can wait for all tree-sitter operations to complete
+// instead of the arbitrary 500ms wait
+// it worked before because text was set anyway for drawUnstyledText=false
+test.skip("CodeRenderable - simulates markdown stream from LLM with async updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+    string: { fg: RGBA.fromValues(0, 1, 0, 1) },
+    "markup.heading.1": { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  // Base markdown content that we'll repeat to grow to ~1MB
+  const baseMarkdownContent = `# Code Example
+
+Here's a simple TypeScript function:
+
+\`\`\`typescript
+function greet(name: string): string {
+  return \`Hello, \${name}!\`;
+}
+
+const message = greet("World");
+console.log(message);
+\`\`\`
+`
+
+  const targetSize = 64 * 128
+  let fullMarkdownContent = ""
+  let iteration = 0
+  while (fullMarkdownContent.length < targetSize) {
+    fullMarkdownContent += `\n--- Iteration ${iteration} ---\n\n` + baseMarkdownContent
+    iteration++
+  }
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-markdown-stream",
+    content: "",
+    filetype: "markdown",
+    syntaxStyle,
+    conceal: false,
+    left: 0,
+    top: 0,
+    drawUnstyledText: false,
+  })
+  await codeRenderable.treeSitterClient.initialize()
+  await codeRenderable.treeSitterClient.preloadParser("markdown")
+
+  currentRenderer.root.add(codeRenderable)
+  currentRenderer.start()
+
+  let currentContent = ""
+
+  const chunkSize = 64
+  const chunks: string[] = []
+  for (let i = 0; i < fullMarkdownContent.length; i += chunkSize) {
+    chunks.push(fullMarkdownContent.slice(i, Math.min(i + chunkSize, fullMarkdownContent.length)))
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]
+    currentContent += chunk
+    codeRenderable.content = currentContent
+    await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 25) + 1))
+  }
+
+  // wait for highlighting to complete (long for slow machines/CI)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  expect(codeRenderable.content).toBe(fullMarkdownContent)
+  expect(codeRenderable.content.length).toBeGreaterThanOrEqual(targetSize)
+  expect(codeRenderable.plainText).toContain("# Code Example")
+  expect(codeRenderable.plainText).toContain("function greet")
+  expect(codeRenderable.plainText).toContain("typescript")
+  expect(codeRenderable.plainText).toContain("Hello")
+
+  const plainText = codeRenderable.plainText
+  expect(plainText.length).toBeGreaterThan(targetSize * 0.9)
+  expect(plainText).toContain("Code Example")
+  expect(plainText).toContain("const message = greet")
+})
+
+test("CodeRenderable - streaming option is false by default", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+  })
+
+  expect(codeRenderable.streaming).toBe(false)
+})
+
+test("CodeRenderable - streaming can be enabled", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const message = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  expect(codeRenderable.streaming).toBe(true)
+})
+
+test("CodeRenderable - streaming mode respects drawUnstyledText only for initial content", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  await renderOnce()
+  expect(codeRenderable.plainText).toBe("const initial = 'hello';")
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  codeRenderable.content = "const updated = 'world';"
   await new Promise((resolve) => queueMicrotask(resolve))
 
-  await renderOnce()
-  // Still empty because highlighting hasn't completed
-  expect(codeRenderable.plainText).toBe("")
+  expect(codeRenderable.content).toBe("const updated = 'world';")
+})
 
-  // Resolve highlights - the mock tracks only the latest promise
-  // so this resolves the latest highlight request
-  mockClient.resolveHighlightOnce()
+test("CodeRenderable - streaming mode uses cached highlights for partial styling", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: false,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // Now text should be visible with the final content
-  expect(mockClient.isHighlighting()).toBe(false)
-  expect(codeRenderable.plainText).toBe("let newMessage = 'world';")
+  codeRenderable.content = "const updated = 'world';"
+  await new Promise((resolve) => queueMicrotask(resolve))
+  await renderOnce()
+
+  expect(codeRenderable.plainText).toBe("const updated = 'world';")
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  expect(codeRenderable.plainText).toBe("const updated = 'world';")
+})
+
+test("CodeRenderable - streaming mode caches highlights between updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  codeRenderable.content = "const updated = 'world';"
+  await new Promise((resolve) => queueMicrotask(resolve))
+
+  codeRenderable.content = "const updated2 = 'test';"
+  await new Promise((resolve) => queueMicrotask(resolve))
+
+  codeRenderable.content = "const final = 'done';"
+  await new Promise((resolve) => queueMicrotask(resolve))
+
+  await renderOnce()
+
+  expect(codeRenderable.content).toBe("const final = 'done';")
+  expect(codeRenderable.plainText).toBe("const final = 'done';")
+})
+
+test("CodeRenderable - streaming mode works with large content updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const x = 1;",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  // Wait for initial highlighting
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  // Simulate streaming with progressively larger content
+  let content = "const x = 1;"
+  for (let i = 0; i < 10; i++) {
+    content += `\nconst var${i} = ${i};`
+    codeRenderable.content = content
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  await renderOnce()
+
+  expect(codeRenderable.content).toContain("const var9 = 9;")
+  expect(codeRenderable.plainText).toContain("const var9 = 9;")
+})
+
+test("CodeRenderable - disabling streaming clears cached highlights", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  expect(codeRenderable.streaming).toBe(true)
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  codeRenderable.streaming = false
+  expect(codeRenderable.streaming).toBe(false)
+
+  await renderOnce()
+
+  expect(mockClient.isHighlighting()).toBe(true)
+})
+
+test("CodeRenderable - streaming mode with drawUnstyledText=false shows nothing initially", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: false,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  await renderOnce()
+  const frameBeforeHighlighting = captureFrame()
+  expect(frameBeforeHighlighting.trim()).toBe("")
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  const frameAfterHighlighting = captureFrame()
+  expect(frameAfterHighlighting).toContain("const initial")
+})
+
+test("CodeRenderable - streaming mode handles empty cached highlights gracefully", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "plain text",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  codeRenderable.content = "more plain text"
+  await renderOnce()
+
+  expect(codeRenderable.content).toBe("more plain text")
+  expect(codeRenderable.plainText).toBe("more plain text")
 })

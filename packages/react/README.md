@@ -19,13 +19,15 @@ bun install @opentui/react @opentui/core react
 ## Quick Start
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
 function App() {
   return <text>Hello, world!</text>
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ## TypeScript Configuration
@@ -56,6 +58,8 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 - **`<text>`** - Display text with styling
 - **`<box>`** - Container with borders and layout
 - **`<input>`** - Text input field
+- **`<textarea>`** - Multi-line text input field
+- **`<code>`** - Code block with syntax highlighting
 - **`<select>`** - Selection dropdown
 - **`<scrollbox>`** - A scrollable box
 - **`<tab-select>`** - Tab-based selection
@@ -83,23 +87,32 @@ Components can be styled using props or the `style` prop:
 
 ## API Reference
 
-### `render(element, config?)`
+### `createRoot(renderer)`
 
-Renders a React element to the terminal.
+Creates a root for rendering a React tree with the given CLI renderer.
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
-await render(<App />, {
+const renderer = await createCliRenderer({
   // Optional renderer configuration
   exitOnCtrlC: false,
 })
+createRoot(renderer).render(<App />)
 ```
 
 **Parameters:**
 
-- `element`: React element to render
-- `config?`: Optional `CliRendererConfig` object
+- `renderer`: A `CliRenderer` instance (typically created with `createCliRenderer()`)
+
+**Returns:** An object with a `render` method that accepts a React element.
+
+### `render(element, config?)` (Deprecated)
+
+> **Deprecated:** Use `createRoot(renderer).render(node)` instead.
+
+Renders a React element to the terminal. This function is deprecated in favor of `createRoot`.
 
 ### Hooks
 
@@ -193,7 +206,7 @@ function App() {
 Create and manage animations using OpenTUI's timeline system. This hook automatically registers and unregisters the timeline with the animation engine.
 
 ```tsx
-import { render, useTimeline } from "@opentui/react"
+import { useTimeline } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -326,6 +339,66 @@ function App() {
 }
 ```
 
+### Textarea Component
+
+```tsx
+import type { TextareaRenderable } from "@opentui/core"
+import { useKeyboard, useRenderer } from "@opentui/react"
+import { useEffect, useRef } from "react"
+
+function App() {
+  const renderer = useRenderer()
+  const textareaRef = useRef<TextareaRenderable>(null)
+
+  useEffect(() => {
+    renderer.console.show()
+  }, [renderer])
+
+  useKeyboard((key) => {
+    if (key.name === "return") {
+      console.log(textareaRef.current?.plainText)
+    }
+  })
+
+  return (
+    <box title="Interactive Editor" style={{ border: true, flexGrow: 1 }}>
+      <textarea ref={textareaRef} placeholder="Type here..." focused />
+    </box>
+  )
+}
+```
+
+### Code Component
+
+```tsx
+import { RGBA, SyntaxStyle } from "@opentui/core"
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  keyword: { fg: RGBA.fromHex("#ff6b6b"), bold: true }, // red, bold
+  string: { fg: RGBA.fromHex("#51cf66") }, // green
+  comment: { fg: RGBA.fromHex("#868e96"), italic: true }, // gray, italic
+  number: { fg: RGBA.fromHex("#ffd43b") }, // yellow
+  default: { fg: RGBA.fromHex("#ffffff") }, // white
+})
+
+const codeExample = `function hello() {
+  // This is a comment
+
+  const message = "Hello, world!"
+  const count = 42
+
+  return message + " " + count
+}`
+
+function App() {
+  return (
+    <box style={{ border: true, flexGrow: 1 }}>
+      <code content={codeExample} filetype="javascript" syntaxStyle={syntaxStyle} />
+    </box>
+  )
+}
+```
+
 ### Select Component
 
 Dropdown selection component.
@@ -408,17 +481,11 @@ function App() {
 Display ASCII art text with different font styles.
 
 ```tsx
-import { measureText } from "@opentui/core"
 import { useState } from "react"
 
 function App() {
   const text = "ASCII"
   const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
-
-  const { width, height } = measureText({
-    text,
-    font,
-  })
 
   return (
     <box style={{ border: true, paddingLeft: 1, paddingRight: 1 }}>
@@ -459,7 +526,7 @@ function App() {
         />
       </box>
 
-      <ascii-font style={{ width, height }} text={text} font={font} />
+      <ascii-font text={text} font={font} />
     </box>
   )
 }
@@ -470,7 +537,8 @@ function App() {
 ### Login Form
 
 ```tsx
-import { render, useKeyboard } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot, useKeyboard } from "@opentui/react"
 import { useCallback, useState } from "react"
 
 function App() {
@@ -526,13 +594,15 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ### Counter with Timer
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -553,14 +623,15 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ### System Monitor Animation
 
 ```tsx
-import { TextAttributes } from "@opentui/core"
-import { render, useTimeline } from "@opentui/react"
+import { createCliRenderer, TextAttributes } from "@opentui/core"
+import { createRoot, useTimeline } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 type Stats = {
@@ -636,13 +707,15 @@ export const App = () => {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ### Styled Text Showcase
 
 ```tsx
-import { render } from "@opentui/react"
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 
 function App() {
   return (
@@ -670,7 +743,8 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ## Component Extension
@@ -678,8 +752,15 @@ render(<App />)
 You can create custom components by extending OpenTUIs base renderables:
 
 ```tsx
-import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
-import { extend, render } from "@opentui/react"
+import {
+  BoxRenderable,
+  createCliRenderer,
+  OptimizedBuffer,
+  RGBA,
+  type BoxOptions,
+  type RenderContext,
+} from "@opentui/core"
+import { createRoot, extend } from "@opentui/react"
 
 // Create custom component class
 class ButtonRenderable extends BoxRenderable {
@@ -733,5 +814,6 @@ function App() {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```

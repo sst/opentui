@@ -2,7 +2,7 @@ import { OptimizedBuffer } from "../buffer"
 import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
-import type { RenderContext } from "../types"
+import type { RenderContext, CursorStyleOptions } from "../types"
 
 export interface InputRenderableOptions extends RenderableOptions<InputRenderable> {
   backgroundColor?: ColorInput
@@ -12,6 +12,7 @@ export interface InputRenderableOptions extends RenderableOptions<InputRenderabl
   placeholder?: string
   placeholderColor?: ColorInput
   cursorColor?: ColorInput
+  cursorStyle?: CursorStyleOptions
   maxLength?: number
   value?: string
 }
@@ -35,6 +36,7 @@ export class InputRenderable extends Renderable {
   private _focusedTextColor: RGBA
   private _placeholderColor: RGBA
   private _cursorColor: RGBA
+  private _cursorStyle: CursorStyleOptions
   private _maxLength: number
   private _lastCommittedValue: string = ""
 
@@ -46,6 +48,10 @@ export class InputRenderable extends Renderable {
     placeholder: "",
     placeholderColor: "#666666",
     cursorColor: "#FFFFFF",
+    cursorStyle: {
+      style: "block",
+      blinking: true,
+    },
     maxLength: 1000,
     value: "",
   } satisfies Partial<InputRenderableOptions>
@@ -69,6 +75,7 @@ export class InputRenderable extends Renderable {
 
     this._placeholderColor = parseColor(options.placeholderColor || this._defaultOptions.placeholderColor)
     this._cursorColor = parseColor(options.cursorColor || this._defaultOptions.cursorColor)
+    this._cursorStyle = options.cursorStyle || this._defaultOptions.cursorStyle
   }
 
   private updateCursorPosition(): void {
@@ -98,7 +105,7 @@ export class InputRenderable extends Renderable {
 
   public focus(): void {
     super.focus()
-    this._ctx.setCursorStyle("block", true)
+    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
     this._ctx.setCursorColor(this._cursorColor)
     this.updateCursorPosition()
   }
@@ -329,7 +336,23 @@ export class InputRenderable extends Renderable {
     const newColor = parseColor(value ?? this._defaultOptions.cursorColor)
     if (this._cursorColor !== newColor) {
       this._cursorColor = newColor
-      this.requestRender()
+      if (this._focused) {
+        this._ctx.requestRender()
+      }
+    }
+  }
+
+  public get cursorStyle(): CursorStyleOptions {
+    return this._cursorStyle
+  }
+
+  public set cursorStyle(style: CursorStyleOptions) {
+    const newStyle = style
+    if (this.cursorStyle.style !== newStyle.style || this.cursorStyle.blinking !== newStyle.blinking) {
+      this._cursorStyle = newStyle
+      if (this._focused) {
+        this._ctx.requestRender()
+      }
     }
   }
 

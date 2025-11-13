@@ -36,3 +36,20 @@ render(() => <text>Hello, World!</text>)
 ```
 
 4. Run with `bun index.tsx`.
+
+5. To build use [Bun.build](https://bun.com/docs/bundler) ([source](https://github.com/sst/opentui/issues/122)):
+
+```ts
+import solidPlugin from "./node_modules/@opentui/solid/scripts/solid-plugin"
+
+await Bun.build({
+  entrypoints: ["./index.tsx"],
+  target: "bun",
+  outdir: "./build",
+  plugins: [solidPlugin],
+  compile: {
+    target: "bun-darwin-arm64",
+    outfile: "app-macos",
+  },
+})
+```

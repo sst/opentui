@@ -252,4 +252,96 @@ describe("TextBuffer", () => {
       expect(buffer.getPlainText()).toBe("After reset")
     })
   })
+
+  describe("append()", () => {
+    it("should append text to empty buffer", () => {
+      buffer.append("Hello")
+      expect(buffer.length).toBe(5)
+      expect(buffer.getPlainText()).toBe("Hello")
+    })
+
+    it("should append text to existing content", () => {
+      buffer.setText("Hello")
+      buffer.append(" World")
+      expect(buffer.length).toBe(11)
+      expect(buffer.getPlainText()).toBe("Hello World")
+    })
+
+    it("should append text with newlines", () => {
+      buffer.setText("Line 1")
+      buffer.append("\nLine 2")
+      expect(buffer.getPlainText()).toBe("Line 1\nLine 2")
+    })
+
+    it("should append multiple times", () => {
+      buffer.setText("Start")
+      buffer.append(" middle")
+      buffer.append(" end")
+      expect(buffer.getPlainText()).toBe("Start middle end")
+    })
+
+    it("should handle appending empty string", () => {
+      buffer.setText("Hello")
+      const lengthBefore = buffer.length
+      buffer.append("")
+      expect(buffer.length).toBe(lengthBefore)
+      expect(buffer.getPlainText()).toBe("Hello")
+    })
+
+    it("should append unicode content", () => {
+      buffer.setText("Hello ")
+      buffer.append("世界 🌟")
+      expect(buffer.getPlainText()).toBe("Hello 世界 🌟")
+    })
+
+    it("should handle streaming chunks", () => {
+      buffer.append("First")
+      buffer.append("\nLine2")
+      buffer.append("\n")
+      buffer.append("Line3")
+      buffer.append(" end")
+      expect(buffer.getPlainText()).toBe("First\nLine2\nLine3 end")
+    })
+
+    it("should handle CRLF line endings in append", () => {
+      buffer.append("Line1\r\n")
+      buffer.append("Line2\r\n")
+      buffer.append("Line3")
+      // CRLF should be normalized to LF
+      expect(buffer.getPlainText()).toBe("Line1\nLine2\nLine3")
+    })
+
+    it("should work with clear and append", () => {
+      buffer.setText("Initial")
+      buffer.clear()
+      buffer.append("After clear")
+      expect(buffer.getPlainText()).toBe("After clear")
+    })
+
+    it("should work with reset and append", () => {
+      buffer.setText("Initial")
+      buffer.reset()
+      buffer.append("After reset")
+      expect(buffer.getPlainText()).toBe("After reset")
+    })
+
+    it("should handle large streaming append", () => {
+      for (let i = 0; i < 100; i++) {
+        buffer.append(`Line ${i}\n`)
+      }
+      const result = buffer.getPlainText()
+      expect(result).toContain("Line 0")
+      expect(result).toContain("Line 99")
+    })
+
+    it("should mix setText and append", () => {
+      buffer.setText("First")
+      buffer.append(" appended")
+      expect(buffer.getPlainText()).toBe("First appended")
+
+      buffer.setText("Reset")
+      buffer.append(" again")
+      expect(buffer.getPlainText()).toBe("Reset again")
+    })
+  })
 })

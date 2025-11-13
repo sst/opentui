@@ -1,5 +1,5 @@
-import { TextAttributes } from "@opentui/core"
-import { render, useTimeline } from "@opentui/react"
+import { createCliRenderer, TextAttributes } from "@opentui/core"
+import { createRoot, useTimeline } from "@opentui/react"
 import { useEffect, useState } from "react"
 
 type Stats = {
@@ -75,4 +75,5 @@ export const App = () => {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)

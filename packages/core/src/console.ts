@@ -9,6 +9,7 @@ import { Capture, CapturedWritableStream } from "./lib/output.capture"
 import { parseColor, RGBA } from "./lib/RGBA"
 import { singleton } from "./lib/singleton"
 import { env, registerEnvVar } from "./lib/env"
+import type { KeyEvent } from "./lib/KeyHandler"
 
 interface CallerInfo {
   functionName: string
@@ -246,7 +247,7 @@ export class TerminalConsole extends EventEmitter {
   private isVisible: boolean = false
   private isFocused: boolean = false
   private renderer: CliRenderer
-  private stdinHandler: (...args: any[]) => void
+  private keyHandler: (event: KeyEvent) => void
   private options: Required<ConsoleOptions>
   private _debugModeEnabled: boolean = false
 
@@ -261,6 +262,7 @@ export class TerminalConsole extends EventEmitter {
   private _displayLines: DisplayLine[] = []
   private _allLogEntries: [Date, LogLevel, any[], CallerInfo | null][] = []
   private _needsFrameBufferUpdate: boolean = false
+  private _entryListener: (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => void
 
   private markNeedsRerender(): void {
     this._needsFrameBufferUpdate = true
@@ -289,7 +291,7 @@ export class TerminalConsole extends EventEmitter {
     super()
     this.renderer = renderer
     this.options = { ...DEFAULT_CONSOLE_OPTIONS, ...options }
-    this.stdinHandler = this.handleStdin.bind(this)
+    this.keyHandler = this.handleKeyPress.bind(this)
     this._debugModeEnabled = this.options.startInDebugMode
     terminalConsoleCache.setCollectCallerInfo(this._debugModeEnabled)
 
@@ -307,9 +309,10 @@ export class TerminalConsole extends EventEmitter {
     this._updateConsoleDimensions()
     this._scrollToBottom(true)
 
-    terminalConsoleCache.on("entry", (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => {
+    this._entryListener = (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => {
       this._handleNewLog(logEntry)
-    })
+    }
+    terminalConsoleCache.on("entry", this._entryListener)
 
     if (env.SHOW_CONSOLE) {
       this.show()
@@ -383,80 +386,76 @@ export class TerminalConsole extends EventEmitter {
     this.currentLineIndex = Math.max(0, Math.min(this.currentLineIndex, this.consoleHeight - 1))
   }
 
-  private handleStdin(data: Buffer): void {
-    const key = data.toString()
-
+  private handleKeyPress(event: KeyEvent): void {
     let needsRedraw = false
     const displayLineCount = this._displayLines.length
     const logAreaHeight = Math.max(1, this.consoleHeight - 1)
     const maxScrollTop = Math.max(0, displayLineCount - logAreaHeight)
     const currentPositionIndex = this._positions.indexOf(this.options.position)
 
-    switch (key) {
-      case "\u001b": // ESC key
-        this.blur()
-        break
-      case "\u001b[1;2A": // Shift+UpArrow - Scroll to top
-        if (this.scrollTopIndex > 0 || this.currentLineIndex > 0) {
-          this.scrollTopIndex = 0
-          this.currentLineIndex = 0
-          this.isScrolledToBottom = this._displayLines.length <= Math.max(1, this.consoleHeight - 1)
-          needsRedraw = true
-        }
-        break
-      case "\u001b[1;2B": // Shift+DownArrow - Scroll to bottom
-        const logAreaHeightForScroll = Math.max(1, this.consoleHeight - 1)
-        const maxScrollPossible = Math.max(0, this._displayLines.length - logAreaHeightForScroll)
-        if (this.scrollTopIndex < maxScrollPossible || !this.isScrolledToBottom) {
-          this._scrollToBottom(true)
-          needsRedraw = true
-        }
-        break
-      case "\u001b[A": // Up arrow
-        if (this.currentLineIndex > 0) {
-          this.currentLineIndex--
-          needsRedraw = true
-        } else if (this.scrollTopIndex > 0) {
-          this.scrollTopIndex--
-          this.isScrolledToBottom = false
-          needsRedraw = true
-        }
-        break
-      case "\u001b[B": // Down arrow
-        const canCursorMoveDown =
-          this.currentLineIndex < logAreaHeight - 1 &&
-          this.scrollTopIndex + this.currentLineIndex < displayLineCount - 1
+    if (event.name === "escape") {
+      this.blur()
+      return
+    }
 
-        if (canCursorMoveDown) {
-          this.currentLineIndex++
-          needsRedraw = true
-        } else if (this.scrollTopIndex < maxScrollTop) {
-          this.scrollTopIndex++
-          this.isScrolledToBottom = this.scrollTopIndex === maxScrollTop
-          needsRedraw = true
-        }
-        break
-      case "\u0010": // Ctrl+p (Previous position)
-        const prevIndex = (currentPositionIndex - 1 + this._positions.length) % this._positions.length
-        this.options.position = this._positions[prevIndex]
-        this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
-        break
-      case "\u000f": // Ctrl+o (Next/Other position)
-        const nextIndex = (currentPositionIndex + 1) % this._positions.length
-        this.options.position = this._positions[nextIndex]
-        this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
-        break
-      case "+":
-        this.options.sizePercent = Math.min(100, this.options.sizePercent + 5)
-        this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
-        break
-      case "-":
-        this.options.sizePercent = Math.max(10, this.options.sizePercent - 5)
-        this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
-        break
-      case "\u0013": // Ctrl+s (Save logs)
-        this.saveLogsToFile()
-        break
+    if (event.name === "up" && event.shift) {
+      // Shift+UpArrow - Scroll to top
+      if (this.scrollTopIndex > 0 || this.currentLineIndex > 0) {
+        this.scrollTopIndex = 0
+        this.currentLineIndex = 0
+        this.isScrolledToBottom = this._displayLines.length <= Math.max(1, this.consoleHeight - 1)
+        needsRedraw = true
+      }
+    } else if (event.name === "down" && event.shift) {
+      // Shift+DownArrow - Scroll to bottom
+      const logAreaHeightForScroll = Math.max(1, this.consoleHeight - 1)
+      const maxScrollPossible = Math.max(0, this._displayLines.length - logAreaHeightForScroll)
+      if (this.scrollTopIndex < maxScrollPossible || !this.isScrolledToBottom) {
+        this._scrollToBottom(true)
+        needsRedraw = true
+      }
+    } else if (event.name === "up") {
+      // Up arrow
+      if (this.currentLineIndex > 0) {
+        this.currentLineIndex--
+        needsRedraw = true
+      } else if (this.scrollTopIndex > 0) {
+        this.scrollTopIndex--
+        this.isScrolledToBottom = false
+        needsRedraw = true
+      }
+    } else if (event.name === "down") {
+      // Down arrow
+      const canCursorMoveDown =
+        this.currentLineIndex < logAreaHeight - 1 && this.scrollTopIndex + this.currentLineIndex < displayLineCount - 1
+
+      if (canCursorMoveDown) {
+        this.currentLineIndex++
+        needsRedraw = true
+      } else if (this.scrollTopIndex < maxScrollTop) {
+        this.scrollTopIndex++
+        this.isScrolledToBottom = this.scrollTopIndex === maxScrollTop
+        needsRedraw = true
+      }
+    } else if (event.name === "p" && event.ctrl) {
+      // Ctrl+p (Previous position)
+      const prevIndex = (currentPositionIndex - 1 + this._positions.length) % this._positions.length
+      this.options.position = this._positions[prevIndex]
+      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+    } else if (event.name === "o" && event.ctrl) {
+      // Ctrl+o (Next/Other position)
+      const nextIndex = (currentPositionIndex + 1) % this._positions.length
+      this.options.position = this._positions[nextIndex]
+      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+    } else if (event.name === "+" || (event.name === "=" && event.shift)) {
+      this.options.sizePercent = Math.min(100, this.options.sizePercent + 5)
+      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+    } else if (event.name === "-") {
+      this.options.sizePercent = Math.max(10, this.options.sizePercent - 5)
+      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+    } else if (event.name === "s" && event.ctrl) {
+      // Ctrl+s (Save logs)
+      this.saveLogsToFile()
     }
 
     if (needsRedraw) {
@@ -466,13 +465,13 @@ export class TerminalConsole extends EventEmitter {
 
   private attachStdin(): void {
     if (this.isFocused) return
-    process.stdin.on("data", this.stdinHandler)
+    this.renderer.keyInput.on("keypress", this.keyHandler)
     this.isFocused = true
   }
 
   private detachStdin(): void {
     if (!this.isFocused) return
-    process.stdin.off("data", this.stdinHandler)
+    this.renderer.keyInput.off("keypress", this.keyHandler)
     this.isFocused = false
   }
 
@@ -590,6 +589,12 @@ export class TerminalConsole extends EventEmitter {
       this.blur()
       terminalConsoleCache.setCachingEnabled(true)
     }
+  }
+
+  public destroy(): void {
+    this.hide()
+    this.deactivate()
+    terminalConsoleCache.off("entry", this._entryListener)
   }
 
   public getCachedLogs(): string {

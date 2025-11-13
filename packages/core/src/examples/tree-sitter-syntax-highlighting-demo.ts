@@ -163,9 +163,78 @@ The \`CodeRenderable\` component provides syntax highlighting:
 
 > **Note**: Tree-sitter parsers are loaded lazily for performance.
 
+CJK: 알겠습니다. Task 에이전트에 ktlint + detekt 검사를 위임하겠습니다.
+
 ---
 
 For more info, visit [github.com/opentui](https://github.com)`,
+  },
+  {
+    name: "Zig",
+    filetype: "zig" as const,
+    code: `const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+/// A simple text buffer implementation
+pub const TextBuffer = struct {
+    allocator: Allocator,
+    lines: std.ArrayList([]u8),
+    dirty: bool,
+
+    pub fn init(allocator: Allocator) !TextBuffer {
+        return TextBuffer{
+            .allocator = allocator,
+            .lines = std.ArrayList([]u8).init(allocator),
+            .dirty = false,
+        };
+    }
+
+    pub fn deinit(self: *TextBuffer) void {
+        for (self.lines.items) |line| {
+            self.allocator.free(line);
+        }
+        self.lines.deinit();
+    }
+
+    /// Insert a line at the specified position
+    pub fn insertLine(self: *TextBuffer, line_num: usize, content: []const u8) !void {
+        const line = try self.allocator.dupe(u8, content);
+        errdefer self.allocator.free(line);
+
+        try self.lines.insert(line_num, line);
+        self.dirty = true;
+    }
+
+    /// Get the content of a line
+    pub fn getLine(self: *const TextBuffer, line_num: usize) ?[]const u8 {
+        if (line_num >= self.lines.items.len) return null;
+        return self.lines.items[line_num];
+    }
+
+    /// Count total characters in buffer
+    pub fn countChars(self: *const TextBuffer) usize {
+        var total: usize = 0;
+        for (self.lines.items) |line| {
+            total += line.len;
+        }
+        return total;
+    }
+};
+
+test "TextBuffer basic operations" {
+    const allocator = std.testing.allocator;
+    var buffer = try TextBuffer.init(allocator);
+    defer buffer.deinit();
+
+    try buffer.insertLine(0, "Hello, World!");
+    try buffer.insertLine(1, "This is Zig.");
+
+    try std.testing.expectEqual(@as(usize, 2), buffer.lines.items.len);
+    try std.testing.expect(buffer.dirty);
+    
+    const first_line = buffer.getLine(0).?;
+    try std.testing.expectEqualStrings("Hello, World!", first_line);
+}`,
   },
 ]
 

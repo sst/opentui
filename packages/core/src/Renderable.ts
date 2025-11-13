@@ -240,7 +240,6 @@ export abstract class Renderable extends BaseRenderable {
 
   private childrenPrimarySortDirty: boolean = true
   private childrenSortedByPrimaryAxis: Renderable[] = []
-  private _newChildren: Renderable[] = []
 
   public onLifecyclePass: (() => void) | null = null
 
@@ -993,6 +992,7 @@ export abstract class Renderable extends BaseRenderable {
 
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
+      // TODO: Should probably .markDirty()
       this.handleFrameBufferResize(width, height)
       this.onResize(width, height)
       this.requestRender()
@@ -1023,7 +1023,7 @@ export abstract class Renderable extends BaseRenderable {
 
     try {
       const widthMethod = this._ctx.widthMethod
-      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true })
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true, id: `framebuffer-${this.id}` })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
@@ -1048,7 +1048,6 @@ export abstract class Renderable extends BaseRenderable {
     obj.parent = this
   }
 
-  private _forceLayoutUpdateFor: Renderable[] | null = null
   public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
     if (!obj) {
       return -1
@@ -1089,8 +1088,6 @@ export abstract class Renderable extends BaseRenderable {
         this.propagateLiveCount(renderable._liveCount)
       }
     }
-
-    this._newChildren.push(renderable)
 
     const childLayoutNode = renderable.getLayoutNode()
     const insertedIndex = this._childrenInLayoutOrder.length
@@ -1159,13 +1156,11 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
-    this._newChildren.push(renderable)
     this.childrenPrimarySortDirty = true
 
     const anchorIndex = this._childrenInLayoutOrder.indexOf(anchor)
     const insertedIndex = Math.max(0, Math.min(anchorIndex, this._childrenInLayoutOrder.length))
 
-    this._forceLayoutUpdateFor = this._childrenInLayoutOrder.slice(insertedIndex)
     this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
 
@@ -1210,18 +1205,6 @@ export abstract class Renderable extends BaseRenderable {
           this._childrenInZIndexOrder.splice(zIndexIndex, 1)
         }
 
-        if (this._forceLayoutUpdateFor) {
-          const forceIndex = this._forceLayoutUpdateFor.findIndex((obj) => obj.id === id)
-          if (forceIndex !== -1) {
-            this._forceLayoutUpdateFor?.splice(forceIndex, 1)
-          }
-        }
-
-        const newChildIndex = this._newChildren.findIndex((obj) => obj.id === id)
-        if (newChildIndex !== -1) {
-          this._newChildren?.splice(newChildIndex, 1)
-        }
-
         this.childrenPrimarySortDirty = true
       }
     }
@@ -1256,26 +1239,6 @@ export abstract class Renderable extends BaseRenderable {
 
     renderList.push({ action: "render", renderable: this })
 
-    // Note: This will update newly added children, but not their children.
-    // It is meant to make sure children update the layout, even though they may not be in the viewport
-    // and filtered out for updates like for the ScrollBox for example.
-    if (this._newChildren.length > 0) {
-      for (const child of this._newChildren) {
-        child.updateFromLayout()
-      }
-      this._newChildren = []
-    }
-
-    // NOTE: This is a hack to force layout updates for children that were after the anchor index,
-    // related to the the layout constraints described above and elsewhere.
-    // Simpler would be to just update all children in that case, but also expensive for a long list of children.
-    if (this._forceLayoutUpdateFor) {
-      for (const child of this._forceLayoutUpdateFor) {
-        child.updateFromLayout()
-      }
-      this._forceLayoutUpdateFor = null
-    }
-
     this.ensureZIndexSorted()
 
     const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
@@ -1289,8 +1252,12 @@ export abstract class Renderable extends BaseRenderable {
         height: scissorRect.height,
       })
     }
-
-    for (const child of this._getChildren()) {
+    const visibleChildren = this._getVisibleChildren()
+    for (const child of this._childrenInZIndexOrder) {
+      if (!visibleChildren.includes(child.num)) {
+        child.updateFromLayout()
+        continue
+      }
       child.updateLayout(deltaTime, renderList)
     }
 
@@ -1323,8 +1290,8 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
-  protected _getChildren(): Renderable[] {
-    return this._childrenInZIndexOrder
+  protected _getVisibleChildren(): number[] {
+    return this._childrenInZIndexOrder.map((child) => child.num)
   }
 
   protected onUpdate(deltaTime: number): void {

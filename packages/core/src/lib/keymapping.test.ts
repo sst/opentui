@@ -6,7 +6,7 @@ describe("keymapping", () => {
     it("should generate key with meta modifier", () => {
       const metaBinding = { name: "a", meta: true, action: "test" }
       const key = getKeyBindingKey(metaBinding)
-      expect(key).toBe("a:false:false:true")
+      expect(key).toBe("a:0:0:1:0")
     })
 
     it("should generate different keys for different modifiers", () => {
@@ -23,7 +23,13 @@ describe("keymapping", () => {
 
     it("should handle combined modifiers", () => {
       const key = getKeyBindingKey({ name: "a", ctrl: true, shift: true, meta: true, action: "test" })
-      expect(key).toBe("a:true:true:true")
+      expect(key).toBe("a:1:1:1:0")
+    })
+
+    it("should generate key with super modifier", () => {
+      const superBinding = { name: "z", super: true, action: "test" }
+      const key = getKeyBindingKey(superBinding)
+      expect(key).toBe("z:0:0:0:1")
     })
   })
 
@@ -67,15 +73,15 @@ describe("keymapping", () => {
 
       const map = buildKeyBindingsMap(bindings)
       expect(map.size).toBe(2)
-      expect(map.get("a:false:false:false")).toBe("action1")
-      expect(map.get("b:false:false:true")).toBe("action2")
+      expect(map.get("a:0:0:0:0")).toBe("action1")
+      expect(map.get("b:0:0:1:0")).toBe("action2")
     })
 
     it("should handle meta modifier correctly", () => {
       const bindings = [{ name: "a", meta: true, action: "action1" as const }]
 
       const map = buildKeyBindingsMap(bindings)
-      expect(map.get("a:false:false:true")).toBe("action1")
+      expect(map.get("a:0:0:1:0")).toBe("action1")
     })
   })
 })

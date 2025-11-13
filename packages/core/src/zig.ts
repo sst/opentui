@@ -6,7 +6,13 @@ import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
-import { StyledChunkStruct, HighlightStruct, LogicalCursorStruct, VisualCursorStruct } from "./zig-structs"
+import {
+  StyledChunkStruct,
+  HighlightStruct,
+  LogicalCursorStruct,
+  VisualCursorStruct,
+  TerminalCapabilitiesStruct,
+} from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -349,6 +355,14 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferSetTextFromMem: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
+    textBufferAppend: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    textBufferAppendFromMemId: {
       args: ["ptr", "u8"],
       returns: "void",
     },
@@ -823,18 +837,31 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
   const debugSymbols: Record<string, any> = {}
   const traceSymbols: Record<string, any> = {}
   let hasTracing = false
+  let ffiLogWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null
 
   Object.entries(symbols).forEach(([key, value]) => {
     debugSymbols[key] = value
   })
 
   if (env.OTUI_DEBUG_FFI) {
+    const now = new Date()
+    const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
+    const logFilePath = `ffi_debug_${timestamp}.log`
+    ffiLogWriter = Bun.file(logFilePath).writer()
+
+    const writer = ffiLogWriter
+    const writeSync = (msg: string) => {
+      const buffer = new TextEncoder().encode(msg + "\n")
+      writer.write(buffer)
+      writer.flush()
+    }
+
     Object.entries(symbols).forEach(([key, value]) => {
       if (typeof value === "function") {
         debugSymbols[key] = (...args: any[]) => {
-          console.log(`${key}(${args.map((arg) => String(arg)).join(", ")})`)
+          writeSync(`${key}(${args.map((arg) => String(arg)).join(", ")})`)
           const result = value(...args)
-          console.log(`${key} returned:`, String(result))
+          writeSync(`${key} returned: ${String(result)}`)
           return result
         }
       }
@@ -854,6 +881,16 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
           traceSymbols[key].push(end - start)
           return result
         }
+      }
+    })
+  }
+
+  if (env.OTUI_DEBUG_FFI && ffiLogWriter) {
+    process.on("exit", () => {
+      try {
+        ffiLogWriter.end()
+      } catch (e) {
+        // Ignore errors on exit
       }
     })
   }
@@ -1144,6 +1181,8 @@ export interface RenderLib {
   textBufferReplaceMemBuffer: (buffer: Pointer, memId: number, bytes: Uint8Array, owned?: boolean) => boolean
   textBufferClearMemRegistry: (buffer: Pointer) => void
   textBufferSetTextFromMem: (buffer: Pointer, memId: number) => void
+  textBufferAppend: (buffer: Pointer, bytes: Uint8Array) => void
+  textBufferAppendFromMemId: (buffer: Pointer, memId: number) => void
   textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
     buffer: Pointer,
@@ -1944,6 +1983,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferSetTextFromMem(buffer, memId)
   }
 
+  public textBufferAppend(buffer: Pointer, bytes: Uint8Array): void {
+    this.opentui.symbols.textBufferAppend(buffer, bytes, bytes.length)
+  }
+
+  public textBufferAppendFromMemId(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.textBufferAppendFromMemId(buffer, memId)
+  }
+
   public textBufferLoadFile(buffer: Pointer, path: string): boolean {
     const pathBytes = this.encoder.encode(path)
     return this.opentui.symbols.textBufferLoadFile(buffer, pathBytes, pathBytes.length)
@@ -2718,28 +2765,32 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferClearScissorRects(buffer)
   }
 
-  public getTerminalCapabilities(renderer: Pointer): any {
-    const capsBuffer = new Uint8Array(64)
-    this.opentui.symbols.getTerminalCapabilities(renderer, capsBuffer)
+  public getTerminalCapabilities(renderer: Pointer) {
+    const capsBuffer = new ArrayBuffer(TerminalCapabilitiesStruct.size)
+    this.opentui.symbols.getTerminalCapabilities(renderer, ptr(capsBuffer))
 
-    let offset = 0
-    const capabilities = {
-      kitty_keyboard: capsBuffer[offset++] !== 0,
-      kitty_graphics: capsBuffer[offset++] !== 0,
-      rgb: capsBuffer[offset++] !== 0,
-      unicode: capsBuffer[offset++] === 0 ? "wcwidth" : "unicode",
-      sgr_pixels: capsBuffer[offset++] !== 0,
-      color_scheme_updates: capsBuffer[offset++] !== 0,
-      explicit_width: capsBuffer[offset++] !== 0,
-      scaled_text: capsBuffer[offset++] !== 0,
-      sixel: capsBuffer[offset++] !== 0,
-      focus_tracking: capsBuffer[offset++] !== 0,
-      sync: capsBuffer[offset++] !== 0,
-      bracketed_paste: capsBuffer[offset++] !== 0,
-      hyperlinks: capsBuffer[offset++] !== 0,
+    const caps = TerminalCapabilitiesStruct.unpack(capsBuffer)
+
+    return {
+      kitty_keyboard: caps.kitty_keyboard,
+      kitty_graphics: caps.kitty_graphics,
+      rgb: caps.rgb,
+      unicode: caps.unicode,
+      sgr_pixels: caps.sgr_pixels,
+      color_scheme_updates: caps.color_scheme_updates,
+      explicit_width: caps.explicit_width,
+      scaled_text: caps.scaled_text,
+      sixel: caps.sixel,
+      focus_tracking: caps.focus_tracking,
+      sync: caps.sync,
+      bracketed_paste: caps.bracketed_paste,
+      hyperlinks: caps.hyperlinks,
+      terminal: {
+        name: caps.term_name ?? "",
+        version: caps.term_version ?? "",
+        from_xtversion: caps.term_from_xtversion,
+      },
     }
-
-    return capabilities
   }
 
   public processCapabilityResponse(renderer: Pointer, response: string): void {

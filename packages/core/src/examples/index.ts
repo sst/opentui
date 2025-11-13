@@ -52,6 +52,7 @@ import * as textNodeDemo from "./text-node-demo"
 import * as textWrapExample from "./text-wrap"
 import * as editorDemo from "./editor-demo"
 import * as sliderDemo from "./slider-demo"
+import * as terminalDemo from "./terminal"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -261,6 +262,12 @@ const examples: Example[] = [
     destroy: inputExample.destroy,
   },
   {
+    name: "Terminal Palette Demo",
+    description: "Terminal color palette detection and visualization - fetch and display all 256 terminal colors",
+    run: terminalDemo.run,
+    destroy: terminalDemo.destroy,
+  },
+  {
     name: "Editor Demo",
     description: "Interactive text editor with TextareaRenderable - supports full editing capabilities",
     run: editorDemo.run,
@@ -326,8 +333,8 @@ class ExampleSelector {
       margin: 1,
       text: titleText,
       font: titleFont,
-      fg: RGBA.fromInts(255, 255, 255, 255),
-      bg: RGBA.fromInts(0, 17, 34, 255),
+      color: RGBA.fromInts(255, 255, 255, 255),
+      backgroundColor: RGBA.fromInts(0, 17, 34, 255),
     })
     this.renderer.root.add(this.title)
   }

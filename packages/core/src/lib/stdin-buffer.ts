@@ -1,5 +1,5 @@
 /**
- * StdinBuffer wraps a stdin stream and emits complete sequences.
+ * StdinBuffer buffers input and emits complete sequences.
  *
  * This is necessary because stdin data events can arrive in partial chunks,
  * especially for escape sequences like mouse events. Without buffering,
@@ -11,11 +11,14 @@
  * - Event 3: `;20;5m`
  *
  * The buffer accumulates these until a complete sequence is detected.
+ * Call the `process()` method to feed input data.
  */
 
 import { EventEmitter } from "events"
 
 const ESC = "\x1b"
+const BRACKETED_PASTE_START = "\x1b[200~"
+const BRACKETED_PASTE_END = "\x1b[201~"
 
 /**
  * Check if a string is a complete escape sequence or needs more data
@@ -44,6 +47,16 @@ function isCompleteSequence(data: string): "complete" | "incomplete" | "not-esca
   // OSC sequences: ESC ]
   if (afterEsc.startsWith("]")) {
     return isCompleteOscSequence(data)
+  }
+
+  // DCS sequences: ESC P ... ESC \ (includes XTVersion responses)
+  if (afterEsc.startsWith("P")) {
+    return isCompleteDcsSequence(data)
+  }
+
+  // APC sequences: ESC _ ... ESC \ (includes Kitty graphics responses)
+  if (afterEsc.startsWith("_")) {
+    return isCompleteApcSequence(data)
   }
 
   // SS3 sequences: ESC O
@@ -127,6 +140,42 @@ function isCompleteOscSequence(data: string): "complete" | "incomplete" {
 }
 
 /**
+ * Check if DCS (Device Control String) sequence is complete
+ * DCS sequences: ESC P ... ST (where ST is ESC \)
+ * Used for XTVersion responses like ESC P >| ... ESC \
+ */
+function isCompleteDcsSequence(data: string): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + "P")) {
+    return "complete"
+  }
+
+  // DCS sequences end with ST (ESC \)
+  if (data.endsWith(ESC + "\\")) {
+    return "complete"
+  }
+
+  return "incomplete"
+}
+
+/**
+ * Check if APC (Application Program Command) sequence is complete
+ * APC sequences: ESC _ ... ST (where ST is ESC \)
+ * Used for Kitty graphics responses like ESC _ G ... ESC \
+ */
+function isCompleteApcSequence(data: string): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + "_")) {
+    return "complete"
+  }
+
+  // APC sequences end with ST (ESC \)
+  if (data.endsWith(ESC + "\\")) {
+    return "complete"
+  }
+
+  return "incomplete"
+}
+
+/**
  * Split accumulated buffer into complete sequences
  */
 function extractCompleteSequences(buffer: string): { sequences: string[]; remainder: string } {
@@ -181,32 +230,26 @@ export type StdinBufferOptions = {
 
 export type StdinBufferEventMap = {
   data: [string]
+  paste: [string]
 }
 
 /**
- * Wraps a stdin stream and emits complete sequences via the 'data' event.
+ * Buffers stdin input and emits complete sequences via the 'data' event.
  * Handles partial escape sequences that arrive across multiple chunks.
  */
 export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   private buffer: string = ""
   private timeout: Timer | null = null
   private readonly timeoutMs: number
-  private readonly stdin: NodeJS.ReadStream
-  private readonly stdinListener: (data: Buffer) => void
+  private pasteMode: boolean = false
+  private pasteBuffer: string = ""
 
-  constructor(stdin: NodeJS.ReadStream, options: StdinBufferOptions = {}) {
+  constructor(options: StdinBufferOptions = {}) {
     super()
-    this.stdin = stdin
     this.timeoutMs = options.timeout ?? 10
-
-    this.stdinListener = (data: Buffer) => {
-      this.handleData(data)
-    }
-
-    this.stdin.on("data", this.stdinListener)
   }
 
-  private handleData(data: string | Buffer): void {
+  public process(data: string | Buffer): void {
     // Clear any pending timeout
     if (this.timeout) {
       clearTimeout(this.timeout)
@@ -215,7 +258,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
     // Handle high-byte conversion (for compatibility with parseKeypress)
     // If buffer has single byte > 127, convert to ESC + (byte - 128)
-    // TODO: This seems overheadish as parseKeypress should handle this.
+    // TODO: This seems redundant as parseKeypress should handle this.
     let str: string
     if (Buffer.isBuffer(data)) {
       if (data.length === 1 && data[0]! > 127) {
@@ -234,6 +277,59 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     }
 
     this.buffer += str
+
+    if (this.pasteMode) {
+      this.pasteBuffer += this.buffer
+      this.buffer = ""
+
+      const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
+      if (endIndex !== -1) {
+        const pastedContent = this.pasteBuffer.slice(0, endIndex)
+        const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
+
+        this.pasteMode = false
+        this.pasteBuffer = ""
+
+        this.emit("paste", pastedContent)
+
+        if (remaining.length > 0) {
+          this.process(remaining)
+        }
+      }
+      return
+    }
+
+    const startIndex = this.buffer.indexOf(BRACKETED_PASTE_START)
+    if (startIndex !== -1) {
+      if (startIndex > 0) {
+        const beforePaste = this.buffer.slice(0, startIndex)
+        const result = extractCompleteSequences(beforePaste)
+        for (const sequence of result.sequences) {
+          this.emit("data", sequence)
+        }
+      }
+
+      this.buffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length)
+      this.pasteMode = true
+      this.pasteBuffer = this.buffer
+      this.buffer = ""
+
+      const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
+      if (endIndex !== -1) {
+        const pastedContent = this.pasteBuffer.slice(0, endIndex)
+        const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
+
+        this.pasteMode = false
+        this.pasteBuffer = ""
+
+        this.emit("paste", pastedContent)
+
+        if (remaining.length > 0) {
+          this.process(remaining)
+        }
+      }
+      return
+    }
 
     const result = extractCompleteSequences(this.buffer)
     this.buffer = result.remainder
@@ -274,6 +370,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
       this.timeout = null
     }
     this.buffer = ""
+    this.pasteMode = false
+    this.pasteBuffer = ""
   }
 
   getBuffer(): string {
@@ -281,7 +379,6 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   }
 
   destroy(): void {
-    this.stdin.removeListener("data", this.stdinListener)
     this.clear()
   }
 }

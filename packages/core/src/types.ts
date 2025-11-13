@@ -18,6 +18,11 @@ export const TextAttributes = {
 
 export type CursorStyle = "block" | "line" | "underline"
 
+export interface CursorStyleOptions {
+  style: CursorStyle
+  blinking: boolean
+}
+
 export enum DebugOverlayCorner {
   topLeft = 0,
   topRight = 1,

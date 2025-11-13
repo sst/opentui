@@ -10,14 +10,34 @@ import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./S
 
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable
+  private _viewportCulling: boolean
 
-  constructor(ctx: RenderContext, viewport: BoxRenderable, options: RenderableOptions<BoxRenderable>) {
+  constructor(
+    ctx: RenderContext,
+    viewport: BoxRenderable,
+    viewportCulling: boolean,
+    options: RenderableOptions<BoxRenderable>,
+  ) {
     super(ctx, options)
     this.viewport = viewport
+    this._viewportCulling = viewportCulling
   }
 
-  protected _getChildren(): Renderable[] {
-    return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis)
+  get viewportCulling(): boolean {
+    return this._viewportCulling
+  }
+
+  set viewportCulling(value: boolean) {
+    this._viewportCulling = value
+  }
+
+  protected _getVisibleChildren(): number[] {
+    if (this._viewportCulling) {
+      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis).map(
+        (child) => child.num,
+      )
+    }
+    return this.getChildrenSortedByPrimaryAxis().map((child) => child.num)
   }
 }
 
@@ -34,6 +54,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollX?: boolean
   scrollY?: boolean
   scrollAcceleration?: ScrollAcceleration
+  viewportCulling?: boolean
 }
 
 export class ScrollBoxRenderable extends BoxRenderable {
@@ -67,6 +88,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollRight: boolean = false
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
+  private _isApplyingStickyScroll: boolean = false
   private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
@@ -93,7 +115,16 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollTop(value: number) {
     this.verticalScrollBar.scrollPosition = value
-    this._hasManualScroll = true
+    if (!this._isApplyingStickyScroll) {
+      // Only mark as manual scroll if:
+      // 1. We're not at a sticky position after scrolling (prevents programmatic scrolls to sticky edges from disabling sticky)
+      // 2. There's actually meaningful scrollable content (prevents accidental scrolls when content is smaller than viewport from disabling sticky)
+      // Use a small threshold (>1) to account for rounding/layout quirks
+      const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+      if (!this.isAtStickyPosition() && maxScrollTop > 1) {
+        this._hasManualScroll = true
+      }
+    }
     this.updateStickyState()
   }
 
@@ -103,7 +134,16 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   set scrollLeft(value: number) {
     this.horizontalScrollBar.scrollPosition = value
-    this._hasManualScroll = true
+    if (!this._isApplyingStickyScroll) {
+      // Only mark as manual scroll if:
+      // 1. We're not at a sticky position after scrolling (prevents programmatic scrolls to sticky edges from disabling sticky)
+      // 2. There's actually meaningful scrollable content (prevents accidental scrolls when content is smaller than viewport from disabling sticky)
+      // Use a small threshold (>1) to account for rounding/layout quirks
+      const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+      if (!this.isAtStickyPosition() && maxScrollLeft > 1) {
+        this._hasManualScroll = true
+      }
+    }
     this.updateStickyState()
   }
 
@@ -145,6 +185,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private applyStickyStart(stickyStart: "bottom" | "top" | "left" | "right"): void {
+    this._isApplyingStickyScroll = true
     switch (stickyStart) {
       case "top":
         this._stickyScrollTop = true
@@ -167,6 +208,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
         this.horizontalScrollBar.scrollPosition = Math.max(0, this.scrollWidth - this.viewport.width)
         break
     }
+    this._isApplyingStickyScroll = false
   }
 
   constructor(
@@ -184,6 +226,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollX = false,
       scrollY = true,
       scrollAcceleration,
+      viewportCulling = true,
       ...options
     }: ScrollBoxOptions,
   ) {
@@ -198,14 +241,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.internalId = ScrollBoxRenderable.idCounter++
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
-
-    // Initialize scroll acceleration
-    if (scrollAcceleration) {
-      this.scrollAccel = scrollAcceleration
-    } else if (process.platform === "darwin") {
-      this.scrollAccel = new MacOSScrollAccel()
-    }
-    this.scrollAccel ??= new LinearScrollAccel()
+    this.scrollAccel = scrollAcceleration ?? new LinearScrollAccel()
 
     this.wrapper = new BoxRenderable(ctx, {
       flexDirection: "column",
@@ -229,7 +265,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.viewport)
 
-    this.content = new ContentRenderable(ctx, this.viewport, {
+    this.content = new ContentRenderable(ctx, this.viewport, viewportCulling, {
       alignSelf: "flex-start",
       flexShrink: 0,
       ...(scrollX ? { minWidth: "100%" } : { minWidth: "100%", maxWidth: "100%" }),
@@ -253,7 +289,13 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "vertical",
       onChange: (position) => {
         this.content.translateY = -position
-        this._hasManualScroll = true
+        if (!this._isApplyingStickyScroll) {
+          // Only mark as manual scroll if we're not at a sticky position and there's meaningful scrollable content
+          const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+          if (!this.isAtStickyPosition() && maxScrollTop > 1) {
+            this._hasManualScroll = true
+          }
+        }
         this.updateStickyState()
       },
     })
@@ -270,7 +312,13 @@ export class ScrollBoxRenderable extends BoxRenderable {
       orientation: "horizontal",
       onChange: (position) => {
         this.content.translateX = -position
-        this._hasManualScroll = true
+        if (!this._isApplyingStickyScroll) {
+          // Only mark as manual scroll if we're not at a sticky position and there's meaningful scrollable content
+          const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+          if (!this.isAtStickyPosition() && maxScrollLeft > 1) {
+            this._hasManualScroll = true
+          }
+        }
         this.updateStickyState()
       },
     })
@@ -302,7 +350,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
       this.verticalScrollBar.scrollBy(delta.y, unit)
       this.horizontalScrollBar.scrollBy(delta.x, unit)
     }
-    this._hasManualScroll = true
+    // Note: scrollBy doesn't need to set _hasManualScroll here because the scrollbar
+    // change will trigger the scrollTop setter which handles it
   }
 
   public scrollTo(position: number | { x: number; y: number }): void {
@@ -311,6 +360,30 @@ export class ScrollBoxRenderable extends BoxRenderable {
     } else {
       this.scrollTop = position.y
       this.scrollLeft = position.x
+    }
+    // Note: scrollTo doesn't need to set _hasManualScroll here because
+    // the scrollTop/scrollLeft setters handle it
+  }
+
+  private isAtStickyPosition(): boolean {
+    if (!this._stickyScroll || !this._stickyStart) {
+      return false
+    }
+
+    const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+    const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+
+    switch (this._stickyStart) {
+      case "top":
+        return this.scrollTop === 0
+      case "bottom":
+        return this.scrollTop >= maxScrollTop
+      case "left":
+        return this.scrollLeft === 0
+      case "right":
+        return this.scrollLeft >= maxScrollLeft
+      default:
+        return false
     }
   }
 
@@ -350,7 +423,12 @@ export class ScrollBoxRenderable extends BoxRenderable {
         this.scrollLeft += baseDelta * multiplier
       }
 
-      this._hasManualScroll = true
+      // Only mark as manual scroll if there's meaningful scrollable content
+      const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
+      const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+      if (maxScrollTop > 1 || maxScrollLeft > 1) {
+        this._hasManualScroll = true
+      }
     }
 
     if (event.type === "drag" && event.isSelecting) {
@@ -510,6 +588,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   private recalculateBarProps(): void {
+    // Wrap entire method to prevent scroll changes from being treated as manual
+    const wasApplyingStickyScroll = this._isApplyingStickyScroll
+    this._isApplyingStickyScroll = true
+
     this.verticalScrollBar.scrollSize = this.content.height
     this.verticalScrollBar.viewportSize = this.viewport.height
     this.horizontalScrollBar.scrollSize = this.content.width
@@ -535,6 +617,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
         }
       }
     }
+
+    this._isApplyingStickyScroll = wasApplyingStickyScroll
 
     // NOTE: This is obviously a workaround for something,
     // which is that the bar props are recalculated when the viewport is resized,
@@ -593,6 +677,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   public set scrollAcceleration(value: ScrollAcceleration) {
     this.scrollAccel = value
+  }
+
+  get viewportCulling(): boolean {
+    return this.content.viewportCulling
+  }
+
+  set viewportCulling(value: boolean) {
+    this.content.viewportCulling = value
+    this.requestRender()
   }
 
   protected destroySelf(): void {

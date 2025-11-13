@@ -46,8 +46,8 @@ export function run(renderer: CliRenderer): void {
     id: "tinyFont",
     text: "TINY FONT DEMO",
     font: "tiny",
-    fg: RGBA.fromInts(255, 255, 0, 255),
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: RGBA.fromInts(255, 255, 0, 255),
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     selectionBg: "#4a5568",
     selectionFg: "#ffffff",
     zIndex: 20,
@@ -59,8 +59,8 @@ export function run(renderer: CliRenderer): void {
     id: "blockFont",
     text: "opentui",
     font: "block",
-    fg: [RGBA.fromInts(255, 100, 100, 255), RGBA.fromInts(100, 255, 100, 255)],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: [RGBA.fromInts(255, 100, 100, 255), RGBA.fromInts(100, 255, 100, 255)],
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     selectionBg: "#4a5568",
     selectionFg: "#ffffff",
     zIndex: 20,
@@ -72,8 +72,8 @@ export function run(renderer: CliRenderer): void {
     id: "shadeFont",
     text: "SHADE",
     font: "shade",
-    fg: [RGBA.fromInts(255, 200, 100, 255), RGBA.fromInts(100, 150, 200, 255)],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: [RGBA.fromInts(255, 200, 100, 255), RGBA.fromInts(100, 150, 200, 255)],
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     selectionBg: "#4a5568",
     selectionFg: "#ffffff",
     zIndex: 20,
@@ -85,8 +85,8 @@ export function run(renderer: CliRenderer): void {
     id: "slickFont",
     text: "SLICK",
     font: "slick",
-    fg: [RGBA.fromInts(100, 255, 100, 255), RGBA.fromInts(255, 100, 255, 255)],
-    bg: RGBA.fromInts(0, 0, 40, 255),
+    color: [RGBA.fromInts(100, 255, 100, 255), RGBA.fromInts(255, 100, 255, 255)],
+    backgroundColor: RGBA.fromInts(0, 0, 40, 255),
     selectionBg: "#4a5568",
     selectionFg: "#ffffff",
     zIndex: 20,
@@ -200,8 +200,8 @@ export function run(renderer: CliRenderer): void {
     }
   })
 
-  renderer.on("key", (data) => {
-    const key = data.toString()
+  renderer.keyInput.on("keypress", (event) => {
+    const key = event.sequence
     if (key === "c" || key === "C") {
       renderer.clearSelection()
       if (statusText && debugText && selectionStartText && selectionMiddleText && selectionEndText) {

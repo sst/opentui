@@ -181,7 +181,7 @@ test "GraphemePool - decref to zero allows slot reuse" {
 
     // Old ID should fail due to generation mismatch
     const result1 = pool.get(id1);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result1);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result1);
 
     try pool.incref(id2);
     const retrieved = try pool.get(id2);
@@ -217,7 +217,7 @@ test "GraphemePool - multiple incref and decref" {
 
     // Old ID should now fail due to generation mismatch
     const result = pool.get(id);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 
     // Cleanup not needed since allocated IDs have refcount 0
 }
@@ -238,9 +238,9 @@ test "GraphemePool - freed IDs become invalid after reuse" {
     // Allocate again (pool may reuse internal storage)
     const id2 = try pool.alloc(text2);
 
-    // Old ID should be invalid
+    // Old ID should be invalid due to generation mismatch
     const result = pool.get(id1);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 
     try pool.incref(id2);
     const retrieved = try pool.get(id2);
@@ -261,7 +261,7 @@ test "GraphemePool - stale ID with wrong generation fails" {
     const stale_id = id ^ (1 << gp.SLOT_BITS); // XOR generation bits
 
     const result = pool.get(stale_id);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 }
 
 test "GraphemePool - decref on zero refcount fails" {
@@ -364,9 +364,9 @@ test "GraphemePool - invalid ID returns error" {
     const text2 = "test2";
     _ = try pool.alloc(text2);
 
-    // Original ID should now be invalid
+    // Original ID should now be invalid due to generation mismatch
     const result = pool.get(id);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 }
 
 test "GraphemePool - IDs from different pools don't interfere" {
@@ -409,9 +409,9 @@ test "GraphemePool - use-after-free returns error not garbage" {
     const text2 = "second";
     const id2 = try pool.alloc(text2);
 
-    // Old ID should fail, not return text2 or garbage
+    // Old ID should fail due to generation mismatch, not return text2 or garbage
     const result = pool.get(id1);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 
     try pool.incref(id2);
     try std.testing.expectEqualSlices(u8, text2, try pool.get(id2));
@@ -494,8 +494,8 @@ test "GraphemePool - incref on stale ID fails" {
     // Allocate again to invalidate old ID
     _ = try pool.alloc("new");
 
-    const result = pool.incref(id); // Old ID should fail
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    const result = pool.incref(id); // Old ID should fail due to wrong generation
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 }
 
 test "GraphemePool - decref on stale ID fails" {
@@ -657,7 +657,7 @@ test "GraphemeTracker - add same grapheme twice increfs once" {
 
     // Old ID should now be invalid due to generation change
     const result = pool.get(id);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 }
 
 test "GraphemeTracker - remove grapheme" {
@@ -767,7 +767,7 @@ test "GraphemeTracker - tracker keeps graphemes alive" {
 
     // Old ID should fail due to generation mismatch
     const result = pool.get(id);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 }
 
 test "GraphemeTracker - multiple trackers share same grapheme" {
@@ -811,7 +811,7 @@ test "GraphemeTracker - multiple trackers share same grapheme" {
 
     // Old ID should fail due to generation mismatch
     const result = pool.get(id);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 }
 
 test "GraphemeTracker - stress test many graphemes" {
@@ -1013,7 +1013,7 @@ test "GraphemePool - allocUnowned slot reuse" {
     const id2 = try pool.allocUnowned(text2);
 
     const result = pool.get(id1);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 
     try pool.incref(id2);
     const retrieved = try pool.get(id2);
@@ -1194,7 +1194,7 @@ test "GraphemePool - small pool with refcount prevents exhaustion" {
 
     // Old id1 should be invalid due to generation change
     const result = pool.get(id1);
-    try std.testing.expectError(gp.GraphemePoolError.InvalidId, result);
+    try std.testing.expectError(gp.GraphemePoolError.WrongGeneration, result);
 
     try pool.decref(id2);
     try pool.decref(id3);

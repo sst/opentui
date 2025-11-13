@@ -1,5 +1,5 @@
-import { bold, fg, italic, t, TextAttributes } from "@opentui/core"
-import { render, useKeyboard, useRenderer } from "@opentui/react"
+import { bold, createCliRenderer, fg, italic, t, TextAttributes } from "@opentui/core"
+import { createRoot, useKeyboard, useRenderer } from "@opentui/react"
 import { useCallback, useState } from "react"
 
 export const App = () => {
@@ -77,4 +77,5 @@ export const App = () => {
   )
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)

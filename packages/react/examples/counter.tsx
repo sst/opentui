@@ -1,5 +1,6 @@
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
 import { useEffect, useState } from "react"
-import { render } from "@opentui/react"
 
 export const App = () => {
   const [counter, setCounter] = useState(0)
@@ -15,4 +16,5 @@ export const App = () => {
   return <text content={`${counter} tests passed...`} fg="#00FF00" />
 }
 
-render(<App />)
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
