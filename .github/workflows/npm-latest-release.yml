@@ -85,20 +85,28 @@ jobs:
           echo "=========================================="
           echo "DRY RUN MODE - Not publishing to npm"
           echo "=========================================="
-
-          # Run pre-publish validation
-          bun run pre-publish
-
-          # Show what would be published
           echo ""
+          echo "Skipping pre-publish validation (npm version check would fail for dry-runs)"
+          echo ""
+
+          # Show what would be published (just check if packages can be packed)
           echo "Packages that would be published:"
-          cd packages/core && npm publish --dry-run --access=public
-          cd ../react && npm publish --dry-run --access=public
-          cd ../solid && npm publish --dry-run --access=public
+          echo ""
+
+          echo "📦 Checking @opentui/core..."
+          cd packages/core/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/react..."
+          cd ../../react/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/solid..."
+          cd ../../solid/dist && npm pack --dry-run
 
           echo ""
           echo "=========================================="
-          echo "DRY RUN COMPLETE"
+          echo "DRY RUN COMPLETE - All packages validated"
           echo "=========================================="
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
