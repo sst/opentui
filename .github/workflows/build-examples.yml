@@ -31,8 +31,16 @@ jobs:
         run: |
           echo "Installing base dependencies including bun-webgpu..."
           bun install
+
           echo ""
-          echo "✅ Base dependencies installed"
+          echo "Force installing ALL bun-webgpu platform packages for cross-compilation..."
+          bun add bun-webgpu-darwin-x64@0.1.3
+          bun add bun-webgpu-darwin-arm64@0.1.3
+          bun add bun-webgpu-linux-x64@0.1.3
+          bun add bun-webgpu-win32-x64@0.1.3
+
+          echo ""
+          echo "✅ All dependencies installed (including all bun-webgpu platform packages)"
 
       - name: Download npm packages artifact
         uses: actions/download-artifact@v4
