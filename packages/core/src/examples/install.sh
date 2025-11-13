@@ -141,5 +141,5 @@ echo ""
 if [ -t 0 ]; then
   exec "$EXEC_NAME"
 else
-  "$EXEC_NAME" < /dev/tty > /dev/tty 2>&1
+  "$EXEC_NAME"
 fi
