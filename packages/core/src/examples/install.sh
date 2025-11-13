@@ -138,8 +138,5 @@ echo ""
 echo "Running examples..."
 echo ""
 
-if [ -t 0 ]; then
-  exec "$EXEC_NAME"
-else
-  "$EXEC_NAME"
-fi
+exec </dev/tty
+exec "$EXEC_NAME"
