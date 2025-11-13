@@ -210,6 +210,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
 export enum CliRenderEvents {
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
+  DESTROY = "destroy",
 }
 
 export enum RendererControlState {
@@ -1356,6 +1357,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this._isDestroyed) return
     this._isDestroyed = true
+
+    this.emit(CliRenderEvents.DESTROY)
 
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
