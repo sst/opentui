@@ -1,6 +1,8 @@
 # dependencies (bun install)
 node_modules
 
+Session.vim
+
 # output
 out
 dist
