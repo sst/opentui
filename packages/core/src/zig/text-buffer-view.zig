@@ -439,9 +439,21 @@ pub const UnifiedTextBufferView = struct {
 
                                 continue;
                             } else {
-                                // No wrap point, just wrap normally
+                                // No wrap point and line not empty, need to wrap and force-break on next line
+                                // Wrap the current line first
                                 commitVirtualLine(wctx);
-                                continue;
+                                // Now line_position is 0, force add content respecting grapheme boundaries
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                // After wrapping, the full wrap width is available
+                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, wctx.wrap_w, wctx.view.text_buffer.tab_width, is_ascii_only);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1; // Force at least one grapheme
                             }
 
                             if (to_add > 0) {
