@@ -176,7 +176,7 @@ class ParserWorker {
       const language = await Language.load(normalizedPath)
       return language
     } catch (error) {
-      console.error(`Error loading language from ${result.filePath}:`, error)
+      console.error(`Error loading language from ${normalizedPath}:`, error)
       return undefined
     }
   }
