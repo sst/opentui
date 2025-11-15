@@ -170,9 +170,10 @@ class ParserWorker {
       return undefined
     }
 
+    // Normalize path for Windows compatibility - tree-sitter expects forward slashes
+    const normalizedPath = result.filePath.replaceAll("\\", "/")
+
     try {
-      // Normalize path for Windows compatibility - tree-sitter expects forward slashes
-      const normalizedPath = result.filePath.replaceAll("\\", "/")
       const language = await Language.load(normalizedPath)
       return language
     } catch (error) {
