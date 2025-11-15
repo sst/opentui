@@ -42,12 +42,12 @@ export class TextBufferView {
   }
 
   public getSelection(): { start: number; end: number } | null {
-    this.guard()
+    if (this._destroyed) return null
     return this.lib.textBufferViewGetSelection(this.viewPtr)
   }
 
   public hasSelection(): boolean {
-    this.guard()
+    if (this._destroyed) return false
     return this.getSelection() !== null
   }
 
@@ -102,7 +102,7 @@ export class TextBufferView {
   }
 
   public getSelectedText(): string {
-    this.guard()
+    if (this._destroyed) return ""
     const byteSize = this.textBuffer.byteSize
     if (byteSize === 0) return ""
 
