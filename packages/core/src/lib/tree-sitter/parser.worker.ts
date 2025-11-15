@@ -171,7 +171,9 @@ class ParserWorker {
     }
 
     try {
-      const language = await Language.load(result.filePath)
+      // Normalize path for Windows compatibility - tree-sitter expects forward slashes
+      const normalizedPath = result.filePath.replaceAll("\\", "/")
+      const language = await Language.load(normalizedPath)
       return language
     } catch (error) {
       console.error(`Error loading language from ${result.filePath}:`, error)
