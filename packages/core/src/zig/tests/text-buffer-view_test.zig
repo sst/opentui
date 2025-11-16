@@ -3225,7 +3225,7 @@ test "TextBufferView findVisualLineIndex - finds correct line for wrapped text" 
     try std.testing.expectEqual(@as(u32, 3), idx51);
 }
 
-test "TextBufferView word wrapping - issue reproduction with merged chunks at boundary" {
+test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -3239,10 +3239,6 @@ test "TextBufferView word wrapping - issue reproduction with merged chunks at bo
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Test case that might fail: merged chunks where the boundary falls at word wrap point
-    // "hello world " (12 chars) + "ddddddddd" (9 chars) = 21 total
-    // With wrap width 17, should break after "world "
-
     const text = "hello world ddddddddd";
     const mem_id = try tb.mem_registry.register(text, false);
 
@@ -3254,12 +3250,9 @@ test "TextBufferView word wrapping - issue reproduction with merged chunks at bo
 
     try segments.append(Segment{ .linestart = {} });
 
-    // Simulate what might happen with merged chunks
-    // "hello world ddddd" as one chunk (17 chars - exactly at wrap width!)
     const chunk1 = tb.createChunk(mem_id, 0, 17);
     try segments.append(Segment{ .text = chunk1 });
 
-    // "dddd" as another chunk
     const chunk2 = tb.createChunk(mem_id, 17, 21);
     try segments.append(Segment{ .text = chunk2 });
 
@@ -3269,29 +3262,9 @@ test "TextBufferView word wrapping - issue reproduction with merged chunks at bo
     view.setWrapMode(.word);
     view.setWrapWidth(17);
 
-    std.debug.print("\n=== TEST: Merged chunks at wrap boundary ===\n", .{});
-    std.debug.print("Text: 'hello world ddddddddd'\n", .{});
-    std.debug.print("Chunks: [0:17]='hello world ddddd', [17:21]='dddd'\n", .{});
-    std.debug.print("Wrap width: 17\n", .{});
-
     const vlines = view.getVirtualLines();
 
-    std.debug.print("Virtual lines count: {}\n", .{vlines.len});
-    for (vlines, 0..) |vline, idx| {
-        std.debug.print("VLine {}: width={} char_offset={} source_col_offset={} chunks={}\n", .{ idx, vline.width, vline.char_offset, vline.source_col_offset, vline.chunks.items.len });
-        for (vline.chunks.items, 0..) |vchunk, cidx| {
-            const chunk_bytes = vchunk.chunk.getBytes(&tb.mem_registry);
-            std.debug.print("  Chunk {}: grapheme_start={} width={} bytes=\"{s}\"\n", .{ cidx, vchunk.grapheme_start, vchunk.width, chunk_bytes });
-        }
-    }
-
-    // Should have 2 virtual lines
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
-
-    // Line 0 should be "hello world " (12 chars including space)
-    // NOT "hello world ddddd" (17 chars)!
     try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
-
-    // Line 1 should be "ddddddddd" (9 chars)
     try std.testing.expectEqual(@as(u32, 9), vlines[1].width);
 }
