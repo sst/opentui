@@ -2482,89 +2482,6 @@ test "drawTextBuffer - word wrap CJK mixed text without break points" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Text with no break points - should force break but preserve graphemes
-    try tb.setText("한글,English,中文,日本語,混合,Test,測試,テスト,가나다,ABC,一二三,あいう,라마바,DEF,四五六,えおか");
-
-    view.setWrapMode(.word);
-    view.setWrapWidth(20); // Force wrapping
-    view.updateVirtualLines();
-
-    var opt_buffer = try OptimizedBuffer.init(
-        std.testing.allocator,
-        30,
-        20,
-        .{ .pool = pool, .width_method = .unicode },
-        graphemes_ptr,
-        display_width_ptr,
-    );
-    defer opt_buffer.deinit();
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-
-    // Get the rendered output to check for ghost bytes
-    var out_buffer: [1000]u8 = undefined;
-    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
-    const result = out_buffer[0..written];
-    
-    std.debug.print("\n=== RENDERED OUTPUT ===\n{s}\n", .{result});
-    
-    // Check each virtual line for proper grapheme boundaries
-    const vlines = view.getVirtualLines();
-    std.debug.print("\n=== VIRTUAL LINES: {} ===\n", .{vlines.len});
-    
-    for (vlines, 0..) |vline, i| {
-        std.debug.print("VLine {}: width={} char_offset={} source_line={} source_col_offset={}\n", 
-            .{i, vline.width, vline.char_offset, vline.source_line, vline.source_col_offset});
-        
-        // Check each chunk in the virtual line
-        for (vline.chunks.items) |chunk| {
-            const chunk_bytes = chunk.chunk.getBytes(&tb.mem_registry);
-            const chunk_start = chunk.grapheme_start;
-            const chunk_width = chunk.width;
-            
-            std.debug.print("  Chunk: grapheme_start={} width={} bytes=[", .{chunk_start, chunk_width});
-            for (chunk_bytes) |byte| {
-                std.debug.print("{x:0>2} ", .{byte});
-            }
-            std.debug.print("]\n", .{});
-        }
-    }
-    
-    // Verify NO ghost bytes/continuation markers appear at line starts
-    var y: u32 = 0;
-    while (y < vlines.len) : (y += 1) {
-        const first_cell = opt_buffer.get(0, y);
-        if (first_cell) |cell| {
-            std.debug.print("Line {} first char: U+{X:0>4} (is_continuation={})\n", 
-                .{y, cell.char, gp.isContinuationChar(cell.char)});
-            
-            // CRITICAL: First character of any line should NOT be a continuation marker
-            if (gp.isContinuationChar(cell.char)) {
-                std.debug.print("ERROR: Line {} starts with continuation char!\n", .{y});
-                return error.TestExpectedEqual;
-            }
-        }
-    }
-    
-    // The test should pass if all lines start with valid graphemes (not continuation chars)
-}
-
-test "REPRO: word wrap CJK breaks graphemes - ghost byte 0xE4" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
-    defer tb.deinit();
-
-    var view = try TextBufferView.init(std.testing.allocator, tb);
-    defer view.deinit();
-
-    // Minimal text that reproduces the issue
     try tb.setText("한글,English,中文,日本語,混合,Test,測試,テスト,가나다,ABC,一二三,あいう,라마바,DEF,四五六,えおか");
 
     view.setWrapMode(.word);
@@ -2587,30 +2504,80 @@ test "REPRO: word wrap CJK breaks graphemes - ghost byte 0xE4" {
     var out_buffer: [1000]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
-    
-    std.debug.print("\n=== RENDERED OUTPUT ===\n{s}\n=== END OUTPUT ===\n", .{result});
-    
-    // CRITICAL TEST: The output should NOT contain the ghost character 'ä' (0xE4)
-    // This character appears when we break the 3-byte UTF-8 sequence for "一" (0xE4 0xB8 0x80)
-    // and orphan the first byte 0xE4 which gets interpreted as Latin-1
-    const has_ghost_char = std.mem.indexOf(u8, result, "ä") != null;
-    
-    if (has_ghost_char) {
-        std.debug.print("\nFAILURE: Found ghost character 'ä' in output!\n", .{});
-        std.debug.print("This means UTF-8 grapheme was broken during word wrapping.\n", .{});
-        std.debug.print("The character '一' (U+4E00) has UTF-8 bytes: E4 B8 80\n", .{});
-        std.debug.print("When broken incorrectly, byte 0xE4 appears as 'ä' (Latin-1).\n", .{});
-        
-        // Find where it appears
-        var i: usize = 0;
-        while (i < result.len) : (i += 1) {
-            if (result[i] == 0xE4 and (i + 1 >= result.len or result[i+1] != 0xB8)) {
-                std.debug.print("Found orphaned 0xE4 byte at position {}!\n", .{i});
+
+    const vlines = view.getVirtualLines();
+    try std.testing.expect(vlines.len > 1);
+
+    var y: u32 = 0;
+    while (y < vlines.len) : (y += 1) {
+        const first_cell = opt_buffer.get(0, y);
+        if (first_cell) |cell| {
+            try std.testing.expect(!gp.isContinuationChar(cell.char));
+        }
+    }
+
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+}
+
+test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("한글,English,中文,日本語,混合,Test,測試,テスト,가나다,ABC,一二三,あいう,라마바,DEF,四五六,えおか");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        30,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var out_buffer: [1000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+    try std.testing.expect(std.mem.indexOf(u8, result, "ä") == null);
+
+    var i: usize = 0;
+    while (i < result.len) : (i += 1) {
+        if (result[i] == 0xE4) {
+            if (i + 1 >= result.len) {
+                return error.TestFailed;
+            }
+            const next_byte = result[i + 1];
+            if (next_byte < 0x80 or next_byte > 0xBF) {
+                return error.TestFailed;
             }
         }
-        
-        return error.TestExpectedEqual;
     }
-    
-    std.debug.print("\nSUCCESS: No ghost characters found in output.\n", .{});
+
+    const vlines = view.getVirtualLines();
+    var y: u32 = 0;
+    while (y < vlines.len) : (y += 1) {
+        const first_cell = opt_buffer.get(0, y);
+        if (first_cell) |cell| {
+            try std.testing.expect(!gp.isContinuationChar(cell.char));
+        }
+    }
 }
