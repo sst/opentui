@@ -386,11 +386,23 @@ pub const UnifiedTextBufferView = struct {
                             var has_wrap_after: bool = false;
 
                             if (remaining_in_chunk <= remaining_on_line) {
-                                // Whole remaining chunk fits
-                                to_add = remaining_in_chunk;
-                                // Record wrap boundary for potential rollback even when chunk fits
-                                if (last_wrap_that_fits) |_| {
-                                    has_wrap_after = true;
+                                // Chunk fits, but check if we should break at a word boundary instead
+                                if (last_wrap_that_fits) |wrap_width| {
+                                    // If we have a word boundary and adding full chunk would fill the line,
+                                    // prefer breaking at the word boundary to avoid splitting words across chunks
+                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
+                                    if (would_fill_line and wrap_width < remaining_in_chunk) {
+                                        // Break at the word boundary instead of taking the full chunk
+                                        to_add = wrap_width;
+                                        has_wrap_after = true;
+                                    } else {
+                                        // Take the full chunk
+                                        to_add = remaining_in_chunk;
+                                        has_wrap_after = true;
+                                    }
+                                } else {
+                                    // No word boundary, take the full chunk
+                                    to_add = remaining_in_chunk;
                                 }
                             } else if (last_wrap_that_fits) |wrap_width| {
                                 // Chunk doesn't fit, add up to the wrap boundary
