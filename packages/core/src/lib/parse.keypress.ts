@@ -301,8 +301,20 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   } else if ((parts = metaKeyCodeRe.exec(s))) {
     // meta+character key
     key.meta = true
-    key.shift = /^[A-Z]$/.test(parts[1]!)
-    key.name = parts[1]
+    const char = parts[1]!
+    const isUpperCase = /^[A-Z]$/.test(char)
+
+    // Check if uppercase F or B map to arrow keys (old terminal style)
+    if (char === "F") {
+      key.name = "right"
+    } else if (char === "B") {
+      key.name = "left"
+    } else if (isUpperCase) {
+      key.shift = true
+      key.name = char
+    } else {
+      key.name = char
+    }
   } else if (s.length === 2 && s[0] === "\x1b" && s[1]! <= "\x1a") {
     // meta+ctrl+letter (ESC + control character)
     key.meta = true
