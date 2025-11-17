@@ -3023,3 +3023,135 @@ test "EditorView - tab indicator renders in buffer" {
     try std.testing.expect(cell_5 != null);
     try std.testing.expectEqual(@as(u32, 'B'), cell_5.?.char);
 }
+
+test "EditorView - word wrapping during editing: typing with incremental wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 17, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.word);
+
+    // Type "Hello world ddddddddd" character by character
+    // Width=17
+    // "Hello world " = 12 chars
+    // "Hello world ddddd" = 17 chars (fits exactly on one line)
+    // "Hello world dddddd" = 18 chars (should wrap after "world ", moving ALL d's to next line)
+    //
+    // The key issue: word wrapping should keep the break point AFTER "world " consistently
+    // When "Hello world dddddd" (18 chars) wraps, it should become:
+    //   Line 1: "Hello world " (12 chars)
+    //   Line 2: "dddddd" (6 chars)
+    // NOT:
+    //   Line 1: "Hello world ddddd" (17 chars)
+    //   Line 2: "d" (1 char)
+    const text_to_type = "Hello world ddddddddd";
+
+    for (text_to_type, 0..) |char, i| {
+        var char_buf: [1]u8 = .{char};
+        try eb.insertText(&char_buf);
+        _ = ev.getVirtualLines();
+
+        const vline_count = ev.getTotalVirtualLineCount();
+        const cursor = ev.getPrimaryCursor();
+
+        // "Hello world " = 12 chars (i=11 completes this)
+        // "Hello world d" through "Hello world ddddd" = 13-17 chars (i=12 to i=16)
+        // "Hello world dddddd" = 18 chars (i=17) - should wrap AFTER "world "
+        const current_len = i + 1;
+        if (current_len <= 17) {
+            // Should fit on 1 line
+            try std.testing.expectEqual(@as(u32, 1), vline_count);
+        } else {
+            // Should wrap AFTER "world ", moving ALL d's to line 2
+            try std.testing.expectEqual(@as(u32, 2), vline_count);
+
+            // Cursor should still be on row 0 (single logical line that wrapped)
+            try std.testing.expectEqual(@as(u32, 0), cursor.row);
+        }
+    }
+
+    // Now we have "Hello world ddddddddd" (21 chars) with word wrapping at width=17
+    // Should be: "Hello world " (12 chars) on vline 1, "ddddddddd" (9 chars) on vline 2
+    var vline_count = ev.getTotalVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 2), vline_count);
+
+    // Backspace to remove d's until only 2 remain: "Hello world dd"
+    // We need to delete 7 d's (from 9 d's to 2 d's)
+    var i: usize = 0;
+    while (i < 7) : (i += 1) {
+        try eb.backspace();
+        _ = ev.getVirtualLines();
+    }
+
+    // After removing 7 d's, we should have "Hello world dd" (14 chars)
+    // This should fit on one line at width=17
+    vline_count = ev.getTotalVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), vline_count);
+
+    var cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 14), cursor.col);
+
+    // Now type more d's again - should wrap correctly after "world "
+    // Starting with "Hello world dd" (14 chars)
+    const more_ds = "ddddddd";
+    for (more_ds, 0..) |char, j| {
+        var char_buf: [1]u8 = .{char};
+        try eb.insertText(&char_buf);
+        _ = ev.getVirtualLines();
+
+        vline_count = ev.getTotalVirtualLineCount();
+
+        // After each d:
+        // j=0: "Hello world ddd" (15) - fits on 1 line
+        // j=1: "Hello world dddd" (16) - fits on 1 line
+        // j=2: "Hello world ddddd" (17) - fits exactly on 1 line
+        // j=3: "Hello world dddddd" (18) - should wrap AFTER "world ", moving ALL d's to line 2
+        // j=4: "Hello world ddddddd" (19) - still wrapped same way
+        // j=5: "Hello world dddddddd" (20) - still wrapped same way
+        // j=6: "Hello world ddddddddd" (21) - still wrapped same way
+        const current_len = 14 + j + 1;
+        if (current_len <= 17) {
+            // Should fit on 1 line
+            try std.testing.expectEqual(@as(u32, 1), vline_count);
+        } else {
+            // Should wrap AFTER "world ", moving ALL d's to line 2
+            // This is the key: the wrap point should stay at "world " boundary
+            try std.testing.expectEqual(@as(u32, 2), vline_count);
+
+            // CRITICAL: Check that first virtual line is "Hello world " (12 chars)
+            // and second virtual line has all the d's
+            const vlines = ev.getVirtualLines();
+            try std.testing.expect(vlines.len == 2);
+
+            // First vline should be "Hello world " with width 12
+            try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
+
+            // Second vline should have all the d's
+            const expected_d_count: u32 = @intCast(j + 1); // dd -> dddddd (2 -> 6 d's)
+            try std.testing.expectEqual(expected_d_count, vlines[1].width);
+        }
+    }
+
+    // After adding 7 more d's, we have "Hello world ddddddddd" (21 chars) again
+    // Should wrap after "world " into 2 lines
+    vline_count = ev.getTotalVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 2), vline_count);
+
+    cursor = ev.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+
+    // Verify the text is correct
+    var out_buffer: [100]u8 = undefined;
+    const written = eb.getText(&out_buffer);
+    try std.testing.expectEqualStrings("Hello world ddddddddd", out_buffer[0..written]);
+}
