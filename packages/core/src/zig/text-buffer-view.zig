@@ -396,8 +396,10 @@ pub const UnifiedTextBufferView = struct {
                                         to_add = wrap_width;
                                         has_wrap_after = true;
                                     } else {
-                                        // Take the full chunk
+                                        // Take the full chunk - but if there's a wrap boundary before the end,
+                                        // we need to remember it for potential rollback
                                         to_add = remaining_in_chunk;
+                                        // Mark as wrap point even if we go past it - the rollback logic will handle splitting the chunk
                                         has_wrap_after = true;
                                     }
                                 } else {
@@ -469,13 +471,23 @@ pub const UnifiedTextBufferView = struct {
                             }
 
                             if (to_add > 0) {
+                                const position_before_add = wctx.line_position;
+                                const offset_before_add = wctx.global_char_offset;
+
                                 addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
                                 char_offset += to_add;
 
                                 if (has_wrap_after) {
+                                    // If there's a wrap boundary within what we just added, calculate its position
+                                    // last_wrap_that_fits is the width from char_offset to the wrap boundary
+                                    const wrap_pos_in_added = if (last_wrap_that_fits) |wrap_width|
+                                        @min(wrap_width, to_add)
+                                    else
+                                        to_add;
+
                                     wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
-                                    wctx.last_wrap_line_position = wctx.line_position;
-                                    wctx.last_wrap_global_offset = wctx.global_char_offset;
+                                    wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
+                                    wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
                                 }
 
                                 if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
