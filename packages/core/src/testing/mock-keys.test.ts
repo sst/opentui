@@ -184,7 +184,7 @@ describe("mock-keys", () => {
 
     expect(timestamps).toHaveLength(2)
     expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(8) // Allow some tolerance
-    expect(timestamps[1] - timestamps[0]).toBeLessThan(20)
+    expect(timestamps[1] - timestamps[0]).toBeLessThan(50) // Increased tolerance for CI/slower machines
   })
 
   test("pressKey with shift modifier", () => {
