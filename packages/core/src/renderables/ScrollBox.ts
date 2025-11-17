@@ -81,6 +81,9 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private autoScrollAccumulatorX: number = 0
   private autoScrollAccumulatorY: number = 0
 
+  private scrollAccumulatorX: number = 0
+  private scrollAccumulatorY: number = 0
+
   private _stickyScroll: boolean
   private _stickyScrollTop: boolean = false
   private _stickyScrollBottom: boolean = false
@@ -412,15 +415,36 @@ export class ScrollBoxRenderable extends BoxRenderable {
       const baseDelta = event.scroll?.delta ?? 0
       const now = Date.now()
       const multiplier = this.scrollAccel.tick(now)
+      const scrollAmount = baseDelta * multiplier
 
       if (dir === "up") {
-        this.scrollTop -= baseDelta * multiplier
+        this.scrollAccumulatorY -= scrollAmount
+        const integerScroll = Math.trunc(this.scrollAccumulatorY)
+        if (integerScroll !== 0) {
+          this.scrollTop += integerScroll
+          this.scrollAccumulatorY -= integerScroll
+        }
       } else if (dir === "down") {
-        this.scrollTop += baseDelta * multiplier
+        this.scrollAccumulatorY += scrollAmount
+        const integerScroll = Math.trunc(this.scrollAccumulatorY)
+        if (integerScroll !== 0) {
+          this.scrollTop += integerScroll
+          this.scrollAccumulatorY -= integerScroll
+        }
       } else if (dir === "left") {
-        this.scrollLeft -= baseDelta * multiplier
+        this.scrollAccumulatorX -= scrollAmount
+        const integerScroll = Math.trunc(this.scrollAccumulatorX)
+        if (integerScroll !== 0) {
+          this.scrollLeft += integerScroll
+          this.scrollAccumulatorX -= integerScroll
+        }
       } else if (dir === "right") {
-        this.scrollLeft += baseDelta * multiplier
+        this.scrollAccumulatorX += scrollAmount
+        const integerScroll = Math.trunc(this.scrollAccumulatorX)
+        if (integerScroll !== 0) {
+          this.scrollLeft += integerScroll
+          this.scrollAccumulatorX -= integerScroll
+        }
       }
 
       // Only mark as manual scroll if there's meaningful scrollable content
@@ -443,14 +467,21 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
       this.scrollAccel.reset()
+      this.resetScrollAccumulators()
       return true
     }
     if (this.horizontalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
       this.scrollAccel.reset()
+      this.resetScrollAccumulators()
       return true
     }
     return false
+  }
+
+  private resetScrollAccumulators(): void {
+    this.scrollAccumulatorX = 0
+    this.scrollAccumulatorY = 0
   }
 
   public startAutoScroll(mouseX: number, mouseY: number): void {
