@@ -212,7 +212,7 @@ describe("TreeSitterClient Caching", () => {
   })
 
   test("should handle directory creation errors gracefully", async () => {
-    const invalidDataPath = "/invalid/path/that/cannot/be/created"
+    const invalidDataPath = "/invalid\x00/path/with/null/byte"
     const client = new TreeSitterClient({ dataPath: invalidDataPath })
 
     await expect(client.initialize()).rejects.toThrow()
