@@ -7,8 +7,8 @@ on:
 
 jobs:
   build:
-    name: Core - Build and Test
-    runs-on: ubuntu-latest
+    name: Build Core Library
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +31,62 @@ jobs:
           cd packages/core
           bun run build
 
-      - name: Run tests
+      - name: Run native tests
         run: |
           cd packages/core
-          bun run test
+          bun run test:native
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            packages/core/dist
+            packages/core/node_modules/@opentui/core-*
+          retention-days: 1
+
+  test:
+    name: Test - ${{ matrix.os }} (${{ matrix.arch }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            arch: arm64
+            runner: macos-latest
+          - os: macos
+            arch: x64
+            runner: macos-13
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - os: windows
+            arch: x64
+            runner: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: packages/core
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run TypeScript tests
+        run: |
+          cd packages/core
+          bun run test:js

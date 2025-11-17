@@ -12,10 +12,9 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-import { resolve, isAbsolute } from "path"
+import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env"
-import { parse } from "path"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
