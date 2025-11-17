@@ -415,9 +415,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
       const baseDelta = event.scroll?.delta ?? 0
       const now = Date.now()
       const multiplier = this.scrollAccel.tick(now)
-
-      // Apply multiplier and accumulate fractional amounts
-      // This is important for multipliers < 1 (slowdown)
       const scrollAmount = baseDelta * multiplier
 
       if (dir === "up") {
