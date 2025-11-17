@@ -28,7 +28,7 @@ process.stdin.on("data", (data: Buffer) => {
     shift: parsed?.shift,
     option: parsed?.option,
     number: parsed?.number,
-    sequence: JSON.stringify(parsed?.sequence),
+    sequence: parsed?.sequence,
     code: parsed?.code,
     buffer: data,
   })

@@ -1525,3 +1525,60 @@ test("parseKeypress - modifyOtherKeys modified tab, space, and backspace keys", 
   expect(ctrlBackspace8.name).toBe("backspace")
   expect(ctrlBackspace8.ctrl).toBe(true)
 })
+
+test("parseKeypress - meta+arrow keys with uppercase F and B (old style)", () => {
+  // Some terminals send ESC followed by uppercase F/B for meta+arrow keys
+  // ONLY uppercase F and B map to arrow keys (not P/N which require actual shift)
+  // Lowercase f/b are just regular meta+letter combinations
+
+  // Meta+Right (uppercase F)
+  const metaRight = parseKeypress("\u001BF")!
+  expect(metaRight.name).toBe("right")
+  expect(metaRight.meta).toBe(true)
+  expect(metaRight.shift).toBe(false)
+  expect(metaRight.ctrl).toBe(false)
+  expect(metaRight.option).toBe(false)
+  expect(metaRight.sequence).toBe("\u001BF")
+  expect(metaRight.raw).toBe("\u001BF")
+
+  // Meta+Left (uppercase B)
+  const metaLeft = parseKeypress("\u001BB")!
+  expect(metaLeft.name).toBe("left")
+  expect(metaLeft.meta).toBe(true)
+  expect(metaLeft.shift).toBe(false)
+  expect(metaLeft.ctrl).toBe(false)
+  expect(metaLeft.option).toBe(false)
+  expect(metaLeft.sequence).toBe("\u001BB")
+  expect(metaLeft.raw).toBe("\u001BB")
+
+  // Uppercase P should be meta+shift+p (not arrow up)
+  const metaShiftP = parseKeypress("\u001BP")!
+  expect(metaShiftP.name).toBe("P")
+  expect(metaShiftP.meta).toBe(true)
+  expect(metaShiftP.shift).toBe(true)
+  expect(metaShiftP.ctrl).toBe(false)
+  expect(metaShiftP.option).toBe(false)
+
+  // Uppercase N should be meta+shift+n (not arrow down)
+  const metaShiftN = parseKeypress("\u001BN")!
+  expect(metaShiftN.name).toBe("N")
+  expect(metaShiftN.meta).toBe(true)
+  expect(metaShiftN.shift).toBe(true)
+  expect(metaShiftN.ctrl).toBe(false)
+  expect(metaShiftN.option).toBe(false)
+
+  // Lowercase versions should NOT map to arrow keys - they're just meta+letter
+  // Meta+f (lowercase f) should be just meta+f, NOT meta+right
+  const metaF = parseKeypress("\u001Bf")!
+  expect(metaF.name).toBe("f")
+  expect(metaF.meta).toBe(true)
+  expect(metaF.shift).toBe(false)
+  expect(metaF.ctrl).toBe(false)
+
+  // Meta+b (lowercase b) should be just meta+b, NOT meta+left
+  const metaB = parseKeypress("\u001Bb")!
+  expect(metaB.name).toBe("b")
+  expect(metaB.meta).toBe(true)
+  expect(metaB.shift).toBe(false)
+  expect(metaB.ctrl).toBe(false)
+})
