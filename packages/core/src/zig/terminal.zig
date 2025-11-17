@@ -177,38 +177,35 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
 }
 
 pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
-    switch (builtin.os.tag) {
-        .windows => {
-            // Windows-specific defaults for ConPTY
-            self.caps.rgb = true;
-            self.caps.bracketed_paste = true;
-        },
-        else => {
-            self.checkEnvironmentOverrides();
+    if (builtin.os.tag == .windows) {
+        // Windows-specific defaults for ConPTY
+        self.caps.rgb = true;
+        self.caps.bracketed_paste = true;
+    }
+    
+    self.checkEnvironmentOverrides();
 
-            if (!self.state.modify_other_keys and !self.state.kitty_keyboard) {
-                try self.setModifyOtherKeys(tty, true);
-            }
+    if (!self.state.modify_other_keys and !self.state.kitty_keyboard) {
+        try self.setModifyOtherKeys(tty, true);
+    }
 
-            if (self.caps.kitty_keyboard and use_kitty_keyboard) {
-                if (self.state.modify_other_keys) {
-                    try self.setModifyOtherKeys(tty, false);
-                }
-                try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
-            }
+    if (self.caps.kitty_keyboard and use_kitty_keyboard) {
+        if (self.state.modify_other_keys) {
+            try self.setModifyOtherKeys(tty, false);
+        }
+        try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
+    }
 
-            if (self.caps.unicode == .unicode and !self.caps.explicit_width) {
-                try tty.writeAll(ansi.ANSI.unicodeSet);
-            }
+    if (self.caps.unicode == .unicode and !self.caps.explicit_width) {
+        try tty.writeAll(ansi.ANSI.unicodeSet);
+    }
 
-            if (self.caps.bracketed_paste) {
-                try self.setBracketedPaste(tty, true);
-            }
+    if (self.caps.bracketed_paste) {
+        try self.setBracketedPaste(tty, true);
+    }
 
-            if (self.caps.focus_tracking) {
-                try self.setFocusTracking(tty, true);
-            }
-        },
+    if (self.caps.focus_tracking) {
+        try self.setFocusTracking(tty, true);
     }
 }
 
