@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: React - Build and Type Check
+    name: React - Build and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -18,15 +18,25 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
       - name: Install dependencies
         run: bun install
 
       - name: Build core
         run: |
           cd packages/core
-          bun run build:lib --ci
+          bun run build
 
       - name: Build
         run: |
           cd packages/react
           bun run build --ci
+
+      - name: Run tests
+        run: |
+          cd packages/react
+          bun run test

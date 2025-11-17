@@ -34,6 +34,20 @@ NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed 
 bun install @opentui/core
 ```
 
+## Try Examples
+
+You can quickly try out OpenTUI examples without cloning the repository:
+
+**For macOS, Linux, WSL, Git Bash:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sst/opentui/main/packages/core/src/examples/install.sh | sh
+```
+
+**For Windows (PowerShell/CMD):**
+
+Download the latest release directly from [GitHub Releases](https://github.com/sst/opentui/releases/latest)
+
 ## Running Examples (from the repo root)
 
 ### TypeScript Examples

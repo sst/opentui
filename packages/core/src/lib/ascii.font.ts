@@ -1,22 +1,28 @@
 import { OptimizedBuffer } from "../buffer"
-import { RGBA } from "./RGBA"
-import tiny from "./fonts/tiny.json"
+import { parseColor, RGBA, type ColorInput } from "./RGBA"
 import block from "./fonts/block.json"
 import shade from "./fonts/shade.json"
 import slick from "./fonts/slick.json"
+import tiny from "./fonts/tiny.json"
+import huge from "./fonts/huge.json"
+import grid from "./fonts/grid.json"
+import pallet from "./fonts/pallet.json"
 
 /*
  * Renders ASCII fonts to a buffer.
  * Font definitions plugged from cfonts - https://github.com/dominikwilkowski/cfonts
  */
 
-export type ASCIIFontName = "tiny" | "block" | "shade" | "slick"
+export type ASCIIFontName = "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
 
 export const fonts = {
   tiny,
   block,
   shade,
   slick,
+  huge,
+  grid,
+  pallet,
 }
 
 type FontSegment = {
@@ -217,15 +223,15 @@ export function renderFontToFrameBuffer(
     text,
     x = 0,
     y = 0,
-    fg = [RGBA.fromInts(255, 255, 255, 255)],
-    bg = RGBA.fromInts(0, 0, 0, 255),
+    color = [RGBA.fromInts(255, 255, 255, 255)],
+    backgroundColor = RGBA.fromInts(0, 0, 0, 255),
     font = "tiny",
   }: {
     text: string
     x?: number
     y?: number
-    fg?: RGBA | RGBA[]
-    bg?: RGBA
+    color?: ColorInput | ColorInput[]
+    backgroundColor?: ColorInput
     font?: keyof typeof fonts
   },
 ): { width: number; height: number } {
@@ -238,7 +244,7 @@ export function renderFontToFrameBuffer(
     return { width: 0, height: 0 }
   }
 
-  const colors = Array.isArray(fg) ? fg : [fg]
+  const colors = Array.isArray(color) ? color : [color]
 
   if (y < 0 || y + fontDef.lines > height) {
     return { width: 0, height: fontDef.lines }
@@ -294,7 +300,13 @@ export function renderFontToFrameBuffer(
             if (renderX >= 0 && renderX < width) {
               const fontChar = segment.text[charIdx]
               if (fontChar !== " ") {
-                buffer.setCellWithAlphaBlending(renderX, renderY, fontChar, segmentColor, bg)
+                buffer.setCellWithAlphaBlending(
+                  renderX,
+                  renderY,
+                  fontChar,
+                  parseColor(segmentColor),
+                  parseColor(backgroundColor),
+                )
               }
             }
           }

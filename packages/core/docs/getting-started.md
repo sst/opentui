@@ -269,7 +269,7 @@ const title = new ASCIIFontRenderable(renderer, {
   id: "title",
   text: "OPENTUI",
   font: "tiny",
-  fg: RGBA.fromInts(255, 255, 255, 255),
+  color: RGBA.fromInts(255, 255, 255, 255),
   position: "absolute",
   left: 10,
   top: 2,

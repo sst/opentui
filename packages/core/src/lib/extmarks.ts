@@ -4,8 +4,8 @@ import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history"
 
 export interface Extmark {
   id: number
-  start: number
-  end: number
+  start: number // Display-width offset (including newlines), NOT JS string index
+  end: number // Display-width offset (including newlines), NOT JS string index
   virtual: boolean
   styleId?: number
   priority?: number
@@ -14,8 +14,8 @@ export interface Extmark {
 }
 
 export interface ExtmarkOptions {
-  start: number
-  end: number
+  start: number // Display-width offset (including newlines), NOT JS string index
+  end: number // Display-width offset (including newlines), NOT JS string index
   virtual?: boolean
   styleId?: number
   priority?: number
@@ -563,8 +563,11 @@ export class ExtmarksController {
 
     for (const extmark of this.extmarks.values()) {
       if (extmark.styleId !== undefined) {
-        const startWithoutNewlines = this.offsetToCharOffset(extmark.start)
-        const endWithoutNewlines = this.offsetToCharOffset(extmark.end)
+        // extmark.start/end are display-width offsets including newlines (from cursor operations)
+        // addHighlightByCharRange expects display-width offsets excluding newlines
+        // So we need to subtract the number of newlines before each position
+        const startWithoutNewlines = this.offsetExcludingNewlines(extmark.start)
+        const endWithoutNewlines = this.offsetExcludingNewlines(extmark.end)
 
         this.editBuffer.addHighlightByCharRange({
           start: startWithoutNewlines,
@@ -577,17 +580,47 @@ export class ExtmarksController {
     }
   }
 
-  private offsetToCharOffset(offset: number): number {
+  private offsetExcludingNewlines(offset: number): number {
+    // offset is a display-width offset from the start of the buffer (includes newlines)
+    // We need to convert to display-width excluding newlines
+    // This means: subtract 1 for each newline encountered before this offset
     const text = this.editBuffer.getText()
-    let charOffset = 0
+    let displayWidthSoFar = 0
+    let newlineCount = 0
 
-    for (let i = 0; i < offset && i < text.length; i++) {
-      if (text[i] !== "\n") {
-        charOffset++
+    // Walk through the text and calculate display widths
+    let i = 0
+    while (i < text.length && displayWidthSoFar < offset) {
+      if (text[i] === "\n") {
+        displayWidthSoFar++ // newline counts as width 1 in cursor offset
+        newlineCount++
+        i++
+      } else {
+        // Find the next newline or end of string
+        let j = i
+        while (j < text.length && text[j] !== "\n") {
+          j++
+        }
+        const chunk = text.substring(i, j)
+        const chunkWidth = Bun.stringWidth(chunk)
+
+        if (displayWidthSoFar + chunkWidth < offset) {
+          // Entire chunk fits before offset
+          displayWidthSoFar += chunkWidth
+          i = j
+        } else {
+          // Offset is within this chunk - need to find exact position
+          // Walk character by character
+          for (let k = i; k < j && displayWidthSoFar < offset; k++) {
+            const charWidth = Bun.stringWidth(text[k])
+            displayWidthSoFar += charWidth
+          }
+          break
+        }
       }
     }
 
-    return charOffset
+    return offset - newlineCount
   }
 
   public create(options: ExtmarkOptions): number {

@@ -1,46 +1,58 @@
-import type { RenderableOptions } from "../Renderable"
+import {
+  getCharacterPositions,
+  measureText,
+  renderFontToFrameBuffer,
+  type ASCIIFontName,
+  type fonts,
+} from "../lib/ascii.font"
+import { parseColor, type ColorInput } from "../lib/RGBA"
 import {
   ASCIIFontSelectionHelper,
   convertGlobalToLocalSelection,
   Selection,
   type LocalSelectionBounds,
 } from "../lib/selection"
-import {
-  type fonts,
-  measureText,
-  renderFontToFrameBuffer,
-  getCharacterPositions,
-  type ASCIIFontName,
-} from "../lib/ascii.font"
-import { RGBA, parseColor } from "../lib/RGBA"
-import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer"
+import type { RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
+import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer"
 
 export interface ASCIIFontOptions extends Omit<RenderableOptions<ASCIIFontRenderable>, "width" | "height"> {
   text?: string
   font?: ASCIIFontName
-  fg?: RGBA | RGBA[]
-  bg?: RGBA
-  selectionBg?: string | RGBA
-  selectionFg?: string | RGBA
+  color?: ColorInput | ColorInput[]
+  backgroundColor?: ColorInput
+  selectionBg?: ColorInput
+  selectionFg?: ColorInput
   selectable?: boolean
 }
 
 export class ASCIIFontRenderable extends FrameBufferRenderable {
   public selectable: boolean = true
-  private _text: string
-  private _font: keyof typeof fonts
-  private _fg: RGBA[]
-  private _bg: RGBA
-  private _selectionBg: RGBA | undefined
-  private _selectionFg: RGBA | undefined
-  private lastLocalSelection: LocalSelectionBounds | null = null
+
+  protected static readonly _defaultOptions = {
+    text: "",
+    font: "tiny",
+    color: "#FFFFFF",
+    backgroundColor: "transparent",
+    selectionBg: undefined,
+    selectionFg: undefined,
+    selectable: true,
+  } satisfies Partial<ASCIIFontOptions>
+
+  protected _text: string
+  protected _font: keyof typeof fonts
+  protected _color: ColorInput | ColorInput[]
+  protected _backgroundColor: ColorInput
+  protected _selectionBg: ColorInput | undefined
+  protected _selectionFg: ColorInput | undefined
+  protected lastLocalSelection: LocalSelectionBounds | null = null
 
   private selectionHelper: ASCIIFontSelectionHelper
 
   constructor(ctx: RenderContext, options: ASCIIFontOptions) {
-    const font = options.font || "tiny"
-    const text = options.text || ""
+    const defaultOptions = ASCIIFontRenderable._defaultOptions
+    const font = options.font || defaultOptions.font
+    const text = options.text || defaultOptions.text
     const measurements = measureText({ text: text, font })
 
     super(ctx, {
@@ -53,8 +65,8 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
 
     this._text = text
     this._font = font
-    this._fg = Array.isArray(options.fg) ? options.fg : [options.fg || RGBA.fromInts(255, 255, 255, 255)]
-    this._bg = options.bg || RGBA.fromValues(0, 0, 0, 0)
+    this._color = options.color || defaultOptions.color
+    this._backgroundColor = options.backgroundColor || defaultOptions.backgroundColor
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
     this.selectable = options.selectable ?? true
@@ -99,27 +111,22 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
     this.requestRender()
   }
 
-  get fg(): RGBA[] {
-    return this._fg
+  get color(): ColorInput | ColorInput[] {
+    return this._color
   }
 
-  set fg(value: RGBA | RGBA[] | string | string[]) {
-    if (Array.isArray(value)) {
-      this._fg = value.map((color) => (typeof color === "string" ? parseColor(color) : color))
-    } else {
-      this._fg = [typeof value === "string" ? parseColor(value) : value]
-    }
-
+  set color(value: ColorInput | ColorInput[]) {
+    this._color = value
     this.renderFontToBuffer()
     this.requestRender()
   }
 
-  get bg(): RGBA {
-    return this._bg
+  get backgroundColor(): ColorInput {
+    return this._backgroundColor
   }
 
-  set bg(value: RGBA | string) {
-    this._bg = typeof value === "string" ? parseColor(value) : value
+  set backgroundColor(value: ColorInput) {
+    this._backgroundColor = value
     this.renderFontToBuffer()
     this.requestRender()
   }
@@ -164,14 +171,14 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
 
   private renderFontToBuffer(): void {
     if (this.isDestroyed) return
-    this.frameBuffer.clear(this._bg)
+    this.frameBuffer.clear(parseColor(this._backgroundColor))
 
     renderFontToFrameBuffer(this.frameBuffer, {
       text: this._text,
       x: 0,
       y: 0,
-      fg: this._fg,
-      bg: this._bg,
+      color: this.color,
+      backgroundColor: this._backgroundColor,
       font: this._font,
     })
 
@@ -195,7 +202,7 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
         : measureText({ text: this._text, font: this._font }).width
 
     if (this._selectionBg) {
-      this.frameBuffer.fillRect(startX, 0, endX - startX, this.height, this._selectionBg)
+      this.frameBuffer.fillRect(startX, 0, endX - startX, this.height, parseColor(this._selectionBg))
     }
 
     if (this._selectionFg || this._selectionBg) {
@@ -203,8 +210,8 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
         text: selectedText,
         x: startX,
         y: 0,
-        fg: this._selectionFg ? [this._selectionFg] : this._fg,
-        bg: this._selectionBg || this._bg,
+        color: this._selectionFg ? this._selectionFg : this._color,
+        backgroundColor: this._selectionBg ? this._selectionBg : this._backgroundColor,
         font: this._font,
       })
     }

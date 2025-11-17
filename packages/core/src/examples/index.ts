@@ -13,7 +13,8 @@ import {
   type KeyEvent,
   ASCIIFontRenderable,
 } from "../index"
-import { renderFontToFrameBuffer, measureText } from "../lib/ascii.font"
+import { measureText } from "../lib/ascii.font"
+import * as goldenStarDemo from "./golden-star-demo"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
 import * as framebufferExample from "./framebuffer-demo"
@@ -63,6 +64,12 @@ interface Example {
 }
 
 const examples: Example[] = [
+  {
+    name: "Golden Star Demo",
+    description: "3D golden star with particle effects and animated text celebrating 5000 stars",
+    run: goldenStarDemo.run,
+    destroy: goldenStarDemo.destroy,
+  },
   {
     name: "Mouse Interaction Demo",
     description: "Interactive mouse trails and clickable cells demonstration",
@@ -333,8 +340,8 @@ class ExampleSelector {
       margin: 1,
       text: titleText,
       font: titleFont,
-      fg: RGBA.fromInts(255, 255, 255, 255),
-      bg: RGBA.fromInts(0, 17, 34, 255),
+      color: RGBA.fromInts(240, 248, 255, 255),
+      backgroundColor: RGBA.fromInts(15, 23, 42, 255),
     })
     this.renderer.root.add(this.title)
   }
@@ -351,7 +358,7 @@ class ExampleSelector {
       marginRight: 2,
       content:
         "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
-      fg: "#AAAAAA",
+      fg: "#94A3B8",
     })
     this.renderer.root.add(this.instructions)
   }
@@ -368,12 +375,12 @@ class ExampleSelector {
       margin: 1,
       flexGrow: 1,
       borderStyle: "single",
-      borderColor: "#FFFFFF",
-      focusedBorderColor: "#00AAFF",
+      borderColor: "#475569",
+      focusedBorderColor: "#60A5FA",
       title: "Examples",
       titleAlignment: "center",
       backgroundColor: "transparent",
-      shouldFill: false,
+      shouldFill: true,
       border: true,
     })
 
@@ -381,12 +388,13 @@ class ExampleSelector {
       id: "example-selector",
       height: "100%",
       options: selectOptions,
-      backgroundColor: "#001122",
-      selectedBackgroundColor: "#334455",
-      textColor: "#FFFFFF",
-      selectedTextColor: "#FFFF00",
-      descriptionColor: "#888888",
-      selectedDescriptionColor: "#CCCCCC",
+      backgroundColor: "transparent",
+      focusedBackgroundColor: "transparent",
+      selectedBackgroundColor: "#1E3A5F",
+      textColor: "#E2E8F0",
+      selectedTextColor: "#38BDF8",
+      descriptionColor: "#64748B",
+      selectedDescriptionColor: "#94A3B8",
       showScrollIndicator: true,
       wrapSelection: true,
       showDescription: true,
@@ -500,7 +508,7 @@ class ExampleSelector {
     this.renderer.pause()
     this.renderer.auto()
     this.showMenuElements()
-    this.renderer.setBackgroundColor("#001122")
+    this.renderer.setBackgroundColor("transparent")
     this.renderer.requestRender()
   }
 
@@ -521,5 +529,5 @@ const renderer = await createCliRenderer({
   // useAlternateScreen: false,
 })
 
-renderer.setBackgroundColor("#001122")
+renderer.setBackgroundColor("transparent")
 new ExampleSelector(renderer)

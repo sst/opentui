@@ -6,6 +6,8 @@ import { createMockMouse } from "./mock-mouse"
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
   height?: number
+  kittyKeyboard?: boolean
+  otherModifiersMode?: boolean
 }
 export interface TestRenderer extends CliRenderer {}
 export type MockInput = ReturnType<typeof createMockKeys>
@@ -30,7 +32,10 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 
   renderer.disableStdoutInterception()
 
-  const mockInput = createMockKeys(renderer)
+  const mockInput = createMockKeys(renderer, {
+    kittyKeyboard: options.kittyKeyboard,
+    otherModifiersMode: options.otherModifiersMode,
+  })
   const mockMouse = createMockMouse(renderer)
 
   const renderOnce = async () => {
@@ -79,6 +84,8 @@ async function setupTestRenderer(config: TestRendererOptions) {
   ziglib.setUseThread(rendererPtr, config.useThread)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
+
+  process.off("SIGWINCH", renderer["sigwinchHandler"])
 
   // Do not setup the terminal for testing as we will not actualy output anything to the terminal
   // await renderer.setupTerminal()

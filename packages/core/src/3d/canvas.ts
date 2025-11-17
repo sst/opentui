@@ -36,6 +36,7 @@ export class CLICanvas {
   private updateScheduled: boolean = false
   private screenshotGPUBuffer: GPUBuffer | null = null
   private superSampleAlgorithm: SuperSampleAlgorithm = SuperSampleAlgorithm.STANDARD
+  private destroyed: boolean = false
 
   constructor(
     device: GPUDevice,
@@ -50,6 +51,10 @@ export class CLICanvas {
     this.superSample = superSample
     this.gpuCanvasContext = new GPUCanvasContextMock(this as unknown as HTMLCanvasElement, width, height)
     this.superSampleAlgorithm = sampleAlgo
+  }
+
+  public destroy(): void {
+    this.destroyed = true
   }
 
   public setSuperSampleAlgorithm(superSampleAlgorithm: SuperSampleAlgorithm): void {
@@ -268,6 +273,10 @@ export class CLICanvas {
   }
 
   private async runComputeShaderSuperSampling(texture: GPUTexture, buffer: OptimizedBuffer): Promise<void> {
+    if (this.destroyed) {
+      return
+    }
+
     if (this.updateScheduled) {
       this.updateScheduled = false
       await this.device.queue.onSubmittedWorkDone()
@@ -327,6 +336,11 @@ export class CLICanvas {
 
     await this.computeReadbackBuffer!.mapAsync(GPUMapMode.READ)
 
+    if (this.destroyed) {
+      this.computeReadbackBuffer!.unmap()
+      return
+    }
+
     const resultsPtr = this.computeReadbackBuffer!.getMappedRangePtr()
     const size = this.computeReadbackBuffer!.size
 
@@ -355,6 +369,10 @@ export class CLICanvas {
   }
 
   async readPixelsIntoBuffer(buffer: OptimizedBuffer): Promise<void> {
+    if (this.destroyed) {
+      return
+    }
+
     const texture = this.gpuCanvasContext.getCurrentTexture()
     this.gpuCanvasContext.switchTextures()
 
@@ -389,6 +407,11 @@ export class CLICanvas {
       const mapStart = performance.now()
       await textureBuffer.mapAsync(GPUMapMode.READ, 0, textureBuffer.size)
       this.mapAsyncTimeMs = performance.now() - mapStart
+
+      if (this.destroyed) {
+        textureBuffer.unmap()
+        return
+      }
 
       const mappedRangePtr = textureBuffer.getMappedRangePtr(0, textureBuffer.size)
       const bufPtr = mappedRangePtr

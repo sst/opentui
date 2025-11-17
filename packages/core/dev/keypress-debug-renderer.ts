@@ -21,7 +21,7 @@ let renderer: CliRenderer | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let eventCount = 0
 
-function addEvent(eventType: string, event: any) {
+function addEvent(eventType: string, event: object) {
   if (!renderer || !scrollBox || !syntaxStyle) return
 
   eventCount++
@@ -52,7 +52,6 @@ function addEvent(eventType: string, event: any) {
   eventBox.add(codeDisplay)
   scrollBox.add(eventBox)
 
-  // Keep only last 50 events to prevent memory issues
   const children = scrollBox.getChildren()
   if (children.length > 50) {
     const oldest = children[0]
@@ -64,10 +63,20 @@ function addEvent(eventType: string, event: any) {
 }
 
 async function main() {
+  const usePrepend = process.argv.includes("--prepend")
+  const prependInputHandlers = usePrepend
+    ? [
+        (sequence: string) => {
+          addEvent("raw-input-before", { sequence })
+          return false
+        },
+      ]
+    : []
   renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 60,
     useKittyKeyboard: true,
+    prependInputHandlers,
   })
 
   renderer.setBackgroundColor("#0D1117")
@@ -86,7 +95,7 @@ async function main() {
     stickyStart: "bottom",
     border: true,
     borderColor: "#6BCF7F",
-    title: "Keypress Debug (Ctrl+C to exit)",
+    title: `Keypress Debug${usePrepend ? " (prepend mode)" : ""} (Ctrl+C to exit)`,
     titleAlignment: "center",
     contentOptions: {
       paddingLeft: 1,
@@ -107,9 +116,19 @@ async function main() {
 
   addEvent("capabilities", renderer.capabilities)
 
-  // Listen to key events
+  renderer.addInputHandler((sequence) => {
+    addEvent("raw-input-after", { sequence })
+    return true
+  })
+
   renderer.keyInput.on("keypress", (event) => {
     addEvent("keypress", event)
+
+    if (event.name === "c" && event.shift) {
+      if (renderer) {
+        addEvent("capabilities", renderer.capabilities)
+      }
+    }
   })
 
   renderer.keyInput.on("keyrelease", (event) => {

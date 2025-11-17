@@ -95,6 +95,20 @@ if (!reconcilerBuildResult.success) {
   process.exit(1)
 }
 
+console.log("Building test-utils entry point...")
+const testingBuildResult = await Bun.build({
+  entrypoints: [join(rootDir, "src/test-utils.ts")],
+  target: "bun",
+  outdir: join(rootDir, "dist/src/test-utils"),
+  external: externalDeps,
+  splitting: true,
+})
+
+if (!testingBuildResult.success) {
+  console.error("Build failed for test-utils entry point:", testingBuildResult.logs)
+  process.exit(1)
+}
+
 console.log("Generating TypeScript declarations...")
 
 const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
@@ -145,6 +159,11 @@ const exports = {
     types: "./src/reconciler/renderer.d.ts",
     import: "./src/reconciler/renderer.js",
     require: "./src/reconciler/renderer.js",
+  },
+  "./test-utils": {
+    types: "./src/test-utils.d.ts",
+    import: "./src/test-utils/test-utils.js",
+    require: "./src/test-utils/test-utils.js",
   },
   "./jsx-runtime": {
     types: "./jsx-runtime.d.ts",

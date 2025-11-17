@@ -1939,3 +1939,442 @@ test "addHighlightByCharRange - extmarks demo scenario reproduction" {
     try std.testing.expect(line4_highlights[0].col_end == 44);
     try std.testing.expect(line4_highlights[0].col_end < line4_text.len);
 }
+
+// ===== TextBuffer.append() Tests =====
+
+test "TextBuffer append - to empty buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.append("Hello");
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 5), tb.getLength());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
+}
+
+test "TextBuffer append - to non-empty buffer, no newline" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello");
+    try tb.append(" World");
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+    try std.testing.expectEqual(@as(u32, 11), tb.getLength());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
+}
+
+test "TextBuffer append - creating new line with LF" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello");
+    try tb.append("\nWorld");
+
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello\nWorld", out_buffer[0..written]);
+}
+
+test "TextBuffer append - multiple lines with various endings" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("A\nB");
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+
+    try tb.append("\nC\nD\n");
+
+    try std.testing.expectEqual(@as(u32, 5), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("A\nB\nC\nD\n", out_buffer[0..written]);
+}
+
+test "TextBuffer append - CRLF line endings" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.append("Line1\r\nLine2\r\nLine3");
+
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    // CRLF should be normalized to LF
+    try std.testing.expectEqualStrings("Line1\nLine2\nLine3", out_buffer[0..written]);
+}
+
+test "TextBuffer append - mixed line endings" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Unix\n");
+    try tb.append("Windows\r\nOldMac\rEnd");
+
+    try std.testing.expectEqual(@as(u32, 4), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Unix\nWindows\nOldMac\nEnd", out_buffer[0..written]);
+}
+
+test "TextBuffer append - empty string is no-op" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello");
+    const initial_length = tb.getLength();
+    const initial_line_count = tb.getLineCount();
+
+    try tb.append("");
+
+    try std.testing.expectEqual(initial_length, tb.getLength());
+    try std.testing.expectEqual(initial_line_count, tb.getLineCount());
+}
+
+test "TextBuffer append - unicode content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Hello ");
+    try tb.append("世界 🌟");
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Hello 世界 🌟", out_buffer[0..written]);
+}
+
+test "TextBuffer append - streaming/chunked append vs ground truth" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Append in chunks
+    try tb.append("First");
+    try tb.append("\nLine2");
+    try tb.append("\n");
+    try tb.append("Line3");
+    try tb.append(" end");
+
+    // Build expected ground truth
+    var expected = std.ArrayList(u8).init(std.testing.allocator);
+    defer expected.deinit();
+    try expected.appendSlice("First");
+    try expected.appendSlice("\nLine2");
+    try expected.appendSlice("\n");
+    try expected.appendSlice("Line3");
+    try expected.appendSlice(" end");
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings(expected.items, out_buffer[0..written]);
+
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
+}
+
+test "TextBuffer append - large streaming append" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    // Simulate streaming large content
+    var i: u32 = 0;
+    while (i < 100) : (i += 1) {
+        var buf: [32]u8 = undefined;
+        const line = try std.fmt.bufPrint(&buf, "Line {}\n", .{i});
+        try tb.append(line);
+    }
+
+    try std.testing.expectEqual(@as(u32, 101), tb.getLineCount()); // 100 lines + empty final line
+
+    // Verify first and last lines can be extracted correctly
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
+    try std.testing.expect(iter_mod.coordsToOffset(&tb.rope, 99, 0).? > 0);
+}
+
+test "TextBuffer appendFromMemId - basic functionality" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Alpha\nBeta";
+    const mem_id = try tb.registerMemBuffer(text, false);
+
+    try tb.appendFromMemId(mem_id);
+
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Alpha\nBeta", out_buffer[0..written]);
+}
+
+test "TextBuffer appendFromMemId - append to existing content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const text = "Gamma";
+    const mem_id = try tb.registerMemBuffer(text, false);
+
+    try tb.setText("Alpha\nBeta");
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+
+    try tb.appendFromMemId(mem_id);
+
+    try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Alpha\nBetaGamma", out_buffer[0..written]);
+}
+
+test "TextBuffer appendFromMemId - invalid mem_id" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const result = tb.appendFromMemId(99);
+    try std.testing.expectError(text_buffer.TextBufferError.InvalidMemId, result);
+}
+
+test "TextBuffer append - marker invariants maintained" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.append("Line1\n");
+    try tb.append("Line2\n");
+    try tb.append("Line3");
+
+    const line_count = tb.getLineCount();
+    try std.testing.expectEqual(@as(u32, 3), line_count);
+
+    // Verify marker counts
+    const linestart_count = tb.rope.markerCount(.linestart);
+    try std.testing.expectEqual(line_count, linestart_count);
+
+    const break_count = tb.rope.markerCount(.brk);
+    try std.testing.expectEqual(@as(u32, 2), break_count); // 2 newlines
+}
+
+test "TextBuffer append - memory registry preserved" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const preserved_text = "Preserved";
+    const preserved_id = try tb.registerMemBuffer(preserved_text, false);
+
+    try tb.append("First\n");
+    try tb.append("Second\n");
+    try tb.append("Third");
+
+    // Preserved buffer should still be accessible
+    const retrieved = tb.getMemBuffer(preserved_id);
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings(preserved_text, retrieved.?);
+}
+
+test "TextBuffer append - views marked dirty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    const view_id = try tb.registerView();
+    defer tb.unregisterView(view_id);
+
+    tb.clearViewDirty(view_id);
+    try std.testing.expect(!tb.isViewDirty(view_id));
+
+    try tb.append("New content");
+
+    try std.testing.expect(tb.isViewDirty(view_id));
+}
+
+test "TextBuffer append - append after clear" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Initial content");
+    tb.clear();
+
+    try tb.append("After clear");
+
+    try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("After clear", out_buffer[0..written]);
+}
+
+test "TextBuffer append - consecutive empty line handling" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("Line1\n");
+    try tb.append("\n");
+    try tb.append("Line3");
+
+    try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
+
+    var out_buffer: [100]u8 = undefined;
+    const written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Line1\n\nLine3", out_buffer[0..written]);
+}
+
+test "TextBuffer append - mixed append and setText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    try tb.setText("First");
+    try tb.append(" appended");
+
+    var out_buffer: [100]u8 = undefined;
+    var written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("First appended", out_buffer[0..written]);
+
+    try tb.setText("Reset");
+    try tb.append(" again");
+
+    written = tb.getPlainTextIntoBuffer(&out_buffer);
+    try std.testing.expectEqualStrings("Reset again", out_buffer[0..written]);
+}

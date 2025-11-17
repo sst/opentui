@@ -22,6 +22,7 @@ const buffer_tests = @import("tests/buffer_test.zig");
 const segment_merge_tests = @import("tests/segment-merge.test.zig");
 const word_wrap_editing_tests = @import("tests/word-wrap-editing_test.zig");
 const renderer_tests = @import("tests/renderer_test.zig");
+const terminal_tests = @import("tests/terminal_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -48,5 +49,6 @@ comptime {
     _ = segment_merge_tests;
     _ = word_wrap_editing_tests;
     _ = renderer_tests;
+    _ = terminal_tests;
     // _ = example_tests;
 }
