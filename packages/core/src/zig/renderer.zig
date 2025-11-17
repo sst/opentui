@@ -5,6 +5,7 @@ const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
+const builtin = @import("builtin");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
@@ -37,6 +38,32 @@ pub const DebugOverlayCorner = enum {
     topRight,
     bottomLeft,
     bottomRight,
+};
+
+const StdoutWriter = union(enum) {
+    real: std.io.BufferedWriter(4096, std.fs.File.Writer),
+    null: void,
+
+    pub fn writer(self: *StdoutWriter) Writer {
+        return .{ .context = self };
+    }
+
+    pub fn flush(self: *StdoutWriter) !void {
+        switch (self.*) {
+            .real => |*w| try w.flush(),
+            .null => {},
+        }
+    }
+
+    const WriteError = std.fs.File.WriteError;
+    const Writer = std.io.Writer(*StdoutWriter, WriteError, write);
+
+    fn write(self: *StdoutWriter, data: []const u8) WriteError!usize {
+        switch (self.*) {
+            .real => |*w| return w.writer().write(data),
+            .null => return data.len,
+        }
+    }
 };
 
 pub const CliRenderer = struct {
@@ -80,7 +107,7 @@ pub const CliRenderer = struct {
     lastRenderTime: i64,
     allocator: Allocator,
     renderThread: ?std.Thread = null,
-    stdoutWriter: std.io.BufferedWriter(4096, std.fs.File.Writer),
+    stdoutWriter: StdoutWriter,
     debugOverlay: struct {
         enabled: bool,
         corner: DebugOverlayCorner,
@@ -141,17 +168,9 @@ pub const CliRenderer = struct {
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" }, graphemes_data, display_width);
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" }, graphemes_data, display_width);
 
-        const stdoutWriter = if (testing) blk: {
-            // In testing mode, use /dev/null to discard output
-            const devnull = std.fs.openFileAbsolute("/dev/null", .{ .mode = .write_only }) catch {
-                // Fallback to stdout if /dev/null can't be opened
-                logger.warn("Failed to open /dev/null, falling back to stdout\n", .{});
-                break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = std.io.getStdOut().writer() };
-            };
-            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = devnull.writer() };
-        } else blk: {
+        const stdoutWriter: StdoutWriter = if (testing) .{ .null = {} } else blk: {
             const stdout = std.io.getStdOut();
-            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };
+            break :blk .{ .real = std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() } };
         };
 
         // stat sample arrays
