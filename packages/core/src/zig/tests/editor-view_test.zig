@@ -3136,8 +3136,8 @@ test "EditorView - word wrapping during editing: typing with incremental wrappin
             // First vline should be "Hello world " with width 12
             try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
 
-            // Second vline should have all the d's
-            const expected_d_count: u32 = @intCast(j + 1); // dd -> dddddd (2 -> 6 d's)
+            // Second vline should have all the d's (the original "dd" plus newly typed d's)
+            const expected_d_count: u32 = @as(u32, 2) + @as(u32, @intCast(j + 1)); // dd + newly typed d's
             try std.testing.expectEqual(expected_d_count, vlines[1].width);
         }
     }

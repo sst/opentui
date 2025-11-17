@@ -425,14 +425,50 @@ pub const UnifiedTextBufferView = struct {
                                 if (to_add == 0) to_add = 1; // Force at least one grapheme
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 // Doesn't fit and we have a previous wrap point, rollback and wrap
-                                // Get the chunks that need to move to the next line (they're already in order)
-                                const chunks_slice = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
-                                const chunks_to_move_count = chunks_slice.len;
+
+                                // Check if the last chunk before wrap extends past the wrap boundary
+                                var accumulated_width: u32 = 0;
+                                for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
+                                    accumulated_width += vchunk.width;
+                                }
+
+                                // Calculate how many chunks to move, potentially including a split chunk
+                                const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
+                                var chunks_to_move_count = chunks_after_wrap.len;
+                                var split_chunk: ?VirtualChunk = null;
+
+                                // If the last kept chunk extends past the wrap boundary, we need to split it
+                                if (accumulated_width > wctx.last_wrap_line_position) {
+                                    const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
+                                    const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
+                                    const overhang = accumulated_width - wctx.last_wrap_line_position;
+
+                                    // Create the part that goes on the next line
+                                    split_chunk = VirtualChunk{
+                                        .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
+                                        .width = overhang,
+                                        .chunk = last_chunk.chunk,
+                                    };
+
+                                    // Reduce the last chunk's width to fit the wrap boundary
+                                    wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
+
+                                    chunks_to_move_count += 1; // One extra for the split chunk
+                                }
 
                                 // Allocate space in arena for the chunks we need to preserve (single allocation in arena, no growing)
                                 const saved_chunks_result = wctx.virtual_allocator.alloc(VirtualChunk, chunks_to_move_count);
                                 if (saved_chunks_result) |saved_chunks| {
-                                    @memcpy(saved_chunks, chunks_slice);
+                                    var saved_idx: usize = 0;
+
+                                    // Add split chunk first if it exists
+                                    if (split_chunk) |sc| {
+                                        saved_chunks[saved_idx] = sc;
+                                        saved_idx += 1;
+                                    }
+
+                                    // Copy chunks after the wrap point
+                                    @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
 
                                     wctx.line_position = wctx.last_wrap_line_position;
                                     wctx.global_char_offset = wctx.last_wrap_global_offset;
