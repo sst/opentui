@@ -200,15 +200,16 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
             if (self.caps.unicode == .unicode and !self.caps.explicit_width) {
                 try tty.writeAll(ansi.ANSI.unicodeSet);
             }
-
-            if (self.caps.bracketed_paste) {
-                try self.setBracketedPaste(tty, true);
-            }
-
-            if (self.caps.focus_tracking) {
-                try self.setFocusTracking(tty, true);
-            }
         },
+    }
+
+    // Enable features if supported (common to all platforms)
+    if (self.caps.bracketed_paste) {
+        try self.setBracketedPaste(tty, true);
+    }
+
+    if (self.caps.focus_tracking) {
+        try self.setFocusTracking(tty, true);
     }
 }
 
