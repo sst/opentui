@@ -183,6 +183,140 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
 
     expect(rapidScrollDistance).toBeGreaterThan(slowScrollDistance * 3)
   })
+
+  test("minMultiplier < 1 slows down scroll distance", async () => {
+    // Test with slowdown
+    const slowdownBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new MacOSScrollAccel({ minMultiplier: 0.5 }),
+    })
+    for (let i = 0; i < 200; i++) slowdownBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(slowdownBox)
+    await renderOnce()
+
+    // Do multiple scrolls to accumulate enough to see movement
+    for (let i = 0; i < 5; i++) {
+      await mockMouse.scroll(25, 10, "down")
+      await renderOnce()
+    }
+    const slowdownDistance = slowdownBox.scrollTop
+
+    testRenderer.destroy()
+    ;({
+      renderer: testRenderer,
+      mockMouse,
+      renderOnce,
+      captureCharFrame,
+    } = await createTestRenderer({
+      width: 80,
+      height: 24,
+    }))
+
+    // Compare with linear (no slowdown)
+    const linearBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new LinearScrollAccel(),
+    })
+    for (let i = 0; i < 200; i++) linearBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(linearBox)
+    await renderOnce()
+
+    for (let i = 0; i < 5; i++) {
+      await mockMouse.scroll(25, 10, "down")
+      await renderOnce()
+    }
+    const linearDistance = linearBox.scrollTop
+
+    expect(slowdownDistance).toBeLessThan(linearDistance)
+    expect(slowdownDistance).toBeGreaterThan(0)
+  })
+
+  test("minMultiplier accumulates fractional scroll amounts", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new MacOSScrollAccel({ minMultiplier: 0.3 }),
+    })
+    for (let i = 0; i < 200; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    // With minMultiplier of 0.3, each scroll event should contribute 0.3 of base delta
+    // It should take ~4 scroll events to accumulate enough to scroll 1 full unit (assuming baseDelta = 1)
+    let scrolled = false
+    for (let i = 0; i < 5; i++) {
+      await mockMouse.scroll(25, 10, "down")
+      await renderOnce()
+      if (scrollBox.scrollTop > 0) {
+        scrolled = true
+        break
+      }
+    }
+
+    expect(scrolled).toBe(true)
+    expect(scrollBox.scrollTop).toBeGreaterThan(0)
+  })
+
+  test("horizontal scroll with minMultiplier < 1 works correctly", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollX: true,
+      scrollAcceleration: new MacOSScrollAccel({ minMultiplier: 0.4 }),
+    })
+
+    const wideBox = new BoxRenderable(testRenderer, { width: 300, height: 10 })
+    scrollBox.add(wideBox)
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    await mockMouse.scroll(25, 10, "right")
+    await renderOnce()
+
+    // Should eventually scroll after multiple events due to accumulation
+    let scrolled = false
+    for (let i = 0; i < 5; i++) {
+      await mockMouse.scroll(25, 10, "right")
+      await renderOnce()
+      if (scrollBox.scrollLeft > 0) {
+        scrolled = true
+        break
+      }
+    }
+
+    expect(scrolled).toBe(true)
+  })
+
+  test("combined minMultiplier and maxMultiplier work together", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      scrollAcceleration: new MacOSScrollAccel({ minMultiplier: 0.3, maxMultiplier: 6, A: 0.8, tau: 3 }),
+    })
+    for (let i = 0; i < 200; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    // Single slow scroll should use minMultiplier
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    const slowScrollDistance = scrollBox.scrollTop
+
+    scrollBox.scrollTop = 0
+
+    // Rapid scrolling should still accelerate
+    for (let i = 0; i < 5; i++) {
+      await mockMouse.scroll(25, 10, "down")
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    await renderOnce()
+    const rapidScrollDistance = scrollBox.scrollTop
+
+    // Rapid should be significantly faster even with minMultiplier enabled
+    expect(rapidScrollDistance).toBeGreaterThan(slowScrollDistance * 2)
+  })
 })
 
 describe("ScrollBoxRenderable - Content Visibility", () => {
