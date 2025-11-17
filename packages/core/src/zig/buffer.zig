@@ -1005,17 +1005,20 @@ pub const OptimizedBuffer = struct {
                 var byte_offset: u32 = 0;
 
                 if (vchunk.grapheme_start > 0) {
+                    // Use UTF-8 aware position finding to skip to the grapheme_start
+                    const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
+                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false);
+                    byte_offset = pos_result.byte_offset;
+
+                    // Advance special_idx to match the skipped columns
                     var init_col: u32 = 0;
-                    while (init_col < vchunk.grapheme_start) {
-                        const at_init_special = special_idx < specials.len and specials[special_idx].col_offset == init_col;
-                        if (at_init_special) {
-                            const g = specials[special_idx];
-                            byte_offset = g.byte_offset + g.byte_len;
-                            init_col += g.width;
+                    while (init_col < vchunk.grapheme_start and special_idx < specials.len) {
+                        const g = specials[special_idx];
+                        if (g.col_offset < vchunk.grapheme_start) {
                             special_idx += 1;
+                            init_col = g.col_offset + g.width;
                         } else {
-                            byte_offset += 1;
-                            init_col += 1;
+                            break;
                         }
                     }
                 }
@@ -1034,9 +1037,12 @@ pub const OptimizedBuffer = struct {
                         special_idx += 1;
                     } else {
                         if (byte_offset >= chunk_bytes.len) break;
-                        grapheme_bytes = chunk_bytes[byte_offset .. byte_offset + 1];
-                        g_width = 1;
-                        byte_offset += 1;
+                        // Read the next UTF-8 grapheme properly
+                        const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
+                        const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
+                        grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
+                        g_width = 1; // Assuming width 1 for non-special characters (ASCII mostly)
+                        byte_offset = next_byte_offset;
                     }
 
                     if (column_in_line < horizontal_offset) {

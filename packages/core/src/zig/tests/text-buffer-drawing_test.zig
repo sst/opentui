@@ -2467,3 +2467,117 @@ test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
     try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
     try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
 }
+
+test "drawTextBuffer - word wrap CJK mixed text without break points" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("한글,English,中文,日本語,混合,Test,測試,テスト,가나다,ABC,一二三,あいう,라마바,DEF,四五六,えおか");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        30,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var out_buffer: [1000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    const vlines = view.getVirtualLines();
+    try std.testing.expect(vlines.len > 1);
+
+    var y: u32 = 0;
+    while (y < vlines.len) : (y += 1) {
+        const first_cell = opt_buffer.get(0, y);
+        if (first_cell) |cell| {
+            try std.testing.expect(!gp.isContinuationChar(cell.char));
+        }
+    }
+
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+}
+
+test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("한글,English,中文,日本語,混合,Test,測試,テスト,가나다,ABC,一二三,あいう,라마바,DEF,四五六,えおか");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        30,
+        20,
+        .{ .pool = pool, .width_method = .unicode },
+        graphemes_ptr,
+        display_width_ptr,
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var out_buffer: [1000]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+    try std.testing.expect(std.mem.indexOf(u8, result, "ä") == null);
+
+    var i: usize = 0;
+    while (i < result.len) : (i += 1) {
+        if (result[i] == 0xE4) {
+            if (i + 1 >= result.len) {
+                return error.TestFailed;
+            }
+            const next_byte = result[i + 1];
+            if (next_byte < 0x80 or next_byte > 0xBF) {
+                return error.TestFailed;
+            }
+        }
+    }
+
+    const vlines = view.getVirtualLines();
+    var y: u32 = 0;
+    while (y < vlines.len) : (y += 1) {
+        const first_cell = opt_buffer.get(0, y);
+        if (first_cell) |cell| {
+            try std.testing.expect(!gp.isContinuationChar(cell.char));
+        }
+    }
+}
