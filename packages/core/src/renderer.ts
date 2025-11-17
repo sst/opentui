@@ -1664,7 +1664,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       )
 
       for (const renderable of this.currentSelection.touchedRenderables) {
-        if (!touchedRenderables.includes(renderable)) {
+        if (!touchedRenderables.includes(renderable) && !renderable.isDestroyed) {
           renderable.onSelectionChanged(null)
         }
       }
