@@ -212,6 +212,8 @@ describe("TreeSitterClient Caching", () => {
   })
 
   test("should handle directory creation errors gracefully", async () => {
+    // Use a null byte in the path to ensure it is invalid on all platforms.
+    // This helps test error handling for directory creation in a cross-platform way.
     const invalidDataPath = "/invalid\x00/path/with/null/byte"
     const client = new TreeSitterClient({ dataPath: invalidDataPath })
 
