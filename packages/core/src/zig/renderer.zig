@@ -5,7 +5,6 @@ const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
-const builtin = @import("builtin");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
