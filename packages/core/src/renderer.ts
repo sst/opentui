@@ -1297,7 +1297,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
-    
+
     this.stdin.on("data", this.stdinListener)
 
     this.lib.resumeRenderer(this.rendererPtr)

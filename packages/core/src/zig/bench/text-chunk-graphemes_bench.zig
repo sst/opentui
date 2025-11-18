@@ -2,9 +2,7 @@ const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
 const gp = @import("../grapheme.zig");
-const gwidth = @import("../gwidth.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
+const utf8 = @import("../utf8.zig");
 
 const TextChunk = seg_mod.TextChunk;
 const MemRegistry = seg_mod.MemRegistry;
@@ -79,8 +77,6 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
 
 fn benchGetGraphemes(
     allocator: std.mem.Allocator,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
     size: usize,
     text_type: TextType,
     iterations: usize,
@@ -119,8 +115,6 @@ fn benchGetGraphemes(
     var grapheme_count: usize = 0;
     var final_mem: usize = 0;
 
-    const width_method = gwidth.WidthMethod.unicode;
-
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
         // Create a fresh arena for each iteration
@@ -135,9 +129,6 @@ fn benchGetGraphemes(
         const graphemes = try chunk.getGraphemes(
             &registry,
             arena_alloc,
-            graphemes_ptr,
-            width_method,
-            display_width_ptr,
             4, // tab width
         );
         const elapsed = timer.read();
@@ -193,8 +184,6 @@ pub fn run(
 
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
 
     if (show_mem) {
         try stdout.print("Memory stats enabled\n", .{});
@@ -222,8 +211,6 @@ pub fn run(
         for (sizes) |size| {
             const result = try benchGetGraphemes(
                 allocator,
-                graphemes_ptr,
-                display_width_ptr,
                 size,
                 text_type,
                 iterations,

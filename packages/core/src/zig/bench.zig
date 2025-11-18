@@ -83,8 +83,6 @@ pub fn main() !void {
     _ = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
 
-    _ = gp.initGlobalUnicodeData(allocator);
-    defer gp.deinitGlobalUnicodeData(allocator);
 
     const benchmarks = [_]BenchModule{
         .{ .name = text_buffer_view_bench.benchName, .run = text_buffer_view_bench.run },
