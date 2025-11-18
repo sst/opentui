@@ -1298,12 +1298,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this.stdin.resume()
     this._keyHandler.resume()
+
     this.lib.resumeRenderer(this.rendererPtr)
 
     if (this._suspendedMouseEnabled) {
       this.enableMouse()
     }
 
+    this.currentRenderBuffer.clear(this.backgroundColor)
     this._controlState = this._previousControlState
 
     if (
@@ -1311,6 +1313,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._previousControlState === RendererControlState.EXPLICIT_STARTED
     ) {
       this.internalStart()
+    } else {
+      this.requestRender()
     }
   }
 
