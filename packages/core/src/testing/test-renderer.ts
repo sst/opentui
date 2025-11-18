@@ -57,7 +57,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 }
 
 async function setupTestRenderer(config: TestRendererOptions) {
-  const stdin = config.stdin || new Readable({ read() {} }) as NodeJS.ReadStream
+  const stdin = config.stdin || (new Readable({ read() {} }) as NodeJS.ReadStream)
   const stdout = config.stdout || process.stdout
 
   const width = config.width || stdout.columns || 80
