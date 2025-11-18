@@ -231,7 +231,7 @@ pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: anytype) u32 {
+pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) u32 {
     const line_width = lineWidthAt(rope, row);
     if (col >= line_width) return 0;
 
@@ -266,7 +266,7 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: anytype) u32 {
+pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: utf8.WidthMethod) u32 {
     if (col == 0) return 0;
 
     const line_width = lineWidthAt(rope, row);
@@ -335,7 +335,7 @@ pub fn extractTextBetweenOffsets(
     start_offset: u32,
     end_offset: u32,
     out_buffer: []u8,
-    width_method: anytype,
+    width_method: utf8.WidthMethod,
 ) usize {
     if (start_offset >= end_offset) return 0;
     if (out_buffer.len == 0) return 0;

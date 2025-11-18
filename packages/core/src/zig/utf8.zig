@@ -1,6 +1,13 @@
 const std = @import("std");
 const uucode = @import("uucode");
 
+/// The method to use when calculating the width of a grapheme
+pub const WidthMethod = enum {
+    wcwidth,
+    unicode,
+    no_zwj,
+};
+
 /// Check if a byte slice contains only printable ASCII (32..126)
 /// Uses SIMD16 for fast checking
 pub fn isAsciiOnly(text: []const u8) bool {
@@ -883,7 +890,7 @@ pub fn findWrapPosByWidthSIMD16(
     max_columns: u32,
     tab_width: u8,
     isASCIIOnly: bool,
-    width_method: anytype,
+    width_method: WidthMethod,
 ) WrapByWidthResult {
     _ = width_method; // Ignored for now
     if (text.len == 0 or max_columns == 0) {
@@ -1015,7 +1022,7 @@ pub fn findPosByWidth(
     tab_width: u8,
     isASCIIOnly: bool,
     include_start_before: bool,
-    width_method: anytype,
+    width_method: WidthMethod,
 ) PosByWidthResult {
     _ = width_method; // Ignored for now
     if (text.len == 0 or max_columns == 0) {
@@ -1141,7 +1148,7 @@ pub fn findPosByWidth(
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
 
-pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_method: anytype) u32 {
+pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) u32 {
     _ = width_method; // Ignored for now
     if (byte_offset >= text.len) return 0;
 
@@ -1187,7 +1194,7 @@ pub const PrevGraphemeResult = struct {
     width: u32,
 };
 
-pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8, width_method: anytype) ?PrevGraphemeResult {
+pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) ?PrevGraphemeResult {
     if (byte_offset == 0 or text.len == 0) return null;
     if (byte_offset > text.len) return null;
 
@@ -1238,7 +1245,7 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8,
 }
 
 /// Calculate the display width of text including tab characters with static tab_width
-pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: anytype) u32 {
+pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
     _ = width_method; // Ignored for now
     if (text.len == 0) return 0;
 

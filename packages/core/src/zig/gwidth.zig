@@ -7,13 +7,10 @@ const unicode = std.unicode;
 const testing = std.testing;
 const DisplayWidth = @import("DisplayWidth");
 const code_point = @import("code_point");
+const utf8 = @import("utf8.zig");
 
-/// the method to use when calculating the width of a grapheme
-pub const WidthMethod = enum {
-    wcwidth,
-    unicode,
-    no_zwj,
-};
+/// Re-export WidthMethod from utf8.zig for backward compatibility
+pub const WidthMethod = utf8.WidthMethod;
 
 /// returns the width of the provided string, as measured by the method chosen
 pub fn gwidth(str: []const u8, method: WidthMethod, data: *const DisplayWidth) u16 {
