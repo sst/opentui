@@ -238,7 +238,7 @@ pub const UnifiedTextBuffer = struct {
         // For grapheme-accurate width calculation (used by highlighting system),
         // use utf8.calculateTextWidth which properly handles grapheme clusters
         const is_ascii = utf8.isAsciiOnly(text);
-        return utf8.calculateTextWidth(text, self.tab_width, is_ascii);
+        return utf8.calculateTextWidth(text, self.tab_width, is_ascii, self.width_method);
     }
 
     /// Clear the text content without resetting arena or memory registry.
@@ -394,7 +394,7 @@ pub const UnifiedTextBuffer = struct {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
 
-        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii)));
+        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
 
         return TextChunk{
             .mem_id = mem_id,
@@ -1020,6 +1020,7 @@ pub const UnifiedTextBuffer = struct {
             start_offset,
             clamped_end,
             out_buffer,
+            self.width_method,
         );
     }
 

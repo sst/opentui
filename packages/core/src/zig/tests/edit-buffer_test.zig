@@ -362,12 +362,12 @@ test "EditBuffer - type and move around single tab" {
     try std.testing.expectEqual(@as(u32, 0), cursor1.row);
     _ = iter_mod.lineWidthAt(&eb.tb.rope, 0);
 
-    _ = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor1.col, eb.tb.tab_width);
+    _ = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor1.col, eb.tb.tab_width, eb.tb.width_method);
 
     eb.moveRight();
     const cursor2 = eb.getCursor(0).?;
     const line_width2 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
-    const gw2 = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor2.col, eb.tb.tab_width);
+    const gw2 = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, cursor2.col, eb.tb.tab_width, eb.tb.width_method);
     try std.testing.expect(cursor2.col > cursor1.col);
 
     // After moving right once, we're at the end of the line (col=3, line_width=3)
@@ -573,7 +573,7 @@ test "EditBuffer - tabs only with cursor movement" {
     var i: u32 = 0;
     while (i < 5) : (i += 1) {
         _ = iter_mod.lineWidthAt(&eb.tb.rope, 0);
-        _ = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, prev_col, eb.tb.tab_width);
+        _ = iter_mod.getGraphemeWidthAt(&eb.tb.rope, &eb.tb.mem_registry, 0, prev_col, eb.tb.tab_width, eb.tb.width_method);
         eb.moveRight();
         const cursor = eb.getCursor(0).?;
         try std.testing.expect(cursor.col >= prev_col);
@@ -940,7 +940,7 @@ test "EditBuffer - getTextRange char before cursor" {
 
     // Get last char before cursor (if cursor > 0)
     if (cursor.offset > 0) {
-        const prev_width = iter_mod.getPrevGraphemeWidth(&eb.tb.rope, &eb.tb.mem_registry, cursor.row, cursor.col, eb.tb.tab_width);
+        const prev_width = iter_mod.getPrevGraphemeWidth(&eb.tb.rope, &eb.tb.mem_registry, cursor.row, cursor.col, eb.tb.tab_width, eb.tb.width_method);
         const len = try eb.getTextRange(cursor.offset - prev_width, cursor.offset, &buffer);
         try std.testing.expectEqualStrings("o", buffer[0..len]);
     }
@@ -964,7 +964,7 @@ test "EditBuffer - getTextRange emoji before cursor" {
     var buffer: [100]u8 = undefined;
 
     // Get emoji before cursor
-    const prev_width = iter_mod.getPrevGraphemeWidth(&eb.tb.rope, &eb.tb.mem_registry, cursor.row, cursor.col, eb.tb.tab_width);
+    const prev_width = iter_mod.getPrevGraphemeWidth(&eb.tb.rope, &eb.tb.mem_registry, cursor.row, cursor.col, eb.tb.tab_width, eb.tb.width_method);
     const len = try eb.getTextRange(cursor.offset - prev_width, cursor.offset, &buffer);
     try std.testing.expectEqualStrings("👋", buffer[0..len]);
 }

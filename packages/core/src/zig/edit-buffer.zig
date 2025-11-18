@@ -216,7 +216,7 @@ pub const EditBuffer = struct {
         const chunk_bytes = chunk.getBytes(&self.tb.mem_registry);
         const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
-        const result = utf8.findPosByWidth(chunk_bytes, weight, self.tb.tab_width, is_ascii_only, false);
+        const result = utf8.findPosByWidth(chunk_bytes, weight, self.tb.tab_width, is_ascii_only, false, self.tb.width_method);
         const split_byte_offset = result.byte_offset;
 
         const left_chunk = self.tb.createChunk(
@@ -372,7 +372,7 @@ pub const EditBuffer = struct {
                 );
             }
         } else {
-            const prev_grapheme_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width);
+            const prev_grapheme_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width, self.tb.width_method);
             if (prev_grapheme_width == 0) return; // Nothing to delete
 
             const target_col = cursor.col - prev_grapheme_width;
@@ -402,7 +402,7 @@ pub const EditBuffer = struct {
                 );
             }
         } else {
-            const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width);
+            const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width, self.tb.width_method);
             if (grapheme_width > 0) {
                 try self.deleteRange(
                     .{ .row = cursor.row, .col = cursor.col },
@@ -417,7 +417,7 @@ pub const EditBuffer = struct {
         const cursor = &self.cursors.items[0];
 
         if (cursor.col > 0) {
-            const prev_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width);
+            const prev_width = iter_mod.getPrevGraphemeWidth(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width, self.tb.width_method);
             cursor.col -= prev_width;
         } else if (cursor.row > 0) {
             cursor.row -= 1;
@@ -439,7 +439,7 @@ pub const EditBuffer = struct {
         const line_count = self.tb.getLineCount();
 
         if (cursor.col < line_width) {
-            const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width);
+            const grapheme_width = iter_mod.getGraphemeWidthAt(&self.tb.rope, &self.tb.mem_registry, cursor.row, cursor.col, self.tb.tab_width, self.tb.width_method);
             cursor.col += grapheme_width;
         } else if (cursor.row + 1 < line_count) {
             cursor.row += 1;

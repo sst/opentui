@@ -231,7 +231,7 @@ pub fn lineWidthAt(rope: *UnifiedRope, row: u32) u32 {
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8) u32 {
+pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: anytype) u32 {
     const line_width = lineWidthAt(rope, row);
     if (col >= line_width) return 0;
 
@@ -248,10 +248,10 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
                 const local_col: u32 = col - cols_before;
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                const pos = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
+                const pos = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
                 if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
                 const grapheme_start_col = pos.columns_used;
-                const width = utf8.getWidthAt(bytes, pos.byte_offset, tab_width);
+                const width = utf8.getWidthAt(bytes, pos.byte_offset, tab_width, width_method);
 
                 // Calculate remaining width: if cursor is in the middle of a wide grapheme,
                 // return only the remaining columns to reach the end of the grapheme
@@ -266,7 +266,7 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
 }
 
 /// Takes mutable rope for lazy marker cache rebuilding
-pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8) u32 {
+pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry, row: u32, col: u32, tab_width: u8, width_method: anytype) u32 {
     if (col == 0) return 0;
 
     const line_width = lineWidthAt(rope, row);
@@ -288,7 +288,7 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                     // Exactly at chunk boundary - get last grapheme from previous chunk
                     const pc = prev_chunk.?;
                     const bytes = pc.chunk.getBytes(mem_registry);
-                    const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, tab_width);
+                    const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, tab_width, width_method);
                     if (prev) |res| return res.width;
                     return 0;
                 }
@@ -296,23 +296,22 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;
-                const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false);
+                const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
 
                 const grapheme_start_col = here.columns_used;
                 const offset_into_grapheme = local_col - grapheme_start_col;
 
                 if (offset_into_grapheme > 0) {
                     // We need to jump back: offset_into_grapheme + width of previous grapheme
-                    const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
+                    const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width, width_method);
                     if (prev) |res| {
                         const total_distance = offset_into_grapheme + res.width;
                         return total_distance;
                     }
-
                     return offset_into_grapheme;
                 }
 
-                const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width);
+                const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width, width_method);
                 if (prev) |res| return res.width;
                 return 0;
             }
@@ -336,6 +335,7 @@ pub fn extractTextBetweenOffsets(
     start_offset: u32,
     end_offset: u32,
     out_buffer: []u8,
+    width_method: anytype,
 ) usize {
     if (start_offset >= end_offset) return 0;
     if (out_buffer.len == 0) return 0;
@@ -344,6 +344,8 @@ pub fn extractTextBetweenOffsets(
 
     var out_index: usize = 0;
     var char_offset: u32 = 0;
+
+    _ = width_method; // Just ignore for now, will use .unicode as default
 
     const Context = struct {
         rope: *const UnifiedRope,
@@ -383,12 +385,12 @@ pub fn extractTextBetweenOffsets(
             var byte_end: u32 = @intCast(chunk_bytes.len);
 
             if (local_start_col > 0) {
-                const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false);
+                const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false, .unicode);
                 byte_start = start_result.byte_offset;
             }
 
             if (local_end_col < chunk.width) {
-                const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true);
+                const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, .unicode);
                 byte_end = end_result.byte_offset;
             }
 
