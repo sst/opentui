@@ -8,6 +8,7 @@ import {
   BoxRenderable,
   TextRenderable,
   FrameBufferRenderable,
+  type KeyEvent,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
@@ -32,9 +33,8 @@ import crateEmissivePath from "./assets/crate_emissive.png" with { type: "image/
 
 let engine: ThreeCliRenderer | null = null
 let framebuffer: OptimizedBuffer | null = null
-let keyListener: ((key: string) => void) | null = null
+let keyListener: ((key: KeyEvent) => void) | null = null
 let resizeListener: ((width: number, height: number) => void) | null = null
-let stdinHandler: ((key: Buffer) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 
 export async function run(renderer: CliRenderer): Promise<void> {
@@ -145,38 +145,38 @@ export async function run(renderer: CliRenderer): Promise<void> {
   let rotationEnabled = true
   let showDebugOverlay = false
 
-  keyListener = (key: string) => {
-    if (key === "p" && engine) {
+  keyListener = (key: KeyEvent) => {
+    if (key.name === "p" && engine) {
       engine.saveToFile(`screenshot-${Date.now()}.png`)
     }
 
     // Handle camera movement
-    if (key === "w") {
+    if (key.name === "w") {
       cameraNode.translateY(0.5)
-    } else if (key === "s") {
+    } else if (key.name === "s") {
       cameraNode.translateY(-0.5)
-    } else if (key === "a") {
+    } else if (key.name === "a") {
       cameraNode.translateX(-0.5)
-    } else if (key === "d") {
+    } else if (key.name === "d") {
       cameraNode.translateX(0.5)
     }
 
     // Handle camera rotation
-    if (key === "q") {
+    if (key.name === "q") {
       cameraNode.rotateY(0.1)
-    } else if (key === "e") {
+    } else if (key.name === "e") {
       cameraNode.rotateY(-0.1)
     }
 
     // Handle zoom by changing camera position
-    if (key === "z") {
+    if (key.name === "z") {
       cameraNode.translateZ(0.1)
-    } else if (key === "x") {
+    } else if (key.name === "x") {
       cameraNode.translateZ(-0.1)
     }
 
     // Reset camera position and rotation
-    if (key === "r") {
+    if (key.name === "r") {
       cameraNode.position.set(0, 0, 2)
       cameraNode.rotation.set(0, 0, 0)
       cameraNode.quaternion.set(0, 0, 0, 1)
@@ -185,11 +185,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Toggle super sampling
-    if (key === "u" && engine) {
+    if (key.name === "u" && engine) {
       engine.toggleSuperSampling()
     }
 
-    if (key === "i" && engine) {
+    if (key.name === "i" && engine) {
       const currentAlgorithm = engine.getSuperSampleAlgorithm()
       const newAlgorithm =
         currentAlgorithm === SuperSampleAlgorithm.STANDARD
@@ -199,25 +199,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Toggle cube rotation
-    if (key === " ") {
+    if (key.name === "space") {
       rotationEnabled = !rotationEnabled
     }
   }
 
-  const originalStdin = process.stdin.listenerCount("data") > 0
-  if (!originalStdin) {
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.setEncoding("utf8")
-  }
-
-  stdinHandler = (key: Buffer) => {
-    if (keyListener) {
-      keyListener(key.toString())
-    }
-  }
-
-  process.stdin.on("data", stdinHandler)
+  renderer.keyInput.on("keypress", keyListener)
 
   const rotationSpeed = new Vector3(0.4, 0.8, 0.2)
 
@@ -272,8 +259,8 @@ export function destroy(renderer: CliRenderer): void {
     resizeListener = null
   }
 
-  if (stdinHandler) {
-    process.stdin.off("data", stdinHandler)
+  if (keyListener) {
+    renderer.keyInput.off("keypress", keyListener)
     keyListener = null
   }
 

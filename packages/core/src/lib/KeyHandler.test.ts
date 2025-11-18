@@ -502,24 +502,3 @@ test("KeyHandler - source field persists through KeyEvent wrapper", () => {
 
   renderer.keyInput.removeAllListeners("keypress")
 })
-
-test("KeyHandler - suspend ignores processInput calls", () => {
-  const handler = createKeyHandler()
-
-  let keypressCount = 0
-  handler.on("keypress", () => {
-    keypressCount++
-  })
-
-  handler.processInput("a")
-  expect(keypressCount).toBe(1)
-
-  handler.suspend()
-  handler.processInput("b")
-  handler.processInput("c")
-  expect(keypressCount).toBe(1) // No new keypresses while suspended
-
-  handler.resume()
-  handler.processInput("d")
-  expect(keypressCount).toBe(2) // Resumes processing
-})

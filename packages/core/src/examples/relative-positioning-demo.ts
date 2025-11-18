@@ -1,8 +1,8 @@
-import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable } from "../index"
+import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
 
-let globalKeyboardHandler: ((key: Buffer) => void) | null = null
+let globalKeyboardHandler: ((key: KeyEvent) => void) | null = null
 let animationSpeed = 4000
 let animationTime = 0
 
@@ -287,24 +287,22 @@ export function run(renderer: CliRenderer): void {
     parentLabelB.content = `Parent B Position: (50, ${Math.round(parentBY)})`
   })
 
-  globalKeyboardHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "+" || keyStr === "=") {
+  globalKeyboardHandler = (key: KeyEvent) => {
+    if (key.name === "+" || key.name === "=") {
       animationSpeed = Math.max(500, animationSpeed - 300)
       speedDisplay.content = `Animation Speed: ${animationSpeed}ms (min: 500, max: 8000)`
-    } else if (keyStr === "-" || keyStr === "_") {
+    } else if (key.name === "-" || key.name === "_") {
       animationSpeed = Math.min(8000, animationSpeed + 300)
       speedDisplay.content = `Animation Speed: ${animationSpeed}ms (min: 500, max: 8000)`
     }
   }
 
-  process.stdin.on("data", globalKeyboardHandler)
+  renderer.keyInput.on("keypress", globalKeyboardHandler)
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (globalKeyboardHandler) {
-    process.stdin.removeListener("data", globalKeyboardHandler)
+    renderer.keyInput.off("keypress", globalKeyboardHandler)
     globalKeyboardHandler = null
   }
 

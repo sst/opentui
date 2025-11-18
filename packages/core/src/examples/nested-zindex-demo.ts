@@ -1,8 +1,8 @@
-import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable } from "../index"
+import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import type { CliRenderer } from "../index"
 
-let globalKeyboardHandler: ((key: Buffer) => void) | null = null
+let globalKeyboardHandler: ((key: KeyEvent) => void) | null = null
 let zIndexPhase = 0
 let animationSpeed = 2000
 
@@ -323,22 +323,20 @@ export function run(renderer: CliRenderer): void {
     }
   })
 
-  globalKeyboardHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "+" || keyStr === "=") {
+  globalKeyboardHandler = (key: KeyEvent) => {
+    if (key.name === "+" || key.name === "=") {
       animationSpeed = Math.max(500, animationSpeed - 200)
-    } else if (keyStr === "-" || keyStr === "_") {
+    } else if (key.name === "-" || key.name === "_") {
       animationSpeed = Math.min(5000, animationSpeed + 200)
     }
   }
 
-  process.stdin.on("data", globalKeyboardHandler)
+  renderer.keyInput.on("keypress", globalKeyboardHandler)
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (globalKeyboardHandler) {
-    process.stdin.removeListener("data", globalKeyboardHandler)
+    renderer.keyInput.off("keypress", globalKeyboardHandler)
     globalKeyboardHandler = null
   }
 

@@ -419,6 +419,14 @@ export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: 
     rendererPtr.setupTerminal(useAlternateScreen);
 }
 
+export fn suspendRenderer(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.suspendRenderer();
+}
+
+export fn resumeRenderer(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.resumeRenderer();
+}
+
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;

@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, TextRenderable, FrameBufferRenderable, BoxRenderable } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  RGBA,
+  TextRenderable,
+  FrameBufferRenderable,
+  BoxRenderable,
+  type KeyEvent,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import { ThreeCliRenderer } from "../3d"
@@ -16,7 +24,7 @@ let sprite: any = null
 let frameIndex = 0
 let accumulatedTime = 0
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
-let keyHandler: ((key: Buffer) => void) | null = null
+let keyHandler: ((key: KeyEvent) => void) | null = null
 let resizeHandler: ((newWidth: number, newHeight: number) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 
@@ -122,24 +130,22 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   renderer.setFrameCallback(frameCallback)
 
-  keyHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "u") {
+  keyHandler = (key: KeyEvent) => {
+    if (key.name === "u") {
       engine!.toggleSuperSampling()
     }
 
-    if (keyStr === "k") {
+    if (key.name === "k") {
       renderer.console.toggleDebugMode()
     }
   }
 
-  process.stdin.on("data", keyHandler)
+  renderer.keyInput.on("keypress", keyHandler)
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (keyHandler) {
-    process.stdin.removeListener("data", keyHandler)
+    renderer.keyInput.off("keypress", keyHandler)
     keyHandler = null
   }
 
