@@ -703,6 +703,11 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
+        // Emoji skin tone modifiers (U+1F3FB-U+1F3FF) should be zero-width
+        // when part of a grapheme cluster
+        if (codepoint >= 0x1F3FB and codepoint <= 0x1F3FF) {
+            return 0;
+        }
         return eastAsianWidth(codepoint);
     }
     return 0;
