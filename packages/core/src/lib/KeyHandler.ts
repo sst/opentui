@@ -75,7 +75,6 @@ export type KeyHandlerEventMap = {
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   protected useKittyKeyboard: boolean
-  private suspended: boolean = false
 
   constructor(useKittyKeyboard: boolean = false) {
     super()
@@ -84,10 +83,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   }
 
   public processInput(data: string): boolean {
-    if (this.suspended) {
-      return false
-    }
-
     const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
 
     if (!parsedKey) {
@@ -113,20 +108,8 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   }
 
   public processPaste(data: string): void {
-    if (this.suspended) {
-      return
-    }
-
     const cleanedData = Bun.stripANSI(data)
     this.emit("paste", new PasteEvent(cleanedData))
-  }
-
-  public suspend(): void {
-    this.suspended = true
-  }
-
-  public resume(): void {
-    this.suspended = false
   }
 }
 

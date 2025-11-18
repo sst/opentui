@@ -1282,8 +1282,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._suspendedMouseEnabled = this._useMouse
 
     this.disableMouse()
-    this._keyHandler.suspend()
     this._stdinBuffer.clear()
+    this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
 
     if (this.stdin.setRawMode) {
@@ -1297,7 +1297,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(true)
     }
     this.stdin.resume()
-    this._keyHandler.resume()
+    this.stdin.on("data", this.stdinListener)
 
     this.lib.resumeRenderer(this.rendererPtr)
 
